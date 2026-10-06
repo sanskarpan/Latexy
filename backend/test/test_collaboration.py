@@ -800,7 +800,7 @@ def authed_client():
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-owner-id"
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(app, base_url="http://localhost", raise_server_exceptions=False) as client:
         try:
             yield client
         finally:
@@ -1110,7 +1110,7 @@ class TestCollabWebSocket:
 
         from app.main import app
 
-        return TestClient(app, raise_server_exceptions=False)
+        return TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
 
     def test_invalid_ticket_is_rejected(self) -> None:
         """A missing, expired, reused, or wrong-scope ticket cannot authenticate."""
