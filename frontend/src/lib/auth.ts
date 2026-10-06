@@ -18,8 +18,10 @@ import { Pool } from 'pg'
 import { assertEmailTransportConfigured, sendEmail } from './email'
 import { handlePasskeyTwoFactorAfterHook } from './passkey-two-factor'
 import { oidcConfiguration, readAdditionalTrustedOrigins } from './oidc-config'
+import { getConfiguredSocialProviders } from './social-provider-config'
 
 const APP_URL = process.env.BETTER_AUTH_URL || 'http://localhost:5180'
+const AUTH_ERROR_URL = `${APP_URL.replace(/\/$/, '')}/login`
 
 /**
  * WebAuthn is origin-bound. Keep the relying-party configuration explicit in
@@ -211,24 +213,7 @@ export const auth = betterAuth({
   },
 
   // Social OAuth providers — only active when both client ID + secret are provided
-  socialProviders: {
-    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-      ? {
-          google: {
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          },
-        }
-      : {}),
-    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
-      ? {
-          github: {
-            clientId: process.env.GITHUB_CLIENT_ID,
-            clientSecret: process.env.GITHUB_CLIENT_SECRET,
-          },
-        }
-      : {}),
-  },
+  socialProviders: getConfiguredSocialProviders(),
 
   plugins: [
     ...(oidcConfiguration
@@ -284,6 +269,12 @@ export const auth = betterAuth({
 
   secret: getAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:5180',
+  // Better Auth's native fallback is `${baseURL}/error`, which is a generic
+  // page and drops the sign-in form. Keep failures on our safe login surface;
+  // OAuth requests that supplied errorCallbackURL still override this.
+  onAPIError: {
+    errorURL: AUTH_ERROR_URL,
+  },
 
   // Trust requests from both the frontend and the FastAPI backend.
   // Includes the custom domain + the Vercel deployment URL so auth keeps
