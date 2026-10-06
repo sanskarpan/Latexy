@@ -50,8 +50,8 @@ class MarkdownParser(AbstractParser):
             return self._build_parsed_resume(plain, filename, section_hints=headers)
 
         except Exception as e:
-            logger.error(f"Error parsing Markdown: {e}")
-            raise ValueError(f"Failed to parse Markdown: {str(e)}")
+            logger.error("Error parsing Markdown", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse Markdown input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         try:
@@ -59,5 +59,5 @@ class MarkdownParser(AbstractParser):
             if not content.strip():
                 return False, "File is empty"
             return True, None
-        except Exception as e:
-            return False, str(e)
+        except Exception:
+            return False, "Markdown validation failed"
