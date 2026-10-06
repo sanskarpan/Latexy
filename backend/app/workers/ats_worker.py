@@ -21,8 +21,16 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.tracing import traced
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.deep_ats_response import DeepATSResponse
 from ..services.industry_ats_profiles import detect_industry
-from ..workers.event_publisher import publish_event, publish_job_result
+from ..workers.event_publisher import (
+    get_worker_redis,
+    is_cancelled,
+    publish_event,
+    publish_job_result,
+)
+from ..workers.job_lifecycle import admit_worker, lifecycle_key
+from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
 
 logger = get_logger(__name__)
 
@@ -42,6 +50,7 @@ def score_resume_ats_task(
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
     industry_profile_key: Optional[str] = None,  # None = auto-detect; explicit key = override
+    locale_key: str = "global",
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
@@ -63,27 +72,55 @@ def score_resume_ats_task(
     worker_id = f"ats-{task_id}"
     logger.info(f"ATS task {task_id} starting for job {job_id}")
 
-    publish_event(job_id, "job.started", {
-        "worker_id": worker_id,
-        "stage": "ats_scoring",
-    })
+    # API-created ATS jobs carry a lifecycle even though they do not consume a
+    # quota ticket. Legacy direct task calls without that record retain the
+    # ownerless compatibility path.
+    queue_redis = get_worker_redis()
+    lifecycle_exists = queue_redis.exists(lifecycle_key(job_id)) in (True, 1, b"1")
+    lifecycle_owner = f"{worker_id}:{uuid.uuid4()}"
+    if lifecycle_exists and not admit_worker(
+        queue_redis,
+        job_id,
+        lifecycle_owner,
+        {"lifecycle": True},
+        user_id,
+    ):
+        return {"success": False, "job_id": job_id, "error": "Job ownership unavailable"}
+
+    publish_event(
+        job_id,
+        "job.started",
+        {
+            "worker_id": worker_id,
+            "stage": "ats_scoring",
+        },
+    )
 
     try:
         if not latex_content or not latex_content.strip():
             error_msg = "LaTeX content is required for ATS scoring"
-            publish_event(job_id, "job.failed", {
-                "stage": "ats_scoring",
-                "error_code": "latex_error",
-                "error_message": error_msg,
-                "retryable": False,
-            })
+            publish_job_result(job_id, {"success": False, "job_id": job_id, "error": error_msg})
+            publish_event(
+                job_id,
+                "job.failed",
+                {
+                    "stage": "ats_scoring",
+                    "error_code": "latex_error",
+                    "error_message": error_msg,
+                    "retryable": False,
+                },
+            )
             return {"success": False, "job_id": job_id, "error": error_msg}
 
-        publish_event(job_id, "job.progress", {
-            "percent": 20,
-            "stage": "ats_scoring",
-            "message": "Analyzing resume content",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 20,
+                "stage": "ats_scoring",
+                "message": "Analyzing resume content",
+            },
+        )
 
         # Resolve industry profile: explicit key is used as-is; None triggers auto-detection
         if industry_profile_key is not None:
@@ -104,15 +141,20 @@ def score_resume_ats_task(
                     job_description=job_description,
                     industry=industry,
                     industry_profile_key=effective_profile_key,
+                    locale_key=locale_key,
                 )
             )
         scoring_time = time.time() - start_time
 
-        publish_event(job_id, "job.progress", {
-            "percent": 90,
-            "stage": "ats_scoring",
-            "message": f"Scoring complete: {scoring_result.overall_score:.1f}/100",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 90,
+                "stage": "ats_scoring",
+                "message": f"Scoring complete: {scoring_result.overall_score:.1f}/100",
+            },
+        )
 
         ats_details = {
             "category_scores": scoring_result.category_scores,
@@ -132,50 +174,88 @@ def score_resume_ats_task(
             "device_fingerprint": device_fingerprint,
             "industry": industry,
             "industry_label": scoring_result.industry_label,
+            "locale_key": scoring_result.locale_key,
+            "locale_label": scoring_result.locale_label,
+            "score_threshold": scoring_result.score_threshold,
+            "calibration_statement": scoring_result.calibration_statement,
         }
 
         publish_job_result(job_id, result)
-        publish_event(job_id, "job.completed", {
-            "percent": 100,
-            "pdf_job_id": job_id,
-            "ats_score": scoring_result.overall_score,
-            "ats_details": {
-                **ats_details,
-                "industry_label": scoring_result.industry_label,
+        publish_event(
+            job_id,
+            "job.completed",
+            {
+                "percent": 100,
+                # ATS scoring does not compile a resume or create a PDF.
+                # Keep the terminal event explicit so clients never infer an
+                # artifact from the analysis job's identifier.
+                "pdf_job_id": None,
+                "ats_score": scoring_result.overall_score,
+                "ats_details": {
+                    **ats_details,
+                    "industry_label": scoring_result.industry_label,
+                    "locale_key": scoring_result.locale_key,
+                    "locale_label": scoring_result.locale_label,
+                    "score_threshold": scoring_result.score_threshold,
+                    "calibration_statement": scoring_result.calibration_statement,
+                },
+                "changes_made": [],
+                "compilation_time": 0.0,
+                "optimization_time": 0.0,
+                "tokens_used": 0,
             },
-            "changes_made": [],
-            "compilation_time": 0.0,
-            "optimization_time": 0.0,
-            "tokens_used": 0,
-        })
-        logger.info(
-            f"ATS task {task_id} succeeded for job {job_id}: "
-            f"{scoring_result.overall_score:.1f}/100"
         )
+        logger.info(f"ATS task {task_id} succeeded for job {job_id}: {scoring_result.overall_score:.1f}/100")
         return result
 
     except SoftTimeLimitExceeded:
-        logger.error(f"ATS task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
-        publish_event(job_id, "job.failed", {
-            "stage": "ats_scoring",
-            "error_code": "timeout",
-            "error_message": "Task exceeded time limit",
-            "retryable": False,
-        })
+        logger.error("ATS task %s exceeded soft time limit for job %s", task_id, job_id)
+        publish_job_result(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
+        )
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "ats_scoring",
+                "error_code": "timeout",
+                "error_message": "Task exceeded time limit",
+                "retryable": False,
+            },
+        )
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
-        logger.error(f"ATS task {task_id} raised: {exc}", exc_info=True)
+        logger.error("ATS task %s raised for job %s", task_id, job_id, extra={"error_type": type(exc).__name__})
         retryable = self.request.retries < self.max_retries
-        publish_event(job_id, "job.failed", {
-            "stage": "ats_scoring",
-            "error_code": "internal",
-            "error_message": str(exc),
-            "retryable": retryable,
-        })
         if retryable:
+            publish_event(
+                job_id,
+                "job.retrying",
+                {
+                    "stage": "ats_scoring",
+                    "worker_id": worker_id,
+                    "attempt": self.request.retries + 2,
+                    "error_message": "ATS scoring is retrying",
+                },
+            )
             raise self.retry(countdown=60, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        publish_job_result(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "ATS scoring failed"},
+        )
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "ats_scoring",
+                "error_code": "internal",
+                "error_message": "ATS scoring failed",
+                "retryable": False,
+            },
+        )
+        return {"success": False, "job_id": job_id, "error": "ATS scoring failed"}
 
 
 @celery_app.task(
@@ -200,27 +280,57 @@ def analyze_job_description_ats_task(
     worker_id = f"ats-jd-{task_id}"
     logger.info(f"ATS JD analysis task {task_id} starting for job {job_id}")
 
-    publish_event(job_id, "job.started", {
-        "worker_id": worker_id,
-        "stage": "ats_scoring",
-    })
+    # API-created JD jobs carry the same lifecycle fence as ATS scoring jobs.
+    # Legacy direct task calls without a lifecycle retain the ownerless
+    # compatibility path.
+    queue_redis = get_worker_redis()
+    lifecycle_exists = queue_redis.exists(lifecycle_key(job_id)) in (True, 1, b"1")
+    lifecycle_owner = f"{worker_id}:{uuid.uuid4()}"
+    if lifecycle_exists and not admit_worker(
+        queue_redis,
+        job_id,
+        lifecycle_owner,
+        {"lifecycle": True},
+        user_id,
+    ):
+        return {"success": False, "job_id": job_id, "error": "Job ownership unavailable"}
+
+    publish_event(
+        job_id,
+        "job.started",
+        {
+            "worker_id": worker_id,
+            "stage": "ats_scoring",
+        },
+    )
 
     try:
         if not job_description or not job_description.strip():
             error_msg = "Job description is required for analysis"
-            publish_event(job_id, "job.failed", {
-                "stage": "ats_scoring",
-                "error_code": "latex_error",
-                "error_message": error_msg,
-                "retryable": False,
-            })
+            failure_result = {"success": False, "job_id": job_id, "error": error_msg}
+            if not publish_job_result(job_id, failure_result):
+                return failure_result
+            publish_event(
+                job_id,
+                "job.failed",
+                {
+                    "stage": "ats_scoring",
+                    "error_code": "latex_error",
+                    "error_message": error_msg,
+                    "retryable": False,
+                },
+            )
             return {"success": False, "job_id": job_id, "error": error_msg}
 
-        publish_event(job_id, "job.progress", {
-            "percent": 20,
-            "stage": "ats_scoring",
-            "message": "Analyzing job description",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 20,
+                "stage": "ats_scoring",
+                "message": "Analyzing job description",
+            },
+        )
 
         start_time = time.time()
         keywords = ats_scoring_service._extract_keywords_from_job_description(  # noqa: SLF001
@@ -265,11 +375,15 @@ def analyze_job_description_ats_task(
 
         analysis_time = time.time() - start_time
 
-        publish_event(job_id, "job.progress", {
-            "percent": 90,
-            "stage": "ats_scoring",
-            "message": "Analysis complete",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 90,
+                "stage": "ats_scoring",
+                "message": "Analysis complete",
+            },
+        )
 
         result = {
             "success": True,
@@ -287,39 +401,63 @@ def analyze_job_description_ats_task(
             "user_id": user_id,
         }
 
-        publish_job_result(job_id, result)
-        publish_event(job_id, "job.completed", {
-            "percent": 100,
-            "pdf_job_id": job_id,
-            # This job only analyses the job description — no resume was
-            # scored, so send None (not a fake 0.0) to avoid a misleading
-            # 0/100 "Poor" verdict on the client.
-            "ats_score": None,
-            "ats_details": {"detected_industry": detected_industry},
-            "changes_made": [],
-            "compilation_time": 0.0,
-            "optimization_time": 0.0,
-            "tokens_used": 0,
-        })
+        if not publish_job_result(job_id, result):
+            return {"success": False, "job_id": job_id, "error": "Job result publication rejected"}
+        publish_event(
+            job_id,
+            "job.completed",
+            {
+                "percent": 100,
+                # Job-description analysis has no resume/PDF artifact.
+                "pdf_job_id": None,
+                # This job only analyses the job description — no resume was
+                # scored, so send None (not a fake 0.0) to avoid a misleading
+                # 0/100 "Poor" verdict on the client.
+                "ats_score": None,
+                "ats_details": {"detected_industry": detected_industry},
+                "changes_made": [],
+                "compilation_time": 0.0,
+                "optimization_time": 0.0,
+                "tokens_used": 0,
+            },
+        )
         return result
 
     except Exception as exc:
-        logger.error(f"ATS JD analysis task {task_id} raised: {exc}", exc_info=True)
+        logger.error("ATS JD analysis task %s raised", task_id, extra={"error_type": type(exc).__name__})
         retryable = self.request.retries < self.max_retries
-        publish_event(job_id, "job.failed", {
-            "stage": "ats_scoring",
-            "error_code": "internal",
-            "error_message": str(exc),
-            "retryable": retryable,
-        })
         if retryable:
+            publish_event(
+                job_id,
+                "job.retrying",
+                {
+                    "stage": "ats_scoring",
+                    "worker_id": worker_id,
+                    "attempt": self.request.retries + 2,
+                    "error_message": "Job description analysis is retrying",
+                },
+            )
             raise self.retry(countdown=30, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        failure_result = {"success": False, "job_id": job_id, "error": "Job description analysis failed"}
+        if not publish_job_result(job_id, failure_result):
+            return failure_result
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "ats_scoring",
+                "error_code": "internal",
+                "error_message": "Job description analysis failed",
+                "retryable": False,
+            },
+        )
+        return failure_result
 
 
 # ------------------------------------------------------------------ #
 #  Submission helpers                                                  #
 # ------------------------------------------------------------------ #
+
 
 def submit_ats_scoring(
     latex_content: str,
@@ -327,6 +465,7 @@ def submit_ats_scoring(
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
     industry_profile_key: Optional[str] = None,
+    locale_key: str = "global",
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
@@ -338,19 +477,25 @@ def submit_ats_scoring(
         priority = get_task_priority(user_plan)
 
     import os
+
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
-        spawn("run_ats_task", {
-            "latex_content": latex_content,
-            "job_id": job_id,
-            "job_description": job_description,
-            "industry": industry,
-            "industry_profile_key": industry_profile_key,
-            "user_id": user_id,
-            "user_plan": user_plan,
-            "device_fingerprint": device_fingerprint,
-            "metadata": metadata,
-        })
+
+        spawn(
+            "run_ats_task",
+            {
+                "latex_content": latex_content,
+                "job_id": job_id,
+                "job_description": job_description,
+                "industry": industry,
+                "industry_profile_key": industry_profile_key,
+                "locale_key": locale_key,
+                "user_id": user_id,
+                "user_plan": user_plan,
+                "device_fingerprint": device_fingerprint,
+                "metadata": metadata,
+            },
+        )
         logger.info(f"Modal spawn: ATS scoring for job {job_id}")
         return job_id
 
@@ -361,6 +506,7 @@ def submit_ats_scoring(
             "job_description": job_description,
             "industry": industry,
             "industry_profile_key": industry_profile_key,
+            "locale_key": locale_key,
             "user_id": user_id,
             "user_plan": user_plan,
             "device_fingerprint": device_fingerprint,
@@ -386,15 +532,20 @@ def submit_job_description_analysis(
         priority = get_task_priority(user_plan)
 
     import os
+
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
-        spawn("run_jd_analysis_task", {
-            "job_description": job_description,
-            "job_id": job_id,
-            "user_id": user_id,
-            "user_plan": user_plan,
-            "metadata": metadata,
-        })
+
+        spawn(
+            "run_jd_analysis_task",
+            {
+                "job_description": job_description,
+                "job_id": job_id,
+                "user_id": user_id,
+                "user_plan": user_plan,
+                "metadata": metadata,
+            },
+        )
         logger.info(f"Modal spawn: JD analysis for job {job_id}")
         return job_id
 
@@ -484,6 +635,41 @@ Return ONLY valid JSON (no markdown) with this exact structure:
 }}"""
 
 
+def _finish_deep_terminal(
+    job_id: str,
+    result: Dict[str, Any],
+    event_type: str,
+    event_payload: Dict[str, Any],
+    quota_refund: Optional[Dict[str, Any]],
+) -> bool:
+    """Store a fenced terminal result before emitting its terminal event."""
+    if not publish_job_result(job_id, result):
+        # An expired/taken-over lease is reconciled by cleanup.  In particular,
+        # do not refund here: a worker that lost the fence cannot prove that no
+        # accepted work will still complete.
+        return False
+
+    entry_id = publish_event(job_id, event_type, event_payload)
+    if result.get("success") is True:
+        if entry_id and quota_refund:
+            clear_quota_refund_receipt(job_id)
+    elif quota_refund:
+        # The accepted failure result fenced the lifecycle before this refund.
+        refund_quota_once(job_id, quota_refund, expected_dimension="ai_assists")
+    # A successfully published failure/cancellation event is still an
+    # unsuccessful task outcome; callers must not interpret event acceptance
+    # as a fabricated AI success.
+    return bool(entry_id) and result.get("success") is True
+
+
+def _deep_job_cancelled(job_id: str) -> bool:
+    """Cancellation polling must remain safe for legacy/no-Redis unit calls."""
+    try:
+        return is_cancelled(job_id)
+    except Exception:
+        return False
+
+
 async def _async_deep_analyze(
     task,
     latex_content: str,
@@ -491,6 +677,7 @@ async def _async_deep_analyze(
     job_description: Optional[str],
     api_key: Optional[str],
     industry_override: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Async implementation of deep analysis task."""
     import time
@@ -499,27 +686,49 @@ async def _async_deep_analyze(
 
     start_time = time.time()
 
-    publish_event(job_id, "job.started", {
-        "worker_id": f"deep-ats-{job_id[:8]}",
-        "stage": "deep_analysis",
-    })
+    publish_event(
+        job_id,
+        "job.started",
+        {
+            "worker_id": f"deep-ats-{job_id[:8]}",
+            "stage": "deep_analysis",
+        },
+    )
+
+    if _deep_job_cancelled(job_id):
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "cancelled": True},
+            "job.cancelled",
+            {"stage": "deep_analysis"},
+            quota_refund,
+        )
 
     # Extract text
     resume_text = ats_scoring_service._extract_text_from_latex(latex_content)  # noqa: SLF001
     if not resume_text.strip():
-        publish_event(job_id, "job.failed", {
-            "stage": "deep_analysis",
-            "error_code": "latex_error",
-            "error_message": "Could not extract text from LaTeX content",
-            "retryable": False,
-        })
-        return False
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "Could not extract text from LaTeX content"},
+            "job.failed",
+            {
+                "stage": "deep_analysis",
+                "error_code": "latex_error",
+                "error_message": "Could not extract text from LaTeX content",
+                "retryable": False,
+            },
+            quota_refund,
+        )
 
-    publish_event(job_id, "job.progress", {
-        "percent": 20,
-        "stage": "deep_analysis",
-        "message": "Analysing resume with AI...",
-    })
+    publish_event(
+        job_id,
+        "job.progress",
+        {
+            "percent": 20,
+            "stage": "deep_analysis",
+            "message": "Analysing resume with AI...",
+        },
+    )
 
     # Build prompt
     if job_description:
@@ -537,54 +746,84 @@ async def _async_deep_analyze(
     # Call OpenAI
     resolved_key = api_key or settings.OPENAI_API_KEY
     if not resolved_key:
-        publish_event(job_id, "job.failed", {
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "No OpenAI API key configured"},
+            "job.failed",
+            {
+                "stage": "deep_analysis",
+                "error_code": "config_error",
+                "error_message": "No OpenAI API key configured",
+                "retryable": False,
+            },
+            quota_refund,
+        )
+
+    if _deep_job_cancelled(job_id):
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "cancelled": True},
+            "job.cancelled",
+            {"stage": "deep_analysis"},
+            quota_refund,
+        )
+
+    publish_event(
+        job_id,
+        "job.progress",
+        {
+            "percent": 40,
             "stage": "deep_analysis",
-            "error_code": "config_error",
-            "error_message": "No OpenAI API key configured",
-            "retryable": False,
-        })
-        return False
-
-    client = AsyncOpenAI(api_key=resolved_key)
-
-    publish_event(job_id, "job.progress", {
-        "percent": 40,
-        "stage": "deep_analysis",
-        "message": "Calling LLM for section-by-section analysis...",
-    })
-
-    response = await client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": "You are an expert resume analyst. Return only valid JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=2000,
-        temperature=0.3,
+            "message": "Calling LLM for section-by-section analysis...",
+        },
     )
 
-    publish_event(job_id, "job.progress", {
-        "percent": 80,
-        "stage": "deep_analysis",
-        "message": "Parsing analysis results...",
-    })
+    # Close the provider transport on success, errors, and cancellation. Keep
+    # provider retries below Celery's job-level retry/time-limit boundary.
+    async with AsyncOpenAI(api_key=resolved_key, timeout=60.0, max_retries=0) as client:
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are an expert resume analyst. Return only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=2000,
+            temperature=0.3,
+        )
+
+    publish_event(
+        job_id,
+        "job.progress",
+        {
+            "percent": 80,
+            "stage": "deep_analysis",
+            "message": "Parsing analysis results...",
+        },
+    )
 
     tokens_used = response.usage.total_tokens if response.usage else 0
     analysis_time = time.time() - start_time
 
     # Parse response
     try:
-        import json as _json
-        result = _json.loads(response.choices[0].message.content)
+        result = DeepATSResponse.model_validate_json(
+            response.choices[0].message.content or ""
+        ).model_dump()
     except Exception:
-        result = {
-            "overall_score": 0,
-            "overall_feedback": "Analysis parsing failed. Please retry.",
-            "sections": [],
-            "ats_compatibility": {"score": 0, "issues": [], "keyword_gaps": []},
-            "job_match": None,
-        }
+        # A malformed provider response is not evidence of a poor resume.
+        # Never fabricate a scored successful assessment from parsing failure.
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "Invalid AI analysis response"},
+            "job.failed",
+            {
+                "stage": "deep_analysis", "error_code": "invalid_response",
+                "error_message": "AI analysis returned an invalid response. Please retry.",
+                "retryable": False,
+            },
+            quota_refund,
+        )
 
     # Compute multi-dimensional scores (rule-based, fast) + industry calibration
     multi_dim_scores: dict = {}
@@ -600,49 +839,88 @@ async def _async_deep_analyze(
         multi_dim_scores = scoring_result.multi_dim_scores or {}
         industry_key = scoring_result.industry_key
         industry_label = scoring_result.industry_label
-    except Exception as _e:
-        logger.warning(f"Multi-dim scoring failed for job {job_id}: {_e}")
+    except Exception as exc:
+        logger.warning("Multi-dim scoring failed for job %s", job_id,
+                       extra={"error_type": type(exc).__name__})
 
-    # Publish deep_complete event
-    publish_event(job_id, "ats.deep_complete", {
-        "overall_score": result.get("overall_score", 0),
-        "overall_feedback": result.get("overall_feedback", ""),
-        "sections": result.get("sections", []),
-        "ats_compatibility": result.get("ats_compatibility", {}),
-        "job_match": result.get("job_match"),
-        "tokens_used": tokens_used,
-        "analysis_time": analysis_time,
+    if _deep_job_cancelled(job_id):
+        return _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "cancelled": True},
+            "job.cancelled",
+            {"stage": "deep_analysis"},
+            quota_refund,
+        )
+
+    # Persist an accepted result before either completion event. A fenced
+    # worker must not present an assessment that REST cannot retrieve. Keep
+    # the rule-based calibration alongside the validated LLM response: the
+    # WebSocket event carries these fields, so the durable REST replay must
+    # carry them too when the stream has expired or delivery was missed.
+    durable_analysis = {
+        **result,
         "multi_dim_scores": multi_dim_scores,
         "industry_key": industry_key,
         "industry_label": industry_label,
-    })
-
-    publish_job_result(job_id, {
-        "success": True,
-        "job_id": job_id,
-        "deep_analysis": result,
         "tokens_used": tokens_used,
         "analysis_time": analysis_time,
-    })
-
-    publish_event(job_id, "job.completed", {
-        "percent": 100,
-        "pdf_job_id": job_id,
-        "ats_score": float(result.get("overall_score", 0)),
-        "ats_details": {
-            "category_scores": {},
-            "recommendations": [],
-            "strengths": [],
-            "warnings": [],
+    }
+    accepted_result = publish_job_result(
+        job_id,
+        {
+            "success": True,
+            "job_id": job_id,
+            "deep_analysis": durable_analysis,
+            "tokens_used": tokens_used,
+            "analysis_time": analysis_time,
         },
-        "changes_made": [],
-        "compilation_time": 0.0,
-        "optimization_time": analysis_time,
-        "tokens_used": tokens_used,
-    })
+    )
+    if not accepted_result:
+        return False
 
+    # Publish deep_complete event
+    publish_event(
+        job_id,
+        "ats.deep_complete",
+        {
+            "overall_score": result.get("overall_score", 0),
+            "overall_feedback": result.get("overall_feedback", ""),
+            "sections": result.get("sections", []),
+            "ats_compatibility": result.get("ats_compatibility", {}),
+            "job_match": result.get("job_match"),
+            "tokens_used": tokens_used,
+            "analysis_time": analysis_time,
+            "multi_dim_scores": multi_dim_scores,
+            "industry_key": industry_key,
+            "industry_label": industry_label,
+        },
+    )
+
+    completion_entry = publish_event(
+        job_id,
+        "job.completed",
+        {
+            "percent": 100,
+            # Deep ATS analysis returns structured guidance, not a compiled PDF.
+            "pdf_job_id": None,
+            "ats_score": float(result.get("overall_score", 0)),
+            "ats_details": {
+                "category_scores": {},
+                "recommendations": [],
+                "strengths": [],
+                "warnings": [],
+            },
+            "changes_made": [],
+            "compilation_time": 0.0,
+            "optimization_time": analysis_time,
+            "tokens_used": tokens_used,
+        },
+    )
+
+    if quota_refund and completion_entry:
+        clear_quota_refund_receipt(job_id)
     logger.info(f"Deep analysis complete for job {job_id}: {result.get('overall_score')}/100")
-    return True
+    return bool(completion_entry)
 
 
 @celery_app.task(
@@ -662,6 +940,7 @@ def deep_analyze_ats_task(
     api_key: Optional[str] = None,
     industry_override: Optional[str] = None,
     metadata: Optional[Dict] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Deep LLM-powered ATS analysis task.
@@ -670,44 +949,131 @@ def deep_analyze_ats_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    # The job id is stable across Celery/Modal retries, but the ownership token
+    # must not be: a late first attempt must never adopt the newer attempt's
+    # epoch and publish after a lease takeover.
+    lifecycle_owner = f"deep-ats-{job_id}:{uuid.uuid4()}"
+    queue_redis = None
+    lifecycle_exists = False
+    try:
+        queue_redis = get_worker_redis()
+        lifecycle_exists = queue_redis.exists(lifecycle_key(job_id)) in (True, 1, b"1")
+    except Exception:
+        if quota_refund:
+            logger.exception("Deep ATS lifecycle Redis unavailable for %s", job_id)
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "Job ownership unavailable",
+            }
+
+    # Every API-created deep job has a lifecycle fence, including BYOK and
+    # anonymous jobs.  Legacy direct invocations without that record retain
+    # the ownerless compatibility path.
+    if quota_refund or lifecycle_exists:
+        if queue_redis is None or not admit_worker(
+            queue_redis,
+            job_id,
+            lifecycle_owner,
+            quota_refund or {"lifecycle": True},
+            None,
+        ):
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "Job ownership unavailable",
+            }
+
     logger.info(f"Deep ATS analysis starting for job {job_id}")
 
     try:
         success = asyncio.run(
-            _async_deep_analyze(self, latex_content, job_id, job_description, api_key, industry_override)
+            _async_deep_analyze(
+                self,
+                latex_content,
+                job_id,
+                job_description,
+                api_key,
+                industry_override,
+                quota_refund,
+            )
         )
         return {"success": bool(success), "job_id": job_id}
     except SoftTimeLimitExceeded:
         logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}", exc_info=True)
-        publish_event(job_id, "job.failed", {
-            "stage": "deep_analysis",
-            "error_code": "timeout",
-            "error_message": "Task exceeded time limit",
-            "retryable": False,
-        })
+        _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
+            "job.failed",
+            {
+                "stage": "deep_analysis",
+                "error_code": "timeout",
+                "error_message": "Task exceeded time limit",
+                "retryable": False,
+            },
+            quota_refund,
+        )
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
+    except asyncio.CancelledError:
+        logger.info("Deep ATS analysis cancelled for job %s", job_id)
+        _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "cancelled": True},
+            "job.cancelled",
+            {"stage": "deep_analysis"},
+            quota_refund,
+        )
+        return {"success": False, "job_id": job_id, "cancelled": True}
+
     except Exception as exc:
-        logger.error(f"Deep ATS analysis failed for job {job_id}: {exc}", exc_info=True)
+        logger.error("Deep ATS analysis failed for job %s", job_id, extra={"error_type": type(exc).__name__})
         retryable = self.request.retries < self.max_retries
-        publish_event(job_id, "job.failed", {
-            "stage": "deep_analysis",
-            "error_code": "internal",
-            "error_message": str(exc),
-            "retryable": retryable,
-        })
         if retryable:
+            # Keep the receipt/lifecycle alive across a Celery retry.  A
+            # retrying event explicitly releases the current lease so the next
+            # delivery can claim it; no refund is due yet.
+            publish_event(
+                job_id,
+                "job.retrying",
+                {
+                    "stage": "deep_analysis",
+                    "worker_id": lifecycle_owner,
+                    "attempt": self.request.retries + 2,
+                    "error_message": "Deep ATS analysis is retrying",
+                },
+            )
             raise self.retry(countdown=30, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        if _deep_job_cancelled(job_id):
+            _finish_deep_terminal(
+                job_id,
+                {"success": False, "job_id": job_id, "cancelled": True},
+                "job.cancelled",
+                {"stage": "deep_analysis"},
+                quota_refund,
+            )
+            return {"success": False, "job_id": job_id, "cancelled": True}
+        _finish_deep_terminal(
+            job_id,
+            {"success": False, "job_id": job_id, "error": "Deep ATS analysis failed"},
+            "job.failed",
+            {
+                "stage": "deep_analysis",
+                "error_code": "internal",
+                "error_message": "Deep ATS analysis failed",
+                "retryable": False,
+            },
+            quota_refund,
+        )
+        return {"success": False, "job_id": job_id, "error": "Deep ATS analysis failed"}
 
 
 # ------------------------------------------------------------------ #
 #  Layer 3 — Background Resume Embedding Task                        #
 # ------------------------------------------------------------------ #
 
-async def _async_embed_resume(
-    resume_id: str, latex_content: str, session_factory=None
-) -> None:
+
+async def _async_embed_resume(resume_id: str, latex_content: str, session_factory=None) -> None:
     """Async implementation: extract text -> embed -> store in DB.
 
     Builds and disposes its own engine, because the caller drives this through
@@ -771,15 +1137,16 @@ def embed_resume_task(
         asyncio.run(_async_embed_resume(resume_id, latex_content))
         return {"success": True, "resume_id": resume_id}
     except Exception as exc:
-        logger.error(f"embed_resume_task failed for {resume_id}: {exc}", exc_info=True)
+        logger.error("embed_resume_task failed for %s", resume_id, extra={"error_type": type(exc).__name__})
         if self.request.retries < self.max_retries:
             raise self.retry(countdown=60, exc=exc)
-        return {"success": False, "resume_id": resume_id, "error": str(exc)}
+        return {"success": False, "resume_id": resume_id, "error": "Resume embedding failed"}
 
 
 # ------------------------------------------------------------------ #
 #  Submit helpers for tasks without existing wrappers                 #
 # ------------------------------------------------------------------ #
+
 
 def submit_deep_analyze_ats(
     latex_content: str,
@@ -788,19 +1155,26 @@ def submit_deep_analyze_ats(
     api_key: Optional[str] = None,
     industry_override: Optional[str] = None,
     metadata: Optional[Dict] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue deep_analyze_ats_task (Celery) or Modal."""
     import os
+
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
-        spawn("run_deep_analyze_task", {
-            "latex_content": latex_content,
-            "job_id": job_id,
-            "job_description": job_description,
-            "api_key": api_key,
-            "industry_override": industry_override,
-            "metadata": metadata,
-        })
+
+        spawn(
+            "run_deep_analyze_task",
+            {
+                "latex_content": latex_content,
+                "job_id": job_id,
+                "job_description": job_description,
+                "api_key": api_key,
+                "industry_override": industry_override,
+                "metadata": metadata,
+                "quota_refund": quota_refund,
+            },
+        )
         logger.info(f"Modal spawn: deep ATS analysis for job {job_id}")
         return job_id
 
@@ -812,8 +1186,10 @@ def submit_deep_analyze_ats(
             "api_key": api_key,
             "industry_override": industry_override,
             "metadata": metadata,
+            "quota_refund": quota_refund,
         },
         queue="ats",
+        task_id=job_id,
     )
     logger.info(f"Submitted deep ATS analysis for job {job_id}")
     return job_id
@@ -826,13 +1202,18 @@ def submit_embed_resume(
 ) -> None:
     """Enqueue embed_resume_task (Celery) or Modal. Fire-and-forget."""
     import os
+
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
-        spawn("run_embed_resume_task", {
-            "resume_id": resume_id,
-            "latex_content": latex_content,
-            "user_id": user_id,
-        })
+
+        spawn(
+            "run_embed_resume_task",
+            {
+                "resume_id": resume_id,
+                "latex_content": latex_content,
+                "user_id": user_id,
+            },
+        )
         return
 
     embed_resume_task.apply_async(
