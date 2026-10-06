@@ -656,3 +656,38 @@ compiler repair.
   avoiding misleading ancillary HTTP failures. This test-only improvement
   changes no owner assertion or application behavior. The theme source and
   completed-body six-case safety fixture remain pending fresh-source proof.
+
+### Theme repair fresh-source acceptance
+
+- The completed-body fixture now has six desired-safety cases. Sealed old
+  source failed three race assertions and passed three controls. The repair
+  guards preference application by owner epoch, request generation, local
+  choice generation and mounted lifetime. Owner epochs distinguish A→B→A;
+  synchronous choice invalidation prevents a delayed GET from undoing a toggle.
+- A freshly built Node 22 production snapshot passed all **20 cases**, Chromium,
+  one worker and zero retries: five owner/draft, six uploader, six theme, two
+  template lifetime and one high-contrast reload control. Root independently
+  read `/tmp/latexy-publication-5493-combined.log` and matched the reviewed
+  source/fixture hashes. Page-error assertions were retained without waivers.
+  Theme negative assertions wait for actual response body consumption and two
+  animation frames; the ABA control also requires the fresh A theme to apply.
+- Exact final files passed scoped ESLint, full nonincremental TypeScript and
+  all **157 unit-test files / 991 tests**. Only application theme code, its
+  six-case safety fixture, the ancillary owner-test route correction and this
+  publication record are selected for publication, each separately committed.
+  Diagnostic-only hydration output and unrelated user/generated files are
+  excluded. #1772 remains open: one clean run does not establish its cause.
+- This acceptance uses synthetic sessions/API responses and does not certify
+  real authenticated database writes, a development StrictMode execution or
+  real service-worker lifecycle. Protected PR and rollout acceptance follow
+  separately; passing local tests alone is not deployed acceptance.
+- A separate anonymous browser read passed on stable f647c169 production:
+  61 live template cards, search narrowing to Postdoc, live detail and PDF
+  preview. Browser catalog/categories/detail returned 200 with the actual
+  frontend origin allowed by CORS; the allowlisted PDF endpoint redirected to
+  its exact signed R2 object, which returned 200. Root reviewed the disposable
+  read-only harness and `/tmp/latexy-production-public-gallery-f647-clean.log`.
+  No page errors occurred. Telemetry writes were blocked intentionally; aborted
+  prefetch requests were recorded, not asserted away. The earlier public-gallery
+  fetch ambiguity is resolved for these reads, not for authenticated writes,
+  every public object or real PWA lifecycle.
