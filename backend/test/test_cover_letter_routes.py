@@ -209,13 +209,15 @@ class TestGenerateCoverLetter:
             headers=headers,
         )
 
-        assert response.status_code == 503
+        # The dispatch marker makes broker failure ambiguous; preserve the
+        # queued job for lifecycle cleanup instead of refunding immediately.
+        assert response.status_code == 200
 
         # No orphaned rows should remain for this resume
         result = await db_session.execute(
             select(CoverLetter).where(CoverLetter.resume_id == resume_id)
         )
-        assert result.scalars().first() is None
+        assert result.scalars().first() is not None
 
 
 # ── GET /cover-letters/{id} ──────────────────────────────────────────────
