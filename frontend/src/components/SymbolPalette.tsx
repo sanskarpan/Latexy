@@ -37,6 +37,7 @@ export default function SymbolPalette({ onInsert }: SymbolPaletteProps) {
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" />
           <input
             type="text"
+            aria-label="Search LaTeX symbols"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search symbols..."
@@ -48,6 +49,8 @@ export default function SymbolPalette({ onInsert }: SymbolPaletteProps) {
       {/* Category tabs */}
       <div className="flex shrink-0 flex-wrap gap-1 border-b border-line px-3 py-2">
         <button
+          type="button"
+          aria-pressed={activeCategory === 'all'}
           onClick={() => setActiveCategory('all')}
           className={`rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-medium transition ${
             activeCategory === 'all'
@@ -59,7 +62,9 @@ export default function SymbolPalette({ onInsert }: SymbolPaletteProps) {
         </button>
         {SYMBOL_CATEGORIES.map((cat) => (
           <button
+            type="button"
             key={cat.id}
+            aria-pressed={activeCategory === cat.id}
             onClick={() => setActiveCategory(cat.id)}
             className={`rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-medium transition ${
               activeCategory === cat.id
@@ -80,8 +85,10 @@ export default function SymbolPalette({ onInsert }: SymbolPaletteProps) {
           <div className="grid grid-cols-8 gap-1">
             {filtered.map((sym) => (
               <button
+                type="button"
                 key={sym.command}
                 onClick={() => onInsert(sym.command)}
+                aria-label={`${sym.name}: ${sym.command}${sym.package ? `; requires ${sym.package}` : ''}`}
                 title={`${sym.command}${sym.package ? ` (${sym.package})` : ''}\n${sym.name}`}
                 className="group relative flex aspect-square items-center justify-center rounded-[var(--radius-md)] border border-line bg-surface-2 text-lg text-fg-2 transition hover:border-accent hover:bg-accent-soft hover:text-fg"
               >
