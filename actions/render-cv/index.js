@@ -1,8 +1,8 @@
 'use strict'
 
-const { appendFile, mkdir, open, rename, rm, writeFile } = require('node:fs/promises')
+const { appendFile, lstat, mkdir, open, realpath, rename, rm, writeFile } = require('node:fs/promises')
 const { constants } = require('node:fs')
-const { dirname, isAbsolute, relative, resolve, sep } = require('node:path')
+const { basename, dirname, isAbsolute, relative, resolve, sep } = require('node:path')
 const { randomUUID } = require('node:crypto')
 
 const DEFAULT_API_URL = 'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run'
@@ -23,6 +23,53 @@ function workspacePath(workspace, configured, label) {
     throw new Error(`${label} must stay inside GITHUB_WORKSPACE`)
   }
   return candidate
+}
+
+function assertInsideWorkspace(workspaceRoot, candidate, label) {
+  const rel = relative(workspaceRoot, candidate)
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    throw new Error(`${label} must stay inside GITHUB_WORKSPACE`)
+  }
+}
+
+async function canonicalWorkspacePaths(workspaceRoot, sourcePath, outputPath) {
+  const physicalRoot = await realpath(workspaceRoot)
+  const physicalSource = await realpath(sourcePath)
+  assertInsideWorkspace(physicalRoot, physicalSource, 'source')
+
+  let outputParent = dirname(outputPath)
+  const missingParts = []
+  while (true) {
+    try {
+      const physicalAncestor = await realpath(outputParent)
+      const ancestorInfo = await lstat(physicalAncestor)
+      if (!ancestorInfo.isDirectory()) throw new Error('output parent must be a directory')
+      const physicalOutputParent = missingParts.reduceRight(
+        (current, part) => resolve(current, part),
+        physicalAncestor,
+      )
+      assertInsideWorkspace(physicalRoot, physicalOutputParent, 'output')
+      return {
+        physicalRoot,
+        physicalSource,
+        outputPath: resolve(physicalOutputParent, basename(outputPath)),
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      const existingOutputParent = await lstat(outputParent).catch((lstatError) => {
+        if (lstatError?.code === 'ENOENT') return null
+        throw lstatError
+      })
+      if (existingOutputParent?.isSymbolicLink()) {
+        throw new Error('output parent contains a dangling symlink')
+      }
+      if (existingOutputParent) throw new Error('output parent cannot be resolved')
+      const parent = dirname(outputParent)
+      if (parent === outputParent) throw new Error('output path has no existing workspace ancestor')
+      missingParts.push(outputParent.slice(parent.length + 1))
+      outputParent = parent
+    }
+  }
 }
 
 function sameOriginUrl(value, base, label) {
@@ -79,7 +126,10 @@ async function apiFetch(fetchImpl, url, apiKey, init = {}) {
 async function readLatexSource(sourcePath, openSource = open) {
   // Inspect and read the same descriptor, not a path which can be replaced
   // after stat. Non-blocking open also lets us reject FIFOs without hanging.
-  const source = await openSource(sourcePath, constants.O_RDONLY | constants.O_NONBLOCK)
+  const source = await openSource(
+    sourcePath,
+    constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW || 0),
+  )
   try {
     const info = await source.stat()
     if (!info.isFile()) throw new Error('source must be a regular file')
@@ -108,7 +158,11 @@ async function renderCv(config, dependencies = {}) {
   const started = Date.now()
   const deadline = started + config.timeoutSeconds * 1000
 
-  const latexContent = await readLatexSource(config.sourcePath)
+  const paths = config.workspaceRoot
+    ? await canonicalWorkspacePaths(config.workspaceRoot, config.sourcePath, config.outputPath)
+    : null
+  const latexContent = await readLatexSource(paths?.physicalSource || config.sourcePath)
+  const outputPath = paths?.outputPath || config.outputPath
 
   const compileUrl = new URL('/api/v1/compile', config.apiUrl)
   const queuedResponse = await apiFetch(fetchImpl, compileUrl, config.apiKey, {
@@ -151,11 +205,11 @@ async function renderCv(config, dependencies = {}) {
     throw new Error('Latexy download did not contain a valid PDF header')
   }
 
-  await mkdir(dirname(config.outputPath), { recursive: true })
-  const temporary = `${config.outputPath}.${randomUUID()}.tmp`
+  await mkdir(dirname(outputPath), { recursive: true })
+  const temporary = `${outputPath}.${randomUUID()}.tmp`
   try {
     await writeFile(temporary, pdf, { mode: 0o600 })
-    await rename(temporary, config.outputPath)
+    await rename(temporary, outputPath)
   } finally {
     await rm(temporary, { force: true })
   }
@@ -180,6 +234,7 @@ function configurationFromEnvironment() {
   return {
     apiKey,
     apiUrl: validatedApiUrl(input('api-url', DEFAULT_API_URL)),
+    workspaceRoot: resolve(workspace),
     sourcePath: workspacePath(workspace, input('source', 'resume.tex'), 'source'),
     outputPath: workspacePath(workspace, input('output', 'resume.pdf'), 'output'),
     compiler,
