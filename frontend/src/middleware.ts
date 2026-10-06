@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { negotiateUiLocale } from '@/lib/i18n'
 
 const LATEXY_DOMAINS = new Set([
   'latexy.xyz',
@@ -9,6 +10,33 @@ const LATEXY_DOMAINS = new Set([
   'localhost',
   '127.0.0.1',
 ])
+const CUSTOM_DOMAIN_TIMEOUT_MS = 2_000
+
+interface TenantHostResponse {
+  tenant: { slug: string } | null
+}
+
+function configuredAppHostname(): string | null {
+  const configured = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL
+  if (!configured) return null
+  try {
+    return new URL(configured).hostname
+  } catch {
+    return null
+  }
+}
+
+export function shouldBypassPortfolioResolution(hostname: string, pathname: string): boolean {
+  const configuredHostname = configuredAppHostname()
+  return (
+    pathname === '/api' ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/u/') ||
+    LATEXY_DOMAINS.has(hostname) ||
+    hostname.endsWith('.vercel.app') ||
+    hostname === configuredHostname
+  )
+}
 
 /**
  * Custom domain portfolio routing (Feature 67D).
@@ -27,22 +55,20 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') ?? ''
   // Strip port for local dev
   const hostname = host.replace(/:\d+$/, '')
+  // UI language is negotiated independently of document translation. Passing
+  // it as a request header lets the server layout render the same locale that
+  // the client provider receives, avoiding a hydration flash/mismatch.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set(
+    'x-latexy-ui-locale',
+    negotiateUiLocale(request.cookies.get('latexy-ui-locale')?.value, request.headers.get('accept-language')),
+  )
 
   // Known Latexy domains, the app's own Vercel deployment domains, and the
   // primary marketing domain → skip (these are NOT custom portfolio domains,
   // so we must not do a per-request resolve-domain lookup or rewrite them).
-  if (
-    LATEXY_DOMAINS.has(hostname) ||
-    hostname.endsWith('.vercel.app') ||
-    hostname === 'latexy.com' ||
-    hostname === 'www.latexy.com'
-  ) {
-    return NextResponse.next()
-  }
-
-  // Already on a /u/ path — skip to prevent redirect loops
-  if (request.nextUrl.pathname.startsWith('/u/')) {
-    return NextResponse.next()
+  if (shouldBypassPortfolioResolution(hostname, request.nextUrl.pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
   // Attempt to resolve domain → username via backend API.
@@ -52,9 +78,31 @@ export async function middleware(request: NextRequest) {
   const apiBase =
     process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
   try {
+    // A verified white-label tenant domain serves the full application. Check
+    // it before the portfolio resolver so the same hostname can never be
+    // misrouted to an unrelated public profile.
+    const tenantResponse = await fetch(
+      `${apiBase}/tenants/resolve-host?host=${encodeURIComponent(hostname)}`,
+      { cache: 'no-store', signal: AbortSignal.timeout(CUSTOM_DOMAIN_TIMEOUT_MS) },
+    )
+    if (tenantResponse.ok) {
+      const { tenant } = await tenantResponse.json() as TenantHostResponse
+      if (tenant) {
+        requestHeaders.set('x-tenant-slug', tenant.slug)
+        const next = NextResponse.next({ request: { headers: requestHeaders } })
+        next.cookies.set('latexy_tenant_slug', tenant.slug, {
+          maxAge: 60 * 60,
+          sameSite: 'lax',
+          secure: request.nextUrl.protocol === 'https:',
+          path: '/',
+        })
+        return next
+      }
+    }
+
     const res = await fetch(
       `${apiBase}/portfolio/resolve-domain?domain=${encodeURIComponent(hostname)}`,
-      { cache: 'no-store' }
+      { cache: 'no-store', signal: AbortSignal.timeout(CUSTOM_DOMAIN_TIMEOUT_MS) }
     )
     if (res.ok) {
       const { username } = (await res.json()) as { username: string }
@@ -68,7 +116,7 @@ export async function middleware(request: NextRequest) {
     // DNS resolution or network error — pass through
   }
 
-  return NextResponse.next()
+  return NextResponse.next({ request: { headers: requestHeaders } })
 }
 
 export const config = {
@@ -76,6 +124,6 @@ export const config = {
     /*
      * Match all paths except Next.js internals and static files.
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!api(?:/|$)|_next/static|_next/image|favicon.ico).*)',
   ],
 }
