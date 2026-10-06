@@ -7,7 +7,15 @@ import { join } from 'node:path'
 import { getApiClient } from '../lib/api-client.js'
 import { addMessage } from '../stores/messages.js'
 import type { ParsedCommand } from '../commands/parser.js'
-import { describeError, formatAge, report, requireAuth } from './shared.js'
+import { describeError, formatAge, report, requireAuth, resolveResumeId, type Resume } from './shared.js'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function validJobId(jobId: string): boolean {
+  if (UUID_RE.test(jobId)) return true
+  addMessage({ role: 'error', content: 'Job ID must be a complete UUID — see /jobs for recent jobs.' })
+  return false
+}
 
 export async function runJobs(): Promise<void> {
   if (!requireAuth()) return
@@ -37,10 +45,15 @@ export async function runPdf(parsed: ParsedCommand): Promise<void> {
     addMessage({ role: 'error', content: 'Which job? /pdf <job-id> — see /jobs for recent ones.' })
     return
   }
+  if (!validJobId(jobId)) return
   try {
     // A bare fetch() carried no Authorization header, so /download always 403'd.
     const buf = await getApiClient().getBinary(`/download/${jobId}`)
-    const out = join(process.cwd(), `resume-${jobId.slice(0, 8)}.pdf`)
+    if (!buf.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+      throw new Error(`The server returned ${buf.length} bytes that are not a PDF`)
+    }
+    const safeJobId = jobId.replace(/[^a-z0-9_-]/gi, '_').slice(0, 36)
+    const out = join(process.cwd(), `resume-${safeJobId}.pdf`)
     await writeFile(out, buf)
     report('PDF downloaded', [['file', out], ['bytes', buf.length]])
   } catch (err) {
@@ -55,6 +68,7 @@ export async function runLog(parsed: ParsedCommand): Promise<void> {
     addMessage({ role: 'error', content: 'Which job? /log <job-id> — see /jobs for recent ones.' })
     return
   }
+  if (!validJobId(jobId)) return
   try {
     const res = await getApiClient().get<{ logs?: string } | string>(`/logs/${jobId}`)
     const text = typeof res === 'string' ? res : (res.logs ?? '')
@@ -166,6 +180,74 @@ export async function runSnippets(parsed: ParsedCommand): Promise<void> {
     })
   } catch (err) {
     addMessage({ role: 'error', content: `Could not load snippets: ${describeError(err)}` })
+  }
+}
+
+interface MacroSummary {
+  id: string
+  name: string
+  description?: string | null
+  script?: string | null
+  script_version?: number
+  actions?: unknown[]
+  legacy_actions_available?: boolean
+}
+
+/** List scripts, or preview/apply one to a selected resume. */
+export async function runMacros(parsed: ParsedCommand): Promise<void> {
+  if (!requireAuth()) return
+  const client = getApiClient()
+  try {
+    const macros = await client.get<MacroSummary[]>('/macros')
+    const runId = parsed.args['run']
+    if (typeof runId !== 'string' || runId.trim() === '') {
+      report('Macros', macros.map(m => [
+        m.name,
+        `${m.id}${m.legacy_actions_available
+          ? ' (legacy; delete and record replacement)'
+          : m.script ? ` (script v${m.script_version ?? 1})` : ' (recorded)'}`,
+      ]))
+      return
+    }
+    const macro = macros.find(m => m.id === runId)
+    if (!macro) {
+      addMessage({ role: 'error', content: 'Macro not found in your library.' })
+      return
+    }
+    if (macro.legacy_actions_available) {
+      addMessage({
+        role: 'error',
+        content: 'This legacy macro is not executable; delete it and record a replacement before running it.',
+      })
+      return
+    }
+    const resumeId = await resolveResumeId(parsed)
+    if (!resumeId) return
+    const resume = await client.get<Resume & { latex_content: string }>(`/resumes/${resumeId}`)
+    const result = await client.post<{
+      document: string
+      script_version: number
+      operation_count: number
+    }>(`/macros/${macro.id}/execute`, {
+      document: resume.latex_content,
+      expected_script_version: macro.script_version ?? 1,
+    })
+    if (parsed.args['apply'] !== true) {
+      report('Macro preview', [
+        ['macro', macro.name],
+        ['operations', String(result.operation_count)],
+        ['result_bytes', String(Buffer.byteLength(result.document, 'utf8'))],
+        ['apply', 're-run with --apply to save'],
+      ])
+      return
+    }
+    await client.put(`/resumes/${resumeId}`, {
+      latex_content: result.document,
+      expected_latex_content: resume.latex_content,
+    })
+    addMessage({ role: 'system', content: `Applied "${macro.name}" to ${resume.title}.` })
+  } catch (err) {
+    addMessage({ role: 'error', content: `Macro failed: ${describeError(err)}` })
   }
 }
 
@@ -308,7 +390,14 @@ export async function runRestore(parsed: ParsedCommand): Promise<void> {
       addMessage({ role: 'error', content: 'That checkpoint has no stored content.' })
       return
     }
-    await client.put(`/resumes/${resumeId}`, { latex_content: latex })
+    // The restore target was read through a separate endpoint. Read the
+    // current document immediately before writing and send it as the CAS
+    // baseline so a concurrent editor cannot be clobbered.
+    const current = await client.get<{ latex_content: string }>(`/resumes/${resumeId}`)
+    await client.put(`/resumes/${resumeId}`, {
+      latex_content: latex,
+      expected_latex_content: current.latex_content,
+    })
     addMessage({
       role: 'system',
       content: `Restored ${content.checkpoint_label ?? 'checkpoint'}. Run /compile to rebuild the PDF.`,
