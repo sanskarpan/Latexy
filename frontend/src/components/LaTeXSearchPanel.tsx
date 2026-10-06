@@ -53,6 +53,8 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
       <button
         ref={triggerRef}
         onClick={onToggle}
+        aria-label="LaTeX search presets"
+        aria-expanded={isOpen}
         title="LaTeX search presets (⌘⇧H)"
         className={`flex items-center gap-1 rounded-[var(--radius-md)] border px-2 py-1 text-[11px] font-medium transition ${
           isOpen
@@ -74,6 +76,7 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
               LaTeX Patterns
             </span>
             <button onClick={onClose} className="text-fg-3 transition hover:text-fg-2">
+              <span className="sr-only">Close LaTeX search presets</span>
               <X size={12} />
             </button>
           </div>
