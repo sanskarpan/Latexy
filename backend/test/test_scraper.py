@@ -18,8 +18,11 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from httpx import AsyncClient
+
+from app.services.job_scraper_service import _SSRFGuardTransport
 
 # ---------------------------------------------------------------------------
 # HTML fixtures
@@ -50,7 +53,46 @@ def _greenhouse_html(title: str = "Software Engineer", company: str = "Acme Corp
       </div>
     </body>
     </html>
-    """
+"""
+
+
+@pytest.mark.asyncio
+async def test_ssrf_transport_pins_validated_dns_answer() -> None:
+    transport = _SSRFGuardTransport()
+    original = httpx.Request("GET", "https://public.example/jobs/1")
+    upstream = httpx.Response(200, request=original, content=b"ok")
+
+    with (
+        patch(
+            "app.services.job_scraper_service._resolve_public_addresses",
+            return_value=("203.0.113.10",),
+        ),
+        patch.object(
+            httpx.AsyncHTTPTransport,
+            "handle_async_request",
+            new=AsyncMock(return_value=upstream),
+        ) as send,
+    ):
+        response = await transport.handle_async_request(original)
+
+    pinned = send.await_args.args[0]
+    assert pinned.url.host == "203.0.113.10"
+    assert pinned.headers["host"] == "public.example"
+    assert pinned.extensions["sni_hostname"] == "public.example"
+    assert response.request is original
+
+
+@pytest.mark.asyncio
+async def test_ssrf_transport_rejects_non_public_dns_answer() -> None:
+    transport = _SSRFGuardTransport()
+    request = httpx.Request("GET", "https://rebind.example/secrets")
+
+    with patch(
+        "app.services.job_scraper_service._resolve_public_addresses",
+        return_value=(),
+    ):
+        with pytest.raises(httpx.ConnectError, match="non-public"):
+            await transport.handle_async_request(request)
 
 
 def _lever_html(title: str = "Backend Engineer", company: str = "StartupX") -> str:
@@ -425,6 +467,44 @@ class TestGenericExtractor:
 
 
 @pytest.mark.asyncio
+class TestBoundedHtmlFetch:
+    async def test_reads_normal_streamed_html(self):
+        from app.services.job_scraper_service import _fetch_html
+
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                headers={"content-type": "text/html; charset=utf-8"},
+                content=b"<html>job</html>",
+            )
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            assert await _fetch_html("https://example.com/job", client) == "<html>job</html>"
+
+    async def test_rejects_oversized_declared_response_without_reading(self):
+        from app.services.job_scraper_service import _MAX_HTML_BYTES, _fetch_html
+
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                headers={"content-length": str(_MAX_HTML_BYTES + 1)},
+                content=b"not-read",
+            )
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            assert await _fetch_html("https://example.com/job", client) is None
+
+    async def test_rejects_oversized_chunked_response(self):
+        from app.services.job_scraper_service import _MAX_HTML_BYTES, _fetch_html
+
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(200, content=b"x" * (_MAX_HTML_BYTES + 1))
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            assert await _fetch_html("https://example.com/job", client) is None
+
+
+@pytest.mark.asyncio
 class TestJobScraperService:
     async def test_greenhouse_api_path_returns_populated_result(self):
         from app.services.job_scraper_service import JobScraperService
@@ -481,14 +561,12 @@ class TestJobScraperService:
     async def test_non_200_http_returns_error_field(self):
         from app.services.job_scraper_service import JobScraperService
         service = JobScraperService()
-        mock_resp = _mock_http_response(404)
-
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -501,16 +579,14 @@ class TestJobScraperService:
         from app.services.job_scraper_service import JobScraperService
         service = JobScraperService()
         html = _greenhouse_html("DevOps Engineer", "CloudCo")
-        mock_resp = _mock_http_response(200, text=html)
-
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
             patch("app.services.job_scraper_service._host_is_public", return_value=True),
+            patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=html)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -526,15 +602,13 @@ class TestJobScraperService:
         from app.services.job_scraper_service import JobScraperService
         service = JobScraperService()
         html = _indeed_html_with_initialdata("ML Researcher", "AILabs")
-        mock_resp = _mock_http_response(200, text=html)
-
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
+            patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=html)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -569,15 +643,17 @@ class TestScrapeJobEndpoint:
         assert resp.status_code == 422
 
     async def test_successful_response_has_all_fields(self, client: AsyncClient):
-        mock_resp = _mock_http_response(200, text=_greenhouse_html("SWE", "BigCo"))
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
+            patch(
+                "app.services.job_scraper_service._fetch_html",
+                new=AsyncMock(return_value=_greenhouse_html("SWE", "BigCo")),
+            ),
             patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/1"})
@@ -589,14 +665,13 @@ class TestScrapeJobEndpoint:
             assert field in data, f"Missing field: {field}"
 
     async def test_non_200_from_target_returns_error_not_500(self, client: AsyncClient):
-        mock_resp = _mock_http_response(503)
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=None)),
             patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/999"})
@@ -616,15 +691,17 @@ class TestScrapeJobEndpoint:
         assert resp.status_code == 429
 
     async def test_source_field_reflects_extraction_method(self, client: AsyncClient):
-        mock_resp = _mock_http_response(200, text=_greenhouse_html())
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
+            patch(
+                "app.services.job_scraper_service._fetch_html",
+                new=AsyncMock(return_value=_greenhouse_html()),
+            ),
             patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/1"})
