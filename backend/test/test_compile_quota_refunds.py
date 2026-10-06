@@ -1,5 +1,6 @@
 """Regression coverage for failed/cancelled compilation quota refunds."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,11 +8,80 @@ import pytest
 from httpx import AsyncClient
 
 from app.api.public_api_routes import V1CompileRequest, compile_v1
-from app.api.routes import compile_latex_endpoint
-from app.services.entitlement_service import QuotaTicket
+from app.api.routes import compile_latex_anonymous, compile_latex_endpoint
+from app.services.entitlement_service import QuotaTicket, entitlement_service
 from app.workers import latex_worker
 
 VALID_LATEX = r"\documentclass{article}\begin{document}Hello\end{document}"
+
+
+@pytest.mark.asyncio
+async def test_quota_consumption_persists_refund_receipt_atomically():
+    redis = AsyncMock()
+    redis.eval.return_value = 1
+
+    with patch("app.core.redis.get_redis_cache_client", AsyncMock(return_value=redis)):
+        ticket = await entitlement_service.consume_quota(
+            "compilations",
+            user_id="user-123",
+            plan="free",
+            job_id="job-atomic",
+        )
+
+    assert ticket.allowed is True
+    call_args = redis.eval.call_args.args
+    assert call_args[1] == 2
+    assert call_args[3] == "latexy:quota-refund-pending:job-atomic"
+    receipt = json.loads(call_args[-1])
+    assert receipt["receipt_id"] == ticket.receipt_id
+    assert receipt["dimension"] == "compilations"
+    assert isinstance(receipt["created_at"], float)
+    assert ticket.job_id == "job-atomic"
+
+
+@pytest.mark.asyncio
+async def test_synchronous_refund_deletes_job_receipt_after_counter_refund():
+    redis = AsyncMock()
+    redis.eval.return_value = 1
+    ticket = QuotaTicket(
+        dimension="compilations",
+        user_id="user-123",
+        period="20260927",
+        used=1,
+        limit=3,
+        allowed=True,
+        window="day",
+        receipt_id="receipt-1",
+        job_id="job-refund",
+    )
+
+    with patch("app.core.redis.get_redis_cache_client", AsyncMock(return_value=redis)):
+        await entitlement_service.refund_quota(ticket)
+
+    redis.eval.assert_awaited_once()
+    redis.delete.assert_awaited_once_with("latexy:quota-refund-pending:job-refund")
+
+
+@pytest.mark.asyncio
+async def test_failed_synchronous_refund_keeps_receipt_for_recovery():
+    redis = AsyncMock()
+    redis.eval.side_effect = RuntimeError("cache unavailable")
+    ticket = QuotaTicket(
+        dimension="compilations",
+        user_id="user-123",
+        period="20260927",
+        used=1,
+        limit=3,
+        allowed=True,
+        window="day",
+        receipt_id="receipt-failed",
+        job_id="job-refund-failed",
+    )
+
+    with patch("app.core.redis.get_redis_cache_client", AsyncMock(return_value=redis)):
+        assert await entitlement_service.refund_quota(ticket) is False
+
+    redis.delete.assert_not_awaited()
 
 
 def _ticket() -> QuotaTicket:
@@ -27,6 +97,21 @@ def _ticket() -> QuotaTicket:
 
 
 class TestAtomicWorkerRefund:
+    def test_refund_targets_quota_cache_not_queue_redis(self, monkeypatch):
+        queue_redis = MagicMock()
+        cache_redis = MagicMock()
+        cache_redis.eval.return_value = 1
+
+        import app.core.redis as redis_core
+
+        monkeypatch.setattr(redis_core, "sync_redis_client", queue_redis)
+        monkeypatch.setattr(redis_core, "sync_redis_cache_client", cache_redis)
+        payload = _ticket().refund_payload()
+
+        assert latex_worker._refund_compile_quota_once("job-cache", payload) is True
+        cache_redis.eval.assert_called_once()
+        queue_redis.eval.assert_not_called()
+
     def test_refunds_once_with_job_scoped_marker(self):
         redis = MagicMock()
         redis.eval.side_effect = [1, 0]
@@ -39,6 +124,25 @@ class TestAtomicWorkerRefund:
         first = redis.eval.call_args_list[0].args
         assert first[2] == "latexy:quota:compilations:user-123:20260827"
         assert first[3] == "latexy:quota-refund:compilations:job-1"
+
+
+@pytest.mark.asyncio
+async def test_invalid_anonymous_compile_does_not_spend_trial():
+    with (
+        patch("app.api.routes.latex_service.validate_latex_content", return_value=False),
+        patch("app.api.routes.trial_service.check_and_track_usage", AsyncMock()) as track,
+    ):
+        with pytest.raises(Exception) as exc_info:
+            await compile_latex_anonymous(
+                latex_content="not latex",
+                file=None,
+                device_fingerprint="device-123",
+                request=MagicMock(),
+                db=MagicMock(),
+                user_id=None,
+            )
+    assert getattr(exc_info.value, "status_code", None) == 400
+    track.assert_not_awaited()
 
     @pytest.mark.parametrize(
         "payload",
@@ -158,6 +262,8 @@ class TestMeteredCompileSurfaces:
         with (
             patch("app.api.job_routes._consume_job_quota", AsyncMock(return_value=ticket)),
             patch("app.api.job_routes.submit_latex_compilation") as submit,
+            patch("app.api.job_routes._mark_dispatch_started", AsyncMock()) as mark_dispatch,
+            patch("app.api.job_routes._delete_quota_refund_receipt", AsyncMock()) as clear_receipt,
         ):
             response = await client.post(
                 "/jobs/submit",
@@ -166,6 +272,8 @@ class TestMeteredCompileSurfaces:
             )
         assert response.status_code == 200
         assert submit.call_args.kwargs["quota_refund"] == ticket.refund_payload()
+        mark_dispatch.assert_awaited_once()
+        clear_receipt.assert_not_awaited()
 
     async def test_watermarked_submit_attaches_ticket(
         self, client: AsyncClient, auth_headers: dict
