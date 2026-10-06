@@ -46,3 +46,29 @@ Retained evidence:
 
 Fresh remote CI and actual Modal deployment verification are still required
 after the dependency PR is merged. Local acceptance is not live acceptance.
+
+## Complete backend checkpoint
+
+Root's full Python3.12.10 run on this candidate passed **4,294 tests / 5 skips /
+1 existing Starlette deprecation warning**, in 212.57s:
+
+```sh
+PYTHONPATH=backend /Users/sanskar/Developer/Latexy/Latexy/backend/.venv/bin/python \
+  -m pytest -q -o addopts='' backend/test
+```
+
+Evidence: `/tmp/latexy-1800-query-full-backend-root-corrected-20261007.log`.
+This backend snapshot predates hydration main `787b9351`; it does not certify
+subsequent edits, remote CI, or deployment.
+
+The first full invocation omitted `PYTHONPATH` while running from the repository
+root. It produced **4,291 passes / 3 failures / 5 skips**: three subprocess-based
+publication regex tests could not import `app`, rather than timing out or
+failing their parser assertions. The direct child-process probe confirmed
+`ModuleNotFoundError`; the unchanged three cases then passed in 1.30s with the
+correct import path. No parser code, deadline, assertions or test selection was
+weakened. Preserve the original failure and controls:
+
+- `/tmp/latexy-1800-query-full-backend-root-20261007.log`
+- `/tmp/latexy-1800-query-root-subprocess-import-probe-20261007.log`
+- `/tmp/latexy-1800-query-root-regex-cwd-control-20261007.log`
