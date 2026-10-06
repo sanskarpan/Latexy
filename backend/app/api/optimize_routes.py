@@ -111,7 +111,7 @@ async def segment_changes_endpoint(
             request.change_reasons,
         )
     except Exception as exc:  # pragma: no cover - defensive; diff is pure
-        logger.error(f"segment-changes failed: {exc}")
+        logger.error("segment-changes failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Failed to segment changes")
 
     return SegmentChangesResponse(
@@ -139,7 +139,7 @@ async def apply_changes_endpoint(
             set(request.accepted_ids),
         )
     except Exception as exc:  # pragma: no cover - defensive; apply is pure
-        logger.error(f"apply-changes failed: {exc}")
+        logger.error("apply-changes failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Failed to apply changes")
 
     return ApplyChangesResponse(latex=latex)
