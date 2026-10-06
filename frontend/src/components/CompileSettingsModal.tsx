@@ -19,15 +19,7 @@ const COMPILER_OPTIONS: { id: LatexCompiler; label: string; desc: string }[] = [
   { id: 'lualatex', label: 'LuaLaTeX', desc: 'Modern engine with Lua scripting' },
 ]
 
-const TEXLIVE_VERSIONS = [
-  { value: '', label: 'Latest (default)' },
-  { value: '2024', label: 'TeX Live 2024' },
-  { value: '2023', label: 'TeX Live 2023' },
-  { value: '2022', label: 'TeX Live 2022' },
-]
-
 const FLAG_LABELS: Record<LatexmkFlag, string> = {
-  '--shell-escape': 'Shell escape (for minted, svg, etc.)',
   '--synctex=1': 'SyncTeX (editor source sync)',
   '--file-line-error': 'File-line error format',
   '--interaction=nonstopmode': 'Non-stop mode (default)',
@@ -40,6 +32,8 @@ const DEFAULT_SETTINGS: Required<CompileSettings> = {
   main_file: 'resume.tex',
   latexmk_flags: [],
   extra_packages: [],
+  halt_on_error: true,
+  draft_mode: false,
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -62,20 +56,22 @@ export default function CompileSettingsModal({
   onSaved,
 }: CompileSettingsModalProps) {
   const [compiler, setCompiler] = useState<LatexCompiler>(initial.compiler ?? 'pdflatex')
-  const [texliveVersion, setTexliveVersion] = useState<string>(initial.texlive_version ?? '')
   const [mainFile, setMainFile] = useState(initial.main_file ?? 'resume.tex')
   const [packagesInput, setPackagesInput] = useState((initial.extra_packages ?? []).join(', '))
   const [flags, setFlags] = useState<Set<LatexmkFlag>>(new Set(initial.latexmk_flags ?? []))
+  const [haltOnError, setHaltOnError] = useState(initial.halt_on_error !== false)
+  const [draftMode, setDraftMode] = useState(initial.draft_mode === true)
   const [saving, setSaving] = useState(false)
   const backdropRef = useRef<HTMLDivElement>(null)
 
   // Re-sync when initial changes (e.g. first load)
   useEffect(() => {
     setCompiler(initial.compiler ?? 'pdflatex')
-    setTexliveVersion(initial.texlive_version ?? '')
     setMainFile(initial.main_file ?? 'resume.tex')
     setPackagesInput((initial.extra_packages ?? []).join(', '))
     setFlags(new Set(initial.latexmk_flags ?? []))
+    setHaltOnError(initial.halt_on_error !== false)
+    setDraftMode(initial.draft_mode === true)
   }, [initial])
 
   // Close on Escape
@@ -108,10 +104,11 @@ export default function CompileSettingsModal({
 
   function handleReset() {
     setCompiler(DEFAULT_SETTINGS.compiler)
-    setTexliveVersion('')
     setMainFile(DEFAULT_SETTINGS.main_file)
     setPackagesInput('')
     setFlags(new Set())
+    setHaltOnError(true)
+    setDraftMode(false)
   }
 
   async function handleSave() {
@@ -123,10 +120,11 @@ export default function CompileSettingsModal({
 
     const body: CompileSettings = {
       compiler,
-      texlive_version: texliveVersion || null,
       main_file: mainFile || 'resume.tex',
       latexmk_flags: [...flags] as LatexmkFlag[],
       extra_packages: parsePackages(packagesInput),
+      halt_on_error: haltOnError,
+      draft_mode: draftMode,
     }
 
     setSaving(true)
@@ -147,20 +145,24 @@ export default function CompileSettingsModal({
   return (
     <div
       ref={backdropRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="compile-settings-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
       onClick={(e) => { if (e.target === backdropRef.current) onClose() }}
     >
-      <div className="relative w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]">
+      <div className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
               <Settings2 size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-sm font-semibold text-fg">Compile Settings</h2>
+            <h2 id="compile-settings-title" className="text-sm font-semibold text-fg">Compile Settings</h2>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close compile settings"
             className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <X size={14} />
@@ -168,7 +170,7 @@ export default function CompileSettingsModal({
         </div>
 
         {/* Body */}
-        <div className="space-y-5 px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
           {/* Compiler */}
           <div className="space-y-2">
             <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
@@ -192,22 +194,14 @@ export default function CompileSettingsModal({
             </div>
           </div>
 
-          {/* TeX Live Version */}
+          {/* TeX Live runtime */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
-              TeX Live Version
-            </label>
-            <select
-              value={texliveVersion}
-              onChange={(e) => setTexliveVersion(e.target.value)}
-              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-            >
-              {TEXLIVE_VERSIONS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
+              TeX Live Runtime
+            </p>
+            <p className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[11px] text-fg-3">
+              Managed by Latexy and updated with the compiler deployment. Per-resume version pinning is not supported.
+            </p>
           </div>
 
           {/* Main .tex file */}
@@ -242,6 +236,44 @@ export default function CompileSettingsModal({
             <p className="text-[10px] text-fg-3">
               Comma-separated. Injected via \usepackage if not already in source.
             </p>
+            <p className="text-[10px] text-warn">
+              Packages requiring shell escape are unsupported because arbitrary command execution is prohibited.
+            </p>
+          </div>
+
+          {/* Custom flags */}
+          <div className="space-y-2">
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-md)] border border-line px-3 py-2.5 hover:border-line-2">
+              <input
+                type="checkbox"
+                checked={draftMode}
+                onChange={(event) => setDraftMode(event.target.checked)}
+                className="mt-0.5 h-3 w-3 rounded accent-accent"
+              />
+              <span>
+                <span className="block text-[11px] font-medium text-fg-2">Draft mode</span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-fg-3">
+                  Skip image rendering for faster previews. Image boxes remain in the document layout.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-md)] border border-line px-3 py-2.5 hover:border-line-2">
+              <input
+                type="checkbox"
+                checked={haltOnError}
+                onChange={(event) => setHaltOnError(event.target.checked)}
+                className="mt-0.5 h-3 w-3 rounded accent-accent"
+              />
+              <span>
+                <span className="block text-[11px] font-medium text-fg-2">Stop on first error</span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-fg-3">
+                  Disable to let TeX continue and collect more errors in one compile. A document with errors still fails.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Custom flags */}
@@ -250,8 +282,8 @@ export default function CompileSettingsModal({
               Compiler Flags
             </label>
             <div className="space-y-1.5">
-              {ALLOWED_LATEXMK_FLAGS.map((flag) => {
-                const isHardcoded = flag === '--interaction=nonstopmode' || flag === '--halt-on-error' || flag === '--synctex=1'
+              {ALLOWED_LATEXMK_FLAGS.filter((flag) => flag !== '--halt-on-error').map((flag) => {
+                const isHardcoded = flag === '--interaction=nonstopmode' || flag === '--synctex=1'
                 return (
                   <label
                     key={flag}
@@ -283,7 +315,7 @@ export default function CompileSettingsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-line px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-t border-line px-5 py-4">
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
