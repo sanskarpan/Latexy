@@ -441,6 +441,11 @@ export interface MeResponse {
 
 export type UserPreferencesUpdate = Partial<UserPreferences>
 
+export interface AccountPreferenceRequestContext {
+  authToken: string
+  isCurrent: () => boolean
+}
+
 export interface AcademicCVReport {
   is_academic_cv: boolean
   detected_sections: string[]
@@ -1516,8 +1521,18 @@ class ApiClient {
   // Single entry point for every authenticated fetch. It waits for the auth gate
   // and builds the headers *after* the wait, so the guarantee is structural: no
   // call site can accidentally send a request with a not-yet-published token.
-  private async authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  private async authedFetch(
+    url: string,
+    init: RequestInit = {},
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<Response> {
     await this.waitForAuthReady()
+    if (
+      accountContext
+      && (this.authToken !== accountContext.authToken || !accountContext.isCurrent())
+    ) {
+      throw new Error('Account request context changed before dispatch')
+    }
     const headers: Record<string, string> = {
       ...(this.headers({}, this.shouldSendJsonContentType(init)) as Record<string, string>),
       ...((init.headers as Record<string, string> | undefined) ?? {}),
@@ -1530,9 +1545,10 @@ class ApiClient {
 
   private async request<T>(
     path: string,
-    init: RequestInit = {}
+    init: RequestInit = {},
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<T> {
-    const res = await this.authedFetch(`${API_BASE}${path}`, init)
+    const res = await this.authedFetch(`${API_BASE}${path}`, init, accountContext)
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
@@ -3660,15 +3676,18 @@ class ApiClient {
   //  Account (me) + synced UI preferences                            //
   // ---------------------------------------------------------------- //
 
-  async getMe(): Promise<MeResponse> {
-    return this.request<MeResponse>('/me')
+  async getMe(accountContext?: AccountPreferenceRequestContext): Promise<MeResponse> {
+    return this.request<MeResponse>('/me', {}, accountContext)
   }
 
-  async updateMePreferences(prefs: UserPreferencesUpdate): Promise<MeResponse> {
+  async updateMePreferences(
+    prefs: UserPreferencesUpdate,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<MeResponse> {
     return this.request<MeResponse>('/me/preferences', {
       method: 'PATCH',
       body: JSON.stringify(prefs),
-    })
+    }, accountContext)
   }
 
   // ---------------------------------------------------------------- //
