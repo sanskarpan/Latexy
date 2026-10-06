@@ -12,8 +12,10 @@ import {
   assertProductionNode,
   copyStandaloneAssets,
   inheritedEnvironment,
+  prepareRuntimeAssets,
   readMode,
   serverEnvironment,
+  shouldCopy,
   signalProcessTree,
   standaloneEntrypoint,
 } from '../../scripts/playwright-server.mjs'
@@ -182,6 +184,37 @@ describe('Playwright Next cache isolation', () => {
       await expect(stat(join(runtimeRoot, '.next', 'standalone', 'public', 'manifest.json'))).resolves.toBeTruthy()
       await expect(stat(join(runtimeRoot, '.next', 'standalone', '.next', 'static', 'chunks', 'app.js'))).resolves.toBeTruthy()
     } finally {
+      await rm(runtimeRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('prepares generated assets inside the disposable runtime with sanitized environment', async () => {
+    expect(shouldCopy('public/monaco/vs/loader.js')).toBe(false)
+    const runtimeRoot = await mkdtemp(join(tmpdir(), '.playwright-e2e-'))
+    const marker = join(runtimeRoot, 'prepare-env')
+    const previousSecret = process.env.SUPABASE_SERVICE_ROLE_KEY
+    try {
+      await mkdir(join(runtimeRoot, 'scripts'), { recursive: true })
+      await writeFile(
+        join(runtimeRoot, 'scripts', 'prepare-monaco.mjs'),
+        [
+          "import { mkdir, writeFile } from 'node:fs/promises'",
+          "import { join } from 'node:path'",
+          `const root = ${JSON.stringify(runtimeRoot)}`,
+          "await mkdir(join(root, 'public', 'monaco', 'vs'), { recursive: true })",
+          "await writeFile(join(root, 'public', 'monaco', 'vs', 'loader.js'), 'loader')",
+          `await writeFile(${JSON.stringify(marker)}, process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')`,
+        ].join('\n'),
+      )
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'must-not-reach-runtime'
+
+      prepareRuntimeAssets(runtimeRoot)
+
+      await expect(stat(join(runtimeRoot, 'public', 'monaco', 'vs', 'loader.js'))).resolves.toBeTruthy()
+      await expect(readFile(marker, 'utf8')).resolves.toBe('')
+    } finally {
+      if (previousSecret === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY
+      else process.env.SUPABASE_SERVICE_ROLE_KEY = previousSecret
       await rm(runtimeRoot, { recursive: true, force: true })
     }
   })
