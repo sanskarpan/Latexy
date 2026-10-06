@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import ast
 import base64
+import contextlib
+import io
 import os
 import re
 import subprocess
@@ -660,22 +662,46 @@ def test_beat_schedule_entries_are_accounted_for_on_modal():
 
     tree = _parse(MODAL_APP)
 
-    # Task callables invoked inside a function that declares a schedule.
+    # Task callables invoked inside a function that declares a schedule. A
+    # scheduled fan-out may spawn an independently callable runner, so follow
+    # those local ``runner.spawn()`` edges before collecting its worker import.
+    function_nodes = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     scheduled_tasks: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+
+    def collect_task_imports(function_name: str, seen: set[str]) -> set[str]:
+        if function_name in seen:
+            return set()
+        seen.add(function_name)
+        node = function_nodes.get(function_name)
+        if node is None:
+            return set()
+        imports = {
+            alias.name
+            for sub in ast.walk(node)
+            if isinstance(sub, ast.ImportFrom)
+            for alias in sub.names
+        }
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call) or not isinstance(sub.func, ast.Attribute):
+                continue
+            if sub.func.attr != "spawn" or not isinstance(sub.func.value, ast.Name):
+                continue
+            imports.update(collect_task_imports(sub.func.value.id, seen))
+        return imports
+
+    for node in function_nodes.values():
         # Read the decorator AST rather than its source: get_source_segment on a
         # FunctionDef excludes the decorator lines.
         has_schedule = any(
             isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
             for dec in node.decorator_list
         )
-        if not has_schedule:
-            continue
-        for sub in ast.walk(node):
-            if isinstance(sub, ast.ImportFrom):
-                scheduled_tasks.update(a.name for a in sub.names)
+        if has_schedule:
+            scheduled_tasks.update(collect_task_imports(node.name, set()))
 
     missing = {}
     for key, entry in scheduled.items():
@@ -695,6 +721,234 @@ def test_beat_schedule_entries_are_accounted_for_on_modal():
 
     stale = set(SCHEDULE_WAIVERS) - set(scheduled)
     assert not stale, f"SCHEDULE_WAIVERS names beat entries that no longer exist: {sorted(stale)}."
+
+
+def _scheduled_function_nodes() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    tree = _parse(MODAL_APP)
+    return {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(
+            isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
+            for dec in node.decorator_list
+        )
+    }
+
+
+def test_modal_scheduled_function_budget_and_cadences_are_explicit():
+    """Keep all seven maintenance tasks under Modal's five-schedule limit."""
+    scheduled = _scheduled_function_nodes()
+    expected = {
+        "scheduled_cleanup_expired_jobs": {
+            "image": "worker_image",
+            "timeout": 600,
+            "schedule": "modal.Period(hours=1)",
+        },
+        "scheduled_cleanup_temp_files": {
+            "image": "latex_image",
+            "timeout": 600,
+            "schedule": "modal.Period(minutes=30)",
+        },
+        "scheduled_five_minute_maintenance": {
+            "image": "worker_image",
+            "timeout": 120,
+            "schedule": "modal.Period(minutes=5)",
+        },
+        "scheduled_minute_recovery": {
+            "image": "worker_image",
+            "timeout": 120,
+            "schedule": "modal.Period(minutes=1)",
+        },
+        "scheduled_weekly_digest": {
+            "image": "worker_image",
+            "timeout": 300,
+            "schedule": 'modal.Cron("0 9 * * 1")',
+        },
+    }
+    assert set(scheduled) == set(expected)
+    assert len(scheduled) <= 5
+
+    for name, contract in expected.items():
+        node = scheduled[name]
+        decorator = next(
+            dec
+            for dec in node.decorator_list
+            if isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Attribute)
+            and dec.func.attr == "function"
+        )
+        keywords = {keyword.arg: keyword.value for keyword in decorator.keywords}
+        assert isinstance(keywords["image"], ast.Name)
+        assert keywords["image"].id == contract["image"], name
+        assert isinstance(keywords["timeout"], ast.Constant)
+        assert keywords["timeout"].value == contract["timeout"], name
+        expected_schedule = ast.parse(contract["schedule"], mode="eval").body
+        assert ast.dump(keywords["schedule"]) == ast.dump(expected_schedule), name
+
+
+def _run_fanout_wrapper_case(
+    wrapper_name: str,
+    children: tuple[str, str],
+    failing: set[str],
+) -> tuple[list[str], list[str], BaseException | None, str]:
+    """Execute one decorator-free fan-out wrapper against fake Modal handles.
+
+    This deliberately compiles only the selected function body. It cannot import
+    Modal, initialize Redis, contact a provider, or deploy anything, while still
+    exercising the actual try/except and aggregate-failure control flow.
+    """
+    tree = _parse(MODAL_APP)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == wrapper_name
+    )
+    function.decorator_list = []
+
+    attempts: list[str] = []
+    initialized: list[str] = []
+
+    class FakeModalFunction:
+        def __init__(self, name: str):
+            self.name = name
+
+        def spawn(self) -> None:
+            attempts.append(self.name)
+            if self.name in failing:
+                raise RuntimeError("untrusted provider detail must not escape")
+
+    namespace: dict[str, object] = {
+        "_init_worker_redis": lambda: initialized.append("initialized"),
+        **{name: FakeModalFunction(name) for name in children},
+    }
+    isolated = ast.Module(body=[function], type_ignores=[])
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+
+    raised: BaseException | None = None
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        try:
+            namespace[wrapper_name]()
+        except BaseException as exc:  # test the wrapper's public failure signal exactly
+            raised = exc
+    return attempts, initialized, raised, output.getvalue()
+
+
+def test_modal_scheduled_fanouts_attempt_both_children_and_signal_spawn_failures():
+    """First, second, and both spawn failures cannot hide a sibling or report success."""
+    expected = {
+        "scheduled_five_minute_maintenance": (
+            "scheduled_health_check",
+            "scheduled_tracker_notifications",
+        ),
+        "scheduled_minute_recovery": (
+            "scheduled_comment_mention_recovery",
+            "scheduled_document_email_recovery",
+        ),
+    }
+    for wrapper_name, children in expected.items():
+        for failing in (set(), {children[0]}, {children[1]}, set(children)):
+            attempts, initialized, raised, output = _run_fanout_wrapper_case(
+                wrapper_name, children, failing
+            )
+            assert attempts == list(children), (wrapper_name, failing)
+            assert initialized == ["initialized"], (wrapper_name, failing)
+            if not failing:
+                assert raised is None
+                assert output == ""
+                continue
+
+            assert isinstance(raised, RuntimeError)
+            assert set(failing) <= set(str(raised).rsplit(": ", 1)[-1].split(","))
+            assert "untrusted provider detail" not in str(raised)
+            assert "untrusted provider detail" not in output
+
+
+def test_modal_scheduled_fanouts_isolate_each_child_spawn():
+    """A failed or hung child must not suppress its same-cadence sibling."""
+    tree = _parse(MODAL_APP)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    expected = {
+        "scheduled_five_minute_maintenance": (
+            "scheduled_health_check",
+            "scheduled_tracker_notifications",
+        ),
+        "scheduled_minute_recovery": (
+            "scheduled_comment_mention_recovery",
+            "scheduled_document_email_recovery",
+        ),
+    }
+    for wrapper_name, children in expected.items():
+        wrapper = functions[wrapper_name]
+        try_nodes = [node for node in ast.walk(wrapper) if isinstance(node, ast.Try)]
+        assert len(try_nodes) == len(children), wrapper_name
+        for child in children:
+            child_spawns = [
+                node
+                for node in ast.walk(wrapper)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "spawn"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == child
+            ]
+            assert len(child_spawns) == 1, (wrapper_name, child)
+            assert any(child_spawns[0] in ast.walk(node) for node in try_nodes), (wrapper_name, child)
+
+        appended_failures = {
+            call.args[0].value
+            for call in ast.walk(wrapper)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "append"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "spawn_failures"
+            and len(call.args) == 1
+            and isinstance(call.args[0], ast.Constant)
+        }
+        assert appended_failures == set(children), wrapper_name
+        assert any(
+            isinstance(node, ast.Raise)
+            and isinstance(node.exc, ast.Call)
+            and isinstance(node.exc.func, ast.Name)
+            and node.exc.func.id == "RuntimeError"
+            for node in ast.walk(wrapper)
+        ), wrapper_name
+
+    # The fan-out wrappers return quickly; each independently callable child
+    # retains its own 300-second deadline and worker image.
+    for child in {
+        "scheduled_health_check",
+        "scheduled_tracker_notifications",
+        "scheduled_comment_mention_recovery",
+        "scheduled_document_email_recovery",
+    }:
+        node = functions[child]
+        assert not any(
+            isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
+            for dec in node.decorator_list
+        )
+        timeout_values = [
+            kw.value.value
+            for dec in node.decorator_list
+            if isinstance(dec, ast.Call)
+            for kw in dec.keywords
+            if kw.arg == "timeout" and isinstance(kw.value, ast.Constant)
+        ]
+        assert timeout_values == [300], (child, timeout_values)
+        image_values = [
+            kw.value.id
+            for dec in node.decorator_list
+            if isinstance(dec, ast.Call)
+            for kw in dec.keywords
+            if kw.arg == "image" and isinstance(kw.value, ast.Name)
+        ]
+        assert image_values == ["worker_image"], (child, image_values)
 
 
 def test_scheduled_functions_initialize_worker_redis():
