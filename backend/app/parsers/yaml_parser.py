@@ -43,8 +43,8 @@ class YAMLParser(AbstractParser):
                 raw = yaml.dump(data, allow_unicode=True, default_flow_style=False)
                 return self._build_parsed_resume(raw, filename)
         except Exception as e:
-            logger.error(f"Error parsing YAML: {e}")
-            raise ValueError(f"Failed to parse YAML: {str(e)}")
+            logger.error("Error parsing YAML", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse YAML input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         if not file_content:
