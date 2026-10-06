@@ -3,7 +3,8 @@
 The user requested that all accumulated task work be merged into `main` so
 another worktree can start from the current implementation. This supersedes
 the earlier instruction to defer commits and publication. Integration issue:
-[#1750](https://github.com/sanskarpan/Latexy/issues/1750).
+[#1750](https://github.com/sanskarpan/Latexy/issues/1750), integration PR
+[#1751](https://github.com/sanskarpan/Latexy/pull/1751).
 
 ## Snapshot and safety
 
@@ -51,6 +52,63 @@ the earlier instruction to defer commits and publication. Integration issue:
   the dependency gate. Raw registry counts are not falsely described as zero.
 - Frontend unit, type, lint, production and protected-branch checks remain
   required before merge. The frontend unit suite is now explicitly part of CI.
+
+## Subsequent independent review
+
+- Fresh frontend suite after the security follow-ups: 155 files / 988 tests
+  pass. The previous sealed production bundle passes 25 owner-scoped browser
+  regressions with zero retries; a fresh security-follow-up bundle is building.
+- CI exposed clean-checkout gaps: the root placeholder-only production example
+  was excluded by a global `.env.*` ignore rule, and the nginx log mount lacked
+  a tracked directory placeholder. Narrow ignore exceptions preserve secrets
+  and actual log exclusions while publishing these safe deployment inputs.
+- Python lock validation now compares every pin, marker and hash while omitting
+  platform-dependent provenance comments. It still seeds existing compatible
+  pins and recompiles against both direct-dependency input files.
+- The template extraction job needed `fonts-noto-core`, matching its actual
+  Devanagari template and the production image. Local macOS does not supply
+  Poppler; the complete extraction result must come from Linux CI.
+- The browser-quality fixture mocked the wrong hard-coded backend host. API
+  mocks now follow paths and resource types without swallowing page navigation.
+  A successful background Better Auth refresh does not mark a retained session
+  pending; the persona revalidation control now exercises an actual 503/error
+  followed by recovery, instead of requiring incorrect optimistic-state behavior.
+- Student checkout validates invalid academic addresses normally, but must not
+  send a verification email when billing is unavailable. Independent review
+  caught and corrected a proposed regression of that safeguard.
+- Backend database ownership remains an active strict-warning blocker. Recent
+  runs reduced the failures, but an unclosed asyncpg connection remains; neither
+  focused green tests nor suppressing warnings is acceptable certification.
+
+## Security scan follow-ups
+
+GitHub CodeQL reports 100 open branch alerts on the initial published head:
+4 critical, 14 high and 82 medium. These are findings to validate, not proof
+that all 100 are exploitable. No bulk dismissal or security-gate waiver was used.
+
+- Fixed predictable device session identifiers with a platform CSPRNG.
+- Replaced incomplete Markdown inline-code escaping with collision-safe spans,
+  tested using the actual CommonMark parser, including blank paragraphs and
+  many backtick runs.
+- Bound the reusable render action's source read through one opened descriptor,
+  including file growth and partial-read controls (six action tests pass).
+- Decode extension entities in one pass and recognize whitespace before script
+  and style closing brackets (five extension tests pass).
+- Remove raw cache-key diagnostics and neutralize control characters at
+  application loggers even when workers use plain-text handlers. Existing
+  structured JSON logging remains a separate defense.
+- Harden the four flagged regex sites with possessive matching / whitespace
+  boundaries and add adversarial input regressions with process deadlines.
+- Critical SSRF findings need evidence-based review of existing fixed-origin,
+  encoded-path, redirect-disabled provider requests and the default DNS-pinned
+  public-URL transport. Do not dismiss merely because an initial validation
+  function exists. Remaining scan results stay visible for follow-up.
+
+The GitHub Production environment now has the verified Vercel project and org
+IDs and a Vercel credential supplied through the local environment without
+printing or committing it. Existing Modal secrets remain in that environment.
+After merge, both automatic deployment paths still require exact-SHA and live
+health verification; a passing preview is not production certification.
 
 ## Acceptance boundary
 
