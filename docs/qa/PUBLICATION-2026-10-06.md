@@ -691,3 +691,36 @@ compiler repair.
   prefetch requests were recorded, not asserted away. The earlier public-gallery
   fetch ambiguity is resolved for these reads, not for authenticated writes,
   every public object or real PWA lifecycle.
+
+### Theme publication and next confirmed owner-boundary findings
+
+- Theme PR #1782 passed all 21 required current-head contexts at
+  `faeaf456d70fc38d8554826818cf7fb99584eb27`, clean mergeability and no unresolved
+  threads. Normal protected rebase merge produced main
+  `d54e0f6352afedb50ae6cde079971fd4410d415b`; root compared all four selected
+  files with the tested head and found no differences. Local main is updated.
+  Main CI 37472086418 and automatic deployment acceptance remain in progress
+  at this checkpoint; no production theme acceptance is claimed yet.
+- #1783 is a **verified P1 personal-dictionary isolation defect**, not merely
+  a source candidate. Two ordinary same-origin A-load → B-session/reload runs
+  showed A's word in B's dictionary and an authenticated B preference PATCH
+  containing it. B's own word visibly loaded, establishing application of B's
+  dictionary response. The desired-safety assertion failed; ordinary add/remove
+  passed, with no page errors. Root confirmed both relevant sealed source
+  hashes match current main and read
+  `/tmp/latexy-dictionary-owner-5485-red.log`. All auth/API bodies were synthetic;
+  no real private data, credential or database write was used. Account-scoped
+  cache and guarded synchronization are now authorized for repair.
+- The linked-variant deferred-error candidate is also behaviorally confirmed:
+  B's variant title loaded, then A's delayed failure created an A-specific toast.
+  Ordinary deferred save passed and the tested ABA stale-success control passed;
+  no stale-success corruption or backend authorization breach is inferred.
+  Root matched sealed/current source hashes and read
+  `/tmp/latexy-linked-variant-owner-race-rejection-5485-v5.log`. A focused issue
+  and owner/lifetime callback repair are being tracked separately.
+- Remaining survey candidates: Settings interactive preference/integration
+  writes, retained passkey/security state, and unscoped onboarding completion.
+  Passkey diagnostics show a stale A row but need a stronger observable B
+  identity-application barrier before acceptance. These are not all confirmed
+  bugs. New Resume, guided-builder owner and builder-document flows already
+  have explicit source guards and behavioral coverage; do not regress them.
