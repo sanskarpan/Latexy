@@ -48,6 +48,11 @@ jobs:
           set -euo pipefail
           lock_tmp="$(mktemp -d)"
           trap 'rm -rf "$lock_tmp"' EXIT
+          # Validate the committed resolution against its inputs, retaining
+          # compatible transitive pins. An empty output path would resolve
+          # today's latest registry versions instead of checking this lock.
+          cp requirements.lock "$lock_tmp/requirements.lock"
+          cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"
           uv pip compile --python-version 3.12 --generate-hashes \
             --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
             requirements.txt -o "$lock_tmp/requirements.lock"
