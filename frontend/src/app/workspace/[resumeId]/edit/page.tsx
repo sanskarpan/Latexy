@@ -55,11 +55,13 @@ import {
 } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { downloadBlob } from '@/lib/download'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
 import QrCodeInserter from '@/components/QrCodeInserter'
@@ -73,11 +75,15 @@ import CompilerSelector from '@/components/CompilerSelector'
 import TemplateCustomizerPanel from '@/components/TemplateCustomizerPanel'
 import ImportProjectsModal from '@/components/ImportProjectsModal'
 import type { TrackedChange } from '@/lib/yjs-track-changes'
+import CollaboratorChat, { useCollaboratorChat } from '@/components/CollaboratorChat'
+import type { ChatTransport } from '@/lib/collab-chat'
+import { boundSuggestionPresence, canCreateSuggestion, canResolveSuggestion, createSuggestion, mergeSuggestionPresence, type Suggestion, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ContrastToggle from '@/components/theme/ContrastToggle'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
@@ -86,13 +92,17 @@ import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import MobileEditor from '@/components/MobileEditor'
 import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
-import { saveDraft, getPendingDrafts, deleteDraft, pendingDraftCount } from '@/lib/offline-drafts'
+import { saveDraft, getDraft, getPendingDrafts, deleteDraftIfUnchanged, pendingDraftCount } from '@/lib/offline-drafts'
+import { clearAllOfflineCompiledPdfs, getOfflineCompiledPdf, getRememberedOfflinePdfOwner, OFFLINE_PDF_OWNER_KEY, rememberOfflinePdfOwner, saveOfflineCompiledPdf } from '@/lib/offline-pdfs'
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
+import { acquireReconnectReservation, compileReconnectReservationKey, draftReconnectReservationKey } from '@/lib/reconnect-reservations'
 import { canEditResume, type ResumeAccessRole } from '@/lib/resume-access'
 import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
+import { buildLatexOutline, type LatexOutlineItem } from '@/lib/latex-outline'
 const ShareResumeModal = dynamic(() => import('@/components/ShareResumeModal'))
+const DocumentAssistantPanel = dynamic(() => import('@/components/DocumentAssistantPanel'))
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
 const PDFPreview = dynamic(() => import('@/components/PDFPreview'))
 const DeepAnalysisPanel = dynamic(() => import('@/components/ats/DeepAnalysisPanel'))
@@ -110,9 +120,13 @@ const ProofreadPanel = dynamic(() => import('@/components/ProofreadPanel'))
 const PackageManagerPanel = dynamic(() => import('@/components/PackageManagerPanel'))
 const LinterPanel = dynamic(() => import('@/components/LinterPanel'))
 const SymbolPalette = dynamic(() => import('@/components/SymbolPalette'))
+const LatexGeneratorPanel = dynamic(() => import('@/components/LatexGeneratorPanel'))
 const CompileSettingsModal = dynamic(() => import('@/components/CompileSettingsModal'))
 const CollaboratorPanel = dynamic(() => import('@/components/CollaboratorPanel'))
+const CommentsPanel = dynamic(() => import('@/components/CommentsPanel'))
+const ReviewCommentsPanel = dynamic(() => import('@/components/ReviewCommentsPanel'))
 const ChangesPanel = dynamic(() => import('@/components/ChangesPanel'))
+const SuggestionsPanel = dynamic(() => import('@/components/SuggestionsPanel'))
 const LaTeXDocPanel = dynamic(() => import('@/components/LaTeXDocPanel'))
 const ConfidenceScorePanel = dynamic(() => import('@/components/ConfidenceScorePanel'))
 const KeyboardShortcutsPanel = dynamic(() => import('@/components/KeyboardShortcutsPanel'))
@@ -124,33 +138,11 @@ const SlideViewer = dynamic(() => import('@/components/SlideViewer'))
 const CompileErrorHistory = dynamic(() => import('@/components/CompileErrorHistory'))
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'comments' | 'review' | 'chat' | 'references' | 'interview' | 'generate' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'suggestions' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
 // ─── Outline ────────────────────────────────────────────────────────────────
-
-interface OutlineItem {
-  level: number
-  label: string
-  line: number
-}
-
-function buildOutline(latex: string): OutlineItem[] {
-  const items: OutlineItem[] = []
-  const sectionRe = /^[^%]*\\(part|chapter|section|subsection|subsubsection)\*?\{([^}]*)\}/
-  const lines = latex.split('\n')
-  const levelMap: Record<string, number> = {
-    part: 0, chapter: 1, section: 2, subsection: 3, subsubsection: 4,
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(sectionRe)
-    if (m) {
-      items.push({ level: levelMap[m[1]] ?? 2, label: m[2].trim(), line: i + 1 })
-    }
-  }
-  return items
-}
 
 function OutlinePanel({
   latex,
@@ -159,7 +151,7 @@ function OutlinePanel({
   latex: string
   onJump: (line: number) => void
 }) {
-  const items = useMemo(() => buildOutline(latex), [latex])
+  const items = useMemo(() => buildLatexOutline(latex), [latex])
 
   if (items.length === 0) {
     return (
@@ -173,11 +165,12 @@ function OutlinePanel({
   }
 
   return (
-    <div className="overflow-y-auto py-1">
+    <nav className="overflow-y-auto py-1" aria-label="Document outline">
       {items.map((item, idx) => (
         <button
-          key={idx}
+          key={`${item.command}:${item.line}:${idx}`}
           onClick={() => onJump(item.line)}
+          aria-label={`${item.label}, line ${item.line}`}
           className="flex w-full items-baseline gap-1 px-2 py-1 text-left text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           style={{ paddingLeft: `${8 + item.level * 10}px` }}
           title={`Line ${item.line}`}
@@ -188,7 +181,7 @@ function OutlinePanel({
           <span className="truncate">{item.label}</span>
         </button>
       ))}
-    </div>
+    </nav>
   )
 }
 
@@ -373,7 +366,7 @@ function SectionSelector({
   selected,
   onChange,
 }: {
-  outline: OutlineItem[]
+  outline: LatexOutlineItem[]
   selected: string[]
   onChange: (v: string[]) => void
 }) {
@@ -455,7 +448,7 @@ interface AIPanelProps {
   onDiscard: () => void
   onReview: () => void
   onApplyAnyway: () => void
-  outline: OutlineItem[]
+  outline: LatexOutlineItem[]
   targetSections: string[]
   setTargetSections: (v: string[]) => void
   customInstructions: string
@@ -640,9 +633,7 @@ function AIPanel({
             <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-accent/20 bg-accent/10 px-3 py-2.5">
               <span className="text-[11px] text-accent-strong">
                 ⏱ {aiStream.timeoutError?.plan ?? 'free'} plan limit reached (
-                {aiStream.timeoutError?.plan === 'free' ? '30s'
-                  : aiStream.timeoutError?.plan === 'basic' ? '120s'
-                  : '240s'})
+                {aiStream.timeoutError?.seconds ?? 30}s)
               </span>
               {flags.upgrade_ctas && (
                 <a
@@ -762,14 +753,19 @@ export default function ResumeEditPage() {
   const router = useRouter()
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
-  const { data: sessionData, isPending: sessionLoading } = useSession()
+  const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
 
   // Core state
   const [title, setTitle] = useState('')
   const [latexContent, setLatexContent] = useState('')
+  const [bibliographyBibTeX, setBibliographyBibTeX] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [resumeLoadError, setResumeLoadError] = useState<string | null>(null)
+  const [offlineDraftLoaded, setOfflineDraftLoaded] = useState(false)
+  const [offlinePdfLoaded, setOfflinePdfLoaded] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   // Unsaved-changes guard: last-persisted snapshot + autosave status
   const [savedSnapshot, setSavedSnapshot] = useState<{ title: string; latex: string }>({ title: '', latex: '' })
   const [autoSaving, setAutoSaving] = useState(false)
@@ -779,7 +775,15 @@ export default function ResumeEditPage() {
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
   const userInitiatedJobRef = useRef(false)
+  const [isAutoFitSubmitting, setIsAutoFitSubmitting] = useState(false)
+  const [autoFitIntensity, setAutoFitIntensity] = useState(50)
+  const autoFitJobRef = useRef<string | null>(null)
+  const handledAutoFitJobRef = useRef<string | null>(null)
+  const autoFitIdentityRef = useRef<{ ownerId: string | null; resumeId: string; generation: number } | null>(null)
+  const autoFitBaselineRef = useRef<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [isOfflinePdf, setIsOfflinePdf] = useState(false)
+  const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<string>('resume')
   const [showImportModal, setShowImportModal] = useState(false)
   const [qrInserterOpen, setQrInserterOpen] = useState(false)
@@ -885,6 +889,8 @@ export default function ResumeEditPage() {
   // Variant awareness
   const [parentResumeId, setParentResumeId] = useState<string | null>(null)
   const [parentTitle, setParentTitle] = useState<string | null>(null)
+  const [isLinkedVariant, setIsLinkedVariant] = useState(false)
+  const [linkedEditEnabled, setLinkedEditEnabled] = useState(false)
   const [parentDiffData, setParentDiffData] = useState<DiffWithParentResponse | null>(null)
   const [showParentDiff, setShowParentDiff] = useState(false)
   const [forkPopoverOpen, setForkPopoverOpen] = useState(false)
@@ -929,6 +935,7 @@ export default function ResumeEditPage() {
 
   // Writing assistant
   const [writingOpen, setWritingOpen] = useState(false)
+  const [documentAssistantOpen, setDocumentAssistantOpen] = useState(false)
   const [writingSelected, setWritingSelected] = useState('')
   const [writingContext, setWritingContext] = useState('')
   const [writingRange, setWritingRange] = useState<{ startLine: number; startColumn: number; endLine: number; endColumn: number } | null>(null)
@@ -944,6 +951,8 @@ export default function ResumeEditPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [shareToken, setShareToken] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [shareAnonymous, setShareAnonymous] = useState(false)
+  const [shareReviewComments, setShareReviewComments] = useState(false)
 
   // Keyboard shortcuts panel (Feature 61)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -975,6 +984,8 @@ export default function ResumeEditPage() {
 
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
+  const [rememberedOfflineOwner, setRememberedOfflineOwner] = useState<string | null>(() => getRememberedOfflinePdfOwner())
+  const offlinePdfOwnerId = sessionUserId ?? rememberedOfflineOwner
   const [isMobile, setIsMobile] = useState(false)
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
 
@@ -983,15 +994,353 @@ export default function ResumeEditPage() {
   const [collabIsOwner, setCollabIsOwner] = useState(true)
   const [collabRole, setCollabRole] = useState<ResumeAccessRole>('owner')
   const [presenceUsers, setPresenceUsers] = useState<import('@/lib/api-client').PresenceUser[]>([])
+  const [chatTransport, setChatTransport] = useState<ChatTransport | null>(null)
+  const collaboratorChat = useCollaboratorChat({
+    roomKey: resumeId,
+    authKey: sessionUserId ?? '',
+    transport: chatTransport,
+    canChat: !!sessionData?.session?.token,
+  })
   const collabCanEdit = canEditResume(collabRole)
+  const canEditDocument = collabCanEdit && (!isLinkedVariant || linkedEditEnabled)
 
   // Track Changes (Feature 41)
   const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [remoteSuggestionPeers, setRemoteSuggestionPeers] = useState<SuggestionPresence[]>([])
+  const [suggestionDecisions, setSuggestionDecisions] = useState<SuggestionDecision[]>([])
+  const [suggestionMode, setSuggestionMode] = useState(false)
+  const [suggestionError, setSuggestionError] = useState<string | null>(null)
+  const lastSuggestionDraftRef = useRef<{ findText: string; replacementText: string } | null>(null)
+  const lastSuggestionActionRef = useRef<{ kind: 'accept' | 'reject'; id: string } | null>(null)
 
   const searchParams = useSearchParams()
+  // Mention email deep links should open the Comments panel so the highlighted
+  // comment is reachable immediately, even though Comments lives under More.
+  useEffect(() => {
+    if (searchParams.get('comment_id')) setRightTab('comments')
+  }, [searchParams])
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
+  const [macroEditor, setMacroEditor] = useState<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null)
+  const deepAnalysisSubmissionRef = useRef<{ ownerId: string | null; resumeId: string; generation: number } | null>(null)
   const pdfUrlRef = useRef<string | null>(null)
+  const offlinePdfBlobRef = useRef<Blob | null>(null)
+  const pendingOfflinePdfSaveRef = useRef<{ blob: Blob; ownerId: string; resumeId: string; generation: number } | null>(null)
+  const offlinePdfMountedRef = useRef(false)
+  const offlinePdfRenderIdentityRef = useRef<{ ownerId: string | null; resumeId: string }>({ ownerId: offlinePdfOwnerId, resumeId })
+  const offlinePdfIdentityRef = useRef<{ ownerId: string | null; resumeId: string; generation: number }>({ ownerId: null, resumeId, generation: 0 })
+  offlinePdfRenderIdentityRef.current = { ownerId: offlinePdfOwnerId, resumeId }
+
+  const isCurrentOfflinePdfIdentity = useCallback((ownerId: string | null, routeResumeId: string, generation: number) => (
+    offlinePdfMountedRef.current &&
+    offlinePdfRenderIdentityRef.current.ownerId === ownerId &&
+    offlinePdfRenderIdentityRef.current.resumeId === routeResumeId &&
+    offlinePdfIdentityRef.current.ownerId === ownerId &&
+    offlinePdfIdentityRef.current.resumeId === routeResumeId &&
+    offlinePdfIdentityRef.current.generation === generation
+  ), [])
+
+  useEffect(() => {
+    offlinePdfMountedRef.current = true
+    return () => {
+      offlinePdfMountedRef.current = false
+      offlinePdfIdentityRef.current.generation += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    const previous = offlinePdfIdentityRef.current
+    const changed = previous.ownerId !== offlinePdfOwnerId || previous.resumeId !== resumeId
+    const generation = previous.generation + 1
+    offlinePdfIdentityRef.current = { ownerId: offlinePdfOwnerId, resumeId, generation }
+    if (previous.ownerId !== offlinePdfOwnerId) {
+      setGhConnected(false)
+      setDbxConnected(false)
+      setUserPlan('free')
+      setGhTogglingSync(false)
+      setGhPushing(false)
+      setDbxTogglingSync(false)
+      setDbxSyncing(false)
+    }
+    if (changed && previous.ownerId !== null) {
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+      offlinePdfBlobRef.current = null
+      setPdfUrl(null)
+      setIsOfflinePdf(false)
+      setOfflinePdfLoaded(false)
+    }
+    if (changed) {
+      setShareModalOpen(false)
+      setShareToken(null)
+      setShareUrl(null)
+      setShareAnonymous(false)
+      setShareReviewComments(false)
+      setCompileJobId(null)
+      setAiJobId(null)
+      setIsSubmitting(false)
+      setIsAiSubmitting(false)
+      setIsAutoFitSubmitting(false)
+      setDeepAnalysisJobId(null)
+      setDeepAnalysisUsesRemaining(null)
+      setIsDeepRunning(false)
+      setDeepAnalysisError(null)
+      setDeepPanelOpen(false)
+      deepAnalysisSubmissionRef.current = null
+      userInitiatedJobRef.current = false
+      setStagedAiLatex(null)
+      setCompareData(null)
+      aiBaselineRef.current = null
+      autoCompileTriggeredRef.current = false
+      activePdfJobId.current = null
+      autoFitJobRef.current = null
+      handledAutoFitJobRef.current = null
+      autoFitIdentityRef.current = null
+      autoFitBaselineRef.current = null
+    }
+    const pending = pendingOfflinePdfSaveRef.current
+    if (pending && (pending.ownerId !== offlinePdfOwnerId || pending.resumeId !== resumeId)) {
+      pendingOfflinePdfSaveRef.current = null
+    }
+  }, [offlinePdfOwnerId, resumeId])
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === OFFLINE_PDF_OWNER_KEY || event.key === null) {
+        setRememberedOfflineOwner(getRememberedOfflinePdfOwner())
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
+  // Only server-confirmed local decisions affect status. The Y.Map is a live
+  // notification transport, not an authorization or decision source; trusting
+  // peer-written accepted values would let any document editor forge outcomes.
+  const allSuggestions = useMemo(() => mergeSuggestionPresence(suggestions, remoteSuggestionPeers, suggestionDecisions), [remoteSuggestionPeers, suggestionDecisions, suggestions])
+  const suggestionPresence = useMemo<SuggestionPresence>(() => boundSuggestionPresence({
+    items: suggestions.filter((item) => item.status === 'pending').slice(0, 50),
+    // Proposals are awareness-only; resolver decisions come from the server
+    // and are mirrored through the Y.Map only as a live UI notification.
+    decisions: [],
+  }), [suggestions])
+
+  const handleRemoteSuggestionPresence = useCallback((peers: SuggestionPresence[]) => {
+    setRemoteSuggestionPeers(peers)
+  }, [])
+
+  const confirmRemoteSuggestionDecisions = useCallback((decisions: SuggestionDecision[]) => {
+    // Y.Map values are only hints. Confirm each one through the authenticated
+    // REST authority before allowing it to hide a pending proposal.
+    for (const candidate of decisions) {
+      void apiClient.getSuggestionDecision(resumeId, candidate.id)
+        .then((confirmed) => {
+          setSuggestionDecisions((current) => current.some((item) => item.id === confirmed.suggestion_id)
+            ? current
+            : [...current, {
+              id: confirmed.suggestion_id,
+              status: confirmed.status,
+              decidedByRole: confirmed.decided_by_role,
+              decidedAt: Date.parse(confirmed.decided_at),
+            }])
+        })
+        .catch(() => {
+          // Stale/forged notifications have no effect on suggestion state.
+        })
+    }
+  }, [resumeId])
+
+  const canSuggest = canCreateSuggestion(collabRole)
+  const handleCreateSuggestion = useCallback((findText: string, replacementText: string) => {
+    if (!canSuggest) {
+      setSuggestionError('Viewers cannot create suggestions.')
+      return
+    }
+    lastSuggestionDraftRef.current = { findText, replacementText }
+    const source = editorRef.current?.getValue() ?? latexContent
+    const suggestion = createSuggestion({
+      source,
+      findText,
+      replacementText,
+      authorId: sessionUserId ?? 'current-user',
+      authorName: sessionData?.user?.name || sessionData?.user?.email || 'You',
+    })
+    if (!suggestion) {
+      setSuggestionError('That text is not present in the current document. Edit the text or retry.')
+      return
+    }
+    setSuggestions((current) => [...current, suggestion])
+    setSuggestionError(null)
+  }, [canSuggest, latexContent, sessionData?.user?.email, sessionData?.user?.name, sessionUserId])
+
+  const handleAcceptSuggestion = useCallback(async (id: string) => {
+    if (!canResolveSuggestion(collabRole) || !canEditDocument) {
+      setSuggestionError('Only owners and editors can accept suggestions.')
+      return
+    }
+    const suggestion = allSuggestions.find((item) => item.id === id && item.status === 'pending')
+    if (!suggestion) return
+    const source = editorRef.current?.getValue() ?? latexContent
+    lastSuggestionActionRef.current = { kind: 'accept', id }
+    try {
+      const result = await apiClient.decideSuggestion(resumeId, {
+        suggestion_id: id,
+        status: 'accepted',
+        expected_content: source,
+        original_text: suggestion.originalText,
+        replacement_text: suggestion.replacementText,
+        prefix: suggestion.prefix,
+        suffix: suggestion.suffix,
+      })
+      const decision = { id, status: result.status, decidedByRole: result.decided_by_role, decidedAt: Date.parse(result.decided_at) }
+      if (result.status !== 'accepted') {
+        setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: result.status, conflictReason: 'Another decision already won for this suggestion.' } : item))
+        setSuggestionDecisions((current) => [...current, decision])
+        lastSuggestionActionRef.current = null
+        return
+      }
+      // The server already committed this exact source. Apply it once to the
+      // local Y.Text only if no collaborative edit arrived while the request
+      // was in flight; never overwrite newer local content.
+      const applied = editorRef.current?.applySuggestionResult(source, result.latex_content) ?? false
+      if (!applied) {
+        setSuggestionError('The suggestion was accepted on the server, but this editor changed concurrently. Reload to reconcile it safely.')
+        setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'accepted' } : item))
+        setSuggestionDecisions((current) => [...current, decision])
+        return
+      }
+      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'accepted' } : item))
+      setSuggestionDecisions((current) => [...current, decision])
+      // The authoritative result is now the CAS baseline for subsequent
+      // autosaves. Without this update, the next debounced save could send
+      // the pre-suggestion source and overwrite the accepted document.
+      setLatexContent(result.latex_content)
+      setSavedSnapshot({ title, latex: result.latex_content })
+      setLastSavedAt(Date.now())
+      setSuggestionError(null)
+      lastSuggestionActionRef.current = null
+    } catch (error) {
+      // CAS conflicts and transport failures leave the awareness proposal
+      // pending so the user can retry against the latest source.
+      setSuggestionError(error instanceof Error ? error.message : 'Could not decide this suggestion. It remains pending.')
+    }
+  }, [allSuggestions, canEditDocument, collabRole, latexContent, resumeId, title])
+
+  const handleRejectSuggestion = useCallback(async (id: string) => {
+    const suggestion = allSuggestions.find((item) => item.id === id && item.status === 'pending')
+    if (!suggestion) return
+    const canWithdrawOwn = suggestion?.authorId === sessionUserId
+    if ((!canResolveSuggestion(collabRole) || !canEditDocument) && !canWithdrawOwn) {
+      setSuggestionError('Only owners and editors can reject suggestions; authors can withdraw their own.')
+      return
+    }
+    const isResolver = collabRole === 'owner' || collabRole === 'editor'
+    if (!isResolver) {
+      // Authors may withdraw their own ephemeral proposal without creating a
+      // shared resolver decision.
+      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'rejected' } : item))
+      setSuggestionError(null)
+      return
+    }
+    const source = editorRef.current?.getValue() ?? latexContent
+    lastSuggestionActionRef.current = { kind: 'reject', id }
+    try {
+      const result = await apiClient.decideSuggestion(resumeId, {
+        suggestion_id: id,
+        status: 'rejected',
+        expected_content: source,
+        original_text: suggestion?.originalText ?? '',
+        replacement_text: suggestion?.replacementText ?? '',
+        prefix: suggestion?.prefix ?? '',
+        suffix: suggestion?.suffix ?? '',
+      })
+      const decision = { id, status: result.status, decidedByRole: result.decided_by_role, decidedAt: Date.parse(result.decided_at) }
+      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: result.status } : item))
+      setSuggestionDecisions((current) => [...current, decision])
+      setSuggestionError(null)
+      lastSuggestionActionRef.current = null
+    } catch (error) {
+      setSuggestionError(error instanceof Error ? error.message : 'Could not reject this suggestion. It remains pending.')
+    }
+  }, [allSuggestions, canEditDocument, collabRole, latexContent, resumeId, sessionUserId])
+
+  const retrySuggestion = useCallback(() => {
+    const action = lastSuggestionActionRef.current
+    if (action) {
+      if (action.kind === 'accept') void handleAcceptSuggestion(action.id)
+      else void handleRejectSuggestion(action.id)
+      return
+    }
+    const draft = lastSuggestionDraftRef.current
+    if (draft) handleCreateSuggestion(draft.findText, draft.replacementText)
+    else setSuggestionError(null)
+  }, [handleAcceptSuggestion, handleCreateSuggestion, handleRejectSuggestion])
+
+  const setPreviewBlob = useCallback((blob: Blob, fromOffline = false) => {
+    const nextUrl = URL.createObjectURL(blob)
+    if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+    pdfUrlRef.current = nextUrl
+    offlinePdfBlobRef.current = blob
+    setPdfUrl(nextUrl)
+    setIsOfflinePdf(fromOffline)
+    setOfflinePdfError(null)
+  }, [])
+
+  const loadOfflinePdf = useCallback(async () => {
+    const ownerId = offlinePdfOwnerId
+    const generation = offlinePdfIdentityRef.current.generation
+    if (!ownerId) return
+    setOfflinePdfError(null)
+    try {
+      const cached = await getOfflineCompiledPdf(ownerId, resumeId)
+      if (!isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return
+      if (cached) {
+        if (!title.trim()) setTitle(cached.title)
+        setPreviewBlob(cached.pdf, true)
+        setOfflinePdfLoaded(true)
+        setRightTab('preview')
+      }
+    } catch {
+      if (isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
+        setOfflinePdfError('The offline PDF could not be opened. Check storage access and retry.')
+      }
+    }
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, setPreviewBlob, title])
+
+  const saveCachedPdf = useCallback(async (blob: Blob) => {
+    const ownerId = sessionUserId
+    const generation = offlinePdfIdentityRef.current.generation
+    if (!ownerId || !isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return
+    const pending = { blob, ownerId, resumeId, generation }
+    pendingOfflinePdfSaveRef.current = pending
+    try {
+      await saveOfflineCompiledPdf({
+        ownerId,
+        resumeId,
+        title,
+        pdf: blob,
+        shouldPersist: () => isCurrentOfflinePdfIdentity(ownerId, resumeId, generation),
+      })
+      if (pendingOfflinePdfSaveRef.current !== pending || !isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return
+      pendingOfflinePdfSaveRef.current = null
+      setOfflinePdfError(null)
+    } catch {
+      if (pendingOfflinePdfSaveRef.current === pending && isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
+        setOfflinePdfError('The PDF is ready, but could not be saved for offline reading. Retry to save it.')
+      }
+    }
+  }, [isCurrentOfflinePdfIdentity, resumeId, sessionUserId, title])
+
+  const retryOfflinePdf = useCallback(async () => {
+    const pending = pendingOfflinePdfSaveRef.current
+    const generation = offlinePdfIdentityRef.current.generation
+    if (pending && sessionUserId && pending.ownerId === sessionUserId && pending.resumeId === resumeId && pending.generation === generation && isCurrentOfflinePdfIdentity(sessionUserId, resumeId, generation)) {
+      await saveCachedPdf(pending.blob)
+      return
+    }
+    await loadOfflinePdf()
+  }, [isCurrentOfflinePdfIdentity, loadOfflinePdf, resumeId, saveCachedPdf, sessionUserId])
 
   // PWA: detect mobile breakpoint (Feature 79E)
   useEffect(() => {
@@ -1002,46 +1351,101 @@ export default function ResumeEditPage() {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
+  // Remember only a confirmed authenticated identity. This non-secret binding
+  // lets an already-authenticated browser reopen the exact resume offline; it
+  // is never used to enumerate documents or make an API request.
+  useEffect(() => {
+    if (sessionUserId) rememberOfflinePdfOwner(sessionUserId)
+    else setRememberedOfflineOwner(getRememberedOfflinePdfOwner())
+  }, [sessionUserId])
+
   // PWA: flush offline drafts and compile queue when connection restores (Feature 79C/79D)
   useEffect(() => {
+    let cancelled = false
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     if (!isOnline) {
       // Recount pending items so the banner badge stays current
-      Promise.all([pendingDraftCount()]).then(([count]) => setOfflinePendingCount(count))
-      return
+      if (offlinePdfOwnerId) void pendingDraftCount(offlinePdfOwnerId).then(count => { if (isActive()) setOfflinePendingCount(count) }).catch(() => {})
+      return () => { cancelled = true }
     }
+    // Initial loading restores a pending local draft before any successful
+    // reconnect flush is allowed to delete it from IndexedDB.
+    if (isLoading || !sessionUserId) return
     // Flush pending drafts
-    getPendingDrafts().then(async (drafts) => {
+    void getPendingDrafts(sessionUserId).then(async (drafts) => {
+      if (!isActive()) return
       for (const draft of drafts) {
+        if (!isActive()) return
+        const releaseReservation = acquireReconnectReservation(draftReconnectReservationKey(draft))
+        if (!releaseReservation) continue
         try {
+          // Older drafts may not carry a base snapshot. Before allowing one
+          // to write, prove that the server still has exactly the draft's
+          // source; otherwise leave it pending for explicit reconciliation.
+          let expectedLatexContent = draft.expectedLatexContent
+          if (expectedLatexContent === undefined) {
+            const current = await apiClient.getResume(draft.resumeId)
+            if (!isActive()) return
+            if (current.latex_content !== draft.latexContent) {
+              throw new Error('Offline draft conflicts with newer server content')
+            }
+            expectedLatexContent = current.latex_content
+          }
           await apiClient.updateResume(draft.resumeId, {
             title: draft.title,
             latex_content: draft.latexContent,
+            expected_latex_content: expectedLatexContent,
           })
-          await deleteDraft(draft.resumeId)
+          // A newer local revision may have been saved while the HTTP request
+          // was in flight. Acknowledge only this captured owner's exact revision.
+          await deleteDraftIfUnchanged(draft)
+          if (!isActive()) return
         } catch {
           // Leave in pending state; will retry on next reconnect
+        } finally {
+          releaseReservation()
         }
       }
-      setOfflinePendingCount(0)
-    })
+      if (!isActive()) return
+      const count = await pendingDraftCount(sessionUserId)
+      if (isActive()) setOfflinePendingCount(count)
+    }).catch(() => {})
     // Flush queued compiles
-    getQueuedCompiles().then(async (queued) => {
+    void getQueuedCompiles(sessionUserId).then(async (queued) => {
+      if (!isActive()) return
       for (const job of queued) {
+        if (!isActive()) return
+        const releaseReservation = acquireReconnectReservation(compileReconnectReservationKey(sessionUserId, job))
+        if (!releaseReservation) continue
         try {
           const r = await apiClient.compileLatex({
             latex_content: job.latexContent,
             resume_id: job.resumeId,
           })
           if (r.success) {
-            await dequeueCompile(job.id)
+            await dequeueCompile(sessionUserId, job.id)
+            if (!isActive()) return
             toast.success('Queued compilation submitted')
           }
         } catch {
           // Leave in queue; will retry on next reconnect
+        } finally {
+          releaseReservation()
         }
       }
-    })
-  }, [isOnline]) // eslint-disable-line react-hooks/exhaustive-deps
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [isCurrentOfflinePdfIdentity, isOnline, isLoading, offlinePdfOwnerId, resumeId, sessionUserId])
+
+  // A compiled PDF is deliberately not in the service-worker cache. When the
+  // editor goes offline, restore only this authenticated owner/resume pair
+  // from the explicit IndexedDB cache.
+  useEffect(() => {
+    if (isOnline || !offlinePdfOwnerId) return
+    void loadOfflinePdf()
+  }, [isOnline, loadOfflinePdf, offlinePdfOwnerId])
 
   // Navigate to line from ?line= search param (set by ProjectSearchModal)
   useEffect(() => {
@@ -1067,26 +1471,43 @@ export default function ResumeEditPage() {
   // Check GitHub user connection
   useEffect(() => {
     if (sessionLoading || !sessionData) return
+    let cancelled = false
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     apiClient.getGitHubStatus()
-      .then(s => setGhConnected(s.connected))
-      .catch(e => console.error('Failed to load GitHub connection status', e))
-  }, [sessionData, sessionLoading])
+      // A public-import-only OAuth grant is connected, but cannot read or
+      // write the private repository used by resume sync.
+      .then(s => { if (isActive()) setGhConnected(s.private_sync) })
+      .catch(e => { if (isActive()) console.error('Failed to load GitHub connection status', e) })
+    return () => { cancelled = true }
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading])
 
   // Check Dropbox user connection (Feature 77)
   useEffect(() => {
     if (sessionLoading || !sessionData) return
+    let cancelled = false
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     apiClient.getDropboxStatus()
-      .then(s => setDbxConnected(s.connected))
-      .catch(e => console.error('Failed to load Dropbox connection status', e))
-  }, [sessionData, sessionLoading])
+      .then(s => { if (isActive()) setDbxConnected(s.connected) })
+      .catch(e => { if (isActive()) console.error('Failed to load Dropbox connection status', e) })
+    return () => { cancelled = true }
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading])
 
   // Fetch user plan for priority queue badge (Feature 34)
   useEffect(() => {
     if (sessionLoading || !sessionData) return
+    let cancelled = false
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     apiClient.getCurrentPlan()
-      .then(setUserPlan)
-      .catch(e => console.error('Failed to load subscription plan', e))
-  }, [sessionData, sessionLoading])
+      .then(plan => { if (isActive()) setUserPlan(plan) })
+      .catch(e => { if (isActive()) console.error('Failed to load subscription plan', e) })
+    return () => { cancelled = true }
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading])
 
   const {
     score: quickATSScore,
@@ -1133,23 +1554,146 @@ export default function ResumeEditPage() {
     setDeepPanelOpen(false)
   }, [])
 
-  const { result: confidenceResult, loading: confidenceLoading, refetch: refetchConfidence } = useConfidenceScore(latexContent)
+  const { result: confidenceResult, loading: confidenceLoading, error: confidenceError, refetch: refetchConfidence } = useConfidenceScore(latexContent)
   const [confidencePanelOpen, setConfidencePanelOpen] = useState(false)
 
-  const { state: compileStream } = useJobStream(compileJobId)
-  const { state: aiStream } = useJobStream(aiJobId)
-  const { state: deepStream } = useJobStream(deepAnalysisJobId)
+  // Account/resume changes render once before the identity effect clears the
+  // job state. Hide raw ids during that transition so the stream hook cannot
+  // keep an old subscription alive, and so completed-job effects cannot fetch
+  // an old owner's PDF under the new identity.
+  const ownsRenderedJobState = (
+    offlinePdfIdentityRef.current.ownerId === offlinePdfOwnerId &&
+    offlinePdfIdentityRef.current.resumeId === resumeId
+  )
+  const ownedCompileJobId = ownsRenderedJobState ? compileJobId : null
+  const ownedAiJobId = ownsRenderedJobState ? aiJobId : null
+  const { state: compileStream } = useJobStream(ownedCompileJobId)
+  const { state: aiStream } = useJobStream(ownedAiJobId)
 
-  // Load resume and auto-compile on load
+  const shareOrDownloadPdf = useCallback(async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    let blob = offlinePdfBlobRef.current
+    const id = ownsRenderedJobState
+      ? (compileStream.pdfJobId ?? aiStream.pdfJobId ?? activePdfJobId.current ?? ownedCompileJobId ?? ownedAiJobId)
+      : null
+    try {
+      if (!blob && id) blob = await apiClient.downloadPdf(id)
+      if (!isActive()) return
+      if (!blob) throw new Error('No compiled PDF is available yet')
+      const filename = `${title.replace(/\s+/g, '_') || 'resume'}.pdf`
+      const file = new File([blob], filename, { type: 'application/pdf' })
+      const canShareFiles = typeof navigator !== 'undefined' && typeof navigator.share === 'function' &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      if (canShareFiles) {
+        try {
+          await navigator.share({ files: [file], title: title || 'Resume PDF' })
+          return
+        } catch (error) {
+          // User cancellation is not an error; other Web Share failures use the
+          // same explicit download fallback as browsers without Web Share.
+          if (error instanceof DOMException && error.name === 'AbortError') return
+        }
+      }
+      if (!isActive()) return
+      downloadBlob(blob, filename)
+    } catch {
+      if (isActive()) setOfflinePdfError('Sharing or downloading the PDF failed. Retry when storage or network access is available.')
+    }
+  }, [aiStream.pdfJobId, compileStream.pdfJobId, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, ownedAiJobId, ownedCompileJobId, ownsRenderedJobState, resumeId, title])
+  // A session/resume switch is rendered before the identity effect below can
+  // clear the previous job id. Do not let useJobStream re-subscribe to that
+  // old id during the transition render.
+  const ownedDeepAnalysisJobId = (
+    offlinePdfIdentityRef.current.ownerId === offlinePdfOwnerId &&
+    offlinePdfIdentityRef.current.resumeId === resumeId
+  ) ? deepAnalysisJobId : null
+  const { state: deepStream } = useJobStream(ownedDeepAnalysisJobId)
+
+  // Load the server copy and prefer a pending local draft when one exists.
+  // This makes offline storage recoverable after refresh instead of write-only.
   useEffect(() => {
-    if (sessionLoading || !sessionData) return
+    if (sessionLoading) return
+    let cancelled = false
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+
+    if (!sessionData) {
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        setIsLoading(false)
+        return
+      }
+
+      setIsLoading(true)
+      setResumeLoadError(null)
+      if (!ownerAtStart) {
+        setResumeLoadError('No offline document is available for this browser profile.')
+        setIsLoading(false)
+        return
+      }
+      // Cold offline recovery uses the last confirmed owner in this browser
+      // profile; an unlocked browser profile cannot distinguish an unclean physical
+      // handoff, so confirmed login/account switch and logout perform purges.
+      void getDraft(ownerAtStart, resumeId)
+        .then(async (draft) => {
+          if (!isActive()) return
+          if (!draft) {
+            // A compiled PDF can be read without restoring editable source.
+            // Keep the exact route scoped to the last confirmed owner id.
+            if (ownerAtStart) {
+              const cachedPdf = await getOfflineCompiledPdf(ownerAtStart, resumeId).catch(() => null)
+              if (isActive() && cachedPdf) {
+                setOfflinePdfLoaded(true)
+                return
+              }
+            }
+            if (!isActive()) return
+            setResumeLoadError('No offline draft is available for this resume.')
+            return
+          }
+          if (!isActive()) return
+          setTitle(draft.title)
+          setLatexContent(draft.latexContent)
+          setSavedSnapshot({ title: draft.title, latex: draft.latexContent })
+          editorRef.current?.setValue(draft.latexContent)
+          setOfflineDraftLoaded(true)
+          setLastSavedAt(new Date(draft.savedAt).getTime())
+        })
+        .catch(() => {
+          if (isActive()) setResumeLoadError('The offline draft could not be loaded from this device.')
+        })
+        .finally(() => {
+          if (isActive()) setIsLoading(false)
+        })
+
+      return () => { cancelled = true }
+    }
+
     const fetchResume = async () => {
+      setIsLoading(true)
+      setResumeLoadError(null)
       try {
-        const data = await apiClient.getResume(resumeId)
-        setTitle(data.title)
-        setLatexContent(data.latex_content)
+        const [data, localDraft] = await Promise.all([
+          apiClient.getResume(resumeId),
+          sessionUserId ? getDraft(sessionUserId, resumeId).catch(() => null) : Promise.resolve(null),
+        ])
+        if (!isActive()) return
+        const pendingDraft = localDraft?.syncStatus === 'pending' ? localDraft : null
+        const effectiveTitle = pendingDraft?.title ?? data.title
+        const effectiveLatex = pendingDraft?.latexContent ?? data.latex_content
+        setTitle(effectiveTitle)
+        setLatexContent(effectiveLatex)
+        // Keep the server copy as the CAS baseline even while showing a
+        // pending local draft. A reconnect must never overwrite a newer
+        // collaborative edit with this full-document draft.
         setSavedSnapshot({ title: data.title, latex: data.latex_content })
-        editorRef.current?.setValue(data.latex_content)
+        editorRef.current?.setValue(effectiveLatex)
+        if (pendingDraft) {
+          setOfflineDraftLoaded(true)
+          setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
+        }
         // Load compiler preference from resume metadata
         const savedCompiler = data.metadata?.compiler as LatexCompiler | undefined
         if (savedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(savedCompiler)) {
@@ -1157,20 +1701,28 @@ export default function ResumeEditPage() {
         }
         // Load all compile settings for the modal (Feature 38)
         const meta = data.metadata as Record<string, unknown> | null | undefined
+        setBibliographyBibTeX(typeof meta?.bibtex === 'string' ? meta.bibtex : '')
         setCompileSettings({
           compiler: savedCompiler ?? 'pdflatex',
           texlive_version: (meta?.texlive_version as string | null | undefined) ?? null,
           main_file: (meta?.main_file as string | undefined) ?? 'resume.tex',
           latexmk_flags: ((meta?.latexmk_flags as string[] | undefined) ?? []) as CompileSettings['latexmk_flags'],
           extra_packages: (meta?.extra_packages as string[] | undefined) ?? [],
+          halt_on_error: meta?.halt_on_error !== false,
+          draft_mode: meta?.draft_mode === true,
         })
         // Load share token state
         setShareToken(data.share_token ?? null)
         setShareUrl(data.share_url ?? null)
+        setShareAnonymous(data.share_anonymous ?? false)
+        setShareReviewComments(data.share_review_comments ?? false)
         // Feature 86 — presentation support
         setDocumentType(data.document_type ?? 'resume')
+        setAcademicReport(null)
         if ((data.document_type ?? 'resume') !== 'presentation') {
-          apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+          apiClient.getAcademicCVReport(resumeId).then(report => {
+            if (isActive()) setAcademicReport(report)
+          }).catch(() => {})
         }
 
         // GitHub sync state
@@ -1182,33 +1734,43 @@ export default function ResumeEditPage() {
         setCollabIsOwner(data.user_id === sessionUserId)
         setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
 
-        setParentResumeId(data.parent_resume_id ?? null)
+        const nextParentResumeId = data.parent_resume_id ?? null
+        setParentResumeId(nextParentResumeId)
+        setParentTitle(null)
+        setIsLinkedVariant(data.content_source === 'builder_variant')
         // Fetch parent title if this is a variant
-        if (data.parent_resume_id) {
-          apiClient.getResume(data.parent_resume_id).then(p => setParentTitle(p.title)).catch(() => {
-            setParentResumeId(null) // parent was deleted
+        if (nextParentResumeId) {
+          apiClient.getResume(nextParentResumeId).then(p => {
+            if (isActive()) setParentTitle(p.title)
+          }).catch(() => {
+            if (isActive()) {
+              setParentResumeId(null) // parent was deleted
+              setParentTitle(null)
+            }
           })
         }
 
         // Auto-compile on load so user sees PDF immediately
-        if (data.latex_content && data.latex_content.length >= 100) {
+        if (effectiveLatex && effectiveLatex.length >= 100) {
           try {
             const initCompiler = (data.metadata?.compiler as LatexCompiler | undefined) ?? 'pdflatex'
-            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: initCompiler })
-            if (r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
+            const r = await apiClient.compileLatex({ latex_content: effectiveLatex, resume_id: resumeId, compiler: initCompiler })
+            if (isActive() && r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
           } catch {
             // Silent — user can compile manually
           }
         }
-      } catch {
-        toast.error('Failed to load resume')
-        router.push('/workspace')
+      } catch (error) {
+        if (isActive()) {
+          setResumeLoadError(error instanceof Error ? error.message : 'Resume could not be loaded.')
+        }
       } finally {
-        setIsLoading(false)
+        if (isActive()) setIsLoading(false)
       }
     }
-    fetchResume()
-  }, [resumeId, router, sessionData, sessionLoading, sessionUserId])
+    void fetchResume()
+    return () => { cancelled = true }
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionUserId])
 
   // A completed rewrite remains staged until the user explicitly applies it.
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
@@ -1238,30 +1800,36 @@ export default function ResumeEditPage() {
       (aiStream.status === 'completed' && aiStream.pdfJobId)
 
     if (anyCompleted && pdfJobId) {
+      // A session/account refresh changes this effect's dependencies. Do not
+      // restart a completed job's one-use PDF fetch for the new owner: the
+      // original request is already guarded by its captured identity, while a
+      // second request would let an old job become current again.
+      if (activePdfJobId.current === pdfJobId) return
       activePdfJobId.current = pdfJobId
+      const ownerAtStart = sessionUserId
+      const generationAtStart = offlinePdfIdentityRef.current.generation
       apiClient.downloadPdf(pdfJobId).then((blob) => {
-        const nextUrl = URL.createObjectURL(blob)
-        if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
-        pdfUrlRef.current = nextUrl
-        setPdfUrl(nextUrl)
+        if (!ownerAtStart || !isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) || activePdfJobId.current !== pdfJobId) return
+        setPreviewBlob(blob)
+        // This is a successful response for the authenticated compile job tied
+        // to this owned resume; failed/anonymous or stale responses never enter
+        // the local cache.
+        void saveCachedPdf(blob)
         setRightTab('preview')
-      }).catch(() => toast.error('Failed to load PDF preview'))
-      return
+      }).catch(() => {
+        if (!ownerAtStart || !isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) || activePdfJobId.current !== pdfJobId) return
+        setOfflinePdfError('Failed to load the PDF preview. Retry to load the latest compiled PDF.')
+        if (!isOnline) void loadOfflinePdf()
+      })
     }
 
-    const anyRunning =
-      compileStream.status === 'queued' || compileStream.status === 'processing' ||
-      aiStream.status === 'queued' || aiStream.status === 'processing'
-
-    if (anyRunning && pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current)
-      pdfUrlRef.current = null
-      setPdfUrl(null)
-      activePdfJobId.current = null
-    }
+    // Keep the last successful preview while a replacement compiles. A failed
+    // compile should not destroy the only usable PDF the user still has; the
+    // object URL is swapped and revoked only after the next PDF downloads.
   }, [
     compileStream.status, compileStream.pdfJobId,
     aiStream.status, aiStream.pdfJobId,
+    isCurrentOfflinePdfIdentity, isOnline, loadOfflinePdf, resumeId, saveCachedPdf, sessionUserId, setPreviewBlob,
   ])
 
   // Cleanup blob URL on unmount
@@ -1350,100 +1918,154 @@ export default function ResumeEditPage() {
   // ── Handlers ────────────────────────────────────────────────────────────
   // ── GitHub sync handlers ──────────────────────────────────────────
   const handleToggleGitHubSync = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setGhTogglingSync(true)
     try {
       if (ghSyncEnabled) {
         await apiClient.disableGitHubSync(resumeId)
+        if (!isActive()) return
         setGhSyncEnabled(false)
         toast.success('GitHub sync disabled')
       } else {
         await apiClient.enableGitHubSync(resumeId)
+        if (!isActive()) return
         setGhSyncEnabled(true)
         toast.success('GitHub sync enabled')
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to toggle sync')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'Failed to toggle sync')
     } finally {
-      setGhTogglingSync(false)
+      if (isActive()) setGhTogglingSync(false)
     }
   }
 
   const handlePushToGitHub = async () => {
+    if (ghPushing || autoSaving || isSaving) return
+    if (!canEditDocument) {
+      toast.error('Detach this linked variant before pushing editor changes')
+      return
+    }
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setGhPushing(true)
     try {
       // Save first to ensure latest content is pushed
       const content = editorRef.current?.getValue() || latexContent
-      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      await apiClient.updateResume(resumeId, {
+        title,
+        latex_content: content,
+        expected_latex_content: savedSnapshot.latex,
+      })
+      if (!isActive()) return
+      setLatexContent(content)
+      setSavedSnapshot({ title, latex: content })
+      setLastSavedAt(Date.now())
       const result = await apiClient.pushToGitHub(resumeId)
+      if (!isActive()) return
       toast.success(result.message)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'GitHub push failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'GitHub push failed')
     } finally {
-      setGhPushing(false)
+      if (isActive()) setGhPushing(false)
     }
   }
 
-  const handlePullFromGitHub = () => setConfirmPull('github')
+  const handlePullFromGitHub = () => {
+    if (ghPushing || autoSaving || isSaving) return
+    setConfirmPull('github')
+  }
   const doPullFromGitHub = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setGhPushing(true)
     try {
       const result = await apiClient.pullFromGitHub(resumeId)
+      if (!isActive()) return
+      pushUndo('Before GitHub pull')
       editorRef.current?.setValue(result.latex_content)
       setLatexContent(result.latex_content)
+      setSavedSnapshot({ title, latex: result.latex_content })
+      setLastSavedAt(Date.now())
       toast.success('Pulled latest content from GitHub')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'GitHub pull failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'GitHub pull failed')
     } finally {
-      setGhPushing(false)
+      if (isActive()) setGhPushing(false)
     }
   }
 
   // ── Dropbox sync handlers (Feature 77) ───────────────────────────────────
   const handleToggleDropboxSync = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setDbxTogglingSync(true)
     try {
       if (dbxSyncEnabled) {
         await apiClient.disableDropboxSync(resumeId)
+        if (!isActive()) return
         setDbxSyncEnabled(false)
         toast.success('Dropbox sync disabled')
       } else {
         await apiClient.enableDropboxSync(resumeId)
+        if (!isActive()) return
         setDbxSyncEnabled(true)
         toast.success('Dropbox sync enabled — initial push complete')
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to toggle Dropbox sync')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'Failed to toggle Dropbox sync')
     } finally {
-      setDbxTogglingSync(false)
+      if (isActive()) setDbxTogglingSync(false)
     }
   }
 
   const handlePushToDropbox = async () => {
+    if (!canEditDocument) {
+      toast.error('Detach this linked variant before pushing editor changes')
+      return
+    }
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setDbxSyncing(true)
     try {
       const content = editorRef.current?.getValue() || latexContent
-      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      await apiClient.updateResume(resumeId, {
+        title,
+        latex_content: content,
+        expected_latex_content: savedSnapshot.latex,
+      })
+      if (!isActive()) return
       const result = await apiClient.pushToDropbox(resumeId)
+      if (!isActive()) return
       toast.success(result.message)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Dropbox push failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'Dropbox push failed')
     } finally {
-      setDbxSyncing(false)
+      if (isActive()) setDbxSyncing(false)
     }
   }
 
   const handlePullFromDropbox = () => setConfirmPull('dropbox')
   const doPullFromDropbox = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setDbxSyncing(true)
     try {
       const result = await apiClient.pullFromDropbox(resumeId)
+      if (!isActive()) return
       editorRef.current?.setValue(result.latex_content)
       setLatexContent(result.latex_content)
       toast.success('Pulled latest content from Dropbox')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Dropbox pull failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'Dropbox pull failed')
     } finally {
-      setDbxSyncing(false)
+      if (isActive()) setDbxSyncing(false)
     }
   }
 
@@ -1451,7 +2073,7 @@ export default function ResumeEditPage() {
   const handleToggleEditorMode = useCallback((mode: 'source' | 'wysiwyg') => {
     if (mode === editorMode) return
     if (mode === 'wysiwyg') {
-      const src = editorRef.current?.getValue() ?? latexContent
+      const src = editorRef.current?.getValue() || latexContent
       const { doc, warnings } = parseResume(src)
       const hasRaw = warnings.some((w) => w.type === 'unrecognised_block')
       // Round-trip through the visual model can reorder/reformat LaTeX the parser
@@ -1487,55 +2109,121 @@ export default function ResumeEditPage() {
   }, [editorMode, latexContent, wysiwygDoc, resumeId, pushUndo])
 
   const handleWysiwygChange = useCallback((doc: ResumeDoc) => {
-    if (!collabCanEdit) return
+    if (!canEditDocument) return
     setWysiwygDoc(doc)
     setLatexContent(serializeResume(doc))
-  }, [collabCanEdit])
+  }, [canEditDocument])
+
+  // The selected mode is persisted independently from the parsed visual model.
+  // Rebuild that model after a reload; otherwise a resume last viewed in Visual
+  // mode remains on the "Parsing…" placeholder forever because no toggle event
+  // runs to call parseResume().
+  useEffect(() => {
+    if (isLoading || editorMode !== 'wysiwyg' || wysiwygDoc || !latexContent) return
+    const { doc, warnings } = parseResume(latexContent)
+    setWysiwygDoc(doc)
+    setWysiwygHasRaw(warnings.some((warning) => warning.type === 'unrecognised_block'))
+  }, [editorMode, isLoading, latexContent, wysiwygDoc])
 
   const handleSave = async () => {
-    if (!collabCanEdit) {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    if (!canEditDocument) {
+      if (isLinkedVariant) {
+        toast.error('Choose “Detach and edit LaTeX” before saving editor changes')
+        return
+      }
       toast.error('This collaborator role has read-only access')
+      return
+    }
+    if (!title.trim()) {
+      setSaveError('A resume title is required')
+      toast.error('Enter a resume title before saving')
+      return
+    }
+    if (title.length > 255) {
+      setSaveError('Resume titles must be 255 characters or fewer')
+      toast.error('Resume title is too long')
       return
     }
     const content = editorRef.current?.getValue() || latexContent
     // Offline: persist to IndexedDB instead of API (Feature 79C)
     if (!navigator.onLine) {
-      await saveDraft({
-        resumeId,
-        title,
-        latexContent: content,
-        savedAt: new Date(),
-        syncStatus: 'pending',
-      })
-      setLatexContent(content)
-      setSavedSnapshot({ title, latex: content })
-      setLastSavedAt(Date.now())
-      const count = await pendingDraftCount()
-      setOfflinePendingCount(count)
-      toast.info('Saved locally — will sync when back online')
+      if (!ownerAtStart) {
+        setSaveError('Sign in once on this browser before saving drafts offline')
+        toast.error('Could not save the offline draft')
+        return
+      }
+      try {
+        await saveDraft({
+          ownerId: ownerAtStart,
+          resumeId,
+          title,
+          latexContent: content,
+          expectedLatexContent: savedSnapshot.latex,
+          savedAt: new Date(),
+          syncStatus: 'pending',
+        })
+        if (!isActive()) return
+        setLatexContent(content)
+        setSavedSnapshot({ title, latex: content })
+        setLastSavedAt(Date.now())
+        setSaveError(null)
+        const count = await pendingDraftCount(ownerAtStart)
+        if (!isActive()) return
+        setOfflinePendingCount(count)
+        toast.info('Saved locally — will sync when back online')
+      } catch (error) {
+        if (!isActive()) return
+        const message = error instanceof Error ? error.message : 'Local draft storage failed'
+        setSaveError(message)
+        toast.error('Could not save the offline draft')
+      }
       return
     }
     setIsSaving(true)
     try {
-      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      await apiClient.updateResume(resumeId, {
+        title,
+        latex_content: content,
+        expected_latex_content: savedSnapshot.latex,
+      })
+      if (!isActive()) return
       setLatexContent(content)
       setSavedSnapshot({ title, latex: content })
       setLastSavedAt(Date.now())
+      setSaveError(null)
+      if (isLinkedVariant) {
+        setIsLinkedVariant(false)
+        setLinkedEditEnabled(false)
+      }
       toast.success('Saved')
-    } catch {
-      toast.error('Failed to save')
+    } catch (error) {
+      if (!isActive()) return
+      const message = error instanceof Error ? error.message : 'Failed to save'
+      setSaveError(message)
+      toast.error(message)
     } finally {
-      setIsSaving(false)
+      if (isActive()) setIsSaving(false)
     }
   }
 
   const runCompile = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     const content = editorRef.current?.getValue() || latexContent
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     // Offline: queue the compile for later (Feature 79D)
     if (!navigator.onLine) {
-      await enqueueCompile(resumeId, content)
-      toast.info('Queued — will compile when back online')
+      try {
+        if (!ownerAtStart) throw new Error('Sign in once on this browser before queuing compiles offline')
+        await enqueueCompile(ownerAtStart, resumeId, content)
+        if (isActive()) toast.info('Queued — will compile when back online')
+      } catch (error) {
+        if (isActive()) toast.error(error instanceof Error ? error.message : 'Could not queue the offline compile')
+      }
       return
     }
     setIsSubmitting(true)
@@ -1543,15 +2231,16 @@ export default function ResumeEditPage() {
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      if (!isActive()) return
       userInitiatedJobRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
       setRightTab('logs')
       toast.success('Compilation started')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Compile failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'Compile failed')
     } finally {
-      setIsSubmitting(false)
+      if (isActive()) setIsSubmitting(false)
     }
   }
 
@@ -1568,7 +2257,6 @@ export default function ResumeEditPage() {
     try {
       const r = await apiClient.compileLatex({
         latex_content: standaloneDoc,
-        resume_id: resumeId,
         compiler,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
@@ -1583,6 +2271,9 @@ export default function ResumeEditPage() {
   }
 
   const runAiOptimize = async () => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     const content = editorRef.current?.getValue() || latexContent
     aiBaselineRef.current = content
     setStagedAiLatex(null)
@@ -1601,14 +2292,15 @@ export default function ResumeEditPage() {
         compiler,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      if (!isActive()) return
       userInitiatedJobRef.current = true
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
       toast.success('AI optimization started')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'AI optimization failed')
+      if (isActive()) toast.error(e instanceof Error ? e.message : 'AI optimization failed')
     } finally {
-      setIsAiSubmitting(false)
+      if (isActive()) setIsAiSubmitting(false)
     }
   }
 
@@ -1647,10 +2339,14 @@ export default function ResumeEditPage() {
     if (applyOptimizationCandidate(stagedAiLatex, true)) {
       toast.success('Applied AI optimization')
       if (documentType !== 'presentation') {
-        apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+        const ownerAtStart = offlinePdfOwnerId
+        const generationAtStart = offlinePdfIdentityRef.current.generation
+        apiClient.getAcademicCVReport(resumeId).then(report => {
+          if (isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)) setAcademicReport(report)
+        }).catch(() => {})
       }
     }
-  }, [applyOptimizationCandidate, documentType, resumeId, stagedAiLatex])
+  }, [applyOptimizationCandidate, documentType, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, stagedAiLatex])
 
   const handleDiscardOptimization = useCallback(() => {
     setStagedAiLatex(null)
@@ -1710,24 +2406,33 @@ export default function ResumeEditPage() {
 
 
   const handleDownload = async () => {
-    const id = compileStream.pdfJobId ?? aiStream.pdfJobId ?? compileJobId ?? aiJobId
-    if (!id) return
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    const id = ownsRenderedJobState
+      ? (compileStream.pdfJobId ?? aiStream.pdfJobId ?? activePdfJobId.current ?? ownedCompileJobId ?? ownedAiJobId)
+      : null
     try {
-      const blob = await apiClient.downloadPdf(id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${title.replace(/\s+/g, '_') || 'resume'}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch { toast.error('Download failed') }
+      const blob = id ? await apiClient.downloadPdf(id) : offlinePdfBlobRef.current
+      if (!isActive()) return
+      if (!blob) throw new Error('No compiled PDF is available yet')
+      downloadBlob(blob, `${title.replace(/\s+/g, '_') || 'resume'}.pdf`)
+    } catch {
+      if (isActive()) setOfflinePdfError('Download failed. Retry when the PDF or network is available.')
+    }
   }
 
   const handleOpenDeepAnalysis = useCallback(async (industryOverride?: string) => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     setDeepPanelOpen(true)
-    if (deepAnalysisJobId) return // already have a job running/done
+    const activeSubmission = deepAnalysisSubmissionRef.current
+    if (deepAnalysisJobId || (activeSubmission && activeSubmission.ownerId === ownerAtStart && activeSubmission.resumeId === resumeId && activeSubmission.generation === generationAtStart)) return // already have a job running/done
     const content = editorRef.current?.getValue() || latexContent
     if (!content.trim()) { toast.error('Add LaTeX content first'); return }
+    const submission = { ownerId: ownerAtStart, resumeId, generation: generationAtStart }
+    deepAnalysisSubmissionRef.current = submission
     setIsDeepRunning(true)
     setDeepAnalysisError(null)
     try {
@@ -1737,12 +2442,14 @@ export default function ResumeEditPage() {
         industry_override: industryOverride,
       })
       if (response.success && response.job_id) {
+        if (!isActive()) return
         setDeepAnalysisJobId(response.job_id)
         setDeepAnalysisUsesRemaining(response.uses_remaining ?? null)
       } else {
         throw new Error(response.message || 'Deep analysis failed')
       }
     } catch (error) {
+      if (!isActive()) return
       const msg = error instanceof Error ? error.message : 'Deep analysis failed'
       setDeepAnalysisError(msg)
       toast.error(msg)
@@ -1750,9 +2457,10 @@ export default function ResumeEditPage() {
         setDeepAnalysisUsesRemaining(0)
       }
     } finally {
-      setIsDeepRunning(false)
+      if (deepAnalysisSubmissionRef.current === submission) deepAnalysisSubmissionRef.current = null
+      if (isActive()) setIsDeepRunning(false)
     }
-  }, [deepAnalysisJobId, latexContent, jobDescription])
+  }, [deepAnalysisJobId, isCurrentOfflinePdfIdentity, jobDescription, latexContent, offlinePdfOwnerId, resumeId])
 
   const handleSyncToSource = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
@@ -1897,21 +2605,29 @@ export default function ResumeEditPage() {
       // Fork copies the last-saved server state — persist the live editor buffer
       // first so unsaved edits are carried into the new variant (Finding: stale fork).
       if (isDirtyRef.current) {
-        const content = editorRef.current?.getValue() ?? latexContent
-        await apiClient.updateResume(resumeId, { title, latex_content: content })
+        const content = editorRef.current?.getValue() || latexContent
+        await apiClient.updateResume(resumeId, {
+          title,
+          latex_content: content,
+          expected_latex_content: savedSnapshot.latex,
+        })
         setSavedSnapshot({ title, latex: content })
         setLastSavedAt(Date.now())
       }
       const newResume = await apiClient.forkResume(resumeId, forkTitleInput || undefined)
       setForkPopoverOpen(false)
       setForkTitleInput('')
-      router.push(`/workspace/${newResume.id}/edit`)
+      router.push(
+        newResume.content_source === 'builder_variant'
+          ? `/workspace/variant/${newResume.id}`
+          : `/workspace/${newResume.id}/edit`
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create variant')
     } finally {
       setIsForkingResume(false)
     }
-  }, [resumeId, forkTitleInput, isForkingResume, router, title, latexContent])
+  }, [resumeId, forkTitleInput, isForkingResume, router, title, latexContent, savedSnapshot.latex])
 
   const handleAcademicConvert = useCallback(async () => {
     if (isAcademicConverting) return
@@ -1920,8 +2636,12 @@ export default function ResumeEditPage() {
       // Convert operates on saved server content — persist live edits first
       // so the industry variant reflects what the user currently sees.
       if (isDirtyRef.current) {
-        const content = editorRef.current?.getValue() ?? latexContent
-        await apiClient.updateResume(resumeId, { title, latex_content: content })
+        const content = editorRef.current?.getValue() || latexContent
+        await apiClient.updateResume(resumeId, {
+          title,
+          latex_content: content,
+          expected_latex_content: savedSnapshot.latex,
+        })
         setSavedSnapshot({ title, latex: content })
         setLastSavedAt(Date.now())
       }
@@ -1940,7 +2660,7 @@ export default function ResumeEditPage() {
     } finally {
       setIsAcademicConverting(false)
     }
-  }, [resumeId, academicTargetIndustry, academicRoleDescription, academicReport, isAcademicConverting, router, title, latexContent])
+  }, [resumeId, academicTargetIndustry, academicRoleDescription, academicReport, isAcademicConverting, router, title, latexContent, savedSnapshot.latex])
 
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
@@ -1952,28 +2672,74 @@ export default function ResumeEditPage() {
 
   // Silent debounced autosave — persists edits without an explicit Save click.
   const autoSave = useCallback(async () => {
-    if (!collabCanEdit) return
-    const content = editorRef.current?.getValue() ?? latexContent
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    if (!canEditDocument) return
+    if (!title.trim() || title.length > 255) {
+      setSaveError(
+        !title.trim()
+          ? 'A resume title is required'
+          : 'Resume titles must be 255 characters or fewer',
+      )
+      return
+    }
+    // The imperative wrapper exists before Monaco itself mounts and reports
+    // an empty value during that transition. React state is the authoritative
+    // fallback; if the user intentionally clears the document, it is empty too.
+    const content = editorRef.current?.getValue() || latexContent
     setAutoSaving(true)
     try {
-      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      await apiClient.updateResume(resumeId, {
+        title,
+        latex_content: content,
+        expected_latex_content: savedSnapshot.latex,
+      })
+      if (!isActive()) return
       setLatexContent(content)
       setSavedSnapshot({ title, latex: content })
       setLastSavedAt(Date.now())
-    } catch {
-      // Silent — manual Save or the next change will retry.
+      setSaveError(null)
+      if (isLinkedVariant) {
+        setIsLinkedVariant(false)
+        setLinkedEditEnabled(false)
+      }
+    } catch (error) {
+      if (!isActive()) return
+      setSaveError(error instanceof Error ? error.message : 'Autosave failed')
     } finally {
-      setAutoSaving(false)
+      if (isActive()) setAutoSaving(false)
     }
-  }, [resumeId, title, latexContent, collabCanEdit])
+  }, [canEditDocument, isCurrentOfflinePdfIdentity, isLinkedVariant, latexContent, offlinePdfOwnerId, resumeId, savedSnapshot.latex, title])
 
   useEffect(() => {
     // Never autosave mid-job (AI/compile mutate the buffer) or while offline.
-    if (!collabCanEdit || !isDirty || isAnyRunning || autoSaving) return
+    if (
+      !canEditDocument
+      || !isDirty
+      || isAnyRunning
+      || autoSaving
+      || isSaving
+      || ghPushing
+      || dbxSyncing
+      || confirmPull !== null
+    ) return
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
     const t = setTimeout(() => { void autoSave() }, 2500)
     return () => clearTimeout(t)
-  }, [collabCanEdit, isDirty, isAnyRunning, autoSaving, title, latexContent, autoSave])
+  }, [
+    canEditDocument,
+    isDirty,
+    isAnyRunning,
+    autoSaving,
+    isSaving,
+    ghPushing,
+    dbxSyncing,
+    confirmPull,
+    title,
+    latexContent,
+    autoSave,
+  ])
 
   // Warn before tab close / refresh / external navigation while dirty.
   useEffect(() => {
@@ -1994,11 +2760,15 @@ export default function ResumeEditPage() {
 
   // Auto-compile handler (compile-only, not optimize)
   const handleAutoCompile = useCallback(async (content: string) => {
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      if (!isActive()) return
       autoCompileTriggeredRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
@@ -2008,14 +2778,14 @@ export default function ResumeEditPage() {
       // catch already gives a manual compile — deduped so a persistent failure
       // doesn't re-toast on every debounce tick while the user keeps typing.
       const msg = e instanceof Error ? e.message : 'Auto-compile failed'
-      if (lastAutoCompileErrorRef.current !== msg) {
+      if (isActive() && lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
         toast.error(msg)
       }
     } finally {
-      setIsSubmitting(false)
+      if (isActive()) setIsSubmitting(false)
     }
-  }, [isSubmitting, resumeId, compiler])
+  }, [isCurrentOfflinePdfIdentity, isSubmitting, offlinePdfOwnerId, resumeId, compiler])
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
   // compile is — runCompile switches to the Logs tab on submit so a failure is
@@ -2051,6 +2821,83 @@ export default function ResumeEditPage() {
     : compileStream.extractedPdfText
 
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
+
+  const handleAutoFit = useCallback(async (intensity?: number) => {
+    if (!canEditDocument) {
+      toast.error('Detach this linked variant before changing its formatting')
+      return
+    }
+    const content = editorRef.current?.getValue() || latexContent
+    if (!content.trim()) return
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    setIsAutoFitSubmitting(true)
+    autoFitBaselineRef.current = content
+    autoFitIdentityRef.current = { ownerId: ownerAtStart, resumeId, generation: generationAtStart }
+    try {
+      const response = await apiClient.autoFitResume({
+        latex_content: content,
+        resume_id: resumeId,
+        compiler,
+        intensity,
+      })
+      if (!response.success || !response.job_id) throw new Error(response.message)
+      if (!isActive()) return
+      autoFitJobRef.current = response.job_id
+      handledAutoFitJobRef.current = null
+      userInitiatedJobRef.current = true
+      setCompileJobId(response.job_id)
+      setLastStartedJobKind('compile')
+      setRightTab('logs')
+      toast.success(intensity == null ? 'Finding the lightest one-page fit…' : `Testing ${intensity}% fit strength…`)
+    } catch (error) {
+      if (!isActive()) return
+      autoFitBaselineRef.current = null
+      setIsAutoFitSubmitting(false)
+      toast.error(error instanceof Error ? error.message : 'Auto-fit could not start')
+    }
+  }, [canEditDocument, compiler, isCurrentOfflinePdfIdentity, latexContent, offlinePdfOwnerId, resumeId])
+
+  useEffect(() => {
+    const jobId = autoFitJobRef.current
+    const identity = autoFitIdentityRef.current
+    const isActive = () => identity !== null && isCurrentOfflinePdfIdentity(identity.ownerId, identity.resumeId, identity.generation)
+    if (!jobId || !identity || !isActive() || compileJobId !== jobId || handledAutoFitJobRef.current === jobId) return
+    if (compileStream.status === 'failed' || compileStream.status === 'cancelled') {
+      handledAutoFitJobRef.current = jobId
+      autoFitBaselineRef.current = null
+      setIsAutoFitSubmitting(false)
+      toast.error('Auto-fit did not complete; your document was not changed')
+      return
+    }
+    if (compileStream.status !== 'completed') return
+    handledAutoFitJobRef.current = jobId
+    void apiClient.getJobResult(jobId).then((result) => {
+      if (!isActive()) return
+      const candidate = result.fitted_latex
+      if (!result.fit_succeeded || !candidate) {
+        toast.error('The resume still exceeds one page at the safe readability limit. No changes were applied.')
+        return
+      }
+      const current = editorRef.current?.getValue() || latexContent
+      if (current !== autoFitBaselineRef.current) {
+        toast.error('Your resume changed while auto-fit was running. Run it again to avoid overwriting edits.')
+        return
+      }
+      pushUndo('Before one-page auto-fit')
+      editorRef.current?.setValue(candidate, { reveal: false })
+      setLatexContent(candidate)
+      toast.success(`One-page formatting applied at ${result.fit_intensity ?? 0}% strength`)
+    }).catch((error) => {
+      if (isActive()) toast.error(error instanceof Error ? error.message : 'Auto-fit result could not be loaded')
+    }).finally(() => {
+      if (isActive()) {
+        autoFitBaselineRef.current = null
+        setIsAutoFitSubmitting(false)
+      }
+    })
+  }, [compileJobId, compileStream.status, isCurrentOfflinePdfIdentity, latexContent, pushUndo])
 
   const handleTrimToOnePage = useCallback(async () => {
     const content = editorRef.current?.getValue() || latexContent
@@ -2094,11 +2941,11 @@ export default function ResumeEditPage() {
     : 'LaTeX editor ready'
 
   const currentLatex = editorRef.current?.getValue() || latexContent
-  const outline = buildOutline(currentLatex)
+  const outline = buildLatexOutline(currentLatex)
 
   // Right-panel tab hierarchy: a few primary tabs stay inline; the rest live in
   // a "More" overflow menu (Finding: 17 equally-weighted tabs).
-  const moreTabIds: RightTab[] = ['references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'docs', 'layout', 'snippets', 'macros', 'tikz']
+  const moreTabIds: RightTab[] = ['generate', 'comments', 'review', 'chat', 'references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'suggestions', 'docs', 'layout', 'snippets', 'macros', 'tikz']
 
   if (isLoading) {
     return (
@@ -2107,6 +2954,32 @@ export default function ResumeEditPage() {
       </div>
     )
   }
+
+  if (resumeLoadError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg px-6">
+        <div role="alert" className="max-w-md rounded-[var(--radius-xl)] border border-line bg-surface p-6 text-center shadow-[var(--shadow-2)]">
+          <AlertCircle className="mx-auto mb-3 text-danger" size={24} />
+          <h1 className="text-base font-semibold text-fg">Resume could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-3">{resumeLoadError}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 hover:bg-surface-2">
+              Back to workspace
+            </Link>
+            <button onClick={() => window.location.reload()} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:brightness-110">
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (sessionError && !sessionData && !offlineDraftLoaded && !offlinePdfLoaded) {
+    return <SessionLoadError area="Resume editor" />
+  }
+
+  if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg">
@@ -2126,7 +2999,9 @@ export default function ResumeEditPage() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            disabled={!collabCanEdit}
+            disabled={!canEditDocument}
+            maxLength={255}
+            aria-invalid={Boolean(saveError && (!title.trim() || title.length > 255))}
             className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-fg-2 outline-none transition placeholder:text-fg-3 hover:text-fg focus:text-fg sm:w-auto"
             placeholder="Untitled"
           />
@@ -2136,15 +3011,15 @@ export default function ResumeEditPage() {
             aria-live="polite"
             title={lastSavedAt ? `Last saved ${new Date(lastSavedAt).toLocaleTimeString()}` : undefined}
             className={`hidden shrink-0 items-center gap-1 text-[10px] font-medium sm:flex ${
-              autoSaving ? 'text-accent-strong' : isDirty ? 'text-warn' : 'text-fg-3'
+              autoSaving ? 'text-accent-strong' : saveError ? 'text-err' : isDirty ? 'text-warn' : 'text-fg-3'
             }`}
           >
             {autoSaving ? (
               <Loader2 size={10} className="animate-spin" />
             ) : (
-              <span className={`h-1.5 w-1.5 rounded-full ${isDirty ? 'bg-warn' : 'bg-ok'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${saveError ? 'bg-err' : isDirty ? 'bg-warn' : 'bg-ok'}`} />
             )}
-            {autoSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
+            {autoSaving ? 'Saving…' : saveError ? `Save failed: ${saveError}` : isDirty ? 'Unsaved changes' : 'Saved'}
           </span>
         </div>
 
@@ -2157,9 +3032,15 @@ export default function ResumeEditPage() {
             Import
           </button>
 
+          <ContrastToggle />
           <ModeToggle />
 
-          <ExportDropdown resumeId={resumeId} variant="toolbar" />
+          <ExportDropdown
+            resumeId={resumeId}
+            latexContent={latexContent}
+            onPdfExport={handleDownload}
+            variant="toolbar"
+          />
 
           {/* Tools overflow menu — collapses niche formatting/analysis tools */}
           <div className="relative">
@@ -2287,7 +3168,7 @@ export default function ResumeEditPage() {
 
           <button
             onClick={handleSave}
-            disabled={isSaving || !collabCanEdit}
+            disabled={isSaving || !canEditDocument}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
           >
             <Save size={12} />
@@ -2295,6 +3176,17 @@ export default function ResumeEditPage() {
           </button>
 
           <SaveCheckpointPopover resumeId={resumeId} onSaved={handleCheckpointSaved} />
+
+          <button
+            type="button"
+            onClick={() => setDocumentAssistantOpen(true)}
+            disabled={!collabIsOwner || documentType === 'presentation'}
+            title="Chat with the document assistant"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+          >
+            <MessageSquare size={12} />
+            Ask AI
+          </button>
 
           <button
             onClick={() => setShareModalOpen(true)}
@@ -2330,7 +3222,7 @@ export default function ResumeEditPage() {
                 <>
                   <button
                     onClick={handlePushToGitHub}
-                    disabled={ghPushing}
+                    disabled={ghPushing || autoSaving || isSaving}
                     title="Push to GitHub"
                     className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
@@ -2339,7 +3231,7 @@ export default function ResumeEditPage() {
                   </button>
                   <button
                     onClick={handlePullFromGitHub}
-                    disabled={ghPushing}
+                    disabled={ghPushing || autoSaving || isSaving}
                     title="Pull from GitHub"
                     className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
@@ -2407,6 +3299,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setCompileSettingsOpen(true)}
             title="Compile settings"
+            aria-label="Compile settings"
             className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <Settings2 size={11} />
@@ -2431,6 +3324,8 @@ export default function ResumeEditPage() {
           <button
             onClick={toggleAutoCompile}
             title="Auto-compile on change (2s debounce)"
+            aria-label="Auto-compile on change"
+            aria-pressed={autoCompile}
             className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
               autoCompile
                 ? 'bg-accent/20 text-accent-strong ring-1 ring-accent/30'
@@ -2483,13 +3378,30 @@ export default function ResumeEditPage() {
         <div className="flex h-7 shrink-0 items-center justify-between border-b border-accent/10 bg-accent/5 px-4">
           <span className="text-xs text-fg-2">
             Variant of: <span className="font-medium text-fg-2">{parentTitle}</span>
+            {isLinkedVariant && ' · source-linked'}
           </span>
-          <button
-            onClick={handleCompareWithParent}
-            className="text-xs font-semibold text-accent-strong transition hover:text-accent-strong"
-          >
-            Compare with Parent
-          </button>
+          <div className="flex items-center gap-3">
+            {isLinkedVariant && (
+              <Link href={`/workspace/variant/${resumeId}`} className="text-xs font-semibold text-accent-strong hover:underline">
+                Manage visibility
+              </Link>
+            )}
+            {isLinkedVariant && !linkedEditEnabled && (
+              <button
+                type="button"
+                onClick={() => setLinkedEditEnabled(true)}
+                className="text-xs font-semibold text-warn hover:underline"
+              >
+                Detach and edit LaTeX
+              </button>
+            )}
+            <button
+              onClick={handleCompareWithParent}
+              className="text-xs font-semibold text-accent-strong transition hover:text-accent-strong"
+            >
+              Compare with Parent
+            </button>
+          </div>
         </div>
       )}
 
@@ -2499,16 +3411,20 @@ export default function ResumeEditPage() {
       )}
 
       {/* ── MAIN BODY ── */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
 
-        {/* ── Left: Outline sidebar (collapsible) — hidden on mobile ── */}
+        {/* ── Left: Outline sidebar (collapsible) ── */}
         <aside
-          className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-all duration-200 md:flex ${
-            showOutline ? 'w-48' : 'w-8'
+          id="document-outline"
+          className={`flex shrink-0 flex-col border-b border-line bg-surface transition-all duration-200 md:border-b-0 md:border-r ${
+            showOutline ? 'max-h-52 w-full md:max-h-none md:w-48' : 'h-8 w-full md:h-auto md:w-8'
           }`}
         >
           <button
             onClick={() => setShowOutline((v) => !v)}
+            aria-controls="document-outline-items"
+            aria-expanded={showOutline}
+            aria-label={showOutline ? 'Hide document outline' : 'Show document outline'}
             className={`flex h-8 w-full shrink-0 items-center border-b border-line px-1.5 text-fg-3 transition hover:text-fg-2 ${
               showOutline ? 'justify-between' : 'justify-center'
             }`}
@@ -2525,7 +3441,7 @@ export default function ResumeEditPage() {
           </button>
 
           {showOutline && (
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div id="document-outline-items" className="min-h-0 flex-1 overflow-hidden">
               <OutlinePanel latex={currentLatex} onJump={handleOutlineJump} />
             </div>
           )}
@@ -2584,22 +3500,56 @@ export default function ResumeEditPage() {
               "1 page" convention is a resume norm, not a CV one). Mirrors the
               document-type gating already used for the live ATS badge below. */}
           {pageCount !== null && pageCount > 1 && documentType !== 'presentation' && !academicReport?.is_academic_cv && (
-            <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-warn/20 bg-warn/10 px-4 py-2">
               <span className="text-[11px] text-warn">
                 ⚠ Your resume is {pageCount} pages. Most recruiters prefer 1 page.
               </span>
-              <button
-                onClick={handleTrimToOnePage}
-                disabled={isAiSubmitting || isAnyRunning}
-                className="ml-3 text-[11px] text-warn underline hover:text-warn disabled:opacity-50"
-              >
-                Trim with AI →
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleAutoFit()}
+                  disabled={isAutoFitSubmitting || isAnyRunning || !canEditDocument}
+                  className="rounded border border-warn/30 bg-surface px-2 py-1 text-[11px] font-semibold text-warn disabled:opacity-50"
+                >
+                  Auto-fit formatting
+                </button>
+                <label className="flex items-center gap-1 text-[11px] text-warn">
+                  Strength
+                  <input
+                    aria-label="Fit strength"
+                    type="range"
+                    min={25}
+                    max={100}
+                    step={25}
+                    value={autoFitIntensity}
+                    onChange={(event) => setAutoFitIntensity(Number(event.target.value))}
+                    className="w-20 accent-[var(--warn)]"
+                  />
+                  {autoFitIntensity}%
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleAutoFit(autoFitIntensity)}
+                  disabled={isAutoFitSubmitting || isAnyRunning || !canEditDocument}
+                  className="text-[11px] text-warn underline disabled:opacity-50"
+                >
+                  Try strength
+                </button>
+                <button
+                  type="button"
+                  aria-label="Trim with AI →"
+                  onClick={handleTrimToOnePage}
+                  disabled={isAiSubmitting || isAnyRunning || !canEditDocument}
+                  className="text-[11px] text-warn underline disabled:opacity-50"
+                >
+                  Trim content with AI →
+                </button>
+              </div>
             </div>
           )}
           <div className="relative min-h-0 flex-1">
             {/* WYSIWYG mode (Feature 78) */}
-            {collabCanEdit && editorMode === 'wysiwyg' && wysiwygDoc ? (
+            {canEditDocument && editorMode === 'wysiwyg' && wysiwygDoc ? (
               <div className="h-full overflow-auto p-4">
                 <WYSIWYGEditor
                   doc={wysiwygDoc}
@@ -2607,7 +3557,7 @@ export default function ResumeEditPage() {
                   hasRawEntries={wysiwygHasRaw}
                 />
               </div>
-            ) : collabCanEdit && editorMode === 'wysiwyg' && !wysiwygDoc ? (
+            ) : canEditDocument && editorMode === 'wysiwyg' && !wysiwygDoc ? (
               <div className="flex h-full items-center justify-center text-[12px] text-fg-3">
                 Parsing…
               </div>
@@ -2619,14 +3569,16 @@ export default function ResumeEditPage() {
                 onChange={setLatexContent}
                 onSave={handleSave}
                 onCompile={runCompile}
-                readOnly={!collabCanEdit}
+                readOnly={!canEditDocument}
               />
             ) : (
             <LaTeXEditor
               ref={editorRef}
+              onEditorReady={setMacroEditor}
               value={latexContent}
               onChange={setLatexContent}
-              readOnly={!collabCanEdit}
+              bibliographyBibTeX={bibliographyBibTeX}
+              readOnly={!canEditDocument}
               logLines={logLines}
               onSave={handleSave}
               onCompile={runCompile}
@@ -2643,6 +3595,8 @@ export default function ResumeEditPage() {
               onExplainError={handleExplainError}
               onWritingAssistantAction={handleWritingAssistantAction}
               pageCount={pageCount}
+              warnOnMultiplePages={documentType !== 'presentation' && !academicReport?.is_academic_cv}
+              renderedText={extractedPdfText}
               onCursorInSummarySection={handleCursorInSummarySection}
               proofreadIssues={proofreadIssues}
               lintIssues={lintIssues}
@@ -2659,11 +3613,18 @@ export default function ResumeEditPage() {
               collabEnabled={!!(sessionData?.session?.token)}
               collabResumeId={resumeId}
               collabUser={sessionData?.session?.token ? {
-                name: sessionData.user?.name || sessionData.user?.email || 'Anonymous',
+                // Email addresses are never sent as collaboration display
+                // metadata. The relay supplies the authenticated chat label.
+                name: sessionData.user?.name || 'Collaborator',
                 color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
               } : undefined}
               collabRole={collabRole}
               onPresenceChange={setPresenceUsers}
+              onChatTransport={setChatTransport}
+              suggestionPresence={suggestionPresence}
+              onSuggestionPresenceChange={handleRemoteSuggestionPresence}
+              suggestionDecisions={suggestionDecisions}
+              onSuggestionDecisionsChange={confirmRemoteSuggestionDecisions}
               trackedChanges={trackedChanges}
               onTrackedChangesUpdate={setTrackedChanges}
               onShowDocs={(cmd) => {
@@ -2698,6 +3659,9 @@ export default function ResumeEditPage() {
               isOpen={writingOpen}
               selectedText={writingSelected}
               context={writingContext}
+              resumeId={resumeId}
+              jobDescription={jobDescription}
+              documentLatex={latexContent}
               onAccept={handleWritingAccept}
               onClose={() => setWritingOpen(false)}
               top={writingTop}
@@ -2829,6 +3793,10 @@ export default function ResumeEditPage() {
                     style={{ position: 'fixed', top: moreTabsPos.top, right: moreTabsPos.right }}
                   >
                     {([
+                      { id: 'generate', label: 'Generate LaTeX', icon: Sparkles },
+                      { id: 'comments', label: 'Comments', icon: MessageSquare },
+                      { id: 'review', label: 'Review', icon: MessageSquare },
+                      { id: 'chat', label: 'Chat', icon: MessageSquare },
                       { id: 'references', label: 'References', icon: BookOpen },
                       { id: 'interview', label: 'Interview Prep', icon: MessageSquare },
                       { id: 'proofread', label: 'Proofread', icon: ShieldCheck },
@@ -2836,6 +3804,7 @@ export default function ResumeEditPage() {
                       { id: 'linter', label: 'Linter', icon: AlertTriangle },
                       { id: 'symbols', label: 'Symbols', icon: Braces },
                       { id: 'changes', label: 'Changes', icon: GitMerge },
+                      { id: 'suggestions', label: 'Suggestions', icon: Sparkles },
                       { id: 'docs', label: 'Docs', icon: BookOpen },
                       { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
                       { id: 'snippets', label: 'Snippets', icon: Package },
@@ -2860,6 +3829,11 @@ export default function ResumeEditPage() {
                         {id === 'changes' && trackedChanges.length > 0 && (
                           <span className="ml-auto rounded bg-ok/20 px-1 py-0.5 font-mono text-[8px] text-ok">
                             {trackedChanges.length}
+                          </span>
+                        )}
+                        {id === 'suggestions' && suggestions.some((item) => item.status === 'pending') && (
+                          <span className="ml-auto rounded bg-accent/20 px-1 py-0.5 font-mono text-[8px] text-accent-strong">
+                            {suggestions.filter((item) => item.status === 'pending').length}
                           </span>
                         )}
                       </button>
@@ -2902,6 +3876,11 @@ export default function ResumeEditPage() {
               <PDFPreview
                 pdfUrl={pdfUrl}
                 isLoading={isAnyRunning}
+                onDownload={handleDownload}
+                onShare={shareOrDownloadPdf}
+                isOfflinePreview={isOfflinePdf}
+                offlineError={offlinePdfError}
+                onRetryOffline={retryOfflinePdf}
                 jobId={activePdfJobId.current}
                 onSyncToSource={handleSyncToSource}
                 syncFromLine={cursorLine}
@@ -2930,7 +3909,7 @@ export default function ResumeEditPage() {
                 setTargetSections={setTargetSections}
                 customInstructions={customInstructions}
                 setCustomInstructions={setCustomInstructions}
-                onOpenDeepAnalysis={handleOpenDeepAnalysis}
+                onOpenDeepAnalysis={() => { void handleOpenDeepAnalysis() }}
                 model={model}
                 setModel={setModel}
               />
@@ -2983,11 +3962,41 @@ export default function ResumeEditPage() {
               />
             )}
 
+            {rightTab === 'comments' && (
+              <CommentsPanel
+                resumeId={resumeId}
+                canComment={collabRole !== 'viewer'}
+                highlightCommentId={searchParams.get('comment_id') ?? undefined}
+              />
+            )}
+
+            {rightTab === 'review' && (
+              <ReviewCommentsPanel
+                resumeId={resumeId}
+                pdfUrl={pdfUrl}
+                enabled={Boolean(sessionData?.session?.token)}
+                canResolve={collabRole === 'owner' || collabRole === 'editor'}
+                title="Review comments"
+              />
+            )}
+
+            {rightTab === 'chat' && (
+              <CollaboratorChat chat={collaboratorChat} />
+            )}
+
             {rightTab === 'references' && (
               <ReferencesPanel
                 resumeId={resumeId}
                 onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}
                 onInsertCiteKey={(key) => editorRef.current?.insertAtCursor(key)}
+                onLibraryChange={setBibliographyBibTeX}
+              />
+            )}
+
+            {rightTab === 'generate' && (
+              <LatexGeneratorPanel
+                documentContext={latexContent}
+                onInsert={(fragment) => editorRef.current?.insertAtCursor(fragment)}
               />
             )}
 
@@ -3109,6 +4118,22 @@ export default function ResumeEditPage() {
               />
             )}
 
+            {rightTab === 'suggestions' && (
+              <SuggestionsPanel
+                suggestions={allSuggestions}
+                canSuggest={canSuggest}
+                canResolve={canResolveSuggestion(collabRole) && canEditDocument}
+                canReject={(suggestion) => (canResolveSuggestion(collabRole) && canEditDocument) || suggestion.authorId === sessionUserId}
+                modeEnabled={suggestionMode}
+                onToggleMode={() => setSuggestionMode((enabled) => !enabled)}
+                onCreate={handleCreateSuggestion}
+                onAccept={handleAcceptSuggestion}
+                onReject={handleRejectSuggestion}
+                error={suggestionError}
+                onRetry={retrySuggestion}
+              />
+            )}
+
             {rightTab === 'docs' && (
               <LaTeXDocPanel command={docCommand} />
             )}
@@ -3134,15 +4159,12 @@ export default function ResumeEditPage() {
                 }}
               />
             )}
-            {rightTab === 'macros' && (
-              <MacroLibraryPanel
-                editor={
-                  editorRef.current && 'getModel' in (editorRef.current as object)
-                    ? (editorRef.current as unknown as import('monaco-editor').editor.IStandaloneCodeEditor)
-                    : null
-                }
-              />
-            )}
+            <MacroLibraryPanel
+              className={rightTab === 'macros' ? undefined : 'hidden'}
+              editor={
+                editorMode === 'source' ? macroEditor : null
+              }
+            />
 
             {rightTab === 'tikz' && (
               <TikZEditor
@@ -3152,7 +4174,7 @@ export default function ResumeEditPage() {
             )}
           </div>
         </aside>
-      </main>
+      </div>
 
       {/* Import modal */}
       {showImportModal && (
@@ -3203,7 +4225,7 @@ export default function ResumeEditPage() {
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
         analysis={deepStream.deepAnalysis}
-        error={deepAnalysisError}
+        error={deepAnalysisError ?? deepStream.error}
         usesRemaining={deepAnalysisUsesRemaining}
         onRun={handleOpenDeepAnalysis}
         isRunning={isDeepRunning}
@@ -3229,6 +4251,7 @@ export default function ResumeEditPage() {
         onClose={() => setConfidencePanelOpen(false)}
         score={confidenceResult}
         loading={confidenceLoading}
+        error={confidenceError}
         onRefresh={refetchConfidence}
       />
 
@@ -3237,7 +4260,7 @@ export default function ResumeEditPage() {
         isOpen={qrInserterOpen}
         onClose={() => setQrInserterOpen(false)}
         onInsert={(snippet) => editorRef.current?.insertAtCursor(snippet)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
         onLatexChange={(newLatex) => {
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
@@ -3248,7 +4271,7 @@ export default function ResumeEditPage() {
       <DateStandardizerPanel
         isOpen={dateStandardizerOpen}
         onClose={() => setDateStandardizerOpen(false)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
         onApply={(newLatex) => {
           pushUndo('Before date standardization')
           editorRef.current?.setValue(newLatex)
@@ -3260,7 +4283,7 @@ export default function ResumeEditPage() {
       <AgeAnalysisPanel
         isOpen={ageAnalysisOpen}
         onClose={() => setAgeAnalysisOpen(false)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
         onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
       />
 
@@ -3268,7 +4291,7 @@ export default function ResumeEditPage() {
       <ContactFormatterPanel
         isOpen={contactFormatterOpen}
         onClose={() => setContactFormatterOpen(false)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
         onApply={(newLatex) => {
           pushUndo('Before contact normalization')
           editorRef.current?.setValue(newLatex)
@@ -3280,14 +4303,14 @@ export default function ResumeEditPage() {
       <SalaryEstimatorPanel
         isOpen={salaryEstimatorOpen}
         onClose={() => setSalaryEstimatorOpen(false)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
       />
 
       {/* Section Reorder Panel (Feature 53) */}
       <SectionReorderPanel
         isOpen={sectionReorderOpen}
         onClose={() => setSectionReorderOpen(false)}
-        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        getLatex={() => editorRef.current?.getValue() || latexContent}
         onApply={(newLatex) => {
           pushUndo('Before section reorder')
           editorRef.current?.setValue(newLatex)
@@ -3302,7 +4325,7 @@ export default function ResumeEditPage() {
         onInsert={(latex) => {
           pushUndo('Before project import')
           editorRef.current?.insertAtCursor(latex)
-          setLatexContent(editorRef.current?.getValue() ?? latexContent)
+          setLatexContent(editorRef.current?.getValue() || latexContent)
         }}
       />
 
@@ -3359,9 +4382,7 @@ export default function ResumeEditPage() {
         <div role="status" aria-live="polite" aria-label="Compile timeout" className="flex shrink-0 items-center justify-between border-t border-accent/20 bg-accent/10 px-3 py-1.5">
           <span className="text-[11px] text-accent-strong">
             ⏱ Compile timed out — {compileStream.timeoutError.plan} plan limit (
-            {compileStream.timeoutError.plan === 'free' ? '30s'
-              : compileStream.timeoutError.plan === 'basic' ? '120s'
-              : '240s'})
+            {compileStream.timeoutError.seconds}s)
           </span>
           {flags.upgrade_ctas && (
             <a
@@ -3375,16 +4396,38 @@ export default function ResumeEditPage() {
       )}
 
       {/* ── Share modal ── */}
-      {shareModalOpen && (
+      {shareModalOpen && ownsRenderedJobState && (
         <ShareResumeModal
+          key={JSON.stringify([offlinePdfOwnerId, resumeId])}
+          ownerId={offlinePdfOwnerId}
           resumeId={resumeId}
           resumeTitle={title}
           initialShareToken={shareToken}
           initialShareUrl={shareUrl}
+          initialAnonymous={shareAnonymous}
+          initialReviewComments={shareReviewComments}
           onClose={() => setShareModalOpen(false)}
-          onShareTokenChange={(token, url) => { setShareToken(token); setShareUrl(url) }}
+          onShareTokenChange={(token, url, anonymous, reviewComments = false) => {
+            if (!offlinePdfMountedRef.current || offlinePdfRenderIdentityRef.current.ownerId !== offlinePdfOwnerId || offlinePdfRenderIdentityRef.current.resumeId !== resumeId) return
+            setShareToken(token)
+            setShareUrl(url)
+            setShareAnonymous(anonymous)
+            setShareReviewComments(reviewComments)
+          }}
         />
       )}
+
+      <DocumentAssistantPanel
+        isOpen={documentAssistantOpen}
+        resumeId={resumeId}
+        documentLatex={latexContent}
+        onClose={() => setDocumentAssistantOpen(false)}
+        onApply={(nextLatex) => {
+          editorRef.current?.setValue(nextLatex)
+          setLatexContent(nextLatex)
+          toast.success('Assistant edit applied')
+        }}
+      />
 
       {academicConvertOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] px-4" onClick={() => setAcademicConvertOpen(false)}>
