@@ -254,4 +254,20 @@ turning complex problems into elegant solutions.
         "tags": ["certifications", "credentials", "AWS", "professional"],
         "is_official": True,
     },
+
+    # ── 13. Optional Polish recruitment consent (RODO) ───────────────────────
+    {
+        "title": "Optional Polish Recruitment Consent (RODO)",
+        "description": "Employer-specific Polish consent for additional CV data. Use only when the vacancy requests it, replace both placeholders, and obtain local guidance for sensitive data or future-recruitment consent; Polish UODO guidance says a blanket clause is not routinely required.",
+        "content": r"""% Source guidance: https://uodo.gov.pl/pl/file/4933
+% Replace both placeholders. Remove this paragraph unless the employer
+% requests consent for additional CV data in this specific recruitment.
+\small
+Wyrażam zgodę na przetwarzanie przez \textbf{[NAZWA PRACODAWCY]}
+dodatkowych danych osobowych zawartych w moim CV w celu przeprowadzenia
+rekrutacji na stanowisko \textbf{[NAZWA STANOWISKA]}.""",
+        "category": "misc",
+        "tags": ["polish", "rodo", "consent", "recruitment", "regional"],
+        "is_official": True,
+    },
 ]
