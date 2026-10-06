@@ -71,6 +71,10 @@ function renderMarkdown(md: string): ReactNode[] {
       list.push(line.replace(/^[-*]\s+/, ''))
     } else if (line.trim() === '') {
       flushPara(key); flushList(key)
+    } else if (list.length && /^\s+\S/.test(line)) {
+      // Legal markdown uses indented physical lines to continue a list item.
+      // Keep that text in the existing <li> instead of starting a paragraph.
+      list[list.length - 1] = `${list[list.length - 1]} ${line.trim()}`
     } else {
       flushList(key)
       para.push(line)
