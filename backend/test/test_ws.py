@@ -69,6 +69,12 @@ def ws_client():
     with (
         patch("app.api.ws_routes.event_bus") as mock_bus,
         patch("app.api.ws_routes.get_redis_client", new_callable=AsyncMock, return_value=mock_redis),
+        # Cancellation's durable DB arbiter is covered by the job-cancellation
+        # integration tests. Protocol tests only verify that a cancel message
+        # does not tear down the socket, so keep the worker-side helper mocked
+        # and avoid opening a process-global asyncpg pool on TestClient's
+        # disposable portal loop.
+        patch("app.api.ws_routes._request_cancellation", new=AsyncMock()),
     ):
         mock_bus.subscribe = AsyncMock(return_value=0)
         mock_bus.disconnect = AsyncMock()
@@ -76,7 +82,7 @@ def ws_client():
 
         # TestClient without context-manager avoids running the full lifespan
         # (which would reinitialise globals in a background thread loop).
-        client = TestClient(app, raise_server_exceptions=True)
+        client = TestClient(app, base_url="http://localhost", raise_server_exceptions=True)
         try:
             yield client
         finally:
