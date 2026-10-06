@@ -1,7 +1,33 @@
 {
   "name": "latexy-monorepo",
   "private": true,
+  "packageManager": "pnpm@10.10.0",
   "devDependencies": {
     "turbo": "latest"
+  },
+  "pnpm": {
+    "overrides": {
+      "axios@>=1.0.0 <1.20.0": "1.20.0",
+      "brace-expansion@<1.1.21": "1.1.21",
+      "brace-expansion@>=2.0.0 <2.1.7": "2.1.7",
+      "brace-expansion@>=4.0.0 <5.0.12": "5.0.12",
+      "dompurify@<3.4.16": "3.4.16",
+      "esbuild@<0.28.1": "0.28.1",
+      "fast-uri@>=3.0.0 <3.1.8": "3.1.8",
+      "ip-address@<=10.7.0": "10.7.1",
+      "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
+      "nanoid@<3.3.18": "3.3.18",
+      "next@15.5.24>postcss": "8.5.25",
+      "postcss-selector-parser@<7.1.6": "7.1.6",
+      "proxy-addr@>=1.1.0 <2.0.8": "2.0.8",
+      "serialize-javascript@<7.0.5": "7.0.5",
+      "sharp@<0.35.4": "0.35.4",
+      "source-map-js@>=1.0.0 <1.2.2": "1.2.2",
+      "tar@<7.5.21": "7.5.21"
+    },
+    "patchedDependencies": {
+      "monaco-emacs@0.3.0": "patches/monaco-emacs@0.3.0.patch",
+      "braces@3.0.3": "patches/braces@3.0.3.patch"
+    }
   }
 }
