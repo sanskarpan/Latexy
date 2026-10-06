@@ -215,7 +215,10 @@ class EventBusManager:
                         if ws.client_state == WebSocketState.CONNECTED:
                             await ws.send_text(data)
                     except Exception as exc:
-                        logger.debug(f"[EventBus] WS send failed: {exc}")
+                        logger.debug(
+                            "[EventBus] WS send failed",
+                            extra={"error_type": type(exc).__name__},
+                        )
                         dead.append(ws)
 
                 for ws in dead:
@@ -226,7 +229,11 @@ class EventBusManager:
         except asyncio.CancelledError:
             pass
         except Exception as exc:
-            logger.error(f"[EventBus] listener error for {job_id}: {exc}")
+            logger.error(
+                "[EventBus] listener error for %s",
+                job_id,
+                extra={"error_type": type(exc).__name__},
+            )
         finally:
             # A replacement can be installed while this task awaits Redis
             # cleanup.  Only remove the registration if it is still ours.
@@ -235,12 +242,18 @@ class EventBusManager:
             try:
                 await pubsub.unsubscribe(channel)
             except Exception as exc:
-                logger.debug(f"Error during pubsub unsubscribe: {exc}")
+                logger.debug(
+                    "EventBus pubsub unsubscribe failed",
+                    extra={"error_type": type(exc).__name__},
+                )
             finally:
                 try:
                     await pubsub.aclose()
                 except Exception as exc:
-                    logger.debug(f"Error during pubsub close: {exc}")
+                    logger.debug(
+                        "EventBus pubsub close failed",
+                        extra={"error_type": type(exc).__name__},
+                    )
             logger.debug(f"[EventBus] listener exited for {job_id}")
 
     # ---------------------------------------------------------------- #
@@ -269,7 +282,11 @@ class EventBusManager:
                 count=500,
             )
         except Exception as exc:
-            logger.warning(f"[EventBus] replay XREAD failed for {job_id}: {exc}")
+            logger.warning(
+                "[EventBus] replay XREAD failed for %s",
+                job_id,
+                extra={"error_type": type(exc).__name__},
+            )
             return count
 
         if not entries:
@@ -291,7 +308,10 @@ class EventBusManager:
                     await websocket.send_text(envelope)
                     count += 1
                 except Exception as exc:
-                    logger.warning(f"[EventBus] replay send failed: {exc}")
+                    logger.warning(
+                        "[EventBus] replay send failed",
+                        extra={"error_type": type(exc).__name__},
+                    )
                     return count
 
         return count
