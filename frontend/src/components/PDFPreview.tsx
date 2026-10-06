@@ -1,14 +1,25 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, useMemo, type MutableRefObject } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
-import { AlertTriangle, FileText, Download, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun, Flame } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { AlertTriangle, FileText, Download, Share2, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun, Flame } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
 import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
+import { apiClient } from '@/lib/api-client'
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+// PDF.js 5 requires browser DOMMatrix at module evaluation time. Keep the
+// renderer behind a client-only boundary so Next can still prerender every page
+// that includes the preview.
+const Document = dynamic(
+  () => import('@/components/ReactPdfClient').then((module) => module.PdfDocument),
+  { ssr: false },
+)
+const Page = dynamic(
+  () => import('@/components/ReactPdfClient').then((module) => module.PdfPage),
+  { ssr: false },
+)
 
 // ── Color usage analysis (Feature 89B) ───────────────────────────────────────
 import { analyzeColorUsage, type ColorWarning } from '@/lib/print-preview'
@@ -28,6 +39,13 @@ interface PDFPreviewProps {
   latexContent?: string
   /** Called when user clicks a warning line number to jump to editor line (Feature 89B) */
   onJumpToLine?: (line: number) => void
+  /** Share the current PDF, with the caller responsible for a download fallback. */
+  onShare?: () => void | Promise<void>
+  /** Marks a preview loaded from the owner-scoped offline PDF cache. */
+  isOfflinePreview?: boolean
+  /** Persistent cache/recovery error (toasts are intentionally insufficient). */
+  offlineError?: string | null
+  onRetryOffline?: () => void
 }
 
 interface PageDimensions {
@@ -94,6 +112,10 @@ export default function PDFPreview({
   syncFromLine,
   latexContent,
   onJumpToLine,
+  onShare,
+  isOfflinePreview = false,
+  offlineError,
+  onRetryOffline,
 }: PDFPreviewProps) {
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
@@ -247,20 +269,18 @@ export default function PDFPreview({
     setSynctexReady(false)
     synctexDataRef.current = null
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
-    fetch(`${apiBase}/download/${encodeURIComponent(jobId)}/synctex`)
-      .then((r) => {
-        if (!r.ok) return null
-        return r.text()
-      })
+    const controller = new AbortController()
+    apiClient.downloadSynctex(jobId, controller.signal)
       .then((text) => {
         if (!text) return
         synctexDataRef.current = parseSynctex(text)
         setSynctexReady(true)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
         // SyncTeX not available — silent failure
       })
+    return () => controller.abort()
   }, [jobId])
 
   // Forward sync: source line → scroll PDF to the matching page
@@ -382,6 +402,13 @@ export default function PDFPreview({
   if (!pdfUrl) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-5 bg-surface-2 px-6">
+        {offlineError && (
+          <div role="alert" className="flex max-w-sm items-center gap-2 rounded border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="flex-1">{offlineError}</span>
+            {onRetryOffline && <button type="button" onClick={onRetryOffline} className="shrink-0 font-semibold underline">Retry</button>}
+          </div>
+        )}
         {/* faux page silhouette so the empty pane reads as "a page goes here" */}
         <div className="relative">
           <div className="h-44 w-[8.5rem] rounded-[3px] border border-line bg-surface shadow-sm">
@@ -501,6 +528,19 @@ export default function PDFPreview({
             <Printer size={12} />
             {printPreview ? 'B&W' : 'Print'}
           </button>
+          {isOfflinePreview && (
+            <span className="px-2 py-1 text-[10px] font-medium text-warn" aria-label="Offline saved PDF">Offline saved PDF</span>
+          )}
+          {onShare && (
+            <button
+              type="button"
+              onClick={() => void onShare()}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
+            >
+              <Share2 size={12} />
+              Share
+            </button>
+          )}
           {onDownload && (
             <button
               onClick={onDownload}
@@ -531,10 +571,22 @@ export default function PDFPreview({
           background: darkPdf ? 'var(--bg)' : 'var(--surface-2)',
         }}
       >
+        {offlineError && (
+          <div role="alert" className="flex items-center gap-2 border-b border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="flex-1">{offlineError}</span>
+            {onRetryOffline && <button type="button" onClick={onRetryOffline} className="shrink-0 font-semibold underline">Retry</button>}
+          </div>
+        )}
         {renderError ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
+          <div role="alert" className="flex h-full flex-col items-center justify-center gap-2">
             <FileText className="h-9 w-9 text-fg-3" />
             <p className="text-xs text-fg-3">Failed to render PDF</p>
+            {onRetryOffline && (
+              <button type="button" onClick={onRetryOffline} className="text-[11px] text-accent-strong hover:underline">
+                Retry
+              </button>
+            )}
             {onDownload && (
               <button onClick={onDownload} className="text-[11px] text-accent-strong hover:underline">
                 Download to view
