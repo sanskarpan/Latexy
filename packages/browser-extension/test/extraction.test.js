@@ -66,3 +66,11 @@ test('bounds descriptions and rejects non-web URLs', () => {
   assert.equal(result.description.length, 20_000)
   assert.equal(result.url, '')
 })
+
+test('decodes entities only once and removes spaced script/style end tags', () => {
+  const doc = fakeDocument({ jsonLd: [node(JSON.stringify({
+    '@type': 'JobPosting',
+    description: '<script>private script</script >Visible &amp;quot; &quot;text&quot;<style>private style</style\t>',
+  }))] })
+  assert.equal(extractJobPosting(doc, 'https://example.test/job').description, 'Visible &quot; "text"')
+})
