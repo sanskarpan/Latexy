@@ -443,6 +443,16 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality
+      - name: Verify desktop compile cadence and source-PDF synchronization
+        env:
+          PLAYWRIGHT_PORT: "5183"
+          PLAYWRIGHT_SERVER_MODE: production
+        # Uses a disposable production bundle and synthetic HTTP/WS/PDF fixtures;
+        # no TeX installation, provider credentials or live backend is required.
+        run: >-
+          pnpm exec playwright test e2e/editor-compile-sync.spec.ts
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
+          --output=test-results/editor-compile-sync
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -451,6 +461,7 @@ jobs:
           path: |
             frontend/playwright-quality-report
             frontend/test-results/quality
+            frontend/test-results/editor-compile-sync
           if-no-files-found: warn
           retention-days: 14
 
