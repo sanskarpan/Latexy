@@ -9,8 +9,8 @@ const OPTIMIZE_SOURCE = readFileSync(
 describe('optimization persona persistence', () => {
   it('rolls back failed saves and prevents overlapping mutations', () => {
     expect(OPTIMIZE_SOURCE).toContain('if (isSavingPersona && personaMutationGenerationRef.current === personaIdentity.generation) return')
-    expect(OPTIMIZE_SOURCE).toContain('if (personaMutationBusyRef.current || !sessionUserId) return')
-    expect(OPTIMIZE_SOURCE).toContain('setPersona(previous)')
+    expect(OPTIMIZE_SOURCE).toContain('if (personaMutationBusyRef.current || !liveAuthVerifiedRef.current) return')
+    expect(OPTIMIZE_SOURCE).toContain('setPersona((current) => isCurrentMutation() ? previous : current)')
     expect(OPTIMIZE_SOURCE).toContain('Your previous selection was restored.')
     expect(OPTIMIZE_SOURCE).toContain('disabled={isProcessing || isSavingPersona}')
     expect(OPTIMIZE_SOURCE).not.toContain("updateResumeSettings(resumeId, { last_persona: next ?? '' }).catch(() => {})")
@@ -20,6 +20,10 @@ describe('optimization persona persistence', () => {
     expect(OPTIMIZE_SOURCE).toContain('generation: personaIdentityRef.current.generation + 1')
     expect(OPTIMIZE_SOURCE).toContain('personaMutationIdRef.current += 1')
     expect(OPTIMIZE_SOURCE).toContain('liveSessionUserIdRef.current === mutationOwnerId')
+    expect(OPTIMIZE_SOURCE).toContain('const isCurrentMutation = (requireVerifiedAuth = true)')
+    expect(OPTIMIZE_SOURCE).toContain('if (isCurrentMutation(false))')
+    expect(OPTIMIZE_SOURCE).toContain('setPersona((current) => isCurrentMutation() ? previous : current)')
+    expect(OPTIMIZE_SOURCE).toContain('liveAuthVerifiedRef.current = Boolean(sessionUserId && !sessionLoading && !sessionError)')
     expect(OPTIMIZE_SOURCE).toContain('setPersona(savedPersona || null)')
     expect(OPTIMIZE_SOURCE).toContain('mountedRef.current = false')
   })
