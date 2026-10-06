@@ -95,17 +95,19 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
         })
       },
       insertAtCursor: (text: string) => {
-        if (!viewRef.current) return
+        if (!viewRef.current) return false
         const { from } = viewRef.current.state.selection.main
         viewRef.current.dispatch({
           changes: { from, insert: text },
           selection: { anchor: from + text.length },
         })
+        return true
       },
       // Stubs for Monaco-specific methods (no-ops on mobile)
       highlightLine: () => {},
       applyFix: () => {},
       applyRewrite: () => {},
+      applySuggestionResult: () => false,
       applyMultipleRewrites: () => {},
       getCaretPosition: () => null,
       acceptTrackedChange: () => {},
