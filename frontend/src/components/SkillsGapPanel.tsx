@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from 'react'
-import { CheckCircle2, Target, Clock, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, Target, Clock, ExternalLink } from 'lucide-react'
 import type { CareerAnalysisResponse } from '@/lib/api-client'
 
 // ── Simple Markdown renderer (no external dep) ────────────────────────────────
@@ -64,6 +64,11 @@ function SkillChip({
   )
 }
 
+function safeEscoHref(uri: string | null | undefined): string | null {
+  const prefix = 'http://data.europa.eu/esco/skill/'
+  return uri?.startsWith(prefix) ? uri.replace('http://', 'https://') : null
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 interface SkillsGapPanelProps {
@@ -77,6 +82,10 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
 
   const targetTitle =
     analysis.target_role?.title ?? analysis.target_role_freetext ?? 'Target Role'
+  const taxonomyMatches = useMemo(
+    () => analysis.skill_taxonomy_mappings?.filter((mapping) => mapping.matched) ?? [],
+    [analysis.skill_taxonomy_mappings],
+  )
 
   return (
     <div className="flex flex-col gap-5">
@@ -99,6 +108,49 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
           </div>
         )}
       </div>
+
+      {analysis.skill_taxonomy && (
+        <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[10px] text-fg-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Skills normalized with {analysis.skill_taxonomy}
+              {analysis.skill_taxonomy_language ? ` (${analysis.skill_taxonomy_language})` : ''}.
+              Unmatched terms remain unchanged.
+            </span>
+            <a
+              href="https://esco.ec.europa.eu/en/classification/skill_main"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-accent-strong hover:underline"
+            >
+              About ESCO <ExternalLink size={10} aria-hidden="true" />
+            </a>
+          </div>
+          {taxonomyMatches.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer font-semibold text-fg-2">
+                ESCO matches ({taxonomyMatches.length})
+              </summary>
+              <ul className="mt-1 space-y-1">
+                {taxonomyMatches.map((mapping) => (
+                  <li key={`${mapping.input}:${mapping.uri ?? mapping.preferred_label}`}>
+                    {safeEscoHref(mapping.uri) ? (
+                      <a
+                        href={safeEscoHref(mapping.uri)!}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-accent-strong hover:underline"
+                      >
+                        {mapping.input} → {mapping.preferred_label}
+                      </a>
+                    ) : `${mapping.input} → ${mapping.preferred_label}`}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* Skills columns */}
       <div className="grid grid-cols-2 gap-4">
