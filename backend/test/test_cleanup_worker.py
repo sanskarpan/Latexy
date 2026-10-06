@@ -11,9 +11,11 @@ Tasks are invoked via Celery's task.apply() which runs synchronously.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,10 +23,24 @@ import pytest
 
 from app.core.celery_app import celery_app
 from app.workers.cleanup_worker import (
+    _reconcile_orphaned_compilations,
+    _reconcile_receipts_without_compilation_rows,
     cleanup_expired_jobs_task,
     cleanup_temp_files_task,
     health_check_task,
 )
+from app.workers.finalization_arbiter import FinalizationOutcome
+
+
+class _AsyncSessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *_args):
+        return False
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -63,17 +79,22 @@ def mock_jsm():
     mock_r.get.return_value = None
     mock_r.delete.return_value = 1
     mock_r.ping.return_value = True
+    mock_r.time.return_value = (int(time.time()), 0)
 
     m = MagicMock()
+    mock_cache = MagicMock()
     with patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
          patch("app.workers.cleanup_worker.publish_job_result") as mock_res, \
-         patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r):
+         patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r), \
+         patch("app.workers.cleanup_worker.get_sync_redis_cache_client", return_value=mock_cache), \
+         patch("app.workers.cleanup_worker._read_finalization_outcome", return_value=(None, None, None)):
         mock_pub.return_value = None
         mock_res.return_value = None
         # Expose on mock_jsm for test assertions
         m.publish_event = mock_pub
         m.publish_job_result = mock_res
         m._mock_redis = mock_r  # expose for per-test customisation
+        m._mock_cache = mock_cache
         yield m
 
 
@@ -86,6 +107,230 @@ def no_real_minio():
     """
     with patch("app.services.storage_service.list_objects", return_value=[]):
         yield
+
+
+@pytest.mark.asyncio
+async def test_orphaned_compilation_without_dispatch_state_is_terminalized():
+    """A post-commit process crash must not leave a row processing forever."""
+    row = MagicMock(
+        job_id="orphaned-job",
+        status="processing",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    session = AsyncMock()
+    session.execute.return_value = result
+    session_factory = MagicMock(return_value=_AsyncSessionContext(session))
+    redis_client = MagicMock()
+    redis_client.exists.return_value = 0
+    redis_client.hget.return_value = None
+    cache_redis = MagicMock()
+    cache_redis.get.return_value = None
+    cache_redis.exists.return_value = 0
+
+    with (
+        patch("app.workers.cleanup_worker.get_sync_redis_cache_client", return_value=cache_redis),
+        patch("app.workers.cleanup_worker.fence_orphan_without_lifecycle", return_value=True),
+        patch("app.workers.cleanup_worker.fence_finalization", new=AsyncMock(return_value=FinalizationOutcome.FENCED)),
+    ):
+        repaired = await _reconcile_orphaned_compilations(
+            redis_client,
+            stale_after_seconds=60,
+            session_factory=session_factory,
+        )
+
+    assert repaired == 1
+    assert row.status == "failed"
+    assert "dispatch" in row.error_message
+    # Cleanup first commits the durable arbiter fence, then commits the
+    # compilation failure reconciliation after the fence is authoritative.
+    assert session.commit.await_count == 2
+    statement = session.execute.await_args.args[0]
+    assert statement._limit_clause.value == 100
+    assert statement._for_update_arg.skip_locked is True
+
+
+@pytest.mark.asyncio
+async def test_live_compilation_state_is_not_terminalized_by_orphan_recovery():
+    row = MagicMock(
+        job_id="live-job",
+        status="processing",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    session = AsyncMock()
+    session.execute.return_value = result
+    session_factory = MagicMock(return_value=_AsyncSessionContext(session))
+    redis_client = MagicMock()
+    redis_client.exists.return_value = 1
+    cache_redis = MagicMock()
+    cache_redis.get.return_value = None
+    cache_redis.exists.return_value = 0
+
+    with patch("app.workers.cleanup_worker.get_sync_redis_cache_client", return_value=cache_redis):
+        repaired = await _reconcile_orphaned_compilations(
+            redis_client,
+            stale_after_seconds=60,
+            session_factory=session_factory,
+        )
+
+    assert repaired == 0
+    assert row.status == "processing"
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_orphan_recovery_refunds_persisted_quota_receipt_once():
+    row = MagicMock(
+        job_id="metered-orphan",
+        status="processing",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    session = AsyncMock()
+    session.execute.return_value = result
+    session_factory = MagicMock(return_value=_AsyncSessionContext(session))
+    redis_client = MagicMock()
+    redis_client.exists.return_value = 0
+    redis_client.hget.return_value = "queued"
+    cache_redis = MagicMock()
+    cache_redis.get.return_value = json.dumps(
+        {"dimension": "compilations", "user_id": "user-1", "period": "202609"}
+    )
+    cache_redis.exists.return_value = 0
+
+    with (
+        patch("app.workers.cleanup_worker.get_sync_redis_cache_client", return_value=cache_redis),
+        patch("app.workers.cleanup_worker.fence_finalization", new=AsyncMock(return_value=FinalizationOutcome.FENCED)),
+        patch("app.workers.quota_refund.refund_quota_once", return_value=True) as refund,
+        patch("app.workers.cleanup_worker.fence_job", return_value=True),
+    ):
+        repaired = await _reconcile_orphaned_compilations(
+            redis_client,
+            stale_after_seconds=60,
+            session_factory=session_factory,
+        )
+
+    assert repaired == 1
+    refund.assert_called_once_with(
+        "metered-orphan",
+        json.loads(cache_redis.get.return_value),
+        expected_dimension="compilations",
+    )
+    assert row.status == "failed"
+    cache_redis.get.assert_called_once_with("latexy:quota-refund-pending:metered-orphan")
+
+
+@pytest.mark.asyncio
+async def test_orphan_recovery_accepts_existing_refund_marker_after_worker_crash():
+    row = MagicMock(
+        job_id="marker-orphan",
+        status="processing",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    session = AsyncMock()
+    session.execute.return_value = result
+    session_factory = MagicMock(return_value=_AsyncSessionContext(session))
+    redis_client = MagicMock()
+    redis_client.exists.return_value = 0
+    redis_client.hget.return_value = "queued"
+    cache_redis = MagicMock()
+    cache_redis.get.return_value = json.dumps(
+        {"dimension": "compilations", "user_id": "user-1", "period": "202609"}
+    )
+    cache_redis.exists.return_value = 1
+
+    with (
+        patch("app.workers.cleanup_worker.get_sync_redis_cache_client", return_value=cache_redis),
+        patch("app.workers.cleanup_worker.fence_finalization", new=AsyncMock(return_value=FinalizationOutcome.FENCED)),
+        patch("app.workers.quota_refund.refund_quota_once", return_value=False),
+        patch("app.workers.cleanup_worker.fence_job", return_value=True),
+    ):
+        repaired = await _reconcile_orphaned_compilations(
+            redis_client,
+            stale_after_seconds=60,
+            session_factory=session_factory,
+        )
+
+    assert repaired == 1
+    assert row.status == "failed"
+
+
+def test_receipt_without_state_is_refunded_for_llm_no_row_crash():
+    redis_client = MagicMock()
+    redis_client.exists.return_value = 0
+    redis_client.hget.return_value = None
+    cache_redis = MagicMock()
+    receipt = json.dumps(
+        {
+            "dimension": "optimizations",
+            "user_id": "user-1",
+            "period": "202609",
+            "cost": 1,
+            "created_at": time.time() - 3600,
+            "created_at_clock": "redis",
+        }
+    )
+    cache_redis.scan.return_value = (0, ["latexy:quota-refund-pending:llm-orphan"])
+    cache_redis.time.return_value = (int(time.time()), 0)
+    # Cursor read, then receipt scan read, then the reconciliation read.
+    cache_redis.get.side_effect = [None, receipt, receipt]
+    with (
+        patch("app.workers.quota_refund.refund_quota_once", return_value=True) as refund,
+        patch("app.workers.cleanup_worker.fence_orphan_without_lifecycle", return_value=True),
+        patch("app.workers.cleanup_worker._fence_database_before_timeout", return_value="legacy"),
+        patch("app.workers.cleanup_worker._read_finalization_outcome", return_value=(None, None, None)),
+    ):
+        assert _reconcile_receipts_without_compilation_rows(redis_client, cache_redis) == 1
+    refund.assert_called_once_with(
+        "llm-orphan",
+        json.loads(receipt),
+        expected_dimension="optimizations",
+    )
+
+
+def test_receipt_for_marked_processing_job_is_not_refunded_while_live():
+    redis_client = MagicMock()
+    redis_client.hget.return_value = "running"
+    # state, meta, result, dispatch marker: the marker is the fourth exists call
+    redis_client.exists.side_effect = [1, 1, 0, 1]
+    redis_client.get.return_value = json.dumps({"status": "processing"})
+    cache_redis = MagicMock()
+    receipt = json.dumps(
+        {"dimension": "optimizations", "user_id": "user-1", "period": "202609"}
+    )
+    cache_redis.scan.return_value = (0, ["latexy:quota-refund-pending:live-job"])
+    cache_redis.get.side_effect = [None, receipt]
+    with (
+        patch("app.workers.quota_refund.refund_quota_once") as refund,
+        patch("app.workers.cleanup_worker._read_finalization_outcome", return_value=(None, None, None)),
+    ):
+        assert _reconcile_receipts_without_compilation_rows(redis_client, cache_redis) == 0
+    refund.assert_not_called()
+
+
+def test_success_terminal_marker_prevents_late_false_refund():
+    redis_client = MagicMock()
+    cache_redis = MagicMock()
+    cache_redis.scan.return_value = (0, ["latexy:quota-refund-pending:successful-job"])
+    # Cursor read, missing receipt payload, then durable success marker.
+    cache_redis.get.side_effect = [None, None, "success"]
+
+    with (
+        patch("app.workers.quota_refund.refund_quota_once") as refund,
+        patch("app.workers.cleanup_worker._read_finalization_outcome", return_value=(None, None, None)),
+    ):
+        assert _reconcile_receipts_without_compilation_rows(redis_client, cache_redis) == 0
+
+    cache_redis.delete.assert_any_call(
+        "latexy:quota-refund-pending:successful-job"
+    )
+    refund.assert_not_called()
 
 
 @pytest.fixture
@@ -277,6 +522,44 @@ class TestCleanupTempFilesTask:
         self._run(mock_jsm, tmp_path)
         assert mock_jsm.publish_job_result.call_count >= 1
 
+    def test_terminal_result_precedes_completion_and_has_no_late_progress(self, mock_jsm, tmp_path):
+        order = []
+        mock_jsm.publish_job_result.side_effect = lambda *_args, **_kwargs: order.append("result")
+        mock_jsm.publish_event.side_effect = (
+            lambda _job_id, event_type, *_args, **_kwargs: order.append(event_type)
+        )
+
+        self._run(mock_jsm, tmp_path)
+
+        assert order.index("result") < order.index("job.completed")
+        completed_index = order.index("job.completed")
+        assert "job.progress" not in order[completed_index + 1:]
+
+    def test_missing_directory_result_precedes_completion(self, mock_jsm, tmp_path):
+        order = []
+        mock_jsm.publish_job_result.side_effect = lambda *_args, **_kwargs: order.append("result")
+        mock_jsm.publish_event.side_effect = (
+            lambda _job_id, event_type, *_args, **_kwargs: order.append(event_type)
+        )
+
+        self._run(mock_jsm, tmp_path / "missing")
+
+        assert order.index("result") < order.index("job.completed")
+        completed_index = order.index("job.completed")
+        assert "job.progress" not in order[completed_index + 1:]
+
+    def test_completion_event_has_no_synthetic_pdf_pointer(self, mock_jsm, tmp_path):
+        self._run(mock_jsm, tmp_path)
+        self._run(mock_jsm, tmp_path / "missing")
+
+        completed_events = [
+            call.args[2]
+            for call in mock_jsm.publish_event.call_args_list
+            if len(call.args) >= 3 and call.args[1] == "job.completed"
+        ]
+        assert len(completed_events) == 2
+        assert all("pdf_job_id" not in payload for payload in completed_events)
+
     # ── failure path ──────────────────────────────────────────────────────────
 
     def test_redis_failure_returns_error_dict(self, tmp_path):
@@ -328,6 +611,7 @@ class TestCleanupExpiredJobsTask:
         keys = [f"latexy:job:{jid}:state" for jid in job_states]
         r.keys.return_value = keys
         r.scan.return_value = (0, keys)
+        r.exists.return_value = 0
 
         state_map = {
             f"latexy:job:{jid}:state": json.dumps({"status": st, "last_updated": ts})
@@ -399,6 +683,39 @@ class TestCleanupExpiredJobsTask:
         self._set_jobs(mock_jsm, {"job-q": ("queued", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
+
+    def test_recent_processing_heartbeat_is_not_timed_out(self, mock_jsm):
+        self._set_jobs(mock_jsm, {"job-running": ("processing", time.time())})
+
+        with patch.object(celery_app.control, "revoke") as revoke:
+            result = self._run(mock_jsm)
+
+        assert result["jobs_timed_out"] == 0
+        revoke.assert_not_called()
+
+    def test_stale_processing_job_is_revoked_before_failure(self, mock_jsm):
+        self._set_jobs(mock_jsm, {"job-stale": ("processing", self._OLD)})
+
+        with (
+            patch.object(celery_app.control, "revoke") as revoke,
+            patch("app.workers.cleanup_worker.lifecycle_status", return_value="running"),
+            patch("app.workers.cleanup_worker.fence_job", return_value=True),
+            patch("app.workers.cleanup_worker._fence_database_before_timeout", return_value="legacy"),
+        ):
+            result = self._run(mock_jsm)
+
+        assert result["jobs_timed_out"] == 1
+        revoke.assert_called_once_with("job-stale", terminate=True, signal="SIGTERM")
+
+    def test_processing_job_with_result_is_not_timed_out(self, mock_jsm):
+        self._set_jobs(mock_jsm, {"job-finished": ("processing", self._OLD)})
+        mock_jsm._mock_redis.exists.return_value = 1
+
+        with patch.object(celery_app.control, "revoke") as revoke:
+            result = self._run(mock_jsm)
+
+        assert result["jobs_timed_out"] == 0
+        revoke.assert_not_called()
 
     # ── recent terminal jobs preserved ────────────────────────────────────────
 
@@ -477,8 +794,14 @@ class TestHealthCheckTask:
 
     def _run(self, mock_jsm, mock_rm, *, free_gb=10.0, total_gb=100.0, active_jobs=None):
         du = _disk_usage(free_gb, total_gb)
-        mock_jsm._mock_redis.keys.return_value = active_jobs or []
-        mock_jsm._mock_redis.scan.return_value = (0, active_jobs or [])
+        states = active_jobs or []
+        keys = [f"latexy:job:active-{index}:state" for index, _ in enumerate(states)]
+        mock_jsm._mock_redis.keys.return_value = keys
+        mock_jsm._mock_redis.scan.return_value = (0, keys)
+        mock_jsm._mock_redis.mget.return_value = [
+            json.dumps({"status": state}) if isinstance(state, str) else state
+            for state in states
+        ]
         with patch("shutil.disk_usage", return_value=du):
             return health_check_task.apply(kwargs={}).result
 
@@ -545,13 +868,13 @@ class TestHealthCheckTask:
     # ── high job count → degraded ─────────────────────────────────────────────
 
     def test_high_job_count_causes_degraded(self, mock_jsm, mock_rm):
-        result = self._run(mock_jsm, mock_rm, active_jobs=["j"] * 1001)
+        result = self._run(mock_jsm, mock_rm, active_jobs=["processing"] * 1001)
         assert result["overall_health"] == "degraded"
         assert any("job" in issue.lower() for issue in result["health_issues"])
 
     def test_exactly_1000_jobs_not_degraded(self, mock_jsm, mock_rm):
         """Boundary: exactly 1000 uses strict > threshold."""
-        result = self._run(mock_jsm, mock_rm, active_jobs=["j"] * 1000)
+        result = self._run(mock_jsm, mock_rm, active_jobs=["processing"] * 1000)
         job_issues = [i for i in result["health_issues"] if "job" in i.lower()]
         assert len(job_issues) == 0
 
@@ -560,15 +883,27 @@ class TestHealthCheckTask:
     def test_multiple_issues_all_reported(self, mock_jsm, mock_rm):
         mock_rm.health_check = AsyncMock(return_value={"redis": False, "cache": False})
         mock_rm.health_check_sync = MagicMock(return_value={"redis_queue": False, "redis_cache": False, "redis_sync": False})
-        result = self._run(mock_jsm, mock_rm, free_gb=0.1, active_jobs=["j"] * 1001)
+        result = self._run(mock_jsm, mock_rm, free_gb=0.1, active_jobs=["processing"] * 1001)
         assert result["overall_health"] == "degraded"
         assert len(result["health_issues"]) >= 2
 
     # ── active jobs count ─────────────────────────────────────────────────────
 
     def test_active_jobs_count_matches(self, mock_jsm, mock_rm):
-        result = self._run(mock_jsm, mock_rm, active_jobs=["j1", "j2", "j3"])
+        result = self._run(
+            mock_jsm,
+            mock_rm,
+            active_jobs=["queued", "processing", "running", "completed", "failed"],
+        )
         assert result["active_jobs_count"] == 3
+
+    def test_malformed_and_terminal_snapshots_are_not_active(self, mock_jsm, mock_rm):
+        result = self._run(
+            mock_jsm,
+            mock_rm,
+            active_jobs=["completed", "failed", "cancelled", b"not-json", None],
+        )
+        assert result["active_jobs_count"] == 0
 
     # ── Redis interaction ─────────────────────────────────────────────────────
 
@@ -593,28 +928,28 @@ class TestHealthCheckTask:
 class TestPruneOrphanedCompilationObjects:
     """
     Nothing used to delete anything under the compilations/ prefix, so objects
-    written for compiles with no Compilation row (anonymous submits,
+    written for compiles with no durable row (anonymous submits,
     compile-watermarked, the anonymous-share redaction compile) accumulated
-    forever. The prune only removes keys whose job_id has no row at all.
+    forever. The prune only removes keys with no exact durable pointer.
     """
 
     @staticmethod
-    def _obj(job_id: str, age_hours: float = 48):
+    def _obj(job_id: str, age_hours: float = 48, owner_hash: str = "a" * 32):
         from datetime import datetime, timedelta, timezone
         return {
-            "key": f"compilations/{job_id}/resume.pdf",
+            "key": f"compilations/{job_id}/finalization-{owner_hash}.pdf",
             "size": 1234,
             "last_modified": datetime.now(timezone.utc) - timedelta(hours=age_hours),
         }
 
-    def _run(self, objects, known_ids):
+    def _run(self, objects, committed_paths):
         from app.workers import cleanup_worker as cw
 
         with (
             patch("app.services.storage_service.list_objects", return_value=objects),
             patch("app.services.storage_service.delete_object", return_value=True) as mock_delete,
             patch.object(
-                cw, "_select_known_compilation_job_ids", new=AsyncMock(return_value=known_ids)
+                cw, "_select_committed_compilation_paths", new=AsyncMock(return_value=committed_paths)
             ),
         ):
             stats = cw._prune_orphaned_compilation_objects()
@@ -624,13 +959,46 @@ class TestPruneOrphanedCompilationObjects:
         orphan = str(uuid.uuid4())
         stats, mock_delete = self._run([self._obj(orphan)], set())
         assert stats["deleted"] == 1
-        assert mock_delete.call_args.args[0] == f"compilations/{orphan}/resume.pdf"
+        assert mock_delete.call_args.args[0] == f"compilations/{orphan}/finalization-{'a' * 32}.pdf"
 
     def test_object_with_row_is_kept_regardless_of_age(self):
         owned = str(uuid.uuid4())
-        stats, mock_delete = self._run([self._obj(owned, age_hours=10_000)], {owned})
+        owned_object = self._obj(owned, age_hours=10_000)
+        stats, mock_delete = self._run([owned_object], {owned_object["key"]})
         assert stats["deleted"] == 0
         assert not mock_delete.called
+
+    def test_loser_owner_object_is_deleted_but_committed_winner_is_kept(self):
+        job_id = str(uuid.uuid4())
+        winner = self._obj(job_id, owner_hash="a" * 32)
+        loser = self._obj(job_id, owner_hash="b" * 32)
+        stats, mock_delete = self._run([winner, loser], {winner["key"]})
+        assert stats["deleted"] == 1
+        mock_delete.assert_called_once_with(loser["key"])
+
+    def test_interrupted_upload_without_committed_pointer_is_deleted(self):
+        orphan = self._obj(str(uuid.uuid4()))
+        stats, mock_delete = self._run([orphan], set())
+        assert stats["deleted"] == 1
+        mock_delete.assert_called_once_with(orphan["key"])
+
+    def test_unrelated_prefix_object_is_retained(self):
+        job_id = str(uuid.uuid4())
+        unrelated = {
+            "key": f"compilations/{job_id}/resume.pdf",
+            "size": 1234,
+            "last_modified": datetime.now(timezone.utc) - timedelta(hours=48),
+        }
+        stats, mock_delete = self._run([unrelated], set())
+        assert stats["deleted"] == 0
+        mock_delete.assert_not_called()
+
+    def test_object_without_trusted_timestamp_is_retained(self):
+        orphan = self._obj(str(uuid.uuid4()))
+        orphan["last_modified"] = None
+        stats, mock_delete = self._run([orphan], set())
+        assert stats["deleted"] == 0
+        mock_delete.assert_not_called()
 
     def test_recent_object_is_never_touched(self):
         fresh = str(uuid.uuid4())
@@ -661,7 +1029,7 @@ class TestPruneOrphanedCompilationObjects:
             patch("app.services.storage_service.list_objects", return_value=[self._obj(orphan)]),
             patch("app.services.storage_service.delete_object", return_value=True),
             patch.object(
-                cw, "_select_known_compilation_job_ids", new=AsyncMock(return_value=set())
+                cw, "_select_committed_compilation_paths", new=AsyncMock(return_value=set())
             ),
         ):
             result = cleanup_expired_jobs_task.apply(kwargs={"max_age_hours": 24}).get()
@@ -675,8 +1043,9 @@ class TestPruneOrphanedCompilationObjects:
 
 class TestPruneDatabaseVerification:
     """
-    The pruner deletes on the strength of "no Compilation row exists". That is
-    only true if it read the SAME database the uploader wrote the row to — the
+    The pruner deletes on the strength of "no durable row points to this exact
+    PDF". That is only true if it read the SAME database the uploader wrote the
+    row to — the
     repo's root .env and scripts/dev.sh can point DATABASE_URL at different
     instances, and a mismatch made every live PDF look like an orphan.
     """
@@ -688,7 +1057,7 @@ class TestPruneDatabaseVerification:
         from app.workers import latex_worker as lw
 
         for module, func in (
-            (cw, cw._select_known_compilation_job_ids),
+            (cw, cw._select_committed_compilation_paths),
             (lw, lw._update_compilation_record),
         ):
             source = inspect.getsource(func)
@@ -711,9 +1080,9 @@ class TestPruneDatabaseVerification:
         with patch(
             "app.workers.storage_guard.read_compilation_database", return_value=None
         ):
-            known = asyncio.run(
-                cw._select_known_compilation_job_ids([str(uuid.uuid4())])
-            )
+            known = asyncio.run(cw._select_committed_compilation_paths([
+                f"compilations/{uuid.uuid4()}/finalization-{'a' * 32}.pdf"
+            ]))
         assert known is None, "no stamp => no deletes"
 
     def test_refuses_to_verify_against_a_different_database(self):
@@ -725,10 +1094,146 @@ class TestPruneDatabaseVerification:
             "app.workers.storage_guard.read_compilation_database",
             return_value="some-other-host:5432/other",
         ):
-            known = asyncio.run(
-                cw._select_known_compilation_job_ids([str(uuid.uuid4())])
-            )
+            known = asyncio.run(cw._select_committed_compilation_paths([
+                f"compilations/{uuid.uuid4()}/finalization-{'a' * 32}.pdf"
+            ]))
         assert known is None, "wrong database => no deletes"
+
+    def test_helper_returns_exact_committed_pointers_from_both_durable_tables(self):
+        import asyncio
+
+        from app.workers import cleanup_worker as cw
+
+        compilation_path = f"compilations/{uuid.uuid4()}/finalization-{'a' * 32}.pdf"
+        finalization_path = f"compilations/{uuid.uuid4()}/finalization-{'b' * 32}.pdf"
+        compilation_rows = MagicMock()
+        compilation_rows.scalars.return_value.all.return_value = [compilation_path]
+        finalization_rows = MagicMock()
+        finalization_rows.scalars.return_value.all.return_value = [finalization_path]
+        session = AsyncMock()
+        session.execute.side_effect = [compilation_rows, finalization_rows]
+        session_context = _AsyncSessionContext(session)
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+
+        with (
+            patch("app.utils.db_url.resolve_database_url", return_value="postgresql://db/latexy"),
+            patch("app.utils.db_url.database_identity", return_value="db/latexy"),
+            patch("app.workers.storage_guard.read_compilation_database", return_value="db/latexy"),
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=MagicMock(return_value=session_context)),
+        ):
+            committed = asyncio.run(
+                cw._select_committed_compilation_paths([compilation_path, finalization_path])
+            )
+
+        assert committed == {compilation_path, finalization_path}
+        engine.dispose.assert_awaited_once()
+
+    async def test_helper_queries_real_db_and_keeps_compilation_and_finalization_winners(self, db_session):
+        from sqlalchemy import delete
+
+        from app.database.models import Compilation, JobFinalization
+        from app.utils.db_url import database_identity, resolve_database_url
+        from app.workers import cleanup_worker as cw
+
+        suffix = uuid.uuid4().hex
+        compilation_job = f"test_cleanup_comp_{suffix}"
+        stale_job = f"test_cleanup_stale_{suffix}"
+        finalization_job = f"test_cleanup_final_{suffix}"
+        compilation_path = f"compilations/{compilation_job}/finalization-{'a' * 32}.pdf"
+        loser_path = f"compilations/{compilation_job}/finalization-{'b' * 32}.pdf"
+        stale_path = f"compilations/{stale_job}/finalization-{'d' * 32}.pdf"
+        finalization_path = f"compilations/{finalization_job}/finalization-{'c' * 32}.pdf"
+        db_session.add(
+            Compilation(job_id=compilation_job, status="completed", pdf_path=compilation_path)
+        )
+        db_session.add(Compilation(job_id=stale_job, status="processing", pdf_path=None))
+        db_session.add(
+            JobFinalization(
+                job_id=finalization_job,
+                state="completed",
+                terminal_result="completed",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+                pdf_path=finalization_path,
+            )
+        )
+        await db_session.commit()
+
+        try:
+            identity = database_identity(resolve_database_url())
+            with patch("app.workers.storage_guard.read_compilation_database", return_value=identity):
+                committed = await cw._select_committed_compilation_paths(
+                    [compilation_path, loser_path, stale_path, finalization_path]
+                )
+            assert committed == {compilation_path, finalization_path}
+        finally:
+            await db_session.execute(
+                delete(JobFinalization).where(JobFinalization.job_id == finalization_job)
+            )
+            await db_session.execute(
+                delete(Compilation).where(Compilation.job_id.in_([compilation_job, stale_job]))
+            )
+            await db_session.commit()
+
+    def test_helper_allows_gc_when_stale_row_has_no_committed_pointer(self):
+        import asyncio
+
+        from app.workers import cleanup_worker as cw
+
+        candidate = f"compilations/{uuid.uuid4()}/finalization-{'a' * 32}.pdf"
+        compilation_paths = MagicMock()
+        compilation_paths.scalars.return_value.all.return_value = []
+        finalization_paths = MagicMock()
+        finalization_paths.scalars.return_value.all.return_value = []
+        existing_compilation = MagicMock()
+        existing_compilation.scalar_one_or_none.return_value = "stale-job"
+        existing_finalization = MagicMock()
+        existing_finalization.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute.side_effect = [
+            compilation_paths,
+            finalization_paths,
+            existing_compilation,
+            existing_finalization,
+        ]
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+
+        with (
+            patch("app.utils.db_url.resolve_database_url", return_value="postgresql://db/latexy"),
+            patch("app.utils.db_url.database_identity", return_value="db/latexy"),
+            patch("app.workers.storage_guard.read_compilation_database", return_value="db/latexy"),
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=MagicMock(return_value=_AsyncSessionContext(session))),
+        ):
+            committed = asyncio.run(cw._select_committed_compilation_paths([candidate]))
+
+        assert committed == set()
+        engine.dispose.assert_awaited_once()
+
+    def test_helper_returns_untrusted_on_db_query_failure(self):
+        import asyncio
+
+        from app.workers import cleanup_worker as cw
+
+        session = AsyncMock()
+        session.execute.side_effect = RuntimeError("database unavailable")
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+        candidate = f"compilations/{uuid.uuid4()}/finalization-{'a' * 32}.pdf"
+
+        with (
+            patch("app.utils.db_url.resolve_database_url", return_value="postgresql://db/latexy"),
+            patch("app.utils.db_url.database_identity", return_value="db/latexy"),
+            patch("app.workers.storage_guard.read_compilation_database", return_value="db/latexy"),
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=MagicMock(return_value=_AsyncSessionContext(session))),
+        ):
+            committed = asyncio.run(cw._select_committed_compilation_paths([candidate]))
+
+        assert committed is None
+        engine.dispose.assert_awaited_once()
 
     def test_uploader_stamp_matches_what_the_pruner_checks(self):
         from app.utils.db_url import database_identity, resolve_database_url
@@ -737,8 +1242,8 @@ class TestPruneDatabaseVerification:
         identity = database_identity(resolve_database_url())
         recorded = {}
         with patch("app.workers.event_publisher.get_worker_redis") as mock_redis:
-            mock_redis.return_value.setex.side_effect = (
-                lambda key, ttl, value: recorded.setdefault(key, value)
+            mock_redis.return_value.set.side_effect = (
+                lambda key, value, **kwargs: recorded.setdefault(key, value)
             )
             storage_guard.record_compilation_database(identity)
 
