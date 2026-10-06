@@ -453,6 +453,15 @@ jobs:
           pnpm exec playwright test e2e/editor-compile-sync.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
+      - name: Verify Better Auth hydration snapshot contract
+        env:
+          # The baseline expected-error mode is a local diagnostic only; CI runs
+          # the gated candidate and must never silently switch to that mode.
+          HYDRATION_AUTH_CLIENT_BASELINE: "0"
+        run: >-
+          pnpm exec playwright test e2e/hydration-session-store.opt-in.ts
+          --config=playwright.hydration.config.ts --workers=1 --retries=0
+          --trace=on --reporter=line --output=test-results/hydration-session-store
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -462,6 +471,7 @@ jobs:
             frontend/playwright-quality-report
             frontend/test-results/quality
             frontend/test-results/editor-compile-sync
+            frontend/test-results/hydration-session-store
           if-no-files-found: warn
           retention-days: 14
 
