@@ -168,6 +168,15 @@ describe('pure changed-file classification', () => {
 })
 
 describe('event and Git range handling', () => {
+  test('executable mode on an otherwise docs-only file fails closed', () => {
+    const repo = makeRepo()
+    const before = git(repo, ['rev-parse', 'HEAD'])
+    git(repo, ['update-index', '--chmod=+x', 'README.md'])
+    git(repo, ['commit', '-qm', 'executable documentation path'])
+    const after = git(repo, ['rev-parse', 'HEAD'])
+    assert.deepEqual(classifyEvent({ repoRoot: repo, eventName: 'push', event: { before, after } }), expected(...SCOPE_KEYS))
+  })
+
   test('actual docs-only Git range skips suites, but moving code into docs retains its old scope', () => {
     const repo = makeRepo()
     const before = git(repo, ['rev-parse', 'HEAD'])
