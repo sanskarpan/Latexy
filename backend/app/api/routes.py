@@ -3,12 +3,16 @@ API routes for the application.
 """
 
 import asyncio
+import hashlib
+import json
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.params import Depends as DependsParam
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
@@ -16,7 +20,7 @@ from ..core.logging import get_logger
 from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
 from ..database.connection import get_async_db_session, get_db
-from ..database.models import Compilation, Resume, User
+from ..database.models import Compilation, JobFinalization, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..middleware.auth_middleware import get_current_user_required as _require_user
 from ..middleware.entitlements import require_feature
@@ -31,7 +35,18 @@ from ..services.payment_service import payment_service
 from ..services.redis_capacity_service import redis_capacity_service
 from ..services.trial_service import TRIAL_LIMIT as _TRIAL_LIMIT
 from ..services.trial_service import get_trial_limit_for_user, trial_service
-from ..utils.file_utils import get_job_files, validate_file_upload, validate_job_id
+from ..utils.bounded_io import (
+    MAX_COMPILED_PDF_BYTES,
+    MAX_SYNCTEX_COMPRESSED_BYTES,
+    MAX_SYNCTEX_DECOMPRESSED_BYTES,
+    BoundedReadError,
+    decode_base64_bounded,
+    read_file_bounded,
+    read_gzip_file_bounded,
+    read_text_file_bounded,
+)
+from ..utils.file_utils import get_job_files, read_upload_capped, validate_file_upload, validate_job_id
+from .job_metadata import parse_ownership_metadata
 
 logger = get_logger(__name__)
 
@@ -68,15 +83,31 @@ from .resume_routes import router as resume_router
 
 router.include_router(resume_router)
 
+# Immutable per-element history (B52). Kept separate from the document editor
+# routes so history writes cannot accidentally mutate the resume text.
+from .element_version_routes import router as element_version_router
+
+router.include_router(element_version_router)
+
+# Server-authoritative suggesting-mode decisions. Proposal awareness remains
+# ephemeral, but accepted document mutations are serialized and persisted here.
+from .suggestion_routes import router as suggestion_router
+
+router.include_router(suggestion_router)
+
 # Include Format detection routes
 from .format_routes import router as format_router
 
 router.include_router(format_router)
 
 # Include Export routes
+from .document_delivery_routes import router as document_delivery_router
 from .export_routes import router as export_router
+from .google_drive_routes import router as google_drive_router
 
+router.include_router(document_delivery_router)
 router.include_router(export_router)
+router.include_router(google_drive_router)
 
 # Include Template routes
 from .template_routes import router as template_router
@@ -104,9 +135,17 @@ from .admin_routes import router as admin_router
 router.include_router(admin_router)
 
 # Include Job Application Tracker routes
+from .email_status_routes import router as email_status_router
+from .outreach_routes import router as outreach_router
+from .referral_routes import router as referral_router
 from .tracker_routes import router as tracker_router
+from .tracker_workflow_routes import router as tracker_workflow_router
 
 router.include_router(tracker_router)
+router.include_router(tracker_workflow_router)
+router.include_router(email_status_router)
+router.include_router(outreach_router)
+router.include_router(referral_router)
 
 # Include Interview Prep routes
 from .interview_routes import resume_interview_router
@@ -154,6 +193,11 @@ router.include_router(workspace_router)
 from .comment_routes import router as comment_router
 
 router.include_router(comment_router)
+
+# Anonymous peer/mentor review comments (B51d / #1392)
+from .review_routes import router as review_router
+
+router.include_router(review_router)
 
 # Include Dropbox sync routes (Feature 77)
 from .dropbox_routes import router as dropbox_router
@@ -220,8 +264,7 @@ def _check_cors_origins_on_startup() -> None:
         localhost_origins = [o for o in (settings.CORS_ORIGINS or []) if "localhost" in o]
         if localhost_origins:
             logger.warning(
-                "CORS_ORIGINS contains localhost entries — ensure this is intentional for production"
-                " (entries: %s)",
+                "CORS_ORIGINS contains localhost entries — ensure this is intentional for production (entries: %s)",
                 localhost_origins,
             )
 
@@ -230,14 +273,32 @@ class MeResponse(BaseModel):
     id: str
     email: str
     plan: str
+    role: str = "user"
     # Account-synced UI preferences (onboarding completion, theme). Cross-device,
     # so a user isn't re-onboarded / reset to light on a new browser.
-    preferences: dict = {}
+    preferences: dict = Field(default_factory=dict)
 
 
 class UserPreferencesUpdate(BaseModel):
     has_onboarded: Optional[bool] = None
     theme: Optional[str] = None  # 'light' | 'dark'
+    spell_dictionary: Optional[list[str]] = Field(default=None, max_length=500)
+
+    @field_validator("spell_dictionary")
+    @classmethod
+    def validate_spell_dictionary(cls, words: Optional[list[str]]) -> Optional[list[str]]:
+        if words is None:
+            return None
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in words:
+            word = raw.strip().lower()
+            if not word or len(word) > 64 or any(char.isspace() or ord(char) < 32 for char in word):
+                raise ValueError("dictionary words must be 1-64 non-whitespace characters")
+            if word not in seen:
+                seen.add(word)
+                normalized.append(word)
+        return normalized
 
 
 def _user_preferences(user: User) -> dict:
@@ -255,7 +316,10 @@ async def get_me(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return MeResponse(
-        id=user.id, email=user.email, plan=user.subscription_plan,
+        id=user.id,
+        email=user.email,
+        plan=user.subscription_plan,
+        role=user.role,
         preferences=_user_preferences(user),
     )
 
@@ -282,11 +346,19 @@ async def update_me_preferences(
         prefs["has_onboarded"] = body.has_onboarded
     if body.theme is not None:
         prefs["theme"] = body.theme
+    if body.spell_dictionary is not None:
+        prefs["spell_dictionary"] = body.spell_dictionary
     meta["preferences"] = prefs
     user.user_metadata = meta
     await db.commit()
 
-    return MeResponse(id=user.id, email=user.email, plan=user.subscription_plan, preferences=prefs)
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        plan=user.subscription_plan,
+        role=user.role,
+        preferences=prefs,
+    )
 
 
 @router.get("/config/entitlements")
@@ -303,9 +375,7 @@ async def get_entitlements_for_user(
     features = await entitlement_service.effective_features(user_id, db)
     payload: dict = {"features": features}
     if user_id:
-        payload["quotas"] = await entitlement_service.quota_snapshot(
-            user_id, await _resolve_user_plan(db, user_id)
-        )
+        payload["quotas"] = await entitlement_service.quota_snapshot(user_id, await _resolve_user_plan(db, user_id))
     return payload
 
 
@@ -313,8 +383,12 @@ async def get_entitlements_for_user(
 async def health_check():
     """Health check endpoint."""
     import os
+
     # On Modal, LaTeX runs in a separate worker container — report as available
-    latex_available = True if os.environ.get("DEPLOY_TARGET") == "modal" else latex_compiler.is_available()
+    latex_available = (
+        True if os.environ.get("DEPLOY_TARGET") == "modal"
+        else await asyncio.to_thread(latex_compiler.is_available)
+    )
     llm_service.is_available()
 
     # OBS-001: probe DB and Redis connectivity
@@ -324,10 +398,11 @@ async def health_check():
 
     try:
         from sqlalchemy import text
+
         async with get_async_db_session() as session:
             await session.execute(text("SELECT 1"))
     except Exception as exc:
-        logger.warning("Health check: database unavailable: %s", exc)
+        logger.warning("Health check: database unavailable (%s)", type(exc).__name__)
         db_status = "unavailable"
 
     try:
@@ -337,7 +412,7 @@ async def health_check():
         else:
             redis_status = "unavailable"
     except Exception as exc:
-        logger.warning("Health check: redis unavailable: %s", exc)
+        logger.warning("Health check: redis unavailable (%s)", type(exc).__name__)
         redis_status = "unavailable"
 
     try:
@@ -347,7 +422,7 @@ async def health_check():
         else:
             redis_cache_status = "unavailable"
     except Exception as exc:
-        logger.warning("Health check: cache Redis unavailable: %s", exc)
+        logger.warning("Health check: cache Redis unavailable (%s)", type(exc).__name__)
         redis_cache_status = "unavailable"
 
     capacity = await redis_capacity_service.snapshot()
@@ -363,10 +438,10 @@ async def health_check():
 
         ok, detail = await asyncio.to_thread(storage_service.probe)
         if not ok:
-            logger.warning("Health check: object storage unavailable: %s", detail)
+            logger.warning("Health check: object storage unavailable (%s)", detail)
             storage_status = "unavailable"
     except Exception as exc:
-        logger.warning("Health check: object storage probe failed: %s", exc)
+        logger.warning("Health check: object storage probe failed (%s)", type(exc).__name__)
         storage_status = "unavailable"
 
     # Consider service healthy if LaTeX is available AND every backing service is up.
@@ -410,9 +485,11 @@ async def readyz():
     status when the service cannot serve requests.
     """
     from fastapi.responses import JSONResponse
+
     checks = {"database": "ok", "redis": "ok", "redis_cache": "ok"}
     try:
         from sqlalchemy import text
+
         async with get_async_db_session() as session:
             await session.execute(text("SELECT 1"))
     except Exception:
@@ -451,6 +528,7 @@ async def metrics():
     try:
         from ..core.observability import set_db_pool_stats
         from ..database.connection import engine as _engine
+
         pool = _engine.pool
         set_db_pool_stats(
             size=getattr(pool, "size", lambda: 0)(),
@@ -482,22 +560,19 @@ async def compile_latex_endpoint(
         # Get LaTeX content from either form data or file upload
         if file:
             validate_file_upload(file)
-            content = await file.read()
-            latex_content = content.decode('utf-8')
+            content = await read_upload_capped(file)
+            latex_content = content.decode("utf-8")
 
         elif latex_content:
             pass  # Use provided content
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Either latex_content or file must be provided"
-            )
+            raise HTTPException(status_code=400, detail="Either latex_content or file must be provided")
 
         # Validate LaTeX content
         if not latex_service.validate_latex_content(latex_content):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
+                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}",
             )
 
         # Charge the allowance only once the input is known to be compilable.
@@ -509,6 +584,7 @@ async def compile_latex_endpoint(
 
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
+        await _record_direct_compile_job_owner(result.job_id, user_id)
 
         if not result.success:
             await entitlement_service.refund_quota(quota_ticket)
@@ -525,7 +601,7 @@ async def compile_latex_endpoint(
     except Exception as e:
         if quota_ticket is not None:
             await entitlement_service.refund_quota(quota_ticket)
-        logger.error(f"Unexpected error in compile endpoint: {e}")
+        logger.error("Unexpected error in compile endpoint (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -533,70 +609,286 @@ async def _assert_job_download_access(job_id: str, user_id: Optional[str]) -> No
     """Enforce ownership before serving a compiled PDF/SyncTeX (contains PII).
 
     Owned jobs (meta.user_id set) are only accessible to their owner; anonymous/
-    trial jobs (no owner) remain downloadable by job_id. If meta is absent (expired),
-    the caller falls through to the endpoint's own 404.
+    trial jobs (explicitly represented by ``user_id: null``) remain downloadable
+    by job_id. Ownership metadata is security-critical: a cache outage or missing
+    metadata must never turn the local fallback into an unauthenticated file
+    server.
     """
-    import json as _json
-
     from ..core.redis import get_redis_client
 
     try:
         r = await get_redis_client()
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
     except Exception as exc:  # pragma: no cover - redis transient
-        logger.warning(f"Ownership meta lookup failed for job {job_id}: {exc}")
-        return
+        logger.warning("Ownership metadata unavailable for job %s: %s", job_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Job ownership could not be verified") from exc
     if not meta_raw:
-        return
-    job_owner = _json.loads(meta_raw).get("user_id")
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        metadata = parse_ownership_metadata(meta_raw, job_id)
+        job_owner = metadata["user_id"]
+    except (TypeError, ValueError, AttributeError) as exc:
+        logger.warning("Invalid ownership metadata for job %s", job_id)
+        raise HTTPException(status_code=503, detail="Job ownership could not be verified") from exc
     if job_owner is not None and job_owner != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+# Only these durable job families create a user-owned Compilation row.  In
+# particular, an optimization-only finalization must never be made into a PDF
+# download merely because a row happens to contain a path-like value.
+_DURABLE_PDF_JOB_TYPES = frozenset({"latex_compilation", "auto_fit", "combined"})
+
+
+async def _query_owned_durable_pdf(
+    db: AsyncSession,
+    *,
+    job_id: str,
+    user_id: Optional[str],
+) -> dict[str, object]:
+    """Find the immutable PDF pointer for one authenticated owner.
+
+    This is deliberately narrower than the generic terminal-result recovery
+    helper: a PDF requires an unexpired completed typed finalization *and* its
+    exact user-owned completed Compilation relationship.  No row is created,
+    refreshed, or inferred from nullable ownership fields here.
+    """
+    if not user_id:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    try:
+        result = await db.execute(
+            select(JobFinalization, Compilation)
+            .join(Compilation, Compilation.id == JobFinalization.compilation_id)
+            .where(
+                JobFinalization.job_id == job_id,
+                JobFinalization.user_id == user_id,
+                JobFinalization.job_type.in_(_DURABLE_PDF_JOB_TYPES),
+                JobFinalization.state == "completed",
+                JobFinalization.expires_at > func.clock_timestamp(),
+                Compilation.job_id == job_id,
+                Compilation.user_id == user_id,
+                Compilation.status == "completed",
+                JobFinalization.resume_id.is_not_distinct_from(Compilation.resume_id),
+            )
+        )
+        pair = result.first()
+    except Exception as exc:
+        logger.warning(
+            "Durable PDF lookup failed for job %s (%s)", job_id, type(exc).__name__
+        )
+        raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
+
+    if pair is None:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    finalization, compilation = pair
+    if (
+        finalization.job_id != job_id
+        or finalization.user_id != user_id
+        or finalization.job_type not in _DURABLE_PDF_JOB_TYPES
+        or finalization.state != "completed"
+        or finalization.compilation_id != compilation.id
+        or finalization.resume_id != compilation.resume_id
+        or compilation.job_id != job_id
+        or compilation.user_id != user_id
+        or compilation.status != "completed"
+    ):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    # Both rows must point at the same immutable object.  A path from either
+    # row alone is not enough to establish that it belongs to this completed
+    # compilation.
+    if not finalization.pdf_path or finalization.pdf_path != compilation.pdf_path:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    try:
+        from ..services.storage_service import compilation_pdf_key
+
+        expected_path = compilation_pdf_key(job_id, finalization.owner_token)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="PDF not found") from None
+    if finalization.pdf_path != expected_path:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    finalization_size = finalization.pdf_size
+    compilation_size = compilation.pdf_size
+    for persisted_size in (finalization_size, compilation_size):
+        if persisted_size is not None and (
+            not isinstance(persisted_size, int) or isinstance(persisted_size, bool) or persisted_size < 0
+        ):
+            raise HTTPException(status_code=404, detail="PDF not found")
+    if (
+        finalization_size is not None
+        and compilation_size is not None
+        and finalization_size != compilation_size
+    ):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    expected_size = finalization_size if finalization_size is not None else compilation_size
+    if expected_size is not None and expected_size > MAX_COMPILED_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="Compiled PDF is too large")
+
+    expected_hash = finalization.pdf_sha256
+    if expected_hash is not None and (
+        not isinstance(expected_hash, str) or len(expected_hash) != 64
+    ):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    return {
+        "pdf_path": finalization.pdf_path,
+        "pdf_size": expected_size,
+        "pdf_sha256": expected_hash,
+    }
+
+
+async def _lookup_owned_durable_pdf(
+    db: object,
+    *,
+    job_id: str,
+    user_id: Optional[str],
+) -> dict[str, object]:
+    """Use the injected DB when available, preserving direct-call compatibility."""
+    if db is not None and not isinstance(db, DependsParam):
+        return await _query_owned_durable_pdf(db, job_id=job_id, user_id=user_id)  # type: ignore[arg-type]
+    try:
+        async with get_async_db_session() as session:
+            return await _query_owned_durable_pdf(session, job_id=job_id, user_id=user_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "Durable PDF session unavailable for job %s (%s)", job_id, type(exc).__name__
+        )
+        raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
+
+
+async def _serve_durable_pdf(artifact: dict[str, object], job_id: str) -> Response:
+    """Download and integrity-check one already-authorized durable PDF."""
+    from ..services import storage_service
+
+    try:
+        pdf_bytes = await asyncio.to_thread(
+            storage_service.download_bytes,
+            str(artifact["pdf_path"]),
+            max_bytes=MAX_COMPILED_PDF_BYTES,
+        )
+    except storage_service.StorageObjectTooLarge:
+        raise HTTPException(status_code=413, detail="Compiled PDF is too large") from None
+    except Exception as exc:
+        logger.warning("Durable PDF storage lookup failed for job %s (%s)", job_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="PDF storage is temporarily unavailable") from exc
+
+    if pdf_bytes is None:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    if not isinstance(pdf_bytes, bytes):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    if len(pdf_bytes) > MAX_COMPILED_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="Compiled PDF is too large")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    expected_size = artifact.get("pdf_size")
+    if expected_size is not None and len(pdf_bytes) != expected_size:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    expected_hash = artifact.get("pdf_sha256")
+    if expected_hash is not None and hashlib.sha256(pdf_bytes).hexdigest() != expected_hash:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="resume_{job_id[:8]}.pdf"'},
+    )
+
+
+async def _record_direct_compile_job_owner(job_id: str, user_id: Optional[str]) -> None:
+    """Persist ownership metadata for the synchronous compiler paths.
+
+    The queued compiler writes this metadata before dispatch.  The legacy
+    synchronous endpoints do not go through that queue, but their local PDFs
+    still flow through the same download/log/synctex routes.
+    """
+    from ..core.redis import get_redis_client
+
+    try:
+        r = await get_redis_client()
+        await r.set(
+            f"latexy:job:{job_id}:meta",
+            json.dumps({"job_id": job_id, "user_id": user_id}),
+            ex=max(1, settings.PDF_RETENTION_TIME),
+        )
+    except Exception as exc:  # pragma: no cover - cache transient
+        logger.warning("Could not persist ownership metadata for job %s: %s", job_id, type(exc).__name__)
 
 
 @router.get("/download/{job_id}")
 async def download_pdf(
     job_id: str,
     user_id: Optional[str] = Depends(get_current_user_optional),
+    db: Optional[AsyncSession] = Depends(get_db),
 ):
     """Download compiled PDF."""
-    import base64 as _base64
-
     from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
-    await _assert_job_download_access(job_id, user_id)
+    durable_artifact: Optional[dict[str, object]] = None
+    metadata_verified = False
+    try:
+        await _assert_job_download_access(job_id, user_id)
+        metadata_verified = True
+    except HTTPException as access_error:
+        # A missing Redis metadata key is the only ownership result that may
+        # enter durable recovery, and only an authenticated caller may do so.
+        # Preserve the existing 403/503 behavior for mismatches, malformed
+        # metadata, and Redis outages.
+        if access_error.status_code != 404 or not user_id:
+            raise
+        durable_artifact = await _lookup_owned_durable_pdf(
+            db, job_id=job_id, user_id=user_id
+        )
+        # With no ownership metadata, the DB-verified immutable artifact is
+        # the authority.  Do not let an unrelated/stale Redis or local copy
+        # override its integrity checks.
+        return await _serve_durable_pdf(durable_artifact, job_id)
 
     # Primary path: PDF bytes cached in Redis (works in serverless/multi-container envs).
     try:
         r = await get_redis_client()
         pdf_b64 = await r.get(f"latexy:job:{job_id}:pdf")
         if pdf_b64:
-            pdf_bytes = _base64.b64decode(pdf_b64)
+            pdf_bytes = decode_base64_bounded(pdf_b64, MAX_COMPILED_PDF_BYTES)
             return Response(
                 content=pdf_bytes,
                 media_type="application/pdf",
                 headers={"Content-Disposition": f'attachment; filename="resume_{job_id[:8]}.pdf"'},
             )
+    except BoundedReadError:
+        raise HTTPException(status_code=413, detail="Compiled PDF is too large")
     except Exception as e:
-        logger.warning(f"Redis PDF lookup failed for job {job_id}: {e}")
+        logger.warning("Redis PDF lookup failed for job %s (%s)", job_id, type(e).__name__)
 
     # Fallback: local filesystem (works in single-process / Docker dev deployments).
     job_dir, pdf_file, _ = get_job_files(job_id)
-    if not pdf_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="PDF not found. Job may have failed or files may have been cleaned up."
-        )
+    if pdf_file.exists():
+        if pdf_file.stat().st_size > MAX_COMPILED_PDF_BYTES:
+            raise HTTPException(status_code=413, detail="Compiled PDF is too large")
+        try:
+            return FileResponse(path=pdf_file, media_type="application/pdf", filename=f"resume_{job_id[:8]}.pdf")
+        except Exception as e:
+            logger.error("Error serving PDF for job %s (%s)", job_id, type(e).__name__)
+            raise HTTPException(status_code=500, detail="Error serving PDF file")
 
-    try:
-        return FileResponse(
-            path=pdf_file,
-            media_type="application/pdf",
-            filename=f"resume_{job_id[:8]}.pdf",
+    # When Redis metadata was valid but both transient artifact paths are gone,
+    # consult the same narrow durable record.  Anonymous jobs and metadata-less
+    # unauthenticated calls never reach this branch.
+    if durable_artifact is None and metadata_verified and user_id:
+        durable_artifact = await _lookup_owned_durable_pdf(
+            db, job_id=job_id, user_id=user_id
         )
-    except Exception as e:
-        logger.error(f"Error serving PDF for job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error serving PDF file")
+    if durable_artifact is not None:
+        return await _serve_durable_pdf(durable_artifact, job_id)
+
+    raise HTTPException(
+        status_code=404, detail="PDF not found. Job may have failed or files may have been cleaned up."
+    )
 
 
 @router.get("/download/{job_id}/synctex")
@@ -605,8 +897,6 @@ async def download_synctex(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Serve decompressed SyncTeX data for bidirectional editor↔PDF sync."""
-    import gzip
-
     from fastapi.responses import Response
 
     from ..core.redis import get_redis_client
@@ -623,7 +913,7 @@ async def download_synctex(
         if synctex_cached:
             return Response(content=synctex_cached, media_type="text/plain")
     except Exception as e:
-        logger.warning(f"Redis synctex lookup failed for job {job_id}: {e}")
+        logger.warning("Redis synctex lookup failed for job %s (%s)", job_id, type(e).__name__)
 
     # Fallback: local filesystem (single-process / Docker dev deployments).
     job_dir, _, _ = get_job_files(job_id)
@@ -632,16 +922,24 @@ async def download_synctex(
 
     try:
         if synctex_gz.exists():
-            content = gzip.decompress(synctex_gz.read_bytes()).decode("utf-8", errors="replace")
+            content = read_gzip_file_bounded(
+                synctex_gz,
+                max_compressed_bytes=MAX_SYNCTEX_COMPRESSED_BYTES,
+                max_decompressed_bytes=MAX_SYNCTEX_DECOMPRESSED_BYTES,
+            ).decode("utf-8", errors="replace")
         elif synctex_plain.exists():
-            content = synctex_plain.read_text(encoding="utf-8", errors="replace")
+            content = read_file_bounded(
+                synctex_plain, MAX_SYNCTEX_DECOMPRESSED_BYTES
+            ).decode("utf-8", errors="replace")
         else:
             raise HTTPException(status_code=404, detail="SyncTeX data not found")
         return Response(content=content, media_type="text/plain")
     except HTTPException:
         raise
+    except BoundedReadError:
+        raise HTTPException(status_code=413, detail="SyncTeX data is too large")
     except Exception as e:
-        logger.error(f"Error serving synctex for job {job_id}: {e}")
+        logger.error("Error serving synctex for job %s (%s)", job_id, type(e).__name__)
         raise HTTPException(status_code=500, detail="Error serving SyncTeX file")
 
 
@@ -664,7 +962,7 @@ async def get_compilation_logs(
         if log_text:
             return LogsResponse(job_id=job_id, logs=log_text)
     except Exception as e:
-        logger.warning(f"Redis log lookup failed for job {job_id}: {e}")
+        logger.warning("Redis log lookup failed for job %s (%s)", job_id, type(e).__name__)
 
     # Fallback: local filesystem (Docker / single-process dev).
     _, _, log_file = get_job_files(job_id)
@@ -672,10 +970,10 @@ async def get_compilation_logs(
         raise HTTPException(status_code=404, detail="Log file not found")
 
     try:
-        log_content = log_file.read_text(encoding='utf-8', errors='ignore')
+        log_content = read_text_file_bounded(log_file)
         return LogsResponse(job_id=job_id, logs=log_content)
     except Exception as e:
-        logger.error(f"Error reading logs for job {job_id}: {e}")
+        logger.error("Error reading logs for job %s (%s)", job_id, type(e).__name__)
         raise HTTPException(status_code=500, detail="Error reading log file")
 
 
@@ -698,10 +996,7 @@ async def optimize_resume(
     """
 
     if not llm_service.is_available():
-        raise HTTPException(
-            status_code=503,
-            detail="LLM service is not available. Please configure OpenAI API key."
-        )
+        raise HTTPException(status_code=503, detail="LLM service is not available. Please configure OpenAI API key.")
 
     quota_ticket = None
     try:
@@ -709,15 +1004,12 @@ async def optimize_resume(
         if not latex_service.validate_latex_content(request.latex_content):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
+                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}",
             )
 
         # Validate job description
         if not request.job_description.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Job description cannot be empty"
-            )
+            raise HTTPException(status_code=400, detail="Job description cannot be empty")
 
         # Charge the allowance only once the request is known to be valid, and
         # hand it back below if the LLM call itself does not produce a result.
@@ -740,7 +1032,7 @@ async def optimize_resume(
     except Exception as e:
         if quota_ticket is not None:
             await entitlement_service.refund_quota(quota_ticket)
-        logger.error(f"Unexpected error in optimize endpoint: {e}")
+        logger.error("Unexpected error in optimize endpoint (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -765,14 +1057,11 @@ async def optimize_and_compile_resume(
         optimization_result = await optimize_resume(request, user_id=user_id, db=db)
 
         if not optimization_result.success:
-            return {
-                "optimization": optimization_result,
-                "compilation": None,
-                "success": False
-            }
+            return {"optimization": optimization_result, "compilation": None, "success": False}
 
         # Then compile the optimized LaTeX
         compilation_result = await latex_service.compile_latex(optimization_result.optimized_latex)
+        await _record_direct_compile_job_owner(compilation_result.job_id, user_id)
 
         # Schedule cleanup after retention period only if compilation was successful
         if compilation_result.success:
@@ -782,13 +1071,13 @@ async def optimize_and_compile_resume(
         return {
             "optimization": optimization_result,
             "compilation": compilation_result,
-            "success": optimization_result.success and compilation_result.success
+            "success": optimization_result.success and compilation_result.success,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in optimize-and-compile endpoint: {e}")
+        logger.error("Unexpected error in optimize-and-compile endpoint (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -812,6 +1101,7 @@ class TrialStatusResponse(BaseModel):
     canUse: bool
     trialLimit: int = _TRIAL_LIMIT
 
+
 class TrackUsageRequest(BaseModel):
     deviceFingerprint: str
     sessionId: Optional[str] = None
@@ -819,6 +1109,7 @@ class TrackUsageRequest(BaseModel):
     resourceType: Optional[str] = None
     userAgent: Optional[str] = None
     metadata: Optional[dict] = None
+
 
 class TrackUsageResponse(BaseModel):
     success: bool
@@ -851,16 +1142,12 @@ async def get_trial_status(
             trialLimit=status["trialLimit"],
         )
     except Exception as e:
-        logger.error(f"Error getting trial status: {e}")
+        logger.error("Error getting trial status (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/public/track-usage", response_model=TrackUsageResponse)
-async def track_usage(
-    request_data: TrackUsageRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
+async def track_usage(request_data: TrackUsageRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Track usage for anonymous users."""
     try:
         ip_address = request.client.host if request.client else None
@@ -873,7 +1160,7 @@ async def track_usage(
             user_agent=request_data.userAgent,
             session_id=request_data.sessionId,
             resource_type=request_data.resourceType,
-            metadata=request_data.metadata
+            metadata=request_data.metadata,
         )
 
         return TrackUsageResponse(
@@ -882,10 +1169,10 @@ async def track_usage(
             remainingUses=result.get("remainingUses"),
             blocked=result.get("blocked"),
             error=result.get("error"),
-            waitTime=result.get("waitTime")
+            waitTime=result.get("waitTime"),
         )
     except Exception as e:
-        logger.error(f"Error tracking usage: {e}")
+        logger.error("Error tracking usage (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -924,11 +1211,28 @@ async def compile_latex_anonymous(
         )
 
     try:
+        # Validate the input before consuming the visitor's one trial. Otherwise a
+        # malformed document permanently spends the allowance without compiling.
+        if file:
+            validate_file_upload(file)
+            content = await read_upload_capped(file)
+            latex_content = content.decode("utf-8")
+
+        elif latex_content:
+            pass  # Use provided content
+        else:
+            raise HTTPException(status_code=400, detail="Either latex_content or file must be provided")
+
+        # Validate LaTeX content
+        if not latex_service.validate_latex_content(latex_content):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}",
+            )
+
         ip_address = request.client.host if request.client else None
 
         # Atomically check trial limit and increment usage (SELECT FOR UPDATE).
-        # Mirrors /public/track-usage — prevents TOCTOU race where concurrent
-        # requests both pass the limit check before either increments the counter.
         usage_result = await trial_service.check_and_track_usage(
             db=db,
             device_fingerprint=device_fingerprint,
@@ -949,29 +1253,9 @@ async def compile_latex_anonymous(
                 detail=error_messages.get(usage_result.get("error", ""), "Rate limit exceeded"),
             )
 
-        # Get LaTeX content from either form data or file upload
-        if file:
-            validate_file_upload(file)
-            content = await file.read()
-            latex_content = content.decode('utf-8')
-
-        elif latex_content:
-            pass  # Use provided content
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Either latex_content or file must be provided"
-            )
-
-        # Validate LaTeX content
-        if not latex_service.validate_latex_content(latex_content):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
-            )
-
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
+        await _record_direct_compile_job_owner(result.job_id, None)
 
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
@@ -983,11 +1267,12 @@ async def compile_latex_anonymous(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in anonymous compile endpoint: {e}")
+        logger.error("Unexpected error in anonymous compile endpoint (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # Payment & Subscription Endpoints
+
 
 class BillingStatusResponse(BaseModel):
     feature_enabled: bool
@@ -996,9 +1281,11 @@ class BillingStatusResponse(BaseModel):
     reason: Optional[str] = None
     message: str
 
+
 class SubscriptionPlanResponse(BaseModel):
     plans: dict
     billing: BillingStatusResponse
+
 
 class CreateSubscriptionRequest(BaseModel):
     planId: str
@@ -1008,27 +1295,36 @@ class CreateSubscriptionRequest(BaseModel):
     couponCode: Optional[str] = None
     studentEmail: Optional[str] = None
 
+
 class CreateSubscriptionResponse(BaseModel):
     success: bool
     subscriptionId: Optional[str] = None
     shortUrl: Optional[str] = None
     customerId: Optional[str] = None
+    orderId: Optional[str] = None
+    amount: Optional[int] = None
+    currency: Optional[str] = None
+    keyId: Optional[str] = None
+    checkoutType: Optional[str] = None
     verificationRequired: bool = False
     verificationPreviewUrl: Optional[str] = None
     coupon: Optional[dict] = None
     error: Optional[str] = None
     message: Optional[str] = None
 
+
 class CouponValidationRequest(BaseModel):
     code: str
     planId: str
     billingPeriod: str = "monthly"
+
 
 class CouponValidationResponse(BaseModel):
     valid: bool
     message: str
     discountPercent: Optional[int] = None
     code: Optional[str] = None
+
 
 class UserSubscriptionResponse(BaseModel):
     userId: str
@@ -1038,6 +1334,7 @@ class UserSubscriptionResponse(BaseModel):
     features: dict
     subscriptionId: Optional[str] = None
     currentPeriodEnd: Optional[str] = None
+
 
 class CancelSubscriptionResponse(BaseModel):
     success: bool
@@ -1055,12 +1352,10 @@ async def get_subscription_plans(
         plans = await payment_service.get_subscription_plans()
         return SubscriptionPlanResponse(
             plans=plans,
-            billing=BillingStatusResponse(
-                **payment_service.get_status(feature_enabled=feature_enabled)
-            ),
+            billing=BillingStatusResponse(**payment_service.get_status(feature_enabled=feature_enabled)),
         )
     except Exception as e:
-        logger.error(f"Error getting subscription plans: {e}")
+        logger.error("Error getting subscription plans (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1068,7 +1363,7 @@ async def get_subscription_plans(
 async def create_subscription(
     request_data: CreateSubscriptionRequest,
     db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Create a new subscription."""
     try:
@@ -1078,12 +1373,22 @@ async def create_subscription(
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required to create a subscription")
 
+        # Checkout identity is server-authoritative. The request's customer
+        # fields are retained for backwards-compatible clients but must never
+        # be trusted for ownership, receipts, or entitlement activation.
+        owner = await db.execute(select(User.email, User.name).where(User.id == user_id))
+        owner_row = owner.one_or_none()
+        if owner_row is None:
+            raise HTTPException(status_code=401, detail="Authenticated user not found")
+        customer_email = owner_row.email
+        customer_name = owner_row.name or "Latexy customer"
+
         result = await payment_service.create_subscription(
             db=db,
             user_id=user_id,
             plan_id=request_data.planId,
-            customer_email=request_data.customerEmail,
-            customer_name=request_data.customerName,
+            customer_email=customer_email,
+            customer_name=customer_name,
             billing_period=request_data.billingPeriod,
             coupon_code=request_data.couponCode,
             student_email=request_data.studentEmail,
@@ -1097,17 +1402,22 @@ async def create_subscription(
             subscriptionId=result.get("subscription_id"),
             shortUrl=result.get("short_url"),
             customerId=result.get("customer_id"),
+            orderId=result.get("order_id"),
+            amount=result.get("amount"),
+            currency=result.get("currency"),
+            keyId=result.get("key_id"),
+            checkoutType=result.get("checkout_type"),
             verificationRequired=bool(result.get("verification_required")),
             verificationPreviewUrl=result.get("verification_preview_url"),
             coupon=result.get("coupon"),
             error=result.get("error"),
-            message=result.get("message")
+            message=result.get("message"),
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating subscription: {e}")
+        logger.error("Error creating subscription (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1150,8 +1460,7 @@ async def validate_coupon(
 
 @router.get("/subscription/current", response_model=UserSubscriptionResponse)
 async def get_current_subscription(
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    db: AsyncSession = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Get current user's subscription."""
     try:
@@ -1170,20 +1479,19 @@ async def get_current_subscription(
             status=subscription["status"],
             features=subscription["features"],
             subscriptionId=subscription["subscription_id"],
-            currentPeriodEnd=subscription["current_period_end"]
+            currentPeriodEnd=subscription["current_period_end"],
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting current subscription: {e}")
+        logger.error("Error getting current subscription (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
 async def cancel_subscription(
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    db: AsyncSession = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Cancel current user's subscription."""
     try:
@@ -1199,23 +1507,18 @@ async def cancel_subscription(
             raise HTTPException(status_code=503, detail=result["error"])
 
         return CancelSubscriptionResponse(
-            success=result["success"],
-            message=result.get("message"),
-            error=result.get("error")
+            success=result["success"], message=result.get("message"), error=result.get("error")
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cancelling subscription: {e}")
+        logger.error("Error cancelling subscription (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/billing/webhook")
-async def razorpay_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
+async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Handle Razorpay webhook events."""
     try:
         if not payment_service.is_available():
@@ -1226,19 +1529,20 @@ async def razorpay_webhook(
 
         payload = await request.body()
         signature = request.headers.get("X-Razorpay-Signature", "")
+        event_id = request.headers.get("X-Razorpay-Event-Id")
 
-        result = await payment_service.handle_webhook(db, payload, signature)
+        result = await payment_service.handle_webhook(db, payload, signature, event_id)
 
         if result["success"]:
             return {"status": "ok"}
         else:
-            logger.error(f"Webhook processing failed: {result.get('error')}")
+            logger.error("Webhook processing failed")
             raise HTTPException(status_code=400, detail="Webhook processing failed")
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        logger.error("Error processing webhook (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1251,6 +1555,7 @@ def _normalize_referrer(raw: str) -> Optional[str]:
         return None
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(raw if raw.startswith("http") else f"https://{raw}")
         if parsed.hostname:
             return f"{parsed.scheme}://{parsed.hostname}"
@@ -1297,6 +1602,7 @@ async def _record_resume_view(
         if settings.GEOIP_PROVIDER_URL and ip and ip != "unknown":
             try:
                 import httpx
+
                 url = settings.GEOIP_PROVIDER_URL.replace("{ip}", ip)
                 async with httpx.AsyncClient(timeout=2.0) as client:
                     resp = await client.get(url)
@@ -1332,12 +1638,12 @@ async def _record_resume_view(
                 referrer,
             )
         except Exception as exc:
-            logger.warning("Failed to dispatch resume-view notification: %s", exc)
+            logger.warning("Failed to dispatch resume-view notification (%s)", type(exc).__name__)
         return True
 
     except Exception as exc:
         # Never let analytics failure break the share page
-        logger.warning(f"Failed to record resume view: {exc}")
+        logger.warning("Failed to record resume view (%s)", type(exc).__name__)
         await db.rollback()
         if debounce_claimed and redis_cache_client and redis_key:
             try:
@@ -1350,11 +1656,36 @@ async def _record_resume_view(
 class SharedResumeResponse(BaseModel):
     resume_title: str
     share_token: str
-    pdf_url: str
+    pdf_url: Optional[str]
     compiled_at: Optional[str]
+    accessible_text: str
     is_anonymous: bool = False
     # True while the redacted anonymous PDF is still being compiled
     anonymous_processing: bool = False
+    # Separate capability: a public viewer may post sticky review comments
+    # only when the owner explicitly enabled it for this live share token.
+    review_comments: bool = False
+
+
+def _shared_accessible_text(latex_content: str, *, anonymous: bool) -> str:
+    """Build the public text alternative, applying anonymous redaction first."""
+    try:
+        if anonymous:
+            from ..services.latex_pii_redactor import redact
+
+            latex_content = redact(latex_content)
+        from ..services.latex_text_extractor import extract_prose
+
+        segments = extract_prose(latex_content)
+        accessible_text = "\n".join(segment.text for segment in segments if segment.text.strip())
+        if not accessible_text.strip():
+            from ..services.document_export_service import document_export_service
+
+            accessible_text = document_export_service.to_text(latex_content)
+        return accessible_text[:200_000]
+    except Exception as exc:
+        logger.warning("Could not build shared-resume text alternative (%s)", type(exc).__name__)
+        return ""
 
 
 @router.get("/share/{share_token}", response_model=SharedResumeResponse)
@@ -1369,14 +1700,10 @@ async def get_shared_resume(
     If the share was created with anonymous=True, serves the redacted PDF.
     Records a view in resume_views with Redis-based 5-min debounce (Feature 43).
     """
-    from pathlib import Path
-
     from sqlalchemy import select as sa_select
 
     # Find resume by share token
-    result = await db.execute(
-        sa_select(Resume).where(Resume.share_token == share_token)
-    )
+    result = await db.execute(sa_select(Resume).where(Resume.share_token == share_token))
     resume = result.scalar_one_or_none()
     if not resume:
         raise HTTPException(
@@ -1386,32 +1713,79 @@ async def get_shared_resume(
 
     meta: dict = resume.resume_settings or {}
     is_anonymous = bool(meta.get("share_anonymous", False))
+    review_comments = bool(meta.get("share_review_comments", False))
+    public_title = "Anonymous Resume" if is_anonymous else resume.title
+    accessible_text = _shared_accessible_text(
+        resume.latex_content,
+        anonymous=is_anonymous,
+    )
     anonymous_processing = False  # set True if anon PDF not ready yet
 
     # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
     if is_anonymous:
         anon_job_id: Optional[str] = meta.get("share_anonymous_job_id")
+        # This value is normally server-generated, but it lives in mutable JSON
+        # metadata. Validate it before using it in either object-store keys or a
+        # local fallback path.
+        if anon_job_id:
+            try:
+                validate_job_id(str(anon_job_id))
+            except HTTPException:
+                anon_job_id = None
         pdf_url: Optional[str] = None
 
         # 1) Check MinIO for a previously stored anon PDF
-        anon_minio_key = f"shares/{resume.id}/anon.pdf"
-        try:
-            from ..services.storage_service import generate_presigned_url
-            pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
-        except Exception:
-            pdf_url = None
+        # The job id is part of the key so editing a resume can never serve a
+        # stale redaction artifact left behind by an earlier version.
+        anon_minio_key = f"shares/{resume.id}/anonymous/{anon_job_id}.pdf" if anon_job_id else None
+        if anon_minio_key:
+            try:
+                from ..services.storage_service import file_exists, generate_presigned_url
+
+                if file_exists(anon_minio_key):
+                    pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
+            except Exception:
+                pdf_url = None
 
         # 2) If not in MinIO yet, try temp dir from the anon compile job
-        if not pdf_url and anon_job_id:
-            temp_pdf = Path(settings.TEMP_DIR) / anon_job_id / "resume.pdf"
-            if temp_pdf.exists():
+        if not pdf_url and anon_job_id and anon_minio_key:
+            try:
+                _, temp_pdf, _ = get_job_files(str(anon_job_id))
+            except HTTPException:
+                temp_pdf = None
+            pdf_bytes: Optional[bytes] = None
+            if temp_pdf is not None and temp_pdf.exists():
+                try:
+                    pdf_bytes = read_file_bounded(temp_pdf, MAX_COMPILED_PDF_BYTES)
+                except BoundedReadError as exc:
+                    logger.warning("Anonymous PDF exceeds cache limit (%s)", type(exc).__name__)
+            else:
+                # Modal's API and compiler run in separate containers, so the
+                # worker's local temp directory is not visible here. Compilers
+                # publish their PDF to Redis specifically for this handoff.
+                try:
+                    from ..core.redis import get_redis_client
+
+                    redis_client = await get_redis_client()
+                    encoded_pdf = await redis_client.get(f"latexy:job:{anon_job_id}:pdf")
+                    if encoded_pdf:
+                        pdf_bytes = decode_base64_bounded(encoded_pdf, MAX_COMPILED_PDF_BYTES)
+                except Exception as exc:
+                    logger.warning(
+                        "Could not retrieve anonymous PDF %s from Redis: %s",
+                        anon_job_id,
+                        exc,
+                    )
+
+            if pdf_bytes:
                 try:
                     from ..services.storage_service import generate_presigned_url, upload_bytes
-                    upload_bytes(anon_minio_key, temp_pdf.read_bytes(), "application/pdf")
+
+                    upload_bytes(anon_minio_key, pdf_bytes, "application/pdf")
                     pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
                     logger.info(f"Uploaded anonymous PDF for resume {resume.id}")
                 except Exception as exc:
-                    logger.warning(f"Could not upload anonymous PDF: {exc}")
+                    logger.warning("Could not upload anonymous PDF (%s)", type(exc).__name__)
 
         if pdf_url:
             # Record view only when a real PDF is being served (Feature 43)
@@ -1425,17 +1799,29 @@ async def get_shared_resume(
                     resume.title,
                 )
             except Exception as exc:
-                logger.warning(f"View recording failed: {exc}")
+                    logger.warning("View recording failed (%s)", type(exc).__name__)
             return SharedResumeResponse(
-                resume_title=resume.title,
+                resume_title=public_title,
                 share_token=share_token,
                 pdf_url=pdf_url,
                 compiled_at=None,
+                accessible_text=accessible_text,
                 is_anonymous=True,
+                review_comments=review_comments,
             )
-        # Anonymous compile still in progress — fall through, set processing flag
+        # Never fall through to the normal compilation: that artifact contains
+        # the PII anonymous mode exists to remove.
         logger.info(f"Anonymous PDF not ready yet for resume {resume.id}")
-        anonymous_processing = True
+        return SharedResumeResponse(
+            resume_title=public_title,
+            share_token=share_token,
+            pdf_url=None,
+            compiled_at=None,
+            accessible_text=accessible_text,
+            is_anonymous=True,
+            anonymous_processing=True,
+            review_comments=review_comments,
+        )
 
     # ── Normal mode (or anonymous not ready yet) ─────────────────────────────
 
@@ -1463,23 +1849,85 @@ async def get_shared_resume(
     if compilation.pdf_path:
         try:
             from ..services.storage_service import generate_presigned_url
+
             pdf_url = generate_presigned_url(compilation.pdf_path, ttl=3600)
         except Exception as exc:
-            logger.warning(f"Could not generate presigned URL for {compilation.pdf_path}: {exc}")
+            logger.warning("Could not generate presigned URL (%s)", type(exc).__name__)
 
-    # Fallback: temp dir (PDF may still be within retention window)
-    if not pdf_url:
-        temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
-        if temp_pdf.exists():
+    # Fallback: temp dir (PDF may still be within retention window).  Only a
+    # legacy row with no durable path is eligible for repair.  If a stable
+    # owner-tokenized path exists but its presign fails, never replace that
+    # historical pointer with a mutable resume-wide share key.
+    if not pdf_url and not compilation.pdf_path:
+        try:
+            _, temp_pdf, _ = get_job_files(str(compilation.job_id))
+        except HTTPException:
+            temp_pdf = None
+        pdf_bytes: Optional[bytes] = None
+        if temp_pdf is not None and temp_pdf.exists():
             try:
-                from ..services.storage_service import generate_presigned_url, upload_bytes
-                share_key = f"shares/{resume.id}/resume.pdf"
-                upload_bytes(share_key, temp_pdf.read_bytes(), "application/pdf")
-                compilation.pdf_path = share_key
-                await db.commit()
-                pdf_url = generate_presigned_url(share_key, ttl=3600)
+                pdf_bytes = read_file_bounded(temp_pdf, MAX_COMPILED_PDF_BYTES)
+            except BoundedReadError as exc:
+                logger.warning("Shared PDF exceeds cache limit (%s)", type(exc).__name__)
+        else:
+            # Modal workers do not share the API container's temp directory;
+            # use the same bounded Redis handoff as share creation.
+            try:
+                from ..core.redis import get_redis_client
+
+                redis_client = await get_redis_client()
+                encoded_pdf = await redis_client.get(f"latexy:job:{compilation.job_id}:pdf")
+                if encoded_pdf:
+                    pdf_bytes = decode_base64_bounded(encoded_pdf, MAX_COMPILED_PDF_BYTES)
             except Exception as exc:
-                logger.error(f"Could not upload PDF from temp dir for share {share_token}: {exc}")
+                logger.warning("Could not retrieve shared PDF from Redis (%s)", type(exc).__name__)
+        if pdf_bytes:
+            try:
+                from ..services.storage_service import (
+                    compilation_pdf_key,
+                    delete_object,
+                    generate_presigned_url,
+                    upload_bytes,
+                )
+
+                # Every repair attempt gets a distinct owner token.  A
+                # deterministic resume-wide fallback key lets concurrent
+                # repairs overwrite one another before the CAS below wins.
+                repair_owner = f"share-fallback:{uuid4()}"
+                share_key = compilation_pdf_key(str(compilation.job_id), repair_owner)
+                upload_bytes(
+                    share_key,
+                    pdf_bytes,
+                    "application/pdf",
+                )
+                repaired = await db.execute(
+                    update(Compilation)
+                    .where(
+                        Compilation.id == compilation.id,
+                        Compilation.pdf_path.is_(None),
+                    )
+                    .values(pdf_path=share_key)
+                )
+                if repaired.rowcount:
+                    compilation.pdf_path = share_key
+                    await db.commit()
+                    pdf_url = generate_presigned_url(share_key, ttl=3600)
+                else:
+                    # Another worker repaired the row while the upload was in
+                    # flight.  Preserve its winner and presign that path.
+                    await db.refresh(compilation)
+                    if compilation.pdf_path:
+                        if compilation.pdf_path != share_key:
+                            try:
+                                delete_object(share_key)
+                            except Exception as exc:
+                                logger.warning(
+                                    "Could not remove losing share repair object (%s)",
+                                    type(exc).__name__,
+                                )
+                        pdf_url = generate_presigned_url(compilation.pdf_path, ttl=3600)
+            except Exception as exc:
+                logger.error("Could not upload PDF from temp dir for share (%s)", type(exc).__name__)
 
     if not pdf_url:
         raise HTTPException(
@@ -1498,13 +1946,15 @@ async def get_shared_resume(
             resume.title,
         )
     except Exception as exc:
-        logger.warning(f"View recording failed: {exc}")
+        logger.warning("View recording failed (%s)", type(exc).__name__)
 
     return SharedResumeResponse(
         resume_title=resume.title,
         share_token=share_token,
         pdf_url=pdf_url,
         compiled_at=compilation.created_at.isoformat() if compilation.created_at else None,
+        accessible_text=accessible_text,
         is_anonymous=is_anonymous,
         anonymous_processing=anonymous_processing,
+        review_comments=review_comments,
     )
