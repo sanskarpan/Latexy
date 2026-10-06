@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Merge, Check, Loader2, FileText } from 'luci
 import { toast } from 'sonner'
 import { apiClient, type ResumeResponse } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import SessionLoadError from '@/components/SessionLoadError'
 
 function parseLatexSections(latex: string): string[] {
   const matches = latex.matchAll(/\\section\*?\{([^}]+)\}/g)
@@ -17,11 +18,13 @@ function parseLatexSections(latex: string): string[] {
 }
 
 export default function MergeResumesPage() {
-  const { session, isPending } = useRequireAuth()
+  const { session, isPending, error: sessionError } = useRequireAuth()
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
   const [selected, setSelected] = useState<string[]>([])
   const [sectionChoices, setSectionChoices] = useState<Record<string, string>>({})
   const [detectedSections, setDetectedSections] = useState<Record<string, string[]>>({})
@@ -32,14 +35,21 @@ export default function MergeResumesPage() {
 
   // Fetch resumes on mount
   useEffect(() => {
-    if (!session) return
+    if (!session) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
+    setLoadError(null)
     apiClient
-      .listResumes()
+      .listAllResumes()
       .then(setResumes)
-      .catch(() => toast.error('Failed to load resumes'))
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load resumes')
+        toast.error('Failed to load resumes')
+      })
       .finally(() => setLoading(false))
-  }, [session])
+  }, [session, reloadNonce])
 
   // Compute detected sections when entering step 2
   useEffect(() => {
@@ -125,6 +135,10 @@ export default function MergeResumesPage() {
     )
   }
 
+  if (sessionError && !session) return <SessionLoadError area="Resume merge" />
+
+  if (!session) return null
+
   return (
     <div className="content-shell space-y-6">
       {/* Header */}
@@ -171,7 +185,20 @@ export default function MergeResumesPage() {
               )}
             </div>
 
-            {resumes.length === 0 ? (
+            {loadError && resumes.length === 0 ? (
+              <div role="alert" className="flex flex-col items-center gap-3 py-12 text-center">
+                <FileText size={32} className="text-err" />
+                <p className="text-sm font-semibold text-err">Resumes could not be loaded</p>
+                <p className="max-w-md text-xs text-fg-2">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => setReloadNonce((value) => value + 1)}
+                  className="rounded-[var(--radius-md)] border border-err/30 px-4 py-2 text-xs font-semibold text-err transition hover:bg-err/10"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : resumes.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12 text-fg-3">
                 <FileText size={32} />
                 <p className="text-sm">No resumes found. Create some resumes first.</p>
