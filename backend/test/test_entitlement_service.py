@@ -103,11 +103,11 @@ class TestHasFeatureToggles:
 
 class TestEffectiveFeaturesAndState:
 
-    async def test_effective_features_all_28_keys(self):
+    async def test_effective_features_contains_the_complete_registry(self):
         free = _user(plan="free")
         eff = await entitlement_service.effective_features(free)
         assert set(eff.keys()) == {f.key for f in FEATURE_REGISTRY}
-        assert len(eff) == 30
+        assert len(eff) == len(FEATURE_REGISTRY)
         # Non-gateable always True.
         assert eff["compile"] is True
 
@@ -134,7 +134,7 @@ class TestEffectiveFeaturesAndState:
             assert set(state["matrix"][family].keys()) == gateable
 
         # registry entries carry the expected fields.
-        assert len(state["registry"]) == 30
+        assert len(state["registry"]) == len(FEATURE_REGISTRY)
         sample = state["registry"][0]
         assert set(sample.keys()) == {"key", "label", "category", "gateable"}
 
