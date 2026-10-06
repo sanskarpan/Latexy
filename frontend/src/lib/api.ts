@@ -106,9 +106,9 @@ class ApiClient {
   ): Promise<T> {
     // Create new abort controller for this request
     this.abortController = new AbortController()
-    
+
     const url = `${this.baseUrl}${endpoint}`
-    
+
     try {
       const response = await fetch(url, {
         ...options,
@@ -121,14 +121,14 @@ class ApiClient {
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`
-        
+
         try {
           const errorData = await response.json()
           errorMessage = errorData.detail || errorMessage
         } catch {
           // If JSON parsing fails, use the default error message
         }
-        
+
         throw new Error(errorMessage)
       }
 
