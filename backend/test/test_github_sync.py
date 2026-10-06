@@ -284,7 +284,7 @@ def authed_client():
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
     try:
         # GitHub endpoint behavior is isolated from the entitlement service in
         # this sync TestClient fixture. A real entitlement query would create a
@@ -427,7 +427,7 @@ class TestGitHubEndpoints:
         from app.middleware.auth_middleware import get_current_user_required
         app.dependency_overrides.pop(get_current_user_required, None)
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
         try:
             resp = client.get("/github/status")
             assert resp.status_code == 401
