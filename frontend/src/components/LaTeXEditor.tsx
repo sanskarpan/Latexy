@@ -29,7 +29,7 @@ import {
 } from '@/lib/latex-completions'
 import { buildLatexFoldingRanges } from '@/lib/latex-folding'
 import { countRenderedWords } from '@/lib/rendered-word-count'
-import { buildLatexHoverPreview, type LatexHoverPreview } from '@/lib/latex-hover-previews'
+import { buildLatexHoverPreview, markdownCodeSpan, type LatexHoverPreview } from '@/lib/latex-hover-previews'
 import {
   activateEditorKeybindings,
   parseEditorKeybindingMode,
@@ -1442,7 +1442,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 range,
                 contents: [
                   { value: '**Rendered math**' },
-                  { value: `Preview: \`${preview.latex.replace(/`/g, '\\`')}\`` },
+                  { value: `Preview: ${markdownCodeSpan(preview.latex)}` },
                   { value: '_Point at the formula for the visual KaTeX preview._' },
                 ],
               }
@@ -1452,21 +1452,21 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 range,
                 contents: [
                   { value: '**Graphic include**' },
-                  { value: `File: \`${preview.filename.replace(/`/g, '\\`')}\`` },
-                  ...(preview.options ? [{ value: `Options: \`${preview.options.replace(/`/g, '\\`')}\`` }] : []),
+                  { value: `File: ${markdownCodeSpan(preview.filename)}` },
+                  ...(preview.options ? [{ value: `Options: ${markdownCodeSpan(preview.options)}` }] : []),
                   { value: '_The current single-source workspace has no uploaded asset to thumbnail; the compiled PDF remains authoritative._' },
                 ],
               }
             }
             const contents: Array<{ value: string }> = [{ value: '**Citation preview**' }]
             for (const citation of preview.citations.slice(0, 5)) {
-              const key = citation.key.replace(/`/g, '\\`')
+              const key = citation.key
               const title = citation.title?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
               const author = citation.author?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
               const year = citation.year?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
               contents.push({
                 value: [
-                  `\`${key}\`${citation.type ? ` · ${citation.type}` : ''}`,
+                  `${markdownCodeSpan(key)}${citation.type ? ` · ${citation.type}` : ''}`,
                   title ? `**${title}**` : '_No saved bibliography metadata_',
                   [author, year].filter(Boolean).join(' · '),
                 ].filter(Boolean).join('  \n'),
