@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ExternalLink, Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles, Loader2 } from 'lucide-react'
@@ -69,6 +69,13 @@ Python, TypeScript, SQL, Docker, AWS, Git
 // ------------------------------------------------------------------ //
 
 type Mode = 'template' | 'import' | 'linkedin' | 'builder'
+type TemplatePreviewIdentity = { templateId: string | null; generation: number }
+type TemplateUseRequest = {
+  token: number
+  ownerId: string | null
+  ownerGeneration: number
+  preview?: { templateId: string; generation: number }
+}
 
 export default function NewResumePage() {
   const router = useRouter()
@@ -95,6 +102,38 @@ export default function NewResumePage() {
   // Which specific template card is currently being created from — drives a
   // per-card spinner so a slow network doesn't look like a frozen page.
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null)
+  const newResumeOwnerId = session?.user?.id ?? null
+  const newResumeIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
+  if (newResumeIdentityRef.current.ownerId !== newResumeOwnerId) {
+    newResumeIdentityRef.current = {
+      ownerId: newResumeOwnerId,
+      generation: newResumeIdentityRef.current.generation + 1,
+    }
+  }
+  const currentNewResumeIdentityGeneration = newResumeIdentityRef.current.generation
+  const previewIdentityRef = useRef<TemplatePreviewIdentity>({ templateId: null, generation: 0 })
+  const templateUseTokenRef = useRef(0)
+  const activeTemplateUseRef = useRef<TemplateUseRequest | null>(null)
+
+  const isCurrentTemplateUseOwner = useCallback((request: TemplateUseRequest) => {
+    const active = activeTemplateUseRef.current
+    return active?.token === request.token &&
+      newResumeIdentityRef.current.ownerId === request.ownerId &&
+      newResumeIdentityRef.current.generation === request.ownerGeneration
+  }, [])
+
+  useEffect(() => {
+    const active = activeTemplateUseRef.current
+    if (!active || isCurrentTemplateUseOwner(active)) return
+    activeTemplateUseRef.current = null
+    setIsCreating(false)
+    setCreatingTemplateId(null)
+  }, [currentNewResumeIdentityGeneration, isCurrentTemplateUseOwner])
+
+  useEffect(() => () => {
+    activeTemplateUseRef.current = null
+    templateUseTokenRef.current += 1
+  }, [])
 
   useEffect(() => {
     setLinkedinArchiveRequestedAt(readLinkedInArchiveRequest())
@@ -151,7 +190,7 @@ export default function NewResumePage() {
   [categories])
 
   // ---- handlers ----
-  const handleUseTemplate = useCallback(async (id: string) => {
+  const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
     if (isCreating) {
       if (creatingTemplateId !== id) toast('Another template is already being created')
       return false
@@ -162,28 +201,64 @@ export default function NewResumePage() {
 
     setIsCreating(true)
     setCreatingTemplateId(id)
+    const request: TemplateUseRequest = {
+      token: ++templateUseTokenRef.current,
+      ownerId: newResumeIdentityRef.current.ownerId,
+      ownerGeneration: newResumeIdentityRef.current.generation,
+      preview,
+    }
+    activeTemplateUseRef.current = request
     try {
       const result = await apiClient.useTemplate(id, finalTitle)
+      if (!isCurrentTemplateUseOwner(request) ||
+        (request.preview && (previewIdentityRef.current.templateId !== request.preview.templateId ||
+          previewIdentityRef.current.generation !== request.preview.generation))) {
+        return false
+      }
       toast.success('Resume created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
       return true
     } catch {
-      toast.error('Failed to create resume')
-      setIsCreating(false)
-      setCreatingTemplateId(null)
+      if (isCurrentTemplateUseOwner(request) &&
+        (!request.preview || (previewIdentityRef.current.templateId === request.preview.templateId &&
+          previewIdentityRef.current.generation === request.preview.generation))) {
+        toast.error('Failed to create resume')
+      }
       return false
+    } finally {
+      if (isCurrentTemplateUseOwner(request)) {
+        activeTemplateUseRef.current = null
+        setIsCreating(false)
+        setCreatingTemplateId(null)
+      }
     }
-  }, [title, templates, router, isCreating, creatingTemplateId])
+  }, [title, templates, router, isCreating, creatingTemplateId, isCurrentTemplateUseOwner])
 
   const handleSelectTemplate = useCallback((id: string) => {
     void handleUseTemplate(id)
   }, [handleUseTemplate])
 
   const handlePreviewTemplate = useCallback((id: string) => {
+    previewIdentityRef.current = {
+      templateId: id,
+      generation: previewIdentityRef.current.generation + 1,
+    }
     setPreviewTemplateId(id)
   }, [])
 
-  const handleUseFromPreview = useCallback((id: string) => handleUseTemplate(id), [handleUseTemplate])
+  const handleClosePreview = useCallback(() => {
+    previewIdentityRef.current = {
+      templateId: null,
+      generation: previewIdentityRef.current.generation + 1,
+    }
+    setPreviewTemplateId(null)
+  }, [])
+
+  const handleUseFromPreview = useCallback((id: string) => {
+    const preview = previewIdentityRef.current
+    if (preview.templateId !== id) return false
+    return handleUseTemplate(id, { templateId: id, generation: preview.generation })
+  }, [handleUseTemplate])
 
   const handleCreate = async () => {
     const trimmedTitle = title.trim()
@@ -589,7 +664,7 @@ export default function NewResumePage() {
       <TemplatePreviewModal
         templateId={previewTemplateId}
         onUse={handleUseFromPreview}
-        onClose={() => setPreviewTemplateId(null)}
+        onClose={handleClosePreview}
       />
     </>
   )
