@@ -63,6 +63,8 @@ export default function TryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  // Only the successfully adopted blob may provide a PDF/SyncTeX pairing.
+  const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -127,6 +129,15 @@ export default function TryPage() {
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
+  const previewGenerationRef = useRef(0)
+  const previewOwnerRef = useRef<string | null | undefined>(undefined)
+  const clearPdfPreview = useCallback(() => {
+    previewGenerationRef.current += 1
+    if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+    pdfUrlRef.current = null
+    setPdfUrl(null)
+    setRenderedPdfJobId(null)
+  }, [])
   const { state: stream } = useJobStream(activeJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
@@ -256,43 +267,52 @@ export default function TryPage() {
     const fetchPdf = async () => {
       const pdfJobId = stream.pdfJobId
       if (stream.status === 'completed' && pdfJobId) {
+        const generationAtStart = previewGenerationRef.current
+        const isCurrentGeneration = () => generationAtStart === previewGenerationRef.current
         // Redis state/result/artifact writes are deliberately independent. A
         // terminal event can reach the browser a little before the PDF cache is
         // readable, so retry a few times instead of making one transient 404
         // permanent. Abort the request when a newer compile supersedes it.
         const retryDelays = [0, 250, 500, 1000, 2000]
         for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+          if (!isCurrentGeneration()) return
           if (retryDelays[attempt] > 0) {
             await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[attempt]))
           }
-          if (disposed || controller.signal.aborted) return
+          if (disposed || controller.signal.aborted || !isCurrentGeneration()) return
           try {
             const blob = await apiClient.downloadPdf(pdfJobId, controller.signal)
-            if (disposed || controller.signal.aborted) return
+            if (disposed || controller.signal.aborted || !isCurrentGeneration()) return
             const url = URL.createObjectURL(blob)
+            if (disposed || controller.signal.aborted || !isCurrentGeneration()) {
+              URL.revokeObjectURL(url)
+              return
+            }
             if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
             pdfUrlRef.current = url
+            setRenderedPdfJobId(pdfJobId)
             setPdfUrl(url)
             return
           } catch {
-            if (disposed || controller.signal.aborted) return
+            if (disposed || controller.signal.aborted || !isCurrentGeneration()) return
           }
         }
-        if (!disposed) toast.error('Failed to load PDF preview')
-      } else if (stream.status === 'queued' || stream.status === 'processing') {
-        if (pdfUrlRef.current) {
-          URL.revokeObjectURL(pdfUrlRef.current)
-          pdfUrlRef.current = null
-        }
-        setPdfUrl(null)
+        if (!disposed && isCurrentGeneration()) toast.error('Failed to load PDF preview')
       }
     }
     fetchPdf()
 
-    // Refresh ATS quick-score immediately after compile
-    if (stream.status === 'completed') refetchATS()
+    return () => {
+      disposed = true
+      controller.abort()
+    }
+  }, [stream.status, stream.pdfJobId, activeJobId])
 
-    // Track analytics on completion/failure
+  // Keep completion analytics and ATS refresh independent from PDF-fetch
+  // lifetime. Source edits can change refetchATS without restarting a pending
+  // artifact download for the same completed job.
+  useEffect(() => {
+    if (stream.status === 'completed') refetchATS()
     if (stream.status === 'completed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'completed')
       if (stream.tokensUsed) {
@@ -304,12 +324,22 @@ export default function TryPage() {
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
+  }, [stream.status, activeJobId, stream.tokensUsed, refetchATS])
 
-    return () => {
-      disposed = true
-      controller.abort()
+  // A retained PDF must not survive an authenticated owner change. The
+  // rendered job is otherwise left untouched while a replacement downloads.
+  useEffect(() => {
+    if (!hydrated) return
+    const ownerId = resolvedSession?.user?.id ?? null
+    if (previewOwnerRef.current === undefined) {
+      previewOwnerRef.current = ownerId
+      return
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
+    if (previewOwnerRef.current !== ownerId) {
+      previewOwnerRef.current = ownerId
+      clearPdfPreview()
+    }
+  }, [clearPdfPreview, hydrated, resolvedSession?.user?.id])
 
   useEffect(() => {
     return () => {
@@ -362,7 +392,7 @@ export default function TryPage() {
     setSyncFromLine(null)
     setSyncFromRequestId((value) => value + 1)
     setSourceSyncRequestId((value) => value + 1)
-  }, [resolvedSession?.user?.id, activeJobId, stream.pdfJobId])
+  }, [resolvedSession?.user?.id, renderedPdfJobId])
 
   const runCompile = async (mode: 'compile' | 'combined') => {
     if (isProcessing || isSubmitting) return
@@ -646,11 +676,13 @@ export default function TryPage() {
   const resetEditor = () => {
     const prev = editorRef.current?.getValue() || latexContent
     restoreContent(DEMO_RESUME_TEMPLATE)
+    clearPdfPreview()
     toast('Reset to demo template', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
   }
   const clearEditor = () => {
     const prev = editorRef.current?.getValue() || latexContent
     restoreContent('')
+    clearPdfPreview()
     toast('Editor cleared', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
   }
   const nudgeSplit = (delta: number) => setSplit((s) => Math.min(72, Math.max(28, s + delta)))
@@ -1086,7 +1118,7 @@ export default function TryPage() {
           pdfUrl={pdfUrl}
           isLoading={isProcessing}
           onDownload={handleDownload}
-          jobId={stream.pdfJobId}
+          jobId={renderedPdfJobId}
           latexContent={latexContent}
           onPdfSelectionChange={setPdfSelection}
           onSyncReadyChange={setPdfSyncReady}
