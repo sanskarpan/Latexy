@@ -134,6 +134,28 @@ function childDirectAstCall(operation, depth) {
   })
 }
 
+function childCyclicAstCall() {
+  const source = `
+    const braces = require(${JSON.stringify(bracesEntry)});
+    const node = { type: 'text', nodes: [] };
+    node.parent = node;
+    node.nodes = [node];
+    const root = { type: 'root', nodes: [node] };
+    try {
+      const value = braces.expand(root);
+      process.stdout.write(JSON.stringify({ ok: true, value }));
+    } catch (error) {
+      process.stdout.write(JSON.stringify({ ok: false, name: error.name, message: error.message }));
+    }
+  `
+  return spawnSync(process.execPath, ['-e', source], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 2500,
+    maxBuffer: 1024 * 1024,
+  })
+}
+
 function assertChildBounded(label, operation, input) {
   const result = childCall(operation, input)
   assert.equal(result.error, undefined, `${label} timed out or failed to spawn`)
@@ -180,5 +202,14 @@ for (const operation of ['compile', 'expand', 'stringify']) {
   assert.equal(output.name, ERROR_NAME, `direct AST ${operation} error type`)
   assert.equal(output.message, ERROR_MESSAGE, `direct AST ${operation} error message`)
 }
+
+const cyclicAstResult = childCyclicAstCall()
+assert.equal(cyclicAstResult.error, undefined, 'cyclic direct AST expand timed out or failed to spawn')
+assert.equal(cyclicAstResult.status, 0, `cyclic direct AST expand crashed: ${cyclicAstResult.stderr}`)
+const cyclicAstOutput = JSON.parse(cyclicAstResult.stdout)
+assert.equal(cyclicAstOutput.ok, false, 'cyclic direct AST expand was accepted instead of rejected')
+assert.equal(cyclicAstOutput.name, ERROR_NAME, 'cyclic direct AST expand error type')
+assert.equal(cyclicAstOutput.message, ERROR_MESSAGE, 'cyclic direct AST expand error message')
+assert.ok(!/call stack|stack overflow/i.test(cyclicAstResult.stderr), 'cyclic direct AST emitted stack-overflow diagnostics')
 
 console.log(`braces ${bracesPackage.version}: depth, malformed-input, direct-AST, and compatibility checks passed`)
