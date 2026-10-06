@@ -58,9 +58,15 @@ export function generateDeviceFingerprint(): DeviceFingerprint {
 /**
  * Generate a session ID
  */
-function generateSessionId(): string {
-  return Math.random().toString(36).substring(2, 15) +
-         Math.random().toString(36).substring(2, 15);
+export function generateSessionId(): string {
+  const secureCrypto = globalThis.crypto
+  if (!secureCrypto || typeof secureCrypto.getRandomValues !== 'function') {
+    throw new Error('Secure random number generation is unavailable')
+  }
+
+  const bytes = new Uint8Array(16)
+  secureCrypto.getRandomValues(bytes)
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 /**
