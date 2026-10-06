@@ -51,6 +51,21 @@ Replace every placeholder in `.env.production`. In particular:
   checks; no cash or affiliate commission is created. Keep the browser token
   lifetime at or below the server maximum of seven days.
 
+### Google and GitHub sign-in
+
+Set both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the frontend server
+runtime to enable Google sign-in; GitHub similarly uses `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET`. Keep secrets out of browser bundles and source control.
+The forms discover provider availability at runtime; separate
+`NEXT_PUBLIC_OAUTH_*` build flags are not required.
+
+Register the exact Google web-client redirect URI
+`${BETTER_AUTH_URL}/api/auth/callback/google`. For production Latexy this is
+`https://latexy.xyz/api/auth/callback/google`, not `/workspace` (the post-login
+destination). Configure the Google consent application's domain and public
+audience appropriately before enabling public sign-in. Basic social sign-in
+does not require Google Drive scopes or a new hosting platform.
+
 ### Institutional SSO and LDAP-backed directories
 
 Latexy accepts one standards-based OpenID Connect provider per deployment. This
