@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.latex_compiler import LaTeXCompiler
+from app.services.latex_service import LaTeXService
+from app.utils.bounded_io import BoundedReadError
 
 
 def _compiler() -> LaTeXCompiler:
@@ -52,5 +54,33 @@ async def test_cancellation_kills_and_reaps_subprocess(method_name: str) -> None
     ):
         await getattr(_compiler(), method_name)(Path("/tmp/job"), 1)
 
+    process.kill.assert_called_once_with()
+    process.wait.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_service_capture_failure_kills_and_reaps_local_engine(tmp_path: Path) -> None:
+    process = MagicMock(returncode=None)
+
+    async def _wait() -> int:
+        process.returncode = -9
+        return -9
+
+    process.wait = AsyncMock(side_effect=_wait)
+    source = "\\documentclass{article}\\begin{document}ok\\end{document}"
+
+    with (
+        patch("app.services.latex_service.settings.TEMP_DIR", tmp_path),
+        patch("app.services.latex_service.docker_engine_available", return_value=False),
+        patch("app.services.latex_service.assert_local_engine_allowed"),
+        patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)),
+        patch(
+            "app.services.latex_service.capture_process_output_bounded",
+            side_effect=BoundedReadError("unsupported bounded pipe"),
+        ),
+    ):
+        result = await LaTeXService().compile_latex(source, job_id="capture-failure")
+
+    assert result.success is False
     process.kill.assert_called_once_with()
     process.wait.assert_awaited_once_with()
