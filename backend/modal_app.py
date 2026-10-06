@@ -18,7 +18,7 @@ import modal
 # Constants
 # ---------------------------------------------------------------------------
 _APP_NAME = "latexy-backend"
-_BACKEND_DIR = Path(__file__).parent   # backend/
+_BACKEND_DIR = Path(__file__).parent  # backend/
 
 app = modal.App(_APP_NAME)
 
@@ -42,8 +42,13 @@ _IGNORE = [
 # latex_image. backend/Dockerfile has installed them all along — omitting them here
 # meant image uploads and scanned PDFs failed in production only.
 _APT_BASE = [
-    "gcc", "g++", "libpq-dev", "curl",
-    "tesseract-ocr", "tesseract-ocr-eng", "poppler-utils",
+    "gcc",
+    "g++",
+    "libpq-dev",
+    "curl",
+    "tesseract-ocr",
+    "tesseract-ocr-eng",
+    "poppler-utils",
 ]
 
 # The full TeX toolchain. Every engine named in ALLOWED_LATEX_COMPILERS needs its
@@ -75,13 +80,105 @@ _APT_BASE = [
 _APT_LATEX = [
     "texlive-latex-extra",
     "texlive-fonts-recommended",
-    "cm-super",               # microtype font-expansion dependency; see comment above
+    "cm-super",  # microtype font-expansion dependency; see comment above
     "texlive-science",
     "texlive-xetex",
     "texlive-luatex",
-    "texlive-lang-english",   # hyphenation patterns; matches backend/Dockerfile
+    # B54a/B54c: explicit script collections are required under
+    # --no-install-recommends. texlive-lang-cjk is their common dependency,
+    # but does not contain ctex or luatexja-fontspec itself.
+    "texlive-lang-chinese",  # ctex.sty + Chinese JFM
+    "texlive-lang-japanese",  # luatexja-fontspec + Japanese JFM
+    "texlive-lang-korean",  # Korean TeX support; luatexko is in texlive-luatex
+    "texlive-lang-arabic",
+    "texlive-lang-european",
+    "texlive-lang-greek",
+    "fonts-noto-cjk",
+    "fonts-noto-core",
+    "texlive-lang-english",  # hyphenation patterns; matches backend/Dockerfile
+    # Small, freely licensed Devanagari font. LuaHBTeX + explicit HarfBuzz
+    # shaping is required for correct Hindi/Marathi glyph order and extraction.
+    "fonts-lohit-deva",
     "latexmk",
 ]
+
+# The design panel offers Atkinson Hyperlegible as its readability-focused
+# document font. Debian only ships it inside the 1.3GB+ texlive-fonts-extra
+# bundle that this image deliberately avoids, so install the official 4.1MB
+# CTAN TDS archive directly and pin its digest. The package supports pdfLaTeX,
+# XeLaTeX, and LuaLaTeX. See https://ctan.org/pkg/atkinson.
+_ATKINSON_TDS_SHA256 = "7c13720556a2ac2d0ea57015c7a6cf8c5bb9fcd72de7347a8d9ba58dbcb8492d"
+_INSTALL_ATKINSON = (
+    "curl -fsSL https://tug.ctan.org/install/fonts/atkinson.tds.zip "
+    "-o /tmp/atkinson.tds.zip && "
+    f"echo '{_ATKINSON_TDS_SHA256}  /tmp/atkinson.tds.zip' | sha256sum -c - && "
+    "unzip -q /tmp/atkinson.tds.zip -d /usr/local/share/texmf && "
+    "mktexlsr && updmap-sys --enable Map=atkinson.map && "
+    "rm -f /tmp/atkinson.tds.zip"
+)
+
+# Keep Modal's Debian TeX image cache contract aligned with the local sandbox.
+# The command is self-contained: it copies no application source and derives
+# TEXMFVAR/TEXMFCACHE from the image's own kpathsea defaults, which differ from
+# the local TeX Live image but remain stable between build and runtime.
+_WARM_TEX_CACHE = r"""
+set -eu
+export TEXMFVAR="$(kpsewhich -var-value=TEXMFVAR)"
+export TEXMFCACHE="$(kpsewhich -var-value=TEXMFCACHE)"
+engine_fonts="$(kpsewhich -var-value=TEXMFDIST)/fonts"
+for font_root in "$engine_fonts" /usr/share/fonts /usr/local/share/fonts; do
+  if [ -d "$font_root" ]; then
+    find "$font_root" -type d -exec touch -m -d '@1704067200' {} +
+  fi
+done
+fc-cache --force --system-only
+luaotfload-tool --update --force
+probe="$(mktemp -d)"
+trap 'rm -rf "$probe"' EXIT
+printf '%s\n' \
+  '\documentclass{article}' \
+  '\usepackage{geometry}' \
+  '\usepackage{fontspec}' \
+  '\usepackage{luatexja-fontspec}' \
+  '\setmainjfont{Noto Sans CJK JP}' \
+  '\usepackage{polyglossia}' \
+  '\setmainfont{Latin Modern Roman}' \
+  '\setmainlanguage{english}' \
+  '\setotherlanguage{arabic}' \
+  '\setotherlanguage{hebrew}' \
+  '\setotherlanguage{hindi}' \
+  '\newfontfamily\arabicfont[Script=Arabic]{Noto Naskh Arabic}' \
+  '\newfontfamily\hebrewfont[Script=Hebrew]{Noto Sans Hebrew}' \
+  '\newfontfamily\hindifont[Renderer=HarfBuzz,Script=Devanagari,BoldFont={Noto Sans Devanagari Bold},ItalicFont={Noto Sans Devanagari},ItalicFeatures={FakeSlant=0.15},BoldItalicFont={Noto Sans Devanagari Bold},BoldItalicFeatures={FakeSlant=0.15}]{Noto Sans Devanagari}' \
+  '\begin{document}' \
+  '\textenglish{Latin email@example.com •}' \
+  '日本語' \
+  '\textarabic{العربية}' \
+  '\texthebrew{עברית}' \
+  '\texthindi{हिंदी \textenglish{email@example.com •} \textbf{बोल्ड} \textit{तिरछा} \textbf{\textit{दोनों}}}' \
+  '\begin{itemize}' \
+  '\item \texthindi{भुगतान मंच \textenglish{email@example.com •}}' \
+  '\begin{itemize}\item \texthindi{दूसरा स्तर}\end{itemize}' \
+  '\end{itemize}' \
+  '\end{document}' > "$probe/font-probe.tex"
+lualatex -no-shell-escape -recorder -interaction=batchmode -halt-on-error \
+  -output-directory="$probe" "$probe/font-probe.tex" >"$probe/font-probe.stdout" 2>&1 &
+engine_pid="$!"
+(
+  sleep 125
+  kill "$engine_pid" 2>/dev/null || true
+) &
+watchdog_pid="$!"
+set +e
+wait "$engine_pid"
+engine_rc="$?"
+set -e
+kill "$watchdog_pid" 2>/dev/null || true
+wait "$watchdog_pid" 2>/dev/null || true
+test "$engine_rc" -eq 0
+test -s "$probe/font-probe.pdf"
+! grep -Eq 'Missing character|Font shape .*undefined|Some font shapes were not available|Fatal error|^! ' "$probe/font-probe.log"
+"""
 
 # ---------------------------------------------------------------------------
 # Images
@@ -98,28 +195,30 @@ _APT_LATEX = [
 # It shares _APT_LATEX with latex_image rather than repeating the list, so the
 # two cannot drift apart again. This does inflate the API image, but it has
 # min_containers=1 and stays warm, so the cold-start cost is paid once.
+texlive_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install(*_APT_BASE, *_APT_LATEX, "unzip")
+    .run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE)
+)
+
 api_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install(*_APT_BASE, *_APT_LATEX)
-    .pip_install_from_requirements("requirements.txt")
+    texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
 latex_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install(*_APT_BASE, *_APT_LATEX)
-    .pip_install_from_requirements("requirements.txt")
+    texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)
 worker_image = (
-    modal.Image.debian_slim(python_version="3.11")
+    modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE)
-    .pip_install_from_requirements("requirements.txt")
+    .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
 )
@@ -153,12 +252,14 @@ _secrets = [
 def _init_worker_redis() -> None:
     from app.core.config import settings
     from app.workers.event_publisher import initialize_worker_redis
+
     initialize_worker_redis(settings.REDIS_URL)
 
 
 # ---------------------------------------------------------------------------
 # Worker functions
 # ---------------------------------------------------------------------------
+
 
 @app.function(
     image=latex_image,
@@ -175,6 +276,7 @@ def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
     _init_worker_redis()
     from app.workers.latex_worker import compile_latex_task
+
     # throw=False: prevents Celery's self.retry() Retry exception from propagating
     # to Modal (which would cause a double-execution via Modal's retry mechanism).
     # The Celery task publishes its own error events; Modal must not independently retry.
@@ -199,6 +301,7 @@ def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
     _init_worker_redis()
     from app.workers.orchestrator import optimize_and_compile_task
+
     optimize_and_compile_task.apply(kwargs=payload, throw=False)
 
 
@@ -212,6 +315,7 @@ def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
     _init_worker_redis()
     from app.workers.llm_worker import optimize_resume_task
+
     optimize_resume_task.apply(kwargs=payload, throw=False)
 
 
@@ -225,6 +329,7 @@ def run_ats_task(payload: dict) -> None:
     """ATS resume scoring."""
     _init_worker_redis()
     from app.workers.ats_worker import score_resume_ats_task
+
     score_resume_ats_task.apply(kwargs=payload, throw=False)
 
 
@@ -238,6 +343,7 @@ def run_jd_analysis_task(payload: dict) -> None:
     """Job-description keyword analysis."""
     _init_worker_redis()
     from app.workers.ats_worker import analyze_job_description_ats_task
+
     analyze_job_description_ats_task.apply(kwargs=payload, throw=False)
 
 
@@ -251,6 +357,7 @@ def run_deep_analyze_task(payload: dict) -> None:
     """Deep LLM-powered ATS analysis."""
     _init_worker_redis()
     from app.workers.ats_worker import deep_analyze_ats_task
+
     deep_analyze_ats_task.apply(kwargs=payload, throw=False)
 
 
@@ -263,6 +370,7 @@ def run_deep_analyze_task(payload: dict) -> None:
 def run_embed_resume_task(payload: dict) -> None:
     """Compute and store resume embedding (low-priority background task)."""
     from app.workers.ats_worker import embed_resume_task
+
     embed_resume_task.apply(kwargs=payload, throw=False)
 
 
@@ -277,9 +385,11 @@ def run_cleanup_task(payload: dict) -> None:
     task_type = payload.pop("task_type", "temp_files")
     if task_type == "expired_jobs":
         from app.workers.cleanup_worker import cleanup_expired_jobs_task
+
         cleanup_expired_jobs_task.apply(kwargs=payload, throw=False)
     else:
         from app.workers.cleanup_worker import cleanup_temp_files_task
+
         cleanup_temp_files_task.apply(kwargs=payload, throw=False)
 
 
@@ -293,11 +403,10 @@ def run_cover_letter_task(payload: dict) -> None:
     """LLM cover-letter generation."""
     _init_worker_redis()
     from app.workers.cover_letter_worker import generate_cover_letter_task
+
     resume_latex = payload.pop("resume_latex")
     job_description = payload.pop("job_description")
-    generate_cover_letter_task.apply(
-        args=[resume_latex, job_description], kwargs=payload, throw=False
-    )
+    generate_cover_letter_task.apply(args=[resume_latex, job_description], kwargs=payload, throw=False)
 
 
 @app.function(
@@ -310,11 +419,10 @@ def run_interview_prep_task(payload: dict) -> None:
     """LLM interview-prep generation."""
     _init_worker_redis()
     from app.workers.interview_prep_worker import generate_interview_prep_task
+
     resume_latex = payload.pop("resume_latex")
     prep_id = payload.pop("prep_id")
-    generate_interview_prep_task.apply(
-        args=[resume_latex, prep_id], kwargs=payload, throw=False
-    )
+    generate_interview_prep_task.apply(args=[resume_latex, prep_id], kwargs=payload, throw=False)
 
 
 @app.function(
@@ -327,6 +435,7 @@ def run_github_import_task(payload: dict) -> None:
     """Import + summarize a user's top public GitHub projects."""
     _init_worker_redis()
     from app.workers.github_import_worker import import_github_projects_task
+
     import_github_projects_task.apply(kwargs=payload, throw=False)
 
 
@@ -340,6 +449,7 @@ def run_document_conversion_task(payload: dict) -> None:
     """LLM document conversion (imported resume -> LaTeX)."""
     _init_worker_redis()
     from app.workers.converter_worker import convert_document_task
+
     convert_document_task.apply(kwargs=payload, throw=False)
 
 
@@ -352,6 +462,7 @@ def run_document_conversion_task(payload: dict) -> None:
 def run_auto_save_task(payload: dict) -> None:
     """Auto-save checkpoint recorded after a successful compile."""
     from app.workers.auto_save_worker import record_auto_save_checkpoint
+
     record_auto_save_checkpoint.apply(kwargs=payload, throw=False)
 
 
@@ -364,7 +475,34 @@ def run_auto_save_task(payload: dict) -> None:
 def run_email_task(payload: dict) -> None:
     """Transactional job-completion email."""
     from app.workers.email_worker import send_job_completion_email
+
     send_job_completion_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+def run_comment_mention_task(payload: dict) -> None:
+    """Transactional collaborator mention email."""
+    from app.workers.email_worker import send_comment_mention_email
+
+    send_comment_mention_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+def run_document_email_delivery_task(payload: dict) -> None:
+    """Deliver one durable compiled-document email in Modal production."""
+    from app.workers.email_worker import send_document_email_delivery
+
+    send_document_email_delivery.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -376,6 +514,7 @@ def run_email_task(payload: dict) -> None:
 def run_job_failure_email_task(payload: dict) -> None:
     """Transactional terminal job-failure email."""
     from app.workers.email_worker import send_job_failure_email
+
     send_job_failure_email.apply(kwargs=payload, throw=False)
 
 
@@ -388,6 +527,7 @@ def run_job_failure_email_task(payload: dict) -> None:
 def run_share_viewed_email_task(payload: dict) -> None:
     """Transactional notification for a debounced public resume view."""
     from app.workers.email_worker import send_share_viewed_email
+
     send_share_viewed_email.apply(kwargs=payload, throw=False)
 
 
@@ -400,6 +540,7 @@ def run_share_viewed_email_task(payload: dict) -> None:
 def run_weekly_digest_task(payload: dict) -> None:
     """Send one user's weekly digest from the Modal scheduler fan-out."""
     from app.workers.email_worker import send_weekly_digest
+
     send_weekly_digest.apply(kwargs=payload, throw=False)
 
 
@@ -412,6 +553,7 @@ def run_weekly_digest_task(payload: dict) -> None:
 # was written to deliver is inert), expired-job Redis state is never reaped, and
 # /tmp grows unbounded in the warm min_containers=1 latex container, which now
 # lives for hours rather than per-job. Periods mirror the beat entries.
+
 
 @app.function(
     image=worker_image,
@@ -432,6 +574,7 @@ def scheduled_cleanup_expired_jobs() -> None:
     # then silently swallow, leaving the storage fix inert.
     _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_expired_jobs_task
+
     cleanup_expired_jobs_task.apply(throw=False)
 
 
@@ -456,6 +599,7 @@ def scheduled_cleanup_temp_files() -> None:
     # Publishes events on some paths → worker Redis must be initialized first.
     _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_temp_files_task
+
     cleanup_temp_files_task.apply(throw=False)
 
 
@@ -469,6 +613,7 @@ def scheduled_health_check() -> None:
     """Worker health check (beat: every 300s)."""
     _init_worker_redis()
     from app.workers.cleanup_worker import health_check_task
+
     health_check_task.apply(throw=False)
 
 
@@ -482,7 +627,50 @@ def scheduled_weekly_digest() -> None:
     """Monday 09:00 weekly digest fan-out (inert while EMAIL_ENABLED is false)."""
     _init_worker_redis()
     from app.workers.email_worker import send_weekly_digest_to_all
+
     send_weekly_digest_to_all.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    schedule=modal.Period(minutes=5),
+)
+def scheduled_tracker_notifications() -> None:
+    """Deliver due application reminders and saved-search review nudges."""
+    _init_worker_redis()
+    from app.workers.tracker_notification_worker import send_tracker_notifications
+
+    send_tracker_notifications.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    schedule=modal.Period(minutes=1),
+)
+def scheduled_comment_mention_recovery() -> None:
+    """Recover mention rows whose post-commit enqueue missed the queue."""
+    _init_worker_redis()
+    from app.workers.email_worker import send_pending_comment_mention_emails
+
+    send_pending_comment_mention_emails.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    schedule=modal.Period(minutes=1),
+)
+def scheduled_document_email_recovery() -> None:
+    """Recover compiled-document email rows missed by a broker/process crash."""
+    _init_worker_redis()
+    from app.workers.email_worker import send_pending_document_email_deliveries
+
+    send_pending_document_email_deliveries.apply(throw=False)
 
 
 # ---------------------------------------------------------------------------
@@ -497,9 +685,9 @@ def scheduled_weekly_digest() -> None:
 # Deliberately a separate manual step rather than a lifespan hook, so a schema
 # change is never applied by whichever API container happens to boot first.
 migrate_image = (
-    modal.Image.debian_slim(python_version="3.11")
+    modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE)
-    .pip_install_from_requirements("requirements.txt")
+    .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(
         str(_BACKEND_DIR),
         remote_path="/backend",
@@ -548,6 +736,7 @@ def sync_templates() -> None:
 # FastAPI ASGI endpoint
 # ---------------------------------------------------------------------------
 
+
 @app.function(
     image=api_image,
     secrets=_secrets,
@@ -558,7 +747,13 @@ def sync_templates() -> None:
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def fastapi_app():
+    # Modal serves this ASGI app through its managed ingress rather than
+    # Uvicorn, so Uvicorn's ``--ws-max-size`` option is not applicable here.
+    # The jobs/collaboration handlers retain their 64 KiB/256 KiB app-level
+    # protocol bounds before parsing or relaying frames.
     import sys
+
     sys.path.insert(0, "/backend")
     from app.main import app as _app
+
     return _app
