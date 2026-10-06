@@ -8,12 +8,12 @@ By accessing or using Latexy ("Service"), you agree to be bound by these Terms o
 
 ## 2. Description of Service
 
-Latexy is an AI-powered ATS (Applicant Tracking System) resume optimizer that helps users create professional, ATS-friendly resumes using LaTeX compilation and artificial intelligence optimization.
+Latexy is an AI-assisted LaTeX resume platform that helps users create, compile, and improve professional resumes with transparent document and keyword checks.
 
 ### 2.1 Service Features
 - LaTeX resume compilation to PDF
 - AI-powered resume optimization
-- ATS compatibility scoring
+- Heuristic document, structure, and keyword checks
 - Resume history and version management
 - Multi-LLM provider support (BYOK - Bring Your Own Key)
 - Real-time collaboration and editing
@@ -184,4 +184,3 @@ For billing questions: billing@latexy.com
 **Version:** 1.0
 
 By using Latexy, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
-
