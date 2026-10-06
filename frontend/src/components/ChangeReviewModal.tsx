@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Loader2, Pencil, RotateCcw, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -43,11 +43,20 @@ export default function ChangeReviewModal({
   onApply: (latex: string) => boolean | void | Promise<boolean | void>
   onClose: () => void
 }) {
+  const titleId = useId()
   const [hunks, setHunks] = useState<ChangeHunk[] | null>(null)
   const [state, setState] = useState<Record<string, HunkState>>({})
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !applying) onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [applying, onClose])
 
   useEffect(() => {
     let cancelled = false
@@ -138,9 +147,12 @@ export default function ChangeReviewModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={() => { if (!applying) onClose() }}
       >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
           initial={{ opacity: 0, scale: 0.97, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97 }}
@@ -150,12 +162,17 @@ export default function ChangeReviewModal({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <div>
-              <h2 className="text-sm font-semibold text-fg">Review changes</h2>
+              <h2 id={titleId} className="text-sm font-semibold text-fg">Review changes</h2>
               <p className="mt-0.5 text-[11px] text-fg-3">
                 Accept, reject, or edit each suggestion. Only accepted changes are applied.
               </p>
             </div>
-            <button onClick={onClose} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg">
+            <button
+              onClick={onClose}
+              disabled={applying}
+              aria-label="Close change review"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+            >
               <X size={16} />
             </button>
           </div>
@@ -214,6 +231,7 @@ export default function ChangeReviewModal({
                           <button
                             onClick={() => startEdit(h.id)}
                             title="Edit"
+                            aria-label={`Edit ${meta.label.toLowerCase()} change${h.section ? ` in ${h.section}` : ''}`}
                             className="rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
                           >
                             <Pencil size={12} />
@@ -221,6 +239,7 @@ export default function ChangeReviewModal({
                           <button
                             onClick={() => toggle(h.id)}
                             title={s.accepted ? 'Reject' : 'Accept'}
+                            aria-label={`${s.accepted ? 'Reject' : 'Accept'} ${meta.label.toLowerCase()} change${h.section ? ` in ${h.section}` : ''}`}
                             className={`rounded-[var(--radius-md)] p-1 transition ${
                               s.accepted ? 'text-ok hover:bg-ok/10' : 'text-fg-3 hover:bg-surface-2'
                             }`}
@@ -241,6 +260,7 @@ export default function ChangeReviewModal({
                           <textarea
                             value={s.newText}
                             onChange={(e) => setEditText(h.id, e.target.value)}
+                            aria-label={`Edit suggested LaTeX${h.section ? ` for ${h.section}` : ''}`}
                             className="scrollbar-subtle h-24 w-full resize-none rounded-[var(--radius-md)] border border-accent/30 bg-bg px-2 py-1 text-[11px] leading-relaxed text-fg outline-none focus:border-accent"
                           />
                           <button
@@ -270,7 +290,7 @@ export default function ChangeReviewModal({
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-3 border-t border-line px-5 py-3.5">
-            <button onClick={onClose} className="text-xs font-semibold text-fg-2 transition hover:text-fg">
+            <button onClick={onClose} disabled={applying} className="text-xs font-semibold text-fg-2 transition hover:text-fg disabled:opacity-50">
               Cancel
             </button>
             <button
