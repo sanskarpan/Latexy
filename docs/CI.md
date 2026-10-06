@@ -9,7 +9,9 @@ The canonical `CI` workflow has three intentionally different entry points:
 - `workflow_dispatch` for an operator-requested full run (every scope).
 
 There is no feature-branch push workflow and no duplicate push-only feature
-check: manual dispatch uses this same workflow. The workflow always runs the
+check: manual dispatch uses this same workflow. New revisions cancel superseded
+CI runs for the same PR; main and manual runs are never cancelled this way.
+The workflow always runs the
 privacy guard. A dependency-free change classifier then selects component jobs:
 
 | Scope | Jobs |
