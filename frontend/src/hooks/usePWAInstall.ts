@@ -32,16 +32,21 @@ export function usePWAInstall(): PWAInstallState {
       setDeferredPrompt(e as BeforeInstallPromptEvent)
     }
     window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
+    const installed = () => setDeferredPrompt(null)
+    window.addEventListener('appinstalled', installed)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler)
+      window.removeEventListener('appinstalled', installed)
+    }
   }, [])
 
   const prompt = async () => {
     if (!deferredPrompt) return
     await deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null)
-    }
+    await deferredPrompt.userChoice
+    // Browsers fire beforeinstallprompt again when prompting is appropriate;
+    // the captured event itself cannot be reused after either outcome.
+    setDeferredPrompt(null)
   }
 
   return { canInstall: deferredPrompt !== null, prompt }
