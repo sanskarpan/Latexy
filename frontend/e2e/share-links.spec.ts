@@ -26,12 +26,14 @@ const RESUME_WITH_SHARE = {
   title: 'Product Manager Resume',
   share_token: 'abc123tok_xyz789',
   share_url: 'http://localhost:5181/r/abc123tok_xyz789',
+  share_review_comments: true,
 }
 
 const SHARE_LINK_RESPONSE = {
   share_token: 'newtoken_abc123def456',
   share_url: 'http://localhost:5181/r/newtoken_abc123def456',
   created_at: '2026-03-17T10:00:00Z',
+  anonymous: false,
 }
 
 const SHARED_RESUME_RESPONSE = {
@@ -39,6 +41,9 @@ const SHARED_RESUME_RESPONSE = {
   share_token: 'abc123tok_xyz789',
   pdf_url: 'http://localhost:9000/latexy/shares/aaab0001/resume.pdf?sig=test',
   compiled_at: '2026-03-17T09:00:00Z',
+  accessible_text: 'Software Engineer\nExperience',
+  is_anonymous: false,
+  anonymous_processing: false,
 }
 
 // ------------------------------------------------------------------ //
@@ -140,7 +145,7 @@ async function mockWorkspaceApi(page: Page, resumes = [RESUME_NO_SHARE, RESUME_W
       })
     }
 
-    if (path === '/jobs' && method === 'GET') {
+    if ((path === '/jobs' || path === '/jobs/') && method === 'GET') {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -287,6 +292,24 @@ test.describe('ShareResumeModal — generate link flow', () => {
     expect(shareApiUrl).toContain('/share')
   })
 
+  test('anonymous mode sends an explicit anonymous share request', async ({ page }) => {
+    let requestBody: unknown
+    await page.route(`**/resumes/${RESUME_NO_SHARE.id}/share`, async route => {
+      requestBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...SHARE_LINK_RESPONSE, anonymous: true }),
+      })
+    })
+
+    await page.getByRole('switch', { name: 'Share anonymously' }).click()
+    await page.getByRole('button', { name: 'Generate shareable link' }).click()
+
+    await expect(page.getByText(/Anonymous mode — PII redacted/i)).toBeVisible()
+    expect(requestBody).toEqual({ anonymous: true })
+  })
+
   test('after generate, modal shows the share URL', async ({ page }) => {
     await page.getByRole('button', { name: 'Generate shareable link' }).click()
     await page.waitForTimeout(500)
@@ -355,6 +378,44 @@ test.describe('ShareResumeModal — existing share link state', () => {
 
   test('modal does NOT show Generate button when share exists', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Generate shareable link' })).not.toBeVisible()
+  })
+
+  test('existing review capability is displayed and can be disabled directly', async ({ page }) => {
+    const reviewSwitch = page.getByRole('switch', { name: 'Allow review comments' })
+    await expect(reviewSwitch).toHaveAttribute('aria-checked', 'true')
+
+    let requestBody: unknown
+    await page.route(`**/resumes/${RESUME_WITH_SHARE.id}/share`, async route => {
+      requestBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...SHARE_LINK_RESPONSE, review_comments: false }),
+      })
+    })
+
+    await reviewSwitch.click()
+    await page.getByRole('button', { name: 'Update review access' }).click()
+    await expect.poll(() => requestBody).toEqual({ anonymous: false, review_comments: false })
+    await expect(reviewSwitch).toHaveAttribute('aria-checked', 'false')
+  })
+
+  test('existing normal link can be switched to anonymous without revocation', async ({ page }) => {
+    let requestBody: unknown
+    await page.route(`**/resumes/${RESUME_WITH_SHARE.id}/share`, async route => {
+      requestBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...SHARE_LINK_RESPONSE, anonymous: true }),
+      })
+    })
+
+    await page.getByRole('switch', { name: 'Share anonymously' }).click()
+    await page.getByRole('button', { name: 'Update link privacy' }).click()
+
+    await expect(page.getByText(/Anonymous mode — PII redacted/i)).toBeVisible()
+    expect(requestBody).toEqual({ anonymous: true, review_comments: true })
   })
 })
 
@@ -486,7 +547,7 @@ test.describe('Edit page — Share button in header', () => {
         return route.fulfill({ status: 204 })
       }
 
-      if (path === '/jobs' && method === 'GET') {
+      if ((path === '/jobs' || path === '/jobs/') && method === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jobs: [] }) })
       }
 
@@ -534,7 +595,9 @@ test.describe('Edit page — Share button in header', () => {
     page.on('pageerror', (err) => errors.push(err.message))
 
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
+    // The editor intentionally maintains background job/session traffic, so
+    // global network-idle is not a reliable readiness signal under load.
+    await expect(page.getByRole('button', { name: 'Share resume' })).toBeVisible()
     await page.waitForTimeout(1000)
 
     expect(errors).toEqual([])
@@ -576,6 +639,27 @@ test.describe('Public share page /r/[token]', () => {
 
     await expect(page.getByText('Software Engineer Resume')).toBeVisible()
     await expect(page.locator('iframe')).toBeVisible()
+  })
+
+  test('ready anonymous share keeps the privacy banner visible', async ({ page }) => {
+    await page.route('**/share/anonymous_ready_token', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...SHARED_RESUME_RESPONSE,
+        resume_title: 'Anonymous Resume',
+        share_token: 'anonymous_ready_token',
+        is_anonymous: true,
+        accessible_text: 'Anonymous Candidate\nExperience',
+      }),
+    }))
+
+    await page.goto('/r/anonymous_ready_token')
+
+    await expect(page.getByText(/Anonymous review copy/i)).toBeVisible()
+    await expect(page.getByText('Anonymous Resume')).toBeVisible()
+    await expect(page.locator('iframe')).toBeVisible()
+    await expect(page.getByText(/Software Engineer Resume/)).toHaveCount(0)
   })
 
   test('valid token shows PDF iframe with correct src', async ({ page }) => {
