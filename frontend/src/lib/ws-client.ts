@@ -331,7 +331,9 @@ export class WSClient {
       // Server rejections (forbidden / rate_limited / invalid_request) used to
       // vanish silently, leaving the UI waiting for events that never come.
       const errJobId = msg.job_id as string | undefined
-      console.error(`[WSClient] server error ${code}: ${message}`)
+      // The server message is still delivered to the UI, but do not copy
+      // untrusted text into the developer console where CR/LF can forge entries.
+      console.error('[WSClient] server rejected a message')
       this._emit('error', { code, message, job_id: errJobId })
     }
   }
