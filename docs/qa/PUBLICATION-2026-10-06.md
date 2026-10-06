@@ -226,3 +226,75 @@ certification.
   **105 passed**, strict warning flags and scoped Ruff clean. Log:
   `/tmp/latexy-modal-serialization-root-review-2026-10-06.log`.
   This is local/offline evidence, not a successful production retry.
+
+## Follow-up merged checkpoint and second deployment blocker
+
+- PR #1757 merged by normal protected rebase on October 6 at 09:55:02 UTC.
+  Local and remote main both reached
+  `3250051e47c214cc64a665ae921fe927d93c878d`; its source tree matches the
+  validated PR head. All accumulated publication work is available to new
+  worktrees. Required checks, strict freshness, administrator enforcement,
+  conversation resolution and linear history remain enabled.
+- Canonical main CI
+  [37446253281](https://github.com/sanskarpan/Latexy/actions/runs/37446253281)
+  passed. Exact-SHA Vercel verification
+  [37446860286](https://github.com/sanskarpan/Latexy/actions/runs/37446860286)
+  passed; the live deployment identity independently returned this main SHA.
+- Modal rollout
+  [37446860439](https://github.com/sanskarpan/Latexy/actions/runs/37446860439)
+  successfully built the repaired images and applied production migrations.
+  Rolling deployment then failed because the application declares seven
+  scheduled functions against this workspace's limit of five. It did not
+  replace backend release `v49`, tagged
+  `8ff2124aa21338d8a97ae60dbec1962af4921609`. The old API still reports ready
+  after the migrations. Schedule consolidation is tracked in
+  [#1760](https://github.com/sanskarpan/Latexy/issues/1760); preserve every
+  maintenance task, cadence and independently isolated execution. No plan
+  purchase, disabled maintenance or production acceptance waiver is authorized.
+- The in-app browser's template gallery fetch error is not an established
+  application defect: navigating directly to the Modal API produced
+  `net::ERR_BLOCKED_BY_CLIENT`, while independent HTTP catalog and CORS checks
+  succeeded. Do not weaken CORS or disable client protection to mask this
+  environment limitation. Authenticated and complete live UI QA remain open.
+- A separate narrow dependency follow-up
+  [#1759](https://github.com/sanskarpan/Latexy/issues/1759) tracks PyJWT advisory
+  remediation and actual JWT boundary controls. Upstream vulnerable dependency
+  behavior is not proof of a Latexy auth exploit: the migration-only application
+  fallback uses a raw configured secret, HS256 only and mandatory expiry.
+- The Quick Tailor close/reopen candidate was withdrawn after checking its
+  actual workspace caller: closing unmounts the old modal, and the caller
+  cannot replace its resume while it remains mounted. A deferred-start control
+  passes for close A, open B, then resolve A. Synthetic same-instance prop
+  replacement is not reported as a reachable product defect. This narrow
+  control does not certify Apply or template-preview request lifetimes.
+- Read-only tracing of CodeQL URL-import alert #12 found no production guard
+  bypass. The API uses the default DNS-pinned client; actual private/scheme
+  redirect regressions exercise that path. The injectable custom-client seam
+  can omit the transport, but current non-test callers do not supply it. GitHub
+  project metadata links are not fetched afterward. Keep the alert visible;
+  this bounded call-site review is not a universal SSRF-completion claim.
+
+## Next backend publication verification
+
+- PyJWT is pinned to 2.15.1; production and development lock changes are
+  restricted to its pin and hashes. The development input inherits the
+  production input rather than duplicating a new direct pin.
+- Independent root JWT/auth run: **18 passed** with ResourceWarning,
+  RuntimeWarning and pytest unraisable warnings treated as errors. Controls
+  cover empty JWKs, loader-accepted mutated PEMs, public JWK confusion, actual
+  valid legacy tokens and missing/expired/wrong-key/other-algorithm rejection.
+- Independent root Modal parity run: **27 passed**, with the same strict
+  warning flags. Five schedule triggers retain seven maintenance tasks;
+  equal-cadence triggers dispatch separate durable child calls with independent
+  deadlines. Both siblings are attempted even when enqueue fails, followed by
+  a sanitized failure signal. Exact per-function cadences/images/timeouts and
+  executable first/second/both enqueue-failure controls are enforced. Modal's
+  [invocation documentation](https://modal.com/docs/guide/function-invocation-methods)
+  confirms spawned calls continue when their caller exits.
+- Complete independent combined backend run: **4,238 passed / 5 skipped**,
+  with all three strict warning flags and no warning suppression or diagnostic
+  plugin. One existing Starlette test-client deprecation remains visible.
+  Scoped Ruff and `uv pip check` pass. Log:
+  `/tmp/latexy-backend-publication-full-root-2026-10-06.log`.
+- Protected publication and exact-SHA backend deployment remain pending.
+  Local acceptance is not proof that the new backend is deployed.
