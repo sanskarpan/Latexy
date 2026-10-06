@@ -98,7 +98,24 @@ def test_shipped_workflow_actions_are_pinned_to_commit_shas():
 def test_ci_audits_the_complete_javascript_dependency_graph():
     """Development dependencies execute in CI and need the same advisory gate."""
     ci = _read(".github/workflows/ci.yml")
-    assert "pnpm audit --audit-level low" in ci
+    assert "node --test ../scripts/ci/dependency-audit.test.mjs" in ci
+    assert "node ../scripts/ci/audit-dependencies.mjs" in ci
+
+    # Keep the wrapper's gate fail-closed and narrowly scoped: it may exempt
+    # only the independently regression-tested braces finding, never a whole
+    # package or severity class.
+    wrapper = _read("scripts/ci/audit-dependencies.mjs")
+    assert "pnpm" in wrapper and "'audit', '--json'" in wrapper
+    assert "process.exitCode = 1" in wrapper
+    assert "GHSA-vfj7-8cjw-p6xm" in wrapper
+    assert "braces-depth.test.cjs" in wrapper
+
+
+def test_ci_lock_freshness_starts_from_both_committed_resolutions():
+    """Lock validation must preserve committed transitive pins."""
+    ci = _read(".github/workflows/ci.yml")
+    assert 'cp requirements.lock "$lock_tmp/requirements.lock"' in ci
+    assert 'cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"' in ci
 
 
 def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency():
