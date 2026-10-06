@@ -17,11 +17,12 @@ from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
 from .core.tracing import instrument_fastapi, setup_telemetry
 from .database.connection import close_db, init_db
+from .middleware.csrf import SessionCookieCSRFMiddleware
 from .middleware.limits import BodySizeLimitMiddleware, TimeoutMiddleware
 from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
 from .middleware.request_context import RequestContextMiddleware
 from .middleware.security_headers import SecurityHeadersMiddleware
-from .middleware.tenant_middleware import TenantMiddleware
+from .middleware.tenant_middleware import TenantMiddleware, VerifiedTenantCORSMiddleware
 from .services.latex_compiler import latex_compiler
 from .services.latex_service import latex_service
 
@@ -75,7 +76,7 @@ async def _check_coupon_offer_mappings_on_startup() -> None:
                 ", ".join(sorted(unmapped)),
             )
     except Exception as e:  # pragma: no cover - diagnostics only
-        logger.error(f"Coupon offer mapping check failed (non-fatal): {e}")
+        logger.error("Coupon offer mapping check failed (non-fatal)", extra={"error_type": type(e).__name__})
 
 
 @asynccontextmanager
@@ -89,12 +90,12 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info("Database connection initialized")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
+        logger.error("Failed to initialize database", extra={"error_type": type(e).__name__})
         raise
 
-    # Reconcile admin roles from ADMIN_EMAIL(S). Any user whose email is in the
-    # configured admin set but whose role != 'admin' is promoted. Best-effort:
-    # a failure here must never crash startup.
+    # Bootstrap configured, verified admin accounts only when no admin exists.
+    # This is intentionally not a recurring reconcile: an explicit demotion in
+    # the admin control plane must survive the next process restart.
     admin_emails = settings.admin_email_set()
     if admin_emails:
         try:
@@ -105,18 +106,21 @@ async def lifespan(app: FastAPI):
                 result = await session.execute(
                     _text(
                         "UPDATE users SET role = 'admin' "
-                        "WHERE lower(email) = ANY(:emails) AND role != 'admin'"
+                        "WHERE lower(email) = ANY(:emails) "
+                        "AND email_verified IS TRUE "
+                        "AND role != 'admin' "
+                        "AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')"
                     ),
                     {"emails": list(admin_emails)},
                 )
                 await session.commit()
                 logger.info(
-                    "Admin role reconcile: promoted %s user(s) from %d configured admin email(s)",
+                    "Admin role bootstrap: promoted %s verified user(s) from %d configured admin email(s)",
                     result.rowcount if result.rowcount is not None else "?",
                     len(admin_emails),
                 )
         except Exception as e:
-            logger.error(f"Admin role reconcile failed (non-fatal): {e}")
+            logger.error("Admin role reconcile failed (non-fatal)", extra={"error_type": type(e).__name__})
 
     # Validate Redis URL before connecting (OBS-004)
     if not settings.REDIS_URL or "localhost" in settings.REDIS_URL.lower():
@@ -128,7 +132,7 @@ async def lifespan(app: FastAPI):
         await redis_manager.init_redis()
         logger.info("Redis connections initialized")
     except Exception as e:
-        logger.error(f"Failed to initialize Redis: {e}")
+        logger.error("Failed to initialize Redis", extra={"error_type": type(e).__name__})
         # Redis is not critical for basic functionality, so don't raise
         logger.warning("Continuing without Redis - some features may be limited")
 
@@ -138,7 +142,7 @@ async def lifespan(app: FastAPI):
         await event_bus.init(async_redis)
         logger.info("EventBusManager initialized")
     except Exception as e:
-        logger.error(f"Failed to initialize EventBusManager: {e}")
+        logger.error("Failed to initialize EventBusManager", extra={"error_type": type(e).__name__})
         logger.warning("Real-time WebSocket events will not be available")
 
     # Check LaTeX installation
@@ -193,6 +197,10 @@ app = FastAPI(
     redoc_url="/redoc" if _docs_enabled else None,
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
+# Keep Uvicorn's transport allocation bound above the 256 KiB collaboration
+# frame contract. Individual protocols apply stricter limits in ws_routes.py
+# and collab_manager.py; this is the outer-process ceiling.
+WS_MAX_SIZE_BYTES = 512 * 1024
 instrument_fastapi(app)
 register_exception_handlers(app)
 
@@ -235,6 +243,11 @@ if settings.RATE_LIMIT_ENABLED:
 # Resolve white-label tenant from Host / X-Tenant-Slug (Feature 85)
 app.add_middleware(TenantMiddleware)
 app.add_middleware(RequestContextMiddleware)
+# Better Auth session cookies are ambient browser credentials. Keep explicit
+# Bearer/API-key callers unaffected while requiring a same-origin signal for
+# cookie-authenticated mutations. Registered before CORS so CORS remains the
+# outermost middleware and exposes this 403 to browser clients.
+app.add_middleware(SessionCookieCSRFMiddleware)
 
 # Configure CORS. Registered LAST so it is the OUTERMOST middleware and every
 # short-circuited response above (rate limit 429, body size 413, timeout 504)
@@ -257,6 +270,9 @@ app.add_middleware(
     # it in bug reports.
     expose_headers=["Retry-After", "X-Request-ID"],
 )
+# Dynamic custom domains cannot be safely expressed as a static CORS list.
+# This outer layer admits only domains that passed tenant DNS verification.
+app.add_middleware(VerifiedTenantCORSMiddleware)
 
 # Include routes
 app.include_router(router)
@@ -269,7 +285,8 @@ def main():
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower()
+        log_level=settings.LOG_LEVEL.lower(),
+        ws_max_size=WS_MAX_SIZE_BYTES,
     )
 
 
