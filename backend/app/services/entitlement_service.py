@@ -38,7 +38,6 @@ Failure policy differs deliberately between the two layers:
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -61,9 +60,10 @@ from ..core.feature_registry import (
     PLAN_FAMILIES,
     is_gateable,
 )
+from ..core.logging import get_logger
 from ..database.models import FeatureFlag, PlanFeature, User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 REDIS_BLOB_KEY = "latexy:entitlements"
 _CACHE_TTL = 60  # seconds
@@ -484,7 +484,7 @@ class EntitlementService:
                 used = limit or 0
             else:
                 used = raw_used
-        except Exception:
+        except Exception as exc:
             # Nothing to meter on an unlimited plan → the counter is pure
             # reporting, so let the request through instead of manufacturing an
             # outage on endpoints that have no other Redis dependency.
@@ -494,7 +494,7 @@ class EntitlementService:
                 dimension,
                 user_id,
                 "open (unlimited plan)" if fail_open else "closed",
-                exc_info=True,
+                extra={"error_type": type(exc).__name__},
             )
             return QuotaTicket(
                 dimension=dimension,
@@ -655,8 +655,12 @@ class EntitlementService:
                     f"latexy:quota:{dimension}:{user_id}:{periods[dimension]}"
                 )
                 counts[dimension] = int(raw or 0)
-        except Exception:
-            logger.warning("Quota snapshot unavailable for %s", user_id, exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Quota snapshot unavailable for %s",
+                user_id,
+                extra={"error_type": type(exc).__name__},
+            )
 
         # Top-level period/resets_at describe the monthly billing window; each
         # dimension carries its own because the windows differ per plan.
