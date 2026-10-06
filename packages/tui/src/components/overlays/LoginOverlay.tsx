@@ -8,6 +8,7 @@ import { closeOverlay } from '../../stores/overlay.js'
 import { addMessage } from '../../stores/messages.js'
 import { wsClient } from '../../lib/ws-client.js'
 import { $ui } from '../../stores/ui.js'
+import { useOverlaySize } from '../../lib/overlay-size.js'
 
 type Step = 'email' | 'password' | 'loading' | 'error'
 
@@ -17,6 +18,7 @@ interface AuthResponse {
 }
 
 export function LoginOverlay(): React.ReactElement {
+  const { width: boxWidth } = useOverlaySize()
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState(process.env['LATEXY_EMAIL'] ?? '')
   const [password, setPassword] = useState('')
@@ -92,7 +94,13 @@ export function LoginOverlay(): React.ReactElement {
   })
 
   return (
-    <Box borderStyle="round" borderColor="cyan" padding={2} width={50} flexDirection="column">
+    <Box
+      borderStyle="round"
+      borderColor="cyan"
+      padding={boxWidth < 44 ? 1 : 2}
+      width={boxWidth}
+      flexDirection="column"
+    >
       <Box gap={1} marginBottom={1}>
         <Text bold color="cyan">⬡</Text>
         <Text bold>Sign in to Latexy</Text>
