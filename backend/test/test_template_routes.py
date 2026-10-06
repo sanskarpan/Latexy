@@ -12,6 +12,7 @@ Tests cover:
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -38,12 +39,25 @@ _VALID_LATEX_2 = r"""
 \end{document}
 """
 
+_BEAMER_LATEX = r"""
+\documentclass[aspectratio=169]{beamer}
+\begin{document}
+\begin{frame}{Test Presentation}
+Hello
+\end{frame}
+\end{document}
+"""
+
 
 async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
-    """Insert a test template and return it. Names prefixed with test_tmpl_ for cleanup."""
-    unique_suffix = uuid.uuid4().hex[:8]
+    """Insert a uniquely named test template and return it.
+
+    Session cleanup is best-effort, so an interrupted or partially cleaned run
+    may leave committed rows behind.  A per-insert suffix keeps the suite
+    repeatable without relying on teardown having completed successfully.
+    """
     defaults = dict(
-        name=f"test_tmpl_SWE Template {unique_suffix}",
+        name="test_tmpl_SWE Template",
         description="A test template for software engineers",
         category="software_engineering",
         tags=["software_engineering"],
@@ -57,6 +71,7 @@ async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
     # Ensure test prefix for cleanup
     if not defaults["name"].startswith("test_tmpl_"):
         defaults["name"] = f"test_tmpl_{defaults['name']}"
+    defaults["name"] = f"{defaults['name']}_{uuid.uuid4().hex[:8]}"
     t = ResumeTemplate(**defaults)
     db_session.add(t)
     await db_session.commit()
@@ -262,6 +277,45 @@ def _admin_headers() -> dict:
 
 @pytest.mark.asyncio
 class TestUseTemplate:
+    async def test_europecv_locale_selection_is_bounded_and_pins_lualatex(self, client: AsyncClient, db_session):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "data"
+            / "templates"
+            / "regional"
+            / "europecv.tex"
+        ).read_text(encoding="utf-8")
+        template = await _insert_template(
+            db_session,
+            # Keep this row unique across runs: an interrupted test can leave
+            # the prefixed cleanup row behind in the isolated test database.
+            name=f"test_tmpl_Europecv_{uuid.uuid4().hex[:8]}",
+            category="regional",
+            tags=["regional", "europecv"],
+            latex_content=source,
+        )
+        headers = await _create_auth_headers(db_session)
+        response = await client.post(
+            f"/templates/{template.id}/use",
+            json={"locale": "fr-FR"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        resume = await client.get(f"/resumes/{response.json()['resume_id']}", headers=headers)
+        assert resume.status_code == 200
+        assert "{europecv}" in resume.json()["latex_content"]
+        assert "french]{europecv}" in resume.json()["latex_content"]
+        assert "\\usepackage[english]{babel}" in resume.json()["latex_content"]
+        assert resume.json()["metadata"]["compiler"] == "lualatex"
+
+        rejected = await client.post(
+            f"/templates/{template.id}/use",
+            json={"locale": "fr-FR-extra"},
+            headers=headers,
+        )
+        assert rejected.status_code == 422
+
     async def test_creates_resume_and_returns_id(self, client: AsyncClient, db_session):
         t = await _insert_template(db_session)
         headers = await _create_auth_headers(db_session)
@@ -286,7 +340,7 @@ class TestUseTemplate:
             headers=headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["title"] == "test_tmpl_AutoTitle"
+        assert resp.json()["title"] == t.name
 
     async def test_created_resume_has_correct_content(self, client: AsyncClient, db_session):
         t = await _insert_template(db_session, latex_content=_VALID_LATEX_2)
@@ -307,6 +361,7 @@ class TestUseTemplate:
         assert resume_resp.status_code == 200
         resume_data = resume_resp.json()
         assert resume_data["latex_content"] == _VALID_LATEX_2
+        assert resume_data["metadata"]["compiler"] == "lualatex"
 
     async def test_presentation_template_preserves_document_type(self, client: AsyncClient, db_session):
         template = await _insert_template(
@@ -413,6 +468,85 @@ class TestTemplateAdminEndpoints:
         finally:
             settings.ADMIN_SECRET_KEY = previous_secret
         assert resp.status_code == 403
+
+    @pytest.mark.parametrize("document_class", ["beamer", "beamerarticle"])
+    async def test_rejects_presentation_classes_in_resume_categories(
+        self,
+        client: AsyncClient,
+        document_class: str,
+    ):
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            resp = await client.post(
+                "/templates",
+                headers=_admin_headers(),
+                json={
+                    "name": "Misclassified Presentation",
+                    "category": "finance",
+                    "tags": ["finance"],
+                    "latex_content": (
+                        f"\\documentclass{{{document_class}}}\n"
+                        "\\begin{document}Test\\end{document}"
+                    ),
+                },
+            )
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
+
+        assert resp.status_code == 422
+        assert "presentation-only" in resp.json()["detail"]
+
+    async def test_allows_beamer_in_presentation_category(self, client: AsyncClient):
+        template_name = f"Admin Presentation Template {uuid.uuid4().hex[:8]}"
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            resp = await client.post(
+                "/templates",
+                headers=_admin_headers(),
+                json={
+                    "name": template_name,
+                    "category": "presentation",
+                    "tags": ["presentation"],
+                    "latex_content": _BEAMER_LATEX,
+                },
+            )
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
+
+        assert resp.status_code == 201
+        assert resp.json()["document_type"] == "presentation"
+
+    async def test_rejected_update_preserves_existing_resume_template(
+        self,
+        client: AsyncClient,
+        db_session,
+    ):
+        template = await _insert_template(db_session, name="test_tmpl_Update Guard")
+        template_id = template.id
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            resp = await client.put(
+                f"/templates/{template_id}",
+                headers=_admin_headers(),
+                json={
+                    "name": "Invalid Update",
+                    "category": "finance",
+                    "tags": ["finance"],
+                    "latex_content": _BEAMER_LATEX,
+                },
+            )
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
+
+        assert resp.status_code == 422
+        db_session.expire_all()
+        unchanged = await db_session.get(ResumeTemplate, template_id)
+        assert unchanged is not None
+        assert unchanged.name == template.name
+        assert unchanged.latex_content == _VALID_LATEX
 
     async def test_create_update_activate_deactivate_and_delete_template(self, client: AsyncClient, db_session):
         previous_secret = settings.ADMIN_SECRET_KEY
