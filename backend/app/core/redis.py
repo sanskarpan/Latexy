@@ -483,7 +483,7 @@ class CacheManager:
         serialized_value = json.dumps(value) if not isinstance(value, str) else value
 
         await redis_cache_client.set(cache_key, serialized_value, ex=ttl)
-        logger.debug(f"Set cache for key: {key}")
+        logger.debug("Cache value stored")
 
     async def get(self, key: str) -> Optional[Any]:
         """Get cache value."""
