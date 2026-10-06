@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Trash2, BrainCircuit, BookOpen, HelpCircle, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type InterviewPrepResponse, type InterviewQuestion } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
+import InterviewSimulation from '@/components/InterviewSimulation'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,16 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
           {q.what_interviewer_assesses}
         </p>
       )}
+      {(q.recommended_seconds || q.spoken_answer_tip) && (
+        <div className="ml-7 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-fg-3">
+          {q.recommended_seconds && (
+            <span className="rounded bg-surface-2 px-1.5 py-0.5 font-medium">
+              Aim for {q.recommended_seconds}s
+            </span>
+          )}
+          {q.spoken_answer_tip && <span>{q.spoken_answer_tip}</span>}
+        </div>
+      )}
       {q.star_hint && (
         <div className="ml-7">
           <button
@@ -55,6 +66,21 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {q.ideal_response_outline && q.ideal_response_outline.length > 0 && (
+        <div className="ml-7 rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
+            Strong-answer outline
+          </p>
+          <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-fg-2">
+            {q.ideal_response_outline.map((point) => (
+              <li key={point} className="flex gap-1.5">
+                <span aria-hidden="true" className="text-fg-3">•</span>
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <textarea
@@ -79,34 +105,42 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
   const [sessions, setSessions] = useState<InterviewPrepResponse[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [jobDescription, setJobDescription] = useState(defaultJobDescription)
   const [companyName, setCompanyName] = useState('')
   const [roleTitleInput, setRoleTitleInput] = useState('')
   const [activeCategory, setActiveCategory] = useState<QuestionCategory>('behavioral')
+  const loadGenerationRef = useRef(0)
 
   const { state: jobStream } = useJobStream(activeJobId)
 
   // Load existing sessions on mount
   useEffect(() => {
-    loadSessions()
+    void loadSessions()
+    return () => {
+      loadGenerationRef.current += 1
+    }
   }, [resumeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSessions = useCallback(async () => {
+    const generation = ++loadGenerationRef.current
     setIsLoading(true)
+    setLoadError(null)
     try {
       const data = await apiClient.listInterviewPrep(resumeId)
+      if (generation !== loadGenerationRef.current) return
       setSessions(data)
-      if (data.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(data[0].id)
+      setSelectedSessionId((current) => data.some(session => session.id === current) ? current : data[0]?.id ?? null)
+    } catch (error) {
+      if (generation === loadGenerationRef.current) {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load interview-prep sessions')
       }
-    } catch {
-      // silent
     } finally {
-      setIsLoading(false)
+      if (generation === loadGenerationRef.current) setIsLoading(false)
     }
-  }, [resumeId, selectedSessionId])
+  }, [resumeId])
 
   // When generation job completes, reload sessions to get saved questions
   useEffect(() => {
@@ -180,6 +214,29 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
   const categoryCount = (cat: QuestionCategory) => questionsByCategory[cat]?.length ?? 0
 
   // ─── Empty state ─────────────────────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div role="status" className="flex h-full items-center justify-center px-4 py-8 text-center text-[11px] text-fg-3">
+        Loading interview-prep sessions…
+      </div>
+    )
+  }
+
+  if (!isLoading && loadError && sessions.length === 0) {
+    return (
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+        <p className="text-[11px] text-err">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => void loadSessions()}
+          className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   if (!isLoading && sessions.length === 0 && !isJobRunning) {
     return (
@@ -271,6 +328,11 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       {/* Questions when session is selected */}
       {currentSession && currentSession.questions.length > 0 && (
         <>
+          <div className="shrink-0 border-b border-line bg-accent-soft px-3 py-2 text-[10px] leading-relaxed text-fg-2">
+            Practice each answer aloud in the suggested time. Latexy does not record,
+            transcribe, or rate your audio/video, and this is not a live employer screening.
+          </div>
+          <InterviewSimulation prepId={currentSession.id} questions={currentSession.questions} />
           {/* Category tabs */}
           <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5">
             {CATEGORIES.map(({ key, label, icon: Icon }) => (
@@ -343,19 +405,34 @@ function GenerateForm({
           <BrainCircuit size={16} className="text-accent-strong" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-fg">Interview Prep</p>
-          <p className="text-[10px] text-fg-3">AI-generated questions with STAR hints</p>
+          <p className="text-sm font-semibold text-fg">AI Screening Prep</p>
+          <p className="text-[10px] text-fg-3">JD-derived questions for spoken audio/video-style practice</p>
         </div>
       </div>
 
       <p className="text-[12px] leading-relaxed text-fg-3">
-        Generate role-specific interview questions based on your resume and the job description.
-        Includes behavioral, technical, motivational, and difficult questions.
+        Prepare concise, evidence-backed spoken answers to role-specific questions. Each
+        question includes what may be assessed, a suggested response time, and a grounded
+        answer outline; behavioral questions also include STAR guidance.
       </p>
+
+      <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[10px] leading-relaxed text-fg-3">
+        This is question-and-answer planning only: Latexy does not capture audio or video,
+        simulate a specific employer, or predict a hiring result. Avoid entering sensitive
+        personal information.{' '}
+        <a
+          href="https://www.linkedin.com/help/linkedin/answer/a10376002"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent-strong underline-offset-2 hover:underline"
+        >
+          Learn how LinkedIn describes its AI interviews
+        </a>.
+      </div>
 
       <div className="space-y-2">
         <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
-          Job Description (optional)
+          Job Description (recommended)
         </label>
         <textarea
           value={jobDescription}
@@ -401,7 +478,7 @@ function GenerateForm({
         {isGenerating ? (
           <><Loader2 size={12} className="animate-spin" /> Generating…</>
         ) : (
-          <><BrainCircuit size={12} /> Generate Interview Questions</>
+          <><BrainCircuit size={12} /> Generate Screening Practice</>
         )}
       </button>
     </div>
