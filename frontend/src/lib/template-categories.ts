@@ -12,5 +12,6 @@ export const TEMPLATE_CATEGORY_ORDER: readonly string[] = [
   'medical',
   'legal',
   'graduate',
+  'regional',
   'presentation',
 ]
