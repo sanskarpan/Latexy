@@ -146,8 +146,10 @@ export default function OptimizationSuitePage() {
   const personaMutationIdRef = useRef(0)
   const personaTransitionKeyRef = useRef(personaIdentityKey)
   const liveSessionUserIdRef = useRef(sessionUserId)
+  const liveAuthVerifiedRef = useRef(Boolean(sessionUserId && !sessionLoading && !sessionError))
   const mountedRef = useRef(false)
   liveSessionUserIdRef.current = sessionUserId
+  liveAuthVerifiedRef.current = Boolean(sessionUserId && !sessionLoading && !sessionError)
   if (personaIdentityRef.current.key !== personaIdentityKey) {
     personaIdentityRef.current = {
       key: personaIdentityKey,
@@ -256,18 +258,21 @@ export default function OptimizationSuitePage() {
 
   const handlePersonaChange = async (next: string | null) => {
     if (isSavingPersona && personaMutationGenerationRef.current === personaIdentity.generation) return
-    if (personaMutationBusyRef.current || !sessionUserId) return
+    if (personaMutationBusyRef.current || !liveAuthVerifiedRef.current) return
     const previous = persona
     const mutationId = ++personaMutationIdRef.current
     const mutationGeneration = personaIdentity.generation
     const mutationIdentityKey = personaIdentity.key
     const mutationOwnerId = sessionUserId
-    const isCurrentMutation = () => (
+    const isCurrentIdentity = () => (
       mountedRef.current &&
       personaMutationIdRef.current === mutationId &&
       personaIdentityRef.current.generation === mutationGeneration &&
       personaIdentityRef.current.key === mutationIdentityKey &&
       liveSessionUserIdRef.current === mutationOwnerId
+    )
+    const isCurrentMutation = (requireVerifiedAuth = true) => (
+      isCurrentIdentity() && (!requireVerifiedAuth || liveAuthVerifiedRef.current)
     )
     personaMutationBusyRef.current = true
     personaMutationGenerationRef.current = mutationGeneration
@@ -276,11 +281,19 @@ export default function OptimizationSuitePage() {
     try {
       await apiClient.updateResumeSettings(resumeId, { last_persona: next ?? '' })
     } catch {
-      if (!isCurrentMutation()) return
-      setPersona(previous)
-      toast.error('Failed to save optimization style. Your previous selection was restored.')
-    } finally {
       if (isCurrentMutation()) {
+        // Re-check inside the queued updater too: an owner/auth transition can
+        // happen after this catch but before React applies the state update.
+        setPersona((current) => isCurrentMutation() ? previous : current)
+        if (isCurrentMutation()) {
+          toast.error('Failed to save optimization style. Your previous selection was restored.')
+        }
+      }
+    } finally {
+      // Cleanup must not depend on auth remaining verified. A request can settle
+      // while auth is revalidating; otherwise the busy ref would permanently
+      // block the same owner after verification returns.
+      if (isCurrentMutation(false)) {
         personaMutationBusyRef.current = false
         personaMutationGenerationRef.current = null
         setIsSavingPersona(false)
