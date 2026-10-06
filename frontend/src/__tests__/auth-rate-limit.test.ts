@@ -72,8 +72,12 @@ describe('rule resolution', () => {
     expect(resolveRule('/sign-up/email')).toEqual({ window: 10, max: 3 })
   })
 
+  test('session reads have a navigation-safe but still bounded budget', () => {
+    expect(resolveRule('/get-session')).toEqual({ window: 60, max: 300 })
+  })
+
   test('everything else falls back to the default rule', () => {
-    expect(resolveRule('/get-session')).toEqual(DEFAULT_RULE)
+    expect(resolveRule('/sign-out')).toEqual(DEFAULT_RULE)
   })
 
   test('a longer path is not matched by an unrelated prefix', () => {
