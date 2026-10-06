@@ -17,6 +17,7 @@ import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import LocaleSwitcher from '@/components/LocaleSwitcher'
 import { useI18n } from '@/components/I18nProvider'
+import { BrandLogo } from '@/components/brand/BrandLogo'
 import type { UiMessageKey } from '@/lib/i18n'
 
 const guestNav = [
@@ -271,13 +272,15 @@ export default function GlobalHeader() {
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
         <Link
           href={isAuthenticated ? '/dashboard' : '/'}
-          className="font-display text-xl font-semibold tracking-tight text-fg transition hover:text-accent"
+          className="text-fg transition hover:text-accent"
         >
           {tenantBrand?.logoUrl ? (
             // Tenant logo URLs are validated as HTTP(S) by the backend.
             // eslint-disable-next-line @next/next/no-img-element
             <img src={tenantBrand.logoUrl} alt={tenantBrand.name} className="h-9 max-w-40 object-contain" />
-          ) : (tenantBrand?.name ?? 'Latexy')}
+          ) : tenantBrand?.name ? (
+            <span className="font-display text-xl font-semibold tracking-tight">{tenantBrand.name}</span>
+          ) : <BrandLogo />}
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">

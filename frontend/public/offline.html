@@ -11,35 +11,40 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #09090b;
-      color: #e4e4e7;
+      background: #141310;
+      color: #e9e4d7;
       font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
     }
     .card {
       text-align: center;
       padding: 2.5rem 3rem;
       border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 1rem;
-      background: rgba(255,255,255,0.03);
+      border-radius: 0.5rem;
+      background: #1b1a14;
       max-width: 420px;
       width: 90%;
     }
     .logo {
-      font-size: 3rem;
-      font-weight: 700;
-      color: #a855f7;
-      margin-bottom: 1rem;
-      letter-spacing: -0.05em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      color: #e9e4d7;
+      margin-bottom: 1.4rem;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 1.6rem;
+      font-weight: 650;
+      letter-spacing: -0.06em;
     }
-    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; color: #f4f4f5; }
-    p { font-size: 0.875rem; color: #71717a; line-height: 1.6; margin-bottom: 1.5rem; }
+    .logo svg { width: 2rem; height: 2rem; }
+    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; color: #e9e4d7; }
+    p { font-size: 0.875rem; color: #aba595; line-height: 1.6; margin-bottom: 1.5rem; }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
-      background: rgba(168,85,247,0.12);
-      border: 1px solid rgba(168,85,247,0.25);
-      color: #c084fc;
+      background: rgba(138,176,222,0.12);
+      border: 1px solid rgba(138,176,222,0.25);
+      color: #8ab0de;
       font-size: 0.75rem;
       padding: 0.35rem 0.85rem;
       border-radius: 999px;
@@ -57,15 +62,15 @@
     button {
       margin-top: 1.5rem;
       padding: 0.6rem 1.5rem;
-      background: rgba(168,85,247,0.2);
-      border: 1px solid rgba(168,85,247,0.35);
-      color: #c084fc;
+      background: rgba(138,176,222,0.18);
+      border: 1px solid rgba(138,176,222,0.35);
+      color: #b6cff0;
       border-radius: 0.5rem;
       font-size: 0.875rem;
       cursor: pointer;
       transition: background 0.15s;
     }
-    button:hover { background: rgba(168,85,247,0.3); }
+    button:hover { background: rgba(138,176,222,0.28); }
     .reader { display: none; margin-top: 1.5rem; text-align: left; }
     .reader iframe {
       display: block;
@@ -80,20 +85,20 @@
     .reader-actions a {
       display: inline-block;
       padding: 0.6rem 1.5rem;
-      background: rgba(168,85,247,0.2);
-      border: 1px solid rgba(168,85,247,0.35);
-      color: #c084fc;
+      background: rgba(138,176,222,0.18);
+      border: 1px solid rgba(138,176,222,0.35);
+      color: #b6cff0;
       border-radius: 0.5rem;
       font-size: 0.875rem;
       text-decoration: none;
     }
-    .reader-actions a:hover { background: rgba(168,85,247,0.3); }
-    .reader-title { margin: 0.75rem 0 0; color: #a1a1aa; font-size: 0.8rem; overflow-wrap: anywhere; }
+    .reader-actions a:hover { background: rgba(138,176,222,0.28); }
+    .reader-title { margin: 0.75rem 0 0; color: #aba595; font-size: 0.8rem; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">L</div>
+    <div class="logo"><svg viewBox="0 0 96 96" aria-hidden="true"><path fill="currentColor" d="M16 13h29v14H30v42h44v14H16V13Zm39 0h25v37H66V27H55V13Z"/></svg>Latexy</div>
     <h1 id="offline-heading">You're offline</h1>
     <p id="offline-message">Latexy couldn't reach the server. Your drafts are saved locally and will sync automatically when you reconnect.</p>
     <div class="badge">

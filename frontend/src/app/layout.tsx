@@ -25,7 +25,12 @@ export const metadata: Metadata = {
   keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
   manifest: '/manifest.json',
   icons: {
-    apple: '/icons/icon-192.png',
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icons/apple-touch-icon.png',
   },
   appleWebApp: {
     capable: true,

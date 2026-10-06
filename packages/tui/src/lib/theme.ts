@@ -1,11 +1,13 @@
+export const brandMark = '└┐'
+
 export const theme = {
-  brand: 'cyan',
+  brand: 'blueBright',
   accent: 'blue',
   success: 'green',
   warning: 'yellow',
   error: 'red',
   muted: 'gray',
-  border: 'cyan',
+  border: 'blueBright',
   health: {
     healthy: 'green',
     degraded: 'yellow',

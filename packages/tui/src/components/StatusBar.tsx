@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Box, Text, useStdout } from 'ink'
 import type { HealthStatus } from '../stores/ui.js'
-import { theme } from '../lib/theme.js'
+import { brandMark, theme } from '../lib/theme.js'
 
 interface Props {
   email: string | null
@@ -46,8 +46,8 @@ export function StatusBar({ email, plan, health, wsConnected, columns }: Props):
     <Box paddingX={1} justifyContent="space-between">
       {/* Left: brand */}
       <Box gap={1}>
-        <Text bold color="cyan">⬡</Text>
-        {!narrow && <Text bold color="cyan">Latexy</Text>}
+        <Text bold color={theme.brand}>{brandMark}</Text>
+        {!narrow && <Text bold color={theme.brand}>Latexy</Text>}
       </Box>
 
       {/* Center: plan + email */}

@@ -69,7 +69,7 @@ export function clearTenantTheme(): void {
 
 function hexToRgb(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  if (!result) return '109 40 217' // fallback: purple-700
+  if (!result) return '25 55 93' // fallback: Latexy navy
   return [
     parseInt(result[1], 16),
     parseInt(result[2], 16),
