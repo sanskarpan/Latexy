@@ -572,3 +572,26 @@ compiler repair.
   are not yet accepted or published. Root source review caught a StrictMode
   effect replay regression in the pending repair before publication; the
   agent is correcting it before the combined fresh-source browser checkpoint.
+
+### Reviewed draft and local-read acceptance checkpoint
+
+- The corrected frozen owner and uploader sources passed a single fresh
+  Node22 production build on isolated ports 5493/7493: **13 browser cases
+  passed with zero retries**, recorded in
+  `/tmp/latexy-publication-5493-final-bodyprobe2.log`. This combined snapshot
+  contains both pending repairs; their PRs will retain separate source/test
+  scopes. Five owner cases cover confirmed A/B/ABA changes, exact fresh-B
+  navigation, deferred success/rejection and same-owner refresh/error/reload.
+  Six upload cases cover both completion orders, clear-only, stale rejection,
+  unmount/remount and ordinary import. Two existing template lifetime cases
+  also pass. All page-error assertions remain enabled.
+- JSON/text probes now record completed body reads before the two-frame
+  handler barrier. Same-owner assertions also wait for completed session-body
+  reads, not just intercepted request entry. Root independently reviewed the
+  test log and matching source hashes, passed all 157 frontend unit files / 991
+  tests, scoped ESLint, non-incremental TypeScript and diff checks. The uploader
+  effect explicitly restores mounted ownership during every setup; production
+  remount acceptance is not a claim of an executed development StrictMode test.
+- React error code 418 did not recur in this checkpoint. Earlier fresh failure
+  evidence remains valid and #1772 is not closed by an intermittent clean run.
+  Neither owner nor uploader acceptance here implies authenticated live QA.
