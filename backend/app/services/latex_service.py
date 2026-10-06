@@ -3,8 +3,8 @@ LaTeX compilation service.
 """
 
 import asyncio
+import hashlib
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -17,6 +17,18 @@ from fastapi import HTTPException
 from ..core.config import get_compile_timeout, settings
 from ..core.logging import get_logger
 from ..models.schemas import CompilationResponse
+from ..utils import safe_regex as re
+from ..utils.bounded_io import (
+    MAX_COMPILED_PDF_BYTES,
+    MAX_RECORDER_BYTES,
+    BoundedReadError,
+    bound_log_line,
+    capture_process_output_bounded,
+    iter_bounded_lines,
+    read_file_bounded,
+    read_text_file_bounded,
+)
+from ..utils.process_watchdog import ProcessWatchdog
 
 logger = get_logger(__name__)
 
@@ -60,28 +72,93 @@ _LATEX_SANDBOX_KPSE_VARS: dict[str, str] = {
 
 # ``docker run`` hardening flags.
 _DOCKER_SANDBOX_FLAGS: tuple[str, ...] = (
-    "--network", "none",
-    "--security-opt", "no-new-privileges",
-    "--cap-drop", "ALL",
-    "--pids-limit", "512",
+    "--network",
+    "none",
+    "--security-opt",
+    "no-new-privileges",
+    "--cap-drop",
+    "ALL",
+    "--pids-limit",
+    "512",
 )
 
 # Only these variables are forwarded to the engine subprocess. Everything else in the
 # worker environment (credentials, connection strings) is dropped. The DOCKER_* entries
 # are needed so the ``docker`` CLI can still find its daemon/context.
 _ENGINE_ENV_PASSTHROUGH: tuple[str, ...] = (
-    "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SOURCE_DATE_EPOCH",
-    "TEXMFHOME", "TEXMFVAR", "TEXMFCONFIG", "TEXMFCNF", "TEXINPUTS",
-    "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG",
-    "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY",
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "TMPDIR",
+    "SOURCE_DATE_EPOCH",
+    "TEXMFHOME",
+    "TEXMFVAR",
+    "TEXMFCONFIG",
+    "TEXMFCNF",
+    "TEXINPUTS",
+    "DOCKER_HOST",
+    "DOCKER_CONTEXT",
+    "DOCKER_CONFIG",
+    "DOCKER_CERT_PATH",
+    "DOCKER_TLS_VERIFY",
 )
 
 _TRUTHY = ("1", "true", "yes", "on")
+_DOCKER_CONTAINER_NAME_RE = re.compile(r"^latexy-(?:worker|orchestrator|probe|legacy)-[0-9a-f]{32}$")
+
+
+def docker_container_name(job_id: str, role: str = "worker") -> str:
+    """Return a deterministic, shell-safe name for one daemon-owned compile."""
+    if role not in {"worker", "orchestrator", "probe", "legacy"}:
+        raise ValueError("invalid Docker container role")
+    digest = hashlib.sha256(f"{role}:{job_id}".encode("utf-8")).hexdigest()[:32]
+    return f"latexy-{role}-{digest}"
+
+
+def cleanup_docker_container(container_name: Optional[str]) -> None:
+    """Idempotently remove exactly one known Docker container, bounded to 5s."""
+    if not container_name or not _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name):
+        return
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            env=engine_env(),
+            check=False,
+        )
+    except Exception as exc:
+        logger.warning("Docker container cleanup failed (%s)", type(exc).__name__)
+
+
+async def cleanup_docker_container_async(container_name: Optional[str]) -> None:
+    """Run bounded Docker cleanup off the event loop."""
+    await asyncio.to_thread(cleanup_docker_container, container_name)
 
 
 def docker_engine_available() -> bool:
-    """Whether the sandboxed Docker LaTeX engine can be used."""
-    return shutil.which("docker") is not None
+    """Whether the daemon can run the configured local sandbox image.
+
+    A CLI on PATH is not a usable engine: Docker Desktop may be stopped, or
+    the configured image may not exist. Never let ``docker run`` implicitly
+    pull an image in a request's compilation timeout window.
+    """
+    if shutil.which("docker") is None:
+        return False
+    try:
+        probe = subprocess.run(
+            ["docker", "image", "inspect", settings.LATEX_DOCKER_IMAGE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            env=engine_env(),
+            check=False,
+        )
+        return probe.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def docker_sandbox_args() -> list[str]:
@@ -160,7 +237,7 @@ def assert_local_engine_allowed(job_id: str) -> None:
     """
     if not local_engine_allowed():
         # The remedy is an ops decision, so it goes to the logs; the caller only ever
-        # sees the generic message (str(exc) is echoed back to the API client).
+        # sees the generic message rather than an internal exception detail.
         logger.error(
             "[%s] Docker LaTeX engine unavailable and the local engine fallback is "
             "disabled (production, not containerised). Install/expose the docker CLI "
@@ -196,9 +273,18 @@ def assert_local_engine_allowed(job_id: str) -> None:
 # Detection, not prevention: the bytes were read by the engine. What both layers remove
 # is the exfiltration channel, which is what actually matters to the caller.
 _ENGINE_TEXMF_ROOTS: tuple[str, ...] = (
-    "/usr/local/texlive/", "/usr/share/texlive/", "/usr/share/texmf",
-    "/usr/local/share/texmf", "/usr/local/texmf/", "/opt/texlive/",
-    "/etc/texmf/", "/var/lib/texmf/", "/usr/share/fonts/", "/usr/local/share/fonts/",
+    "/usr/local/texlive/",
+    "/usr/share/texlive/",
+    "/usr/share/texmf",
+    "/usr/local/share/texmf",
+    "/usr/local/texmf/",
+    "/opt/texlive/",
+    "/opt/homebrew/Cellar/texlive/",
+    "/opt/homebrew/share/texmf-dist/",
+    "/etc/texmf/",
+    "/var/lib/texmf/",
+    "/usr/share/fonts/",
+    "/usr/local/share/fonts/",
     # luaotfload asks fontconfig where the system fonts are, so a LuaLaTeX run
     # records ~50 files under /etc/fonts/ that the document never referenced.
     # Omitting this rejected every LuaLaTeX compile on the production image with a
@@ -244,9 +330,7 @@ def find_engine_read_escape(line: str, workspace: str) -> Optional[str]:
             continue  # "(1 page, 100 bytes)" and friends
         if not raw.startswith("/") and ".." not in raw.split("/"):
             continue  # ordinary relative include inside the job dir
-        resolved = os.path.normpath(
-            raw if raw.startswith("/") else os.path.join(workspace, raw)
-        )
+        resolved = os.path.normpath(raw if raw.startswith("/") else os.path.join(workspace, raw))
         if _escapes_jail(resolved, jail):
             return resolved
     return None
@@ -280,7 +364,9 @@ def find_recorder_read_escape(
     real error is more useful to the caller than a spurious confinement failure.
     """
     try:
-        raw = fls_file.read_bytes()
+        raw = read_file_bounded(fls_file, MAX_RECORDER_BYTES)
+    except BoundedReadError:
+        return f"<recorder file {fls_file.name} exceeds the {MAX_RECORDER_BYTES} byte limit>"
     except OSError:
         return f"<no recorder file at {fls_file}>" if require_recorder else None
 
@@ -302,18 +388,13 @@ def find_recorder_read_escape(
             if target in recorder_names or os.path.basename(target) == fls_file.name:
                 return f"<recorder file {fls_file.name} was overwritten by the document>"
             continue
-        resolved = os.path.normpath(
-            target if target.startswith("/") else os.path.join(workspace, target)
-        )
+        resolved = os.path.normpath(target if target.startswith("/") else os.path.join(workspace, target))
         if _escapes_jail(resolved, jail):
             return resolved
     return None
 
 
-ENGINE_READ_ESCAPE_ERROR = (
-    "Compilation blocked: the document tried to read a file outside its own "
-    "directory."
-)
+ENGINE_READ_ESCAPE_ERROR = "Compilation blocked: the document tried to read a file outside its own directory."
 
 
 # ── LaTeX injection guards (defence in depth) ───────────────────────────────
@@ -378,17 +459,10 @@ class LaTeXService:
         settings.TEMP_DIR.mkdir(exist_ok=True)
         self._cleanup_tasks: set[asyncio.Task] = set()
 
-    def validate_latex_content(self, content: str) -> bool:
-        """Basic validation of LaTeX content."""
+    @staticmethod
+    def validate_latex_safety(content: str) -> bool:
+        """Apply source-level defence-in-depth checks to any LaTeX string."""
         if not content.strip():
-            return False
-
-        # Check for basic LaTeX structure
-        has_document_class = "\\documentclass" in content
-        has_begin_document = "\\begin{document}" in content
-        has_end_document = "\\end{document}" in content
-
-        if not (has_document_class and has_begin_document and has_end_document):
             return False
 
         # Scan a comment-stripped, \csname-resolved copy so obfuscated variants
@@ -409,15 +483,27 @@ class LaTeXService:
 
         return True
 
+    def validate_latex_content(self, content: str) -> bool:
+        """Validate a complete document before it reaches a compiler."""
+        if not self.validate_latex_safety(content):
+            return False
+
+        # Check for basic LaTeX structure
+        has_document_class = "\\documentclass" in content
+        has_begin_document = "\\begin{document}" in content
+        has_end_document = "\\end{document}" in content
+
+        return has_document_class and has_begin_document and has_end_document
+
     def check_latex_installation(self) -> bool:
         """Check if Docker and LaTeX Docker image are available."""
         try:
             # Check if Docker is available
             docker_result = subprocess.run(
                 ["docker", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
             )
             if docker_result.returncode != 0:
                 return False
@@ -425,15 +511,17 @@ class LaTeXService:
             # Check if LaTeX Docker image is available
             image_result = subprocess.run(
                 ["docker", "image", "inspect", settings.LATEX_DOCKER_IMAGE],
-                capture_output=True,
-                text=True,
-                timeout=5
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
             )
             return image_result.returncode == 0
         except Exception:
             return False
 
-    async def compile_latex(self, latex_content: str, job_id: Optional[str] = None, user_plan: str = "free") -> CompilationResponse:
+    async def compile_latex(
+        self, latex_content: str, job_id: Optional[str] = None, user_plan: str = "free"
+    ) -> CompilationResponse:
         """Compile LaTeX content to PDF.
 
         Reachable unauthenticated through ``POST /public/compile``, so it applies the
@@ -454,28 +542,38 @@ class LaTeXService:
         tex_file = job_dir / "resume.tex"
         pdf_file = job_dir / "resume.pdf"
         log_file = job_dir / "resume.log"
+        container_name: Optional[str] = None
 
         try:
             # Write LaTeX content to file
-            tex_file.write_text(latex_content, encoding='utf-8')
+            tex_file.write_text(latex_content, encoding="utf-8")
             logger.info(f"Created LaTeX file for job {job_id}")
 
             # Docker when it is there, the gated in-process engine otherwise — the
             # production image bakes texlive in and ships no docker CLI, so a
             # Docker-only path would hard-fail every request there.
             if docker_engine_available():
+                container_name = docker_container_name(job_id, "legacy")
                 compile_cmd = [
-                    "docker", "run", "--rm",
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container_name,
                     *docker_sandbox_args(),
-                    "-v", f"{job_dir}:/workspace",
-                    "-w", "/workspace",
+                    "-v",
+                    f"{job_dir}:/workspace",
+                    "-w",
+                    "/workspace",
                     settings.LATEX_DOCKER_IMAGE,
                     "pdflatex",
                     *LATEX_SANDBOX_FLAGS,
                     "-interaction=nonstopmode",
-                    "-output-directory", "/workspace",
-                    "-jobname", "resume",
-                    "resume.tex"
+                    "-output-directory",
+                    "/workspace",
+                    "-jobname",
+                    "resume",
+                    "resume.tex",
                 ]
                 compile_cwd = None
                 workspace = "/workspace"
@@ -485,9 +583,11 @@ class LaTeXService:
                     "pdflatex",
                     *LATEX_SANDBOX_FLAGS,
                     "-interaction=nonstopmode",
-                    "-output-directory", str(job_dir),
-                    "-jobname", "resume",
-                    "resume.tex"
+                    "-output-directory",
+                    str(job_dir),
+                    "-jobname",
+                    "resume",
+                    "resume.tex",
                 ]
                 compile_cwd = str(job_dir)
                 workspace = str(job_dir)
@@ -505,29 +605,37 @@ class LaTeXService:
 
             timeout = get_compile_timeout(user_plan)
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
-                )
+                capture = capture_process_output_bounded(process)
+                try:
+                    process_output = await asyncio.wait_for(capture, timeout=timeout)
+                except BaseException:
+                    capture.close()
+                    raise
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 await process.wait()
-                raise HTTPException(
-                    status_code=408,
-                    detail=f"LaTeX compilation timed out after {timeout} seconds"
-                )
-
+                await cleanup_docker_container_async(container_name)
+                raise HTTPException(status_code=408, detail=f"LaTeX compilation timed out after {timeout} seconds")
+            except asyncio.CancelledError:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                await process.wait()
+                await cleanup_docker_container_async(container_name)
+                raise
             compilation_time = time.time() - start_time
 
             # Read log output
             log_output = ""
             if log_file.exists():
-                log_output = log_file.read_text(encoding='utf-8', errors='ignore')
+                log_output = read_text_file_bounded(log_file)
             else:
                 # If no log file, use stdout/stderr
-                log_output = stdout.decode('utf-8', errors='ignore')
-                if stderr:
-                    log_output += "\n" + stderr.decode('utf-8', errors='ignore')
+                log_output = process_output
 
             # Read confinement, before the PDF or the transcript is handed back: the
             # recorder file lists every file the engine opened, including the \openin
@@ -544,6 +652,7 @@ class LaTeXService:
                     recorder_escape,
                 )
                 # The PDF renders whatever was read, and GET /download would serve it.
+                await cleanup_docker_container_async(container_name)
                 self.cleanup_temp_files(job_dir)
                 return CompilationResponse(
                     success=False,
@@ -555,7 +664,17 @@ class LaTeXService:
             # Check if compilation was successful
             if process.returncode == 0 and pdf_file.exists():
                 pdf_size = pdf_file.stat().st_size
+                if pdf_size > MAX_COMPILED_PDF_BYTES:
+                    await cleanup_docker_container_async(container_name)
+                    self.cleanup_temp_files(job_dir)
+                    return CompilationResponse(
+                        success=False,
+                        job_id=job_id,
+                        message=f"Compiled PDF exceeds the {MAX_COMPILED_PDF_BYTES} byte limit",
+                        compilation_time=compilation_time,
+                    )
                 logger.info(f"Compilation successful for job {job_id}. PDF size: {pdf_size} bytes")
+                await cleanup_docker_container_async(container_name)
 
                 return CompilationResponse(
                     success=True,
@@ -566,26 +685,37 @@ class LaTeXService:
                 )
             else:
                 error_msg = f"LaTeX compilation failed. Return code: {process.returncode}"
-                if stderr:
-                    error_msg += f"\nStderr: {stderr.decode('utf-8', errors='ignore')}"
+                if process_output:
+                    error_msg += f"\nStderr: {process_output}"
 
                 logger.error(f"Compilation failed for job {job_id}: {error_msg}")
-
-                return CompilationResponse(
+                await cleanup_docker_container_async(container_name)
+                response = CompilationResponse(
                     success=False,
                     job_id=job_id,
                     message="LaTeX compilation failed",
                     compilation_time=compilation_time,
-                    log_output=log_output
+                    log_output=log_output,
                 )
+                self.cleanup_temp_files(job_dir)
+                return response
 
         except Exception as e:
-            logger.error(f"Error during compilation for job {job_id}: {e}")
-            return CompilationResponse(
-                success=False,
-                job_id=job_id,
-                message=f"Compilation error: {str(e)}"
-            )
+            process_obj = locals().get("process")
+            if process_obj is not None and getattr(process_obj, "returncode", None) is None:
+                try:
+                    process_obj.kill()
+                except (ProcessLookupError, AttributeError):
+                    pass
+                try:
+                    await process_obj.wait()
+                except (ProcessLookupError, AttributeError):
+                    pass
+            await cleanup_docker_container_async(locals().get("container_name"))
+            logger.error("Error during compilation for job %s", job_id, extra={"error_type": type(e).__name__})
+            response = CompilationResponse(success=False, job_id=job_id, message="Compilation failed unexpectedly")
+            self.cleanup_temp_files(job_dir)
+            return response
 
     def cleanup_temp_files(self, job_dir: Path) -> None:
         """Clean up temporary files after compilation."""
@@ -594,7 +724,7 @@ class LaTeXService:
                 shutil.rmtree(job_dir)
                 logger.info(f"Cleaned up temporary directory: {job_dir}")
         except Exception as e:
-            logger.error(f"Error cleaning up {job_dir}: {e}")
+            logger.error("Error cleaning up compilation directory", extra={"error_type": type(e).__name__})
 
     async def cleanup_temp_files_delayed(self, job_dir: Path, delay: int = 5):
         """Clean up temporary files after a delay."""
@@ -654,19 +784,29 @@ def run_latex_subprocess(
     pdf_file = job_dir / "resume.pdf"
     tex_file.write_text(latex_content, encoding="utf-8")
 
-    if docker_engine_available():
+    use_docker = docker_engine_available()
+    container_name = docker_container_name(job_id, "legacy") if use_docker else None
+    if use_docker:
         compile_cmd = [
-            "docker", "run", "--rm",
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            container_name,
             *docker_sandbox_args(),
-            "-v", f"{job_dir}:/workspace",
-            "-w", "/workspace",
+            "-v",
+            f"{job_dir}:/workspace",
+            "-w",
+            "/workspace",
             settings.LATEX_DOCKER_IMAGE,
             "pdflatex",
             *LATEX_SANDBOX_FLAGS,
             "-interaction=nonstopmode",
             "-synctex=1",
-            "-output-directory", "/workspace",
-            "-jobname", "resume",
+            "-output-directory",
+            "/workspace",
+            "-jobname",
+            "resume",
             "resume.tex",
         ]
         compile_cwd = None
@@ -678,8 +818,10 @@ def run_latex_subprocess(
             *LATEX_SANDBOX_FLAGS,
             "-interaction=nonstopmode",
             "-synctex=1",
-            "-output-directory", str(job_dir),
-            "-jobname", "resume",
+            "-output-directory",
+            str(job_dir),
+            "-jobname",
+            "resume",
             "resume.tex",
         ]
         compile_cwd = str(job_dir)
@@ -690,42 +832,65 @@ def run_latex_subprocess(
         compile_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         cwd=compile_cwd,
         env=engine_env(),
     )
 
-    for raw_line in proc.stdout:  # type: ignore[union-attr]
-        line = raw_line.rstrip("\n")
-        if not line:
-            continue
-        escaped = find_engine_read_escape(line, workspace)
-        if escaped:
-            # Kill before publishing: the next lines would carry the file's contents.
-            proc.kill()
-            proc.wait()
-            logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
-            return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
+    watchdog = ProcessWatchdog(
+        proc,
+        timeout=timeout,
+        is_cancelled=lambda: is_cancelled(job_id),
+    ).start()
+    try:
+        for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
+            if not line:
+                continue
+            escaped = find_engine_read_escape(line, workspace)
+            if escaped:
+                # Kill before publishing: the next lines would carry the file's contents.
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
+                return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
 
-        line_lower = line.lower()
-        is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
-        publish_event(job_id, "log.line", {
-            "source": "pdflatex",
-            "line": line,
-            "is_error": is_error,
-        })
+            line_lower = line.lower()
+            is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
+            publish_event(
+                job_id,
+                "log.line",
+                {
+                    "source": "pdflatex",
+                    "line": bound_log_line(line)[0],
+                    "is_error": is_error,
+                },
+            )
 
-        if timeout is not None and time.time() - start_time > timeout:
-            proc.kill()
-            proc.wait()
-            return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
+            if timeout is not None and time.time() - start_time > timeout:
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
 
-        if is_cancelled(job_id):
-            proc.kill()
-            proc.wait()
-            raise RuntimeError("Job cancelled during LaTeX compilation")
+            if is_cancelled(job_id):
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                raise RuntimeError("Job cancelled during LaTeX compilation")
+    except BaseException:
+        cleanup_docker_container(container_name)
+        raise
+    finally:
+        watchdog_reason = watchdog.stop()
+
+    if watchdog_reason == "timeout":
+        cleanup_docker_container(container_name)
+        proc.wait()
+        return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
+    if watchdog_reason == "cancelled":
+        cleanup_docker_container(container_name)
+        proc.wait()
+        raise RuntimeError("Job cancelled during LaTeX compilation")
 
     proc.wait()
     compilation_time = time.time() - start_time
@@ -738,15 +903,13 @@ def run_latex_subprocess(
         require_recorder=proc.returncode == 0,
     )
     if recorder_escape:
-        logger.warning(
-            "[%s] engine read outside the job directory (recorder): %s", job_id, recorder_escape
-        )
+        logger.warning("[%s] engine read outside the job directory (recorder): %s", job_id, recorder_escape)
+        cleanup_docker_container(container_name)
         return False, compilation_time, ENGINE_READ_ESCAPE_ERROR
 
     if proc.returncode == 0 and pdf_file.exists():
+        cleanup_docker_container(container_name)
         return True, compilation_time, ""
 
-    return False, compilation_time, (
-        f"pdflatex exited with code {proc.returncode}. "
-        "See log.line events for details."
-    )
+    cleanup_docker_container(container_name)
+    return False, compilation_time, (f"pdflatex exited with code {proc.returncode}. See log.line events for details.")
