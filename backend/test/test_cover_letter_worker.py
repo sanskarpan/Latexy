@@ -25,6 +25,16 @@ def _celery_eager():
     celery_app.conf.task_eager_propagates = False
 
 
+@pytest.fixture(autouse=True)
+def _mock_lifecycle_admission():
+    """Unit tests isolate event publication from the worker Redis process client."""
+    with (
+        patch("app.workers.cover_letter_worker.get_worker_redis", return_value=MagicMock()),
+        patch("app.workers.cover_letter_worker.admit_worker", return_value=True),
+    ):
+        yield
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 RESUME_LATEX = r"\documentclass{article}\begin{document}Resume\end{document}"
@@ -139,6 +149,25 @@ class TestBuildCoverLetterPrompt:
         assert "Role:" not in user
 
 
+def test_submit_forwards_quota_receipt_to_worker():
+    payload = {
+        "dimension": "optimizations",
+        "user_id": "user-1",
+        "period": "202610",
+        "cost": 1,
+    }
+    with patch.object(clw.generate_cover_letter_task, "apply_async") as enqueue:
+        result = clw.submit_cover_letter_generation(
+            RESUME_LATEX,
+            JOB_DESC,
+            job_id="quota-job",
+            quota_refund=payload,
+        )
+
+    assert result == "quota-job"
+    assert enqueue.call_args.kwargs["kwargs"]["quota_refund"] == payload
+
+
 # ── LaTeX extraction regex ───────────────────────────────────────────────
 
 
@@ -163,6 +192,47 @@ class TestLatexExtraction:
 
 
 class TestCoverLetterTask:
+    def test_terminal_failure_refunds_only_after_owned_result(
+        self, mock_publish, mock_job_result, mock_cancelled
+    ):
+        payload = {
+            "dimension": "optimizations",
+            "user_id": "user-1",
+            "period": "202610",
+            "cost": 1,
+        }
+        with (
+            patch("app.workers.cover_letter_worker.settings") as ms,
+            patch(
+                "app.workers.cover_letter_worker.refund_quota_once"
+            ) as refund,
+            patch(
+                "app.workers.cover_letter_worker.clear_quota_refund_receipt"
+            ) as clear,
+        ):
+            _mock_settings(ms)
+            ms.OPENAI_API_KEY = ""
+            order = []
+            mock_job_result.side_effect = lambda *args, **kwargs: (order.append("result"), True)[1]
+            mock_publish.side_effect = lambda *args, **kwargs: (order.append("event"), "stream-id")[1]
+            refund.side_effect = lambda *args, **kwargs: order.append("refund")
+
+            result = clw.generate_cover_letter_task(
+                RESUME_LATEX,
+                JOB_DESC,
+                job_id="test-metered-failure",
+                quota_refund=payload,
+            )
+
+        assert result["success"] is False
+        mock_job_result.assert_called_once()
+        assert mock_publish.call_args.args[1] == "job.failed"
+        assert order == ["result", "event", "refund"]
+        refund.assert_called_once_with(
+            "test-metered-failure", payload, expected_dimension="optimizations"
+        )
+        clear.assert_not_called()
+
     def test_success_flow(
         self, mock_publish, mock_job_result, mock_cancelled, mock_save, mock_openai
     ):
