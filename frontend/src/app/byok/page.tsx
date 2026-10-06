@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import APIKeyManager from '@/components/byok/APIKeyManager'
 import ProviderSelector from '@/components/byok/ProviderSelector'
@@ -29,8 +28,26 @@ const points = [
 ]
 
 export default function BYOKPage() {
-  const { session } = useRequireAuth()
+  const { session, isPending, error } = useRequireAuth()
   const [userApiKeys, setUserApiKeys] = useState<APIKeyInfo[]>([])
+
+  if (isPending) {
+    return <div className="content-shell py-16 text-sm text-fg-2">Loading API key management…</div>
+  }
+
+  if (error && !session) {
+    return (
+      <div className="content-shell py-16">
+        <div role="alert" className="mx-auto max-w-lg rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">API key management could not verify your session</h1>
+          <p className="mt-2 text-sm text-fg-2">Check your connection and retry.</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) return null
 
   return (
     <div className="content-shell">
