@@ -20,6 +20,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.feature_registry import FEATURE_REGISTRY
+
 
 @pytest.fixture(autouse=True)
 async def _reset():
@@ -94,7 +96,7 @@ class TestGetEntitlements:
         body = resp.json()
         assert set(body.keys()) == {"registry", "kill_switches", "matrix", "plan_families"}
         assert body["plan_families"] == ["free", "basic", "pro", "byok", "team"]
-        assert len(body["registry"]) == 30
+        assert len(body["registry"]) == len(FEATURE_REGISTRY)
 
 
 # ── PATCH /admin/entitlements/kill-switch/{key} ──────────────────────────────
@@ -306,7 +308,7 @@ class TestConfigEntitlements:
         assert resp.status_code == 200
         body = resp.json()
         assert "features" in body
-        assert len(body["features"]) == 30
+        assert len(body["features"]) == len(FEATURE_REGISTRY)
         assert body["features"]["compile"] is True
 
     async def test_anonymous(self, client: AsyncClient):
@@ -314,7 +316,7 @@ class TestConfigEntitlements:
         assert resp.status_code == 200
         body = resp.json()
         assert "features" in body
-        assert len(body["features"]) == 30
+        assert len(body["features"]) == len(FEATURE_REGISTRY)
 
     async def test_anonymous_reflects_free_matrix_disable(
         self, client: AsyncClient, db_session: AsyncSession
