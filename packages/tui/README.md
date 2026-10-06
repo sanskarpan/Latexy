@@ -67,11 +67,15 @@ LATEXY_SESSION_TOKEN=<token> latexy compile --resume-id <uuid> --json
 | `/snippets` | Browse snippet marketplace | local |
 | `/settings` | Open notification settings | local |
 | `/help` | Show help | local |
-| `/model` | Open model picker for agent mode | local |
+| `/model` | List supported providers and models | api |
 | `/clear` | Clear transcript | local |
-| `/logout` | Clear session and exit | local |
+| `/logout` | Clear session and return to sign-in | local |
 
 ## CI / Headless mode
+
+Free-text agent mode and an interactive provider picker are planned work. The
+current `/model` command is informational; all working interactive actions are
+listed by `/help`.
 
 When stdout is not a TTY (CI pipelines, scripts), Latexy runs in headless mode and outputs JSON:
 
@@ -93,6 +97,10 @@ latexy list --page 1 --limit 100 --json
 `--jd` accepts a local file, an HTTP(S) job-posting URL, or literal job-description
 text. Progress and compiler logs are written to stderr; stdout contains exactly
 one JSON document, so it can be piped directly to `jq`.
+
+When `defaultResumeId` is set in the config, headless `compile` (without a local
+file or `--resume-id`), `optimize`, and `ats score` use that resume. An explicit
+resume ID or local `.tex` path always takes precedence.
 
 Exit codes:
 
@@ -130,3 +138,17 @@ Environment variable overrides:
 
 - Node.js >= 22
 - A Latexy account at [latexy.xyz](https://latexy.xyz)
+
+## MCP server
+
+The same package installs `latexy-mcp`, a local stdio MCP server with typed
+tools for listing, reading, creating, updating, archiving, compiling, and ATS
+scoring Latexy documents, plus `resume:///…` LaTeX resources. It reuses the TUI
+login or `LATEXY_SESSION_TOKEN` and supports the same self-hosting URL overrides.
+
+```bash
+codex mcp add latexy -- latexy-mcp
+```
+
+See the repository's [MCP guide](https://github.com/sanskarpan/Latexy/blob/main/docs/mcp.md) for client setup, tool
+contracts, resources, and security behavior.
