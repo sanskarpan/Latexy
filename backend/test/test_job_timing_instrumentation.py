@@ -47,10 +47,28 @@ Hello World
 """
 
 
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
+
 def _make_popen(returncode: int = 0, lines: list | None = None) -> MagicMock:
     mock_proc = MagicMock()
     mock_proc.returncode = returncode
-    mock_proc.stdout = iter(lines if lines is not None else ["Compilation OK\n"])
+    mock_proc.stdout = _BoundedSyncStream(lines if lines is not None else ["Compilation OK\n"])
     mock_proc.wait.return_value = None
     mock_proc.kill.return_value = None
     return mock_proc
@@ -60,6 +78,13 @@ def _make_popen(returncode: int = 0, lines: list | None = None) -> MagicMock:
 def mock_publish():
     with patch("app.workers.latex_worker.publish_event") as m:
         yield m
+
+
+@pytest.fixture(autouse=True)
+def _docker_capability_probe():
+    """Avoid routing pdflatex subprocess doubles through Docker inspection."""
+    with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
+        yield
 
 
 @pytest.fixture
@@ -89,7 +114,7 @@ def mock_popen_success():
         patch("pathlib.Path.mkdir"),
         patch("pathlib.Path.write_text"),
         patch("pathlib.Path.exists", return_value=True),
-        patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345, st_mode=0)),
     ):
         yield m
 
@@ -237,6 +262,10 @@ class TestCompileTaskTimingLog:
         submitted_at = time.time() - 2.0
         redis_mock = MagicMock()
         redis_mock.get.return_value = json.dumps({"submitted_at": submitted_at})
+        # This timing test exercises legacy ownerless execution.  Make the
+        # lifecycle probe explicit instead of letting MagicMock.exists create
+        # a phantom admitted job with no parseable epoch.
+        redis_mock.exists.return_value = False
 
         monkeypatch.setattr(lw, "_first_task_seen", False)
         monkeypatch.setattr(lw, "_PROCESS_STARTED_AT", time.monotonic() - 1.5)
