@@ -95,8 +95,16 @@ export function insertProjectLatex(
 ): string {
   if (!snippet) return currentLatex
   if (editor) {
+    const before = editor.getValue()
     editor.insertAtCursor(snippet)
-    return editor.getValue()
+    const after = editor.getValue()
+    if (after !== before) return after
+
+    // The imperative ref exists before Monaco itself finishes mounting. In
+    // that window insertAtCursor is a no-op and getValue returns an empty
+    // string; append to React's current buffer instead of replacing the whole
+    // document with that empty editor snapshot.
+    currentLatex = before || currentLatex
   }
 
   const separator = currentLatex && !currentLatex.endsWith('\n') ? '\n' : ''
