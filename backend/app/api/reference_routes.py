@@ -195,7 +195,7 @@ def _safe_reference_error(exc: ValueError) -> str:
 
 def _author_surnames(value: Optional[str]) -> set[str]:
     surnames: set[str] = set()
-    for author in re.split(r"\s+and\s+", value or "", flags=re.I):
+    for author in re.split(r"(?<!\s)\s++and\s++", value or "", flags=re.I):
         plain = _plain_metadata(author)
         if not plain:
             continue
