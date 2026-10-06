@@ -724,3 +724,25 @@ compiler repair.
   identity-application barrier before acceptance. These are not all confirmed
   bugs. New Resume, guided-builder owner and builder-document flows already
   have explicit source guards and behavioral coverage; do not regress them.
+- Theme rollout is now accepted: main CI 37472086418, Vercel verification
+  37472964248 and every step of automatic Modal rollout 37472964115 succeeded.
+  Independent public identity is exact d54e0f63 and Modal history is v59 tagged
+  that full SHA. Root ran the six theme cases on actual deployed frontend assets:
+  **6 passed, zero retries**, with enabled/empty page-error gates and exact
+  identity before/after. Artifact `/tmp/latexy-production-theme-d54e0f63.log`.
+  The fail-closed synthetic API/auth fixture and explicit service-worker
+  registration dependency mock remain the stated acceptance boundary.
+- Linked-variant stale-error repair is tracked in #1784. Stronger passkey proof
+  is accepted as **P1 #1785**: B's bearer-authenticated GitHub status request and
+  visible `BobGitHub` precede A's fully consumed passkey response. The stale A
+  row remains and B never reloads its list. Ordinary list passed; desired-safety
+  case failed without page errors. Root matched sealed/current component hashes
+  and reviewed `/tmp/latexy-settings-passkey-owner-race-5485-final-confirmed-red.log`.
+  Broader actual MFA secret exposure or backend authorization failure is not
+  asserted. Owner-private security state resets and async guards are under review.
+- Root review caught additional implementation regressions before acceptance:
+  stale copied dictionary display/entry state, unmounted dictionary sync,
+  auth-ready dispatch retargeting, and a variant owner-epoch spinner masking
+  load errors. Repairs require positive controls for these alongside old-source
+  race failures. No new dictionary, variant or security repair is accepted or
+  published merely because it has been implemented by an agent.
