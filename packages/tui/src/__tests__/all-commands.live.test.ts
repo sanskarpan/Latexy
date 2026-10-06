@@ -61,7 +61,7 @@ function assertClean(out: string, cmd: string): void {
 }
 
 ;(LIVE ? describe : describe.skip)('every command, live', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     expect(TOKEN, 'LATEXY_SESSION_TOKEN required').not.toBe('')
     expect(RESUME, 'LATEXY_TEST_RESUME required').not.toBe('')
     $session.set({
@@ -73,6 +73,20 @@ function assertClean(out: string, cmd: string): void {
       plan: 'pro',
     })
     initApiClient(API, TOKEN)
+
+    // This suite asserts the non-empty tracker rendering path, so it must own
+    // that precondition instead of depending on whatever happens to be in the
+    // developer's database. Keep an existing row when one is already present.
+    const client = getApiClient()
+    const tracked = await client.get<Array<{ id: string }>>('/tracker/applications?flat=true')
+    if (tracked.length === 0) {
+      await client.post('/tracker/applications', {
+        company_name: 'Latexy Live QA',
+        role_title: 'Deterministic tracker fixture',
+        status: 'applied',
+        resume_id: RESUME,
+      })
+    }
   })
 
   // ── read-only listings: must show real rows ──────────────────────────────
