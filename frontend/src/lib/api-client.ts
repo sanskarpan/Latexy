@@ -5,6 +5,7 @@
  */
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
+import type { ATSDeepAnalysis } from './event-types'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -15,6 +16,7 @@ const API_BASE =
 
 export type JobType =
   | 'latex_compilation'
+  | 'auto_fit'
   | 'llm_optimization'
   | 'combined'
   | 'ats_scoring'
@@ -25,7 +27,6 @@ export type OptimizationLevel = 'conservative' | 'balanced' | 'aggressive'
 export type LatexCompiler = 'pdflatex' | 'xelatex' | 'lualatex'
 
 export const ALLOWED_LATEXMK_FLAGS = [
-  '--shell-escape',
   '--synctex=1',
   '--file-line-error',
   '--interaction=nonstopmode',
@@ -40,6 +41,8 @@ export interface CompileSettings {
   main_file?: string
   latexmk_flags?: LatexmkFlag[]
   extra_packages?: string[]
+  halt_on_error?: boolean
+  draft_mode?: boolean
 }
 
 // ── Collaboration (Feature 40) ─────────────────────────────────────────────
@@ -82,6 +85,7 @@ export interface JobSubmitRequest {
   tone?: string
   emphasize?: string[]
   downplay?: string[]
+  auto_fit_intensity?: number
 }
 
 /** One discrete, independently-applicable change from /optimize/segment-changes. */
@@ -120,6 +124,8 @@ export interface BenchmarkResult {
   industry: string
   sufficient_data: boolean
   message?: string | null
+  cohort_label?: string
+  methodology?: string
 }
 
 export interface RecordOptimizationRequest {
@@ -157,7 +163,12 @@ export interface JobStateResponse {
 export interface JobResultResponse {
   success: boolean
   job_id: string
-  pdf_job_id?: string
+  /** Durable completion is retained even when its generated output is unavailable. */
+  recovery_complete?: boolean
+  omitted_output_fields?: string[]
+  error_code?: string
+  /** Null is meaningful for jobs that complete without a PDF artifact. */
+  pdf_job_id?: string | null
   ats_score?: number
   ats_details?: {
     category_scores: Record<string, number>
@@ -172,7 +183,20 @@ export interface JobResultResponse {
   }>
   compilation_time?: number
   optimization_time?: number
+  analysis_time?: number
   tokens_used?: number
+  page_count?: number | null
+  /** Plain text recovered from the compiled PDF by the backend extractor. */
+  extracted_text?: string | null
+  /** Durable deep-ATS payload used when the event stream was missed. */
+  deep_analysis?: ATSDeepAnalysis
+  /** Durable generated cover-letter output used when the event stream was missed. */
+  cover_letter_latex?: string
+  auto_fit?: boolean
+  fit_succeeded?: boolean
+  fit_intensity?: number
+  fit_attempts?: number
+  fitted_latex?: string
   error?: string
 }
 
@@ -232,6 +256,11 @@ export interface SubscriptionCreateResponse {
   shortUrl?: string
   subscriptionId?: string
   customerId?: string
+  orderId?: string
+  amount?: number
+  currency?: string
+  keyId?: string
+  checkoutType?: 'one_time' | 'subscription'
   message?: string
   verificationRequired?: boolean
   verificationPreviewUrl?: string | null
@@ -282,6 +311,12 @@ export interface TeamInviteResponse extends TeamSeat {
   message: string
 }
 
+function httpErrorStatus(error: unknown): number | undefined {
+  const message = error instanceof Error ? error.message : String(error)
+  const match = message.match(/^HTTP (\d{3}):/)
+  return match ? Number(match[1]) : undefined
+}
+
 export interface ResumeBase {
   title: string
   latex_content: string
@@ -294,6 +329,7 @@ export interface ResumeResponse extends ResumeBase {
   user_id: string
   access_role?: import('@/lib/resume-access').ResumeAccessRole
   parent_resume_id?: string | null
+  variant_visibility?: VariantVisibility | null
   variant_count?: number
   selected_template_id?: string | null
   content_source?: string
@@ -303,6 +339,8 @@ export interface ResumeResponse extends ResumeBase {
   metadata?: { compiler?: string; custom_flags?: string; pinned?: boolean; [key: string]: unknown } | null
   share_token?: string | null
   share_url?: string | null
+  share_anonymous?: boolean
+  share_review_comments?: boolean
   // GitHub sync (Feature 37)
   github_sync_enabled?: boolean
   github_repo_name?: string | null
@@ -311,6 +349,7 @@ export interface ResumeResponse extends ResumeBase {
   dropbox_sync_enabled?: boolean
   dropbox_folder_path?: string | null
   dropbox_last_sync_at?: string | null
+  portfolio_visible?: boolean
   created_at: string
   updated_at: string
   // Archive / Pin / Tags (Feature 39)
@@ -334,12 +373,47 @@ export interface ResumeCreate extends ResumeBase {
   document_type?: string
 }
 
-export interface ResumeUpdate {
+interface ResumeUpdateFields {
   title?: string
-  latex_content?: string
   is_template?: boolean
   tags?: string[]
   document_type?: string
+  portfolio_visible?: boolean
+}
+
+interface ResumeUpdateMetadata extends ResumeUpdateFields {
+  latex_content?: never
+  expected_latex_content?: never
+}
+
+/**
+ * Full-document writes require the source snapshot they were based on. This
+ * keeps stale collaboration/autosave clients from silently clobbering newer
+ * content while preserving metadata-only PATCH-like PUT compatibility.
+ */
+export type ResumeUpdate = ResumeUpdateMetadata | (ResumeUpdateFields & {
+  latex_content: string
+  expected_latex_content: string
+})
+
+export interface SuggestionDecisionRequest {
+  suggestion_id: string
+  status: 'accepted' | 'rejected' | 'conflicted'
+  expected_content: string
+  original_text: string
+  replacement_text: string
+  prefix?: string
+  suffix?: string
+}
+
+export interface SuggestionDecisionResponse {
+  suggestion_id: string
+  status: 'accepted' | 'rejected' | 'conflicted'
+  decided_by_role: 'owner' | 'editor'
+  decided_at: string
+  latex_content: string
+  replayed: boolean
+  replay_available: boolean
 }
 
 export interface ResumeStats {
@@ -354,12 +428,14 @@ export interface ResumeStats {
 export interface UserPreferences {
   has_onboarded?: boolean
   theme?: 'light' | 'dark'
+  spell_dictionary?: string[]
 }
 
 export interface MeResponse {
   id: string
   email: string
   plan: string
+  role: 'user' | 'support' | 'admin'
   preferences: UserPreferences
 }
 
@@ -409,6 +485,7 @@ export interface StructuredResume {
     current: boolean
     summary: string
     bullets: string[]
+    bullet_ids: string[]
     technologies: string[]
   }>
   education: Array<{
@@ -431,6 +508,7 @@ export interface StructuredResume {
     end_date: string
     description: string
     bullets: string[]
+    bullet_ids: string[]
     technologies: string[]
   }>
   skills: Array<{
@@ -450,6 +528,29 @@ export interface StructuredResume {
   interests: Array<{ id: string; name: string; detail: string }>
   section_order: string[]
   hidden_sections: string[]
+}
+
+export interface VariantVisibility {
+  hidden_sections: string[]
+  hidden_entries: Record<string, string[]>
+  hidden_list_items: Record<string, Record<string, VariantListItemSelector[]>>
+}
+
+export interface VariantListItemSelector {
+  index: number
+  value: string
+}
+
+export interface VariantVisibilityResponse {
+  resume: ResumeResponse
+  source_resume_id: string
+  source_title: string
+  source_content: StructuredResume
+  effective_content: StructuredResume
+  visibility: VariantVisibility
+  metrics: BuilderMetricsResponse
+  preview: BuilderPreviewResponse
+  template_family: string
 }
 
 export interface BuilderTemplateResponse {
@@ -485,6 +586,37 @@ export interface BuilderResumeResponse {
   metrics: BuilderMetricsResponse
   preview: BuilderPreviewResponse
   template_family: string
+  ats_profile: CanonicalATSResume
+}
+
+export interface ATSPartialDate {
+  value: string | null
+  is_current: boolean
+  found_year: boolean
+  found_month: boolean
+  found_day: boolean
+}
+
+export interface CanonicalATSResume {
+  identity: { given_name: string; family_name: string }
+  contact: { email: string; phone: string; city: string; region: string; country: string }
+  links: { linkedin: string; personal_site: string }
+  work: Array<{
+    employer: string
+    job_title: string
+    start_date: ATSPartialDate
+    end_date: ATSPartialDate
+    is_current: boolean
+    description: string
+  }>
+  education: Array<{
+    institution: string
+    degree: string
+    field: string
+    start_date: ATSPartialDate
+    end_date: ATSPartialDate
+  }>
+  skills: string[]
 }
 
 export interface BuilderSeedUploadResponse {
@@ -493,6 +625,21 @@ export interface BuilderSeedUploadResponse {
   format: string
   structured_content: StructuredResume
   metrics: BuilderMetricsResponse
+  interchange_warnings?: string[]
+}
+
+export interface ResumeValidationIssue {
+  path: string
+  message: string
+  line: number | null
+  column: number | null
+}
+
+export class BuilderSeedValidationError extends Error {
+  constructor(message: string, public readonly issues: ResumeValidationIssue[]) {
+    super(message)
+    this.name = 'BuilderSeedValidationError'
+  }
 }
 
 export interface ScoreHistoryPoint {
@@ -760,6 +907,20 @@ export interface DropboxPullResponse {
   latex_content: string
 }
 
+// Google Drive export (B50a). The server stores OAuth credentials; the client
+// only ever receives connection state and a short-lived completion ticket.
+export interface GoogleDriveStatusResponse {
+  connected: boolean
+  scope: 'drive.file' | null
+}
+
+export interface GoogleDriveExportResponse {
+  success: true
+  provider: 'google_drive'
+  action: 'created' | 'updated'
+  retry_behavior: 'same_file_for_resume'
+}
+
 export interface ScrapeJobResponse {
   title: string | null
   company: string | null
@@ -779,15 +940,47 @@ export interface ShareLinkResponse {
   share_url: string
   created_at: string
   anonymous: boolean
+  review_comments: boolean
 }
 
 export interface SharedResumeResponse {
   resume_title: string
   share_token: string
-  pdf_url: string
+  pdf_url: string | null
   compiled_at: string | null
+  accessible_text: string
   is_anonymous: boolean
   anonymous_processing: boolean
+  review_comments: boolean
+}
+
+export interface ReviewCommentResponse {
+  id: string
+  reviewer_label: string
+  content: string
+  line_number: number | null
+  section_tag: string | null
+  page_number: number | null
+  x: number | null
+  y: number | null
+  resolved: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ReviewCommentCreateRequest {
+  content: string
+  line_number?: number | null
+  section_tag?: string | null
+  page_number?: number | null
+  x?: number | null
+  y?: number | null
+}
+
+export interface ReviewCommentListResponse {
+  comments: ReviewCommentResponse[]
+  /** True when older history exists outside the bounded response window. */
+  truncated: boolean
 }
 
 export interface DateOccurrence {
@@ -922,7 +1115,35 @@ export interface GenerateBulletsResponse {
   cached: boolean
 }
 
-export type RewriteAction = 'improve' | 'shorten' | 'quantify' | 'power_verbs' | 'change_tone' | 'expand' | 'steer'
+export type PhraseSeniority = 'entry' | 'mid' | 'senior' | 'lead' | 'executive'
+export type PhraseSignal = 'high_impact' | 'ats_friendly' | 'leadership' | 'technical_depth'
+
+export interface PhraseLibraryRequest {
+  job_title: string
+  seniority: PhraseSeniority
+  industry: string
+  skill_category: string
+  count?: number
+}
+
+export interface PhraseLibraryResponse extends Omit<PhraseLibraryRequest, 'count'> {
+  phrases: Array<{ text: string; signals: PhraseSignal[] }>
+  cached: boolean
+}
+
+export type RewriteAction =
+  | 'improve'
+  | 'shorten'
+  | 'quantify'
+  | 'power_verbs'
+  | 'change_tone'
+  | 'expand'
+  | 'steer'
+  | 'paraphrase'
+  | 'concise'
+  | 'scientific'
+  | 'split'
+  | 'join'
 
 export interface RewriteRequest {
   selected_text: string
@@ -937,6 +1158,132 @@ export interface RewriteResponse {
   rewritten: string
   action: string
   cached: boolean
+}
+
+export interface DocumentAssistantTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface DocumentAssistantRequest {
+  resume_id: string
+  latex_content: string
+  message: string
+  history?: DocumentAssistantTurn[]
+  selected_text?: string
+}
+
+export interface DocumentAssistantResponse {
+  message: string
+  proposed_edit: {
+    target_text: string
+    replacement_text: string
+  } | null
+}
+
+export interface SynonymsResponse {
+  synonyms: string[]
+  cached: boolean
+}
+
+export interface GenerateLatexRequest {
+  intent: string
+  document_context?: string
+}
+
+export interface GenerateLatexResponse {
+  latex: string
+  cached: boolean
+}
+
+export interface GenerateLatexTableRequest {
+  table_text: string
+  first_row_header?: boolean
+}
+
+export interface GenerateLatexTableResponse {
+  latex: string
+  rows: number
+  columns: number
+  source: 'text' | 'image'
+}
+
+export type MathDisplayMode = 'inline' | 'display' | 'equation'
+
+export interface GenerateLatexMathRequest {
+  math_text: string
+  display_mode?: MathDisplayMode
+}
+
+export interface GenerateLatexMathResponse {
+  latex: string
+  display_mode: MathDisplayMode
+  source: 'text' | 'image'
+  cached: boolean
+}
+
+export interface BulletVariantSet {
+  id: string
+  resume_id: string
+  source_text: string
+  target_label: string
+  options: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface GenerateBulletVariantsRequest {
+  resume_id: string
+  source_text: string
+  job_description?: string
+  target_label?: string
+}
+
+export type ResumeElementType = 'bullet' | 'paragraph' | 'equation' | 'figure' | 'other'
+export type ElementVersionSource = 'manual' | 'ai' | 'import' | 'restore' | 'fork'
+export type ElementVersionOperation = 'create' | 'edit' | 'restore' | 'fork'
+
+export interface ResumeElementVersion {
+  id: string
+  resume_id: string
+  element_key: string
+  element_type: ResumeElementType
+  content: string
+  content_hash: string
+  parent_version_id: string | null
+  root_version_id: string
+  operation: ElementVersionOperation
+  source: ElementVersionSource
+  provenance: Record<string, string | number | boolean | null>
+  application_id: string | null
+  created_at: string
+  tracker_evidence?: {
+    application_id: string
+    company_name: string
+    role_title: string
+    status: string
+    applied_at: string
+    source: 'user_tracker'
+    interpretation: string
+  } | null
+}
+
+export interface ResumeElementVersionPage {
+  items: ResumeElementVersion[]
+  next_cursor: string | null
+}
+
+export interface CreateResumeElementVersionRequest {
+  element_key: string
+  element_type?: ResumeElementType
+  content: string
+  source?: ElementVersionSource
+  operation?: ElementVersionOperation
+  provenance?: Record<string, string | number | boolean | null>
+  parent_version_id?: string
+  expected_head_version_id?: string
+  application_id?: string
+  idempotency_key?: string
 }
 
 export interface QuickTailorRequest {
@@ -978,6 +1325,26 @@ export interface FetchReferencesResponse {
   entries: BibTeXEntry[]
   total: number
   successful: number
+  processing_time: number
+}
+
+export interface CitationVerification {
+  cite_key: string
+  status: 'verified' | 'mismatch' | 'not_found' | 'error'
+  source: 'crossref' | 'arxiv'
+  identifier: string | null
+  matched_title: string | null
+  matched_authors: string | null
+  matched_year: number | null
+  title_similarity: number | null
+  issues: string[]
+}
+
+export interface VerifyCitationsResponse {
+  results: CitationVerification[]
+  total: number
+  verified: number
+  mismatched: number
   processing_time: number
 }
 
@@ -1028,6 +1395,7 @@ function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabe
 
 class ApiClient {
   private authToken: string | null = null
+  private tenantSlug: string | null = null
   readonly baseUrl: string = API_BASE
 
   // The Better Auth session is resolved asynchronously on the client, so AuthSync
@@ -1041,16 +1409,22 @@ class ApiClient {
   // token instead of deadlocking the app — including anonymous flows such as /try
   // and share pages, which need no token at all.
   // On the server there is no AuthSync, so the gate starts open.
-  private static readonly AUTH_READY_TIMEOUT_MS = 1500
+  private static readonly AUTH_READY_TIMEOUT_MS = 8000
   private authReady: Promise<void> = Promise.resolve()
   private resolveAuthReady: (() => void) | null = null
+  private authDeadlineStarted = false
+  private jobListContextVersion = 0
+  private listJobsInFlight: Promise<{ jobs: JobStateResponse[] }> | null = null
 
   constructor() {
     if (typeof window !== 'undefined') {
+      const match = document.cookie.match(/(?:^|;\s*)latexy_tenant_slug=([^;]+)/)
+      const cookieSlug = match ? decodeURIComponent(match[1]) : ''
+      if (/^[a-z0-9-]{3,40}$/.test(cookieSlug)) this.tenantSlug = cookieSlug
       const reported = new Promise<void>((resolve) => {
         this.resolveAuthReady = resolve
       })
-      this.authReady = Promise.race([reported, this.authReadyDeadline()])
+      this.authReady = reported
     }
   }
 
@@ -1059,7 +1433,9 @@ class ApiClient {
     return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         if (this.resolveAuthReady) {
+          const release = this.resolveAuthReady
           this.resolveAuthReady = null
+          release()
           console.warn(
             '[apiClient] auth session did not resolve within ' +
               `${ApiClient.AUTH_READY_TIMEOUT_MS}ms — proceeding unauthenticated`
@@ -1072,7 +1448,20 @@ class ApiClient {
     })
   }
 
+  private async waitForAuthReady(): Promise<void> {
+    if (!this.resolveAuthReady) return
+    if (!this.authDeadlineStarted) {
+      this.authDeadlineStarted = true
+      void this.authReadyDeadline()
+    }
+    await this.authReady
+  }
+
   setAuthToken(token: string | null): void {
+    if (this.authToken !== token) {
+      this.jobListContextVersion += 1
+      this.listJobsInFlight = null
+    }
     this.authToken = token
     // Only a real token opens the gate here. Pages that mirror their own session
     // token into the client must not be able to open it with a null while
@@ -1092,6 +1481,15 @@ class ApiClient {
     return this.authToken
   }
 
+  setTenantSlug(slug: string | null): void {
+    const nextSlug = slug && /^[a-z0-9-]{3,40}$/.test(slug) ? slug : null
+    if (this.tenantSlug !== nextSlug) {
+      this.jobListContextVersion += 1
+      this.listJobsInFlight = null
+    }
+    this.tenantSlug = nextSlug
+  }
+
   private headers(extra: Record<string, string> = {}, includeJsonContentType: boolean = true): HeadersInit {
     const h: Record<string, string> = {
       ...(typeof window !== 'undefined' ? createTraceHeaders() : {}),
@@ -1101,6 +1499,7 @@ class ApiClient {
       h['Content-Type'] = 'application/json'
     }
     if (this.authToken) h['Authorization'] = `Bearer ${this.authToken}`
+    if (this.tenantSlug) h['X-Tenant-Slug'] = this.tenantSlug
     for (const [key, value] of Object.entries(h)) {
       if (value === '') delete h[key]
     }
@@ -1118,7 +1517,7 @@ class ApiClient {
   // and builds the headers *after* the wait, so the guarantee is structural: no
   // call site can accidentally send a request with a not-yet-published token.
   private async authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
-    await this.authReady
+    await this.waitForAuthReady()
     const headers: Record<string, string> = {
       ...(this.headers({}, this.shouldSendJsonContentType(init)) as Record<string, string>),
       ...((init.headers as Record<string, string> | undefined) ?? {}),
@@ -1215,16 +1614,43 @@ class ApiClient {
       result?: Record<string, unknown>
       error?: string
     }>(`/jobs/${encodeURIComponent(jobId)}/result`)
+    if (raw.job_id !== jobId) {
+      throw new Error('Job result identity mismatch')
+    }
+    const nestedJobId = raw.result?.job_id
+    if (typeof nestedJobId === 'string' && nestedJobId !== raw.job_id) {
+      throw new Error('Nested job result identity mismatch')
+    }
+    // The envelope is the owner-scoped identity boundary. A stale/corrupt
+    // nested payload must not be relabeled as the requested job before
+    // useJobStream validates the recovered result.
     return {
+      ...(raw.result || {}),
       success: raw.success,
       job_id: raw.job_id,
       error: raw.error,
-      ...(raw.result || {}),
     } as JobResultResponse
   }
 
   async listJobs(): Promise<{ jobs: JobStateResponse[] }> {
-    return this.request<{ jobs: JobStateResponse[] }>('/jobs')
+    await this.waitForAuthReady()
+    if (this.listJobsInFlight) return this.listJobsInFlight
+    const contextVersion = this.jobListContextVersion
+    // Match the FastAPI route's canonical trailing slash. Calling `/jobs`
+    // forces a 307 + second request, doubling this fetch on every dashboard
+    // refresh and spending two rate-limit units for one logical read.
+    const pending = this.request<{ jobs: JobStateResponse[] }>('/jobs/').then((result) => {
+      if (this.jobListContextVersion !== contextVersion) {
+        throw new Error('Job-list authentication context changed. Please retry.')
+      }
+      return result
+    })
+    this.listJobsInFlight = pending
+    try {
+      return await pending
+    } finally {
+      if (this.listJobsInFlight === pending) this.listJobsInFlight = null
+    }
   }
 
   // ---------------------------------------------------------------- //
@@ -1238,10 +1664,23 @@ class ApiClient {
     return data.resumes ?? []
   }
 
-  async listResumesPaginated(page: number = 1, limit: number = 20): Promise<PaginatedResumesResponse> {
+  async listResumesPaginated(page: number = 1, limit: number = 20, archived = false): Promise<PaginatedResumesResponse> {
     return this.request<PaginatedResumesResponse>(
-      `/resumes/?page=${page}&limit=${limit}`
+      `/resumes/?page=${page}&limit=${limit}${archived ? '&archived=true' : ''}`
     )
+  }
+
+  /** Load every resume page for library and picker surfaces. */
+  async listAllResumes(archived = false): Promise<ResumeResponse[]> {
+    const limit = 200
+    const first = await this.listResumesPaginated(1, limit, archived)
+    const resumes = [...(first.resumes ?? [])]
+    const pages = Math.max(first.pages ?? 1, Math.ceil((first.total ?? resumes.length) / limit))
+    for (let page = 2; page <= pages; page += 1) {
+      const next = await this.listResumesPaginated(page, limit, archived)
+      resumes.push(...(next.resumes ?? []))
+    }
+    return resumes
   }
 
   async updateResumeTags(resumeId: string, tags: string[]): Promise<ResumeResponse> {
@@ -1300,6 +1739,20 @@ class ApiClient {
     })
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
+      try {
+        const payload = JSON.parse(bodyText) as {
+          error?: { code?: unknown; message?: unknown; details?: { issues?: unknown } }
+        }
+        const issues = payload.error?.details?.issues
+        if (payload.error?.code === 'resume_validation_error' && Array.isArray(issues)) {
+          throw new BuilderSeedValidationError(
+            typeof payload.error.message === 'string' ? payload.error.message : 'Resume data failed validation.',
+            issues as ResumeValidationIssue[],
+          )
+        }
+      } catch (error) {
+        if (error instanceof BuilderSeedValidationError) throw error
+      }
       throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
     return res.json()
@@ -1361,6 +1814,34 @@ class ApiClient {
     })
   }
 
+  /**
+   * Atomically decide a collaboration suggestion on the server. The backend
+   * compares expected_content while locking the resume row and returns the
+   * exact committed source so a client can recover after a pre-Yjs crash.
+   */
+  async decideSuggestion(
+    resumeId: string,
+    decision: SuggestionDecisionRequest,
+  ): Promise<SuggestionDecisionResponse> {
+    return this.request<SuggestionDecisionResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/suggestion-decisions`,
+      {
+        method: 'POST',
+        body: JSON.stringify(decision),
+      },
+    )
+  }
+
+  /** Confirm a peer's Y.Map decision against the server before changing UI state. */
+  async getSuggestionDecision(
+    resumeId: string,
+    suggestionId: string,
+  ): Promise<SuggestionDecisionResponse> {
+    return this.request<SuggestionDecisionResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/suggestion-decisions/${encodeURIComponent(suggestionId)}`,
+    )
+  }
+
   async deleteResume(resumeId: string): Promise<void> {
     const res = await this.authedFetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
       method: 'DELETE',
@@ -1419,10 +1900,22 @@ class ApiClient {
     return `${API_BASE}/download/${encodeURIComponent(jobId)}`
   }
 
-  async downloadPdf(jobId: string): Promise<Blob> {
-    const res = await this.authedFetch(this.getPdfUrl(jobId))
+  async downloadPdf(jobId: string, signal?: AbortSignal): Promise<Blob> {
+    const res = await this.authedFetch(this.getPdfUrl(jobId), { signal })
     if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
     return res.blob()
+  }
+
+  async downloadSynctex(jobId: string, signal?: AbortSignal): Promise<string | null> {
+    const res = await this.authedFetch(
+      `${API_BASE}/download/${encodeURIComponent(jobId)}/synctex`,
+      { signal },
+    )
+    // SyncTeX is an optional enhancement. A compile may legitimately omit it,
+    // so callers should quietly disable source↔PDF sync rather than surface a
+    // document-preview error.
+    if (!res.ok) return null
+    return res.text()
   }
 
   async getPdfBlobUrl(jobId: string): Promise<{ url: string; revoke: () => void }> {
@@ -1477,6 +1970,21 @@ class ApiClient {
       user_plan: body.user_plan,
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
       compiler: body.compiler,
+    })
+  }
+
+  async autoFitResume(body: {
+    latex_content: string
+    resume_id: string
+    compiler?: LatexCompiler
+    intensity?: number
+  }): Promise<JobSubmitResponse> {
+    return this.submitJob({
+      job_type: 'auto_fit',
+      latex_content: body.latex_content,
+      metadata: { resume_id: body.resume_id },
+      compiler: body.compiler,
+      auto_fit_intensity: body.intensity,
     })
   }
 
@@ -1609,8 +2117,10 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   async getSystemHealth(): Promise<{
-    queue_depths: Record<string, number>
-    worker_count: number
+    status: string
+    redis?: Record<string, boolean>
+    timestamp?: number
+    error?: string
   }> {
     return this.request('/jobs/health')
   }
@@ -1681,7 +2191,7 @@ class ApiClient {
     email: string,
     name: string,
     options?: {
-      billingPeriod?: 'monthly' | 'annual'
+      billingPeriod?: 'monthly' | 'annual' | 'weekly' | 'lifetime'
       couponCode?: string
       studentEmail?: string
     }
@@ -1749,12 +2259,16 @@ class ApiClient {
 
   async verifyStudentSubscription(token: string): Promise<{
     success: boolean
-    data?: { success: boolean; message: string }
+    data?: { success: boolean; message: string; shortUrl?: string }
     error?: string
   }> {
     try {
-      const data = await this.request<{ success: boolean; message: string }>(`/subscription/student/verify/${encodeURIComponent(token)}`)
-      return { success: true, data }
+      const data = await this.request<{
+        success: boolean
+        message: string
+        short_url?: string
+      }>(`/subscription/student/verify/${encodeURIComponent(token)}`)
+      return { success: true, data: { ...data, shortUrl: data.short_url } }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -1847,16 +2361,44 @@ class ApiClient {
     }
   }
 
+  async previewTeamSeat(token: string): Promise<{
+    success: boolean
+    data?: { success: boolean; message: string }
+    error?: string
+    status?: number
+  }> {
+    try {
+      const data = await this.request<{ success: boolean; message: string }>(
+        `/team/join/${encodeURIComponent(token)}`,
+      )
+      return { success: true, data }
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+        status: httpErrorStatus(e),
+      }
+    }
+  }
+
   async joinTeamSeat(token: string): Promise<{
     success: boolean
     data?: { success: boolean; message: string }
     error?: string
+    status?: number
   }> {
     try {
-      const data = await this.request<{ success: boolean; message: string }>(`/team/join/${encodeURIComponent(token)}`)
+      const data = await this.request<{ success: boolean; message: string }>(
+        `/team/join/${encodeURIComponent(token)}`,
+        { method: 'POST' },
+      )
       return { success: true, data }
     } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+        status: httpErrorStatus(e),
+      }
     }
   }
 
@@ -1937,6 +2479,14 @@ class ApiClient {
     return this.request('/ats/industry-profiles')
   }
 
+  async getATSLocaleProfiles(): Promise<{
+    success: boolean
+    threshold: number
+    profiles: Array<{ key: string; label: string; calibration: string }>
+  }> {
+    return this.request('/ats/locale-profiles')
+  }
+
   /**
    * Synchronous ATS score — used for an immediate re-score when the user
    * overrides the industry calibration (see ATSScoreCard). Hits the same
@@ -1948,6 +2498,7 @@ class ApiClient {
     latex_content: string
     job_description?: string
     industry_override?: string
+    locale?: 'global' | 'india' | 'united_states' | 'united_kingdom'
   }): Promise<{
     success: boolean
     ats_score?: number
@@ -1957,6 +2508,10 @@ class ApiClient {
     strengths?: string[]
     industry_key?: string
     industry_label?: string
+    locale_key?: string
+    locale_label?: string
+    score_threshold?: number
+    calibration_statement?: string
     message: string
   }> {
     return this.request('/ats/score', {
@@ -2118,6 +2673,26 @@ class ApiClient {
     return response.blob()
   }
 
+  async emailResumePdf(resumeId: string): Promise<EmailDocumentResponse> {
+    return this.request<EmailDocumentResponse>(
+      `/export/${encodeURIComponent(resumeId)}/email`,
+      { method: 'POST', body: JSON.stringify({}) },
+    )
+  }
+
+  async getEmailResumePdfStatus(resumeId: string): Promise<DocumentEmailDeliveryStatus> {
+    return this.request<DocumentEmailDeliveryStatus>(
+      `/export/${encodeURIComponent(resumeId)}/email/status`,
+    )
+  }
+
+  async retryEmailResumePdf(resumeId: string): Promise<EmailDocumentResponse> {
+    return this.request<EmailDocumentResponse>(
+      `/export/${encodeURIComponent(resumeId)}/email/retry`,
+      { method: 'POST', body: JSON.stringify({}) },
+    )
+  }
+
   // ---------------------------------------------------------------- //
   //  Checkpoints / version history                                    //
   // ---------------------------------------------------------------- //
@@ -2171,6 +2746,22 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ title: title || null }),
     })
+  }
+
+  async getVariantVisibility(resumeId: string): Promise<VariantVisibilityResponse> {
+    return this.request<VariantVisibilityResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/variant-visibility`,
+    )
+  }
+
+  async updateVariantVisibility(
+    resumeId: string,
+    body: { title?: string; visibility: VariantVisibility },
+  ): Promise<VariantVisibilityResponse> {
+    return this.request<VariantVisibilityResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/variant-visibility`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
   }
 
   async getResumeVariants(resumeId: string): Promise<ResumeResponse[]> {
@@ -2228,10 +2819,10 @@ class ApiClient {
     return this.request<TemplateDetailResponse>(`/templates/${encodeURIComponent(id)}`)
   }
 
-  async useTemplate(id: string, title?: string): Promise<{ resume_id: string; title: string }> {
+  async useTemplate(id: string, title?: string, locale?: string): Promise<{ resume_id: string; title: string }> {
     return this.request<{ resume_id: string; title: string }>(
       `/templates/${encodeURIComponent(id)}/use`,
-      { method: 'POST', body: JSON.stringify({ title: title || null }) }
+      { method: 'POST', body: JSON.stringify({ title: title || null, locale: locale || null }) }
     )
   }
 
@@ -2365,6 +2956,13 @@ class ApiClient {
     })
   }
 
+  async generatePhraseLibrary(body: PhraseLibraryRequest): Promise<PhraseLibraryResponse> {
+    return this.request<PhraseLibraryResponse>('/ai/phrase-library', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   async generateSummary(body: GenerateSummaryRequest): Promise<GenerateSummaryResponse> {
     return this.request<GenerateSummaryResponse>('/ai/generate-summary', {
       method: 'POST',
@@ -2393,6 +2991,138 @@ class ApiClient {
     })
   }
 
+  async askDocumentAssistant(
+    body: DocumentAssistantRequest,
+  ): Promise<DocumentAssistantResponse> {
+    return this.request<DocumentAssistantResponse>('/ai/document-assistant', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async suggestSynonyms(text: string, context?: string, count = 5): Promise<SynonymsResponse> {
+    return this.request<SynonymsResponse>('/ai/synonyms', {
+      method: 'POST',
+      body: JSON.stringify({ text, context, count }),
+    })
+  }
+
+  async generateLatex(body: GenerateLatexRequest): Promise<GenerateLatexResponse> {
+    return this.request<GenerateLatexResponse>('/ai/generate-latex', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async generateLatexTable(body: GenerateLatexTableRequest): Promise<GenerateLatexTableResponse> {
+    return this.request<GenerateLatexTableResponse>('/ai/generate-table', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async generateLatexTableFromImage(file: File, firstRowHeader = true): Promise<GenerateLatexTableResponse> {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('first_row_header', String(firstRowHeader))
+    return this.request<GenerateLatexTableResponse>('/ai/generate-table-image', {
+      method: 'POST',
+      body: form,
+    })
+  }
+
+  async generateLatexMath(body: GenerateLatexMathRequest): Promise<GenerateLatexMathResponse> {
+    return this.request<GenerateLatexMathResponse>('/ai/generate-math', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async generateLatexMathFromImage(
+    file: File,
+    displayMode: MathDisplayMode = 'display',
+  ): Promise<GenerateLatexMathResponse> {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('display_mode', displayMode)
+    return this.request<GenerateLatexMathResponse>('/ai/generate-math-image', {
+      method: 'POST',
+      body: form,
+    })
+  }
+
+  async generateBulletVariants(body: GenerateBulletVariantsRequest): Promise<BulletVariantSet> {
+    return this.request<BulletVariantSet>('/ai/bullet-variants', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getBulletVariants(resumeId: string): Promise<BulletVariantSet[]> {
+    return this.request<BulletVariantSet[]>(
+      `/ai/bullet-variants?resume_id=${encodeURIComponent(resumeId)}`
+    )
+  }
+
+  async deleteBulletVariantSet(variantSetId: string): Promise<void> {
+    await this.request<void>(`/ai/bullet-variants/${encodeURIComponent(variantSetId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async createResumeElementVersion(
+    resumeId: string,
+    body: CreateResumeElementVersionRequest,
+  ): Promise<ResumeElementVersion> {
+    return this.request<ResumeElementVersion>(`/resumes/${encodeURIComponent(resumeId)}/element-versions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getResumeElementVersions(
+    resumeId: string,
+    elementKey: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<ResumeElementVersionPage> {
+    const params = new URLSearchParams({ element_key: elementKey })
+    if (options.limit !== undefined) params.set('limit', String(options.limit))
+    if (options.cursor) params.set('cursor', options.cursor)
+    return this.request<ResumeElementVersionPage>(
+      `/resumes/${encodeURIComponent(resumeId)}/element-versions?${params.toString()}`,
+    )
+  }
+
+  async restoreResumeElementVersion(
+    resumeId: string,
+    versionId: string,
+    expectedHeadVersionId: string,
+    idempotencyKey?: string,
+  ): Promise<ResumeElementVersion> {
+    return this.request<ResumeElementVersion>(
+      `/resumes/${encodeURIComponent(resumeId)}/element-versions/${encodeURIComponent(versionId)}/restore`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ expected_head_version_id: expectedHeadVersionId, idempotency_key: idempotencyKey }),
+      },
+    )
+  }
+
+  async forkResumeElementVersion(
+    resumeId: string,
+    versionId: string,
+    expectedHeadVersionId: string,
+    idempotencyKey?: string,
+  ): Promise<ResumeElementVersion> {
+    return this.request<ResumeElementVersion>(
+      `/resumes/${encodeURIComponent(resumeId)}/element-versions/${encodeURIComponent(versionId)}/fork`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ expected_head_version_id: expectedHeadVersionId, idempotency_key: idempotencyKey }),
+      },
+    )
+  }
+
   async quickTailorResume(resumeId: string, body: QuickTailorRequest): Promise<QuickTailorResponse> {
     return this.request<QuickTailorResponse>(`/resumes/${resumeId}/quick-tailor`, {
       method: 'POST',
@@ -2418,6 +3148,13 @@ class ApiClient {
     })
   }
 
+  async verifyCitations(bibtex: string): Promise<VerifyCitationsResponse> {
+    return this.request<VerifyCitationsResponse>('/references/verify', {
+      method: 'POST',
+      body: JSON.stringify({ bibtex }),
+    })
+  }
+
   async searchResumes(query: string, limit = 20): Promise<SearchResponse> {
     const params = new URLSearchParams({ q: query, limit: String(limit) })
     return this.request<SearchResponse>(`/resumes/search?${params.toString()}`)
@@ -2427,13 +3164,22 @@ class ApiClient {
   //  Share links                                                       //
   // ---------------------------------------------------------------- //
 
-  async createShareLink(resumeId: string, anonymous = false): Promise<ShareLinkResponse> {
+  async createShareLink(
+    resumeId: string,
+    anonymous = false,
+    regenerateAnonymous = false,
+    reviewComments?: boolean,
+  ): Promise<ShareLinkResponse> {
     return this.request<ShareLinkResponse>(
       `/resumes/${encodeURIComponent(resumeId)}/share`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anonymous }),
+        body: JSON.stringify({
+          anonymous,
+          ...(regenerateAnonymous ? { regenerate_anonymous: true } : {}),
+          ...(reviewComments === undefined ? {} : { review_comments: reviewComments }),
+        }),
       }
     )
   }
@@ -2451,6 +3197,55 @@ class ApiClient {
 
   async getSharedResume(shareToken: string): Promise<SharedResumeResponse> {
     return this.request<SharedResumeResponse>(`/share/${encodeURIComponent(shareToken)}`)
+  }
+
+  async listPublicReviewComments(shareToken: string): Promise<ReviewCommentResponse[]> {
+    return this.request<ReviewCommentResponse[]>(
+      `/share/${encodeURIComponent(shareToken)}/review-comments`,
+    )
+  }
+
+  async addPublicReviewComment(
+    shareToken: string,
+    body: ReviewCommentCreateRequest,
+  ): Promise<ReviewCommentResponse> {
+    return this.request<ReviewCommentResponse>(
+      `/share/${encodeURIComponent(shareToken)}/review-comments`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    )
+  }
+
+  async listReviewComments(resumeId: string): Promise<ReviewCommentListResponse> {
+    const res = await this.authedFetch(
+      `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/review-comments`,
+    )
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
+    }
+    return {
+      comments: await res.json() as ReviewCommentResponse[],
+      truncated: res.headers.get('X-Review-Comments-Truncated') === 'true',
+    }
+  }
+
+  async resolveReviewComment(
+    resumeId: string,
+    commentId: string,
+    resolved: boolean,
+  ): Promise<ReviewCommentResponse> {
+    return this.request<ReviewCommentResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/review-comments/${encodeURIComponent(commentId)}/resolve`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved }),
+      },
+    )
   }
 
   // ---------------------------------------------------------------- //
@@ -2620,6 +3415,208 @@ class ApiClient {
     return this.request<TrackerStats>('/tracker/stats')
   }
 
+  async listStaleApplications(days = 14): Promise<StaleApplication[]> {
+    return this.request<StaleApplication[]>(`/tracker/stale-applications?days=${encodeURIComponent(days)}`)
+  }
+
+  async getStaleApplications(days = 14): Promise<StaleApplication[]> {
+    return this.listStaleApplications(days)
+  }
+
+  async createOutreachDraft(body: OutreachDraftRequest): Promise<OutreachDraftResponse> {
+    return this.request<OutreachDraftResponse>('/outreach/drafts', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async parseTrackerEmailStatus(body: EmailStatusParseRequest): Promise<EmailStatusParseResponse> {
+    return this.request<EmailStatusParseResponse>('/tracker/email-status/parse', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async createSavedJob(body: SavedJobCreateRequest): Promise<SavedJob> {
+    return this.request<SavedJob>('/tracker/saved-jobs', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listSavedJobs(): Promise<SavedJob[]> {
+    return this.request<SavedJob[]>('/tracker/saved-jobs')
+  }
+
+  async updateSavedJob(id: string, body: SavedJobUpdateRequest): Promise<SavedJob> {
+    return this.request<SavedJob>(`/tracker/saved-jobs/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async deleteSavedJob(id: string): Promise<void> {
+    return this.request<void>(`/tracker/saved-jobs/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async bulkDeleteSavedJobs(ids: string[]): Promise<void> {
+    const params = new URLSearchParams()
+    ids.forEach((id) => params.append('ids', id))
+    return this.request<void>(`/tracker/saved-jobs?${params.toString()}`, { method: 'DELETE' })
+  }
+
+  async trackSavedJob(id: string, body: TrackSavedJobRequest = {}): Promise<TrackSavedJobResponse> {
+    return this.request<TrackSavedJobResponse>(`/tracker/saved-jobs/${encodeURIComponent(id)}/track`, { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async createAlert(body: JobAlertCreateRequest): Promise<JobAlert> {
+    return this.request<JobAlert>('/tracker/alerts', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listAlerts(): Promise<JobAlert[]> {
+    return this.request<JobAlert[]>('/tracker/alerts')
+  }
+
+  async updateAlert(id: string, body: JobAlertUpdateRequest): Promise<JobAlert> {
+    return this.request<JobAlert>(`/tracker/alerts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async deleteAlert(id: string): Promise<void> {
+    return this.request<void>(`/tracker/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async createApplicationReminder(applicationId: string, body: ReminderCreateRequest): Promise<ApplicationReminder> {
+    return this.request<ApplicationReminder>(`/tracker/applications/${encodeURIComponent(applicationId)}/reminders`, { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listApplicationReminders(applicationId: string): Promise<ApplicationReminder[]> {
+    return this.request<ApplicationReminder[]>(`/tracker/applications/${encodeURIComponent(applicationId)}/reminders`)
+  }
+
+  async createReminder(applicationId: string, body: ReminderCreateRequest): Promise<ApplicationReminder> {
+    return this.createApplicationReminder(applicationId, body)
+  }
+
+  async listReminders(applicationId: string): Promise<ApplicationReminder[]> {
+    return this.listApplicationReminders(applicationId)
+  }
+
+  async deleteApplicationReminder(applicationId: string, reminderId: string): Promise<void> {
+    return this.request<void>(`/tracker/applications/${encodeURIComponent(applicationId)}/reminders/${encodeURIComponent(reminderId)}`, { method: 'DELETE' })
+  }
+
+  async updateApplicationReminder(applicationId: string, reminderId: string, body: ReminderCreateRequest): Promise<ApplicationReminder> {
+    return this.request<ApplicationReminder>(`/tracker/applications/${encodeURIComponent(applicationId)}/reminders/${encodeURIComponent(reminderId)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async deleteReminder(applicationId: string, reminderId: string): Promise<void> {
+    return this.deleteApplicationReminder(applicationId, reminderId)
+  }
+
+  async updateReminder(applicationId: string, reminderId: string, body: ReminderCreateRequest): Promise<ApplicationReminder> {
+    return this.updateApplicationReminder(applicationId, reminderId, body)
+  }
+
+  async createApplicationInterview(applicationId: string, body: InterviewCreateRequest): Promise<ApplicationInterview> {
+    return this.request<ApplicationInterview>(`/tracker/applications/${encodeURIComponent(applicationId)}/interviews`, { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listApplicationInterviews(applicationId: string): Promise<ApplicationInterview[]> {
+    return this.request<ApplicationInterview[]>(`/tracker/applications/${encodeURIComponent(applicationId)}/interviews`)
+  }
+
+  async createInterview(applicationId: string, body: InterviewCreateRequest): Promise<ApplicationInterview> {
+    return this.createApplicationInterview(applicationId, body)
+  }
+
+  async listInterviews(applicationId: string): Promise<ApplicationInterview[]> {
+    return this.listApplicationInterviews(applicationId)
+  }
+
+  async updateApplicationInterview(applicationId: string, interviewId: string, body: InterviewUpdateRequest): Promise<ApplicationInterview> {
+    return this.request<ApplicationInterview>(`/tracker/applications/${encodeURIComponent(applicationId)}/interviews/${encodeURIComponent(interviewId)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async deleteApplicationInterview(applicationId: string, interviewId: string): Promise<void> {
+    return this.request<void>(`/tracker/applications/${encodeURIComponent(applicationId)}/interviews/${encodeURIComponent(interviewId)}`, { method: 'DELETE' })
+  }
+
+  async updateInterview(applicationId: string, interviewId: string, body: InterviewUpdateRequest): Promise<ApplicationInterview> {
+    return this.updateApplicationInterview(applicationId, interviewId, body)
+  }
+
+  async deleteInterview(applicationId: string, interviewId: string): Promise<void> {
+    return this.deleteApplicationInterview(applicationId, interviewId)
+  }
+
+  async downloadApplicationInterviewIcs(applicationId: string, interviewId: string): Promise<Blob> {
+    const res = await this.authedFetch(`${API_BASE}/tracker/applications/${encodeURIComponent(applicationId)}/interviews/${encodeURIComponent(interviewId)}.ics`)
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
+    }
+    return res.blob()
+  }
+
+  async downloadInterviewIcs(applicationId: string, interviewId: string): Promise<Blob> {
+    return this.downloadApplicationInterviewIcs(applicationId, interviewId)
+  }
+
+  async createTrackerCompany(body: TrackerCompanyCreateRequest): Promise<TrackerCompany> {
+    return this.request<TrackerCompany>('/tracker/companies', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listTrackerCompanies(): Promise<TrackerCompany[]> {
+    return this.request<TrackerCompany[]>('/tracker/companies')
+  }
+
+  async createCompany(body: TrackerCompanyCreateRequest): Promise<TrackerCompany> {
+    return this.createTrackerCompany(body)
+  }
+
+  async listCompanies(): Promise<TrackerCompany[]> {
+    return this.listTrackerCompanies()
+  }
+
+  async updateTrackerCompany(id: string, body: TrackerCompanyUpdateRequest): Promise<TrackerCompany> {
+    return this.request<TrackerCompany>(`/tracker/companies/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async updateCompany(id: string, body: TrackerCompanyUpdateRequest): Promise<TrackerCompany> {
+    return this.updateTrackerCompany(id, body)
+  }
+
+  async deleteTrackerCompany(id: string): Promise<void> {
+    return this.request<void>(`/tracker/companies/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async deleteCompany(id: string): Promise<void> {
+    return this.deleteTrackerCompany(id)
+  }
+
+  async createTrackerContact(body: TrackerContactCreateRequest): Promise<TrackerContact> {
+    return this.request<TrackerContact>('/tracker/contacts', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async listTrackerContacts(): Promise<TrackerContact[]> {
+    return this.request<TrackerContact[]>('/tracker/contacts')
+  }
+
+  async createContact(body: TrackerContactCreateRequest): Promise<TrackerContact> {
+    return this.createTrackerContact(body)
+  }
+
+  async listContacts(): Promise<TrackerContact[]> {
+    return this.listTrackerContacts()
+  }
+
+  async updateTrackerContact(id: string, body: TrackerContactUpdateRequest): Promise<TrackerContact> {
+    return this.request<TrackerContact>(`/tracker/contacts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async updateContact(id: string, body: TrackerContactUpdateRequest): Promise<TrackerContact> {
+    return this.updateTrackerContact(id, body)
+  }
+
+  async deleteTrackerContact(id: string): Promise<void> {
+    return this.request<void>(`/tracker/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    return this.deleteTrackerContact(id)
+  }
+
   // ---------------------------------------------------------------- //
   //  Interview Prep                                                  //
   // ---------------------------------------------------------------- //
@@ -2647,6 +3644,16 @@ class ApiClient {
       const bodyText = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
+  }
+
+  async evaluateInterviewSimulation(
+    prepId: string,
+    body: EvaluateInterviewSimulationRequest,
+  ): Promise<EvaluateInterviewSimulationResponse> {
+    return this.request<EvaluateInterviewSimulationResponse>(
+      `/interview-prep/${encodeURIComponent(prepId)}/simulate`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
   }
 
   // ---------------------------------------------------------------- //
@@ -2842,6 +3849,36 @@ class ApiClient {
     return this.request<DropboxPullResponse>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/pull`, {
       method: 'POST',
     })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Google Drive export (B50a)                                      //
+  // ---------------------------------------------------------------- //
+
+  async getGoogleDriveStatus(): Promise<GoogleDriveStatusResponse> {
+    return this.request<GoogleDriveStatusResponse>('/google-drive/status')
+  }
+
+  async startGoogleDriveOAuth(): Promise<OAuthStartResponse> {
+    return this.request<OAuthStartResponse>('/google-drive/connect', { method: 'POST' })
+  }
+
+  async completeGoogleDriveOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/google-drive/complete', {
+      method: 'POST',
+      body: JSON.stringify({ ticket }),
+    })
+  }
+
+  async disconnectGoogleDrive(): Promise<{ success: boolean; message: string }> {
+    return this.request('/google-drive/disconnect', { method: 'DELETE' })
+  }
+
+  async exportResumeToGoogleDrive(resumeId: string): Promise<GoogleDriveExportResponse> {
+    return this.request<GoogleDriveExportResponse>(
+      `/google-drive/resumes/${encodeURIComponent(resumeId)}/export`,
+      { method: 'POST', body: JSON.stringify({}) },
+    )
   }
 
   // ---------------------------------------------------------------- //
@@ -3156,6 +4193,17 @@ class ApiClient {
     return this.request<WorkspaceResumeItem[]>(`/workspaces/${workspaceId}/resumes`)
   }
 
+  async downloadWorkspaceResume(workspaceId: string, resumeId: string): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${API_BASE}/workspaces/${encodeURIComponent(workspaceId)}/resumes/${encodeURIComponent(resumeId)}/download`,
+    )
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${parseApiErrorMessage(body, response.statusText)}`)
+    }
+    return response.blob()
+  }
+
   // ── Recruiter Notes (Feature 73) ────────────────────────────────────────────
 
   async createRecruiterNote(
@@ -3206,7 +4254,7 @@ class ApiClient {
   async addComment(
     resumeId: string,
     content: string,
-    opts?: { workspaceId?: string; lineNumber?: number; sectionTag?: string }
+    opts?: { workspaceId?: string; lineNumber?: number; sectionTag?: string; mentionedUserIds?: string[] }
   ): Promise<CommentResponse> {
     return this.request<CommentResponse>(`/resumes/${resumeId}/comments`, {
       method: 'POST',
@@ -3216,8 +4264,19 @@ class ApiClient {
         workspace_id: opts?.workspaceId ?? null,
         line_number: opts?.lineNumber ?? null,
         section_tag: opts?.sectionTag ?? null,
+        mentioned_user_ids: opts?.mentionedUserIds ?? null,
       }),
     })
+  }
+
+  async listCommentParticipants(
+    resumeId: string,
+    workspaceId?: string,
+  ): Promise<CommentMentionParticipant[]> {
+    const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : ''
+    return this.request<CommentMentionParticipant[]>(
+      `/resumes/${encodeURIComponent(resumeId)}/comments/participants${qs}`,
+    )
   }
 
   async listComments(
@@ -3231,12 +4290,13 @@ class ApiClient {
   async updateComment(
     resumeId: string,
     commentId: string,
-    content: string
+    content: string,
+    mentionedUserIds?: string[],
   ): Promise<CommentResponse> {
     return this.request<CommentResponse>(`/resumes/${resumeId}/comments/${commentId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, mentioned_user_ids: mentionedUserIds ?? null }),
     })
   }
 
@@ -3255,6 +4315,16 @@ class ApiClient {
 
   async getPortfolio(username: string): Promise<PortfolioResponse> {
     return this.request<PortfolioResponse>(`/portfolio/${encodeURIComponent(username)}`)
+  }
+
+  async sendPortfolioContact(
+    username: string,
+    body: { name: string; email: string; message: string },
+  ): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(
+      `/portfolio/${encodeURIComponent(username)}/contact`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
   }
 
   async setupPortfolio(body: PortfolioSetupRequest): Promise<PortfolioSetupResponse> {
@@ -3298,6 +4368,15 @@ class ApiClient {
   async searchCareerRoles(q: string): Promise<CareerRoleResponse[]> {
     const params = new URLSearchParams({ q })
     return this.request<CareerRoleResponse[]>(`/career/roles?${params}`)
+  }
+
+  async searchCareerSkills(
+    q: string,
+    language = 'en',
+    limit = 8,
+  ): Promise<CareerSkillSearchResponse> {
+    const params = new URLSearchParams({ q, language, limit: String(limit) })
+    return this.request<CareerSkillSearchResponse>(`/career/skills?${params}`)
   }
 
   // ── Benchmarking (Feature 81) ──────────────────────────────────────────── //
@@ -3368,10 +4447,28 @@ class ApiClient {
     await this.request<void>(`/macros/${macroId}`, { method: 'DELETE' })
   }
 
+  async executeMacro(
+    macroId: string,
+    body: MacroExecuteRequest,
+  ): Promise<MacroExecuteResponse> {
+    return this.request<MacroExecuteResponse>(`/macros/${macroId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   // ── Tenant / White-Label (Feature 85) ──────────────────────────────────────
 
   async getCurrentTenantContext(): Promise<CurrentContextResponse> {
     return this.request<CurrentContextResponse>('/tenants/current-context')
+  }
+
+  async resolveTenantHost(host: string): Promise<CurrentContextResponse> {
+    const context = await this.request<CurrentContextResponse>(
+      `/tenants/resolve-host?host=${encodeURIComponent(host)}`,
+    )
+    this.setTenantSlug(context.tenant?.slug ?? null)
+    return context
   }
 
   async createTenant(body: {
@@ -3414,11 +4511,12 @@ class ApiClient {
   async inviteTenantMember(
     tenantId: string,
     email: string,
-    role: 'admin' | 'member' = 'member'
-  ): Promise<MemberResponse> {
-    return this.request<MemberResponse>(`/tenants/${tenantId}/members/invite`, {
+    role: 'admin' | 'member' = 'member',
+    cohortId?: string,
+  ): Promise<TenantInvitationResponse> {
+    return this.request<TenantInvitationResponse>(`/tenants/${tenantId}/members/invite`, {
       method: 'POST',
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({ email, role, cohort_id: cohortId }),
     })
   }
 
@@ -3426,6 +4524,33 @@ class ApiClient {
     await this.request<void>(`/tenants/${tenantId}/members/${userId}`, {
       method: 'DELETE',
     })
+  }
+
+  async acceptTenantInvitation(token: string): Promise<MemberResponse> {
+    return this.request<MemberResponse>(`/tenants/invitations/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+    })
+  }
+
+  async leaveTenant(tenantId: string): Promise<void> {
+    await this.request<void>(`/tenants/${tenantId}/membership`, { method: 'DELETE' })
+  }
+
+  async createTenantCohort(tenantId: string, name: string): Promise<TenantCohort> {
+    return this.request<TenantCohort>(`/tenants/${tenantId}/cohorts`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async listTenantCohorts(tenantId: string): Promise<TenantCohort[]> {
+    return this.request<TenantCohort[]>(`/tenants/${tenantId}/cohorts`)
+  }
+
+  async listCohortSubmissions(tenantId: string, cohortId: string): Promise<CohortSubmission[]> {
+    return this.request<CohortSubmission[]>(
+      `/tenants/${tenantId}/cohorts/${cohortId}/submissions`,
+    )
   }
 
   async getTenantStats(tenantId: string): Promise<TenantStats> {
@@ -3544,6 +4669,11 @@ export interface MacroResponse {
   description?: string | null
   shortcut?: string | null
   actions: Record<string, unknown>[]
+  script?: string | null
+  script_version: number
+  script_hash?: string | null
+  /** True when pre-cap recorded actions were quarantined and cannot execute. */
+  legacy_actions_available: boolean
   created_at: string
   updated_at: string
 }
@@ -3553,13 +4683,28 @@ export interface MacroCreateRequest {
   description?: string
   shortcut?: string
   actions: Record<string, unknown>[]
+  script?: string | null
 }
 
 export interface MacroUpdateRequest {
   name?: string
-  description?: string
-  shortcut?: string
+  description?: string | null
+  shortcut?: string | null
   actions?: Record<string, unknown>[]
+  script?: string | null
+  expected_script_version?: number
+}
+
+export interface MacroExecuteRequest {
+  document: string
+  expected_script_version?: number
+}
+
+export interface MacroExecuteResponse {
+  document: string
+  script_version: number
+  script_hash: string
+  operation_count: number
 }
 
 // ------------------------------------------------------------------ //
@@ -3719,6 +4864,8 @@ export interface NotificationPrefs {
   job_failed: boolean
   share_viewed: boolean
   weekly_digest: boolean
+  tracker_updates: boolean
+  comment_mentions: boolean
 }
 
 // ------------------------------------------------------------------ //
@@ -3746,6 +4893,10 @@ export interface TrackerListResponse {
   by_status: Record<string, JobApplication[]>
 }
 
+export interface StaleApplication extends JobApplication {
+  days_since_update: number
+}
+
 export interface TrackerStats {
   total_applications: number
   by_status: Record<string, number>
@@ -3767,6 +4918,209 @@ export interface CreateApplicationRequest {
   applied_at?: string
 }
 
+export interface SavedJob {
+  id: string
+  company_name: string
+  role_title: string
+  job_url: string | null
+  job_description_text: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SavedJobCreateRequest {
+  company_name: string
+  role_title: string
+  job_url?: string | null
+  job_description_text?: string | null
+  notes?: string | null
+}
+
+export type SavedJobUpdateRequest = { [K in keyof SavedJobCreateRequest]?: SavedJobCreateRequest[K] | null }
+
+export interface TrackSavedJobRequest {
+  status?: string
+  resume_id?: string
+  applied_at?: string
+}
+
+export interface TrackSavedJobResponse {
+  application_id: string
+  saved_job_deleted: boolean
+}
+
+export interface JobAlert {
+  id: string
+  query: string
+  company_name: string | null
+  location: string | null
+  source_url: string
+  frequency: 'daily' | 'weekly'
+  active: boolean
+  last_notified_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface JobAlertCreateRequest {
+  query: string
+  company_name?: string | null
+  location?: string | null
+  source_url: string
+  frequency?: 'daily' | 'weekly'
+  active?: boolean
+}
+
+export type JobAlertUpdateRequest = { [K in keyof JobAlertCreateRequest]?: JobAlertCreateRequest[K] | null }
+
+export interface ApplicationReminder {
+  id: string
+  application_id: string
+  remind_at: string
+  note: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+export interface ReminderCreateRequest {
+  remind_at: string
+  note?: string | null
+}
+
+export type InterviewFormat = 'phone' | 'video' | 'onsite' | 'take_home' | 'other'
+
+export interface ApplicationInterview {
+  id: string
+  application_id: string
+  round_name: string
+  interview_format: InterviewFormat
+  starts_at: string
+  duration_minutes: number
+  timezone: string
+  location: string | null
+  interviewers: string[]
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface InterviewCreateRequest {
+  round_name: string
+  interview_format: InterviewFormat
+  starts_at: string
+  duration_minutes?: number
+  timezone?: string
+  location?: string | null
+  interviewers?: string[]
+  notes?: string | null
+}
+
+export type InterviewUpdateRequest = { [K in keyof InterviewCreateRequest]?: InterviewCreateRequest[K] | null }
+
+export interface TrackerCompany {
+  id: string
+  name: string
+  website: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface TrackerCompanyCreateRequest {
+  name: string
+  website?: string | null
+  notes?: string | null
+}
+
+export type TrackerCompanyUpdateRequest = { [K in keyof TrackerCompanyCreateRequest]?: TrackerCompanyCreateRequest[K] | null }
+
+export interface TrackerContact {
+  id: string
+  company_id: string | null
+  name: string
+  role_title: string | null
+  email: string | null
+  phone: string | null
+  linkedin_url: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TrackerContactCreateRequest {
+  company_id?: string | null
+  name: string
+  role_title?: string | null
+  email?: string | null
+  phone?: string | null
+  linkedin_url?: string | null
+  notes?: string | null
+}
+
+export type TrackerContactUpdateRequest = { [K in keyof TrackerContactCreateRequest]?: TrackerContactCreateRequest[K] | null }
+
+export type OutreachChannel = 'email' | 'linkedin'
+export type OutreachPurpose = 'referral_request' | 'follow_up' | 'thank_you' | 'networking'
+
+export interface OutreachDraftRequest {
+  application_id: string
+  contact_id?: string | null
+  channel?: OutreachChannel
+  purpose?: OutreachPurpose
+  additional_context?: string | null
+}
+
+export interface OutreachDraftResponse {
+  application_id: string
+  contact_id: string | null
+  recipient_name: string | null
+  recipient_role: string | null
+  company_name: string
+  role_title: string
+  stage: string
+  channel: OutreachChannel
+  purpose: OutreachPurpose
+  subject: string
+  body: string
+  placeholders: string[]
+  editable: boolean
+  sent: boolean
+}
+
+export interface EmailStatusEvidence {
+  signal: string
+  source: string
+}
+
+export interface EmailStatusParseRequest {
+  raw_email: string
+}
+
+export interface EmailStatusParseResponse {
+  status: string | null
+  company: string | null
+  role: string | null
+  confidence: number
+  company_confidence: number
+  role_confidence: number
+  evidence: EmailStatusEvidence[]
+  requires_review: boolean
+}
+
+export interface EmailDocumentResponse {
+  status: 'accepted'
+  recipient: 'verified_account_email'
+  retry_behavior: 'provider_idempotent' | 'smtp_best_effort'
+}
+
+export interface DocumentEmailDeliveryStatus {
+  id: string
+  status: 'pending' | 'processing' | 'accepted' | 'failed'
+  attempts: number
+  retryable: boolean
+  accepted_at: string | null
+}
+
 // ------------------------------------------------------------------ //
 //  Interview Prep types                                              //
 // ------------------------------------------------------------------ //
@@ -3776,6 +5130,10 @@ export interface InterviewQuestion {
   question: string
   what_interviewer_assesses: string
   star_hint: string | null
+  /** Present on screening-prep sessions generated after the B11b rollout. */
+  ideal_response_outline?: string[]
+  spoken_answer_tip?: string
+  recommended_seconds?: number
 }
 
 export interface InterviewPrepResponse {
@@ -3803,6 +5161,33 @@ export interface GenerateInterviewPrepApiResponse {
   job_id: string
   prep_id: string
   message: string
+}
+
+export type InterviewSimulationMode = 'coach' | 'mock'
+
+export interface InterviewSimulationAnswer {
+  question_index: number
+  answer: string
+}
+
+export interface InterviewSimulationFeedback {
+  question_index: number
+  score: number
+  strengths: string[]
+  improvements: string[]
+  suggested_outline: string[]
+}
+
+export interface EvaluateInterviewSimulationRequest {
+  mode: InterviewSimulationMode
+  answers: InterviewSimulationAnswer[]
+}
+
+export interface EvaluateInterviewSimulationResponse {
+  mode: InterviewSimulationMode
+  feedback: InterviewSimulationFeedback[]
+  average_score: number
+  overall_feedback: string
 }
 
 // Feature 43 — Resume View Analytics
@@ -3858,6 +5243,7 @@ export interface ZoteroImportResponse {
   entries_count: number
   bibtex: string
   message: string
+  source: ReferenceLibrarySource
 }
 
 export interface MendeleyImportResponse {
@@ -3865,6 +5251,16 @@ export interface MendeleyImportResponse {
   entries_count: number
   bibtex: string
   message: string
+  source: ReferenceLibrarySource
+}
+
+export interface ReferenceLibrarySource {
+  provider: 'zotero' | 'mendeley'
+  scope: 'library' | 'collection' | 'group'
+  scope_id: string | null
+  filename: 'references.bib'
+  read_only: true
+  synced_at: string
 }
 
 // ------------------------------------------------------------------ //
@@ -3998,8 +5394,15 @@ export interface WorkspaceDetailResponse extends WorkspaceResponse {
 export interface WorkspaceResumeItem {
   id: string
   title: string
+  owner_id: string
   shared_by?: string
   shared_at: string
+  opened_at?: string | null
+  opened_actor?: 'candidate' | null
+  opened_source?: 'candidate_self' | null
+  downloaded_at?: string | null
+  downloaded_actor?: 'candidate' | null
+  downloaded_source?: 'candidate_self' | null
 }
 
 // ------------------------------------------------------------------ //
@@ -4035,6 +5438,16 @@ export interface CommentResponse {
   resolved: boolean
   created_at: string
   updated_at: string
+  mentions: CommentMention[]
+}
+
+export interface CommentMention {
+  user_id: string
+  display_name: string
+}
+
+export interface CommentMentionParticipant extends CommentMention {
+  email?: string | null
 }
 
 // ------------------------------------------------------------------ //
@@ -4046,6 +5459,7 @@ export interface PublicResumeOut {
   title: string
   created_at: string
   updated_at: string
+  accessible_text: string
 }
 
 export interface PortfolioResponse {
@@ -4099,12 +5513,35 @@ export interface CareerAnalysisResponse {
   target_role_freetext?: string | null
   current_skills: string[]
   gap_skills: string[]
+  skill_taxonomy?: string | null
+  skill_taxonomy_language?: string | null
+  skill_taxonomy_mappings?: CareerSkillTaxonomyMapping[] | null
   path_role_ids?: string[] | null
   timeline_months?: number | null
   llm_analysis?: string | null
   created_at: string
   path_roles?: CareerRoleResponse[] | null
   target_role?: CareerRoleResponse | null
+}
+
+export interface CareerSkillTaxonomyMapping {
+  input: string
+  preferred_label: string
+  uri?: string | null
+  matched: boolean
+}
+
+export interface CareerSkillSearchResult {
+  uri: string
+  preferred_label: string
+  alternative_labels: string[]
+  language: string
+}
+
+export interface CareerSkillSearchResponse {
+  taxonomy: string
+  language: string
+  results: CareerSkillSearchResult[]
 }
 
 // ── Tenant / White-Label (Feature 85) ─────────────────────────────────────────
@@ -4116,6 +5553,7 @@ export interface TenantResponse {
   logo_url?: string | null
   primary_color?: string | null
   custom_domain?: string | null
+  domain_verified: boolean
   plan_id: string
   max_members: number
   active: boolean
@@ -4133,12 +5571,43 @@ export interface MemberResponse {
 
 export interface TenantStats {
   member_count: number
-  total_resumes: number
-  total_compilations: number
+}
+
+export interface TenantInvitationResponse {
+  email: string
+  role: string
+  expires_in_seconds: number
+  cohort_id?: string | null
+  invite_preview_url?: string | null
+  message: string
+}
+
+export interface TenantCohort {
+  id: string
+  name: string
+  member_count: number
+  resume_count: number
+  created_at: string
+}
+
+export interface CohortSubmission {
+  resume_id: string
+  title: string
+  student_user_id: string
+  student_email: string
+  student_name?: string | null
+  started_at: string
+  opened_at?: string | null
+  opened_actor?: 'candidate' | null
+  opened_source?: 'candidate_self' | null
+  downloaded_at?: string | null
+  downloaded_actor?: 'candidate' | null
+  downloaded_source?: 'candidate_self' | null
 }
 
 export interface DomainVerifyResponse {
   domain: string
+  verified: boolean
   txt_record_name: string
   txt_record_value: string
   instructions: string
