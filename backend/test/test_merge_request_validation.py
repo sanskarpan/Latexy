@@ -28,4 +28,3 @@ def test_merge_accepts_selected_section_source():
         section_choices={"Experience": SECOND_ID},
     )
     assert request.section_choices["Experience"] == SECOND_ID
-
