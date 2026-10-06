@@ -1,0 +1,50 @@
+% The genuine europecv/Europass CV standard.  The class option is replaced
+% by the authenticated template-use locale selector (English by default).
+\documentclass[totpages,helvetica,openbib,english,nologo,nobranding,notitle]{europecv}
+\usepackage{fontspec}
+\usepackage[utf8]{luainputenc}
+\usepackage[a4paper,top=1.27cm,left=1cm,right=1cm,bottom=2cm]{geometry}
+\usepackage[english]{babel}
+\usepackage{bookmark}
+\usepackage{url}
+
+\renewcommand{\ttdefault}{phv}
+\ecvname{Alex Morgan}
+\ecvfootername{Alex Morgan}
+\ecvaddress{14 Example Street, Dublin, Ireland}
+\ecvtelephone{+353 1 555 0100}
+\ecvemail{\href{mailto:alex.morgan@example.com}{alex.morgan@example.com}}
+\ecvhomepage{\url{www.example.com}}
+\ecvnationality{Irish}
+\ecvdateofbirth{1 January 1990}
+\ecvdate{\today}
+
+\begin{document}
+\begin{europecv}
+\ecvpersonalinfo[12pt]
+
+\section{Work experience}
+\ecvitem{Dates}{2021--Present}
+\ecvitem{Occupation or position held}{Senior Operations Manager}
+\ecvitem{Main activities and responsibilities}{Led a cross-functional team delivering service improvements, reporting, and stakeholder communications across European markets.}
+\ecvitem{Name and address of employer}{Example Services Ltd, Dublin, Ireland}
+\ecvitem{Type of business or sector}{Professional services}
+
+\section{Education and training}
+\ecvitem{Dates}{2016--2019}
+\ecvitem{Title of qualification awarded}{Bachelor of Business Administration}
+\ecvitem{Principal subjects}{Operations, finance, data analysis, and organisational leadership}
+\ecvitem{Name and type of organisation}{Example University, Ireland}
+
+\section{Personal skills and competences}
+\ecvmothertongue[5pt]{English}
+\ecvitem{Other language(s)}{French (B2), German (B1)}
+\ecvitem{Communication skills}{Clear written and spoken communication with clients, partners, and distributed teams.}
+\ecvitem{Organisational skills}{Programme planning, risk tracking, meeting facilitation, and process documentation.}
+\ecvitem{Computer skills}{Spreadsheets, SQL, Python, document production, and collaborative workspaces.}
+\ecvitem{Driving licence}{B}
+
+\section{Additional information}
+\ecvitem{}{References and supporting documents are available on request.}
+\end{europecv}
+\end{document}
