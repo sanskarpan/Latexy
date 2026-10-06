@@ -1,6 +1,7 @@
 'use strict'
 
-const { appendFile, mkdir, readFile, rename, rm, stat, writeFile } = require('node:fs/promises')
+const { appendFile, mkdir, open, rename, rm, writeFile } = require('node:fs/promises')
+const { constants } = require('node:fs')
 const { dirname, isAbsolute, relative, resolve, sep } = require('node:path')
 const { randomUUID } = require('node:crypto')
 
@@ -75,6 +76,31 @@ async function apiFetch(fetchImpl, url, apiKey, init = {}) {
   return response
 }
 
+async function readLatexSource(sourcePath, openSource = open) {
+  // Inspect and read the same descriptor, not a path which can be replaced
+  // after stat. Non-blocking open also lets us reject FIFOs without hanging.
+  const source = await openSource(sourcePath, constants.O_RDONLY | constants.O_NONBLOCK)
+  try {
+    const info = await source.stat()
+    if (!info.isFile()) throw new Error('source must be a regular file')
+    const maximum = 500_000
+    if (info.size > maximum) throw new Error('source exceeds the Latexy 500,000-byte limit')
+    const buffer = Buffer.alloc(maximum + 1)
+    let size = 0
+    while (size < buffer.length) {
+      const { bytesRead } = await source.read(buffer, size, buffer.length - size, size)
+      if (!bytesRead) break
+      size += bytesRead
+    }
+    if (size > maximum) throw new Error('source exceeds the Latexy 500,000-byte limit')
+    const content = buffer.subarray(0, size).toString('utf8')
+    if (!content.trim()) throw new Error('source is empty')
+    return content
+  } finally {
+    await source.close()
+  }
+}
+
 async function renderCv(config, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch
   const sleep = dependencies.sleep || ((ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)))
@@ -82,11 +108,7 @@ async function renderCv(config, dependencies = {}) {
   const started = Date.now()
   const deadline = started + config.timeoutSeconds * 1000
 
-  const sourceInfo = await stat(config.sourcePath)
-  if (!sourceInfo.isFile()) throw new Error('source must be a regular file')
-  if (sourceInfo.size > 500_000) throw new Error('source exceeds the Latexy 500,000-byte limit')
-  const latexContent = await readFile(config.sourcePath, 'utf8')
-  if (!latexContent.trim()) throw new Error('source is empty')
+  const latexContent = await readLatexSource(config.sourcePath)
 
   const compileUrl = new URL('/api/v1/compile', config.apiUrl)
   const queuedResponse = await apiFetch(fetchImpl, compileUrl, config.apiKey, {
@@ -183,6 +205,7 @@ async function main() {
 
 module.exports = {
   configurationFromEnvironment,
+  readLatexSource,
   renderCv,
   sameOriginUrl,
   validatedApiUrl,
