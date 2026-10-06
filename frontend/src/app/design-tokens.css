@@ -105,6 +105,31 @@
   color-scheme: light;
 }
 
+/* User-selectable enhanced contrast. Important custom properties intentionally
+   outrank tenant branding: legibility takes precedence while this mode is on. */
+:root[data-contrast="high"][data-mode="light"] {
+  --bg:#FFFFFF !important; --surface:#FFFFFF !important; --surface-2:#F2F2F2 !important;
+  --line:#000000 !important; --line-2:#000000 !important;
+  --fg:#000000 !important; --fg-2:#000000 !important; --fg-3:#1A1A1A !important;
+  --accent:#0039A6 !important; --accent-strong:#0039A6 !important; --accent-fg:#FFFFFF !important;
+  --accent-soft:#DCE8FF !important; --ok:#006B2D !important; --warn:#6B4E00 !important;
+  --err:#A40000 !important; --focus:#A40000 !important; --overlay:rgba(0,0,0,.72) !important;
+  --code-bg:#F2F2F2 !important; --code-fg:#000000 !important;
+  --fg-disabled:#4D4D4D !important; --surface-disabled:#E5E5E5 !important;
+  --grid:rgba(0,0,0,.16) !important;
+}
+:root[data-contrast="high"][data-mode="dark"] {
+  --bg:#000000 !important; --surface:#000000 !important; --surface-2:#141414 !important;
+  --line:#FFFFFF !important; --line-2:#FFFFFF !important;
+  --fg:#FFFFFF !important; --fg-2:#FFFFFF !important; --fg-3:#E6E6E6 !important;
+  --accent:#FFDE59 !important; --accent-strong:#FFDE59 !important; --accent-fg:#000000 !important;
+  --accent-soft:#332C00 !important; --ok:#6CFF9B !important; --warn:#FFDE59 !important;
+  --err:#FF8A80 !important; --focus:#00E5FF !important; --overlay:rgba(0,0,0,.88) !important;
+  --code-bg:#141414 !important; --code-fg:#FFFFFF !important;
+  --fg-disabled:#BFBFBF !important; --surface-disabled:#222222 !important;
+  --grid:rgba(255,255,255,.22) !important;
+}
+
 /* ---- Reduced-motion floor (applies across all variants) ---- */
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0s; --dur-2: 0s; --dur-3: 0s; }
