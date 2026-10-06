@@ -89,3 +89,14 @@ def test_profile_identity_changes_exact_cache_key(monkeypatch):
     assert compile_cache_key(source, "pdflatex", {}, "user:test") != first
     monkeypatch.setattr(profiles, "trusted_format_identity", lambda source, compiler: None)
     assert compile_cache_key(source, "pdflatex", {}, "user:test") != first
+
+
+def test_replaced_asset_invalidates_memoized_verification(trusted_profile):
+    _, _, fmt, _ = trusted_profile
+    source = MANAGED_ENGLISH_PREAMBLE + r"\begin{document}Hello\end{document}"
+    assert profiles.trusted_format_flags(source, "pdflatex")
+    # Keep the same size and manifest: cache invalidation must observe the
+    # actual immutable asset replacement rather than metadata changes alone.
+    old = fmt.read_bytes()
+    fmt.write_bytes(b"X" + old[1:])
+    assert profiles.trusted_format_flags(source, "pdflatex") == []

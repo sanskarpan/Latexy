@@ -32,7 +32,8 @@ def _immutable(path: Path, maximum: int) -> bytes:
 
 
 @lru_cache(maxsize=2)
-def _verified(manifest: bytes, format_path: str, binary_path: str) -> dict | None:
+def _verified(manifest: bytes, format_path: str, binary_path: str,
+              _format_stat: tuple, _binary_stat: tuple) -> dict | None:
     try:
         value = json.loads(manifest)
         if set(value) != {"schema_version", "profiles"} or value["schema_version"] != 1:
@@ -79,7 +80,15 @@ def trusted_format_identity(source: str, compiler: str) -> dict | None:
         binary = shutil.which("pdflatex")
         if not binary:
             return None
-        verified = _verified(_immutable(MANIFEST_PATH, 32768), str(FORMAT_PATH), str(Path(binary).resolve(strict=True)))
+        binary_path = Path(binary).resolve(strict=True)
+        def stamp(path: Path) -> tuple:
+            stat = path.stat()
+            return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
+                    stat.st_mtime, stat.st_ctime, stat.st_mode, stat.st_uid)
+        # A trusted operator replacing image assets without restarting still
+        # invalidates memoized verification; ordinary jobs never hash assets.
+        verified = _verified(_immutable(MANIFEST_PATH, 32768), str(FORMAT_PATH), str(binary_path),
+                             stamp(FORMAT_PATH), stamp(binary_path))
         return dict(verified) if verified else None
     except (OSError, ValueError):
         return None
