@@ -31,7 +31,7 @@ export function generateDeviceFingerprint(): DeviceFingerprint {
     ctx.font = '14px Arial';
     ctx.fillText('Device fingerprint', 2, 2);
   }
-  
+
   const fingerprint = btoa(
     [
       navigator.userAgent,
@@ -59,7 +59,7 @@ export function generateDeviceFingerprint(): DeviceFingerprint {
  * Generate a session ID
  */
 function generateSessionId(): string {
-  return Math.random().toString(36).substring(2, 15) + 
+  return Math.random().toString(36).substring(2, 15) +
          Math.random().toString(36).substring(2, 15);
 }
 
@@ -129,7 +129,7 @@ export function canUseTrial(): boolean {
  */
 export async function trackUsage(action: string, resourceType?: string): Promise<void> {
   const deviceInfo = generateDeviceFingerprint();
-  
+
   try {
     await fetch('/api/public/track-usage', {
       method: 'POST',
@@ -159,7 +159,7 @@ export async function trackUsage(action: string, resourceType?: string): Promise
  */
 export async function getBackendTrialStatus(): Promise<TrialStatus | null> {
   const deviceInfo = generateDeviceFingerprint();
-  
+
   try {
     const response = await fetch(`/api/public/trial-status?fingerprint=${encodeURIComponent(deviceInfo.fingerprint)}`);
     if (response.ok) {
@@ -174,7 +174,6 @@ export async function getBackendTrialStatus(): Promise<TrialStatus | null> {
   } catch (error) {
     console.warn('Failed to get backend trial status:', error);
   }
-  
+
   return null;
 }
-
