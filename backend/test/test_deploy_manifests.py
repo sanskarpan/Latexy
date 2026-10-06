@@ -365,6 +365,31 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
     assert "node --test scripts/ci/classify-changes.test.mjs" in ci
 
 
+def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
+    """The desktop editor contract must run without adding an unconditional job."""
+    workflow = yaml.load(_read(".github/workflows/ci.yml"), Loader=yaml.BaseLoader)
+    job = workflow["jobs"]["cross-browser-quality"]
+    assert job["needs"] == "classify-changes"
+    assert "needs.classify-changes.outputs.frontend == 'true'" in job["if"]
+    step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Verify desktop compile cadence and source-PDF synchronization"
+    )
+    assert step["env"] == {
+        "PLAYWRIGHT_PORT": "5183",
+        "PLAYWRIGHT_SERVER_MODE": "production",
+    }
+    assert "e2e/editor-compile-sync.spec.ts" in step["run"]
+    assert "--retries=0" in step["run"]
+    assert "--trace=on" in step["run"]
+    assert "--workers=1" in step["run"]
+    assert "--output=test-results/editor-compile-sync" in step["run"]
+    assert "if" not in step  # Normal success chaining: no softened failure gate.
+    artifact = next(step for step in job["steps"] if step.get("name") == "Upload browser quality evidence")
+    assert artifact["if"] == "${{ !cancelled() }}"
+    assert "frontend/test-results/editor-compile-sync" in artifact["with"]["path"]
+
+
 def test_modal_deploy_requires_main_ci_and_skips_stale_automatic_runs():
     """Deployment provenance and ordering guards must precede every mutation."""
     modal = _read(".github/workflows/deploy-modal.yml")
