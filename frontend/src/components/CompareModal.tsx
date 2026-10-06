@@ -1,14 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { FileText, Loader2, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react'
 import { DiffEditor } from '@monaco-editor/react'
+import '@/lib/monaco-loader'
 import type { editor } from 'monaco-editor'
 import { apiClient, type LatexCompiler } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import PDFPreview from '@/components/PDFPreview'
 
-type Tab = 'diff' | 'pdf'
+const RenderedPdfDiff = dynamic(() => import('@/components/RenderedPdfDiff'), { ssr: false })
+
+type Tab = 'diff' | 'pdf' | 'visual'
 
 interface DiffStats {
   added: number
@@ -163,16 +167,18 @@ export default function CompareModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm">
-      <div className={modalClasses}>
+      <div className={modalClasses} role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <div className="flex items-center gap-4">
-            <h2 className="text-sm font-semibold text-fg">Before / After Optimization</h2>
+            <h2 id="compare-modal-title" className="text-sm font-semibold text-fg">Before / After Optimization</h2>
 
             {/* Tab toggle */}
-            <div className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line bg-surface p-0.5">
+            <div className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line bg-surface p-0.5" role="tablist" aria-label="Comparison mode">
               <button
                 onClick={() => setActiveTab('diff')}
+                role="tab"
+                aria-selected={activeTab === 'diff'}
                 className={`rounded-[var(--radius-md)] px-3 py-1 text-xs font-medium transition ${
                   activeTab === 'diff'
                     ? 'bg-surface-2 text-fg'
@@ -184,6 +190,8 @@ export default function CompareModal({
               <button
                 onClick={() => optimizedPdfUrl && setActiveTab('pdf')}
                 disabled={!optimizedPdfUrl}
+                role="tab"
+                aria-selected={activeTab === 'pdf'}
                 title={!optimizedPdfUrl ? 'No compiled PDF available for this comparison' : undefined}
                 className={`rounded-[var(--radius-md)] px-3 py-1 text-xs font-medium transition ${
                   activeTab === 'pdf'
@@ -194,6 +202,22 @@ export default function CompareModal({
                 }`}
               >
                 PDF Preview
+              </button>
+              <button
+                onClick={() => originalPdfUrl && optimizedPdfUrl && setActiveTab('visual')}
+                disabled={!originalPdfUrl || !optimizedPdfUrl}
+                role="tab"
+                aria-selected={activeTab === 'visual'}
+                title={!originalPdfUrl ? 'Compile the original PDF first' : !optimizedPdfUrl ? 'No optimized PDF available' : 'Highlight rendered pixel differences'}
+                className={`rounded-[var(--radius-md)] px-3 py-1 text-xs font-medium transition ${
+                  activeTab === 'visual'
+                    ? 'bg-surface-2 text-fg'
+                    : originalPdfUrl && optimizedPdfUrl
+                      ? 'text-fg-3 hover:text-fg-2'
+                      : 'cursor-not-allowed text-fg-3'
+                }`}
+              >
+                Visual Diff
               </button>
             </div>
 
@@ -230,6 +254,7 @@ export default function CompareModal({
             </button>
             <button
               onClick={onClose}
+              aria-label="Close before and after comparison"
               className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <X size={16} />
@@ -338,6 +363,10 @@ export default function CompareModal({
                 />
               </div>
             </div>
+          )}
+
+          {activeTab === 'visual' && originalPdfUrl && optimizedPdfUrl && (
+            <RenderedPdfDiff beforeUrl={originalPdfUrl} afterUrl={optimizedPdfUrl} />
           )}
         </div>
       </div>
