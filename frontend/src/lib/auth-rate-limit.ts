@@ -60,6 +60,12 @@ export const DEFAULT_RULE: RateLimitRule = { window: 60, max: 20 }
  * endpoints mirror Better Auth's own built-in defaults (10s / 3).
  */
 export const RATE_LIMIT_RULES: ReadonlyArray<{ prefix: string; rule: RateLimitRule }> = [
+  // A single protected-page transition can legitimately trigger several
+  // session reads (layout, page and auth-aware clients), and shared/NATed
+  // clients must not lose their session after navigating through the app.
+  // Keep this read-only endpoint bounded, but give it a substantially larger
+  // budget than credential-changing routes.
+  { prefix: '/get-session', rule: { window: 60, max: 300 } },
   { prefix: '/request-password-reset', rule: { window: 3600, max: 5 } },
   { prefix: '/forget-password', rule: { window: 3600, max: 5 } },
   { prefix: '/send-verification-email', rule: { window: 3600, max: 5 } },
