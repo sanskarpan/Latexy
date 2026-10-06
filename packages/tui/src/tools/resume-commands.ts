@@ -5,7 +5,7 @@
  * choosing one from autocomplete answered "Unknown command". Each maps onto
  * backend endpoints that already existed.
  */
-import { writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,8 +70,11 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
   const client = getApiClient()
   try {
     const resume = await client.get<Resume & { latex_content: string }>(`/resumes/${resumeId}`)
-    const path = join(tmpdir(), `latexy-${resumeId}.tex`)
-    await writeFile(path, resume.latex_content, 'utf-8')
+    // A private, randomly named directory prevents another local process from
+    // pre-creating a symlink at a predictable /tmp path and capturing content.
+    const draftDirectory = await mkdtemp(join(tmpdir(), 'latexy-edit-'))
+    const path = join(draftDirectory, 'resume.tex')
+    await writeFile(path, resume.latex_content, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
 
     addMessage({ role: 'system', content: `Opening ${resume.title} in ${editor}…` })
     // Inherit the terminal so the editor takes over the screen, and wait: the
@@ -125,6 +128,7 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
       return
     }
     if (edited === resume.latex_content) {
+      await rm(draftDirectory, { recursive: true, force: true })
       addMessage({ role: 'system', content: 'No changes made.' })
       return
     }
@@ -138,7 +142,11 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
       })
       return
     }
-    await client.put(`/resumes/${resumeId}`, { latex_content: edited })
+    await client.put(`/resumes/${resumeId}`, {
+      latex_content: edited,
+      expected_latex_content: resume.latex_content,
+    })
+    await rm(draftDirectory, { recursive: true, force: true })
     addMessage({ role: 'system', content: `Saved ${resume.title}. Run /compile to rebuild the PDF.` })
   } catch (err) {
     addMessage({ role: 'error', content: `Edit failed: ${describeError(err)}` })
@@ -305,6 +313,10 @@ export async function runExport(parsed: ParsedCommand): Promise<void> {
     }
     return
   }
+  if (!/^[a-z0-9]+$/i.test(fmt)) {
+    addMessage({ role: 'error', content: 'Format must contain only letters and numbers.' })
+    return
+  }
 
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
@@ -312,7 +324,8 @@ export async function runExport(parsed: ParsedCommand): Promise<void> {
     // Always fetch bytes. docx/pdf are binary, and decoding them as text
     // corrupted the file while still reporting success.
     const bytes = await getApiClient().getBinary(`/export/${resumeId}/${fmt}`)
-    const out = join(process.cwd(), `resume-${resumeId.slice(0, 8)}.${fmt}`)
+    const safeResumeId = resumeId.replace(/[^a-z0-9_-]/gi, '_').slice(0, 36)
+    const out = join(process.cwd(), `resume-${safeResumeId}.${fmt.toLowerCase()}`)
     await writeFile(out, bytes)
     report('Exported', [['format', fmt], ['file', out], ['bytes', bytes.length]])
   } catch (err) {
