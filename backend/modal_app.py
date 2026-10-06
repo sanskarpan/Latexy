@@ -624,10 +624,13 @@ def scheduled_cleanup_temp_files() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    schedule=modal.Period(minutes=5),
 )
 def scheduled_health_check() -> None:
-    """Worker health check (beat: every 300s)."""
+    """Worker health check runner (beat: every 300s).
+
+    The cadence is owned by ``scheduled_five_minute_maintenance`` so this
+    runner remains independently callable and receives its own timeout.
+    """
     _init_worker_redis()
     from app.workers.cleanup_worker import health_check_task
 
@@ -652,10 +655,13 @@ def scheduled_weekly_digest() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    schedule=modal.Period(minutes=5),
 )
 def scheduled_tracker_notifications() -> None:
-    """Deliver due application reminders and saved-search review nudges."""
+    """Deliver due application reminders and saved-search review nudges.
+
+    The cadence is owned by ``scheduled_five_minute_maintenance`` so this
+    runner remains independently callable and receives its own timeout.
+    """
     _init_worker_redis()
     from app.workers.tracker_notification_worker import send_tracker_notifications
 
@@ -666,10 +672,13 @@ def scheduled_tracker_notifications() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    schedule=modal.Period(minutes=1),
 )
 def scheduled_comment_mention_recovery() -> None:
-    """Recover mention rows whose post-commit enqueue missed the queue."""
+    """Recover mention rows whose post-commit enqueue missed the queue.
+
+    The cadence is owned by ``scheduled_minute_recovery`` so this runner
+    remains independently callable and receives its own timeout.
+    """
     _init_worker_redis()
     from app.workers.email_worker import send_pending_comment_mention_emails
 
@@ -680,14 +689,77 @@ def scheduled_comment_mention_recovery() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    schedule=modal.Period(minutes=1),
 )
 def scheduled_document_email_recovery() -> None:
-    """Recover compiled-document email rows missed by a broker/process crash."""
+    """Recover compiled-document email rows missed by a broker/process crash.
+
+    The cadence is owned by ``scheduled_minute_recovery`` so this runner
+    remains independently callable and receives its own timeout.
+    """
     _init_worker_redis()
     from app.workers.email_worker import send_pending_document_email_deliveries
 
     send_pending_document_email_deliveries.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    schedule=modal.Period(minutes=5),
+)
+def scheduled_five_minute_maintenance() -> None:
+    """Fan out the two five-minute maintenance runners independently."""
+    _init_worker_redis()
+    spawn_failures = []
+
+    try:
+        scheduled_health_check.spawn()
+    except Exception as exc:
+        print(f"scheduled health-check spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_health_check")
+
+    try:
+        scheduled_tracker_notifications.spawn()
+    except Exception as exc:
+        print(f"scheduled tracker-notification spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_tracker_notifications")
+
+    if spawn_failures:
+        raise RuntimeError(
+            "scheduled five-minute maintenance fan-out failed: "
+            + ",".join(spawn_failures)
+        )
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    schedule=modal.Period(minutes=1),
+)
+def scheduled_minute_recovery() -> None:
+    """Fan out the two one-minute recovery runners independently."""
+    _init_worker_redis()
+    spawn_failures = []
+
+    try:
+        scheduled_comment_mention_recovery.spawn()
+    except Exception as exc:
+        print(f"scheduled comment-mention recovery spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_comment_mention_recovery")
+
+    try:
+        scheduled_document_email_recovery.spawn()
+    except Exception as exc:
+        print(f"scheduled document-email recovery spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_document_email_recovery")
+
+    if spawn_failures:
+        raise RuntimeError(
+            "scheduled one-minute recovery fan-out failed: "
+            + ",".join(spawn_failures)
+        )
 
 
 # ---------------------------------------------------------------------------
