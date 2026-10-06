@@ -101,6 +101,7 @@ import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 import { buildLatexOutline, type LatexOutlineItem } from '@/lib/latex-outline'
+import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
 const ShareResumeModal = dynamic(() => import('@/components/ShareResumeModal'))
 const DocumentAssistantPanel = dynamic(() => import('@/components/DocumentAssistantPanel'))
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
@@ -814,6 +815,7 @@ export default function ResumeEditPage() {
     activeRightTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [rightTab])
   const [rightWidth, setRightWidth] = useState<number | null>(null)
+  const [rightMaxWidth, setRightMaxWidth] = useState(980)
   const [showOutline, setShowOutline] = useState(false)
   const [isDraggingResize, setIsDraggingResize] = useState(false)
   const isResizingRef = useRef(false)
@@ -852,7 +854,12 @@ export default function ResumeEditPage() {
 
   // SyncTeX
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
+  const [syncFromRequestId, setSyncFromRequestId] = useState(0)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
+  const [sourceSyncLine, setSourceSyncLine] = useState<number | null>(null)
+  const [sourceSyncRequestId, setSourceSyncRequestId] = useState(0)
+  const [pdfSelection, setPdfSelection] = useState<PdfSelectionLocation | null>(null)
+  const [pdfSyncReady, setPdfSyncReady] = useState(false)
 
   // Bullet generator widget
   const [bulletWidgetOpen, setBulletWidgetOpen] = useState(false)
@@ -1118,6 +1125,14 @@ export default function ResumeEditPage() {
       pendingOfflinePdfSaveRef.current = null
     }
   }, [offlinePdfOwnerId, resumeId])
+
+  const autoCompileIdentityReady = Boolean(
+    dictionaryScope.confirmed &&
+    offlinePdfOwnerId &&
+    offlinePdfMountedRef.current &&
+    offlinePdfIdentityRef.current.ownerId === offlinePdfOwnerId &&
+    offlinePdfIdentityRef.current.resumeId === resumeId,
+  )
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
@@ -1565,6 +1580,7 @@ export default function ResumeEditPage() {
   // Deep-link a finding to its editor line, then step out of the way.
   const handleJumpToFinding = useCallback((line: number) => {
     setSyncFromLine(line)
+    setSyncFromRequestId((value) => value + 1)
     setDeepPanelOpen(false)
   }, [])
 
@@ -1887,6 +1903,12 @@ export default function ResumeEditPage() {
 
   // ── Resize handle ──────────────────────────────────────────────────────
   useEffect(() => {
+    const onViewportResize = () => {
+      const maximum = Math.max(280, window.innerWidth - 300)
+      setRightMaxWidth(maximum)
+      setRightWidth(current => current === null ? null : Math.min(current, maximum))
+    }
+    onViewportResize()
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return
       const delta = resizeStartX.current - e.clientX
@@ -1902,9 +1924,11 @@ export default function ResumeEditPage() {
     }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('resize', onViewportResize)
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('resize', onViewportResize)
     }
   }, [])
 
@@ -2224,6 +2248,7 @@ export default function ResumeEditPage() {
   }
 
   const runCompile = async () => {
+    if (isAnyRunning || isSubmitting) return
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -2246,6 +2271,7 @@ export default function ResumeEditPage() {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
       if (!isActive()) return
+      editorRef.current?.markAutoCompileCompiled?.(content)
       userInitiatedJobRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
@@ -2477,8 +2503,35 @@ export default function ResumeEditPage() {
   }, [deepAnalysisJobId, isCurrentOfflinePdfIdentity, jobDescription, latexContent, offlinePdfOwnerId, resumeId])
 
   const handleSyncToSource = useCallback((line: number) => {
-    editorRef.current?.highlightLine(line)
-  }, [])
+    if (!Number.isInteger(line) || line < 1) return
+    setSyncFromLine(line)
+    setSyncFromRequestId((value) => value + 1)
+    if (isMobile) editorRef.current?.highlightLine(line)
+  }, [isMobile])
+
+  const handleSourceToPdf = useCallback(() => {
+    if (cursorLine === null || cursorLine < 1 || !pdfSyncReady) return
+    setSourceSyncLine(cursorLine)
+    setSourceSyncRequestId((value) => value + 1)
+  }, [cursorLine, pdfSyncReady])
+
+  const handlePdfToSource = useCallback(() => {
+    const line = pdfSelection?.line
+    if (!line || line < 1) return
+    handleSyncToSource(line)
+  }, [handleSyncToSource, pdfSelection])
+
+  // A source/PDF selection belongs to one authenticated document and one
+  // compiled job. Never let a late SyncTeX response or highlight survive an
+  // owner, route, or job identity change.
+  useEffect(() => {
+    setPdfSelection(null)
+    setPdfSyncReady(false)
+    setSourceSyncLine(null)
+    setSyncFromLine(null)
+    setSyncFromRequestId((value) => value + 1)
+    setSourceSyncRequestId((value) => value + 1)
+  }, [resumeId, sessionUserId, compileStream.pdfJobId, aiStream.pdfJobId])
 
   const handleCursorChange = useCallback((line: number) => {
     setCursorLine(line)
@@ -2777,12 +2830,13 @@ export default function ResumeEditPage() {
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
-    if (isSubmitting) return
+    if (isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return
     setIsSubmitting(true)
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
       if (!isActive()) return
+      editorRef.current?.markAutoCompileCompiled?.(content)
       autoCompileTriggeredRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
@@ -2799,7 +2853,7 @@ export default function ResumeEditPage() {
     } finally {
       if (isActive()) setIsSubmitting(false)
     }
-  }, [isCurrentOfflinePdfIdentity, isSubmitting, offlinePdfOwnerId, resumeId, compiler])
+  }, [autoCompileIdentityReady, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId])
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
   // compile is — runCompile switches to the Logs tab on submit so a failure is
@@ -3337,7 +3391,7 @@ export default function ResumeEditPage() {
 
           <button
             onClick={toggleAutoCompile}
-            title="Auto-compile on change (2s debounce)"
+            title="Auto-compile on change (5s quiet period; 10s minimum interval)"
             aria-label="Auto-compile on change"
             aria-pressed={autoCompile}
             className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
@@ -3599,7 +3653,16 @@ export default function ResumeEditPage() {
               onCursorChange={handleCursorChange}
               onCursorLineChange={handleCursorLineChange}
               syncLine={syncFromLine}
-              onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
+              syncRequestId={syncFromRequestId}
+              onSyncToPdf={(line) => {
+                setCursorLine(line)
+                setSourceSyncLine(line)
+                setSourceSyncRequestId((value) => value + 1)
+              }}
+              onAutoCompile={handleAutoCompile}
+              autoCompileEnabled={autoCompile && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady}
+              autoCompileBusy={isAnyRunning || isSubmitting || !canEditDocument || !isOnline || !autoCompileIdentityReady}
+              autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}`}
               atsScore={documentType === 'presentation' ? null : quickATSScore}
               atsScoreLoading={documentType === 'presentation' ? false : quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
@@ -3719,9 +3782,37 @@ export default function ResumeEditPage() {
         {/* ── Resize handle — desktop only ── */}
         <div
           className="group relative hidden w-[5px] shrink-0 cursor-col-resize items-center justify-center md:flex"
-          onMouseDown={startResize}
         >
-          <div className="h-full w-px bg-line transition-colors group-hover:bg-accent/30 group-active:bg-accent/60" />
+          <SourcePdfDivider
+            sourceLine={cursorLine}
+            pdfSelection={pdfSelection}
+            pdfReady={pdfSyncReady}
+            onSourceToPdf={handleSourceToPdf}
+            onPdfToSource={handlePdfToSource}
+          />
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize editor and preview panes"
+            aria-valuenow={Math.round(rightWidth ?? rightPanelRef.current?.getBoundingClientRect().width ?? 560)}
+            aria-valuemin={280}
+            aria-valuemax={rightMaxWidth}
+            tabIndex={0}
+            onMouseDown={startResize}
+            onDoubleClick={() => setRightWidth(null)}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return
+              event.preventDefault()
+              if (event.key === 'Home') { setRightWidth(null); return }
+              const current = rightWidth ?? rightPanelRef.current?.getBoundingClientRect().width ?? 560
+              const delta = event.key === 'ArrowLeft' ? 16 : -16
+              setRightWidth(Math.max(280, Math.min(window.innerWidth - 300, current + delta)))
+            }}
+            title="Drag to resize · double-click or Home to reset · arrow keys to nudge"
+            className="flex h-full w-full items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <div className="h-full w-px bg-line transition-colors group-hover:bg-accent/30 group-active:bg-accent/60" />
+          </div>
         </div>
 
         {/* ── Right panel ── */}
@@ -3899,7 +3990,11 @@ export default function ResumeEditPage() {
                 onRetryOffline={retryOfflinePdf}
                 jobId={activePdfJobId.current}
                 onSyncToSource={handleSyncToSource}
-                syncFromLine={cursorLine}
+                onPdfSelectionChange={setPdfSelection}
+                onSyncReadyChange={setPdfSyncReady}
+                syncFromLine={sourceSyncLine}
+                syncFromRequestId={sourceSyncRequestId}
+                sourceFileName={compileSettings.main_file}
                 latexContent={latexContent}
                 onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
               />
