@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobResultResponse, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 import ExportDropdown from '@/components/ExportDropdown'
 import DiffViewerModal from '@/components/DiffViewerModal'
@@ -18,6 +19,8 @@ import QuickTailorModal from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 import GenerateReferencesModal from '@/components/GenerateReferencesModal'
 import ApplyModal from '@/components/ApplyModal'
+import { downloadBlob } from '@/lib/download'
+import { useI18n } from '@/components/I18nProvider'
 
 // ── Translation languages (Feature 44) ────────────────────────────────────
 const TRANSLATE_LANGUAGES = [
@@ -29,9 +32,11 @@ const TRANSLATE_LANGUAGES = [
   { code: 'nl', name: 'Dutch' },
   { code: 'ru', name: 'Russian' },
   { code: 'zh', name: 'Chinese (Simplified)' },
+  { code: 'zh-tw', name: 'Chinese (Traditional)' },
   { code: 'ja', name: 'Japanese' },
   { code: 'ko', name: 'Korean' },
   { code: 'ar', name: 'Arabic' },
+  { code: 'he', name: 'Hebrew' },
   { code: 'hi', name: 'Hindi' },
   { code: 'pl', name: 'Polish' },
   { code: 'sv', name: 'Swedish' },
@@ -47,12 +52,37 @@ const TRANSLATE_LANGUAGES = [
   { code: 'vi', name: 'Vietnamese' },
 ]
 
+// CJK variants are compiled with Latexy's offline LuaHBTeX + language-specific
+// CJK adapter + region-specific Noto Sans CJK stack. Keep this list aligned with the
+// backend's closed language-code contract; arbitrary locale/font input is not
+// sent to the compiler.
+const CJK_TRANSLATION_CODES = new Set(['zh', 'zh-tw', 'ja', 'ko'])
+const RTL_TRANSLATION_CODES = new Set(['ar', 'he'])
+
 export default function WorkspacePage() {
-  const { session, isPending: sessionLoading } = useRequireAuth()
+  const { t } = useI18n()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const router = useRouter()
+  // Render-time identity changes invalidate private responses before effects
+  // from the previous account get a chance to run.
+  const workspaceOwnerId = session?.user?.id ?? null
+  const workspaceIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
+  if (workspaceIdentityRef.current.ownerId !== workspaceOwnerId) {
+    workspaceIdentityRef.current = {
+      ownerId: workspaceOwnerId,
+      generation: workspaceIdentityRef.current.generation + 1,
+    }
+  }
+  const renderedWorkspaceIdentity = workspaceIdentityRef.current
+  const workspaceMountedRef = useRef(false)
+  const workspaceFetchVersionRef = useRef(0)
+  const translationRequestVersionRef = useRef(0)
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
   const [jobs, setJobs] = useState<JobStateResponse[]>([])
+  const [jobsLoading, setJobsLoading] = useState(true)
+  const [jobsLoadError, setJobsLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [sortBy, setSortBy] = useState<'updated' | 'name' | 'freshness' | 'match'>('updated')
@@ -63,6 +93,11 @@ export default function WorkspacePage() {
   const [matchError, setMatchError] = useState<string | null>(null)
 
   const [atsStats, setAtsStats] = useState<ResumeStats | null>(null)
+  const workspaceDataIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
+  const hasCurrentWorkspaceData = workspaceDataIdentityRef.current.ownerId === workspaceOwnerId &&
+    workspaceDataIdentityRef.current.generation === workspaceIdentityRef.current.generation
+  const ownedResumes = useMemo(() => hasCurrentWorkspaceData ? resumes : [], [hasCurrentWorkspaceData, resumes])
+  const ownedAtsStats = hasCurrentWorkspaceData ? atsStats : null
   const [staleBannerDismissed, setStaleBannerDismissed] = useState(false)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [exportMenuFlipUp, setExportMenuFlipUp] = useState(false)
@@ -84,7 +119,7 @@ export default function WorkspacePage() {
   // Add to tracker modal
   const [trackerModalResumeId, setTrackerModalResumeId] = useState<string | null>(null)
   const trackerModalResume = trackerModalResumeId
-    ? resumes.find((r) => r.id === trackerModalResumeId) ?? null
+    ? ownedResumes.find((r) => r.id === trackerModalResumeId) ?? null
     : null
 
   // Quick Apply modal (Feature 87)
@@ -105,8 +140,8 @@ export default function WorkspacePage() {
   // Share modal state
   const [shareModalResumeId, setShareModalResumeId] = useState<string | null>(null)
   const shareModalResume = useMemo(
-    () => resumes.find(r => r.id === shareModalResumeId) ?? null,
-    [resumes, shareModalResumeId]
+    () => ownedResumes.find(r => r.id === shareModalResumeId) ?? null,
+    [ownedResumes, shareModalResumeId]
   )
 
   // Quick Tailor modal state
@@ -120,13 +155,38 @@ export default function WorkspacePage() {
   const [showArchived, setShowArchived] = useState(false)
   const [archivedResumes, setArchivedResumes] = useState<ResumeResponse[]>([])
   const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archivedLoadError, setArchivedLoadError] = useState<string | null>(null)
   const [tagEditResumeId, setTagEditResumeId] = useState<string | null>(null)
   const [tagEditValue, setTagEditValue] = useState('')
   const [archiveConfirmResume, setArchiveConfirmResume] = useState<ResumeResponse | null>(null)
   const [isArchiving, setIsArchiving] = useState(false)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [jobResultCache, setJobResultCache] = useState<Record<string, JobResultResponse | null>>({})
+  const [jobResultErrors, setJobResultErrors] = useState<Record<string, string>>({})
   const [jobResultLoading, setJobResultLoading] = useState<string | null>(null)
+  const jobResultRequestVersionsRef = useRef<Record<string, number>>({})
+  const jobResultLoadingTokenRef = useRef(0)
+  const jobResultLoadingIdentityRef = useRef<{ ownerId: string; generation: number; token: number } | null>(null)
+  const jobResultUiIdentityRef = useRef<{ ownerId: string; generation: number } | null>(null)
+  const jobResultCacheIdentityRef = useRef<{ ownerId: string; generation: number } | null>(null)
+  const currentJobResultGeneration = workspaceIdentityRef.current.generation
+  const jobResultCacheIsCurrent = jobResultCacheIdentityRef.current?.ownerId === workspaceOwnerId &&
+    jobResultCacheIdentityRef.current.generation === currentJobResultGeneration
+  const visibleJobResultCache = useMemo(
+    () => jobResultCacheIsCurrent ? jobResultCache : {},
+    [jobResultCache, jobResultCacheIsCurrent],
+  )
+  const visibleJobResultErrors = useMemo(
+    () => jobResultCacheIsCurrent ? jobResultErrors : {},
+    [jobResultCacheIsCurrent, jobResultErrors],
+  )
+  const jobResultLoadingIsCurrent = jobResultLoadingIdentityRef.current?.ownerId === workspaceOwnerId &&
+    jobResultLoadingIdentityRef.current.generation === currentJobResultGeneration
+  const visibleJobResultLoading = jobResultLoadingIsCurrent ? jobResultLoading : null
+  const visibleExpandedJobId = jobResultUiIdentityRef.current?.ownerId === workspaceOwnerId &&
+    jobResultUiIdentityRef.current.generation === currentJobResultGeneration
+    ? expandedJobId
+    : null
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
@@ -150,33 +210,90 @@ export default function WorkspacePage() {
   }, [session, hasCompletedOnboarding, startOnboarding])
 
   useEffect(() => {
-    if (!session) return
-
-    const fetchData = async () => {
-      setIsLoading(true)
-      try {
-        const [resumesData, jobsData, statsData] = await Promise.all([
-          apiClient.listResumes(),
-          apiClient.listJobs(),
-          apiClient.getResumeStats().catch(() => null),
-        ])
-        setResumes(Array.isArray(resumesData) ? resumesData : [])
-        setJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated))
-        if (statsData) setAtsStats(statsData)
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Failed to fetch workspace data', error)
-        }
-      } finally {
-        setIsLoading(false)
-      }
+    workspaceMountedRef.current = true
+    return () => {
+      workspaceMountedRef.current = false
+      workspaceIdentityRef.current.generation += 1
+      translationRequestVersionRef.current += 1
+      jobResultLoadingTokenRef.current += 1
+      jobResultLoadingIdentityRef.current = null
+      jobResultUiIdentityRef.current = null
     }
+  }, [])
 
-    fetchData()
+  // An account change invalidates private page state immediately. Same-owner
+  // refreshes keep their list and stats while their guarded request resolves.
+  useEffect(() => {
+    translationRequestVersionRef.current += 1
+    setTranslateModalResumeId(null)
+    setIsTranslating(false)
+    setResumes([])
+    setAtsStats(null)
+    setLoadError(null)
+    setIsLoading(Boolean(workspaceOwnerId))
+    setExpandedJobId(null)
+    setJobResultCache({})
+    setJobResultErrors({})
+    setJobResultLoading(null)
+    jobResultCacheIdentityRef.current = null
+    jobResultUiIdentityRef.current = null
+    jobResultLoadingIdentityRef.current = null
+    jobResultLoadingTokenRef.current += 1
+  }, [workspaceOwnerId])
+
+  const fetchData = useCallback(async () => {
+    if (!session || !workspaceOwnerId) return
+    const ownerAtStart = workspaceOwnerId
+    const generationAtStart = workspaceIdentityRef.current.generation
+    const requestVersion = ++workspaceFetchVersionRef.current
+    const isCurrent = () => workspaceMountedRef.current &&
+      workspaceIdentityRef.current.ownerId === ownerAtStart &&
+      workspaceIdentityRef.current.generation === generationAtStart &&
+      workspaceFetchVersionRef.current === requestVersion
+    if (!isCurrent()) return
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const [resumesData, statsData] = await Promise.all([
+        apiClient.listAllResumes(),
+        apiClient.getResumeStats().catch(() => null),
+      ])
+      if (!isCurrent()) return
+      workspaceDataIdentityRef.current = { ownerId: ownerAtStart, generation: generationAtStart }
+      setResumes(Array.isArray(resumesData) ? resumesData : [])
+      if (statsData) setAtsStats(statsData)
+    } catch (error) {
+      if (!isCurrent()) return
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to fetch workspace data', error)
+      }
+      setLoadError(error instanceof Error ? error.message : 'Failed to load workspace data')
+    } finally {
+      if (isCurrent()) setIsLoading(false)
+    }
+  }, [session, workspaceOwnerId])
+
+  const loadRecentActivity = useCallback(async () => {
+    if (!session) return
+    setJobsLoading(true)
+    setJobsLoadError(null)
+    try {
+      const jobsData = await apiClient.listJobs()
+      setJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated))
+    } catch (error) {
+      setJobsLoadError(error instanceof Error ? error.message : 'Recent activity could not be loaded')
+    } finally {
+      setJobsLoading(false)
+    }
   }, [session])
 
+  useEffect(() => {
+    void fetchData()
+    void loadRecentActivity()
+  }, [fetchData, loadRecentActivity])
+
   const filteredResumes = useMemo(() => {
-    let result = resumes.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    let result = ownedResumes.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase()))
     if (activeTagFilter) result = result.filter((r) => r.tags?.includes(activeTagFilter))
     const scoreMap = new Map(matchResults.map((m) => [m.resume_id, m.similarity_score ?? -1]))
     // Pinned resumes always first, then the chosen sort order.
@@ -196,19 +313,19 @@ export default function WorkspacePage() {
           return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
       }
     })
-  }, [resumes, searchQuery, activeTagFilter, sortBy, matchResults])
+  }, [ownedResumes, searchQuery, activeTagFilter, sortBy, matchResults])
 
   const isFiltered = searchQuery.trim().length > 0 || activeTagFilter !== null
 
   const allTags = useMemo(() => {
     const set = new Set<string>()
-    resumes.forEach(r => r.tags?.forEach(t => set.add(t)))
+    ownedResumes.forEach(r => r.tags?.forEach(t => set.add(t)))
     return Array.from(set).sort()
-  }, [resumes])
+  }, [ownedResumes])
 
   const templateResumes = useMemo(
-    () => resumes.filter(r => r.is_template),
-    [resumes]
+    () => ownedResumes.filter(r => r.is_template),
+    [ownedResumes]
   )
 
   const handleBulkExport = async (format: 'tex' | 'pdf' | 'docx') => {
@@ -216,13 +333,8 @@ export default function WorkspacePage() {
     setExportMenuOpen(false)
     try {
       const blob = await apiClient.bulkExport(format)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
       const date = new Date().toISOString().slice(0, 10)
-      a.download = `latexy-resumes-${date}.zip`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, `latexy-resumes-${date}.zip`)
       toast.success('Download started')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Export failed')
@@ -242,13 +354,8 @@ export default function WorkspacePage() {
     try {
       for (const resume of targets) {
         const blob = await apiClient.exportResume(resume.id, format)
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
         const safeName = resume.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'resume'
-        a.download = `${safeName}.${format}`
-        a.click()
-        URL.revokeObjectURL(url)
+        downloadBlob(blob, `${safeName}.${format}`)
       }
       toast.success(`Exported ${targets.length} resume${targets.length === 1 ? '' : 's'}`)
     } catch (err) {
@@ -308,16 +415,32 @@ export default function WorkspacePage() {
     }
   }, [])
 
+  const openTranslateModal = useCallback((resumeId: string) => {
+    translationRequestVersionRef.current += 1
+    setIsTranslating(false)
+    setTranslateModalResumeId(resumeId)
+    setTranslateSelectedLang('fr')
+  }, [])
+
+  const closeTranslateModal = useCallback(() => {
+    translationRequestVersionRef.current += 1
+    setIsTranslating(false)
+    setTranslateModalResumeId(null)
+  }, [])
+
   const handleDiffRestore = useCallback(async (latex: string) => {
-    if (!diffVariantId) return
+    if (!diffVariantId || !diffData) return
     try {
-      await apiClient.updateResume(diffVariantId, { latex_content: latex })
+      await apiClient.updateResume(diffVariantId, {
+        latex_content: latex,
+        expected_latex_content: diffData?.variant_latex,
+      })
       toast.success('Variant updated')
       setShowDiffModal(false)
     } catch {
       toast.error('Failed to update variant')
     }
-  }, [diffVariantId])
+  }, [diffData, diffVariantId])
 
   const openForkModal = useCallback((resumeId: string, resumeTitle: string) => {
     setForkModalResumeId(resumeId)
@@ -327,6 +450,14 @@ export default function WorkspacePage() {
   const handleTranslate = useCallback(async (resumeId: string, langCode: string) => {
     const lang = TRANSLATE_LANGUAGES.find(l => l.code === langCode)
     if (!lang) return
+    const ownerAtStart = workspaceIdentityRef.current.ownerId
+    const generationAtStart = workspaceIdentityRef.current.generation
+    const requestVersion = ++translationRequestVersionRef.current
+    const isCurrent = () => workspaceMountedRef.current &&
+      workspaceIdentityRef.current.ownerId === ownerAtStart &&
+      workspaceIdentityRef.current.generation === generationAtStart &&
+      translationRequestVersionRef.current === requestVersion
+    if (!isCurrent()) return
     setIsTranslating(true)
     try {
       const result: TranslateResumeResponse = await apiClient.translateResume({
@@ -334,19 +465,17 @@ export default function WorkspacePage() {
         target_language: lang.name,
         language_code: langCode,
       })
+      if (!isCurrent()) return
       setTranslateModalResumeId(null)
       toast.success('Translation created', {
         description: `Opening ${lang.name} variant…`,
-        action: {
-          label: 'Open',
-          onClick: () => router.push(`/workspace/${result.variant_resume_id}/edit`),
-        },
       })
       router.push(`/workspace/${result.variant_resume_id}/edit`)
     } catch (err) {
+      if (!isCurrent()) return
       toast.error(err instanceof Error ? err.message : 'Translation failed')
     } finally {
-      setIsTranslating(false)
+      if (isCurrent()) setIsTranslating(false)
     }
   }, [router])
 
@@ -357,12 +486,24 @@ export default function WorkspacePage() {
       setPortfolioUrls(prev => ({ ...prev, [resumeId]: result.portfolio_url }))
       toast.success('Portfolio site generated', {
         description: 'Your portfolio page is ready.',
-        action: { label: 'View', onClick: () => window.open(result.portfolio_url, '_blank') },
+        action: { label: 'View', onClick: () => window.open(result.portfolio_url, '_blank', 'noopener,noreferrer') },
       })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Portfolio generation failed')
     } finally {
       setIsGeneratingPortfolio(null)
+    }
+  }, [])
+
+  const handlePortfolioVisibility = useCallback(async (resume: ResumeResponse) => {
+    try {
+      const updated = await apiClient.updateResume(resume.id, {
+        portfolio_visible: !resume.portfolio_visible,
+      })
+      setResumes(prev => prev.map(item => item.id === resume.id ? { ...item, ...updated } : item))
+      toast.success(updated.portfolio_visible ? 'Added to public profile' : 'Removed from public profile')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update public visibility')
     }
   }, [])
 
@@ -433,26 +574,88 @@ export default function WorkspacePage() {
   // Clicking a Recent Activity row expands it in place with the run's
   // result (PDF link / ATS score / error), so a specific recent run is
   // actionable instead of a dead end.
-  const handleToggleJobDetail = useCallback(async (jobId: string) => {
-    setExpandedJobId(prev => (prev === jobId ? null : jobId))
-    if (jobResultCache[jobId] !== undefined) return
+  const loadJobResult = useCallback(async (jobId: string) => {
+    const ownerAtStart = workspaceOwnerId
+    if (!ownerAtStart) return
+    const generationAtStart = workspaceIdentityRef.current.generation
+    const requestVersion = (jobResultRequestVersionsRef.current[jobId] ?? 0) + 1
+    jobResultRequestVersionsRef.current[jobId] = requestVersion
+    const loadingToken = ++jobResultLoadingTokenRef.current
+    const identityAtStart = { ownerId: ownerAtStart, generation: generationAtStart }
+    jobResultUiIdentityRef.current = identityAtStart
+    jobResultLoadingIdentityRef.current = { ...identityAtStart, token: loadingToken }
+    const isCurrent = () => workspaceMountedRef.current &&
+      workspaceIdentityRef.current.ownerId === ownerAtStart &&
+      workspaceIdentityRef.current.generation === generationAtStart &&
+      jobResultRequestVersionsRef.current[jobId] === requestVersion
     setJobResultLoading(jobId)
+    setJobResultErrors(prev => {
+      if (!isCurrent()) return prev
+      const cacheIsCurrent = jobResultCacheIdentityRef.current?.ownerId === ownerAtStart &&
+        jobResultCacheIdentityRef.current.generation === generationAtStart
+      if (!cacheIsCurrent) return prev
+      const next = { ...prev }
+      delete next[jobId]
+      return next
+    })
     try {
       const result = await apiClient.getJobResult(jobId)
-      setJobResultCache(prev => ({ ...prev, [jobId]: result }))
-    } catch {
-      setJobResultCache(prev => ({ ...prev, [jobId]: null }))
+      if (!isCurrent()) return
+      setJobResultCache(prev => {
+        if (!isCurrent()) return prev
+        const cacheIsCurrent = jobResultCacheIdentityRef.current?.ownerId === ownerAtStart &&
+          jobResultCacheIdentityRef.current.generation === generationAtStart
+        jobResultCacheIdentityRef.current = identityAtStart
+        return { ...(cacheIsCurrent ? prev : {}), [jobId]: result }
+      })
+    } catch (error) {
+      if (!isCurrent()) return
+      const message = error instanceof Error ? error.message : 'Run details could not be loaded'
+      const cacheWasCurrentAtStart = jobResultCacheIdentityRef.current?.ownerId === ownerAtStart &&
+        jobResultCacheIdentityRef.current.generation === generationAtStart
+      setJobResultCache(prev => {
+        if (!isCurrent()) return prev
+        const cacheIsCurrent = jobResultCacheIdentityRef.current?.ownerId === ownerAtStart &&
+          jobResultCacheIdentityRef.current.generation === generationAtStart
+        if (!cacheIsCurrent) {
+          jobResultCacheIdentityRef.current = identityAtStart
+          return {}
+        }
+        return prev
+      })
+      setJobResultErrors(prev => {
+        if (!isCurrent()) return prev
+        return {
+          ...(cacheWasCurrentAtStart ? prev : {}),
+          [jobId]: message,
+        }
+      })
     } finally {
-      setJobResultLoading(null)
+      if (isCurrent() && jobResultLoadingIdentityRef.current?.token === loadingToken) {
+        jobResultLoadingIdentityRef.current = null
+        setJobResultLoading(null)
+      }
     }
-  }, [jobResultCache])
+  }, [workspaceOwnerId])
+
+  const handleToggleJobDetail = useCallback((jobId: string) => {
+    const opening = visibleExpandedJobId !== jobId
+    setExpandedJobId(opening ? jobId : null)
+    if (opening && visibleJobResultCache[jobId] === undefined) {
+      void loadJobResult(jobId)
+    }
+  }, [loadJobResult, visibleExpandedJobId, visibleJobResultCache])
 
   const loadArchivedResumes = useCallback(async () => {
     setArchivedLoading(true)
+    setArchivedLoadError(null)
     try {
-      const data = await apiClient.listResumes(1, 50, true)
+      const data = await apiClient.listAllResumes(true)
       setArchivedResumes(Array.isArray(data) ? data : [])
-    } catch {
+    } catch (error) {
+      setArchivedLoadError(
+        error instanceof Error ? error.message : 'Archived resumes could not be loaded',
+      )
       toast.error('Failed to load archived resumes')
     } finally {
       setArchivedLoading(false)
@@ -465,8 +668,8 @@ export default function WorkspacePage() {
   }, [variantMap])
 
   const veryStaleResumes = useMemo(
-    () => resumes.filter((r) => r.freshness_status === 'very_stale'),
-    [resumes]
+    () => ownedResumes.filter((r) => r.freshness_status === 'very_stale'),
+    [ownedResumes]
   )
 
   if (sessionLoading) {
@@ -477,14 +680,19 @@ export default function WorkspacePage() {
     )
   }
 
+
+  if (sessionError && !session) {
+    return <SessionLoadError area="Workspace" />
+  }
+
   if (!session) {
     return (
       <div className="content-shell">
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-2xl p-8 text-center">
-          <h1 className="text-2xl font-semibold text-fg">Sign in required</h1>
-          <p className="mt-2 text-fg-2">Please sign in to access your workspace and resumes.</p>
+          <h1 className="text-2xl font-semibold text-fg">{t('auth.signInRequired')}</h1>
+          <p className="mt-2 text-fg-2">{t('auth.signInRequiredDescription')}</p>
           <Link href="/login" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 mt-6">
-            Continue to Login
+            {t('auth.continueToLogin')}
           </Link>
         </section>
       </div>
@@ -526,12 +734,16 @@ export default function WorkspacePage() {
                 <GitMerge size={13} className="text-fg-3" /> Compare with parent
               </button>
             )}
-            <button onClick={() => { setOpenCardMenu(null); setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            <button onClick={() => { setOpenCardMenu(null); openTranslateModal(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Languages size={13} className="text-fg-3" /> Translate
             </button>
             <button onClick={() => { setOpenCardMenu(null); portfolioUrls[resume.id] ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer') : handleGeneratePortfolio(resume.id) }} disabled={isGeneratingPortfolio === resume.id} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50">
               {isGeneratingPortfolio === resume.id ? <Loader2 size={13} className="animate-spin text-fg-3" /> : <Globe size={13} className="text-fg-3" />}
               {portfolioUrls[resume.id] ? 'View portfolio' : 'Portfolio site'}
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); void handlePortfolioVisibility(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <BookUser size={13} className="text-fg-3" />
+              {resume.portfolio_visible ? 'Hide from public profile' : 'Show on public profile'}
             </button>
             <button onClick={() => { setOpenCardMenu(null); setShareModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Share2 size={13} className="text-fg-3" /> {resume.share_token ? 'Manage share link' : 'Share'}
@@ -702,9 +914,9 @@ export default function WorkspacePage() {
 
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Workspace</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Resume Library</h1>
-          <p className="mt-1 text-sm text-fg-2">Create, edit, and optimize resumes from a single workspace.</p>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">{t('workspace.label')}</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">{t('workspace.resumeLibrary')}</h1>
+          <p className="mt-1 text-sm text-fg-2">{t('workspace.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -713,16 +925,16 @@ export default function WorkspacePage() {
             className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-3 py-2 text-xs flex items-center gap-1.5"
           >
             <Search className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Search content <span className="text-fg-3">⌘⇧F</span></span>
+            <span className="hidden sm:inline">{t('workspace.searchContent')} <span className="text-fg-3">⌘⇧F</span></span>
           </button>
           <Link href="/workspace/history" className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
-            Run History
+            {t('workspace.runHistory')}
           </Link>
           <button
             onClick={() => setMatchModalOpen(true)}
             className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           >
-            Match to Job
+            {t('workspace.matchToJob')}
           </button>
 
           {/* Export dropdown (Feature 49) */}
@@ -746,7 +958,7 @@ export default function WorkspacePage() {
               ) : (
                 <Download size={12} />
               )}
-              <span className="hidden sm:inline">Export</span>
+              <span className="hidden sm:inline">{t('workspace.export')}</span>
               <ChevronDown size={11} />
             </button>
             {exportMenuOpen && (
@@ -806,10 +1018,37 @@ export default function WorkspacePage() {
           </Link>
 
           <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
-            New Resume
+            {t('workspace.newResume')}
           </Link>
         </div>
       </section>
+
+      {loadError && (
+        <section
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] px-4 py-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-err" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-semibold text-err">Workspace data could not be loaded</p>
+              <p className="mt-0.5 text-xs text-fg-2">
+                {ownedResumes.length > 0
+                  ? 'Showing the last data loaded in this session. Retry to refresh it.'
+                  : loadError}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { void fetchData() }}
+            disabled={isLoading}
+            className="rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold text-err transition hover:bg-err/10 disabled:opacity-50"
+          >
+            {isLoading ? 'Retrying…' : 'Retry'}
+          </button>
+        </section>
+      )}
 
       <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -868,15 +1107,20 @@ export default function WorkspacePage() {
             <div className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-72 items-center justify-center">
               <LoadingSpinner />
             </div>
+          ) : loadError && ownedResumes.length === 0 ? (
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
+              <h2 className="text-lg font-semibold text-fg">Workspace unavailable</h2>
+              <p className="mt-2 text-sm text-fg-2">Retry the request above instead of creating duplicate data.</p>
+            </div>
           ) : filteredResumes.length === 0 ? (
             <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
-              <h2 className="text-lg font-semibold text-fg">No resumes found</h2>
+              <h2 className="text-lg font-semibold text-fg">{t('workspace.noResumes')}</h2>
               <p className="mt-2 text-sm text-fg-2">
-                {searchQuery ? `No results for "${searchQuery}".` : 'Create your first resume to start your pipeline.'}
+                {searchQuery ? t('workspace.noSearchResults', { query: searchQuery }) : t('workspace.createFirst')}
               </p>
               {!searchQuery && (
                 <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 mt-5 px-4 py-2 text-xs">
-                  Create Resume
+                  {t('workspace.createResume')}
                 </Link>
               )}
             </div>
@@ -1032,6 +1276,18 @@ export default function WorkspacePage() {
               </h2>
               {archivedLoading ? (
                 <div className="flex items-center justify-center py-8"><LoadingSpinner /></div>
+              ) : archivedLoadError ? (
+                <div role="alert" className="rounded-[var(--radius-lg)] border border-err/25 bg-err/10 px-4 py-4">
+                  <p className="text-sm font-medium text-err">Archived resumes could not be loaded.</p>
+                  <p className="mt-1 break-words text-xs text-fg-3">{archivedLoadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => { void loadArchivedResumes() }}
+                    className="mt-3 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+                  >
+                    Retry archive
+                  </button>
+                </div>
               ) : archivedResumes.length === 0 ? (
                 <p className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-4 py-6 text-center text-sm text-fg-3">
                   No archived resumes.
@@ -1163,14 +1419,31 @@ export default function WorkspacePage() {
 
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Recent Activity</h2>
-            {jobs.length === 0 ? (
+            {jobsLoading ? (
+              <div className="mt-3 flex items-center gap-2 text-sm text-fg-3">
+                <LoadingSpinner /> Loading recent runs…
+              </div>
+            ) : jobsLoadError ? (
+              <div role="alert" className="mt-3 rounded-[var(--radius-md)] border border-err/25 bg-err/10 p-3">
+                <p className="text-sm font-medium text-err">Recent activity could not be loaded.</p>
+                <p className="mt-1 break-words text-xs text-fg-3">{jobsLoadError}</p>
+                <button
+                  type="button"
+                  onClick={() => { void loadRecentActivity() }}
+                  className="mt-2 rounded-[var(--radius-md)] px-2.5 py-1 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+                >
+                  Retry activity
+                </button>
+              </div>
+            ) : jobs.length === 0 ? (
               <p className="mt-3 text-sm text-fg-3">No recent runs yet.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 {jobs.slice(0, 5).map((job, index) => {
                   const jobId = job.job_id
-                  const expanded = !!jobId && expandedJobId === jobId
-                  const result = jobId ? jobResultCache[jobId] : undefined
+                  const expanded = !!jobId && visibleExpandedJobId === jobId
+                  const result = jobId ? visibleJobResultCache[jobId] : undefined
+                  const resultError = jobId ? visibleJobResultErrors[jobId] : undefined
                   return (
                     <div key={jobId ?? `${job.last_updated}-${index}`} className="overflow-hidden rounded-[var(--radius-md)] border border-line bg-bg">
                       <button
@@ -1189,8 +1462,20 @@ export default function WorkspacePage() {
                       </button>
                       {expanded && jobId && (
                         <div className="border-t border-line px-3 py-2.5 text-xs">
-                          {jobResultLoading === jobId ? (
+                          {visibleJobResultLoading === jobId ? (
                             <p className="text-fg-3">Loading result…</p>
+                          ) : resultError ? (
+                            <div role="alert">
+                              <p className="text-err">Run details could not be loaded.</p>
+                              <p className="mt-1 break-words text-fg-3">{resultError}</p>
+                              <button
+                                type="button"
+                                onClick={() => { void loadJobResult(jobId) }}
+                                className="mt-2 rounded-[var(--radius-md)] px-2 py-1 font-semibold text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+                              >
+                                Retry details
+                              </button>
+                            </div>
                           ) : result == null ? (
                             <p className="text-fg-3">No detailed result is available for this run.</p>
                           ) : (
@@ -1228,7 +1513,7 @@ export default function WorkspacePage() {
             )}
           </section>
 
-          {atsStats && atsStats.optimized_count > 0 && (
+          {ownedAtsStats && ownedAtsStats.optimized_count > 0 && (
             <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
               <div className="flex items-center gap-2 mb-3">
                 <BarChart2 size={13} className="text-accent-strong/70" />
@@ -1237,19 +1522,19 @@ export default function WorkspacePage() {
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
                   <p className="text-lg font-bold tabular-nums text-accent-strong">
-                    {atsStats.avg_ats_score != null ? Math.round(atsStats.avg_ats_score) : '—'}
+                    {ownedAtsStats.avg_ats_score != null ? Math.round(ownedAtsStats.avg_ats_score) : '—'}
                   </p>
                   <p className="text-[10px] text-fg-3 mt-0.5">Avg</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold tabular-nums text-ok">
-                    {atsStats.best_ats_score != null ? Math.round(atsStats.best_ats_score) : '—'}
+                    {ownedAtsStats.best_ats_score != null ? Math.round(ownedAtsStats.best_ats_score) : '—'}
                   </p>
                   <p className="text-[10px] text-fg-3 mt-0.5">Best</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold tabular-nums text-fg">
-                    {atsStats.optimized_count}
+                    {ownedAtsStats.optimized_count}
                   </p>
                   <p className="text-[10px] text-fg-3 mt-0.5">Optimized</p>
                 </div>
@@ -1307,18 +1592,34 @@ export default function WorkspacePage() {
 
       {/* Translate modal */}
       {translateModalResumeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={() => setTranslateModalResumeId(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={closeTranslateModal}>
           <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Globe size={16} className="text-accent-strong" />
                 <h3 className="text-base font-semibold text-fg">Translate Resume</h3>
               </div>
-              <button onClick={() => setTranslateModalResumeId(null)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
+              <button onClick={closeTranslateModal} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-fg-3 mb-4">Creates a new variant with prose translated by AI. LaTeX commands are preserved exactly.</p>
+            <p className="mb-2 text-xs text-fg-3">Creates a new variant with prose translated by AI. LaTeX commands are preserved exactly.</p>
+            {translateSelectedLang === 'hi' && (
+              <p className="mb-4 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg-2">
+                Hindi variants use Latexy&apos;s hosted Devanagari font and LuaLaTeX with HarfBuzz shaping.
+              </p>
+            )}
+            {CJK_TRANSLATION_CODES.has(translateSelectedLang) && (
+              <p className="mb-4 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg-2">
+                CJK variants use LuaLaTeX with HarfBuzz shaping and Latexy&apos;s offline region-specific Noto CJK font. Mixed Latin and CJK text is supported; custom runtime fonts are not.
+              </p>
+            )}
+            {RTL_TRANSLATION_CODES.has(translateSelectedLang) && (
+              <p className="mb-4 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg-2">
+                Arabic and Hebrew variants use LuaLaTeX with HarfBuzz shaping and Latexy&apos;s offline hosted RTL fonts. Mixed Latin and RTL text is supported; custom runtime fonts are not. Directional PDF layout depends on the selected target language.
+              </p>
+            )}
+            {translateSelectedLang !== 'hi' && !CJK_TRANSLATION_CODES.has(translateSelectedLang) && !RTL_TRANSLATION_CODES.has(translateSelectedLang) && <div className="mb-4" />}
             <label className="block text-xs font-medium text-fg-2 mb-1.5">Target Language</label>
             <select
               value={translateSelectedLang}
@@ -1331,7 +1632,7 @@ export default function WorkspacePage() {
             </select>
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => setTranslateModalResumeId(null)}
+                onClick={closeTranslateModal}
                 className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Cancel
@@ -1391,16 +1692,27 @@ export default function WorkspacePage() {
 
       {shareModalResumeId && shareModalResume && (
         <ShareResumeModal
+          key={JSON.stringify([workspaceOwnerId, shareModalResumeId])}
+          ownerId={workspaceOwnerId}
           resumeId={shareModalResumeId}
           resumeTitle={shareModalResume.title}
           initialShareToken={shareModalResume.share_token}
           initialShareUrl={shareModalResume.share_url}
+          initialAnonymous={shareModalResume.share_anonymous}
+          initialReviewComments={shareModalResume.share_review_comments}
           onClose={() => setShareModalResumeId(null)}
-          onShareTokenChange={(token, url) => {
+          onShareTokenChange={(token, url, anonymous, reviewComments = false) => {
+            if (!workspaceMountedRef.current || workspaceIdentityRef.current !== renderedWorkspaceIdentity) return
             setResumes(prev =>
-              prev.map(r =>
+              workspaceIdentityRef.current !== renderedWorkspaceIdentity ? prev : prev.map(r =>
                 r.id === shareModalResumeId
-                  ? { ...r, share_token: token, share_url: url }
+                  ? {
+                      ...r,
+                      share_token: token,
+                      share_url: url,
+                      share_anonymous: anonymous,
+                      share_review_comments: reviewComments,
+                    }
                   : r
               )
             )
@@ -1425,9 +1737,7 @@ export default function WorkspacePage() {
           onDone={(forkId) => {
             setQuickTailorResume(null)
             // Refresh resume list so the new fork appears
-            apiClient.listResumes().then((data) => {
-              if (Array.isArray(data)) setResumes(data)
-            }).catch(() => {})
+            void fetchData()
           }}
         />
       )}
