@@ -272,7 +272,7 @@ def test_summarize_counts():
 
 
 def test_apply_tolerates_stale_offsets_via_content_search():
-    """If offsets are missing, apply falls back to locating original_text."""
+    """If offsets are missing, apply may locate a unique original_text."""
     hunks = segment_changes(_BASE, _REWORDED)
     payload = []
     for h in hunks:
@@ -282,6 +282,35 @@ def test_apply_tolerates_stale_offsets_via_content_search():
         payload.append(d)
     ids = {h.id for h in hunks}
     assert apply_changes(_BASE, payload, ids) == _REWORDED
+
+
+def test_apply_drops_ambiguous_stale_span_instead_of_changing_first_duplicate():
+    original = "same bullet\nseparator\nsame bullet\n"
+    hunk = {
+        "id": "ambiguous",
+        "original_text": "same bullet\n",
+        "new_text": "changed bullet\n",
+        "original_start": 999,
+        "original_end": 999,
+    }
+
+    assert apply_changes(original, [hunk], {"ambiguous"}) == original
+
+
+def test_apply_uses_valid_offsets_to_change_the_intended_duplicate():
+    original = "same bullet\nseparator\nsame bullet\n"
+    second_start = original.rfind("same bullet\n")
+    hunk = {
+        "id": "second",
+        "original_text": "same bullet\n",
+        "new_text": "changed bullet\n",
+        "original_start": second_start,
+        "original_end": second_start + len("same bullet\n"),
+    }
+
+    assert apply_changes(original, [hunk], {"second"}) == (
+        "same bullet\nseparator\nchanged bullet\n"
+    )
 
 
 def test_apply_unknown_ids_are_noops():
