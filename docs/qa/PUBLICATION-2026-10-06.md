@@ -153,3 +153,62 @@ merge is not proof of the exact deployed SHA or all live product behavior.
 Record the integration PR, successful checks, merged main SHA and deployment
 results here as they become available. Until then, do not claim merge or live
 certification.
+
+## Merged main checkpoint
+
+- PR #1751 merged on October 6 at 09:20:44 UTC, with merge SHA
+  `dce0bf4108fa0ab3f72b8991617bcae08afaa8e8`.
+- Every required protected-branch context passed on the final PR head
+  `5ee272661e0720fbf5d4ed733d1532deeb28937c`. The Linux browser run reported
+  22 passed / 3 conditional skips; both full-stack smoke runs passed.
+- GitHub limits rebase merging to 100 commits; this integration preserves
+  1,040 commits. With explicit user approval, only the linear-history flag
+  was temporarily disabled for a normal merge commit and immediately restored.
+  The complete branch-protection JSON is identical before and after the merge.
+  No administrator bypass, force push, squash or security-alert dismissal was
+  used. False-positive review threads were individually answered with evidence.
+- Local `main` and `origin/main` both advanced to the merge SHA. The merged
+  source tree is identical to the tested PR head, and every excluded local file
+  retained its pre-switch SHA-256 hash. New worktrees can start from this main.
+- Canonical main CI run: [37442317625](https://github.com/sanskarpan/Latexy/actions/runs/37442317625).
+  All jobs passed on the exact merged SHA, including full-stack smoke.
+- Vercel certification run
+  [37443095109](https://github.com/sanskarpan/Latexy/actions/runs/37443095109)
+  passed. Direct `https://latexy.xyz/api/deployment-identity` verification
+  returned HTTP 200, `Cache-Control: no-store`, and the exact merged SHA with
+  `source: vercel`. The live landing and guest editor load, editor controls
+  become interactive, and the guest template panel opens. These observations
+  are not an authenticated feature or end-to-end compilation certification.
+- Modal rollout run
+  [37443095334](https://github.com/sanskarpan/Latexy/actions/runs/37443095334)
+  is applying production migrations before deployment. Backend production
+  certification remains pending; it is separate from PR previews.
+- Next scoped QA follow-ups are tracked as
+  [#1752](https://github.com/sanskarpan/Latexy/issues/1752) (render-action
+  source/output symlink boundaries) and
+  [#1753](https://github.com/sanskarpan/Latexy/issues/1753) (actual guarded HTTP
+  redirects, fixed-provider URL construction, exact scraper host classification).
+  They are not part of the merged source checkpoint above.
+
+## Post-publication QA follow-up validation
+
+- Render-action symlink containment now resolves the physical source and
+  output parent, uses the validated physical paths for I/O, rejects external
+  and dangling parent links before API calls, and retains safe internal links
+  and atomic final-name replacement. Eight action tests pass, including linked
+  workspace roots and file-as-directory failures. Concurrent ancestor-directory
+  swaps still require OS-native handle-relative traversal for atomic isolation;
+  the portable validation does not claim that guarantee.
+- URL-import regressions now run the actual default HTTPX client, preflight,
+  redirect machinery and DNS-pinning guard, mocking only DNS answers and the
+  inner network send. Private-address and `file://` redirects are blocked;
+  public-to-public redirects succeed and both hosts are pinned.
+- Fixed-origin tests assert DOI, Zotero and GitHub path values cannot change
+  the requested provider hostname. The scraper no longer misclassifies
+  `wwwgreenhouse.io` by stripping arbitrary `w`/`.` prefix characters.
+- Independent root run of all five affected backend suites: **204 passed**
+  with all three warning-as-error flags; one existing Starlette deprecation
+  notice remains. Log:
+  `/tmp/latexy-post-publication-security-focused-2026-10-06.log`.
+- These changes still require their own protected PR checks and merge; passing
+  local tests does not place them in the published main snapshot.
