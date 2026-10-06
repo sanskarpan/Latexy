@@ -74,3 +74,12 @@ test('decodes entities only once and removes spaced script/style end tags', () =
   }))] })
   assert.equal(extractJobPosting(doc, 'https://example.test/job').description, 'Visible &quot; "text"')
 })
+
+test('recognizes closing script tags with ignored attributes', () => {
+  for (const ending of ['</script\t\n bar>', '</script/>', '</script / >']) {
+    const doc = fakeDocument({ jsonLd: [node(JSON.stringify({
+      '@type': 'JobPosting', description: '<script>hidden' + ending + '<p>Visible</p>',
+    }))] })
+    assert.equal(extractJobPosting(doc, 'https://example.test/job').description, 'Visible')
+  }
+})
