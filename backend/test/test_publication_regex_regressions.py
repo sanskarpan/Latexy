@@ -14,7 +14,8 @@ def test_large_failed_matches_finish_without_quadratic_backtracking(case):
 from app.services.bullet_metric_service import replace_unverified_metrics
 assert replace_unverified_metrics('0' * 100_000 + 'a') == '0' * 100_000 + 'a'
 assert replace_unverified_metrics('0,' * 50_000 + 'a').endswith(',a')
-assert replace_unverified_metrics('0' + ',0' * 50_000 + 'a').endswith(',a')
+assert replace_unverified_metrics('0' + ',0' * 50_000 + 'a') == '[X],0a'
+assert replace_unverified_metrics('Led,12 engineers; cost,$23.') == 'Led,[X] engineers; cost,$[X].'
 """,
         "authors": """
 from app.api.reference_routes import _author_surnames
