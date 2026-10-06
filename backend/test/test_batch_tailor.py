@@ -10,10 +10,17 @@ Covers:
 
 from __future__ import annotations
 
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.api.job_routes import get_batch_status, get_job_result
+from app.database.models import JobFinalization
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,6 +81,12 @@ class TestBatchTailorEndpoint:
         """A batch of 3 jobs should create 3 forked resume variants."""
         parent = await _create_resume(client, auth_headers)
         parent_id = parent["id"]
+        settings_resp = await client.patch(
+            f"/resumes/{parent_id}/settings",
+            headers=auth_headers,
+            json={"compiler": "xelatex", "main_file": "main.tex", "extra_packages": ["xcolor"]},
+        )
+        assert settings_resp.status_code == 200, settings_resp.text
 
         jobs = [
             _make_job("Acme Corp", "Backend Engineer"),
@@ -81,7 +94,8 @@ class TestBatchTailorEndpoint:
             _make_job("Initech", "Platform Engineer"),
         ]
 
-        with _patch_infra()[0], _patch_infra()[1]:
+        redis_patch, submit_patch = _patch_infra()
+        with redis_patch, submit_patch as mock_submit:
             resp = await client.post(
                 "/jobs/batch",
                 headers=auth_headers,
@@ -92,6 +106,17 @@ class TestBatchTailorEndpoint:
         data = resp.json()
         assert "batch_id" in data
         assert len(data["job_ids"]) == 3
+        assert mock_submit.call_count == 3
+        assert all(
+            call.kwargs["metadata"]["persist_optimized_resume"] is True
+            and isinstance(call.kwargs["metadata"]["expected_latex_content"], str)
+            and call.kwargs["quota_refund"]["dimension"] == "optimizations"
+            and call.kwargs["quota_refund"]["cost"] == 1
+            and call.kwargs["compiler"] == "xelatex"
+            and call.kwargs["compile_settings"]["main_file"] == "main.tex"
+            and call.kwargs["compile_settings"]["extra_packages"] == ["xcolor"]
+            for call in mock_submit.call_args_list
+        )
 
         # Verify the parent now has 3 child variants
         variants_resp = await client.get(f"/resumes/{parent_id}/variants", headers=auth_headers)
@@ -164,9 +189,7 @@ class TestBatchTailorEndpoint:
 
 @pytest.mark.asyncio
 class TestBatchTailorQuotaRefund:
-    """The whole batch is charged up front, so every failure path after the
-    charge must give the units back — including the enqueue phase, which used to
-    500 with N units still on the counter."""
+    """The whole batch is charged up front and ambiguous dispatch stays trackable."""
 
     async def test_enqueue_failure_refunds_the_whole_batch(
         self, client: AsyncClient, pro_auth_headers: dict
@@ -185,7 +208,189 @@ class TestBatchTailorQuotaRefund:
                 json={"resume_id": resume["id"], "jobs": [_make_job(), _make_job("Globex")]},
             )
 
-        assert resp.status_code == 500
+        assert resp.status_code == 201
         snapshot = await entitlement_service.quota_snapshot(user_id, "pro")
-        assert snapshot["dimensions"]["optimizations"]["used"] == 0
+        # The first marked dispatch is ambiguous and remains charged until
+        # lifecycle cleanup proves it never ran; only the second is refunded.
+        assert snapshot["dimensions"]["optimizations"]["used"] == 1
+        variants = await client.get(
+            f"/resumes/{resume['id']}/variants", headers=pro_auth_headers
+        )
+        assert variants.status_code == 200
+        assert len(variants.json()) == 2
 
+    async def test_partial_enqueue_returns_trackable_batch_and_refunds_unstarted(
+        self, client: AsyncClient, pro_auth_headers: dict, db_session
+    ):
+        from app.services.entitlement_service import entitlement_service
+
+        resume = await _create_resume(client, pro_auth_headers, "Partial Resume")
+        user_id = resume["user_id"]
+
+        redis_patch, submit_patch = _patch_infra()
+        with redis_patch, submit_patch as mock_submit:
+            mock_submit.side_effect = ["accepted", RuntimeError("broker down")]
+            response = await client.post(
+                "/jobs/batch",
+                headers=pro_auth_headers,
+                json={"resume_id": resume["id"], "jobs": [_make_job(), _make_job("Globex")]},
+            )
+
+        assert response.status_code == 201
+        batch = response.json()
+        status = await client.get(
+            f"/jobs/batch/{batch['batch_id']}", headers=pro_auth_headers
+        )
+        assert status.status_code == 200
+        # Both broker calls reached the dispatch marker. The second exception
+        # is therefore ambiguous and must remain queued/charged until cleanup
+        # proves that no worker claimed it; no refund is safe at this point.
+        assert [job["status"] for job in status.json()["jobs"]] == ["queued", "queued"]
+        finalizations = (
+            await db_session.execute(
+                select(JobFinalization).where(JobFinalization.job_id.in_(batch["job_ids"]))
+            )
+        ).scalars().all()
+        by_job = {row.job_id: row for row in finalizations}
+        assert by_job[batch["job_ids"][0]].state == "pending"
+        assert by_job[batch["job_ids"][1]].state == "pending"
+
+        snapshot = await entitlement_service.quota_snapshot(user_id, "pro")
+        # The second marked dispatch is also ambiguous, so both receipts stay
+        # charged until bounded cleanup fences the unresolved work.
+        assert snapshot["dimensions"]["optimizations"]["used"] == 2
+
+    async def test_unattempted_tail_is_terminalized_and_refunded(
+        self, client: AsyncClient, pro_auth_headers: dict, db_session
+    ):
+        from app.services.entitlement_service import entitlement_service
+
+        resume = await _create_resume(client, pro_auth_headers, "Unattempted Tail Resume")
+        user_id = resume["user_id"]
+        jobs = [_make_job(), _make_job("Globex"), _make_job("Initech")]
+        write_patch = patch(
+            "app.api.job_routes._write_initial_redis_state",
+            new_callable=AsyncMock,
+            side_effect=[None, None, RuntimeError("redis unavailable before dispatch")],
+        )
+        submit_patch = patch(
+            "app.api.job_routes.submit_optimize_and_compile",
+            side_effect=["accepted-1", "accepted-2"],
+        )
+        with write_patch, submit_patch:
+            response = await client.post(
+                "/jobs/batch",
+                headers=pro_auth_headers,
+                json={"resume_id": resume["id"], "jobs": jobs},
+            )
+
+        assert response.status_code == 201
+        batch = response.json()
+        status = await client.get(
+            f"/jobs/batch/{batch['batch_id']}", headers=pro_auth_headers
+        )
+        assert status.status_code == 200
+        assert [job["status"] for job in status.json()["jobs"]] == [
+            "queued",
+            "queued",
+            "failed",
+        ]
+        finalizations = (
+            await db_session.execute(
+                select(JobFinalization).where(JobFinalization.job_id.in_(batch["job_ids"]))
+            )
+        ).scalars().all()
+        by_job = {row.job_id: row for row in finalizations}
+        assert [by_job[job_id].state for job_id in batch["job_ids"]] == [
+            "pending",
+            "pending",
+            "failed",
+        ]
+        snapshot = await entitlement_service.quota_snapshot(user_id, "pro")
+        assert snapshot["dimensions"]["optimizations"]["used"] == 2
+
+
+class _BatchRedis:
+    def __init__(self, values: dict[str, str | None]):
+        self.values = values
+
+    async def get(self, key: str):
+        return self.values.get(key)
+
+
+@pytest.mark.asyncio
+class TestBatchDurableRecovery:
+    async def _seed_finalization(self, db_session, *, user_id: str, state: str) -> str:
+        # API job-result routes validate server-issued IDs as UUIDs.
+        job_id = str(uuid.uuid4())
+        db_session.add(
+            JobFinalization(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                user_id=user_id,
+                job_type="combined",
+                state=state,
+                terminal_result="completed" if state == "completed" else "failed",
+                result_payload={"success": state == "completed", "job_id": job_id},
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
+        await db_session.commit()
+        return job_id
+
+    async def test_cached_processing_recovers_owned_terminal_batch_job(self, db_session, auth_headers, client):
+        resume = await _create_resume(client, auth_headers, "Recovery Resume")
+        user_id = resume["user_id"]
+        job_id = await self._seed_finalization(db_session, user_id=user_id, state="completed")
+        batch_id = f"test_batch_{uuid.uuid4().hex}"
+        redis = _BatchRedis(
+            {
+                f"latexy:batch:{batch_id}": json.dumps(
+                    {
+                        "batch_id": batch_id,
+                        "user_id": user_id,
+                        "jobs": [{"job_id": job_id, "company_name": "Acme", "role_title": "Engineer"}],
+                    }
+                ),
+                f"latexy:job:{job_id}:state": json.dumps({"status": "processing"}),
+            }
+        )
+        with patch("app.api.job_routes.get_redis_client", new=AsyncMock(return_value=redis)):
+            response = await get_batch_status(batch_id, db_session, user_id)
+        assert response.jobs[0].status == "completed"
+
+    async def test_missing_state_recovers_owned_failed_batch_job(self, db_session, auth_headers, client):
+        resume = await _create_resume(client, auth_headers, "Missing State Resume")
+        user_id = resume["user_id"]
+        job_id = await self._seed_finalization(db_session, user_id=user_id, state="failed")
+        batch_id = f"test_batch_{uuid.uuid4().hex}"
+        redis = _BatchRedis(
+            {
+                f"latexy:batch:{batch_id}": json.dumps(
+                    {
+                        "batch_id": batch_id,
+                        "user_id": user_id,
+                        "jobs": [{"job_id": job_id, "company_name": "Acme", "role_title": "Engineer"}],
+                    }
+                )
+            }
+        )
+        with patch("app.api.job_routes.get_redis_client", new=AsyncMock(return_value=redis)):
+            response = await get_batch_status(batch_id, db_session, user_id)
+        assert response.jobs[0].status == "failed"
+
+    async def test_durable_failure_overrides_stale_redis_success(self, db_session, auth_headers, client):
+        resume = await _create_resume(client, auth_headers, "Result Recovery Resume")
+        user_id = resume["user_id"]
+        job_id = await self._seed_finalization(db_session, user_id=user_id, state="failed")
+        redis = _BatchRedis(
+            {
+                f"latexy:job:{job_id}:meta": json.dumps({"user_id": user_id}),
+                f"latexy:job:{job_id}:result": json.dumps({"success": True, "job_id": job_id}),
+            }
+        )
+        with patch("app.api.job_routes.get_redis_client", new=AsyncMock(return_value=redis)):
+            response = await get_job_result(job_id, db_session, user_id)
+        assert response.success is False
+        assert response.result is None
+        assert response.error == "Job failed"
