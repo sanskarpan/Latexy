@@ -67,7 +67,7 @@ def validate_metadata(value: Optional[dict]) -> Optional[dict]:
     if value is None:
         return None
     try:
-        serialized = json.dumps(value, default=str)
+        serialized = json.dumps(value, default=str, allow_nan=False)
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("metadata must be JSON-serializable") from exc
     if len(serialized.encode("utf-8")) > MAX_METADATA_BYTES:
