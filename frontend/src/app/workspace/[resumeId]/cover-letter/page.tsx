@@ -137,6 +137,7 @@ export default function CoverLetterPage() {
   const ownerContextVersion = ownerContextVersionRef.current
   const streamJobId = invalidatedOwnerKeyRef.current === ownerKey ? null : activeJobId
   const { state: stream } = useJobStream(streamJobId)
+  const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   const isCurrentPage = useCallback((
     expectedResumeId: string,
@@ -402,6 +403,7 @@ export default function CoverLetterPage() {
   }
 
   const compileCurrentContent = async () => {
+    if (isProcessing || isSubmitting) return
     const content = editorRef.current?.getValue()
     if (!content || content.length < 50) {
       toast.error('No content to compile')
@@ -415,6 +417,7 @@ export default function CoverLetterPage() {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
+      editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
     } catch {
       if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) toast.error('Compilation failed')
@@ -441,7 +444,7 @@ export default function CoverLetterPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (isSubmitting) return
+    if (isProcessing || isSubmitting) return
     setIsSubmitting(true)
     const requestResumeId = resumeId
     const requestUserId = sessionUserId
@@ -450,13 +453,14 @@ export default function CoverLetterPage() {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
+      editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
     } catch {
       // Silent
     } finally {
       if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) setIsSubmitting(false)
     }
-  }, [activeCoverLetterId, isCurrentPage, isSubmitting, resumeId, sessionUserId])
+  }, [activeCoverLetterId, isCurrentPage, isProcessing, isSubmitting, resumeId, sessionUserId])
 
   const loadCoverLetter = async (cl: CoverLetterResponse) => {
     // Detach the old generation before selecting another letter, including
@@ -548,8 +552,6 @@ export default function CoverLetterPage() {
     // selected even though persistence itself succeeded earlier.
     return isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)
   }
-
-  const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (sessionLoading || isLoading) {
     return (
@@ -866,7 +868,7 @@ export default function CoverLetterPage() {
                   </p>
                   <button
                     onClick={toggleAutoCompile}
-                    title="Auto-compile on change (2s debounce)"
+                    title="Auto-compile on change (5s quiet period; 10s minimum interval)"
                     aria-label="Auto-compile on change"
                     aria-pressed={autoCompile}
                     className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
@@ -906,7 +908,11 @@ export default function CoverLetterPage() {
                     setHasUnsavedEdits(true)
                   }}
                   readOnly={isProcessing}
-                  onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                  onCompile={compileCurrentContent}
+                  onAutoCompile={handleAutoCompile}
+                  autoCompileEnabled={autoCompile}
+                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}:${activeCoverLetterId ?? 'none'}`}
                   hideEmptyAction
                 />
               </div>
