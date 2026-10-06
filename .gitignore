@@ -224,6 +224,8 @@ yarn-error.log*
 
 # Next.js
 .next/
+.next-playwright-*/
+.playwright-e2e-*/
 out/
 
 # Production build
@@ -233,6 +235,7 @@ dist/
 # Environment variables
 .env
 .env.local
+.env.production
 .env.production.local
 .env.development.local
 
@@ -262,6 +265,7 @@ frontend/public/sw.js
 frontend/public/workbox-*.js
 frontend/public/swe-worker-*.js
 frontend/public/fallback-*.js
+frontend/public/monaco/
 
 # This is a pnpm workspace — npm/yarn lockfiles must never be committed
 # (they mislead Dependabot into treating it as an npm project). Single source
