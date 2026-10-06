@@ -13,6 +13,7 @@ from ..database.connection import get_db
 from ..database.models import JobApplication, Optimization, Resume
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 
@@ -133,6 +134,7 @@ async def create_application(
 
     ats_score = None
     if body.resume_id:
+        ensure_uuid(body.resume_id, "Resume not found or not owned by user")
         res_result = await db.execute(
             select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
         )
@@ -249,6 +251,7 @@ async def get_application(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
+    ensure_uuid(app_id, "Application not found")
     result = await db.execute(
         select(JobApplication).where(
             JobApplication.id == app_id, JobApplication.user_id == user_id
@@ -267,6 +270,7 @@ async def update_application(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
+    ensure_uuid(app_id, "Application not found")
     result = await db.execute(
         select(JobApplication).where(
             JobApplication.id == app_id, JobApplication.user_id == user_id
@@ -283,6 +287,7 @@ async def update_application(
         )
 
     if body.resume_id is not None and body.resume_id:
+        ensure_uuid(body.resume_id, "Resume not found or not owned by user")
         res_result = await db.execute(
             select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
         )
@@ -315,6 +320,7 @@ async def delete_application(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
+    ensure_uuid(app_id, "Application not found")
     result = await db.execute(
         select(JobApplication).where(
             JobApplication.id == app_id, JobApplication.user_id == user_id
@@ -334,6 +340,7 @@ async def update_application_status(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
+    ensure_uuid(app_id, "Application not found")
     if body.status not in VALID_STATUSES:
         raise HTTPException(
             status_code=422,
