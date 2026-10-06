@@ -28,12 +28,21 @@ async function mockSettingsDependencies(page: Page, session: typeof SESSION | nu
   await page.route('**/zotero/status', disconnected)
   await page.route('**/mendeley/status', disconnected)
   await page.route('**/dropbox/status', disconnected)
+  await page.route('**/google-drive/status', disconnected)
+  await page.route('**/api/referral', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ available: false, message: 'Referral program unavailable in test' }),
+    })
+  )
 }
 
 test('GitHub OAuth starts and completes through authenticated one-time requests', async ({ page }) => {
   await mockSettingsDependencies(page, SESSION)
   let connected = false
   let completionCalls = 0
+  let appOrigin = ''
 
   await page.route('**/github/status', (route) =>
     route.fulfill({
@@ -54,10 +63,19 @@ test('GitHub OAuth starts and completes through authenticated one-time requests'
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        authorization_url: `${new URL(page.url()).origin}/settings?github=complete&ticket=one-time-ticket`,
+        authorization_url: 'https://github.com/login/oauth/authorize?client_id=test-client',
       }),
     })
   })
+  await page.route('https://github.com/login/oauth/authorize**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: `<script>window.location.replace(${JSON.stringify(
+        `${appOrigin}/settings?github=complete&ticket=one-time-ticket`,
+      )})</script>`,
+    })
+  )
   await page.route('**/github/complete', async (route) => {
     completionCalls += 1
     expect(route.request().method()).toBe('POST')
@@ -74,6 +92,7 @@ test('GitHub OAuth starts and completes through authenticated one-time requests'
   })
 
   await page.goto('/settings', { waitUntil: 'domcontentloaded' })
+  appOrigin = new URL(page.url()).origin
   const connect = page.getByRole('button', { name: 'Connect GitHub' })
   await expect(connect).toBeVisible()
   await connect.click()
