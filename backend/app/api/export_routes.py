@@ -7,7 +7,6 @@ POST /export/content/{fmt}      — export from raw LaTeX (no auth, for /try pag
 """
 
 import json
-import logging
 import shutil
 import subprocess
 import tempfile
@@ -20,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_required
@@ -30,7 +30,7 @@ from ..utils.bounded_io import BoundedReadError, read_file_bounded
 from ..utils.file_utils import get_job_files
 from ..utils.uuid_guard import ensure_uuid
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/export", tags=["export"])
 
