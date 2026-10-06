@@ -24,6 +24,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import '@/lib/monaco-loader'
 import {
   ReactFlow,
   addEdge,
