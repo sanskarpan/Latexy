@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles, Loader2 } from 'lucide-react'
+import { ExternalLink, Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles, Loader2 } from 'lucide-react'
 import { Linkedin } from '@/components/icons/brand-icons'
 import { toast } from 'sonner'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 
 import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
@@ -14,6 +14,15 @@ import MultiFormatUpload from '@/components/MultiFormatUpload'
 import ImportFromBuilderWizard from '@/components/ImportFromBuilderWizard'
 import TemplateCard from '@/components/TemplateCard'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
+import {
+  formatLinkedInArchiveRequestDate,
+  LINKEDIN_DATA_EXPORT_URL,
+  readLinkedInArchiveRequest,
+  rememberLinkedInArchiveRequest,
+} from '@/lib/linkedin-import-progress'
+import { TEMPLATE_CATEGORY_ORDER } from '@/lib/template-categories'
 
 // ------------------------------------------------------------------ //
 //  Blank resume content (always available as a starter)              //
@@ -56,17 +65,6 @@ Python, TypeScript, SQL, Docker, AWS, Git
 \\end{document}`
 
 // ------------------------------------------------------------------ //
-//  Category tab order                                                 //
-// ------------------------------------------------------------------ //
-
-const CATEGORY_ORDER = [
-  'software_engineering', 'finance', 'academic', 'creative',
-  'minimal', 'ats_safe', 'two_column', 'executive',
-  'marketing', 'medical', 'legal', 'graduate',
-  'presentation', // Feature 86 — Beamer presentation templates
-]
-
-// ------------------------------------------------------------------ //
 //  Page component                                                     //
 // ------------------------------------------------------------------ //
 
@@ -74,12 +72,13 @@ type Mode = 'template' | 'import' | 'linkedin' | 'builder'
 
 export default function NewResumePage() {
   const router = useRouter()
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
 
   // ---- form state ----
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<Mode>('template')
   const [importedContent, setImportedContent] = useState('')
+  const [linkedinArchiveRequestedAt, setLinkedinArchiveRequestedAt] = useState<string | null>(null)
 
   // ---- template gallery state ----
   const [templates, setTemplates] = useState<TemplateResponse[]>([])
@@ -97,9 +96,17 @@ export default function NewResumePage() {
   // per-card spinner so a slow network doesn't look like a frozen page.
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null)
 
+  useEffect(() => {
+    setLinkedinArchiveRequestedAt(readLinkedInArchiveRequest())
+  }, [])
+
   // ---- fetch templates on mount ----
   useEffect(() => {
-    if (sessionLoading || !session) return
+    if (sessionLoading) return
+    if (!session) {
+      setLoadingTemplates(false)
+      return
+    }
     let cancelled = false
     setLoadingTemplates(true)
     Promise.all([apiClient.getTemplates(), apiClient.getTemplateCategories()])
@@ -137,8 +144,8 @@ export default function NewResumePage() {
   // ---- sorted category tabs ----
   const sortedCategories = useMemo(() =>
     [...categories].sort((a, b) => {
-      const ia = CATEGORY_ORDER.indexOf(a.category)
-      const ib = CATEGORY_ORDER.indexOf(b.category)
+      const ia = TEMPLATE_CATEGORY_ORDER.indexOf(a.category)
+      const ib = TEMPLATE_CATEGORY_ORDER.indexOf(b.category)
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
     }),
   [categories])
@@ -224,6 +231,18 @@ export default function NewResumePage() {
   // ---------------------------------------------------------------- //
   //  Render                                                           //
   // ---------------------------------------------------------------- //
+
+  if (sessionLoading || loadingTemplates) {
+    return (
+      <div className="flex h-[70vh] items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (sessionError && !session) return <SessionLoadError area="New resume" />
+
+  if (!session) return null
 
   return (
     <>
@@ -336,7 +355,7 @@ export default function NewResumePage() {
             <PackageOpen className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
               <h2 className="text-sm font-semibold text-fg">Import Builder Export</h2>
-              <p className="mt-0.5 text-xs text-fg-2">Bring in content from Kickresume, Resume.io, Novoresume, and similar tools.</p>
+              <p className="mt-0.5 text-xs text-fg-2">Bring in Reactive Resume or JSON Resume data, plus PDF and Word exports from Rezi, Teal, and similar tools.</p>
             </div>
           </button>
         </div>
@@ -380,6 +399,32 @@ export default function NewResumePage() {
                   Upload the downloaded PDF below
                 </li>
               </ol>
+            </div>
+
+            <div className="rounded-[var(--radius-md)] border border-line bg-bg p-4">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-2">
+                Want the richer data archive?
+              </h3>
+              <p className="mt-2 text-xs leading-relaxed text-fg-3">
+                Request it from LinkedIn, then keep moving with the profile PDF above. When the ZIP
+                is ready, open a résumé and use Tools → Import top projects → LinkedIn. This browser
+                remembers the request step.
+              </p>
+              <a
+                href={LINKEDIN_DATA_EXPORT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setLinkedinArchiveRequestedAt(rememberLinkedInArchiveRequest())}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2"
+              >
+                Request archive on LinkedIn
+                <ExternalLink size={12} aria-hidden="true" />
+              </a>
+              {linkedinArchiveRequestedAt && (
+                <p className="mt-2 text-[10px] text-ok" role="status">
+                  Request step saved on {formatLinkedInArchiveRequestDate(linkedinArchiveRequestedAt)}.
+                </p>
+              )}
             </div>
 
             {/* Upload area — PDF only, LinkedIn-optimised prompt */}
