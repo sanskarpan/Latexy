@@ -347,3 +347,59 @@ certification.
   the old result. Its caller/modal lifetime fix is not in this backend snapshot.
   The local frontend unit suite passes 990 tests; fresh browser and owner-change
   acceptance remains separate. No whole-product completion claim is made.
+
+## Exact-main backend publication and preview-backfill failure
+
+- PR [#1764](https://github.com/sanskarpan/Latexy/pull/1764) merged normally
+  at 11:00:32 UTC. Main is `0578e606943eb201bd3c15478e14b8aca6857cc2`,
+  source-identical to tested head `39aba191deb0b1b327f63347e002b15d4eeebb09`.
+  Both PR CI runs and all 21 aggregated required contexts passed. Linear
+  history, strict checks, administrator enforcement and conversation resolution
+  remain enabled. The separate frontend QA source and unrelated local files
+  were excluded.
+- Canonical main CI
+  [37453542668](https://github.com/sanskarpan/Latexy/actions/runs/37453542668)
+  and Vercel certification
+  [37454243605](https://github.com/sanskarpan/Latexy/actions/runs/37454243605)
+  passed. Direct public deployment identity reports this exact SHA.
+- Automatic Modal rollout
+  [37454243521](https://github.com/sanskarpan/Latexy/actions/runs/37454243521)
+  successfully migrated, published the rolling backend, and synchronized source
+  templates. Independent Modal history shows **v50**, tagged with this exact
+  SHA. The schedule-limit publication defect #1760 is resolved without dropping
+  maintenance tasks, changing cadence, buying capacity or bypassing CI.
+- Direct live `/health`, `/readyz` and `/jobs/health` checks pass. One synthetic
+  anonymous job, `e8fe0fe0-1f50-42d3-a6fe-cb01f9e02964`, exercised submission,
+  actual worker completion, result retrieval and download. The matching result
+  and downloaded artifact contain one page and **15,604 bytes**, with
+  `application/pdf` content type and `%PDF` magic. One fixed synthetic device
+  fingerprint was used; no identity rotation, real user document, LLM or billing
+  flow was exercised. This does not certify authenticated ownership recovery,
+  quota metering, every compiler, or the entire product.
+- The workflow nevertheless **failed** at preview backfill: **2 compiled,
+  56 skipped, 3 failed**. Hindi Professional, Europecv and Polish CV RODO all
+  report `fontspec`'s `cannot-use-pdftex` error. The batch generator hardcodes
+  `pdflatex` regardless of source/compiler policy. This new verified defect is
+  [#1765](https://github.com/sanskarpan/Latexy/issues/1765); preserve failure
+  propagation while repairing engine selection. The workflow's subsequent
+  health/catalog/asset steps were skipped, so their overall automated acceptance
+  is not green despite the independent health and guest-PDF checks above.
+- Failure log: `/tmp/latexy-main-modal-0578e606-failure-2026-10-06.log`.
+  Synthetic artifact: `/tmp/latexy-production-acceptance-0578e606.scnFLh/resume.pdf`.
+  Frontend preview-lifetime runtime controls and the recurring shared hydration
+  defect remain separate work; no whole-goal completion claim is made.
+
+The #1765 repair follows the same configured compiler policy as template-created
+documents, including Europecv's closed English-locale preparation. It retains
+two passes, the 60-second per-pass deadline, bounded diagnostics and failure
+propagation. Root independently ran the four batch-generator regressions with
+strict resource/runtime/unraisable warning flags: all passed. These fully mocked
+tests use the existing offline infrastructure mode and do not flush Redis,
+connect to a real database, invoke TeX or upload provider assets. They execute
+the actual batch loop with repository Hindi, Polish and Europecv sources plus a
+Latin control, verify each PDF/PNG upload and engine cleanup, and preserve failed
+compilation as an error. Scoped Ruff and diff checks pass. Log:
+`/tmp/latexy-template-backfill-compiler-root-2026-10-06.log`.
+Actual Unicode asset compilation and a green protected-main rollout remain
+required; the separate existing PNG-warning behavior is not certified by this
+compiler repair.
