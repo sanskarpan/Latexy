@@ -2,13 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Palette } from 'lucide-react'
+import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Palette, Image, Mail, Cloud } from 'lucide-react'
 import { Figma } from '@/components/icons/brand-icons'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
+import { downloadBlob } from '@/lib/download'
 
 const EXPORT_FORMATS = [
   { key: 'pdf',   label: 'PDF',        icon: FileText, desc: 'Compiled PDF document' },
+  { key: 'email', label: 'Email me',  icon: Mail,     desc: 'Send the compiled PDF to your verified account email' },
+  { key: 'svg',   label: 'SVG',        icon: Image,    desc: 'First page as a genuine SVG image' },
+  { key: 'jpeg',  label: 'JPEG',       icon: Image,    desc: 'First page as a JPEG image' },
   { key: 'tex',   label: 'LaTeX',      icon: Code,     desc: 'LaTeX source code (.tex)' },
   { key: 'docx',  label: 'Word',       icon: FileText, desc: 'Microsoft Word (.docx)' },
   { key: 'md',    label: 'Markdown',   icon: File,     desc: 'Markdown (.md)' },
@@ -17,8 +21,12 @@ const EXPORT_FORMATS = [
   { key: 'json',  label: 'JSON',       icon: Database, desc: 'JSON Resume format (.json)' },
   { key: 'yaml',  label: 'YAML',       icon: Database, desc: 'YAML resume (.yaml)' },
   { key: 'xml',   label: 'XML',        icon: Database, desc: 'XML resume (.xml)' },
+  { key: 'epub',  label: 'ePub',       icon: File,     desc: 'ePub document (.epub)' },
+  { key: 'odf',   label: 'ODF',        icon: File,     desc: 'OpenDocument text (.odt)' },
+  { key: 'docbook', label: 'DocBook',  icon: Code,     desc: 'DocBook 5 XML (.docbook)' },
   { key: 'canva', label: 'Canva',      icon: Palette,  desc: 'Opens resume in Canva with pre-filled content' },
   { key: 'figma', label: 'Figma JSON', icon: Figma,    desc: 'Download JSON for the Latexy Figma plugin' },
+  { key: 'google_drive', label: 'Google Drive', icon: Cloud, desc: 'Export the latest compiled PDF to your Google Drive' },
 ] as const
 
 type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
@@ -38,22 +46,6 @@ interface ExportDropdownProps {
   variant?: 'toolbar' | 'card' | 'inline'
 }
 
-/**
- * Download a blob as a file. Revokes the object URL after a short delay
- * to ensure the browser has time to start the download before cleanup.
- */
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // Delay revocation to ensure the download has started
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
 export default function ExportDropdown({
   resumeId,
   latexContent,
@@ -63,6 +55,8 @@ export default function ExportDropdown({
 }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
+  const [exportError, setExportError] = useState<{ format: ExportFormatKey; message: string } | null>(null)
+  const [driveNeedsConnection, setDriveNeedsConnection] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [dropdownPos, setDropdownPos] = useState<{
     top?: number
@@ -118,15 +112,28 @@ export default function ExportDropdown({
       return
     }
 
-    // Canva + Figma only work for saved resumes (need resume_id)
-    if ((format === 'canva' || format === 'figma') && !resumeId) {
-      toast.error('Save your resume first to export to Canva or Figma')
+    // Design/image exports only work for saved resumes (need resume_id and,
+    // for images, the latest compiled PDF).
+    if ((format === 'canva' || format === 'figma' || format === 'svg' || format === 'jpeg' || format === 'google_drive') && !resumeId) {
+      toast.error(format === 'svg' || format === 'jpeg'
+        ? 'Save and compile your resume first to export an image'
+        : format === 'google_drive'
+          ? 'Save your resume first to export to Google Drive'
+          : 'Save your resume first to export to Canva or Figma')
+      setIsOpen(false)
+      return
+    }
+
+    if (format === 'email' && !resumeId) {
+      toast.error('Save your resume first to email the compiled PDF')
       setIsOpen(false)
       return
     }
 
     // Validate content before hitting the API
-    const hasContent = resumeId || (latexContent && latexContent.trim().length > 0)
+    const hasContent = latexContent !== undefined
+      ? latexContent.trim().length > 0
+      : Boolean(resumeId)
     if (!hasContent) {
       toast.error('No resume content to export — write something first')
       setIsOpen(false)
@@ -134,6 +141,8 @@ export default function ExportDropdown({
     }
 
     setLoading(format)
+    setExportError(null)
+    setDriveNeedsConnection(false)
     setIsOpen(false)
     try {
       if (format === 'canva' && resumeId) {
@@ -156,11 +165,47 @@ export default function ExportDropdown({
         return
       }
 
+      if (format === 'email' && resumeId) {
+        const delivery = await apiClient.emailResumePdf(resumeId)
+        const retryNote = delivery.retry_behavior === 'smtp_best_effort'
+          ? ' Retrying through SMTP may create a duplicate.'
+          : ''
+        toast.success(`PDF email accepted for your verified account email.${retryNote}`, {
+          duration: 7000,
+        })
+        return
+      }
+
+      if (format === 'google_drive' && resumeId) {
+        const status = await apiClient.getGoogleDriveStatus()
+        if (!status.connected) {
+          setDriveNeedsConnection(true)
+          setExportError({ format, message: 'Connect Google Drive in Settings before exporting.' })
+          return
+        }
+        const result = await apiClient.exportResumeToGoogleDrive(resumeId)
+        toast.success(result.action === 'created'
+          ? 'Created the latest compiled PDF in Google Drive.'
+          : 'Updated the existing Google Drive PDF for this resume. Retrying updates the same file.', {
+            duration: 7000,
+          })
+        return
+      }
+
       let blob: Blob
-      if (resumeId) {
+      // Prefer the live editor buffer when supplied. Exporting by resume ID
+      // reads the last-saved database copy and silently drops unsaved edits.
+      if ((format === 'svg' || format === 'jpeg') && resumeId) {
+        // Raster/vector formats are rendered from the latest owned compiled
+        // PDF. Never send the live LaTeX buffer to /export/content for these
+        // formats, even when an editor supplies both props.
+        blob = await apiClient.exportResume(resumeId, format)
+      } else if (latexContent !== undefined) {
+        blob = await apiClient.exportContent(latexContent, format)
+      } else if (resumeId) {
         blob = await apiClient.exportResume(resumeId, format)
       } else {
-        blob = await apiClient.exportContent(latexContent!, format)
+        throw new Error('No resume content to export')
       }
 
       const formatInfo = EXPORT_FORMATS.find(f => f.key === format)
@@ -171,8 +216,10 @@ export default function ExportDropdown({
       if (message.includes('400')) message = 'Resume content is empty or invalid'
       else if (message.includes('403')) message = 'Access denied to this resume'
       else if (message.includes('404')) message = 'Resume not found'
+      else if (format === 'email' && message.includes('503')) message = 'Email provider did not accept the PDF — please retry'
       else if (message.includes('500') || message.includes('502') || message.includes('503'))
         message = 'Server error — please try again'
+      setExportError({ format, message })
       toast.error(message)
     } finally {
       setLoading(null)
@@ -214,6 +261,18 @@ export default function ExportDropdown({
         />
       </button>
 
+      {exportError && (
+        <div role="alert" className="mt-2 flex max-w-xs items-start gap-2 rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-2.5 py-2 text-xs text-err">
+          <span className="min-w-0 flex-1">
+            {exportError.message}
+            {driveNeedsConnection && exportError.format === 'google_drive' && (
+              <> <a href="/settings" className="font-semibold underline">Open Settings</a></>
+            )}
+          </span>
+          <button type="button" onClick={() => void handleExport(exportError.format)} disabled={isExporting} className="shrink-0 font-semibold underline disabled:opacity-50">Retry</button>
+        </div>
+      )}
+
       {/* Render dropdown via portal to escape overflow:hidden on parent cards/panels */}
       {mounted && isOpen && dropdownPos && createPortal(
         <>
@@ -234,8 +293,8 @@ export default function ExportDropdown({
             }}
           >
             <div className="px-3 pt-2.5 pb-1.5">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-fg-3 font-medium">
-                Download As
+                <p className="text-[10px] uppercase tracking-[0.16em] text-fg-3 font-medium">
+                Export or send
               </p>
             </div>
             <div className="pb-1.5">
@@ -256,7 +315,7 @@ export default function ExportDropdown({
                     )}
                     <button
                       onClick={() => handleExport(fmt.key)}
-                      disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma') && !resumeId)}
+                      disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma' || fmt.key === 'svg' || fmt.key === 'jpeg' || fmt.key === 'google_drive') && !resumeId)}
                       title={fmt.desc}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
