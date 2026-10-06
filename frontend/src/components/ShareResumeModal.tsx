@@ -1,18 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Check, Copy, EyeOff, Link, Loader2, BarChart2, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Check, Copy, EyeOff, Link, Loader2, BarChart2, RefreshCw, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ShareLinkResponse, type ResumeAnalytics } from '@/lib/api-client'
 
 interface ShareResumeModalProps {
+  ownerId: string | null
   resumeId: string
   resumeTitle: string
   /** Existing share token from the resume response (null if not yet shared) */
   initialShareToken?: string | null
   initialShareUrl?: string | null
+  initialAnonymous?: boolean
+  initialReviewComments?: boolean
   onClose: () => void
-  onShareTokenChange?: (token: string | null, url: string | null) => void
+  onShareTokenChange?: (token: string | null, url: string | null, anonymous: boolean, reviewComments?: boolean) => void
 }
 
 type Tab = 'share' | 'analytics'
@@ -69,16 +72,28 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
   const [analytics, setAnalytics] = useState<ResumeAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const requestIdRef = useRef(0)
+
+  const loadAnalytics = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await apiClient.getResumeAnalytics(resumeId)
+      if (requestId === requestIdRef.current) setAnalytics(data)
+    } catch (requestError) {
+      if (requestId === requestIdRef.current) {
+        setError(requestError instanceof Error ? requestError.message : 'Failed to load analytics')
+      }
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false)
+    }
+  }, [resumeId])
 
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    apiClient
-      .getResumeAnalytics(resumeId)
-      .then((data) => { if (!cancelled) { setAnalytics(data); setLoading(false) } })
-      .catch((err) => { if (!cancelled) { setError(err.message || 'Failed to load analytics'); setLoading(false) } })
-    return () => { cancelled = true }
-  }, [resumeId])
+    void loadAnalytics()
+    return () => { requestIdRef.current += 1 }
+  }, [loadAnalytics])
 
   if (loading) {
     return (
@@ -88,7 +103,12 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
     )
   }
   if (error) {
-    return <p className="py-4 text-center text-[11px] text-err">{error}</p>
+    return (
+      <div role="alert" className="flex flex-col items-center gap-2 py-4 text-center">
+        <p className="text-[11px] text-err">{error}</p>
+        <button type="button" onClick={() => void loadAnalytics()} className="rounded border border-line px-2 py-1 text-[10px] text-fg-2 hover:bg-surface-2">Retry</button>
+      </div>
+    )
   }
   if (!analytics) return null
 
@@ -165,23 +185,55 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
 // ── Main modal ───────────────────────────────────────────────────────────────
 
 export default function ShareResumeModal({
+  ownerId,
   resumeId,
   resumeTitle,
   initialShareToken,
   initialShareUrl,
+  initialAnonymous = false,
+  initialReviewComments,
   onClose,
   onShareTokenChange,
 }: ShareResumeModalProps) {
+  // Callers key the modal by owner/document. The immutable identity also
+  // invalidates work during a transition render; mounted state rejects late
+  // responses from a closed or replaced modal before callbacks/toasts run.
+  const mountedRef = useRef(false)
+  const identityRef = useRef({ ownerId, resumeId })
+  if (identityRef.current.ownerId !== ownerId || identityRef.current.resumeId !== resumeId) {
+    identityRef.current = { ownerId, resumeId }
+  }
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  const captureOwnership = () => {
+    const identity = identityRef.current
+    return () => mountedRef.current && identityRef.current === identity
+  }
   const [shareData, setShareData] = useState<ShareLinkResponse | null>(
     initialShareToken && initialShareUrl
-      ? { share_token: initialShareToken, share_url: initialShareUrl, created_at: '', anonymous: false }
+      ? {
+          share_token: initialShareToken,
+          share_url: initialShareUrl,
+          created_at: '',
+          anonymous: initialAnonymous,
+          review_comments: initialReviewComments ?? false,
+        }
       : null
   )
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRevoking, setIsRevoking] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
-  const [anonymous, setAnonymous] = useState(false)
+  const [anonymous, setAnonymous] = useState(initialAnonymous)
+  // null means an existing link was loaded without the capability in the
+  // resume payload. Keep it unknown until the owner explicitly changes it so
+  // updating anonymous privacy cannot silently disable review comments.
+  const [reviewComments, setReviewComments] = useState<boolean | null>(
+    initialShareToken ? (initialReviewComments ?? null) : false,
+  )
+  const reviewCommentsTouched = useRef(false)
   const [tab, setTab] = useState<Tab>('share')
 
   // Close on Escape
@@ -193,44 +245,66 @@ export default function ShareResumeModal({
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (regenerateAnonymous = false, reviewCommentsOverride?: boolean) => {
+    const isActive = captureOwnership()
     setIsGenerating(true)
     try {
-      const data = await apiClient.createShareLink(resumeId, anonymous)
-      setShareData(data)
-      onShareTokenChange?.(data.share_token, data.share_url)
+      const requestedReviewComments = reviewCommentsOverride
+        ?? (reviewCommentsTouched.current || initialReviewComments !== undefined
+          ? reviewComments ?? undefined
+          : undefined)
+      const data = await apiClient.createShareLink(
+        resumeId,
+        anonymous,
+        regenerateAnonymous,
+        requestedReviewComments,
+      )
+      if (!isActive()) return
+      const enabledReviewComments = data.review_comments ?? false
+      setShareData({ ...data, review_comments: enabledReviewComments })
+      setReviewComments(enabledReviewComments)
+      onShareTokenChange?.(data.share_token, data.share_url, data.anonymous, enabledReviewComments)
       toast.success(data.anonymous ? 'Anonymous share link created' : 'Share link created')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create share link')
+      if (isActive()) toast.error(err instanceof Error ? err.message : 'Failed to create share link')
     } finally {
-      setIsGenerating(false)
+      if (isActive()) setIsGenerating(false)
     }
+  }
+
+  const toggleReviewComments = () => {
+    reviewCommentsTouched.current = true
+    setReviewComments((value) => value !== true)
   }
 
   const handleCopy = async () => {
     if (!shareData?.share_url) return
+    const isActive = captureOwnership()
     try {
       await navigator.clipboard.writeText(shareData.share_url)
+      if (!isActive()) return
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => { if (isActive()) setCopied(false) }, 2000)
     } catch {
-      toast.error('Failed to copy link')
+      if (isActive()) toast.error('Failed to copy link')
     }
   }
 
   const handleRevoke = async () => {
+    const isActive = captureOwnership()
     setIsRevoking(true)
     try {
       await apiClient.revokeShareLink(resumeId)
+      if (!isActive()) return
       setShareData(null)
       setShowRevokeConfirm(false)
       setTab('share')
-      onShareTokenChange?.(null, null)
+      onShareTokenChange?.(null, null, false, false)
       toast.success('Share link revoked')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke link')
+      if (isActive()) toast.error(err instanceof Error ? err.message : 'Failed to revoke link')
     } finally {
-      setIsRevoking(false)
+      if (isActive()) setIsRevoking(false)
     }
   }
 
@@ -306,6 +380,26 @@ export default function ShareResumeModal({
                 </p>
               </div>
 
+              <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Link size={13} className="text-fg-3" />
+                  <div>
+                    <p className="text-[12px] font-medium text-fg-2">Allow review comments</p>
+                    <p className="text-[10px] text-fg-3">Let viewers leave pseudonymous sticky feedback</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Allow review comments"
+                  aria-checked={reviewComments === true}
+                  onClick={toggleReviewComments}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${reviewComments ? 'bg-accent' : 'bg-surface-2'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${reviewComments ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
               {/* Anonymous mode toggle */}
               <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2.5">
                 <div className="flex items-center gap-2">
@@ -318,6 +412,7 @@ export default function ShareResumeModal({
                 <button
                   type="button"
                   role="switch"
+                  aria-label="Share anonymously"
                   aria-checked={anonymous}
                   onClick={() => setAnonymous(a => !a)}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
@@ -333,7 +428,7 @@ export default function ShareResumeModal({
               </div>
 
               <button
-                onClick={handleGenerate}
+                onClick={() => void handleGenerate(false)}
                 disabled={isGenerating}
                 className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2.5 text-sm font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50"
               >
@@ -353,6 +448,86 @@ export default function ShareResumeModal({
                   <p className="text-[11px] text-warn">Anonymous mode — PII redacted in shared view</p>
                 </div>
               )}
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-medium text-fg-2">Anonymous Mode</p>
+                    <p className="text-[10px] text-fg-3">Hides detected identity and contact details</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Share anonymously"
+                    aria-checked={anonymous}
+                    onClick={() => setAnonymous(value => !value)}
+                    disabled={isGenerating}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
+                      anonymous ? 'bg-warn' : 'bg-surface'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      anonymous ? 'translate-x-4' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+                {shareData.anonymous && !anonymous && (
+                  <p className="mt-2 text-[10px] text-err">
+                    Turning this off exposes the original PDF at the existing link.
+                  </p>
+                )}
+                {anonymous !== shareData.anonymous && (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate(false)}
+                    disabled={isGenerating}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2 text-xs font-semibold text-accent-strong disabled:opacity-50"
+                  >
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
+                    Update link privacy
+                  </button>
+                )}
+                {shareData.anonymous && anonymous === shareData.anonymous && (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate(true)}
+                    disabled={isGenerating}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line-2 py-2 text-xs font-semibold text-fg-2 disabled:opacity-50"
+                  >
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    Regenerate redacted PDF
+                  </button>
+                )}
+              </div>
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-medium text-fg-2">Allow review comments</p>
+                    <p className="text-[10px] text-fg-3">Viewers can leave pseudonymous feedback on this link</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Allow review comments"
+                    aria-checked={reviewComments === true}
+                    onClick={toggleReviewComments}
+                    disabled={isGenerating}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${reviewComments ? 'bg-accent' : 'bg-surface'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${reviewComments ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {reviewComments !== null && reviewComments !== shareData.review_comments && (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate(false, reviewComments)}
+                    disabled={isGenerating}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2 text-xs font-semibold text-accent-strong disabled:opacity-50"
+                  >
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    Update review access
+                  </button>
+                )}
+              </div>
               {/* URL display */}
               <div>
                 <p className="mb-2 text-xs font-medium text-fg-2">Shareable link</p>
