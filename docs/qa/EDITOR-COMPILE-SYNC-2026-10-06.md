@@ -45,6 +45,11 @@ is merged and deployed, independently of these editor changes.
   values through `model.setValue`, resetting the caret and corrupting native
   rapid typing. The guard distinguishes pending local echoes from external
   source replacements, prunes superseded echoes, and rejects old effect closures.
+- A completed replacement job can expose its SyncTeX before its PDF finishes
+  downloading. Keep the visible PDF and rendered job identity paired until the
+  replacement blob is adopted. `/try` also invalidates stale downloads on reset
+  or owner changes and separates PDF download lifetime from source-dependent ATS
+  refreshes. Ordinary typing must not restart a completed PDF download.
 
 ## Primary research
 
@@ -109,18 +114,41 @@ is merged and deployed, independently of these editor changes.
   scenarios pass with zero retries and explicit empty uncaught-error/unexpected-
   request assertions. The bundle predates the final accessible maximum/viewport
   clamp change, so this alone is not exact final-source acceptance.
-- `/tmp/latexy-editor-compile-sync-final-v7-20261007.log`: the final isolated
+- `/tmp/latexy-editor-compile-sync-final-v7-20261007.log`: the earlier isolated
   production bundle (port 5505, `.playwright-e2e-sfnmlq`) passes all **4/4**
   native-PDF scenarios with zero retries. Trace output is retained at the same
   path without `.log`. Build log:
   `/tmp/latexy-editor-production-5505-build-20261007.log`.
-- `/tmp/latexy-editor-compile-sync-fallback-v1-20261007.log`: the same final
+- `/tmp/latexy-editor-compile-sync-fallback-v1-20261007.log`: the same earlier
   production bundle passes **4/4** dependency-free Letter-PDF scenarios, zero
   retries and no ignored errors/requests. This final test also explicitly
   enlarges the panel, shrinks the viewport and verifies both the clamped width
   and updated accessible maximum. Its trace directory is retained alongside
   the log. Neither browser fixture contacts live auth, providers or production
   data. The synthetic Workbox registration does not test actual PWA lifecycle.
+- `/tmp/latexy-editor-pdf-pairing-baseline-red-20261007.log`: the first delayed-
+  download probe used a manual compile, which intentionally opens Logs. Its
+  missing-canvas assertion is a harness error, not proof of an artifact bug.
+- `/tmp/latexy-editor-pdf-pairing-baseline-red-v2-20261007.log`: the corrected
+  automatic-compile probe keeps Preview selected and reproduces #1810. PDF 2
+  starts downloading at 11651.649 ms and takes 12329.569 ms; SyncTeX 2 is requested
+  at 11669.093 ms, before the new PDF exists. The old canvas remains visible but
+  its mapped divider action disappears. Original traces and the explicit
+  correction are retained in issue #1810.
+- `/tmp/latexy-editor-pairing-native-final-v1-20261007.log`: the repaired,
+  branding-preserving production bundle on port 5506 (`.playwright-e2e-J1tATQ`)
+  passes **5/5 native-PDF cases**, zero retries and empty error/request lists.
+  The fifth case holds the replacement download and verifies the previous PDF
+  still uses its previous mapping until the new blob is adopted. Root compared
+  publication application source byte-for-byte with this frozen bundle.
+  Build log: `/tmp/latexy-editor-production-5506-build-20261007.log`.
+- `/tmp/latexy-editor-pairing-fallback-final-v1-20261007.log`: the same exact
+  bundle also passes **5/5 dependency-free PDF cases**, zero retries and empty
+  uncaught-error/unexpected-request lists. Both final trace directories are
+  retained alongside their logs. This is the CI fixture, not native TeX output.
+- After the pairing repair, root full frontend units again pass **163 files /
+  1,032 tests** (`/tmp/latexy-editor-pairing-full-unit-20261007.log`);
+  nonincremental typechecking and scoped ESLint also pass.
 - Root full frontend unit run: **163 files / 1,032 tests passed**, including
   **5 focused files / 28 tests**; final full-unit log
   `/tmp/latexy-editor-root-full-unit-v6-20261006.log` and focused log
@@ -146,12 +174,14 @@ coordinate-transform headers fail closed instead of guessing a location.
 
 ## Publication and regression wiring
 
-The publication branch starts from merged main `fc8d947b`, retaining the
-accepted MCP SDK 1.31.0 and sanitized dependency audit changes. Each changed
+PR [#1821](https://github.com/sanskarpan/Latexy/pull/1821) starts from merged main
+`fc8d947b` and was normally rebased through GitHub onto branding main `c9700f92`,
+retaining its brand assets, accepted MCP SDK 1.31.0 and sanitized dependency audit
+changes. Each changed
 file has its own commit; generated TypeScript build metadata and unrelated
 worktrees are excluded.
 
-The four desktop Chromium editor regressions run inside the existing
+The five desktop Chromium editor regressions run inside the existing
 **Cross-Browser Quality** job, which is already frontend/full-stack scoped.
 They use the dependency-free PDF fixture and an isolated production build,
 one worker, zero retries, and retained traces in the existing quality artifact.
@@ -160,6 +190,14 @@ deliberately selects all scopes once; subsequent documentation-only changes
 still skip this component job. Root actionlint and **83 deployment-manifest
 tests** pass, including the new execution/artifact contract. Classifier and
 dependency-audit regressions pass **31 tests**.
+
+The pre-pairing PR head `5dc946f1` CI run `37513425642` passed 13 of 14 jobs,
+including the editor browser regressions; only the separately tracked TUI
+Ctrl+L failure (#1805) failed. That failure is retained, not waived or called
+repaired. The superseded run `37513121390` concluded cancelled despite its jobs
+continuing to execute: job-level `always()` prevents timely cancellation. This
+separate gap is tracked in #1822; its unpublished candidate is not part of this
+editor PR. The updated pairing revision still requires fresh protected checks.
 
 ## Remaining verification
 
