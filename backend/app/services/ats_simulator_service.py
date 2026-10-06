@@ -18,10 +18,10 @@ The ``simulate()`` method:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from ..utils import safe_regex as re
 from .latex_text_extractor import ProseSegment, extract_prose
 
 # ── ATS profiles ──────────────────────────────────────────────────────────────
