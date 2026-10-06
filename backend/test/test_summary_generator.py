@@ -79,6 +79,24 @@ Experienced software engineer.
 """
 
 
+class TestSummaryCacheKey:
+    def test_resume_suffix_is_part_of_cache_identity(self):
+        from app.api.ai_routes import _summary_cache_key
+
+        shared_prefix = "x" * 500
+        assert _summary_cache_key(shared_prefix + "alice", None, None, 3) != (
+            _summary_cache_key(shared_prefix + "bob", None, None, 3)
+        )
+
+    def test_job_description_suffix_is_part_of_cache_identity(self):
+        from app.api.ai_routes import _summary_cache_key
+
+        shared_prefix = "x" * 200
+        assert _summary_cache_key("resume", None, shared_prefix + "backend", 3) != (
+            _summary_cache_key("resume", None, shared_prefix + "frontend", 3)
+        )
+
+
 # ---------------------------------------------------------------------------
 # 24A — Validation
 # ---------------------------------------------------------------------------
