@@ -7,7 +7,7 @@ import re
 _METRIC_RE = re.compile(
     r"(?<![\w\[])"
     r"(?P<prefix>[$£€₹])?"
-    r"(?P<number>\d+(?:[.,]\d+)*)"
+    r"(?P<number>\d++(?:[.,]\d++)*+)"
     r"(?P<suffix>[kKmMbB](?:\+)?|\+|\\?%)?"
     r"(?![\w\]])"
 )
