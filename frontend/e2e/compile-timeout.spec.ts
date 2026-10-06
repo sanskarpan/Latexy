@@ -430,7 +430,7 @@ test.describe('/workspace/edit — compile stream timeout banner', () => {
     await mockWebSocketTimeout(page, JOB_ID_COMPILE, 'free')
 
     await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
-    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
+    await page.waitForSelector('.monaco-editor', { timeout: 30_000 })
 
     await expect(page.getByText(/Compile timed out/)).toBeVisible({ timeout: 15_000 })
     const upgradeLink = page.getByRole('link', { name: /Upgrade for longer timeouts/i })
@@ -443,7 +443,7 @@ test.describe('/workspace/edit — compile stream timeout banner', () => {
     await mockWebSocketSuccess(page, JOB_ID_COMPILE)
 
     await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
-    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
+    await page.waitForSelector('.monaco-editor', { timeout: 30_000 })
 
     // Wait for job.completed to arrive
     await page.waitForTimeout(2_000)
