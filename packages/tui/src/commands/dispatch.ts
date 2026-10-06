@@ -50,11 +50,23 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
     })
   },
   logout: async () => {
+    const environmentTokenConfigured = Boolean(process.env['LATEXY_SESSION_TOKEN'])
+    // Environment overrides win over config.toml. Remove the override from this
+    // process as well as clearing the file, otherwise opening the sign-in overlay
+    // and reading config again immediately authenticates with the token the user
+    // just asked us to discard. A child process cannot unset its parent shell, so
+    // explain that persistent shell configuration separately below.
+    delete process.env['LATEXY_SESSION_TOKEN']
     await clearConfig()
     const session = $session.get()
     $session.set({ ...session, token: null, isAuthenticated: false, email: null, plan: null, userId: null })
     wsClient.destroy()
-    addMessage({ role: 'system', content: 'Logged out successfully.' })
+    addMessage({
+      role: 'system',
+      content: environmentTokenConfigured
+        ? 'Logged out of this session. LATEXY_SESSION_TOKEN is set by your shell; unset it there to stay logged out after restarting Latexy.'
+        : 'Logged out successfully.',
+    })
     openOverlay(await getLoginOverlay())
   },
 }
@@ -88,6 +100,7 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
   billing:    async () => (await import('../tools/account-commands.js')).runBilling(),
   tracker:    async p => (await import('../tools/account-commands.js')).runTracker(p),
   snippets:   async p => (await import('../tools/account-commands.js')).runSnippets(p),
+  macros:     async p => (await import('../tools/account-commands.js')).runMacros(p),
   byok:       async () => (await import('../tools/account-commands.js')).runByok(),
   model:      async () => (await import('../tools/account-commands.js')).runModel(),
   settings:   async p => (await import('../tools/account-commands.js')).runSettings(p),
@@ -199,11 +212,13 @@ export async function dispatch(input: string): Promise<void> {
     return
   }
 
-  // Free-text input: agent mode (not yet implemented in Phase 1)
+  // Free-text agent mode is a later phase. Do not tell users to run /model to
+  // select a provider: that command deliberately only lists provider capability
+  // today, so the old instruction sent them into a loop with no possible exit.
   addMessage({ role: 'user', content: input })
   addMessage({
     role: 'system',
-    content: 'No model configured — run /byok to add an API key or /model to select a provider.',
+    content: 'Free-text agent mode is not available yet. Use /help to see the commands you can run today; /model lists supported providers and models.',
   })
 }
 
