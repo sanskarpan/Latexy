@@ -91,6 +91,48 @@ describe('ApiClient auth-ready gate', () => {
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-123')
   })
 
+  test('allows an account preference request with its unchanged auth context', async () => {
+    const fetchMock = mockFetch()
+    const client = await loadBrowserApiClient()
+    client.setAuthToken('account-token-a')
+    const response = await client.getMe({
+      authToken: 'account-token-a',
+      isCurrent: () => true,
+    })
+
+    expect(response).toEqual({})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization)
+      .toBe('Bearer account-token-a')
+  })
+
+  test('rejects an account preference request when its token changes during the auth gate', async () => {
+    const fetchMock = mockFetch()
+    const client = await loadBrowserApiClient()
+    const pending = client.getMe({
+      authToken: 'account-token-a',
+      isCurrent: () => true,
+    })
+    await Promise.resolve()
+    client.setAuthToken('account-token-b')
+
+    await expect(pending).rejects.toThrow('Account request context changed before dispatch')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('rejects an account preference request when its owner epoch is stale', async () => {
+    const fetchMock = mockFetch()
+    const client = await loadBrowserApiClient()
+    client.setAuthToken('account-token-a')
+    const pending = client.updateMePreferences(
+      { spell_dictionary: ['private-word'] },
+      { authToken: 'account-token-a', isCurrent: () => false },
+    )
+
+    await expect(pending).rejects.toThrow('Account request context changed before dispatch')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('falls through unauthenticated if the session never resolves', async () => {
     const fetchMock = mockFetch()
     const client = await loadBrowserApiClient()
