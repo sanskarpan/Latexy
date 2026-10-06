@@ -20,6 +20,22 @@ describe('streamReducer — job.retrying', () => {
     expect(s.percent).toBe(40)
   })
 
+  test('hydrates progress from a REST fallback snapshot', () => {
+    const s = streamReducer(initialState, {
+      type: '__snapshot__',
+      status: 'processing',
+      stage: 'latex_compilation',
+      percent: 37,
+      message: 'Compiling',
+    })
+    expect(s).toMatchObject({
+      status: 'processing',
+      stage: 'latex_compilation',
+      percent: 37,
+      message: 'Compiling',
+    })
+  })
+
   test('delegates every other event to jobStreamReducer', () => {
     const s = streamReducer(initialState, {
       event_id: 'evt-1',
