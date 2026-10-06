@@ -270,7 +270,7 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
     classify_step = next(step for step in classifier_steps if step.get("id") == "classify")
     assert "node scripts/ci/classify-changes.mjs" in classify_step["run"]
     assert jobs["privacy-guard"]["needs"] == "classify-changes"
-    assert jobs["privacy-guard"]["if"] == "${{ always() }}"
+    assert jobs["privacy-guard"]["if"] == "${{ !cancelled() }}"
     privacy_failure_step = next(
         step
         for step in jobs["privacy-guard"]["steps"]
@@ -322,7 +322,7 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
 
     def expected_scope_condition(scope: str) -> str:
         return (
-            "always()&&(needs.classify-changes.result!='success'||"
+            "!cancelled()&&(needs.classify-changes.result!='success'||"
             f"needs.classify-changes.outputs.{scope}=='true')"
         )
 
@@ -337,7 +337,7 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
     }.items():
         condition = normalize_expression(jobs[job_name]["if"])
         assert condition == (
-            "always()&&(needs.classify-changes.result!='success'||"
+            "!cancelled()&&(needs.classify-changes.result!='success'||"
             f"needs.classify-changes.outputs.{expected}=='true'||"
             "needs.classify-changes.outputs.full_stack=='true')"
         )
@@ -348,13 +348,14 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
             job["needs"] if isinstance(job["needs"], list) else [job["needs"]]
         )
         condition = job["if"]
-        assert "always()" in condition
+        assert "!cancelled()" in condition
+        assert "always()" not in condition
         assert "needs.classify-changes.result != 'success'" in condition
 
     full_stack_needs = set(jobs["full-stack-smoke"]["needs"])
     assert full_stack_needs == {"classify-changes", "backend-test", "frontend-build"}
     assert normalize_expression(jobs["full-stack-smoke"]["if"]) == (
-        "always()&&(needs.classify-changes.result!='success'||"
+        "!cancelled()&&(needs.classify-changes.result!='success'||"
         "needs.classify-changes.outputs.full_stack=='true')&&"
         "(needs.backend-test.result=='success'||"
         "(needs.classify-changes.result=='success'&&"
@@ -401,6 +402,62 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert artifact["if"] == "${{ !cancelled() }}"
     assert "frontend/test-results/editor-compile-sync" in artifact["with"]["path"]
     assert "frontend/test-results/hydration-session-store" in artifact["with"]["path"]
+
+
+@pytest.mark.parametrize(
+    ("cancelled", "classification_result", "selected", "expected"),
+    [
+        (False, "failure", False, True),  # classifier failure fails closed
+        (False, "success", False, False),  # explicit false scope skips
+        (False, "success", True, True),  # selected scope runs
+        (True, "failure", True, False),  # cancellation wins over fail-closed
+    ],
+)
+def test_ci_scope_condition_cancellation_truth_table(
+    cancelled: bool,
+    classification_result: str,
+    selected: bool,
+    expected: bool,
+):
+    """Cancellation stops jobs; non-cancelled classifier failures still run."""
+    runs = (not cancelled) and (classification_result != "success" or selected)
+    assert runs is expected
+
+
+@pytest.mark.parametrize(
+    ("cancelled", "classification_result", "full_stack", "backend", "backend_result", "frontend_result", "expected"),
+    [
+        (False, "success", True, "false", "skipped", "success", True),
+        (False, "success", True, "true", "skipped", "success", False),
+        (False, "success", True, "false", "failure", "success", False),
+        (False, "success", False, "false", "skipped", "success", False),
+        (True, "success", True, "false", "success", "success", False),
+    ],
+)
+def test_full_stack_selective_prerequisite_truth_table(
+    cancelled: bool,
+    classification_result: str,
+    full_stack: bool,
+    backend: str,
+    backend_result: str,
+    frontend_result: str,
+    expected: bool,
+):
+    """A skipped backend is accepted only for an explicit false backend scope."""
+    runs = (
+        not cancelled
+        and (classification_result != "success" or full_stack)
+        and (
+            backend_result == "success"
+            or (
+                classification_result == "success"
+                and backend == "false"
+                and backend_result == "skipped"
+            )
+        )
+        and frontend_result == "success"
+    )
+    assert runs is expected
 
 
 def test_modal_deploy_requires_main_ci_and_skips_stale_automatic_runs():
