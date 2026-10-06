@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload, ChevronRight, ChevronLeft, Check, AlertCircle, Loader2, X } from 'lucide-react'
 import { apiClient, type ParsePreviewResponse } from '@/lib/api-client'
 import { useFormatConversion } from '@/hooks/useFormatConversion'
+import { runLatestRequest } from '@/lib/latest-request'
 
 // ── Platform definitions ───────────────────────────────────────────────────────
 
-type PlatformId = 'kickresume' | 'resumeio' | 'novoresume' | 'generic'
+type PlatformId = 'reactive_resume' | 'json_resume' | 'document_builders' | 'generic'
 
 interface Platform {
   id: PlatformId
@@ -21,51 +22,48 @@ interface Platform {
 
 const PLATFORMS: Platform[] = [
   {
-    id: 'kickresume',
-    name: 'Kickresume',
-    description: 'Export your Kickresume profile as JSON Resume',
+    id: 'reactive_resume',
+    name: 'Reactive Resume',
+    description: 'Import a native Reactive Resume v4 or v5 backup',
     exportFormat: 'JSON',
     steps: [
-      'Open your resume in Kickresume',
-      'Click Settings → Export',
-      'Choose "JSON Resume" format',
-      'Download and upload the .json file below',
-    ],
-    acceptedExtensions: ['.json'],
-    color: 'text-accent-strong bg-accent-soft border-accent',
-  },
-  {
-    id: 'resumeio',
-    name: 'Resume.io',
-    description: 'Export your Resume.io resume as JSON',
-    exportFormat: 'JSON',
-    steps: [
-      'Go to "My Resumes" in Resume.io',
-      'Click the ⋯ menu on your resume',
-      'Select Download → JSON',
+      'Open the resume in Reactive Resume',
+      'Use the resume actions menu and choose Export to JSON',
       'Upload the downloaded .json file below',
     ],
     acceptedExtensions: ['.json'],
     color: 'text-accent-strong bg-accent-soft border-accent',
   },
   {
-    id: 'novoresume',
-    name: 'Novoresume',
-    description: 'Export your Novoresume profile as JSON Resume',
+    id: 'json_resume',
+    name: 'JSON Resume',
+    description: 'Import the open JSON Resume schema used across many tools',
     exportFormat: 'JSON',
     steps: [
-      'Open your resume in Novoresume editor',
-      'Click Download in the top-right toolbar',
-      'Choose "JSON Resume" from the format options',
-      'Upload the downloaded .json file below',
+      'Export a standards-compatible JSON Resume file from your current tool',
+      'Check that the file contains basics, work, education, or skills fields',
+      'Upload the .json file below',
     ],
     acceptedExtensions: ['.json'],
+    color: 'text-accent-strong bg-accent-soft border-accent',
+  },
+  {
+    id: 'document_builders',
+    name: 'Rezi or Teal',
+    description: 'Import the PDF or Word document exported by these builders',
+    exportFormat: 'PDF / Word',
+    steps: [
+      'Download your resume from Rezi or Teal as PDF or Word',
+      'Use the highest-quality text-based export available',
+      'Upload the .pdf or .docx file below',
+    ],
+    acceptedExtensions: ['.pdf', '.docx', '.doc'],
     color: 'text-accent-strong bg-accent-soft border-accent',
   },
   {
     id: 'generic',
-    name: 'Generic JSON / Other',
-    description: 'Upload any JSON Resume format or other supported file',
+    name: 'Other Builder',
+    description: 'Use a JSON Resume, PDF, or Word export from another tool',
     exportFormat: 'JSON / PDF / Word',
     steps: [
       'Export your resume from any builder as JSON Resume, PDF, or Word',
@@ -145,6 +143,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const previewRequestRef = useRef(0)
 
   const { status, progress, convertedLatex, error: conversionError, startConversion, reset: resetConversion } = useFormatConversion()
 
@@ -157,22 +156,35 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
 
   const STEPS = ['Platform', 'Instructions', 'Upload', 'Preview']
 
+  const invalidatePreviewRequest = useCallback(() => {
+    previewRequestRef.current += 1
+    setPreviewLoading(false)
+  }, [])
+
+  useEffect(() => () => {
+    previewRequestRef.current += 1
+  }, [])
+
   const handleFileSelect = useCallback(async (selectedFile: File) => {
+    const requestId = ++previewRequestRef.current
     setFile(selectedFile)
     setPreview(null)
     setPreviewError(null)
     setPreviewLoading(true)
-    try {
-      const result = await apiClient.parseForPreview(selectedFile)
-      setPreview(result)
-      setStep(4)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to parse file'
-      setPreviewError(msg.includes('422') ? 'File could not be parsed — check it is not corrupted' : msg)
-      setStep(4)
-    } finally {
-      setPreviewLoading(false)
-    }
+    await runLatestRequest(
+      () => apiClient.parseForPreview(selectedFile),
+      () => requestId === previewRequestRef.current,
+      (result) => {
+        setPreview(result)
+        setStep(4)
+      },
+      (err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to parse file'
+        setPreviewError(msg.includes('422') ? 'File could not be parsed — check it is not corrupted' : msg)
+        setStep(4)
+      },
+      () => setPreviewLoading(false),
+    )
   }, [])
 
   const handleDrop = useCallback(
@@ -188,7 +200,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
   const handleConvert = useCallback(async () => {
     if (!file) return
     resetConversion()
-    const sourcePlatform = platform?.id !== 'generic' ? platform?.id : undefined
+    const sourcePlatform = platform?.id === 'reactive_resume' ? platform.id : undefined
     // onComplete is called by the useEffect above when status transitions to 'done'.
     // We do NOT call it here to avoid double-invocation.
     await startConversion(file, undefined, sourcePlatform)
@@ -315,7 +327,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
           <div className="flex justify-between">
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => { invalidatePreviewRequest(); setStep(2) }}
               className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-4 py-2 text-xs text-fg-3 transition hover:text-fg-2"
             >
               <ChevronLeft className="h-3.5 w-3.5" /> Back
@@ -382,7 +394,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
               <span className="flex-1 truncate">{file.name}</span>
               <button
                 type="button"
-                onClick={() => { setFile(null); setPreview(null); setPreviewError(null); setStep(3) }}
+                onClick={() => { invalidatePreviewRequest(); setFile(null); setPreview(null); setPreviewError(null); setStep(3) }}
                 className="shrink-0 text-fg-3 hover:text-fg-2"
               >
                 <X className="h-3 w-3" />
@@ -418,7 +430,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
           <div className="flex justify-between">
             <button
               type="button"
-              onClick={() => { resetConversion(); setStep(3) }}
+              onClick={() => { invalidatePreviewRequest(); resetConversion(); setStep(3) }}
               disabled={converting}
               className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-4 py-2 text-xs text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
             >
