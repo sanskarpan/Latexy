@@ -59,8 +59,13 @@ jobs:
           uv pip compile --python-version 3.12 --generate-hashes \
             --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
             requirements-dev.txt -o "$lock_tmp/requirements-dev.lock"
-          diff -u requirements.lock "$lock_tmp/requirements.lock"
-          diff -u requirements-dev.lock "$lock_tmp/requirements-dev.lock"
+          # Resolver provenance comments can differ by host (for example,
+          # SQLAlchemy's platform-specific greenlet edge). Compare all actual
+          # lock data, including pins, markers and hashes, not those comments.
+          diff -u <(sed '/^[[:space:]]*#/d' requirements.lock) \
+            <(sed '/^[[:space:]]*#/d' "$lock_tmp/requirements.lock")
+          diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock) \
+            <(sed '/^[[:space:]]*#/d' "$lock_tmp/requirements-dev.lock")
       - name: Install the hash-verified development lock
         run: uv pip sync --require-hashes --verify-hashes requirements-dev.lock
       - name: Run ruff
@@ -112,7 +117,7 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y --no-install-recommends
           texlive-latex-extra texlive-fonts-recommended cm-super
-          texlive-science texlive-luatex fonts-lohit-deva poppler-utils
+          texlive-science texlive-luatex fonts-lohit-deva fonts-noto-core poppler-utils
       - name: Verify every seeded template's extracted PDF contract
         run: bash scripts/verify-template-extraction.sh
 
