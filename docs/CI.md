@@ -63,5 +63,11 @@ jobs after being superseded by `37513425642`, delaying the newer revision.
 The repair preserves required job names, failure propagation, component scopes,
 main/manual concurrency and step-level cleanup. Local actionlint and 91 manifest
 tests pass, including non-cancelled classifier-failure and cancellation truth
-tables. Remote supersession behavior still requires verification on the repair
-PR; these local checks alone do not certify runner cancellation.
+tables. Repair PR #1823's initial run `37517638728` passes all 14 jobs.
+An isolated manual run `37518518147` on the same repair head was normally
+cancelled after its component jobs started: every still-active component stopped
+with a cancelled conclusion, the full-stack dependent did not execute, and the
+workflow completed cancelled by 19:24:36 UTC after the 19:23:32 cancellation
+request (6 October 2026). No force-cancel or protection bypass was used.
+This verifies normal GitHub cancellation of active jobs, not just local
+expressions; automatic PR supersession still needs its own observed evidence.
