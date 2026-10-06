@@ -4,9 +4,41 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from httpx import AsyncClient
+from sqlalchemy import text as sa_text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.dropbox_sync_service import DropboxSyncService
+
+
+@pytest.mark.asyncio
+async def test_resume_response_restores_dropbox_sync_state(
+    client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+):
+    created = await client.post(
+        "/resumes/",
+        headers=auth_headers,
+        json={"title": "Dropbox state", "latex_content": "content"},
+    )
+    assert created.status_code == 201
+    resume_id = created.json()["id"]
+    await db_session.execute(
+        sa_text(
+            "UPDATE resumes SET dropbox_sync_enabled = true, "
+            "dropbox_folder_path = '/Latexy/test.tex', dropbox_last_sync_at = now() "
+            "WHERE id = :resume_id"
+        ),
+        {"resume_id": resume_id},
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["dropbox_sync_enabled"] is True
+    assert response.json()["dropbox_folder_path"] == "/Latexy/test.tex"
+    assert response.json()["dropbox_last_sync_at"] is not None
 
 # ── DropboxSyncService unit tests ─────────────────────────────────────────────
 
@@ -121,8 +153,19 @@ def authed_client():
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
     client = TestClient(app, raise_server_exceptions=False)
-    yield client
-    app.dependency_overrides.pop(get_current_user_required, None)
+    try:
+        # These route tests exercise Dropbox behavior, not plan resolution.
+        # Keeping entitlement I/O real would open the app's process-global DB
+        # engine on TestClient's short-lived portal loop and strand its socket
+        # after that loop closes.
+        with patch(
+            "app.middleware.entitlements.entitlement_service.has_feature",
+            AsyncMock(return_value=True),
+        ):
+            yield client
+    finally:
+        client.close()
+        app.dependency_overrides.pop(get_current_user_required, None)
 
 
 class TestDropboxEndpoints:
@@ -221,8 +264,11 @@ class TestDropboxEndpoints:
 
         app.dependency_overrides.pop(get_current_user_required, None)
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/dropbox/status")
-        assert resp.status_code == 401
+        try:
+            resp = client.get("/dropbox/status")
+            assert resp.status_code == 401
+        finally:
+            client.close()
 
     def test_enable_sync_without_token_returns_400(self, authed_client):
         """Enable sync when user has no Dropbox token returns 400."""
@@ -240,7 +286,7 @@ class TestDropboxEndpoints:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = authed_client.post("/dropbox/resumes/fake-resume-id/enable")
+            resp = authed_client.post("/dropbox/resumes/00000000-0000-0000-0000-000000000001/enable")
             assert resp.status_code == 400
             assert "not connected" in resp.json()["detail"].lower()
         finally:
