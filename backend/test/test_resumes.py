@@ -28,6 +28,7 @@ class TestResumeCRUD:
         assert data["title"] == "Test Resume"
         assert "id" in data
         assert data["user_id"] is not None
+        assert data["metadata"]["compiler"] == "lualatex"
 
     async def test_list_resumes(self, client: AsyncClient, auth_headers: dict):
         """Authenticated user can list their resumes."""
@@ -44,6 +45,17 @@ class TestResumeCRUD:
         data = payload["resumes"] if isinstance(payload, dict) else payload
         assert len(data) >= 1
         assert any(r["title"] == "R1" for r in data)
+
+    async def test_list_resumes_rejects_malformed_parent_id(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """A malformed parent filter is rejected before reaching the UUID DB parameter."""
+        resp = await client.get(
+            "/resumes/?parent_id=not-a-uuid",
+            headers=auth_headers,
+        )
+
+        assert 400 <= resp.status_code < 500, resp.text
 
     async def test_get_resume_by_id(self, client: AsyncClient, auth_headers: dict):
         """Authenticated user can fetch a specific resume they own."""
@@ -80,6 +92,87 @@ class TestResumeCRUD:
         assert resp.status_code == 200
         assert resp.json()["title"] == "New Title"
         assert resp.json()["latex_content"] == "Old Content"
+
+    async def test_update_resume_rejects_stale_full_document_save(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Autosave's base snapshot prevents a stale channel from clobbering newer content."""
+        create_resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "CAS", "latex_content": "Before Target After"},
+        )
+        resume_id = create_resp.json()["id"]
+
+        accepted = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={
+                "latex_content": "Before Changed After",
+                "expected_latex_content": "Before Target After",
+            },
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        stale = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={
+                "latex_content": "Before Target After (stale autosave)",
+                "expected_latex_content": "Before Target After",
+            },
+        )
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["detail"]["code"] == "document_changed"
+
+        current = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+        assert current.status_code == 200
+        assert current.json()["latex_content"] == "Before Changed After"
+
+    async def test_update_resume_requires_cas_for_document_writes(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        create_resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "CAS precondition", "latex_content": "Source"},
+        )
+        resume_id = create_resp.json()["id"]
+
+        missing = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={"latex_content": "New source"},
+        )
+        assert missing.status_code == 428, missing.text
+        assert missing.json()["detail"]["code"] == "precondition_required"
+
+    async def test_update_resume_allows_converged_duplicate_with_stale_token(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        create_resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "CAS converged", "latex_content": "Source"},
+        )
+        resume_id = create_resp.json()["id"]
+        first = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={"latex_content": "Converged", "expected_latex_content": "Source"},
+        )
+        assert first.status_code == 200, first.text
+
+        # Two Yjs clients can converge on the same source while carrying
+        # different old snapshots. The duplicate must be a no-op, not a false
+        # conflict that causes an unnecessary reload.
+        duplicate = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={"latex_content": "Converged", "expected_latex_content": "Source"},
+        )
+        assert duplicate.status_code == 200, duplicate.text
+        assert duplicate.json()["latex_content"] == "Converged"
 
     async def test_delete_resume(self, client: AsyncClient, auth_headers: dict):
         """Authenticated user can delete their resume."""
@@ -197,3 +290,38 @@ class TestDocumentTypeField:
 
         sig = inspect.signature(list_resumes)
         assert "document_type" in sig.parameters
+
+
+@pytest.mark.asyncio
+async def test_list_resumes_honors_advertised_200_row_limit():
+    """A valid limit=200 request must not be silently truncated to 100."""
+    from app.api.resume_routes import list_resumes
+
+    class _Result:
+        def __init__(self, *, count=None, rows=None):
+            self._count = count
+            self._rows = rows or []
+
+        def scalar(self):
+            return self._count
+
+        def all(self):
+            return self._rows
+
+    class _DB:
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            if len(self.statements) == 1:
+                return _Result(count=0)
+            return _Result(rows=[])
+
+    db = _DB()
+    response = await list_resumes(
+        page=1, limit=200, parent_id=None, db=db, user_id=str(uuid.uuid4())
+    )
+
+    assert response["limit"] == 200
+    assert db.statements[1]._limit_clause.value == 200
