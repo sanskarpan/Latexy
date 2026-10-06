@@ -197,6 +197,7 @@ class TestAdvancedSubscriptions:
 
         with (
             patch("app.api.routes.feature_flag_service.get_flag", new=AsyncMock(return_value=True)),
+            patch("app.api.routes.payment_service.client", new=object()),
             patch("app.services.payment_service.email_service.send_email", new=AsyncMock(return_value=True)) as send_email,
         ):
             response = await client.post(
