@@ -25,7 +25,7 @@ import json
 import secrets
 import time
 import uuid
-from typing import Literal, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.websockets import WebSocket, WebSocketDisconnect
@@ -36,10 +36,15 @@ from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..middleware.auth_middleware import get_current_user_required
 from ..services.collab_manager import (
+    MAX_CHAT_FRAME_BYTES,
+    _safe_chat_label,
     collab_manager,
     handle_collab_message,
+    is_chat_frame,
     notify_if_read_only,
+    reset_chat_rate_limit,
 )
+from .job_metadata import parse_ownership_metadata
 
 logger = get_logger(__name__)
 
@@ -48,6 +53,7 @@ ws_router = APIRouter()
 _HEARTBEAT_INTERVAL = 30  # seconds
 _WS_TICKET_TTL_SECONDS = 60
 _WS_TICKET_KEY_PREFIX = "latexy:ws_ticket:"
+_MAX_JOB_WS_MESSAGE_BYTES = 64 * 1024
 
 # Per-connection message rate limiting
 _ws_message_counts: dict = {}  # {connection_id: [timestamp, ...]}
@@ -61,6 +67,41 @@ class WebSocketTicketRequest(BaseModel):
 class WebSocketTicketResponse(BaseModel):
     ticket: str
     expires_in: int
+
+
+class _WebSocketMessageTooLarge(ValueError):
+    """Raised before JSON parsing when a jobs frame exceeds its bound."""
+
+
+def _decode_job_ws_message(message: dict) -> dict:
+    """Decode one bounded text/binary ASGI WebSocket message.
+
+    ``WebSocket.receive_json`` parses the complete client frame before the
+    handler can apply a rate limit.  Decode the ASGI frame ourselves so an
+    unauthenticated client cannot force an arbitrarily large JSON allocation.
+    """
+    if message.get("type") != "websocket.receive":
+        raise ValueError("not a WebSocket data message")
+    raw_text = message.get("text")
+    raw_bytes = message.get("bytes")
+    if raw_text is not None:
+        try:
+            encoded = raw_text.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise ValueError("invalid UTF-8") from exc
+    elif raw_bytes is not None:
+        encoded = bytes(raw_bytes)
+    else:
+        raise ValueError("empty WebSocket data message")
+    if len(encoded) > _MAX_JOB_WS_MESSAGE_BYTES:
+        raise _WebSocketMessageTooLarge
+    try:
+        data = json.loads(encoded)
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError("invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise ValueError("JSON message must be an object")
+    return data
 
 
 def _ws_ticket_key(ticket: str) -> str:
@@ -111,9 +152,14 @@ def _check_rate_limit(connection_id: str, max_per_second: int = 20) -> bool:
     timestamps = _ws_message_counts.get(connection_id, [])
     # Keep only timestamps within the last second
     timestamps = [t for t in timestamps if now - t < 1.0]
+    if len(timestamps) >= max_per_second:
+        # Do not append rejected frames: a flood must not turn this per-socket
+        # guard into an unbounded allocation before the timestamps expire.
+        _ws_message_counts[connection_id] = timestamps
+        return False
     timestamps.append(now)
     _ws_message_counts[connection_id] = timestamps
-    return len(timestamps) <= max_per_second
+    return True
 
 
 @ws_router.websocket("/ws/jobs")
@@ -122,17 +168,20 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     Single persistent WebSocket connection for all real-time job events.
     One client can subscribe to multiple jobs simultaneously.
     """
-    await websocket.accept()
-    connection_id = str(uuid.uuid4())
-    logger.info("WebSocket connection accepted")
-
     # Authenticated clients exchange their reusable session credential over HTTP
     # for a one-time ?ticket=. Anonymous trial sockets omit it entirely.
     ticket_present = bool(websocket.query_params.get("ticket"))
     ws_user_id = await _consume_ws_ticket(websocket, purpose="jobs")
     if ticket_present and ws_user_id is None:
+        # Reject a presented-but-invalid credential before completing the
+        # WebSocket upgrade. Anonymous sockets are still supported when no
+        # ticket is supplied for owner-less trial jobs.
         await websocket.close(code=4001, reason="Invalid or expired WebSocket ticket")
         return
+
+    await websocket.accept()
+    connection_id = str(uuid.uuid4())
+    logger.info("WebSocket connection accepted")
 
     # Track which jobs this connection is subscribed to (for cleanup)
     subscribed_jobs: set[str] = set()
@@ -143,27 +192,29 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     try:
         while True:
             try:
-                data = await websocket.receive_json()
+                message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                # Count every received frame, including malformed and
+                # oversized frames, so the size guard cannot be used to
+                # bypass the per-connection rate limit.
+                if not _check_rate_limit(connection_id):
+                    await _send_error(websocket, "rate_limited", "Too many messages")
+                    continue
+                data = _decode_job_ws_message(message)
             except WebSocketDisconnect:
                 break
+            except _WebSocketMessageTooLarge:
+                await _send_error(websocket, "message_too_large", "Message exceeds the 64 KiB limit")
+                continue
             except ValueError as exc:
                 # Malformed JSON — send error and keep connection open
-                logger.warning(f"WS malformed JSON: {exc}")
+                logger.warning("WS malformed JSON: %s", type(exc).__name__)
                 await _send_error(websocket, "invalid_json", "Message must be valid JSON")
                 continue
             except Exception as exc:
-                logger.warning(f"WS receive error: {exc}")
+                logger.warning("WS receive error", extra={"error_type": type(exc).__name__})
                 break
-
-            # Rate limit: max 20 messages/second per connection
-            if not _check_rate_limit(connection_id):
-                await _send_error(
-                    websocket,
-                    "rate_limited",
-                    "Too many messages",
-                    job_id=data.get("job_id") if isinstance(data, dict) else None,
-                )
-                continue
 
             msg_type = data.get("type")
 
@@ -225,7 +276,7 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.error(f"WS handler error: {exc}")
+        logger.error("WS handler error", extra={"error_type": type(exc).__name__})
     finally:
         await _stop_background_task(heartbeat_task, "jobs heartbeat")
         _ws_message_counts.pop(connection_id, None)
@@ -266,7 +317,7 @@ async def _consume_ws_ticket(
         user_id = envelope.get("user_id")
         return str(user_id) if user_id else None
     except Exception as exc:  # pragma: no cover - transient/malformed
-        logger.debug("WS ticket validation failed: %s", exc)
+        logger.debug("WS ticket validation failed", extra={"error_type": type(exc).__name__})
         return None
 
 
@@ -282,10 +333,14 @@ async def _job_ws_access_ok(job_id: str, user_id: Optional[str]) -> bool:
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
         if not meta_raw:
             return False
-        job_owner = json.loads(meta_raw).get("user_id")
+        job_owner = parse_ownership_metadata(meta_raw, job_id)["user_id"]
         return job_owner is None or job_owner == user_id
     except Exception as exc:  # pragma: no cover - transient/malformed
-        logger.debug(f"WS ownership lookup failed for job {job_id}: {exc}")
+        logger.debug(
+            "WS ownership lookup failed for job %s",
+            job_id,
+            extra={"error_type": type(exc).__name__},
+        )
         return False
 
 
@@ -339,7 +394,7 @@ async def _stop_background_task(task: asyncio.Task, owner: str) -> None:
     except asyncio.CancelledError:
         pass
     except Exception as exc:
-        logger.debug("%s stopped with an error: %s", owner, exc)
+        logger.debug("%s stopped with an error", owner, extra={"error_type": type(exc).__name__})
 
 
 async def _close_expected_collab_rejection(
@@ -379,7 +434,47 @@ async def _collab_heartbeat(websocket: WebSocket) -> None:
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        logger.debug("Collab: heartbeat stopped: %s", exc)
+        logger.debug("Collab: heartbeat stopped", extra={"error_type": type(exc).__name__})
+
+
+async def _collab_chat_access_ok(resume_id: str, user_id: str) -> bool:
+    """Re-check live resume access immediately before chat fan-out.
+
+    Collaboration sockets intentionally remain open across collaborator
+    changes. Chat therefore must not rely only on the role captured at join;
+    this check fails closed on a database error and logs only exception type.
+    """
+    from sqlalchemy import select as sa_select
+
+    from ..database.connection import get_async_db_session
+    from ..database.models import Resume, ResumeCollaborator
+
+    try:
+        async with get_async_db_session() as db:
+            result = await db.execute(sa_select(Resume).where(Resume.id == resume_id))
+            resume = result.scalar_one_or_none()
+            if resume is None or resume.user_id == user_id:
+                return resume is not None
+            result = await db.execute(
+                sa_select(ResumeCollaborator).where(
+                    ResumeCollaborator.resume_id == resume_id,
+                    ResumeCollaborator.user_id == user_id,
+                )
+            )
+            return result.scalar_one_or_none() is not None
+    except Exception as exc:
+        logger.debug("Collab chat authorization check failed: %s", type(exc).__name__)
+        return False
+
+
+def _collab_chat_access_callback(
+    resume_id: str, user_id: str
+) -> Callable[[], Awaitable[bool]]:
+    """Create a deferred ACL check for the post-parse, post-limit chat path."""
+    async def check() -> bool:
+        return await _collab_chat_access_ok(resume_id, user_id)
+
+    return check
 
 
 @ws_router.websocket("/ws/collab/{resume_id}")
@@ -393,13 +488,27 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 enforced on every frame by collab_manager (viewers and
                 commenters cannot mutate the document).
 
-    Binary protocol: lib0-encoded Y.js messages (MSG_SYNC / MSG_AWARENESS).
+    Binary protocol: lib0-encoded Y.js messages (MSG_SYNC / MSG_AWARENESS),
+    plus a bounded plain-text MSG_CHAT extension with no server-side history.
     See collab_manager.py for the full protocol description.
     """
     from sqlalchemy import select as sa_select
 
     from ..database.connection import get_async_db_session
-    from ..database.models import Resume, ResumeCollaborator
+    from ..database.models import Resume, ResumeCollaborator, User
+
+    try:
+        uuid.UUID(resume_id)
+    except (TypeError, ValueError, AttributeError):
+        # Resume ids are PostgreSQL UUIDs. Reject malformed path values before
+        # consuming a one-time ticket or allowing asyncpg to turn the bad bind
+        # parameter into an internal server error.
+        await _close_expected_collab_rejection(
+            websocket,
+            code=4004,
+            reason="Resume not found",
+        )
+        return
 
     # Sanitise display fields
     user_name = (websocket.query_params.get("name") or "Anonymous")[:60]
@@ -454,6 +563,12 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 return
             role = collab.role
 
+        # The query-string `name` is only legacy cursor metadata and is
+        # client-controlled. Chat labels must come from the authenticated
+        # account row, never from an email, raw id, or websocket parameter.
+        name_result = await db.execute(sa_select(User.name).where(User.id == user_id))
+        authenticated_name = name_result.scalar_one_or_none()
+
     # ── Accept and join room ──────────────────────────────────────────────
     await websocket.accept()
     client_id = str(uuid.uuid4())
@@ -461,6 +576,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
         "client_id": client_id,
         "user_id": user_id,
         "name": user_name,
+        "chat_label": _safe_chat_label(authenticated_name),
         "color": user_color,
         "is_owner": is_owner,
         "role": role,
@@ -488,17 +604,33 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
             except WebSocketDisconnect:
                 break
             except Exception as exc:
-                logger.debug("Collab: receive error %s: %s", client_id[:8], exc)
+                logger.debug(
+                    "Collab: receive error %s",
+                    client_id[:8],
+                    extra={"error_type": type(exc).__name__},
+                )
                 break
 
-            await handle_collab_message(resume_id, client_id, data, room)
+            chat_access_check = None
+            if is_chat_frame(data) and len(data) <= MAX_CHAT_FRAME_BYTES:
+                chat_access_check = _collab_chat_access_callback(resume_id, user_id)
+            await handle_collab_message(
+                resume_id,
+                client_id,
+                data,
+                room,
+                chat_access_check=chat_access_check,
+                chat_user_id=user_id,
+                chat_sender_label=user_info["chat_label"],
+            )
 
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.error("Collab: handler error: %s", exc)
+        logger.error("Collab: handler error", extra={"error_type": type(exc).__name__})
     finally:
         await _stop_background_task(heartbeat_task, "collaboration heartbeat")
+        reset_chat_rate_limit(client_id)
         await room.remove(client_id)
         await collab_manager.maybe_cleanup(resume_id)
         logger.info(
@@ -522,7 +654,32 @@ async def _request_cancellation(job_id: str) -> None:
     _JOB_TTL = 86400
     try:
         r = await get_redis_client()
-        await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
+        # The DB arbiter is the cancellation linearization point.  Redis is
+        # updated only after this commit so a worker cannot publish a success
+        # after cancellation and still be considered refundable.
+        from ..database.connection import get_async_db_session
+        from ..workers.finalization_arbiter import FinalizationOutcome
+        from ..workers.finalization_arbiter import request_cancel as request_cancel_finalization
+        from ..workers.job_lifecycle import request_cancel_async
+
+        async with get_async_db_session() as session:
+            db_cancel = await request_cancel_finalization(session, job_id=job_id)
+            await session.commit()
+        if db_cancel in {
+            FinalizationOutcome.ALREADY_COMPLETED,
+            FinalizationOutcome.FAILED,
+            FinalizationOutcome.FENCED,
+        }:
+            return
+        await r.set(f"latexy:job:{job_id}:cancel", "1", ex=3600)
+        await request_cancel_async(r, job_id)
+        cancel_result = {"success": False, "job_id": job_id, "cancelled": True}
+        await r.set(
+            f"latexy:job:{job_id}:state",
+            json.dumps({"status": "cancelled", "stage": "cancelled", "percent": 100, "last_updated": time.time()}),
+            ex=_JOB_TTL,
+        )
+        await r.set(f"latexy:job:{job_id}:result", json.dumps(cancel_result), ex=_JOB_TTL)
 
         event_id = str(uuid.uuid4())
         seq_key = f"latexy:job:{job_id}:seq"
@@ -558,4 +715,8 @@ async def _request_cancellation(job_id: str) -> None:
         )
         logger.info(f"Cancellation requested for job {job_id}")
     except Exception as exc:
-        logger.error(f"Failed to set cancel flag for job {job_id}: {exc}")
+        logger.error(
+            "Failed to set cancel flag for job %s",
+            job_id,
+            extra={"error_type": type(exc).__name__},
+        )
