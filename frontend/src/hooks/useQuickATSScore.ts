@@ -36,12 +36,20 @@ export function useQuickATSScore(
 
   // Debounced auto-score on content change
   useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    // Changing either input immediately invalidates the displayed result and
+    // any request already in flight. Waiting until the next debounced request
+    // starts leaves a 10-second window where an old response can overwrite the
+    // badge for the new document.
+    requestIdRef.current += 1
+    setResult(null)
+    setLoading(false)
+    setError(null)
+
     if (!latexContent || latexContent.length < MIN_CONTENT_LEN) return
 
-    if (timerRef.current) clearTimeout(timerRef.current)
-
     timerRef.current = setTimeout(() => {
-      runScore()
+      void runScore()
     }, DEBOUNCE_MS)
 
     return () => {
