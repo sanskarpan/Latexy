@@ -6,22 +6,29 @@
  */
 
 import type * as Monaco from 'monaco-editor'
-import type { Macro, MacroAction } from './macro-types'
+import { validateMacroActions, type Macro, type MacroAction } from './macro-types'
 
 type IStandaloneCodeEditor = Monaco.editor.IStandaloneCodeEditor
 
 export class MacroPlayer {
   /** Replay every action in the macro against the given editor. */
   async play(macro: Macro, editor: IStandaloneCodeEditor): Promise<void> {
-    for (const action of macro.actions) {
-      await this._execute(action, editor)
+    const actions = validateMacroActions(macro.actions)
+    const capturedModel = editor.getModel()
+    if (!capturedModel) return
+    editor.pushUndoStop()
+    try {
+      for (const action of actions) {
+        if (editor.getModel() !== capturedModel) throw new Error('The document changed while the macro was running; nothing further was applied.')
+        await this._execute(action, editor, capturedModel)
+        if (editor.getModel() !== capturedModel) throw new Error('The document changed while the macro was running; nothing further was applied.')
+      }
+    } finally {
+      editor.pushUndoStop()
     }
   }
 
-  private async _execute(action: MacroAction, editor: IStandaloneCodeEditor): Promise<void> {
-    const model = editor.getModel()
-    if (!model) return
-
+  private async _execute(action: MacroAction, editor: IStandaloneCodeEditor, model: Monaco.editor.ITextModel): Promise<void> {
     switch (action.type) {
       case 'insert': {
         const pos = editor.getPosition()
@@ -32,10 +39,11 @@ export class MacroPlayer {
           endLineNumber: pos.lineNumber,
           endColumn: pos.column,
         }
-        model.applyEdits([{ range, text: action.text }])
-        // advance cursor past inserted text
-        const newCol = pos.column + action.text.length
-        editor.setPosition({ lineNumber: pos.lineNumber, column: newCol })
+        const offset = model.getOffsetAt(pos)
+        this._applyEdit(editor, { range, text: action.text })
+        // Monaco columns reset after a newline; calculate the position from
+        // the model offset rather than adding the string length to a column.
+        editor.setPosition(model.getPositionAt(offset + action.text.length))
         break
       }
 
@@ -46,33 +54,29 @@ export class MacroPlayer {
           const offset = model.getOffsetAt(pos)
           const newOffset = Math.max(0, offset - action.count)
           const startPos = model.getPositionAt(newOffset)
-          model.applyEdits([
-            {
-              range: {
-                startLineNumber: startPos.lineNumber,
-                startColumn: startPos.column,
-                endLineNumber: pos.lineNumber,
-                endColumn: pos.column,
-              },
-              text: '',
+          this._applyEdit(editor, {
+            range: {
+              startLineNumber: startPos.lineNumber,
+              startColumn: startPos.column,
+              endLineNumber: pos.lineNumber,
+              endColumn: pos.column,
             },
-          ])
+            text: '',
+          })
           editor.setPosition(startPos)
         } else {
           const offset = model.getOffsetAt(pos)
           const newOffset = Math.min(model.getValueLength(), offset + action.count)
           const endPos = model.getPositionAt(newOffset)
-          model.applyEdits([
-            {
-              range: {
-                startLineNumber: pos.lineNumber,
-                startColumn: pos.column,
-                endLineNumber: endPos.lineNumber,
-                endColumn: endPos.column,
-              },
-              text: '',
+          this._applyEdit(editor, {
+            range: {
+              startLineNumber: pos.lineNumber,
+              startColumn: pos.column,
+              endLineNumber: endPos.lineNumber,
+              endColumn: endPos.column,
             },
-          ])
+            text: '',
+          })
         }
         break
       }
@@ -117,24 +121,23 @@ export class MacroPlayer {
         if (action.all) {
           const replaced = fullText.split(action.search).join(action.replacement)
           if (replaced !== fullText) {
-            model.setValue(replaced)
+            const applied = editor.executeEdits('macro', [{ range: model.getFullModelRange(), text: replaced }])
+            if (!applied) throw new Error('Macro replacement could not be applied.')
           }
         } else {
           const idx = fullText.indexOf(action.search)
           if (idx !== -1) {
             const start = model.getPositionAt(idx)
             const end = model.getPositionAt(idx + action.search.length)
-            model.applyEdits([
-              {
-                range: {
-                  startLineNumber: start.lineNumber,
-                  startColumn: start.column,
-                  endLineNumber: end.lineNumber,
-                  endColumn: end.column,
-                },
-                text: action.replacement,
+            this._applyEdit(editor, {
+              range: {
+                startLineNumber: start.lineNumber,
+                startColumn: start.column,
+                endLineNumber: end.lineNumber,
+                endColumn: end.column,
               },
-            ])
+              text: action.replacement,
+            })
           }
         }
         break
@@ -148,5 +151,12 @@ export class MacroPlayer {
         break
       }
     }
+  }
+
+  private _applyEdit(
+    editor: IStandaloneCodeEditor,
+    edit: { range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string },
+  ): void {
+    if (!editor.executeEdits('macro', [edit])) throw new Error('Macro edit could not be applied.')
   }
 }
