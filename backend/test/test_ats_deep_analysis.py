@@ -40,10 +40,14 @@ async def _post_deep_analyze(client: AsyncClient, body: dict, headers: dict = {}
 @pytest.fixture
 def mock_celery_task():
     """Prevent actual Celery task dispatch during endpoint tests."""
-    with patch(
-        "app.api.ats_routes.submit_deep_analyze_ats",
-        new_callable=MagicMock,
-    ) as mock:
+    with (
+        patch(
+            "app.api.ats_routes.submit_deep_analyze_ats",
+            new_callable=MagicMock,
+        ) as mock,
+        patch("app.api.ats_routes._mark_dispatch_started", new_callable=AsyncMock),
+        patch("app.api.ats_routes._mark_dispatch_accepted", new_callable=AsyncMock),
+    ):
         yield mock
 
 
@@ -254,6 +258,9 @@ class TestDeepAnalyzeLimitsAndFailure:
         with patch(
             "app.api.ats_routes.submit_deep_analyze_ats",
             new=MagicMock(side_effect=RuntimeError("broker down")),
+        ), patch(
+            "app.api.ats_routes._mark_dispatch_started",
+            new=AsyncMock(side_effect=RuntimeError("lifecycle unavailable")),
         ):
             response = await _post_deep_analyze(client, {
                 "latex_content": SAMPLE_LATEX,
