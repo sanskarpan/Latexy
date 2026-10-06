@@ -152,7 +152,7 @@ def authed_client():
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
     try:
         # These route tests exercise Dropbox behavior, not plan resolution.
         # Keeping entitlement I/O real would open the app's process-global DB
@@ -263,7 +263,7 @@ class TestDropboxEndpoints:
         from app.middleware.auth_middleware import get_current_user_required
 
         app.dependency_overrides.pop(get_current_user_required, None)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
         try:
             resp = client.get("/dropbox/status")
             assert resp.status_code == 401
