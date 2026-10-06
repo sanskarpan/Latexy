@@ -61,7 +61,7 @@ async def enforce_external_budget(
             window_seconds,
         )
     except Exception as exc:
-        logger.error("External budget store unavailable for %s: %s", scope, exc)
+        logger.error("External budget store unavailable", extra={"error_type": type(exc).__name__})
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Resource budget temporarily unavailable. Please retry shortly.",
