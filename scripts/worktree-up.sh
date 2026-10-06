@@ -159,7 +159,7 @@ start_slot() {
   BACKEND_PORT=$BACKEND_PORT \
   FRONTEND_PORT=$FRONTEND_PORT \
   FLOWER_PORT=$FLOWER_PORT \
-    docker compose -p "$PROJECT_NAME" up -d backend worker beat frontend flower
+    docker compose -p "$PROJECT_NAME" up -d --no-deps backend worker beat frontend flower
 
   # Save slot to per-directory file so stop/logs work without explicit arg
   echo "$slot" > "$SLOT_FILE"
