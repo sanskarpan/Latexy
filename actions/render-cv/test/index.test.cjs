@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises')
+const { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } = require('node:fs/promises')
 const http = require('node:http')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
@@ -94,6 +94,7 @@ test('compiles, polls, and atomically writes the returned PDF', async () => {
     const result = await renderCv({
       apiKey: 'lx_sk_secret',
       apiUrl: new URL(`http://127.0.0.1:${address.port}`),
+      workspaceRoot: workspace,
       sourcePath,
       outputPath,
       compiler: 'lualatex',
@@ -130,6 +131,7 @@ test('does not replace output with a non-PDF response', async () => {
     await assert.rejects(
       renderCv({
         apiKey: 'key', apiUrl: new URL('https://api.example.test'), sourcePath, outputPath,
+        workspaceRoot: workspace,
         compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
       }, { fetchImpl: async () => responses.shift(), sleep: async () => {} }),
       /valid PDF header/,
@@ -149,6 +151,7 @@ test('rejects a cross-origin server URL before sending the API key', async () =>
     await assert.rejects(
       renderCv({
         apiKey: 'key', apiUrl: new URL('https://api.example.test'), sourcePath,
+        workspaceRoot: workspace,
         outputPath: join(workspace, 'resume.pdf'), compiler: 'pdflatex',
         timeoutSeconds: 10, pollIntervalMs: 1,
       }, {
@@ -165,5 +168,124 @@ test('rejects a cross-origin server URL before sending the API key', async () =>
     assert.equal(calls, 1)
   } finally {
     await rm(workspace, { recursive: true, force: true })
+  }
+})
+
+test('canonicalizes internal source links and rejects external workspace links', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'latexy-action-links-'))
+  const outside = await mkdtemp(join(tmpdir(), 'latexy-action-links-outside-'))
+  const jobId = JOB_ID
+  const pdf = Buffer.from('%PDF-1.7\nlink test\n')
+  try {
+    const targetSource = join(workspace, 'docs', 'resume.tex')
+    const linkedSource = join(workspace, 'resume-link.tex')
+    const outputDirectory = join(workspace, 'real-artifacts')
+    const outputLink = join(workspace, 'artifacts')
+    const workspaceAlias = join(outside, 'workspace-link')
+    await mkdir(join(workspace, 'docs'), { recursive: true })
+    await mkdir(outputDirectory, { recursive: true })
+    await writeFile(targetSource, 'internal source')
+    await symlink(targetSource, linkedSource)
+    await symlink(outputDirectory, outputLink, 'dir')
+    await symlink(workspace, workspaceAlias, 'dir')
+    const outputPath = join(workspaceAlias, 'artifacts', 'resume.pdf')
+    const responses = [
+      new Response(JSON.stringify({ job_id: jobId, poll_url: `/api/v1/jobs/${jobId}` })),
+      new Response(JSON.stringify({ status: 'completed', pdf_url: `/api/v1/jobs/${jobId}/pdf` })),
+      new Response(pdf),
+    ]
+    await renderCv({
+      apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspaceAlias,
+      sourcePath: join(workspaceAlias, 'resume-link.tex'), outputPath, compiler: 'pdflatex', timeoutSeconds: 10,
+      pollIntervalMs: 1,
+    }, { fetchImpl: async () => responses.shift(), sleep: async () => {} })
+    assert.deepEqual(await readFile(join(outputDirectory, 'resume.pdf')), pdf)
+
+    const externalSource = join(workspace, 'external-link.tex')
+    await writeFile(join(outside, 'secret.tex'), 'external source')
+    await symlink(join(outside, 'secret.tex'), externalSource)
+    let calls = 0
+    await assert.rejects(
+      renderCv({
+        apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspace,
+        sourcePath: externalSource, outputPath: join(workspace, 'rejected.pdf'),
+        compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
+      }, { fetchImpl: async () => { calls += 1; return new Response('{}') } }),
+      /source must stay inside GITHUB_WORKSPACE/,
+    )
+    assert.equal(calls, 0)
+
+    const externalOutputDirectory = join(workspace, 'output-link')
+    await symlink(outside, externalOutputDirectory)
+    await assert.rejects(
+      renderCv({
+        apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspace,
+        sourcePath: targetSource, outputPath: join(externalOutputDirectory, 'nested', 'rejected.pdf'),
+        compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
+      }, { fetchImpl: async () => { calls += 1; return new Response('{}') } }),
+      /output must stay inside GITHUB_WORKSPACE/,
+    )
+    assert.equal(calls, 0)
+    await assert.rejects(lstat(join(outside, 'nested')))
+    await assert.rejects(lstat(join(outside, 'rejected.pdf')))
+
+    const regularOutputParent = join(workspace, 'output-file')
+    await writeFile(regularOutputParent, 'not a directory')
+    calls = 0
+    await assert.rejects(
+      renderCv({
+        apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspace,
+        sourcePath: targetSource, outputPath: join(regularOutputParent, 'rejected.pdf'),
+        compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
+      }, { fetchImpl: async () => { calls += 1; return new Response('{}') } }),
+      /output parent must be a directory/,
+    )
+    assert.equal(calls, 0)
+
+    const danglingOutputParent = join(workspace, 'dangling-output-link')
+    await symlink(join(outside, 'missing-output-target'), danglingOutputParent)
+    calls = 0
+    await assert.rejects(
+      renderCv({
+        apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspace,
+        sourcePath: targetSource, outputPath: join(danglingOutputParent, 'nested', 'rejected.pdf'),
+        compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
+      }, { fetchImpl: async () => { calls += 1; return new Response('{}') } }),
+      /output parent contains a dangling symlink/,
+    )
+    assert.equal(calls, 0)
+  } finally {
+    await rm(workspace, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
+  }
+})
+
+test('replaces an existing final output symlink without following it', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'latexy-action-output-link-'))
+  const outside = await mkdtemp(join(tmpdir(), 'latexy-action-output-link-outside-'))
+  const jobId = JOB_ID
+  const pdf = Buffer.from('%PDF-1.7\nreplacement\n')
+  try {
+    const sourcePath = join(workspace, 'resume.tex')
+    const outputPath = join(workspace, 'resume.pdf')
+    const outsideTarget = join(outside, 'target.pdf')
+    await writeFile(sourcePath, 'source')
+    await writeFile(outsideTarget, 'old external output')
+    await symlink(outsideTarget, outputPath)
+    const responses = [
+      new Response(JSON.stringify({ job_id: jobId, poll_url: `/api/v1/jobs/${jobId}` })),
+      new Response(JSON.stringify({ status: 'completed', pdf_url: `/api/v1/jobs/${jobId}/pdf` })),
+      new Response(pdf),
+    ]
+    await renderCv({
+      apiKey: 'key', apiUrl: new URL('https://api.example.test'), workspaceRoot: workspace,
+      sourcePath, outputPath, compiler: 'pdflatex', timeoutSeconds: 10, pollIntervalMs: 1,
+    }, { fetchImpl: async () => responses.shift(), sleep: async () => {} })
+    assert.deepEqual(await readFile(outsideTarget, 'utf8'), 'old external output')
+    assert.equal((await lstat(outputPath)).isSymbolicLink(), false)
+    assert.deepEqual(await readFile(outputPath), pdf)
+  } finally {
+    await rm(workspace, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
   }
 })
