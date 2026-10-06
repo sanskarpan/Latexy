@@ -103,10 +103,12 @@ class TestMatchCareerRole:
 
         mock_db = AsyncMock()
         # Simulate pg_trgm failing (extension not installed)
-        mock_db.execute = AsyncMock(side_effect=[
-            Exception("pg_trgm not available"),           # trigram attempt
-            _make_scalar_result(swe_mid),                 # ILIKE fallback
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                Exception("pg_trgm not available"),  # trigram attempt
+                _make_scalar_result(swe_mid),  # ILIKE fallback
+            ]
+        )
 
         result = await svc.match_career_role("Software Engineer II", mock_db)
         assert result is swe_mid
@@ -115,12 +117,14 @@ class TestMatchCareerRole:
     async def test_no_match_returns_none(self):
         svc = CareerPathService()
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(side_effect=[
-            Exception("pg_trgm not available"),
-            _make_scalar_result(None),
-            _make_scalar_result(None),
-            _make_scalar_result(None),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                Exception("pg_trgm not available"),
+                _make_scalar_result(None),
+                _make_scalar_result(None),
+                _make_scalar_result(None),
+            ]
+        )
 
         result = await svc.match_career_role("Wizard of Oz", mock_db)
         assert result is None
@@ -137,10 +141,12 @@ class TestMatchCareerRole:
         trig_row.id = role_id
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(side_effect=[
-            _make_fetchone_result(trig_row),   # trigram returns a row
-            _make_scalar_result(swe_mid),       # role lookup by id
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_fetchone_result(trig_row),  # trigram returns a row
+                _make_scalar_result(swe_mid),  # role lookup by id
+            ]
+        )
 
         result = await svc.match_career_role("Software Engineer II", mock_db)
         assert result is swe_mid
@@ -163,10 +169,12 @@ class TestFindPath:
         mock_db = AsyncMock()
         # find_path now bulk-fetches path roles via a single execute() rather
         # than per-node db.get(): 1st execute = transitions, 2nd = roles.
-        mock_db.execute = AsyncMock(side_effect=[
-            _make_scalars_result([t]),
-            _make_scalars_result([r_junior, r_mid]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_scalars_result([t]),
+                _make_scalars_result([r_junior, r_mid]),
+            ]
+        )
 
         path = await svc.find_path("r1", "r2", mock_db)
         assert len(path) == 2
@@ -187,10 +195,12 @@ class TestFindPath:
         ]
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(side_effect=[
-            _make_scalars_result(transitions),
-            _make_scalars_result([r1, r2, r3]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_scalars_result(transitions),
+                _make_scalars_result([r1, r2, r3]),
+            ]
+        )
 
         path = await svc.find_path("r1", "r3", mock_db)
         assert len(path) == 3
@@ -205,10 +215,12 @@ class TestFindPath:
 
         mock_db = AsyncMock()
         # No transitions → endpoints resolved via a single bulk role fetch.
-        mock_db.execute = AsyncMock(side_effect=[
-            _make_scalars_result([]),
-            _make_scalars_result([r1, r2]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_scalars_result([]),
+                _make_scalars_result([r1, r2]),
+            ]
+        )
 
         path = await svc.find_path("r1", "r2", mock_db)
         assert len(path) == 2
@@ -269,6 +281,68 @@ class TestAnalyzeGap:
 
         assert result["gap_skills"] == []
 
+    @pytest.mark.asyncio
+    async def test_esco_synonyms_share_one_skill_identity(self):
+        svc = CareerPathService()
+        target = make_role("Staff SWE", required_skills=["Python 3", "Terraform"])
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=_make_scalar_result(None))
+        taxonomy_mappings = [
+            {
+                "input": "Python",
+                "preferred_label": "Python (computer programming)",
+                "uri": "http://data.europa.eu/esco/skill/python",
+                "matched": True,
+            },
+            {
+                "input": "Python 3",
+                "preferred_label": "Python (computer programming)",
+                "uri": "http://data.europa.eu/esco/skill/python",
+                "matched": True,
+            },
+            {
+                "input": "Terraform",
+                "preferred_label": "Terraform",
+                "uri": None,
+                "matched": False,
+            },
+        ]
+
+        with (
+            patch(
+                "app.services.career_path_service.esco_service.normalize_many",
+                new_callable=AsyncMock,
+                return_value=(taxonomy_mappings, True),
+            ),
+            patch.object(svc, "_llm_gap_analysis", new_callable=AsyncMock, return_value="## Plan"),
+        ):
+            result = await svc.analyze_gap(["Python"], target, [target], "", mock_db)
+
+        assert result["current_skills"] == ["Python (computer programming)"]
+        assert result["gap_skills"] == ["Terraform"]
+        assert result["skill_taxonomy"] == "ESCO v1.2.1"
+        assert result["skill_taxonomy_mappings"] == taxonomy_mappings
+
+    @pytest.mark.asyncio
+    async def test_provider_outage_keeps_case_insensitive_free_text_gap(self):
+        svc = CareerPathService()
+        target = make_role("SWE II", required_skills=["PYTHON", "Terraform"])
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=_make_scalar_result(None))
+
+        with (
+            patch(
+                "app.services.career_path_service.esco_service.normalize_many",
+                new_callable=AsyncMock,
+                return_value=([], False),
+            ),
+            patch.object(svc, "_llm_gap_analysis", new_callable=AsyncMock, return_value="## Plan"),
+        ):
+            result = await svc.analyze_gap(["Python"], target, [target], "", mock_db)
+
+        assert result["gap_skills"] == ["Terraform"]
+        assert result["skill_taxonomy"] is None
+
 
 # ── 5. API integration tests ──────────────────────────────────────────────────
 
@@ -307,6 +381,49 @@ class TestCareerAPIRoutes:
             json={"resume_id": str(uuid.uuid4()), "target_role_title": "Staff SWE"},
         )
         assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_esco_search_requires_auth(self, client):
+        resp = await client.get("/career/skills?q=Python")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_esco_search_returns_versioned_results(self, client, auth_headers):
+        result = {
+            "uri": "http://data.europa.eu/esco/skill/python",
+            "preferred_label": "Python (computer programming)",
+            "alternative_labels": ["Python"],
+            "language": "en",
+        }
+        with patch(
+            "app.api.career_routes.esco_service.search",
+            new_callable=AsyncMock,
+            return_value=([result], True),
+        ):
+            resp = await client.get("/career/skills?q=Python&language=EN&limit=3", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "taxonomy": "ESCO v1.2.1",
+            "language": "en",
+            "results": [result],
+        }
+
+    @pytest.mark.asyncio
+    async def test_esco_search_reports_provider_outage(self, client, auth_headers):
+        with patch(
+            "app.api.career_routes.esco_service.search",
+            new_callable=AsyncMock,
+            return_value=([], False),
+        ):
+            resp = await client.get("/career/skills?q=Python", headers=auth_headers)
+
+        assert resp.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_esco_search_rejects_unsupported_language(self, client, auth_headers):
+        resp = await client.get("/career/skills?q=Python&language=xx", headers=auth_headers)
+        assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_list_analyses_requires_auth(self, client):
@@ -350,6 +467,7 @@ class TestAnalysesOrdering:
 
 # ── BUG-04 regression: career-graph seed requires require_admin ───────────────
 
+
 class TestCareerGraphSeedRequiresAdmin:
     def test_seed_career_graph_uses_require_admin(self):
         """POST /admin/career-graph/seed must gate on require_admin (BUG-04)."""
@@ -357,10 +475,10 @@ class TestCareerGraphSeedRequiresAdmin:
 
         from app.api.career_routes import seed_career_graph
         from app.middleware.auth_middleware import require_admin
+
         sig = inspect.signature(seed_career_graph)
-        deps = [p.default.dependency for p in sig.parameters.values()
-                if hasattr(p.default, 'dependency')]
-        assert require_admin in deps, 'seed_career_graph must depend on require_admin'
+        deps = [p.default.dependency for p in sig.parameters.values() if hasattr(p.default, "dependency")]
+        assert require_admin in deps, "seed_career_graph must depend on require_admin"
 
 
 # ── Audit fixes: LIKE escaping, skill validation, free-text targets ───────────
@@ -383,10 +501,12 @@ class TestLikeEscaping:
         svc = CareerPathService()
         mock_db = AsyncMock()
         # trigram raises → ILIKE fallback; capture the bound pattern.
-        mock_db.execute = AsyncMock(side_effect=[
-            Exception("pg_trgm not available"),
-            _make_scalar_result(None),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                Exception("pg_trgm not available"),
+                _make_scalar_result(None),
+            ]
+        )
         # "%%%%" splits into one word > 3 chars; it must be escaped, not raw.
         result = await svc.match_career_role("%%%%", mock_db)
         assert result is None
@@ -405,7 +525,9 @@ class TestSkillExtractionValidation:
 """
         # LLM returns a JSON array of objects (wrong shape) → heuristic fallback.
         with patch.object(
-            svc, "_llm_complete", new_callable=AsyncMock,
+            svc,
+            "_llm_complete",
+            new_callable=AsyncMock,
             return_value='[{"name": "Python"}, 42, ["nested"]]',
         ):
             skills = await svc.extract_current_skills(latex)
@@ -416,7 +538,9 @@ class TestSkillExtractionValidation:
     async def test_valid_string_array_is_used(self):
         svc = CareerPathService()
         with patch.object(
-            svc, "_llm_complete", new_callable=AsyncMock,
+            svc,
+            "_llm_complete",
+            new_callable=AsyncMock,
             return_value='["Python", "  Go  ", "", 5, "Rust"]',
         ):
             skills = await svc.extract_current_skills("irrelevant")
@@ -430,7 +554,9 @@ class TestFreeTextTargetSkills:
     async def test_infer_required_skills_parses_json(self):
         svc = CareerPathService()
         with patch.object(
-            svc, "_llm_complete", new_callable=AsyncMock,
+            svc,
+            "_llm_complete",
+            new_callable=AsyncMock,
             return_value='["System Design", "Kafka", 7, "Go"]',
         ):
             skills = await svc.infer_required_skills("Staff Engineer")
@@ -440,7 +566,9 @@ class TestFreeTextTargetSkills:
     async def test_infer_required_skills_empty_on_failure(self):
         svc = CareerPathService()
         with patch.object(
-            svc, "_llm_complete", new_callable=AsyncMock,
+            svc,
+            "_llm_complete",
+            new_callable=AsyncMock,
             side_effect=RuntimeError("no key"),
         ):
             assert await svc.infer_required_skills("Astronaut") == []
