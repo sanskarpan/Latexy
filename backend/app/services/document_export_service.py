@@ -2,10 +2,15 @@
 Document Export Service - Converts LaTeX resume content to other formats.
 All conversions are rule-based (no LLM), synchronous, and fast (<200ms).
 """
+import html as _html
 import io
 import logging
-import re
+import re as _stdlib_re
+import zipfile
 from typing import Any, Dict, List, Tuple
+from xml.etree import ElementTree as ET
+
+from ..utils import safe_regex as re
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +290,7 @@ class DocumentExportService:
         lines = [line.strip() for line in text.split('\n') if line.strip()]
 
         # Extract basic contact info
-        import re as _re
+        from ..utils import safe_regex as _re
         email = ''
         phone = ''
         name = lines[0] if lines else ''
@@ -556,6 +561,182 @@ class DocumentExportService:
         lines.extend(dict_to_xml(data))
         lines.append('</resume>')
         return '\n'.join(lines)
+
+    # ─── ePub / ODF / DocBook (B50c) ───────────────────────────────────────
+
+    def _structured_markdown_blocks(self, latex_content: str) -> list[tuple[str, str]]:
+        """Build a bounded block model from the service's Markdown output."""
+        blocks: list[tuple[str, str]] = []
+        paragraph: list[str] = []
+        bullets: list[str] = []
+
+        def flush_paragraph() -> None:
+            if paragraph:
+                blocks.append(("paragraph", " ".join(paragraph).strip()))
+                paragraph.clear()
+
+        def flush_bullets() -> None:
+            if bullets:
+                blocks.append(("list", "\n".join(bullets)))
+                bullets.clear()
+
+        for raw in self.to_markdown(latex_content).splitlines():
+            line = raw.strip()
+            if not line:
+                flush_paragraph()
+                flush_bullets()
+            elif line.startswith("#### "):
+                flush_paragraph()
+                flush_bullets()
+                blocks.append(("heading4", line[5:].strip()))
+            elif line.startswith("### "):
+                flush_paragraph()
+                flush_bullets()
+                blocks.append(("heading3", line[4:].strip()))
+            elif line.startswith("## "):
+                flush_paragraph()
+                flush_bullets()
+                blocks.append(("heading2", line[3:].strip()))
+            elif line.startswith("# "):
+                flush_paragraph()
+                flush_bullets()
+                blocks.append(("heading1", line[2:].strip()))
+            elif line.startswith("- "):
+                flush_paragraph()
+                bullets.append(line[2:].strip())
+            else:
+                flush_bullets()
+                paragraph.append(line)
+        flush_paragraph()
+        flush_bullets()
+        return [(kind, value) for kind, value in blocks if value]
+
+    @staticmethod
+    def _inline_xhtml(value: str) -> str:
+        """Escape text before allowing only generated bold/italic markers."""
+        escaped = _html.escape(value, quote=False)
+        escaped = _stdlib_re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+        return _stdlib_re.sub(r"(?<!\*)\*([^*]+?)\*(?!\*)", r"<em>\1</em>", escaped)
+
+    def to_epub(self, latex_content: str) -> bytes:
+        """Create a standards-valid EPUB 3 package containing one XHTML page."""
+        blocks = self._structured_markdown_blocks(latex_content)
+        title = next((value for kind, value in blocks if kind.startswith("heading")), "Resume")
+        body = [f"<h1>{self._inline_xhtml(title)}</h1>"]
+        first_heading = True
+        for kind, value in blocks:
+            if kind.startswith("heading"):
+                if first_heading and value == title:
+                    first_heading = False
+                    continue
+                first_heading = False
+                level = min(int(kind[-1]) + 1, 6)
+                body.append(f"<h{level}>{self._inline_xhtml(value)}</h{level}>")
+            elif kind == "list":
+                items = "".join(f"<li>{self._inline_xhtml(item)}</li>" for item in value.splitlines())
+                body.append(f"<ul>{items}</ul>")
+            else:
+                body.append(f"<p>{self._inline_xhtml(value)}</p>")
+        escaped_title = _html.escape(title, quote=True)
+        xhtml = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<html xmlns="http://www.w3.org/1999/xhtml" lang="en">'
+            f'<head><title>{escaped_title}</title><meta charset="utf-8"/></head>'
+            f'<body>{"".join(body)}</body></html>'
+        ).encode("utf-8")
+        opf = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:dcterms="http://purl.org/dc/terms/">'
+            '<dc:identifier id="book-id">urn:latexy:resume</dc:identifier>'
+            f'<dc:title>{escaped_title}</dc:title><dc:language>en</dc:language>'
+            '<meta property="dcterms:modified">2000-01-01T00:00:00Z</meta></metadata>'
+            '<manifest><item id="content" href="content.xhtml" media-type="application/xhtml+xml"/>'
+            '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest>'
+            '<spine><itemref idref="content"/></spine></package>'
+        ).encode("utf-8")
+        nav = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+            f'<head><title>{escaped_title}</title></head><body><nav epub:type="toc"><ol>'
+            '<li><a href="content.xhtml">Resume</a></li></ol></nav></body></html>'
+        ).encode("utf-8")
+        container = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+            '</rootfiles></container>'
+        ).encode("utf-8")
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            info = zipfile.ZipInfo("mimetype")
+            info.compress_type = zipfile.ZIP_STORED
+            archive.writestr(info, "application/epub+zip")
+            archive.writestr("META-INF/container.xml", container)
+            archive.writestr("OEBPS/content.opf", opf)
+            archive.writestr("OEBPS/content.xhtml", xhtml)
+            archive.writestr("OEBPS/nav.xhtml", nav)
+        return output.getvalue()
+
+    def to_odf(self, latex_content: str) -> bytes:
+        """Create a valid ODF text document (ODT) package."""
+        ns = {
+            "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
+            "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
+            "manifest": "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0",
+        }
+        for prefix, uri in ns.items():
+            ET.register_namespace(prefix, uri)
+        root = ET.Element(f"{{{ns['office']}}}document-content", {f"{{{ns['office']}}}version": "1.3"})
+        text_root = ET.SubElement(ET.SubElement(root, f"{{{ns['office']}}}body"), f"{{{ns['office']}}}text")
+        for kind, value in self._structured_markdown_blocks(latex_content):
+            if kind == "list":
+                listing = ET.SubElement(text_root, f"{{{ns['text']}}}list")
+                for item in value.splitlines():
+                    item_element = ET.SubElement(listing, f"{{{ns['text']}}}list-item")
+                    ET.SubElement(item_element, f"{{{ns['text']}}}p").text = item
+            else:
+                tag = "h" if kind.startswith("heading") else "p"
+                element = ET.SubElement(text_root, f"{{{ns['text']}}}{tag}")
+                if tag == "h":
+                    element.set(f"{{{ns['text']}}}outline-level", str(min(int(kind[-1]), 6)))
+                element.text = value
+        content = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        manifest = ET.Element(f"{{{ns['manifest']}}}manifest", {f"{{{ns['manifest']}}}version": "1.3"})
+        ET.SubElement(manifest, f"{{{ns['manifest']}}}file-entry", {f"{{{ns['manifest']}}}full-path": "/", f"{{{ns['manifest']}}}media-type": "application/vnd.oasis.opendocument.text"})
+        ET.SubElement(manifest, f"{{{ns['manifest']}}}file-entry", {f"{{{ns['manifest']}}}full-path": "content.xml", f"{{{ns['manifest']}}}media-type": "text/xml"})
+        manifest_bytes = ET.tostring(manifest, encoding="utf-8", xml_declaration=True)
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            info = zipfile.ZipInfo("mimetype")
+            info.compress_type = zipfile.ZIP_STORED
+            archive.writestr(info, "application/vnd.oasis.opendocument.text")
+            archive.writestr("META-INF/manifest.xml", manifest_bytes)
+            archive.writestr("content.xml", content)
+        return output.getvalue()
+
+    def to_docbook(self, latex_content: str) -> str:
+        """Create DocBook 5 XML, rather than labelling generic XML as DocBook."""
+        namespace = "http://docbook.org/ns/docbook"
+        ET.register_namespace("", namespace)
+        article = ET.Element(f"{{{namespace}}}article", {"version": "5.2"})
+        info = ET.SubElement(article, f"{{{namespace}}}info")
+        ET.SubElement(info, f"{{{namespace}}}title").text = "Resume"
+        current_section: ET.Element | None = None
+        for kind, value in self._structured_markdown_blocks(latex_content):
+            if kind.startswith("heading"):
+                current_section = ET.SubElement(article, f"{{{namespace}}}section")
+                ET.SubElement(current_section, f"{{{namespace}}}title").text = value
+            elif kind == "list":
+                parent = current_section or article
+                listing = ET.SubElement(parent, f"{{{namespace}}}itemizedlist")
+                for item in value.splitlines():
+                    list_item = ET.SubElement(listing, f"{{{namespace}}}listitem")
+                    ET.SubElement(list_item, f"{{{namespace}}}para").text = item
+            else:
+                ET.SubElement(current_section or article, f"{{{namespace}}}para").text = value
+        return ET.tostring(article, encoding="unicode", xml_declaration=True)
 
     # ─── DOCX ────────────────────────────────────────────────────────────────
 
