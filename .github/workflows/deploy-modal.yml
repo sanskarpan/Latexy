@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: modal-production
@@ -36,41 +37,86 @@ jobs:
 
     steps:
       - name: Check out the CI-validated revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
+          fetch-depth: 0
 
-      - name: Record deployment revision
-        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Validate immutable main revision and canonical CI success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          deploy_sha="$(git rev-parse --verify "${DEPLOY_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$deploy_sha" origin/main; then
+            echo "Refusing to deploy $deploy_sha: it is not reachable from main" >&2
+            exit 1
+          fi
+          ci_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${deploy_sha}&branch=main&status=completed&per_page=100")"
+          if ! jq -e --arg sha "$deploy_sha" \
+            'any(.workflow_runs[]?; .head_sha == $sha and .head_branch == "main" and .conclusion == "success")' \
+            <<<"$ci_runs" >/dev/null; then
+            echo "Refusing to deploy $deploy_sha: no successful canonical CI run exists" >&2
+            exit 1
+          fi
+          echo "Validated deployment SHA: $deploy_sha"
+          echo "DEPLOY_SHA=$deploy_sha" >> "$GITHUB_ENV"
+
+      - name: Skip stale automatic deployment
+        id: freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_run" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [[ "$latest_sha" != "$DEPLOY_SHA" ]]; then
+            echo "Automatic CI run is stale ($DEPLOY_SHA); current main is $latest_sha. Skipping deployment."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        if: steps.freshness.outputs.current == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install pinned Modal CLI
+        if: steps.freshness.outputs.current == 'true'
         run: python -m pip install "modal==1.5.4"
 
       # modal_app.py deliberately keeps migrations separate from API startup.
       # Apply them first so incompatible application code is never made live.
       - name: Apply production database migrations
+        if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         run: modal run --env main modal_app.py::migrate
 
       - name: Deploy backend with a rolling update
+        if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py
 
       - name: Synchronize source-owned production templates
+        if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         run: modal run --env main modal_app.py::sync_templates
 
       - name: Backfill missing template previews
+        if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         run: modal run --env main scripts/backfill_template_assets.py
 
       - name: Verify production backend health
+        if: steps.freshness.outputs.current == 'true'
         env:
           BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
         run: |
@@ -90,6 +136,7 @@ jobs:
           exit 1
 
       - name: Verify source template catalog and assets
+        if: steps.freshness.outputs.current == 'true'
         env:
           BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
         run: |
