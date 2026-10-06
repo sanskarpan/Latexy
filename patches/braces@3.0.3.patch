@@ -22,10 +22,10 @@ index dce69beb90ece5c3b0ca234a949418f9f34eedbc..7dcd3b1652a752e77dc1af0e999cae4e
      }
  
 diff --git a/lib/expand.js b/lib/expand.js
-index 35b2c41d6afdb8f0197959e26079f266e48370d3..dc6426e6282953f7606b792f52cb239a5f6a6a38 100644
+index 35b2c41d6afdb8f0197959e26079f266e48370d3..ac585066e7153dd5716af35ba91b90c07d81de67 100644
 --- a/lib/expand.js
 +++ b/lib/expand.js
-@@ -33,7 +33,8 @@ const append = (queue = '', stash = '', enclose = false) => {
+@@ -33,13 +33,17 @@ const append = (queue = '', stash = '', enclose = false) => {
  const expand = (ast, options = {}) => {
    const rangeLimit = options.rangeLimit === undefined ? 1000 : options.rangeLimit;
  
@@ -35,7 +35,28 @@ index 35b2c41d6afdb8f0197959e26079f266e48370d3..dc6426e6282953f7606b792f52cb239a
      node.queue = [];
  
      let p = parent;
-@@ -100,7 +101,7 @@ const expand = (ast, options = {}) => {
+     let q = parent.queue;
++    let parentDepth = 0;
+ 
+     while (p.type !== 'brace' && p.type !== 'root' && p.parent) {
++      if (parentDepth >= 128) throw new RangeError('Brace nesting exceeds safe depth');
++      parentDepth++;
+       p = p.parent;
+       q = p.queue;
+     }
+@@ -74,8 +78,11 @@ const expand = (ast, options = {}) => {
+     const enclose = utils.encloseBrace(node);
+     let queue = node.queue;
+     let block = node;
++    let blockDepth = 0;
+ 
+     while (block.type !== 'brace' && block.type !== 'root' && block.parent) {
++      if (blockDepth >= 128) throw new RangeError('Brace nesting exceeds safe depth');
++      blockDepth++;
+       block = block.parent;
+       queue = block.queue;
+     }
+@@ -100,7 +107,7 @@ const expand = (ast, options = {}) => {
        }
  
        if (child.nodes) {
