@@ -57,6 +57,8 @@ async function installFixture(page: Page) {
   const errors: string[] = []
   const submittedAt: number[] = []
   const synctexOverrides = new Map<string, string>()
+  const requestedSynctexJobs: string[] = []
+  const pdfDownloadGates = new Map<string, Promise<void>>()
   const subscribers = new Map<string, () => void>()
   let sequence = 0
   page.on('pageerror', error => errors.push(error.message))
@@ -82,9 +84,13 @@ async function installFixture(page: Page) {
     }
     if (/^\/download\/editor-fixture-job-\d+\/synctex$/.test(path)) {
       const jobId = path.split('/')[2]
+      requestedSynctexJobs.push(jobId)
       return route.fulfill({ contentType: 'text/plain', body: synctexOverrides.get(jobId) ?? fixtureSynctex() })
     }
-    if (/^\/download\/editor-fixture-job-\d+$/.test(path)) return route.fulfill({ contentType: 'application/pdf', body: fixturePdf() })
+    if (/^\/download\/editor-fixture-job-\d+$/.test(path)) {
+      await pdfDownloadGates.get(path.split('/')[2])
+      return route.fulfill({ contentType: 'application/pdf', body: fixturePdf() })
+    }
     if (/^\/jobs\/editor-fixture-job-\d+\/state$/.test(path)) return route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 10, last_updated: Date.now() / 1000 } })
     if (path === '/ws/ticket') return route.fulfill({ status: 201, json: { ticket: 'editor-fixture-ticket', expires_in: 30 } })
     if (path.includes('/checkpoints') || path.includes('/comments') || path.includes('/collaborators') || path.includes('/suggestions') || path === '/resumes/stats') return route.fulfill({ json: [] })
@@ -112,7 +118,12 @@ async function installFixture(page: Page) {
   await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
   return {
-    submitted, submittedAt, synctexOverrides, unknown, errors,
+    submitted, submittedAt, synctexOverrides, requestedSynctexJobs, unknown, errors,
+    holdPdf(index: number) {
+      let release!: () => void
+      pdfDownloadGates.set(`editor-fixture-job-${index}`, new Promise<void>(resolve => { release = resolve }))
+      return release
+    },
     async complete(index: number) {
       const jobId = `editor-fixture-job-${index}`
       await expect.poll(() => subscribers.has(jobId)).toBe(true)
@@ -169,6 +180,39 @@ test('coalesces typing, retains busy edits, and does not repeat a matching manua
   await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
   await page.waitForTimeout(12_000)
   expect(fixture.submitted).toHaveLength(3)
+  expect(fixture.unknown).toEqual([])
+  expect(fixture.errors).toEqual([])
+})
+
+test('keeps the visible PDF and its SyncTeX paired during a delayed replacement download', async ({ page }) => {
+  const fixture = await installFixture(page)
+  await page.getByRole('button', { name: 'Compile', exact: true }).click()
+  await fixture.complete(1)
+  await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 3, column: 1 }))
+  const forward = page.getByRole('button', { name: 'Show source line 3 in PDF', exact: true })
+  await expect(forward).toBeEnabled()
+  const releasePdf = fixture.holdPdf(2)
+  fixture.synctexOverrides.set('editor-fixture-job-2', '')
+  try {
+    await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
+    await appendText(page, ' replacement')
+    await expect.poll(() => fixture.submitted.length).toBe(2)
+    await fixture.complete(2)
+    // A normal caret move triggers a parent rerender while the second PDF's
+    // download is still pending. The old PDF must retain job one's mapping.
+    await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 1, column: 1 }))
+    await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 3, column: 1 }))
+    await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
+    await expect(forward).toBeEnabled()
+    expect(fixture.requestedSynctexJobs).not.toContain('editor-fixture-job-2')
+    await forward.click()
+    await expect(page.locator('[data-synctex-highlight]')).toBeVisible()
+  } finally {
+    releasePdf()
+  }
+  await expect.poll(() => fixture.requestedSynctexJobs).toContain('editor-fixture-job-2')
+  await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()
   expect(fixture.unknown).toEqual([])
   expect(fixture.errors).toEqual([])
 })
