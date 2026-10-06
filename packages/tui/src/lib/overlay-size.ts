@@ -24,6 +24,14 @@ export interface OverlaySize {
   width: number
 }
 
+export function measureOverlaySize(termRows = 24, termCols = 80): OverlaySize {
+  return {
+    rows: Math.max(MIN_ROWS, Math.min(MAX_ROWS, termRows - CHROME_ROWS)),
+    // AppShell wraps overlays in marginX={4}, so 8 columns are already spent.
+    width: Math.max(28, Math.min(72, termCols - 10)),
+  }
+}
+
 /**
  * Fit an overlay to the terminal, and follow it when the terminal changes.
  *
@@ -33,15 +41,7 @@ export interface OverlaySize {
  */
 export function useOverlaySize(): OverlaySize {
   const { stdout } = useStdout()
-  const measure = (): OverlaySize => {
-    const termRows = stdout?.rows ?? 24
-    const termCols = stdout?.columns ?? 80
-    return {
-      rows: Math.max(MIN_ROWS, Math.min(MAX_ROWS, termRows - CHROME_ROWS)),
-      // AppShell wraps overlays in marginX={4}, so 8 columns are already spent.
-      width: Math.max(28, Math.min(72, termCols - 10)),
-    }
-  }
+  const measure = (): OverlaySize => measureOverlaySize(stdout?.rows, stdout?.columns)
 
   const [size, setSize] = useState<OverlaySize>(measure)
 
