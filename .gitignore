@@ -208,6 +208,9 @@ __marimo__/
 
 # Application specific
 logs/
+!nginx/logs/
+nginx/logs/*
+!nginx/logs/.gitkeep
 temp/
 *.log
 *.pdf
@@ -237,6 +240,7 @@ dist/
 .env.local
 .env.production
 .env.production.local
+!.env.production.example
 .env.development.local
 
 # IDE
