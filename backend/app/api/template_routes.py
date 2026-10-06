@@ -16,6 +16,7 @@ Endpoints:
 """
 
 import hmac
+import re
 import uuid as _uuid
 from typing import List, Optional
 
@@ -32,10 +33,14 @@ from ..database.models import Resume, ResumeTemplate
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services import storage_service
+from ..services.europecv import configure_europecv_latex, is_europecv_source
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/templates", tags=["templates"])
+
+_MAX_TEMPLATE_THUMBNAIL_BYTES = 4 * 1024 * 1024
+_MAX_TEMPLATE_PDF_BYTES = 20 * 1024 * 1024
 
 # ------------------------------------------------------------------ #
 #  Constants                                                          #
@@ -44,7 +49,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 VALID_CATEGORIES = frozenset({
     "software_engineering", "finance", "academic", "creative",
     "minimal", "ats_safe", "two_column", "executive",
-    "marketing", "medical", "legal", "graduate", "presentation",
+    "marketing", "medical", "legal", "graduate", "regional", "presentation",
 })
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -60,8 +65,15 @@ CATEGORY_LABELS: dict[str, str] = {
     "medical":              "Medical / Healthcare",
     "legal":                "Legal",
     "graduate":             "Graduate / Entry-Level",
+    "regional":             "Regional Formats",
     "presentation":         "Presentations",
 }
+
+_DOCUMENT_CLASS_RE = re.compile(
+    r"(?m)^[ \t]*\\documentclass(?:\[[^\]\r\n]{0,1000}\])?"
+    r"[ \t]*\{[ \t]*([^}\r\n]{1,100})[ \t]*\}"
+)
+_NON_TAGGABLE_RESUME_CLASSES = frozenset({"beamer", "beamerarticle"})
 
 # ------------------------------------------------------------------ #
 #  Pydantic schemas                                                   #
@@ -92,6 +104,9 @@ class TemplateDetailResponse(TemplateResponse):
 
 class UseTemplateRequest(BaseModel):
     title: Optional[str] = None
+    # Only the genuine europecv template accepts this bounded locale selector.
+    # Other templates remain byte-for-byte source-owned and reject the field.
+    locale: Optional[str] = Field(default=None, min_length=2, max_length=10)
 
 
 class TemplateAdminUpsertRequest(BaseModel):
@@ -127,6 +142,23 @@ def _require_valid_category(category: str) -> str:
     if normalized not in VALID_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
     return normalized
+
+
+def _reject_non_taggable_resume_template(category: str, latex_content: str) -> None:
+    """Keep presentation-only document classes out of the resume gallery."""
+    if category == "presentation":
+        return
+
+    match = _DOCUMENT_CLASS_RE.search(latex_content)
+    if match and match.group(1).strip().lower() in _NON_TAGGABLE_RESUME_CLASSES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Beamer document classes are presentation-only and cannot be added "
+                "to the resume gallery because they are incompatible with the "
+                "tagged-PDF accessibility pipeline"
+            ),
+        )
 
 
 async def require_template_admin(
@@ -262,7 +294,7 @@ async def get_template_thumbnail(template_id: str):
     except Exception:
         logger.warning("Presign failed for thumbnail %s; streaming instead", template_id)
     try:
-        data = storage_service.download_bytes(key)
+        data = storage_service.download_bytes(key, _MAX_TEMPLATE_THUMBNAIL_BYTES)
     except Exception:
         logger.exception("MinIO error fetching thumbnail for %s", template_id)
         raise HTTPException(status_code=502, detail="Storage unavailable")
@@ -314,7 +346,7 @@ async def get_template_pdf(template_id: str):
     except Exception:
         logger.warning("Presign failed for PDF %s; streaming instead", template_id)
     try:
-        data = storage_service.download_bytes(key)
+        data = storage_service.download_bytes(key, _MAX_TEMPLATE_PDF_BYTES)
     except Exception:
         logger.exception("MinIO error fetching PDF for %s", template_id)
         raise HTTPException(status_code=502, detail="Storage unavailable")
@@ -354,13 +386,23 @@ async def use_template(
         raise HTTPException(status_code=404, detail="Template not found")
 
     title = (body.title or "").strip() or t.name
+    latex_content = t.latex_content
+    compiler = settings.DEFAULT_NEW_RESUME_COMPILER
+    if body.locale is not None and not is_europecv_source(t.latex_content):
+        raise HTTPException(status_code=422, detail="locale is only supported for the europecv template")
+    if is_europecv_source(t.latex_content):
+        try:
+            latex_content, compiler = configure_europecv_latex(t.latex_content, body.locale or "en")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Unsupported template locale.") from exc
     resume = Resume(
         user_id=user_id,
         title=title,
-        latex_content=t.latex_content,
+        latex_content=latex_content,
         is_template=False,
         tags=[t.category],
         document_type=t.document_type,
+        resume_settings={"compiler": compiler},
     )
     db.add(resume)
     await db.commit()
@@ -378,6 +420,7 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
 ):
     category = _require_valid_category(body.category)
+    _reject_non_taggable_resume_template(category, body.latex_content)
     template = ResumeTemplate(
         name=body.name.strip(),
         description=body.description.strip() if body.description else None,
@@ -408,9 +451,12 @@ async def update_template(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
+    category = _require_valid_category(body.category)
+    _reject_non_taggable_resume_template(category, body.latex_content)
+
     template.name = body.name.strip()
     template.description = body.description.strip() if body.description else None
-    template.category = _require_valid_category(body.category)
+    template.category = category
     template.tags = [tag.strip() for tag in body.tags if tag.strip()]
     template.thumbnail_url = body.thumbnail_url.strip() if body.thumbnail_url else None
     template.latex_content = body.latex_content
