@@ -2,9 +2,9 @@
 
 - **Status:** Shipped baseline; follow-up product decisions remain
 - **Date:** 2026-08-02
-- **Reconciled:** 2026-08-28 against current `main`
+- **Reconciled:** 2026-09-26 against the current local working tree and mounted OpenAPI contract
 - **Owner:** TBD
-- **Tier:** Premium / AI-personalization (optional, opt-in)
+- **Tier:** Available on Free by the current all-enabled entitlement matrix; AI-assist quotas and per-source abuse budgets still apply (optional, opt-in)
 - **Related:** [Input-Driven Optimization PRD](2026-08-02-input-driven-optimization.md)
 
 ---
@@ -33,15 +33,28 @@ candidates use owner-bound Redis envelopes with a short TTL. Accepted text is
 ordinary user-authored resume content. Treat the remaining sections as design
 rationale unless a statement is explicitly marked shipped.
 
+**Entitlement reconciliation (2026-09-26):** the original premium-tier
+assumption in this dated PRD is superseded by the shipped policy. The current
+registry keys are exactly `ai_import_github`, `ai_import_url`, and
+`ai_import_linkedin`; the `0035_admin_control_plane` seed enables every
+gateable feature for every plan family, and the entitlement tests assert that
+the Free family resolves these keys as enabled. Operators can still disable a
+key globally or for a plan family through the admin matrix. This document does
+not claim that the operator has enabled or disabled any key differently in a
+deployed environment.
+
 ## 1. Summary
 
 Let users optionally pull their **real projects and experience** from external sources so the AI grounds resume content in verifiable work instead of generic phrasing. Sources, in priority order:
 
-1. **GitHub** — read the user's public repos, rank their top projects, and draft resume-ready bullets from README/description/stack. **Build first.**
-2. **Portfolio / arbitrary project URLs** — fetch and extract content from a personal site or project link. **Build second (reuses the existing scraper).**
-3. **LinkedIn** — via the user's **own data export** upload or resume-PDF upload only. **Never scrape LinkedIn.** **Build third.**
+1. **GitHub** — read the user's public repos, rank their top projects, and draft resume-ready bullets from README/description/stack. **Shipped first; this was the original build order.**
+2. **Portfolio / arbitrary project URLs** — fetch and extract content from a personal site or project link. **Shipped second (reuses the existing scraper); this was the original build order.**
+3. **LinkedIn** — via the user's **own data export** upload or resume-PDF upload only. **Never scrape LinkedIn.** **Shipped third; this was the original build order.**
 
-Everything is optional, opt-in per source, gated to the premium AI tier, and **always routed through a user review/edit step** before anything is written to the resume.
+Everything is optional, opt-in per source, available to the Free family under
+the current feature matrix (with existing AI-assist quotas/budgets where
+applicable), and **always routed through a user review/edit step** before
+anything is written to the resume.
 
 ## 2. Problem & motivation
 
@@ -103,9 +116,12 @@ penalize/exclude: isFork, isArchived, README<100 chars
 
 **LLM summarization:** truncate/summarize each README (first ~1,500 tokens or an "extract what/why/tech" pass) before it hits the prompt. Under **BYOK this runs on the user's own key → ~zero marginal cost to Latexy.**
 
-### Phase 2 — Portfolio / project URL ingest (SHIPPED)
+### Phase 2 — Portfolio / project URL ingest (SHIPPED; endpoint: `/sources/import-url`)
 
-Generalize `job_scraper_service` into a shared `ContentIngestService` and add `POST /ingest/url`. **Static fetch only** (Trafilatura or the existing scorer); **skip JS-heavy pages** with a clear "couldn't read this page" message rather than spinning up headless Chrome. Honor **robots.txt**; enforce the existing **SSRF guard**, redirect/size/content-type/timeout caps on every fetch. LLM structures cleaned text into `ProjectEvidence`. Lower signal-to-noise than GitHub → build after it.
+The shipped route is `POST /sources/import-url`, not the originally sketched
+`POST /ingest/url`; the old sentence below is retained as design provenance.
+
+Historical design rationale: generalize `job_scraper_service` into a shared `ContentIngestService` and add `POST /ingest/url`. **Static fetch only** (Trafilatura or the existing scorer); **skip JS-heavy pages** with a clear "couldn't read this page" message rather than spinning up headless Chrome. Honor **robots.txt**; enforce the existing **SSRF guard**, redirect/size/content-type/timeout caps on every fetch. LLM structures cleaned text into `ProjectEvidence`. Lower signal-to-noise than GitHub was the original sequencing rationale; the shipped `/sources/import-url` contract is documented above.
 
 ### Phase 3 — LinkedIn via user-owned data (SHIPPED, COMPLIANT ONLY)
 
@@ -154,9 +170,13 @@ future optimization, not shipped behavior.
 
 ## 8. Entitlement & metering
 
-- Add `FeatureDef` keys to `feature_registry.py`: `ai_import_github`, `ai_import_url`, `ai_import_linkedin_archive` (category `integrations` or a new `ai_personalization`), bound to the premium AI tier via the admin matrix.
-- Gate routes with `Depends(require_feature("ai_import_github"))` etc.
-- Meter with `enforce_quota(...)` — reuse `ai_assists` (or add an `imports` dimension to `QUOTA_DIMENSIONS` + `PLAN_QUOTAS`). Per-user rate-limit URL ingestion.
+The shipped implementation uses the exact registry keys `ai_import_github`,
+`ai_import_url`, and `ai_import_linkedin` in the `integrations` category. The
+routes are gated with `Depends(require_feature(...))`, but the default seeded
+matrix intentionally enables them for Free as well as paid families. GitHub and
+URL imports reserve the existing `ai_assists` quota; URL/GitHub/LinkedIn paths
+also use bounded per-user and global external budgets. No new `imports` quota
+dimension or premium-only assumption is part of the current contract.
 
 ## 9. Success metrics
 
@@ -169,14 +189,14 @@ future optimization, not shipped behavior.
 
 | Phase | Scope | Effort | Risk |
 |---|---|---|---|
-| 1 GitHub | new endpoints + worker + ranking + README summarize + review UI (reuses OAuth/token/client) | ~1–1.5 wk | Low (official API) |
-| 2 URL ingest | generalize scraper → `ContentIngestService` + endpoint + review UI | ~0.5–1 wk | Low-med (abuse controls) |
-| 3 LinkedIn (user data) | archive parser + resume-upload path + review UI | ~0.5–1 wk | Low (compliant) |
+| 1 GitHub | endpoints + worker + ranking + README summarization + review UI (reuses OAuth/token/client); shipped | ~1–1.5 wk (historical estimate) | Low (official API) |
+| 2 URL ingest | SSRF-guarded static fetch + `/sources/import-url` + review UI; shipped | ~0.5–1 wk (historical estimate) | Low-med (abuse controls) |
+| 3 LinkedIn (user data) | archive parser + resume-upload path + review UI; shipped | ~0.5–1 wk (historical estimate) | Low (compliant) |
 
 ## 11. Open decisions for founder
 
 1. **Positioning:** lead marketing with **GitHub import** as the developer differentiator? (Recommended.)
 2. **Scope tightening — RESOLVED:** public import uses an unscoped OAuth token; private sync requests `repo` only when selected. A future GitHub App migration could make private-repository permissions finer-grained and short-lived.
 3. **Insert model:** should imported projects feed the *optimizer prompt* as evidence, or generate a standalone **Projects/Experience section** the user drops in (ORCID-style)? (Recommend: both — evidence for optimize, and a "generate section" quick action.)
-4. **Tier & quota:** which plans get imports, and what monthly cap (reuse `ai_assists` vs a new `imports` dimension)?
-5. **LinkedIn UX:** ship the async data-archive path in v1, or start with just resume-PDF upload (fastest) and add archive later?
+4. **Tier & quota — RESOLVED:** the current shipped policy enables all three import keys for the Free family. GitHub and URL use the existing `ai_assists` quota; all three paths have bounded external budgets. Any premium-only change is a future product decision, not the current contract.
+5. **LinkedIn UX — RESOLVED:** ship the user-owned archive path together with PDF/DOCX upload. The UI explains the archive delay and never adds a profile-URL scrape path.
