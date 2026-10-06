@@ -182,6 +182,13 @@ export const LATEX_FONTS: FontOption[] = [
     category: 'sans-serif',
     webPreview: 'Raleway, Arial, sans-serif',
   },
+  {
+    name: 'Atkinson Hyperlegible',
+    package: 'atkinson',
+    command: '\\renewcommand{\\familydefault}{\\sfdefault}',
+    category: 'sans-serif',
+    webPreview: '"Atkinson Hyperlegible", Arial, sans-serif',
+  },
   // ── Monospace ───────────────────────────────────────────────────────────────
   {
     name: 'Courier',
@@ -227,6 +234,27 @@ export const LATEX_FONTS: FontOption[] = [
     webPreview: 'Didot, "Bodoni MT", Georgia, serif',
   },
 ]
+
+/** Font packages present in the deliberately trimmed Modal TeX image.
+ * Keep legacy entries in LATEX_FONTS so existing documents remain detectable
+ * and removable, but do not let the hosted editor insert an unavailable package.
+ */
+export const HOSTED_LATEX_FONT_PACKAGES = new Set([
+  'atkinson',
+  'avant',
+  'bookman',
+  'charter',
+  'courier',
+  'helvet',
+  'lmodern',
+  'mathptmx',
+  'newcent',
+  'palatino',
+])
+
+export function isHostedFontAvailable(font: FontOption): boolean {
+  return font.package === null || HOSTED_LATEX_FONT_PACKAGES.has(font.package)
+}
 
 // All known font packages — used to clean up preamble when switching fonts
 const KNOWN_FONT_PACKAGES = new Set(
