@@ -12,6 +12,11 @@ the earlier instruction to defer commits and publication. Integration issue:
 - Preserve the 37 existing unpublished commits and create individual-file
   commits for accumulated source, test, documentation and configuration work.
 - Exclude the unrelated untracked `.github/workflows/ci-cd.yml` and `test.txt`.
+- Leave the seven pre-existing October 2025 root scratch reports local and
+  unchanged: `COMPREHENSIVE_ANALYSIS.md`, `FINAL_STATUS_REPORT.md`,
+  `PHASE12_SUMMARY.md`, `PHASE_13_AND_BEYOND.md`, `PHASE_14_COMPLETE.md`,
+  `PHASE_14_IMPLEMENTATION.md`, and `SUMMARY_FOR_USER.md`. Their literal date
+  placeholders and old completion claims are not current QA evidence.
 - Exclude changes to generated `frontend/playwright-report/index.html` and
   `frontend/tsconfig.tsbuildinfo`; preserve those local files without publishing
   their private/generated contents.
