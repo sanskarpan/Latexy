@@ -518,3 +518,35 @@ compiler repair.
   Whole-product accessibility, native WebKit, authenticated production ownership,
   Upstash capacity instrumentation, publishing/payment/legal prerequisites and
   the broad remediation goal remain open.
+
+### Later accepted follow-ups
+
+- Main `af81781fff0c4e58c472df7f56607ea879fb78c0` subsequently passed canonical
+  CI 37460958008, Vercel verification 37461683856 and complete Modal rollout
+  37461683992. Independent history and public identity matched v54/af81781f.
+  #1771 is accepted within the basic compiler-boundary scope above; existing
+  asset pairs were preserved rather than deleted to force live compilation.
+- Legal PR #1774 merged normally to main
+  `dfc2ad4d95d3d0e185fdb3125054fd7ab3286800`, source-identical to tested head
+  `1fbc8264d82cc487a78b404fa540e0fe0cf3c9e0`. All 21 required contexts passed.
+  Canonical CI 37462103265, Vercel certification 37462865578 and complete Modal
+  rollout 37462865681 passed. Independent identities match v55/dfc2ad4d, and
+  the actual live privacy DOM exposes the full wrapped sentence as one list
+  item. #1770 acceptance changes no legal wording or counsel-review status.
+- Workflow-reliability PR #1777 merged normally to source-identical main
+  `5f466798ba83ba91e78f7cbc8c9bf4924233a72d`, after both PR CI runs and all
+  21 required contexts passed. Six bounded canonical-CI lookup attempts retain
+  exact reachable-main, canonical workflow, SHA, main branch and success checks.
+  Each request has a 20-second deadline and 5-second kill grace; five 5-second
+  waits give approximately 175 seconds plus process overhead. API errors,
+  malformed payloads and wrong/missing runs still fail closed. Root reviewed
+  and independently passed 118 strict-warning executed-shell/parity/manifest
+  controls, including immediate/delayed success, invalid shapes, mixed entries
+  and ancestry rejection. This revision's main CI/deployment remain pending.
+- The continuing #1776 owner-keyed form repair now passes root's combined
+  frontend unit checkpoint: 157 files, 991 tests, plus non-incremental TypeScript.
+  Fresh production draft controls initially pass four cases, but acceptance is
+  being strengthened with exact navigation IDs, deferred success/rejection
+  body/handler barriers and existing template-lifetime controls. It is not yet
+  published or an authenticated production claim. Main publication readiness
+  applies to the merged revisions above, not these uncommitted QA changes.
