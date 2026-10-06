@@ -33,10 +33,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
+import re
+import time
+import unicodedata
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from collections import deque
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from fastapi.websockets import WebSocket
 
@@ -49,6 +55,9 @@ logger = get_logger(__name__)
 MSG_SYNC = 0
 MSG_AWARENESS = 1
 MSG_QUERY_AWARENESS = 3
+# Protocol extension outside the y-protocol range. Existing Yjs clients ignore
+# this frame until they opt into chat support.
+MSG_CHAT = 62
 
 SYNC_STEP1 = 0
 SYNC_STEP2 = 1
@@ -86,6 +95,28 @@ CLOSE_ROLE_CHANGED = 4005
 # Maximum accepted size of a single collaboration frame (256 KiB). Oversized
 # frames are dropped to bound Redis writes and broadcast amplification.
 MAX_COLLAB_MESSAGE_BYTES = 256 * 1024
+
+# Chat is deliberately much smaller than binary Yjs updates and is never
+# persisted. These limits bound JSON parsing, fan-out, and memory per sender.
+MAX_CHAT_FRAME_BYTES = 4 * 1024
+MAX_CHAT_TEXT_BYTES = 2 * 1024
+_CHAT_MESSAGES_PER_WINDOW = 20
+_CHAT_RATE_WINDOW_SECONDS = 10.0
+_CHAT_SEND_TIMEOUT_SECONDS = 2.0
+_CHAT_RATE_BACKEND_TIMEOUT_SECONDS = 1.0
+_CHAT_RATE_WARNING_INTERVAL_SECONDS = 60.0
+_MAX_LOCAL_CHAT_BUCKETS = 4096
+_chat_timestamps: dict[str, deque[float]] = {}
+_last_chat_rate_warning = float("-inf")
+_CHAT_RATE_LUA = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return n
+"""
+_EMAIL_LIKE_LABEL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_BIDI_LABEL_CONTROLS = frozenset({"\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069"})
 
 
 # ── lib0 variable-length uint helpers ────────────────────────────────────────
@@ -147,6 +178,160 @@ def _build_permission_denied(code: str, message: str) -> bytes:
     """Build a MSG_PERMISSION_DENIED message carrying a JSON reason payload."""
     payload = json.dumps({"code": code, "message": message}).encode("utf-8")
     return _encode_varuint(MSG_PERMISSION_DENIED) + _encode_varbuffer(payload)
+
+
+@dataclass(frozen=True)
+class ChatMessage:
+    """Validated, plain-text chat content received from one room participant."""
+
+    text: str
+
+
+def _safe_chat_label(value: Optional[str]) -> str:
+    """Return a bounded, plain-text display name; never fall back to an id."""
+    label = (value or "").strip()
+    if (
+        not label
+        or "@" in label
+        or _EMAIL_LIKE_LABEL.fullmatch(label)
+        or len(label.encode("utf-8", errors="ignore")) > 320
+    ):
+        return "Collaborator"
+    if any(
+        unicodedata.category(char) in {"Cc", "Cf", "Cs"}
+        or char in _BIDI_LABEL_CONTROLS
+        for char in label
+    ):
+        return "Collaborator"
+    return label[:80] or "Collaborator"
+
+
+def _build_chat_frame(text: str, sender_id: str, sender_label: Optional[str] = None) -> bytes:
+    """Build a canonical ephemeral chat frame with minimal sender metadata."""
+    encoded_text = text.encode("utf-8")
+    if not text or len(encoded_text) > MAX_CHAT_TEXT_BYTES:
+        raise ValueError("chat text exceeds the bound")
+    if not sender_id or len(sender_id) > 128 or any(ord(char) < 32 for char in sender_id):
+        raise ValueError("invalid chat sender")
+    payload = json.dumps(
+        {
+            "type": "chat",
+            "text": text,
+            "sender_id": sender_id,
+            "sender_label": _safe_chat_label(sender_label),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    frame = _encode_varuint(MSG_CHAT) + _encode_varbuffer(payload)
+    if len(frame) > MAX_CHAT_FRAME_BYTES:
+        raise ValueError("chat frame exceeds the bound")
+    return frame
+
+
+def _parse_chat_frame(data: bytes) -> Optional[ChatMessage]:
+    """Strictly decode one client chat frame; never interpret HTML."""
+    if len(data) > MAX_CHAT_FRAME_BYTES:
+        return None
+    try:
+        msg_type, pos = _decode_varuint(data, 0)
+        if msg_type != MSG_CHAT:
+            return None
+        raw, end = _decode_varbuffer(data, pos)
+        if end != len(data):
+            return None
+        decoded = raw.decode("utf-8", errors="strict")
+        payload = json.loads(decoded)
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict) or set(payload) != {"type", "text"}:
+        return None
+    if payload.get("type") != "chat" or not isinstance(payload.get("text"), str):
+        return None
+    text = payload["text"]
+    try:
+        text_bytes = text.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        # json.loads accepts escaped lone UTF-16 surrogates, but they are not
+        # valid UTF-8 text and must not escape the parser into the websocket
+        # handler's disconnect path.
+        return None
+    if not text or len(text_bytes) > MAX_CHAT_TEXT_BYTES:
+        return None
+    if any(ord(char) < 32 and char not in "\n\t" for char in text):
+        return None
+    return ChatMessage(text=text)
+
+
+def is_chat_frame(data: bytes) -> bool:
+    """Return whether the bounded frame header identifies the chat extension."""
+    try:
+        msg_type, _ = _decode_varuint(data, 0)
+    except ValueError:
+        return False
+    return msg_type == MSG_CHAT
+
+
+def _chat_rate_allowed(client_id: str, *, bucket_key: Optional[str] = None) -> bool:
+    now = time.monotonic()
+    key = bucket_key or client_id
+    timestamps = _chat_timestamps.get(key)
+    if timestamps is None:
+        if len(_chat_timestamps) >= _MAX_LOCAL_CHAT_BUCKETS:
+            cutoff = now - _CHAT_RATE_WINDOW_SECONDS
+            for stale_key, stale_timestamps in list(_chat_timestamps.items()):
+                if not stale_timestamps or stale_timestamps[-1] <= cutoff:
+                    _chat_timestamps.pop(stale_key, None)
+            if len(_chat_timestamps) >= _MAX_LOCAL_CHAT_BUCKETS:
+                return False
+        timestamps = deque()
+        _chat_timestamps[key] = timestamps
+    while timestamps and now - timestamps[0] >= _CHAT_RATE_WINDOW_SECONDS:
+        timestamps.popleft()
+    if len(timestamps) >= _CHAT_MESSAGES_PER_WINDOW:
+        return False
+    timestamps.append(now)
+    return True
+
+
+async def _chat_user_rate_allowed(
+    resume_id: str,
+    client_id: str,
+    user_id: Optional[str],
+) -> bool:
+    """Apply one bounded user/resume budget, shared through Redis when possible."""
+    if not user_id:
+        return _chat_rate_allowed(client_id)
+    digest = hashlib.sha256(f"{user_id}:{resume_id}".encode("utf-8")).hexdigest()[:32]
+    key = f"latexy:collab:chat-rate:{digest}"
+    try:
+        redis = await asyncio.wait_for(
+            get_redis_client(), timeout=_CHAT_RATE_BACKEND_TIMEOUT_SECONDS
+        )
+        count = await asyncio.wait_for(
+            redis.eval(_CHAT_RATE_LUA, 1, key, int(_CHAT_RATE_WINDOW_SECONDS)),
+            timeout=_CHAT_RATE_BACKEND_TIMEOUT_SECONDS,
+        )
+        return int(count) <= _CHAT_MESSAGES_PER_WINDOW
+    except Exception as exc:
+        # Redis is not required for ordinary Yjs traffic. If unavailable, use
+        # a capped user/resume guard and never retain unbounded local state.
+        _warn_chat_rate_backend_unavailable(exc)
+        return _chat_rate_allowed(client_id, bucket_key=f"user:{digest}")
+
+
+def _warn_chat_rate_backend_unavailable(exc: Exception) -> None:
+    """Emit at most one metadata-only outage warning per interval."""
+    global _last_chat_rate_warning
+    now = time.monotonic()
+    if now - _last_chat_rate_warning >= _CHAT_RATE_WARNING_INTERVAL_SECONDS:
+        _last_chat_rate_warning = now
+        logger.warning("Collab chat rate backend unavailable (%s)", type(exc).__name__)
+
+
+def reset_chat_rate_limit(client_id: str) -> None:
+    """Drop per-connection chat-rate state when a socket disconnects."""
+    _chat_timestamps.pop(client_id, None)
 
 
 # Minimal valid Y.js empty-document update (0 structs, 0 deletes)
@@ -232,19 +417,44 @@ class CollabRoom:
 
     # ── Messaging ─────────────────────────────────────────────────────────
 
-    async def broadcast(self, data: bytes, *, exclude: Optional[str] = None) -> None:
+    async def broadcast(
+        self,
+        data: bytes,
+        *,
+        exclude: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> None:
         """Send *data* to every client except *exclude*."""
         async with self._lock:
             snapshot = list(self._clients.items())
 
-        dead: list[str] = []
-        for cid, (ws, _) in snapshot:
-            if cid == exclude:
-                continue
-            try:
-                await ws.send_bytes(data)
-            except Exception:
-                dead.append(cid)
+        if timeout is None:
+            # Preserve ordered, sequential delivery for Yjs frames.
+            dead: list[str] = []
+            for cid, (ws, _) in snapshot:
+                if cid == exclude:
+                    continue
+                try:
+                    await ws.send_bytes(data)
+                except Exception:
+                    dead.append(cid)
+        else:
+            async def send_bounded(cid: str, ws: WebSocket) -> Optional[str]:
+                try:
+                    await asyncio.wait_for(ws.send_bytes(data), timeout=timeout)
+                except asyncio.TimeoutError:
+                    return cid
+                except Exception:
+                    return cid
+                return None
+
+            tasks = [
+                send_bounded(cid, ws)
+                for cid, (ws, _) in snapshot
+                if cid != exclude
+            ]
+            results = await asyncio.gather(*tasks)
+            dead = [cid for cid in results if cid is not None]
 
         for cid in dead:
             await self.remove(cid)
@@ -261,16 +471,28 @@ class CollabRoom:
         except Exception:
             await self.remove(client_id)
 
-    async def relay(self, data: bytes, *, exclude: Optional[str] = None) -> None:
+    async def relay(
+        self,
+        data: bytes,
+        *,
+        exclude: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> None:
         """
         Deliver *data* to peers in this room — both the ones connected to this
         process and the ones connected to other API workers (via Redis).
         """
-        await self.broadcast(data, exclude=exclude)
-        await _publish(
-            self.resume_id,
-            {"kind": "frame", "data": base64.b64encode(data).decode("ascii")},
-        )
+        await self.broadcast(data, exclude=exclude, timeout=timeout)
+        envelope = {"kind": "frame", "data": base64.b64encode(data).decode("ascii")}
+        if timeout is None:
+            await _publish(self.resume_id, envelope)
+        else:
+            try:
+                await asyncio.wait_for(_publish(self.resume_id, envelope), timeout=timeout)
+            except asyncio.TimeoutError:
+                # Chat delivery is best-effort and bounded; a slow Redis
+                # backend must not hold a websocket receive loop indefinitely.
+                logger.warning("Collab: chat publish timed out for %s", self.resume_id[:8])
 
 
 # ── Manager ───────────────────────────────────────────────────────────────────
@@ -428,7 +650,10 @@ class CollabManager:
                     except Exception:
                         continue
                     if data:
-                        await room.broadcast(data)
+                        await room.broadcast(
+                            data,
+                            timeout=_CHAT_SEND_TIMEOUT_SECONDS if is_chat_frame(data) else None,
+                        )
                 elif kind == "revoke":
                     await room.close_user(
                         envelope.get("user_id", ""),
@@ -440,7 +665,11 @@ class CollabManager:
         except asyncio.CancelledError:
             pass
         except Exception as exc:
-            logger.error("Collab: bridge error for %s: %s", resume_id[:8], exc)
+            logger.error(
+                "Collab: bridge error for %s",
+                resume_id[:8],
+                extra={"error_type": type(exc).__name__},
+            )
         finally:
             # Only de-register if we are still the registered listener: a
             # rejoin during our (awaiting) teardown may already have installed
@@ -450,12 +679,18 @@ class CollabManager:
             try:
                 await pubsub.unsubscribe(channel)
             except Exception as exc:
-                logger.debug("Collab: bridge unsubscribe failed: %s", exc)
+                logger.debug(
+                    "Collab: bridge unsubscribe failed",
+                    extra={"error_type": type(exc).__name__},
+                )
             finally:
                 try:
                     await pubsub.aclose()
                 except Exception as exc:
-                    logger.debug("Collab: bridge close failed: %s", exc)
+                    logger.debug(
+                        "Collab: bridge close failed",
+                        extra={"error_type": type(exc).__name__},
+                    )
 
 
 # Module-level singleton used by the WebSocket handler.
@@ -478,15 +713,25 @@ async def _subscribe(resume_id: str) -> Optional[Any]:
             try:
                 await pubsub.aclose()
             except Exception as cleanup_exc:
-                logger.debug("Collab: cancelled subscribe cleanup failed: %s", cleanup_exc)
+                logger.debug(
+                    "Collab: cancelled subscribe cleanup failed",
+                    extra={"error_type": type(cleanup_exc).__name__},
+                )
         raise
     except Exception as exc:
         if pubsub is not None:
             try:
                 await pubsub.aclose()
             except Exception as cleanup_exc:
-                logger.debug("Collab: failed subscribe cleanup failed: %s", cleanup_exc)
-        logger.warning("Collab: Pub/Sub subscribe failed for %s: %s", resume_id[:8], exc)
+                logger.debug(
+                    "Collab: failed subscribe cleanup failed",
+                    extra={"error_type": type(cleanup_exc).__name__},
+                )
+        logger.warning(
+            "Collab: Pub/Sub subscribe failed for %s",
+            resume_id[:8],
+            extra={"error_type": type(exc).__name__},
+        )
         return None
 
 
@@ -497,7 +742,11 @@ async def _publish(resume_id: str, envelope: dict) -> None:
         r = await get_redis_client()
         await r.publish(f"{_COLLAB_CHANNEL_PREFIX}{resume_id}", json.dumps(envelope))
     except Exception as exc:
-        logger.warning("Collab: Pub/Sub publish failed for %s: %s", resume_id[:8], exc)
+        logger.warning(
+            "Collab: Pub/Sub publish failed for %s",
+            resume_id[:8],
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 # ── Connection-time notices ───────────────────────────────────────────────────
@@ -530,6 +779,11 @@ async def handle_collab_message(
     client_id: str,
     data: bytes,
     room: CollabRoom,
+    *,
+    chat_authorized: Optional[bool] = None,
+    chat_user_id: Optional[str] = None,
+    chat_sender_label: Optional[str] = None,
+    chat_access_check: Optional[Callable[[], Awaitable[bool]]] = None,
 ) -> None:
     """
     Dispatch one binary Y.js message received from *client_id*.
@@ -538,6 +792,12 @@ async def handle_collab_message(
     * SYNC_STEP2 / MSG_UPDATE → persist update bytes; relay to peers
                                 (rejected unless the client's role can edit)
     * MSG_AWARENESS / MSG_QUERY_AWARENESS → relay to peers (no persistence)
+    * MSG_CHAT → relay validated plain-text chat only (never persisted)
+
+    ``chat_access_check`` is supplied by the websocket route and is deliberately
+    invoked only after strict parsing and rate limiting. ``chat_authorized`` is
+    an explicit internal/test override; ``None`` preserves the room-member
+    assumption for internal callers, while ``False`` fails closed.
     """
     if not data:
         return
@@ -603,6 +863,43 @@ async def handle_collab_message(
         # role: read-only collaborators still appear in the presence list.
         await room.relay(data, exclude=client_id)
 
+    elif msg_type == MSG_CHAT:
+        message = _parse_chat_frame(data)
+        if message is None:
+            # Do not echo malformed input or include it in logs.  Dropping it
+            # keeps the extension safe for clients that send arbitrary frames.
+            return
+        if not await _chat_user_rate_allowed(resume_id, client_id, chat_user_id):
+            await room.send_to(
+                client_id,
+                _build_permission_denied(
+                    "chat_rate_limited",
+                    "Too many chat messages",
+                ),
+            )
+            return
+
+        if chat_access_check is not None:
+            chat_authorized = await chat_access_check()
+        if chat_authorized is False:
+            await room.send_to(
+                client_id,
+                _build_permission_denied(
+                    "chat_forbidden",
+                    "You no longer have access to this resume",
+                ),
+            )
+            return
+        # Never trust sender metadata supplied by the client. The canonical
+        # frame carries the authenticated room client identifier plus the
+        # server-derived safe display label.
+        canonical = _build_chat_frame(message.text, client_id, chat_sender_label)
+        await room.relay(
+            canonical,
+            exclude=client_id,
+            timeout=_CHAT_SEND_TIMEOUT_SECONDS,
+        )
+
 
 # ── Redis helpers ─────────────────────────────────────────────────────────────
 
@@ -618,7 +915,11 @@ async def _persist_update(resume_id: str, update_bytes: bytes) -> None:
         await r.ltrim(key, -_MAX_UPDATES, -1)
         await r.expire(key, _COLLAB_TTL)
     except Exception as exc:
-        logger.warning("Collab: Redis write failed for %s: %s", resume_id[:8], exc)
+        logger.warning(
+            "Collab: Redis write failed for %s",
+            resume_id[:8],
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 async def _send_catchup(resume_id: str, client_id: str, room: CollabRoom) -> None:
@@ -630,7 +931,11 @@ async def _send_catchup(resume_id: str, client_id: str, room: CollabRoom) -> Non
         r = await get_redis_client()
         stored: list[str] = await r.lrange(f"collab:{resume_id}:updates", 0, -1)
     except Exception as exc:
-        logger.warning("Collab: Redis read failed for %s: %s", resume_id[:8], exc)
+        logger.warning(
+            "Collab: Redis read failed for %s",
+            resume_id[:8],
+            extra={"error_type": type(exc).__name__},
+        )
         stored = []
 
     if stored:
