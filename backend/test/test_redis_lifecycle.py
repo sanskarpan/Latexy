@@ -117,6 +117,27 @@ async def test_failed_initialization_closes_every_partial_pool(
 
 
 @pytest.mark.asyncio
+async def test_failed_initialization_does_not_log_credential_bearing_exception(
+    isolated_redis_globals,
+    caplog,
+) -> None:
+    manager = isolated_redis_globals
+    leaked_secret = "redis://private-user:private-password@cache.example:6379/0"
+
+    with patch.object(
+        redis_module.ObservedAsyncRedis,
+        "from_url",
+        side_effect=ConnectionError(leaked_secret),
+    ):
+        with pytest.raises(ConnectionError):
+            await manager.init_redis()
+
+    assert leaked_secret not in caplog.text
+    assert "private-password" not in caplog.text
+    assert "ConnectionError" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_one_broken_client_does_not_skip_remaining_cleanup(
     isolated_redis_globals,
 ) -> None:
@@ -169,3 +190,68 @@ def test_sync_cleanup_is_idempotent(isolated_redis_globals) -> None:
     manager.close_sync_redis()
 
     client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_observed_factories_own_their_connection_pools() -> None:
+    async_client = redis_module.ObservedAsyncRedis.from_url(
+        "redis://localhost:6379/15", dependency_role="queue"
+    )
+    sync_client = redis_module.ObservedSyncRedis.from_url(
+        "redis://localhost:6379/15", dependency_role="queue"
+    )
+
+    assert async_client.auto_close_connection_pool is True
+    assert sync_client.auto_close_connection_pool is True
+    assert isinstance(async_client.connection_pool, redis_module.aioredis.BlockingConnectionPool)
+    assert isinstance(sync_client.connection_pool, redis_module.redis.BlockingConnectionPool)
+
+    await async_client.aclose()
+    sync_client.close()
+
+
+def test_sync_initialization_publishes_healthy_worker_clients(
+    isolated_redis_globals,
+) -> None:
+    manager = isolated_redis_globals
+    queue = MagicMock()
+    cache = MagicMock()
+
+    with patch.object(
+        redis_module.ObservedSyncRedis,
+        "from_url",
+        side_effect=[queue, cache],
+    ):
+        manager.init_sync_redis()
+
+    queue.ping.assert_called_once_with()
+    cache.ping.assert_called_once_with()
+    assert redis_module.sync_redis_client is queue
+    assert redis_module.sync_redis_cache_client is cache
+    assert manager.health_check_sync() == {
+        "redis_queue": True,
+        "redis_cache": True,
+        "redis_sync": True,
+    }
+
+
+def test_failed_sync_initialization_closes_new_clients_without_publishing(
+    isolated_redis_globals,
+) -> None:
+    manager = isolated_redis_globals
+    queue = MagicMock()
+    cache = MagicMock()
+    cache.ping.side_effect = ConnectionError("cache unavailable")
+
+    with patch.object(
+        redis_module.ObservedSyncRedis,
+        "from_url",
+        side_effect=[queue, cache],
+    ):
+        with pytest.raises(ConnectionError, match="cache unavailable"):
+            manager.init_sync_redis()
+
+    queue.close.assert_called_once_with()
+    cache.close.assert_called_once_with()
+    assert redis_module.sync_redis_client is None
+    assert redis_module.sync_redis_cache_client is None
