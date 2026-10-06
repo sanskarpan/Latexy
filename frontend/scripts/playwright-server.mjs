@@ -128,6 +128,7 @@ function shouldCopy(relativePath) {
   const name = parts.at(-1) ?? ''
   if (parts.some((part) => part === 'node_modules' || part === '.git')) return false
   if (parts.some((part) => part === '.next' || part.startsWith('.next-'))) return false
+  if (parts[0] === 'public' && parts[1] === 'monaco') return false
   if (name.startsWith('.env')) return false
   if (name === 'tsconfig.tsbuildinfo') return false
   if (parts[0] === 'test-results' || parts[0].startsWith('playwright-report')) return false
@@ -148,6 +149,29 @@ async function copyFrontend(runtimeRoot) {
     throw new Error(`Missing frontend dependencies at ${join(frontendRoot, 'node_modules')}`)
   }
   await symlink(join(frontendRoot, 'node_modules'), runtimeNodeModules, 'dir')
+}
+
+function prepareRuntimeAssets(runtimeRoot) {
+  const prepareScript = join(runtimeRoot, 'scripts', 'prepare-monaco.mjs')
+  const result = spawnSync(process.execPath, [prepareScript], {
+    cwd: runtimeRoot,
+    env: {
+      ...inheritedEnvironment(),
+      NODE_ENV: 'development',
+      NEXT_TELEMETRY_DISABLED: '1',
+    },
+    encoding: 'utf8',
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(
+      `Runtime asset preparation failed${result.stderr ? `: ${result.stderr.trim()}` : ''}`,
+    )
+  }
+  const loaderPath = join(runtimeRoot, 'public', 'monaco', 'vs', 'loader.js')
+  if (!existsSync(loaderPath)) {
+    throw new Error(`Runtime asset preparation did not emit ${loaderPath}`)
+  }
 }
 
 async function copyStandaloneAssets(runtimeRoot, serverPath) {
@@ -279,6 +303,7 @@ async function main() {
 
   try {
     await copyFrontend(runtimeRoot)
+    prepareRuntimeAssets(runtimeRoot)
     copyComplete = true
     if (parentGone) {
       await cleanup(1)
@@ -365,6 +390,7 @@ export {
   shouldCopy,
   signalProcessTree,
   standaloneEntrypoint,
+  prepareRuntimeAssets,
   copyStandaloneAssets,
   inheritedEnvironment,
   watchParent,
