@@ -6,25 +6,18 @@ import { signUp, authClient } from '@/lib/auth-client'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/components/I18nProvider'
+import { mapOAuthCallbackError, oauthErrorCallbackURL, safeOAuthDestination } from '@/lib/oauth-callback'
 
-const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
-const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
-const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
+interface SocialProviderAvailability {
+  google: boolean
+  github: boolean
+}
 
 // How long a social redirect can sit at "Redirecting..." before we treat the
 // handshake as stalled and hand control back to the user.
 const SOCIAL_TIMEOUT_MS = 8000
 
 const labelClass = 'block font-ui text-xs uppercase tracking-[0.16em] text-fg-3'
-
-/**
- * Coerce an incoming redirect target to a safe same-origin relative path.
- * Rejects absolute and protocol-relative values to prevent open-redirect.
- */
-function safeDest(raw: string | undefined): string {
-  if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/workspace'
-  return raw
-}
 
 /** Map terse/technical Better Auth error text to friendlier copy. */
 function friendlyAuthError(message: string | undefined, fallback: string): string {
@@ -54,9 +47,10 @@ function passwordStrength(pw: string): { score: number; label: string } {
 const oauthButtonClass =
   'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line-2 bg-surface px-3 py-2.5 font-ui text-sm font-medium text-fg transition duration-150 hover:border-accent hover:text-accent-strong disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none'
 
-export default function SignUpForm({ redirect }: { redirect?: string }) {
+export default function SignUpForm({ redirect, oauthError }: { redirect?: string; oauthError?: string }) {
   const { t } = useI18n()
-  const dest = safeDest(redirect)
+  const dest = safeOAuthDestination(redirect)
+  const callbackError = mapOAuthCallbackError(oauthError)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -65,9 +59,14 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
   const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null)
-  const [error, setError] = useState('')
+  const [socialProviders, setSocialProviders] = useState<SocialProviderAvailability>({ google: false, github: false })
+  const [error, setError] = useState(callbackError)
   const errorRef = useRef<HTMLDivElement>(null)
   const socialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setError(callbackError)
+  }, [callbackError])
 
   const strength = passwordStrength(password)
   const confirmMismatch = confirm.length > 0 && confirm !== password
@@ -82,6 +81,18 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
     return () => {
       if (socialTimeoutRef.current) clearTimeout(socialTimeoutRef.current)
     }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/auth/providers', { signal: controller.signal, cache: 'no-store' })
+      .then((response) => response.ok ? response.json() as Promise<SocialProviderAvailability> : null)
+      .then((payload) => {
+        if (!payload || controller.signal.aborted) return
+        setSocialProviders({ google: payload.google === true, github: payload.github === true })
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,6 +132,7 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
   }
 
   const handleSocial = async (provider: 'google' | 'github') => {
+    if (!socialProviders[provider]) return
     setSocialLoading(provider)
     setError('')
     clearSocialTimeout()
@@ -132,7 +144,11 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
       setError('Taking longer than expected — try again.')
     }, SOCIAL_TIMEOUT_MS)
     try {
-      const result = await authClient.signIn.social({ provider, callbackURL: dest })
+      const result = await authClient.signIn.social({
+        provider,
+        callbackURL: dest,
+        errorCallbackURL: oauthErrorCallbackURL('/signup', dest),
+      })
       // The client resolves with an `error` instead of throwing, and only sends
       // the browser away once it has an authorization URL. Any other outcome
       // has to release the form — otherwise a failed handshake leaves every
@@ -161,10 +177,10 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
       </div>
 
       {/* Social OAuth — buttons render only when the provider is configured */}
-      {ANY_OAUTH && (
+      {(socialProviders.google || socialProviders.github) && (
         <>
-          <div className={`grid gap-3 ${GOOGLE_ENABLED && GITHUB_ENABLED ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {GOOGLE_ENABLED && (
+          <div className={`grid gap-3 ${socialProviders.google && socialProviders.github ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {socialProviders.google && (
               <button
                 type="button"
                 onClick={() => handleSocial('google')}
@@ -177,7 +193,7 @@ export default function SignUpForm({ redirect }: { redirect?: string }) {
                 {socialLoading === 'google' ? t('auth.redirecting') : 'Google'}
               </button>
             )}
-            {GITHUB_ENABLED && (
+            {socialProviders.github && (
               <button
                 type="button"
                 onClick={() => handleSocial('github')}
