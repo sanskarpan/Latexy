@@ -66,20 +66,43 @@ export function useJobStatus(
   const onCompleteRef = useRef(onComplete)
   const onErrorRef = useRef(onError)
 
-  // Keep refs current
-  useEffect(() => { onStatusChangeRef.current = onStatusChange }, [onStatusChange])
-  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
-  useEffect(() => { onErrorRef.current = onError }, [onError])
+  // Keep callback refs current during render so a response that resolves
+  // between render and passive effects cannot call the previous job owner.
+  onStatusChangeRef.current = onStatusChange
+  onCompleteRef.current = onComplete
+  onErrorRef.current = onError
 
-  const { state, cancel: streamCancel, reset } = useJobStream(jobId)
+  const { state, cancel: streamCancel, reset, applySnapshot } = useJobStream(jobId)
+
+  const mountedRef = useRef(true)
+  const currentJobIdRef = useRef(jobId)
+  const jobGenerationRef = useRef(0)
 
   /** job_id onComplete has already been fired for — the REST fallback polls on
    *  a 5s interval and must not re-announce the same completion every tick. */
   const completedForRef = useRef<string | null>(null)
+  const consecutiveFailuresRef = useRef(0)
+
+  // A job identity change starts a new completion generation. This also makes
+  // A → B → A safe: the second A is a new request, not the already-completed A.
+  if (currentJobIdRef.current !== jobId) {
+    currentJobIdRef.current = jobId
+    jobGenerationRef.current += 1
+    completedForRef.current = null
+    consecutiveFailuresRef.current = 0
+  }
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      jobGenerationRef.current += 1
+    }
+  }, [])
 
   const fireComplete = useCallback(
     (payload: { job_id: string; success: boolean; result?: Record<string, unknown> }) => {
-      if (!jobId || completedForRef.current === jobId) return
+      if (!jobId || currentJobIdRef.current !== jobId || completedForRef.current === jobId) return
       completedForRef.current = jobId
       onCompleteRef.current?.(payload)
     },
@@ -130,73 +153,91 @@ export function useJobStatus(
   // job_id for which a REST snapshot already reported a terminal status. Needed
   // because the stream stays at 'idle' when the WS delivered nothing, which
   // would otherwise keep the poll running (and re-firing) forever.
-  const [fallbackTerminalFor, setFallbackTerminalFor] = useState<string | null>(null)
+  const [fallbackTerminalGeneration, setFallbackTerminalGeneration] = useState<number | null>(null)
 
   // The stream sits at 'idle' precisely when the WebSocket delivered nothing —
   // which is exactly when the fallback is needed — so 'idle' counts as active.
   const streamIsActive =
     (state.status === 'idle' || state.status === 'queued' || state.status === 'processing') &&
-    fallbackTerminalFor !== jobId
+    fallbackTerminalGeneration !== jobGenerationRef.current
 
   /** The REST snapshot can be unavailable for the whole life of a job (expired
    *  meta, a job submitted through a path that never wrote a snapshot, a 403).
    *  Since errors are non-terminal by design, bound the fallback so it can
    *  never turn into an endless request stream for a mounted component. */
-  const [pollStoppedFor, setPollStoppedFor] = useState<string | null>(null)
-  const consecutiveFailuresRef = useRef(0)
+  const [pollStoppedGeneration, setPollStoppedGeneration] = useState<number | null>(null)
+  const streamIsActiveRef = useRef(streamIsActive)
+  streamIsActiveRef.current = streamIsActive
 
   const refresh = useCallback(async () => {
-    if (!jobId) return
+    if (!jobId || !mountedRef.current) return
+    const requestedJobId = jobId
+    const requestedGeneration = jobGenerationRef.current
+    const isCurrentRequest = () =>
+      mountedRef.current &&
+      currentJobIdRef.current === requestedJobId &&
+      jobGenerationRef.current === requestedGeneration
+
     try {
       const snapshot = await apiClient.getJobState(jobId)
+      if (!isCurrentRequest()) return
       consecutiveFailuresRef.current = 0
       // Only apply while the stream has not reached a terminal state of its own,
       // so we never overwrite a result that arrived via WebSocket.
-      if (!streamIsActive) return
+      if (!streamIsActiveRef.current) return
 
-      // If the REST snapshot shows a terminal status that the WS hasn't
-      // delivered yet, fire the appropriate callback.
+      // The stream owns terminal completion because /state and /result are
+      // committed independently. useJobStream waits for the authoritative
+      // result before dispatching job.completed; this wrapper only stops its
+      // duplicate progress poll here.
       if (snapshot.status === 'completed') {
-        setFallbackTerminalFor(jobId)
-        fireComplete({
-          job_id: jobId,
-          success: true,
-          result: snapshot as unknown as Record<string, unknown>,
-        })
+        setFallbackTerminalGeneration(jobGenerationRef.current)
       } else if (snapshot.status === 'failed') {
-        setFallbackTerminalFor(jobId)
+        setFallbackTerminalGeneration(jobGenerationRef.current)
         if (onErrorRef.current) onErrorRef.current('Job failed')
-      } else if (onStatusChangeRef.current) {
-        // Propagate progress update from REST snapshot
-        onStatusChangeRef.current({
+      } else if (snapshot.status === 'queued' || snapshot.status === 'processing') {
+        const progress = {
           status: snapshot.status,
           percent: snapshot.percent ?? 0,
           stage: snapshot.stage ?? '',
-        })
+        }
+        applySnapshot(progress)
+        onStatusChangeRef.current?.(progress)
       }
     } catch {
       // WebSocket is the primary update mechanism, so a failing snapshot is not
       // itself an error — but give up after a few in a row rather than polling
       // an endpoint that will never answer.
+      if (!isCurrentRequest()) return
       consecutiveFailuresRef.current += 1
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_POLL_FAILURES) {
-        setPollStoppedFor(jobId)
+        setPollStoppedGeneration(jobGenerationRef.current)
       }
     }
-  }, [jobId, streamIsActive, fireComplete])
+  }, [jobId, applySnapshot])
 
   // Poll while the job may still be running (fallback for a WebSocket that
   // never connected or that missed the events entirely). Polls once
   // immediately so a job that already finished is picked up without waiting a
   // full interval, and stops after MAX_POLL_DURATION_MS as a hard backstop.
   useEffect(() => {
-    if (!jobId || !streamIsActive || pollStoppedFor === jobId) return
+    if (!jobId || !streamIsActive || pollStoppedGeneration === jobGenerationRef.current) return
 
     consecutiveFailuresRef.current = 0
     refresh()
 
     const interval = setInterval(refresh, POLL_INTERVAL_MS)
-    const stopTimer = setTimeout(() => setPollStoppedFor(jobId), MAX_POLL_DURATION_MS)
+    const timerJobId = jobId
+    const timerGeneration = jobGenerationRef.current
+    const stopTimer = setTimeout(() => {
+      if (
+        mountedRef.current &&
+        currentJobIdRef.current === timerJobId &&
+        jobGenerationRef.current === timerGeneration
+      ) {
+        setPollStoppedGeneration(timerGeneration)
+      }
+    }, MAX_POLL_DURATION_MS)
     return () => {
       clearInterval(interval)
       clearTimeout(stopTimer)
@@ -204,7 +245,7 @@ export function useJobStatus(
   // `refresh` is deliberately excluded: it is re-created on every state change
   // and would restart the interval (and re-fire the immediate poll) each time.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, streamIsActive, pollStoppedFor])
+  }, [jobId, streamIsActive, pollStoppedGeneration])
 
   const cancel = useCallback(async () => {
     if (!jobId) return
