@@ -207,19 +207,158 @@ def test_node_package_manager_is_pinned_consistently():
         assert set(versions) == {pnpm_version}
 
 
-def test_canonical_ci_covers_every_branch_and_keeps_pr_jobs_secret_free():
-    """Every ref gets the same CI contract, including untrusted pull requests."""
+def test_canonical_ci_covers_main_and_every_pr_without_exposing_secrets():
+    """Main pushes and every PR get CI without exposing secrets to forks."""
     ci = _read(".github/workflows/ci.yml")
 
-    # These null event maps intentionally omit branch/path filters.  Keep this
-    # assertion textual because PyYAML 1.1 treats the YAML key ``on`` as a bool.
-    assert re.search(r"^\s*push:\s*$", ci, re.MULTILINE)
-    assert re.search(r"^\s*pull_request:\s*$", ci, re.MULTILINE)
-    assert not re.search(r"^\s+(branches|branches-ignore|paths|paths-ignore):", ci, re.MULTILINE)
+    # Keep this assertion textual because PyYAML 1.1 treats the YAML key ``on``
+    # as a bool.  Pushes are intentionally limited to the canonical branch;
+    # pull requests remain unfiltered so fork/stacked PRs receive the same
+    # required contexts, and manual dispatch remains available for operators.
+    trigger = re.search(r"(?ms)^on:\n(?P<body>.*?)(?=^\S|\Z)", ci)
+    assert trigger, "CI trigger block is missing"
+    trigger_body = trigger.group("body")
+    assert re.search(r"(?m)^\s{2}push:\n\s{4}branches:\n\s{6}- main\s*$", trigger_body)
+    assert re.search(r"(?m)^\s{2}pull_request:\s*$", trigger_body)
+    assert re.search(r"(?m)^\s{2}workflow_dispatch:\s*$", trigger_body)
+    pull_request = re.search(
+        r"(?ms)^\s{2}pull_request:\s*\n?(.*?)(?=^\s{2}\w|\Z)",
+        trigger_body,
+    )
+    assert pull_request
+    assert not re.search(
+        r"^\s{4}(branches|branches-ignore|paths|paths-ignore):",
+        pull_request.group(1),
+        re.MULTILINE,
+    )
 
     # A pull request from a fork can execute repository workflow code.  CI must
     # therefore use only deterministic literals, never repository secrets.
     assert "${{ secrets." not in ci
+
+
+def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
+    """Scope selection may skip work, never conceal classifier failures."""
+    ci = _read(".github/workflows/ci.yml")
+    workflow = yaml.load(ci, Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    scope_keys = {
+        "backend",
+        "frontend",
+        "tui",
+        "extension",
+        "render_cv",
+        "templates",
+        "observability",
+        "full_stack",
+    }
+    assert workflow["permissions"] == {"contents": "read"}
+    assert set(jobs["classify-changes"]["outputs"]) == scope_keys
+    assert jobs["classify-changes"]["outputs"] == {
+        scope: "${{ steps.classify.outputs." + scope + " }}" for scope in scope_keys
+    }
+    assert jobs["classify-changes"]["name"] == "Classify Changed Components"
+    classifier_steps = jobs["classify-changes"]["steps"]
+    assert any(
+        step.get("run") == "node --test scripts/ci/classify-changes.test.mjs"
+        for step in classifier_steps
+    )
+    classify_step = next(step for step in classifier_steps if step.get("id") == "classify")
+    assert "node scripts/ci/classify-changes.mjs" in classify_step["run"]
+    assert jobs["privacy-guard"]["needs"] == "classify-changes"
+    assert jobs["privacy-guard"]["if"] == "${{ always() }}"
+    privacy_failure_step = next(
+        step
+        for step in jobs["privacy-guard"]["steps"]
+        if "Fail closed" in step.get("name", "")
+    )
+    assert privacy_failure_step["if"] == "${{ needs.classify-changes.result != 'success' }}"
+    assert "exit 1" in privacy_failure_step["run"]
+    assert any(
+        step.get("if") == "${{ needs.classify-changes.result != 'success' }}"
+        and "Fail closed" in step.get("name", "")
+        for step in jobs["privacy-guard"]["steps"]
+    )
+
+    expected_job_names = {
+        "classify-changes": "Classify Changed Components",
+        "privacy-guard": "Privacy Guard (no session recording)",
+        "backend-lint": "Backend Lint (ruff)",
+        "deployment-parity": "Modal Deployment Parity",
+        "template-pdf-contract": "Template PDF Extraction Contract",
+        "backend-test": "Backend Tests",
+        "frontend-lint": "Frontend Lint (ESLint)",
+        "frontend-build": "Frontend Build",
+        "browser-extension": "Browser Extension",
+        "render-cv-action": "Reusable Render CV Action",
+        "cross-browser-quality": "Cross-Browser Quality",
+        "tui-test": "TUI Tests",
+        "full-stack-smoke": "Full-Stack Smoke",
+        "observability-smoke": "Observability Smoke",
+    }
+    assert {name: jobs[name]["name"] for name in jobs} == expected_job_names
+
+    # Keep the required check names and their scope ownership coupled. This
+    # prevents a future edit from silently swapping, for example, TUI and
+    # backend outputs while leaving a weaker substring assertion green.
+    scope_conditions = {
+        "backend-lint": "backend",
+        "deployment-parity": "backend",
+        "template-pdf-contract": "templates",
+        "backend-test": "backend",
+        "frontend-lint": "frontend",
+        "browser-extension": "extension",
+        "render-cv-action": "render_cv",
+        "tui-test": "tui",
+        "observability-smoke": "observability",
+    }
+
+    def normalize_expression(expression: str) -> str:
+        return re.sub(r"\s+", "", expression).removeprefix("${{").removesuffix("}}")
+
+    def expected_scope_condition(scope: str) -> str:
+        return (
+            "always()&&(needs.classify-changes.result!='success'||"
+            f"needs.classify-changes.outputs.{scope}=='true')"
+        )
+
+    for job_name, scope in scope_conditions.items():
+        job = jobs[job_name]
+        assert job["needs"] == "classify-changes"
+        assert normalize_expression(job["if"]) == expected_scope_condition(scope)
+
+    for job_name, expected in {
+        "frontend-build": "frontend",
+        "cross-browser-quality": "frontend",
+    }.items():
+        condition = normalize_expression(jobs[job_name]["if"])
+        assert condition == (
+            "always()&&(needs.classify-changes.result!='success'||"
+            f"needs.classify-changes.outputs.{expected}=='true'||"
+            "needs.classify-changes.outputs.full_stack=='true')"
+        )
+
+    for job_name in (*scope_conditions, "frontend-build", "cross-browser-quality"):
+        job = jobs[job_name]
+        assert "classify-changes" in (
+            job["needs"] if isinstance(job["needs"], list) else [job["needs"]]
+        )
+        condition = job["if"]
+        assert "always()" in condition
+        assert "needs.classify-changes.result != 'success'" in condition
+
+    full_stack_needs = set(jobs["full-stack-smoke"]["needs"])
+    assert full_stack_needs == {"classify-changes", "backend-test", "frontend-build"}
+    assert normalize_expression(jobs["full-stack-smoke"]["if"]) == (
+        "always()&&(needs.classify-changes.result!='success'||"
+        "needs.classify-changes.outputs.full_stack=='true')&&"
+        "(needs.backend-test.result=='success'||"
+        "(needs.classify-changes.result=='success'&&"
+        "needs.classify-changes.outputs.backend=='false'&&"
+        "needs.backend-test.result=='skipped'))&&"
+        "needs.frontend-build.result=='success'"
+    )
+    assert "node --test scripts/ci/classify-changes.test.mjs" in ci
 
 
 def test_modal_deploy_requires_main_ci_and_skips_stale_automatic_runs():
