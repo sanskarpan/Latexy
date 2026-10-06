@@ -4,6 +4,7 @@ Celery application configuration for Phase 8.
 
 from __future__ import annotations
 
+import logging
 import os
 import socket
 import sys
@@ -33,6 +34,164 @@ setup_telemetry("worker")
 instrument_celery()
 logger = get_logger(__name__)
 _task_start_times: dict[str, float] = {}
+
+
+def _safe_celery_identifier(value) -> str | None:
+    if not isinstance(value, str) or not value or len(value) > 128:
+        return None
+    if not all(char.isalnum() or char in ".-_" for char in value):
+        return None
+    return value
+
+
+class _CeleryTracePrivacyFilter(logging.Filter):
+    """Prevent Celery's built-in tracer from logging caller-controlled data.
+
+    Celery 5.6's ``build_tracer`` logs ``saferepr(result)`` as well as
+    ``safe_repr(args/kwargs)`` on the success path, and formats exception and
+    traceback text on failure.  These values are useful to Celery itself (the
+    original return value is still stored in the backend), but must never be
+    emitted to a worker log.  This filter runs on Celery's trace/request/
+    strategy loggers and strips both interpolated arguments and the
+    ``extra['data']`` context before records propagate to application handlers.
+    It deliberately preserves only the event class, not arbitrary task names
+    or IDs supplied by a caller.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name not in {"celery.app.trace", "celery.worker.request", "celery.worker.strategy"}:
+            return True
+
+        data = getattr(record, "data", None)
+        if isinstance(data, dict):
+            if "return_value" in data:
+                state = "success"
+            elif "traceback" in data or "exc" in data:
+                state = "failure"
+            elif "description" in data:
+                state = "retry_or_internal"
+            else:
+                state = "task"
+            record.msg = "celery_task_trace"
+            record.args = ()
+            safe_data = {"event": "celery_task_trace", "state": state}
+            for field in ("id", "name"):
+                safe_value = _safe_celery_identifier(data.get(field))
+                if safe_value is not None:
+                    safe_data[field] = safe_value
+            runtime = data.get("runtime")
+            if isinstance(runtime, (int, float)) and not isinstance(runtime, bool) and runtime == runtime:
+                safe_data["runtime"] = runtime
+            record.data = safe_data
+        else:
+            # Internal Celery diagnostics can interpolate exception objects
+            # directly (for example process-cleanup failures).  Keep the
+            # diagnostic marker but discard every caller-controlled argument.
+            record.msg = "celery_task_trace_internal"
+            record.args = ()
+            if hasattr(record, "data"):
+                record.data = {"event": "celery_task_trace_internal"}
+
+        # A traceback's locals and exception text can contain prompts, source,
+        # provider credentials, or generated document text.
+        record.exc_info = None
+        record.exc_text = None
+        # ``logging.Formatter`` renders stack_info independently of exc_info;
+        # leaving it populated would still expose caller-controlled source
+        # snippets when Celery (or an application handler) requests stacks.
+        record.stack_info = None
+        return True
+
+
+def _install_celery_trace_privacy_filter() -> None:
+    """Install the tracer redaction once in each worker process/import."""
+    from celery.app import trace as celery_trace
+
+    for target in (
+        celery_trace.logger,
+        logging.getLogger("celery.worker.request"),
+        logging.getLogger("celery.worker.strategy"),
+    ):
+        if not any(isinstance(item, _CeleryTracePrivacyFilter) for item in target.filters):
+            target.addFilter(_CeleryTracePrivacyFilter())
+
+
+_install_celery_trace_privacy_filter()
+
+
+_CELERY_REDACTED_REPR = "<redacted>"
+
+
+def _install_celery_event_privacy_guards() -> None:
+    """Redact Celery protocol/event metadata without changing task payloads.
+
+    Celery's producer puts ``argsrepr``/``kwargsrepr`` in protocol headers and
+    task-sent events, while the worker's Request object reuses those values in
+    task-received events.  Worker success/failure events also include the real
+    return value or exception.  Patch only those metadata paths; the protocol
+    body and backend result remain untouched, so task execution, callbacks, and
+    result retrieval retain their original values.
+    """
+    from celery import signals as celery_signals
+    from celery.app.amqp import AMQP
+    from celery.worker.request import Request
+
+    if not getattr(AMQP.as_task_v2, "_latexy_privacy_guard", False):
+        original_as_task_v2 = AMQP.as_task_v2
+
+        def safe_as_task_v2(self, *args, **kwargs):
+            message = original_as_task_v2(self, *args, **kwargs)
+            headers = dict(message.headers)
+            headers["argsrepr"] = _CELERY_REDACTED_REPR
+            headers["kwargsrepr"] = _CELERY_REDACTED_REPR
+            sent_event = dict(message.sent_event) if message.sent_event else None
+            if sent_event is not None:
+                sent_event["args"] = _CELERY_REDACTED_REPR
+                sent_event["kwargs"] = _CELERY_REDACTED_REPR
+            return message._replace(headers=headers, sent_event=sent_event)
+
+        safe_as_task_v2._latexy_privacy_guard = True
+        AMQP.as_task_v2 = safe_as_task_v2
+
+    if not getattr(Request.__init__, "_latexy_privacy_guard", False):
+        original_request_init = Request.__init__
+
+        def safe_request_init(self, *args, **kwargs):
+            original_request_init(self, *args, **kwargs)
+            self._argsrepr = _CELERY_REDACTED_REPR
+            self._kwargsrepr = _CELERY_REDACTED_REPR
+
+        safe_request_init._latexy_privacy_guard = True
+        Request.__init__ = safe_request_init
+
+    if not getattr(Request.send_event, "_latexy_privacy_guard", False):
+        original_send_event = Request.send_event
+
+        def safe_request_send_event(self, event_type, **fields):
+            for field in ("args", "kwargs", "result", "exception", "traceback"):
+                if field in fields:
+                    fields[field] = _CELERY_REDACTED_REPR
+            return original_send_event(self, event_type, **fields)
+
+        safe_request_send_event._latexy_privacy_guard = True
+        Request.send_event = safe_request_send_event
+
+    # Celery's deprecated ``task_sent`` signal still receives the raw body
+    # even when protocol headers/events are redacted. Preserve the signal and
+    # sender identity, but expose only structural placeholders to receivers.
+    task_sent_send = celery_signals.task_sent.send
+    if not getattr(task_sent_send, "_latexy_privacy_guard", False):
+        def safe_task_sent_send(*args, **kwargs):
+            for field in ("args", "kwargs"):
+                if field in kwargs:
+                    kwargs[field] = _CELERY_REDACTED_REPR
+            return task_sent_send(*args, **kwargs)
+
+        safe_task_sent_send._latexy_privacy_guard = True
+        celery_signals.task_sent.send = safe_task_sent_send
+
+
+_install_celery_event_privacy_guards()
 
 # On Modal, worker tasks execute in-process (`.apply()`) and results are never
 # read from the Celery backend, so we disable eager-result storage there.
@@ -66,7 +225,8 @@ celery_app = Celery(
         "app.workers.interview_prep_worker",
         "app.workers.converter_worker",
         "app.workers.github_import_worker",
-    ]
+        "app.workers.tracker_notification_worker",
+    ],
 )
 
 # Configure Celery
@@ -76,7 +236,6 @@ celery_app.conf.update(
     accept_content=settings.CELERY_ACCEPT_CONTENT,
     timezone=settings.CELERY_TIMEZONE,
     enable_utc=settings.CELERY_ENABLE_UTC,
-
     # Task routing
     task_routes={
         "app.workers.latex_worker.*": {"queue": "latex"},
@@ -90,8 +249,8 @@ celery_app.conf.update(
         "app.workers.interview_prep_worker.*": {"queue": "llm"},
         "app.workers.converter_worker.*": {"queue": "llm"},
         "app.workers.github_import_worker.*": {"queue": "llm"},
+        "app.workers.tracker_notification_worker.*": {"queue": "email"},
     },
-
     # Task configuration
     task_always_eager=False,
     task_eager_propagates=True,
@@ -103,22 +262,18 @@ celery_app.conf.update(
     # result storage on Modal to avoid the wasted round-trip and the failures.
     task_ignore_result=_IS_MODAL,
     task_store_eager_result=not _IS_MODAL,
-
     # Result backend configuration
     result_expires=settings.JOB_RESULT_TTL,
     result_persistent=True,
-
     # Worker configuration
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
     worker_disable_rate_limits=False,
-
     # Retry configuration
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     task_default_retry_delay=settings.JOB_RETRY_DELAY,
     task_max_retries=settings.JOB_RETRY_ATTEMPTS,
-
     # Beat configuration (for scheduled tasks)
     beat_schedule={
         "cleanup-expired-jobs": {
@@ -138,6 +293,18 @@ celery_app.conf.update(
             "task": "app.workers.email_worker.send_weekly_digest_to_all",
             "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
         },
+        "comment-mention-delivery-recovery": {
+            "task": "app.workers.email_worker.send_pending_comment_mention_emails",
+            "schedule": 60.0,
+        },
+        "document-email-delivery-recovery": {
+            "task": "app.workers.email_worker.send_pending_document_email_deliveries",
+            "schedule": 60.0,
+        },
+        "tracker-notifications": {
+            "task": "app.workers.tracker_notification_worker.send_tracker_notifications",
+            "schedule": 300.0,
+        },
         # Observability — sample pending Celery queue depths every 20s.
         # Routed to the cleanup queue since a worker always consumes it.
         "sample-queue-depths": {
@@ -147,22 +314,19 @@ celery_app.conf.update(
         },
     },
     beat_schedule_filename="celerybeat-schedule",
-
     # Priority queues — Redis requires these transport options to honour the
     # `priority` kwarg passed to .apply_async().  Without this config the
     # broker processes tasks FIFO regardless of the priority value.
     broker_transport_options={
-        "priority_steps": list(range(10)),   # 0 (highest) … 9 (lowest)
+        "priority_steps": list(range(10)),  # 0 (highest) … 9 (lowest)
         "sep": ":",
         "queue_order_strategy": "priority",
     },
     task_queue_max_priority=9,
-
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
     broker_connection_retry_on_startup=True,
-
     # Security
     worker_hijack_root_logger=False,
     worker_log_color=False,
@@ -210,6 +374,7 @@ def get_task_priority(user_plan: str = "free") -> int:
     """
     try:
         from ..services.feature_flag_service import feature_flag_service
+
         if not feature_flag_service.sync_get_flag("task_priority"):
             return TASK_PRIORITY_HIGH
     except Exception:
@@ -281,7 +446,7 @@ def sample_queue_depths():
     try:
         r = _get_broker_redis()
     except Exception as exc:  # noqa: BLE001 — never crash the scheduler
-        logger.warning(f"queue-depth sampler: broker Redis unavailable: {exc}")
+        logger.warning("queue-depth sampler: broker Redis unavailable", extra={"error_type": type(exc).__name__})
         return sampled
 
     for queue in _SAMPLED_QUEUES:
@@ -290,7 +455,7 @@ def sample_queue_depths():
             set_queue_depth(queue, depth)
             sampled[queue] = depth
         except Exception as exc:  # noqa: BLE001 — per-queue best effort
-            logger.warning(f"queue-depth sampler: LLEN {queue} failed: {exc}")
+            logger.warning("queue-depth sampler: LLEN failed", extra={"error_type": type(exc).__name__})
     return sampled
 
 
@@ -359,14 +524,17 @@ def init_worker_process(sender=None, **kwargs):
     _install_darwin_fork_safe_resolver()
 
     try:
+        from ..core.redis import redis_manager
         from ..workers.event_publisher import initialize_worker_redis
+
         initialize_worker_redis(
             redis_url=settings.REDIS_URL,
             password=settings.REDIS_PASSWORD or None,
         )
-        logger.info("Worker process: event publisher Redis initialised")
+        redis_manager.init_sync_redis()
+        logger.info("Worker process: Redis clients initialised")
     except Exception as exc:
-        logger.error(f"Worker process: failed to initialise Redis: {exc}")
+        logger.error("Worker process: failed to initialise Redis", extra={"error_type": type(exc).__name__})
         raise
 
 
@@ -385,7 +553,7 @@ def close_worker_process(sender=None, **kwargs):
         try:
             cleanup()
         except Exception as exc:
-            logger.warning("Worker process: failed to close %s client: %s", owner, exc)
+            logger.warning("Worker process: failed to close %s client", owner, extra={"error_type": type(exc).__name__})
 
 
 def _extract_job_id(args, kwargs) -> str | None:
@@ -402,19 +570,46 @@ def _extract_job_id(args, kwargs) -> str | None:
 
 
 def _safe_payload_repr(value, max_len: int = 256) -> str:
-    """Return a length-bounded repr of task args/kwargs for logging.
+    """Describe payload structure without retaining any caller-supplied text.
 
-    Task payloads can contain full resume content, prompts, or credentials/tokens.
-    We must not persist those verbatim to logs or the Redis DLQ, so we truncate
-    to a short prefix and note how many characters were omitted.
+    Truncation is not redaction: even a short prefix can contain an entire API
+    key. Do not inspect values, arbitrary dictionary keys, or their repr.
     """
-    try:
-        text = repr(value)
-    except Exception:
-        return "<unreprable>"
-    if len(text) <= max_len:
-        return text
-    return f"{text[:max_len]}...<+{len(text) - max_len} chars truncated>"
+    if isinstance(value, dict):
+        known_fields = (
+            "job_id", "resume_id", "compilation_id", "user_id", "latex_content",
+            "job_description", "api_key", "quota_refund", "content", "prompt",
+        )
+        fields = [field for field in known_fields if field in value]
+        return f"<mapping: {len(value)} fields; known fields: {','.join(fields)}>"[:max_len]
+    if isinstance(value, (tuple, list)):
+        return f"<sequence: {len(value)} items>"[:max_len]
+    return "<absent>" if value is None else "<redacted payload>"
+
+
+def _recover_failed_job(job_id: str, task_id: str, task_name: str, reason: str) -> bool:
+    """Commit a fenced result before notifying clients of a task failure.
+
+    A signal cannot take ownership from a different/expired worker. Rejected
+    writes are left to orphan recovery; no signal performs an unfenced refund.
+    """
+    from ..workers.event_publisher import publish_event, publish_job_result
+
+    accepted = publish_job_result(job_id, {
+        "success": False,
+        "error": reason,
+        "error_type": "worker_failure",
+    })
+    if accepted:
+        publish_event(
+            job_id=job_id,
+            event_type="job.failed",
+            payload_extra={
+                "stage": "worker", "percent": 0, "error": reason,
+                "task_id": task_id, "task_name": task_name,
+            },
+        )
+    return accepted
 
 
 def _extract_queue_name(task) -> str:
@@ -446,6 +641,21 @@ def on_task_prerun(task_id=None, task=None, args=None, kwargs=None, **_unused):
 
 @task_postrun.connect
 def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=None, **_unused):
+    """Always release this invocation's ownership, including signal failures."""
+    job_id = _extract_job_id(args or (), kwargs or {})
+    try:
+        _record_task_postrun(task_id, task, args, kwargs, state)
+    finally:
+        if job_id:
+            from ..workers.job_lifecycle import clear_current_owner, stop_lease_heartbeat
+
+            try:
+                stop_lease_heartbeat(job_id)
+            finally:
+                clear_current_owner(job_id)
+
+
+def _record_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=None):
     """Record task completion metrics and clear context.
 
     JOB-01: When a task ends in FAILURE or REVOKED we write a terminal
@@ -477,7 +687,7 @@ def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=None,
         job_id = _extract_job_id(args or (), kwargs or {})
         if job_id:
             try:
-                from ..workers.event_publisher import get_worker_redis, publish_event
+                from ..workers.event_publisher import get_worker_redis
 
                 r = get_worker_redis()
                 # Only write the failed state if the result key is absent —
@@ -486,24 +696,14 @@ def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=None,
                 result_key = f"latexy:job:{job_id}:result"
                 if not r.exists(result_key):
                     reason = "Task was revoked" if state == "REVOKED" else "Task ended abnormally"
-                    publish_event(
-                        job_id=job_id,
-                        event_type="job.failed",
-                        payload_extra={
-                            "stage": "worker",
-                            "percent": 0,
-                            "error": reason,
-                            "task_id": str(task_id),
-                            "task_name": task.name,
-                        },
-                    )
-                    logger.warning(
-                        "celery_task_stuck_job_recovered",
-                        extra={"job_id": job_id, "task_state": state},
-                    )
+                    if _recover_failed_job(job_id, str(task_id), task.name, reason):
+                        logger.warning(
+                            "celery_task_stuck_job_recovered",
+                            extra={"job_id": job_id, "task_state": state},
+                        )
             except Exception as exc:
                 # Best-effort — never crash the signal handler
-                logger.error(f"JOB-01 recovery failed for job {job_id}: {exc}")
+                logger.error("JOB-01 recovery failed for job %s", job_id, extra={"error_type": type(exc).__name__})
 
 
 @task_failure.connect
@@ -549,13 +749,10 @@ def on_task_failure(
                 "task_name": task.name,
                 "task_id": str(task_id),
                 "exception_type": type(exception).__name__,
-                "exception": str(exception),
-                # args/kwargs may contain resume content / tokens — truncate
-                # for triage without persisting the full sensitive payload.
+                # Retain structural diagnostics, never values or exception text.
                 "task_args": _safe_payload_repr(args),
                 "task_kwargs": _safe_payload_repr(kwargs),
             },
-            exc_info=(type(exception), exception, traceback) if exception and traceback else None,
         )
     else:
         logger.error(
@@ -564,42 +761,30 @@ def on_task_failure(
                 "queue": queue_name,
                 "status_code": "failed",
                 "latency_seconds": None,
+                "exception_type": type(exception).__name__ if exception else None,
             },
-            exc_info=(type(exception), exception, traceback) if exception and traceback else None,
         )
 
     # CW-002: Dead-letter queue — fires only when retries are exhausted.
     # task.max_retries may be None (no limit) in which we skip DLQ logic.
     max_retries = getattr(task, "max_retries", None)
     current_retries = getattr(task.request, "retries", 0)
-    retries_exhausted = (
-        max_retries is not None and current_retries >= max_retries
-    )
+    retries_exhausted = max_retries is not None and current_retries >= max_retries
     if retries_exhausted:
         job_id = _extract_job_id(args or (), kwargs or {})
-        error_str = str(exception) if exception else "unknown error"
+        error_str = "Task failed after exhausting retries. Please try again."
 
         # 1. Publish a terminal job.failed event so the frontend unblocks.
         if job_id:
             try:
-                from ..workers.event_publisher import get_worker_redis, publish_event
+                from ..workers.event_publisher import get_worker_redis
 
                 r = get_worker_redis()
                 result_key = f"latexy:job:{job_id}:result"
                 if not r.exists(result_key):
-                    publish_event(
-                        job_id=job_id,
-                        event_type="job.failed",
-                        payload_extra={
-                            "stage": "worker",
-                            "percent": 0,
-                            "error": f"Task failed after {current_retries} retries: {error_str}",
-                            "task_id": str(task_id),
-                            "task_name": task.name,
-                        },
-                    )
+                    _recover_failed_job(job_id, str(task_id), task.name, error_str)
             except Exception as pub_exc:
-                logger.error(f"CW-002: failed to publish job.failed for {job_id}: {pub_exc}")
+                logger.error("CW-002: failed to publish task failure", extra={"error_type": type(pub_exc).__name__})
 
         # 2. Write to the dead-letter list for debugging.
         try:
@@ -618,8 +803,7 @@ def on_task_failure(
                     "max_retries": max_retries,
                     "error": error_str,
                     "exception_type": type(exception).__name__ if exception else None,
-                    # Truncated — DLQ entries persist for 7 days and must not
-                    # retain full resume content / tokens verbatim.
+                    # Structural diagnostics only: entries persist for 7 days.
                     "args": _safe_payload_repr(args),
                     "kwargs": _safe_payload_repr(kwargs),
                     "timestamp": __import__("time").time(),
@@ -639,7 +823,7 @@ def on_task_failure(
                 },
             )
         except Exception as dlq_exc:
-            logger.error(f"CW-002: failed to write DLQ entry for {task.name}/{task_id}: {dlq_exc}")
+            logger.error("CW-002: failed to write DLQ entry", extra={"error_type": type(dlq_exc).__name__})
 
 
 # Import tasks to register them
@@ -656,7 +840,8 @@ try:
         llm_worker,
         orchestrator,
     )
+
     logger.info("Celery workers imported successfully")
 except ImportError as e:
-    logger.error(f"Failed to import required workers: {e}")
+    logger.error("Failed to import required workers", extra={"error_type": type(e).__name__})
     raise
