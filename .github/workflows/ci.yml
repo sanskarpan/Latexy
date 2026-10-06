@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    # Run the canonical checks for every branch. Pull-request target filters are
-    # intentionally omitted below as well: stacked and release PRs must receive
-    # the same backend/frontend/TUI coverage as main-bound PRs.
+    branches:
+      - main
   pull_request:
+  workflow_dispatch:
 
 # Every job is read-only. Keep the implicit GITHUB_TOKEN least-privileged so a
 # compromised build/test dependency cannot write repository contents or metadata.
@@ -13,6 +13,77 @@ permissions:
   contents: read
 
 jobs:
+  # Classification is deliberately fail-closed. A missing event range, an
+  # unknown path, or a classifier/runtime error makes every scoped job run.
+  # This job never decides whether the privacy guard runs: that guard remains
+  # unconditional below.
+  classify-changes:
+    name: Classify Changed Components
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      tui: ${{ steps.classify.outputs.tui }}
+      extension: ${{ steps.classify.outputs.extension }}
+      render_cv: ${{ steps.classify.outputs.render_cv }}
+      templates: ${{ steps.classify.outputs.templates }}
+      observability: ${{ steps.classify.outputs.observability }}
+      full_stack: ${{ steps.classify.outputs.full_stack }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - name: Test the dependency-free classifier
+        run: node --test scripts/ci/classify-changes.test.mjs
+      - id: classify
+        name: Classify changed components (fail closed)
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_BEFORE: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          output_tmp="$(mktemp)"
+          trap 'rm -f "$output_tmp"' EXIT
+          if GITHUB_OUTPUT="$output_tmp" node scripts/ci/classify-changes.mjs; then
+            declare -A seen=()
+            line_count=0
+            valid=true
+            while IFS= read -r line; do
+              line_count=$((line_count + 1))
+              key="${line%%=*}"
+              value="${line#*=}"
+              case "${key}=${value}" in
+                backend=true|backend=false|frontend=true|frontend=false|tui=true|tui=false|extension=true|extension=false|render_cv=true|render_cv=false|templates=true|templates=false|observability=true|observability=false|full_stack=true|full_stack=false)
+                  if [[ -n "${seen[$key]+present}" ]]; then
+                    valid=false
+                  fi
+                  seen["$key"]=1
+                  ;;
+                *)
+                  valid=false
+                  ;;
+              esac
+            done < "$output_tmp"
+            if [ "$line_count" -ne 8 ] || [ "${#seen[@]}" -ne 8 ]; then
+                valid=false
+            fi
+            if [ "$valid" = true ]; then
+              cat "$output_tmp" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "Classifier failed or emitted an incomplete result; running all scoped jobs."
+          for scope in backend frontend tui extension render_cv templates observability full_stack; do
+            echo "${scope}=true" >> "$GITHUB_OUTPUT"
+          done
+
   # ── Security and privacy guards ─────────────────────────────────────────────
   # Enforces the "no session recording on document surfaces" principle (#1410):
   # fails the build if a keystroke-capture / heatmap SDK (Clarity, Hotjar,
@@ -20,8 +91,15 @@ jobs:
   # introduced into shipped frontend code. Pure grep — no deps, no services.
   privacy-guard:
     name: Privacy Guard (no session recording)
+    needs: classify-changes
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      - name: Fail closed if component classification failed
+        if: ${{ needs.classify-changes.result != 'success' }}
+        run: |
+          echo "Component classification failed; refusing to report privacy checks as passed."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Assert no session-recording SDKs in shipped frontend code
         run: bash scripts/ci/no-session-recording.sh
@@ -33,6 +111,8 @@ jobs:
   # ── Backend ────────────────────────────────────────────────────────────────
   backend-lint:
     name: Backend Lint (ruff)
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,6 +158,8 @@ jobs:
   # modal_app.py, so it stays fast and cannot be skipped for want of a database.
   deployment-parity:
     name: Modal Deployment Parity
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -107,6 +189,8 @@ jobs:
 
   template-pdf-contract:
     name: Template PDF Extraction Contract
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.templates == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -123,6 +207,8 @@ jobs:
 
   backend-test:
     name: Backend Tests
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -194,6 +280,8 @@ jobs:
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend-lint:
     name: Frontend Lint (ESLint)
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -225,6 +313,8 @@ jobs:
 
   frontend-build:
     name: Frontend Build
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -256,6 +346,8 @@ jobs:
 
   browser-extension:
     name: Browser Extension
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.extension == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -289,6 +381,8 @@ jobs:
 
   render-cv-action:
     name: Reusable Render CV Action
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.render_cv == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -303,6 +397,8 @@ jobs:
 
   cross-browser-quality:
     name: Cross-Browser Quality
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -344,6 +440,8 @@ jobs:
 
   tui-test:
     name: TUI Tests
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.tui == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -387,7 +485,16 @@ jobs:
   full-stack-smoke:
     name: Full-Stack Smoke
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-build]
+    needs: [classify-changes, backend-test, frontend-build]
+    if: >-
+      ${{ always() &&
+      (needs.classify-changes.result != 'success' ||
+      needs.classify-changes.outputs.full_stack == 'true') &&
+      (needs.backend-test.result == 'success' ||
+      (needs.classify-changes.result == 'success' &&
+      needs.classify-changes.outputs.backend == 'false' &&
+      needs.backend-test.result == 'skipped')) &&
+      needs.frontend-build.result == 'success' }}
 
     services:
       postgres:
@@ -464,6 +571,8 @@ jobs:
 
   observability-smoke:
     name: Observability Smoke
+    needs: classify-changes
+    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.observability == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
