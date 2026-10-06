@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth-client'
 
@@ -19,13 +19,26 @@ import { useSession } from '@/lib/auth-client'
 export function useRequireAuth() {
   const { data: session, isPending, error } = useSession()
   const router = useRouter()
+  const lastKnownSessionRef = useRef<typeof session>(null)
+
+  if (session) {
+    lastKnownSessionRef.current = session
+  } else if (!isPending && !error) {
+    // Only an authoritative empty response clears the previous identity.
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((isPending || error) ? lastKnownSessionRef.current : null)
 
   useEffect(() => {
     if (isPending || error) return
-    if (!session) {
+    if (!effectiveSession) {
+      // An offline session lookup cannot prove that the user's authenticated
+      // cookie is invalid. Keep protected pages mounted so they can restore
+      // local drafts instead of redirecting to a login page that cannot load.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
       router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
-  }, [session, isPending, error, router])
+  }, [effectiveSession, isPending, error, router])
 
-  return { session, isPending, error }
+  return { session: effectiveSession, isPending, error }
 }
