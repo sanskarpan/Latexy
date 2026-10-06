@@ -5,6 +5,7 @@ Mirrors llm_worker.py patterns: synchronous OpenAI client with stream=True,
 publishes llm.token events for each delta. Runs on the 'llm' queue.
 """
 
+import asyncio
 import os
 import re
 import time
@@ -18,7 +19,15 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.document_converter_service import document_converter_service
-from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
+from ..workers.event_publisher import (
+    get_worker_redis,
+    is_cancelled,
+    publish_event,
+    publish_job_result,
+)
+from ..workers.job_lifecycle import admit_worker, lifecycle_key
+from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
+from .delimiter_stream import DelimitedStreamFilter
 
 logger = get_logger(__name__)
 
@@ -109,6 +118,7 @@ def generate_cover_letter_task(
     length_preference: str = "3_paragraphs",
     user_api_key: Optional[str] = None,
     model: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generate a cover letter using OpenAI with live token streaming.
@@ -128,16 +138,66 @@ def generate_cover_letter_task(
     worker_id = f"cover-letter-{task_id}"
     logger.info(f"Cover letter task {task_id} starting for job {job_id}")
 
+    lifecycle_owner = f"{worker_id}:{uuid.uuid4()}"
+    queue_redis = get_worker_redis()
+    if not admit_worker(queue_redis, job_id, lifecycle_owner, quota_refund, user_id):
+        # A duplicate delivery or cleanup fence owns the terminal decision.
+        # Never refund here: the admitted owner may still be running.
+        return {
+            "success": False,
+            "job_id": job_id,
+            "error": "Job ownership unavailable",
+        }
+
+    def _finish_terminal(
+        result: Dict[str, Any],
+        event_type: str,
+        event_payload: Dict[str, Any],
+        content_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Fence result/event ordering before refunding a metered job."""
+        if not publish_job_result(job_id, result):
+            if result.get("success"):
+                return {
+                    "success": False,
+                    "job_id": job_id,
+                    "error": "Job ownership expired",
+                }
+            return result
+        if content_payload is not None and result.get("success") is True:
+            # publish_job_result has already won the durable/lifecycle fence.
+            # The Redis publisher permits this auxiliary event only for the
+            # matching completed owner epoch; a losing attempt cannot leak its
+            # final generated content into replay.
+            publish_event(job_id, "llm.complete", content_payload)
+        event_id = publish_event(job_id, event_type, event_payload)
+        if quota_refund:
+            if event_type == "job.completed":
+                if event_id:
+                    clear_quota_refund_receipt(job_id)
+            else:
+                # publish_job_result atomically transitioned the lifecycle while
+                # this worker still owned its lease, so this refund is fenced.
+                refund_quota_once(
+                    job_id,
+                    quota_refund,
+                    expected_dimension="optimizations",
+                )
+        return result
+
     api_key = user_api_key or settings.OPENAI_API_KEY
 
     if not api_key:
-        publish_event(job_id, "job.failed", {
-            "stage": "cover_letter_generation",
-            "error_code": "llm_error",
-            "error_message": "No OpenAI API key configured. Add one via BYOK settings.",
-            "retryable": False,
-        })
-        return {"success": False, "job_id": job_id, "error": "No OpenAI API key configured"}
+        return _finish_terminal(
+            {"success": False, "job_id": job_id, "error": "No OpenAI API key configured"},
+            "job.failed",
+            {
+                "stage": "cover_letter_generation",
+                "error_code": "llm_error",
+                "error_message": "No OpenAI API key configured. Add one via BYOK settings.",
+                "retryable": False,
+            },
+        )
 
     publish_event(job_id, "job.started", {
         "worker_id": worker_id,
@@ -178,6 +238,7 @@ def generate_cover_letter_task(
         start_time = time.time()
         accumulated = ""
         token_count = 0
+        visible_stream = DelimitedStreamFilter()
 
         create_kwargs: Dict[str, Any] = dict(
             model=model_name,
@@ -213,11 +274,16 @@ def generate_cover_letter_task(
             if delta:
                 accumulated += delta
                 token_count += 1
-                publish_event(job_id, "llm.token", {"token": delta})
+                visible_delta = visible_stream.feed(delta)
+                if visible_delta:
+                    publish_event(job_id, "llm.token", {"token": visible_delta})
 
                 if token_count % 20 == 0 and is_cancelled(job_id):
-                    publish_event(job_id, "job.cancelled", {})
-                    return {"success": False, "job_id": job_id, "cancelled": True}
+                    return _finish_terminal(
+                        {"success": False, "job_id": job_id, "cancelled": True},
+                        "job.cancelled",
+                        {},
+                    )
 
         generation_time = time.time() - start_time
 
@@ -227,15 +293,29 @@ def generate_cover_letter_task(
         if not match:
             logger.warning(f"Cover letter job {job_id}: LLM output missing <<<LATEX>>> delimiters")
             retryable = self.request.retries < self.max_retries
-            publish_event(job_id, "job.failed", {
-                "stage": "cover_letter_generation",
-                "error_code": "invalid_latex",
-                "error_message": "Generated output did not contain a LaTeX document.",
-                "retryable": retryable,
-            })
             if retryable:
+                publish_event(job_id, "job.failed", {
+                    "stage": "cover_letter_generation",
+                    "error_code": "invalid_latex",
+                    "error_message": "Generated output did not contain a LaTeX document.",
+                    "retryable": True,
+                })
+                publish_event(job_id, "job.retrying", {
+                    "stage": "cover_letter_generation",
+                    "attempt": self.request.retries + 2,
+                    "error_message": "Cover letter generation is retrying",
+                })
                 raise self.retry(countdown=15)
-            return {"success": False, "job_id": job_id, "error": "Missing LaTeX delimiters"}
+            return _finish_terminal(
+                {"success": False, "job_id": job_id, "error": "Missing LaTeX delimiters"},
+                "job.failed",
+                {
+                    "stage": "cover_letter_generation",
+                    "error_code": "invalid_latex",
+                    "error_message": "Generated output did not contain a LaTeX document.",
+                    "retryable": False,
+                },
+            )
 
         cover_letter_latex = match.group(1).strip()
 
@@ -246,25 +326,29 @@ def generate_cover_letter_task(
         if not is_valid:
             logger.warning(f"Cover letter job {job_id}: invalid LaTeX — {validation_error}")
             retryable = self.request.retries < self.max_retries
-            publish_event(job_id, "job.failed", {
-                "stage": "cover_letter_generation",
-                "error_code": "invalid_latex",
-                "error_message": f"Generated LaTeX is invalid: {validation_error}",
-                "retryable": retryable,
-            })
             if retryable:
+                publish_event(job_id, "job.failed", {
+                    "stage": "cover_letter_generation",
+                    "error_code": "invalid_latex",
+                    "error_message": f"Generated LaTeX is invalid: {validation_error}",
+                    "retryable": True,
+                })
+                publish_event(job_id, "job.retrying", {
+                    "stage": "cover_letter_generation",
+                    "attempt": self.request.retries + 2,
+                    "error_message": "Cover letter generation is retrying",
+                })
                 raise self.retry(countdown=15)
-            return {"success": False, "job_id": job_id, "error": validation_error}
-
-        # Publish llm.complete with the extracted LaTeX
-        publish_event(job_id, "llm.complete", {
-            "full_content": cover_letter_latex,
-            "tokens_total": tokens_total,
-        })
-
-        # Save cover letter content to DB
-        if cover_letter_id:
-            _save_cover_letter_content(cover_letter_id, cover_letter_latex)
+            return _finish_terminal(
+                {"success": False, "job_id": job_id, "error": validation_error},
+                "job.failed",
+                {
+                    "stage": "cover_letter_generation",
+                    "error_code": "invalid_latex",
+                    "error_message": f"Generated LaTeX is invalid: {validation_error}",
+                    "retryable": False,
+                },
+            )
 
         result = {
             "success": True,
@@ -275,12 +359,55 @@ def generate_cover_letter_task(
             "tokens_used": tokens_total,
         }
 
-        publish_job_result(job_id, result)
-        publish_event(job_id, "job.completed", {
-            "pdf_job_id": None,
-            "optimization_time": generation_time,
-            "tokens_used": tokens_total,
-        })
+        if cover_letter_id:
+            # Older direct task invocations can run without an admitted
+            # lifecycle row (for example a manually-run non-metered task).
+            # Keep that explicit legacy persistence path; every API-dispatched
+            # cover-letter job has a lifecycle row and uses the owner-fenced
+            # arbiter transaction below.
+            lifecycle_exists = queue_redis.exists(lifecycle_key(job_id)) in (1, True, b"1")
+            if lifecycle_exists:
+                owner_epoch = queue_redis.hget(lifecycle_key(job_id), "epoch")
+                if isinstance(owner_epoch, bytes):
+                    owner_epoch = owner_epoch.decode("utf-8")
+                try:
+                    owner_epoch = int(owner_epoch)
+                except (TypeError, ValueError):
+                    return _finish_terminal(
+                        {"success": False, "job_id": job_id, "error": "Job ownership expired"},
+                        "job.failed",
+                        {"stage": "cover_letter_generation", "error_code": "ownership_expired", "retryable": False},
+                    )
+                if not _commit_cover_letter_finalization(
+                    job_id,
+                    lifecycle_owner,
+                    owner_epoch,
+                    user_id,
+                    cover_letter_id,
+                    cover_letter_latex,
+                    result,
+                ):
+                    return _finish_terminal(
+                        {"success": False, "job_id": job_id, "error": "Cover letter could not be saved"},
+                        "job.failed",
+                        {"stage": "cover_letter_generation", "error_code": "persistence_failure", "retryable": False},
+                    )
+            else:
+                _save_cover_letter_content(cover_letter_id, cover_letter_latex)
+
+        result = _finish_terminal(
+            result,
+            "job.completed",
+            {
+                "pdf_job_id": None,
+                "optimization_time": generation_time,
+                "tokens_used": tokens_total,
+            },
+            {
+                "full_content": cover_letter_latex,
+                "tokens_total": tokens_total,
+            },
+        )
         logger.info(
             f"Cover letter task {task_id} succeeded for job {job_id} "
             f"({tokens_total} tokens, {generation_time:.1f}s)"
@@ -289,13 +416,16 @@ def generate_cover_letter_task(
 
     except SoftTimeLimitExceeded:
         logger.error(f"Cover letter task {task_id} exceeded soft time limit for job {job_id}")
-        publish_event(job_id, "job.failed", {
-            "stage": "cover_letter_generation",
-            "error_code": "timeout",
-            "error_message": "Task exceeded time limit",
-            "retryable": False,
-        })
-        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        return _finish_terminal(
+            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
+            "job.failed",
+            {
+                "stage": "cover_letter_generation",
+                "error_code": "timeout",
+                "error_message": "Task exceeded time limit",
+                "retryable": False,
+            },
+        )
 
     except Exception as exc:
         # Re-raise Celery's own Retry sentinel so it isn't swallowed as an
@@ -303,22 +433,36 @@ def generate_cover_letter_task(
         from celery.exceptions import Retry
         if isinstance(exc, Retry):
             raise
-        logger.error(f"Cover letter task {task_id} raised: {exc}")
+        logger.error("Cover letter task %s raised", task_id, extra={"error_type": type(exc).__name__})
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
         retryable = has_retries_left
-        publish_event(job_id, "job.failed", {
-            "stage": "cover_letter_generation",
-            "error_code": "llm_error",
-            "error_message": str(exc),
-            "retryable": retryable,
-        })
         if has_retries_left:
+            publish_event(job_id, "job.failed", {
+                "stage": "cover_letter_generation",
+                "error_code": "llm_error",
+                "error_message": "Cover letter generation failed",
+                "retryable": True,
+            })
+            publish_event(job_id, "job.retrying", {
+                "stage": "cover_letter_generation",
+                "attempt": self.request.retries + 2,
+                "error_message": "Cover letter generation is retrying",
+            })
             if is_rate_limit:
                 backoff = 30 * (2 ** self.request.retries)
                 raise self.retry(exc=exc, countdown=backoff)
             raise self.retry(countdown=120, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        return _finish_terminal(
+            {"success": False, "job_id": job_id, "error": "Cover letter generation failed"},
+            "job.failed",
+            {
+                "stage": "cover_letter_generation",
+                "error_code": "llm_error",
+                "error_message": "Cover letter generation failed",
+                "retryable": False,
+            },
+        )
 
 
 def _save_cover_letter_content(cover_letter_id: str, latex_content: str) -> None:
@@ -326,6 +470,55 @@ def _save_cover_letter_content(cover_letter_id: str, latex_content: str) -> None
     import asyncio
 
     asyncio.run(_async_save_cover_letter(cover_letter_id, latex_content))
+
+
+def _commit_cover_letter_finalization(
+    job_id: str,
+    lifecycle_owner: str,
+    owner_epoch: int,
+    user_id: Optional[str],
+    cover_letter_id: str,
+    latex_content: str,
+    result_payload: Dict[str, Any],
+) -> bool:
+    """Apply CoverLetter content and terminal arbiter state atomically."""
+
+    async def _commit() -> bool:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        from ..core.config import settings
+        from ..utils.db_url import normalize_database_url
+        from .finalization_arbiter import FinalizationOutcome, commit_success
+
+        engine = create_async_engine(normalize_database_url(settings.DATABASE_URL), poolclass=NullPool)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with factory() as session:
+                outcome = await commit_success(
+                    session,
+                    job_id=job_id,
+                    owner_token=lifecycle_owner,
+                    owner_epoch=owner_epoch,
+                    result_payload=result_payload,
+                    cover_letter_id=cover_letter_id,
+                    cover_letter_user_id=user_id,
+                    cover_letter_content=latex_content,
+                )
+                await session.commit()
+                return outcome in {FinalizationOutcome.ACCEPTED, FinalizationOutcome.ALREADY_COMPLETED}
+        finally:
+            await engine.dispose()
+
+    try:
+        return bool(asyncio.run(_commit()))
+    except Exception:
+        logger.warning(
+            "Durable cover letter finalization failed for %s",
+            job_id,
+            extra={"error_type": "database"},
+        )
+        return False
 
 
 async def _async_save_cover_letter(cover_letter_id: str, latex_content: str) -> None:
@@ -375,6 +568,7 @@ def submit_cover_letter_generation(
     user_api_key: Optional[str] = None,
     user_plan: str = "free",
     model: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue generate_cover_letter_task on the llm queue."""
     priority = get_task_priority(user_plan)
@@ -396,6 +590,7 @@ def submit_cover_letter_generation(
             "length_preference": length_preference,
             "user_api_key": user_api_key,
             "model": model,
+            "quota_refund": quota_refund,
         })
         logger.info(f"Dispatched cover letter generation to Modal for job {job_id}")
         return job_id
@@ -412,6 +607,7 @@ def submit_cover_letter_generation(
             "length_preference": length_preference,
             "user_api_key": user_api_key,
             "model": model,
+            "quota_refund": quota_refund,
         },
         priority=priority,
         queue="llm",
