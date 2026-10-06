@@ -13,7 +13,7 @@ from ..core.config import settings
 from ..database.connection import get_db
 from ..database.models import Compilation, JobFinalization, Resume, ResumeOptimizationRun, ResumeTemplate
 from ..middleware.auth_middleware import get_current_user_required
-from ..services.resume_engine.acceptance import valid_run_result
+from ..services.resume_engine.acceptance import valid_run_result, validate_factual_dependencies
 from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
 from ..services.resume_engine.document import digest
 from ..services.resume_engine.semantic import (
@@ -256,6 +256,7 @@ async def get_run(
         "budget": run.budget,
         "decisions": run.decisions,
         "coverage": run.context_payload["coverage"],
+        "pdf_quality": (arbiter.result_payload or {}).get("pdf_quality") if arbiter else None,
     }
 
 
@@ -324,6 +325,8 @@ async def decide_run(
     document = await _document(db, resume)
     new_accept = accept - {pid for pid, value in statuses.items() if value == "accepted"}
     try:
+        validate_factual_dependencies(document, run.context_payload, [patches[pid] for pid in sorted(new_accept)],
+                                      list(patches.values()), statuses, effort=run.effort)
         source, structured = apply_node_edits(
             document,
             [patches[pid] for pid in sorted(new_accept)],

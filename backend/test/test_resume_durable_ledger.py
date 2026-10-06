@@ -57,7 +57,7 @@ def database(operation):
 
 
 @pytest.fixture
-def admitted():
+def admitted(request):
     user_id, resume_id, job_id = (str(uuid4()) for _ in range(3))
     template_id = str(uuid4())
     owner = "semantic-owner-" + str(uuid4())
@@ -68,7 +68,8 @@ def admitted():
         content_revision=1,
         structured_content={
             "basics": {"name": "Jane"},
-            "experience": [{"id": "role-a", "bullets": ["Built Python services"]}],
+            "experience": [{"id": "role-a", "bullets": ["Built Python services"],
+                            **({"company": "Acme"} if getattr(request, "param", None) == "supporting" else {})}],
         },
         category="ats_safe",
         template_id=template_id,
@@ -482,6 +483,46 @@ def test_newer_same_node_edit_prevents_candidate_acceptance(admitted):
     database(concurrent)
 
 
+@pytest.mark.parametrize("admitted", ["supporting"], indirect=True)
+@pytest.mark.parametrize("changed_field,blocked", [("company", True), ("name", False)])
+def test_acceptance_rechecks_supporting_facts_but_allows_unrelated_quick_edits(admitted, changed_field, blocked):
+    from fastapi import HTTPException
+
+    _, args, user_id, resume_id, job_id, _ = admitted
+    optimize(admitted)
+
+    async def concurrent(db):
+        resume = await db.get(Resume, resume_id)
+        node = next(n for n in args["document"]["nodes"] if n["text"] == ("Acme" if changed_field == "company" else "Jane"))
+        source, structured = apply_node_edits(
+            args["document"], [{"node_id": node["node_id"], "expected_node_revision": node["node_revision"],
+                                "text": "Changed company" if blocked else "Jane Doe"}],
+            expected_revision=1, expected_source=args["document"]["source_sha256"],
+        )
+        resume.latex_content, resume.structured_content = source, structured
+        arbiter = await db.scalar(select(JobFinalization).where(JobFinalization.job_id == job_id))
+        arbiter.state = "completed"
+        await db.commit()
+        await db.refresh(resume)
+        run = await db.get(ResumeOptimizationRun, job_id)
+        body = Decisions(accept_patch_ids=[run.result["patches"][0]["patch_id"]],
+                         expected_content_revision=resume.content_revision, expected_source_sha256=digest(source),
+                         merge_disjoint=True)
+        if blocked:
+            with pytest.raises(HTTPException) as error:
+                await decide_run(resume_id, job_id, body, db, user_id)
+            assert error.value.status_code == 409 and "Supporting experience changed" in error.value.detail
+            assert resume.latex_content == source
+            assert not (run.decisions or {}).get("patches")
+        else:
+            response = await decide_run(resume_id, job_id, body, db, user_id)
+            assert "Jane Doe" in response["latex_content"] and "Developed Python services" in response["latex_content"]
+            assert response["decisions"]["patches"][run.result["patches"][0]["patch_id"]] == "accepted"
+            assert not response["decisions"]["complete_acceptance"]  # candidate PDF predates the unrelated name edit
+
+    database(concurrent)
+
+
 @pytest.mark.parametrize(
     "attack,expected_status",
     [
@@ -802,3 +843,26 @@ def test_user_wording_history_is_durably_scoped(admitted, excluded):
         assert bool(memory["choices"]) is (excluded == "none")
 
     database(check)
+
+
+def test_provider_closed_when_context_publication_fails_before_pool(admitted, monkeypatch):
+    from app.services.resume_engine import service
+    ledger, args, user_id, resume_id, job_id, client = admitted
+    set_current_capability(job_id, ledger.owner, ledger.epoch)
+    closed = []
+    class Provider:
+        def __init__(self, **kwargs):
+            pass
+        def close(self):
+            closed.append(True)
+    monkeypatch.setattr(service, "SemanticProvider", Provider)
+    def publish(_job, event, payload):
+        if event == "context.ready":
+            raise RuntimeError("owner event unavailable")
+    with pytest.raises(RuntimeError, match="owner event unavailable"):
+        service.run_semantic_optimization(
+            job_id=job_id, source=args["document"]["_source"], job_description="Python required", user_id=user_id,
+            metadata={"resume_id": resume_id, "optimization_effort": "quick", "expected_content_revision": 1,
+                      "expected_source_sha256": args["document"]["source_sha256"]},
+            api_key="semantic-test-key", model="gpt-4o-mini", redis=client, cancelled=lambda: False, publish=publish)
+    assert closed == [True]

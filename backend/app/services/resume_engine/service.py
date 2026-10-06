@@ -78,7 +78,7 @@ def plan_groups(document: dict, target_sections: list[str] | None, effort: str, 
         for offset in range(0, len(nodes), 6):
             result.append(nodes[offset : offset + 6])
     if requirements:
-        import re
+        from .skills import positive_skill_mention
 
         weights = {}
         for requirement in requirements.get("requirements", []):
@@ -88,8 +88,7 @@ def plan_groups(document: dict, target_sections: list[str] | None, effort: str, 
         # scopes; it cannot borrow experience or insert a JD term as a fact.
         def priority(nodes):
             text = " ".join(node["text"] for node in nodes).casefold()
-            return sum(weight for skill, weight in weights.items()
-                       if re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", text))
+            return sum(weight for skill, weight in weights.items() if positive_skill_mention(skill, text))
 
         result.sort(key=priority, reverse=True)
     return result[:count]
@@ -287,64 +286,64 @@ def run_semantic_optimization(
         owner_scope=user_id,
         client_factory=client_factory or openai.OpenAI,
     )
-    extraction_warning = None
+    pool = None
     try:
-        if requirement_plan and requirement_plan["mode"] == "cached":
-            effective = validate_refinement(requirement_plan["response"], requirements)
-            cache_hit = True
-        elif requirement_plan and requirement_plan["mode"] == "model":
-            response, _, _ = provider.generate(
-                "requirements.semantic.v2", system=REFINEMENT_SYSTEM, schema=REFINEMENT_SCHEMA,
-                payload={"excerpts": refinement_excerpts(requirements), "aliases": ALIASES}, max_output_tokens=1536,
-            )
-            effective = validate_refinement(response, requirements)
-            try:
-                ledger.cache_requirement_refinement(user_id=user_id, job_description=job_description,
-                                                    extracted=requirements, response=response)
-            except Exception:
-                # Cache availability must not change this run's completed
-                # stage-derived effective context (or its replay requests).
-                ledger.check_owner()
-        else:
-            effective = requirements
-        if effective != requirements:
-            # Original immutable context identity remains frozen. Effective JD
-            # goals derive only from the frozen cache plan or paid stage output;
-            # source facts and user choices are never replaced by extraction.
-            refreshed = build_context(document, job_description, requirements=effective)
-            context = {**context, "requirements": effective, "coverage": refreshed["coverage"]}
-            requirements = effective
-    except CompactOptimizationCancelled:
-        raise
-    except Exception as exc:
-        extraction_warning = "JD ambiguity retained deterministic source excerpts: " + type(exc).__name__
-    emit(
-        "context.ready",
-        {
-            "coverage": context["coverage"],
-            "requirements_cache_hit": cache_hit,
-            "effort": effort,
-            "budget_policy": restored["budget"]["policy"],
-        },
-    )
-    with engine_span("model_planning"):
-        groups = plan_groups(document, target_sections, effort, requirements)
-    candidates, rejected, missing, warnings = [], [], [], []
-    if extraction_warning:
-        warnings.append(extraction_warning)
-    planned_nodes = {node["node_id"] for group in groups for node in group}
-    selected = {section.casefold() for section in target_sections or ()}
-    omitted = [node["node_id"] for node in document["nodes"]
-               if node["ai_editable"] and node["text"].strip()
-               and (not selected or node["section"] in selected) and node["node_id"] not in planned_nodes]
-    partial = bool(omitted)
-    if omitted:
-        warnings.append(f"Effort budget reviewed {len(planned_nodes)} editable fields; {len(omitted)} other selected fields were preserved.")
-    pool = ThreadPoolExecutor(
-        max_workers=restored["budget"]["policy"]["parallel_requests"], thread_name_prefix="resume-patches"
-    )
-    try:
-
+        extraction_warning = None
+        try:
+            if requirement_plan and requirement_plan["mode"] == "cached":
+                effective = validate_refinement(requirement_plan["response"], requirements)
+                cache_hit = True
+            elif requirement_plan and requirement_plan["mode"] == "model":
+                response, _, _ = provider.generate(
+                    "requirements.semantic.v2", system=REFINEMENT_SYSTEM, schema=REFINEMENT_SCHEMA,
+                    payload={"excerpts": refinement_excerpts(requirements), "aliases": ALIASES}, max_output_tokens=1536,
+                )
+                effective = validate_refinement(response, requirements)
+                try:
+                    ledger.cache_requirement_refinement(user_id=user_id, job_description=job_description,
+                                                        extracted=requirements, response=response)
+                except Exception:
+                    # Cache availability must not change this run's completed
+                    # stage-derived effective context (or its replay requests).
+                    ledger.check_owner()
+            else:
+                effective = requirements
+            if effective != requirements:
+                # Original immutable context identity remains frozen. Effective JD
+                # goals derive only from the frozen cache plan or paid stage output;
+                # source facts and user choices are never replaced by extraction.
+                refreshed = build_context(document, job_description, requirements=effective)
+                context = {**context, "requirements": effective, "coverage": refreshed["coverage"]}
+                requirements = effective
+        except CompactOptimizationCancelled:
+            raise
+        except Exception as exc:
+            extraction_warning = "JD ambiguity retained deterministic source excerpts: " + type(exc).__name__
+        emit(
+            "context.ready",
+            {
+                "coverage": context["coverage"],
+                "requirements_cache_hit": cache_hit,
+                "effort": effort,
+                "budget_policy": restored["budget"]["policy"],
+            },
+        )
+        with engine_span("model_planning"):
+            groups = plan_groups(document, target_sections, effort, requirements)
+        candidates, rejected, missing, warnings = [], [], [], []
+        if extraction_warning:
+            warnings.append(extraction_warning)
+        planned_nodes = {node["node_id"] for group in groups for node in group}
+        selected = {section.casefold() for section in target_sections or ()}
+        omitted = [node["node_id"] for node in document["nodes"]
+                   if node["ai_editable"] and node["text"].strip()
+                   and (not selected or node["section"] in selected) and node["node_id"] not in planned_nodes]
+        partial = bool(omitted)
+        if omitted:
+            warnings.append(f"Effort budget reviewed {len(planned_nodes)} editable fields; {len(omitted)} other selected fields were preserved.")
+        pool = ThreadPoolExecutor(
+            max_workers=restored["budget"]["policy"]["parallel_requests"], thread_name_prefix="resume-patches"
+        )
         def generate(index, nodes):
             value, _, _ = provider.generate(
                 "patches." + str(index),
@@ -587,4 +586,5 @@ def run_semantic_optimization(
         return stage, candidate
     finally:
         provider.close()
-        pool.shutdown(wait=False, cancel_futures=True)
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)

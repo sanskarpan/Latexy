@@ -22,13 +22,16 @@ _LIMIT = """
 local t=redis.call('TIME'); local bucket=math.floor(tonumber(t[1])/60)
 local global=KEYS[1]..':'..bucket; local tenant=KEYS[2]..':'..bucket
 local tokens=tonumber(ARGV[1]); local rpm=tonumber(ARGV[2]); local tpm=tonumber(ARGV[3])
-for _,key in ipairs({global,tenant}) do
-  if tonumber(redis.call('HGET',key,'requests') or '0') >= rpm then return 0 end
-  if tonumber(redis.call('HGET',key,'tokens') or '0')+tokens > tpm then return 0 end
-end
+local tenant_rpm=tonumber(ARGV[4]); local tenant_tpm=tonumber(ARGV[5])
+if redis.call('EXISTS',KEYS[3]) == 1 then return 1 end
+if tonumber(redis.call('HGET',global,'requests') or '0') >= rpm then return -1 end
+if tonumber(redis.call('HGET',global,'tokens') or '0')+tokens > tpm then return -2 end
+if tonumber(redis.call('HGET',tenant,'requests') or '0') >= tenant_rpm then return -3 end
+if tonumber(redis.call('HGET',tenant,'tokens') or '0')+tokens > tenant_tpm then return -4 end
 for _,key in ipairs({global,tenant}) do
   redis.call('HINCRBY',key,'requests',1); redis.call('HINCRBY',key,'tokens',tokens); redis.call('EXPIRE',key,75)
 end
+redis.call('SET',KEYS[3],'1','EX',75)
 return 1
 """
 
@@ -179,26 +182,30 @@ class SemanticProvider:
             + hashlib.sha256(self.spec.model.encode()).hexdigest()[:16]
         )
         tenant_key = rate_key + ":" + hashlib.sha256(self.owner_scope.encode()).hexdigest()[:16]
-        if (
-            self.ledger.redis.eval(
+        reservation_key = rate_key + ":intent:" + hashlib.sha256((self.ledger.job_id + "\0" + stage_key).encode()).hexdigest()
+        rate_result = self.ledger.redis.eval(
                 _LIMIT,
-                2,
+                3,
                 rate_key,
                 tenant_key,
+                reservation_key,
                 input_tokens + max_output_tokens,
                 settings.RESUME_ENGINE_PROVIDER_RPM,
                 settings.RESUME_ENGINE_PROVIDER_TPM,
+                settings.RESUME_ENGINE_TENANT_RPM,
+                settings.RESUME_ENGINE_TENANT_TPM,
             )
-            != 1
-        ):
+        if rate_result != 1:
             # No provider was called, but a unique intent exists. Marking it
             # non-retryable avoids ambiguity and permits other completed work.
             self.ledger.fail(
                 stage_key,
-                error_code="rate_limited_before_provider",
+                error_code={-1: "provider_requests_rate_limited", -2: "provider_tokens_rate_limited",
+                            -3: "tenant_requests_rate_limited", -4: "tenant_tokens_rate_limited"}.get(rate_result, "rate_limited_before_provider"),
                 usage={"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0},
             )
-            raise BudgetExceeded("Provider or tenant rate budget reached")
+            scope = {-1: "provider requests", -2: "provider tokens", -3: "tenant requests", -4: "tenant tokens"}.get(rate_result, "provider")
+            raise BudgetExceeded(scope + " rate budget reached")
         client = self._client(remaining)
         active_stream = [None]
         expired = threading.Event()
@@ -268,8 +275,8 @@ class SemanticProvider:
                         reported_in = getattr(chunk.usage, "prompt_tokens", None)
                         reported_out = getattr(chunk.usage, "completion_tokens", None)
                         if (
-                            type(reported_in) is int
-                            and type(reported_out) is int
+                            isinstance(reported_in, int) and not isinstance(reported_in, bool)
+                            and isinstance(reported_out, int) and not isinstance(reported_out, bool)
                             and reported_in >= 0
                             and reported_out >= 0
                         ):

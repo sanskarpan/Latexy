@@ -417,6 +417,16 @@ def bounded_result_payload(job_id: str, result: Optional[dict[str, Any]]) -> dic
         except (ValueError, TypeError):
             pass
     integer_fields = ("tokens_used", "page_count", "slide_count", "pdf_size")
+    if isinstance(result.get("pdf_quality"), dict) and isinstance(payload.get("artifact"), dict):
+        from ..services.render_engine.quality import PDFQualityReport
+
+        try:
+            quality = PDFQualityReport.model_validate(result["pdf_quality"])
+            if (quality.pdf_sha256 == payload["artifact"].get("pdf_sha256")
+                    and quality.source_sha256 == payload["artifact"].get("source_sha256")):
+                payload["pdf_quality"] = quality.model_dump()
+        except (ValueError, TypeError):
+            pass
     float_fields = ("compilation_time", "optimization_time", "ats_score")
     boolean_fields = ("is_beamer", "cancelled")
     for key in (

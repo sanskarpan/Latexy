@@ -130,6 +130,11 @@ class Settings(BaseSettings):
     })
     RESUME_ENGINE_PROVIDER_RPM: int = Field(default=60, ge=1, le=10000)
     RESUME_ENGINE_PROVIDER_TPM: int = Field(default=100000, ge=1000, le=10000000)
+    # Per owner+credential+model limits leave shared platform headroom under
+    # the default global 60 RPM / 100k TPM. They are caps, not a fair scheduler;
+    # multiple tenants can still collectively exhaust provider capacity.
+    RESUME_ENGINE_TENANT_RPM: int = Field(default=20, ge=1, le=10000)
+    RESUME_ENGINE_TENANT_TPM: int = Field(default=50000, ge=1000, le=10000000)
     OPENAI_TEMPERATURE: float = 0.7
 
     # Multi-Provider & BYOK (Phase 10)

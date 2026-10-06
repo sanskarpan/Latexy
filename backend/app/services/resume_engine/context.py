@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
-
 from .document import digest
 from .requirements import ALIASES, extract_requirements
+from .skills import positive_skill_mention, skill_mention
 
 
 def build_context(document: dict, job_description: str, *, language="en", requirements: dict | None = None) -> dict:
@@ -26,29 +25,35 @@ def build_context(document: dict, job_description: str, *, language="en", requir
             }
         )
     extracted = requirements or extract_requirements(job_description, language=language)
-    normalized_resume = " ".join(fact["text"] for fact in facts).casefold()
+    source_resume = "\n".join(fact["text"] for fact in facts)
     coverage = []
     for requirement in extracted["requirements"]:
         supporting = []
+        ambiguous = []
         for fact in facts:
-            lower = fact["text"].casefold()
-            if any(re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", lower) for skill in requirement["skills"]):
+            if any(positive_skill_mention(skill, fact["text"]) and positive_skill_mention(skill, source_resume)
+                   for skill in requirement["skills"]):
                 supporting.append(fact["fact_id"])
+            if any(skill_mention(skill, fact["text"]) == "ambiguous" for skill in requirement["skills"]):
+                ambiguous.append(fact["fact_id"])
         missing = [
             skill
             for skill in requirement["skills"]
-            if not re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", normalized_resume)
+            if skill_mention(skill, source_resume) == "absent"
         ]
         coverage.append(
             {
                 "requirement_id": requirement["requirement_id"],
                 "evidence_ids": supporting,
                 "missing_skills": missing,
+                "ambiguous_skills": [skill for skill in requirement["skills"] if skill_mention(skill, source_resume) == "ambiguous"],
+                "ambiguous_evidence_ids": ambiguous,
+                "support_kind": "literal_source_mention_not_factual_verification",
                 "unsupported": not supporting,
             }
         )
     return {
-        "version": "facts-v1",
+        "version": "facts-v2",
         "document_id": document["document_id"],
         "content_revision": document["content_revision"],
         "source_sha256": document["source_sha256"],

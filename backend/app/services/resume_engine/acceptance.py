@@ -6,7 +6,52 @@ from sqlalchemy import func, select
 
 from ...database.models import JobFinalization, Resume, ResumeOptimizationRun
 from .document import digest
+from .semantic import DocumentConflict, node_hash
 from .stages import stage_fingerprint
+
+
+def validate_factual_dependencies(document: dict, context: dict, proposed: list[dict],
+                                  candidates: list[dict], statuses: dict, *, effort: str) -> None:
+    """Recheck reviewed evidence before merging any new accepted changes.
+
+    A prior explicit acceptance from this same run can restate a frozen fact.
+    An unrelated user/AI edit cannot silently substitute different evidence.
+    Global/summary reviews depend on the entire original factual scope; Quick
+    entry reviews depend on their entry scopes and explicit evidence IDs.
+    """
+    if not proposed:
+        return
+    facts = context.get("facts")
+    if not isinstance(facts, list) or not facts or len(facts) > 400:
+        raise DocumentConflict("Reviewed factual context is unavailable")
+    nodes = {node["node_id"]: node for node in document["nodes"]}
+    by_fact = {fact["fact_id"]: fact for fact in facts}
+    scopes = {(nodes.get(patch["node_id"], {}).get("section"),
+               nodes.get(patch["node_id"], {}).get("entry_id")) for patch in proposed}
+    global_scope = effort != "quick" or ("summary", None) in scopes
+    relevant = list(facts) if global_scope else [fact for fact in facts if (fact["section"], fact.get("entry_id")) in scopes]
+    for patch in proposed:
+        evidence = patch.get("evidence_ids")
+        if not isinstance(evidence, list) or not evidence or any(identity not in by_fact for identity in evidence):
+            raise DocumentConflict("Reviewed factual evidence is unavailable")
+        relevant.extend(by_fact[identity] for identity in evidence)
+    relevant_ids = {fact["node_id"] for fact in relevant}
+    explicit_ids = {by_fact[identity]["node_id"] for patch in proposed for identity in patch["evidence_ids"]}
+    current_ids = {identity for identity, node in nodes.items() if node["text"].strip()
+                   and (global_scope or (node["section"], node.get("entry_id")) in scopes or identity in explicit_ids)}
+    if current_ids != relevant_ids:
+        raise DocumentConflict("Supporting experience changed; start a fresh review")
+    accepted = {patch["node_id"]: patch for patch in candidates if statuses.get(patch["patch_id"]) == "accepted"}
+    for fact in relevant:
+        node = nodes.get(fact["node_id"])
+        if node and node["node_revision"] == fact["node_revision"]:
+            continue
+        prior = accepted.get(fact["node_id"])
+        if (node and prior and prior["expected_node_revision"] == fact["node_revision"]
+                and node["text"] == prior["text"]
+                and node["node_revision"] == node_hash(node["node_id"], prior["text"])):
+            continue
+        raise DocumentConflict("Supporting experience changed; start a fresh review")
 
 
 def valid_run_result(result) -> bool:

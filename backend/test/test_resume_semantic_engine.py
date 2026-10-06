@@ -233,6 +233,7 @@ def test_hard_budget_reservations_and_missing_usage():
 
 class FakeLedger:
     def __init__(self):
+        self.job_id = "fake-semantic-job"
         self.intents = {}
         self.calls = 0
         self.redis = Obj(eval=lambda *args: 1)

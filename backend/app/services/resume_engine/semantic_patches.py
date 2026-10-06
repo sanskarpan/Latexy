@@ -6,7 +6,9 @@ import re
 
 from .document import digest
 from .requirements import _TECH as TECHNOLOGIES
+from .requirements import ALIASES
 from .semantic import DocumentConflict, validate_plain_text
+from .skills import canonical_skill, positive_skill_mention, skill_mention
 
 PATCH_SCHEMA = {
     "type": "object",
@@ -71,7 +73,7 @@ _PROMOTIONS = re.compile(
 )
 _ORDERED_ANCHORS = re.compile(
     r"(?<!\w)(?:"
-    + "|".join(re.escape(x) for x in sorted(TECHNOLOGIES, key=len, reverse=True))
+    + "|".join(re.escape(x) for x in sorted((*TECHNOLOGIES, *ALIASES), key=len, reverse=True))
     + r"|[+-]?\d+(?:[.,]\d+)*(?:%|x)?|not|never|no|without|except|only|from|to|versus|before|after|less|more|over|under)(?!\w)",
     re.I,
 )
@@ -150,8 +152,8 @@ def validate_candidates(
                 raise DocumentConflict("Numbers or their order changed")
             if [x.casefold() for x in _RELATION.findall(source)] != [x.casefold() for x in _RELATION.findall(target)]:
                 raise DocumentConflict("Negation, comparison or directional anchors changed")
-            if [x.casefold() for x in _ORDERED_ANCHORS.findall(source)] != [
-                x.casefold() for x in _ORDERED_ANCHORS.findall(target)
+            if [canonical_skill(x) for x in _ORDERED_ANCHORS.findall(source)] != [
+                canonical_skill(x) for x in _ORDERED_ANCHORS.findall(target)
             ]:
                 raise DocumentConflict("Ordered factual anchors changed")
             # Facts can be restated but never promoted to a higher role/claim.
@@ -159,7 +161,7 @@ def validate_candidates(
             if any(not _present(x, joined) for x in _PROMOTIONS.findall(target)):
                 raise DocumentConflict("Unsupported responsibility or proficiency claim")
             for term in TECHNOLOGIES:
-                if _present(term, target) and not _present(term, joined):
+                if skill_mention(term, target) != "absent" and not positive_skill_mention(term, joined):
                     raise DocumentConflict("Technology lacks evidence in this scope")
             # Names/capitalized acronyms already present must retain order.
             anchors = re.findall(r"(?<!\w)(?:[A-Z]{2,}[A-Za-z0-9+#.-]*|[A-Z][a-z]+(?:[A-Z][a-z]+)+)(?!\w)", source)

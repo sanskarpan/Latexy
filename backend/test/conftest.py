@@ -183,8 +183,17 @@ def initialize_test_worker_redis():
     yield
     close_worker_redis()
 
-from app.database.connection import get_db
-from app.main import app
+@pytest.fixture(scope="session")
+def test_application():
+    """Load routes only after the isolated environment has been established.
+
+    Importing this configuration to inspect its environment must not construct
+    the entire API or initialize provider/tokenizer modules. HTTP fixtures still
+    exercise the actual application and its dependency overrides.
+    """
+    from app.main import app
+
+    return app
 
 # ── LaTeX recorder-file confinement ───────────────────────────────────────
 # The engine writes <jobname>.fls only when it actually runs; the worker unit tests
@@ -256,6 +265,8 @@ def override_get_db(request):
         return
 
     db_session: AsyncSession = request.getfixturevalue("db_session")
+    app = request.getfixturevalue("test_application")
+    from app.database.connection import get_db
 
     async def _get_db_override():
         yield db_session
@@ -407,7 +418,7 @@ async def db_session(db_session_factory) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, test_application) -> AsyncGenerator[AsyncClient, None]:
     # Resolve the test-owned session before constructing the ASGI client. The
     # autouse dependency override then routes every DB-backed request through
     # this session instead of lazily creating app.database.connection's
@@ -415,7 +426,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     # replaced by a later lifespan on another loop, leaving asyncpg transports
     # for ResourceWarning/UnraisableException failures.
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://localhost"
+        transport=ASGITransport(app=test_application), base_url="http://localhost"
     ) as ac:
         yield ac
 
