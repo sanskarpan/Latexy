@@ -253,7 +253,7 @@ def authed_client():
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
     try:
         yield client
     finally:
