@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -25,6 +26,36 @@ _REDACT_KEYS = {
     "refresh_token",
 }
 
+_CREDENTIAL_IN_URL = re.compile(
+    r"(?P<prefix>[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+@",
+    re.IGNORECASE,
+)
+_URL_QUERY_OR_FRAGMENT = re.compile(
+    r"(?P<base>https?://[^\s?#]+)(?P<query>\?[^\s#]*)?(?P<fragment>\#[^\s]*)?",
+    re.IGNORECASE,
+)
+_BEARER_TOKEN = re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]+=*")
+_NAMED_SECRET = re.compile(
+    r"(?i)(\b(?:authorization|cookie|password|token|secret|api[_-]?key|"
+    r"access[_-]?token|refresh[_-]?token)\b\s*[:=]\s*)([\"']?)[^\s,;\"']+"
+)
+
+
+def _sanitize_string(value: str) -> str:
+    value = _CREDENTIAL_IN_URL.sub(r"\g<prefix>[redacted]@", value)
+
+    def redact_url_suffix(match: re.Match[str]) -> str:
+        suffix = ""
+        if match.group("query") is not None:
+            suffix += "?[redacted]"
+        if match.group("fragment") is not None:
+            suffix += "#[redacted]"
+        return match.group("base") + suffix
+
+    value = _URL_QUERY_OR_FRAGMENT.sub(redact_url_suffix, value)
+    value = _BEARER_TOKEN.sub(r"\1[redacted]", value)
+    return _NAMED_SECRET.sub(r"\1\2[redacted]", value)
+
 
 def _sanitize(value: Any) -> Any:
     if isinstance(value, dict):
@@ -35,10 +66,12 @@ def _sanitize(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_sanitize(item) for item in value]
     if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    if isinstance(value, (str, int, float, bool)) or value is None:
+        return _sanitize_string(value.decode("utf-8", errors="replace"))
+    if isinstance(value, str):
+        return _sanitize_string(value)
+    if isinstance(value, (int, float, bool)) or value is None:
         return value
-    return str(value)
+    return _sanitize_string(str(value))
 
 
 class ContextFilter(logging.Filter):
@@ -77,7 +110,7 @@ class JsonFormatter(logging.Formatter):
         # of one opaque duration, and can be grepped/aggregated by "outcome" and
         # "compiler" across all compiles.
         for key in (
-            "compiler", "outcome",
+            "compiler", "outcome", "error_type",
             "queue_wait_seconds", "cold_start_seconds",
             "compile_subprocess_seconds", "reporting_seconds", "total_task_seconds",
             "optimization_seconds", "ats_scoring_seconds",
