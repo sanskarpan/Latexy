@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlsplit
 
 import pytest
 from httpx import AsyncClient
@@ -137,6 +138,32 @@ class TestReferenceServiceDetect:
         norm, typ = self._svc().normalize_identifier("https://arxiv.org/abs/1706.03762v3")
         assert norm == "1706.03762"
         assert typ == "arxiv"
+
+
+@pytest.mark.asyncio
+async def test_fetch_doi_uses_fixed_crossref_origin_and_encoded_path():
+    """A DOI cannot select the outbound host or escape the Crossref path."""
+    from app.services.reference_service import reference_service
+
+    response = _mock_httpx_response(200, _SAMPLE_DOI_BIBTEX)
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    client.get = AsyncMock(return_value=response)
+
+    with (
+        patch("app.services.reference_service.cache_manager.get", return_value=None),
+        patch("app.services.reference_service.cache_manager.set", return_value=None),
+        patch("app.services.reference_service.httpx.AsyncClient", return_value=client),
+    ):
+        await reference_service.fetch_doi("10.1234/record?next=//169.254.169.254")
+
+    requested = client.get.await_args.args[0]
+    parsed = urlsplit(requested)
+    assert parsed.hostname == "api.crossref.org"
+    assert parsed.query == ""
+    assert parsed.fragment == ""
+    assert "/10.1234%2Frecord%3Fnext%3D%2F%2F169.254.169.254/" in parsed.path
 
 
 class TestArxivXmlParser:
