@@ -20,7 +20,7 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
   // same guidance as every other command.
   if (!requireAuth()) return
 
-  const compiler = (parsed.args['compiler'] as string | undefined) ?? 'pdflatex'
+  const requestedCompiler = parsed.args['compiler'] as string | undefined
   const resumeIdFlag = parsed.args['resume-id'] as string | undefined
   // Positional: if it looks like a UUID (contains dashes), treat as resume-id; otherwise treat as file path
   const firstPositional = parsed.positional[0]
@@ -30,6 +30,7 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
 
   // Case 1: local .tex file upload
   if (filePath) {
+    const compiler = requestedCompiler ?? 'pdflatex'
     const toolMsgId = addMessage({
       role: 'tool_use',
       content: '',
@@ -79,15 +80,22 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
     content: '',
     toolName: 'compile_pdf',
     toolState: 'running',
-    toolArgs: { resume_id: actualResumeId, compiler },
+    toolArgs: {
+      resume_id: actualResumeId,
+      compiler: requestedCompiler ?? 'saved resume preference',
+    },
   })
 
   try {
-    const resume = await client.get<{ latex_content: string }>(`/resumes/${actualResumeId}`)
+    const resume = await client.get<{
+      latex_content: string
+      metadata?: { compiler?: string } | null
+    }>(`/resumes/${actualResumeId}`)
+    const compiler = requestedCompiler ?? resume.metadata?.compiler
     const res = await client.post<JobSubmitResponse>('/jobs/submit', {
       job_type: 'latex_compilation',
       latex_content: resume.latex_content,
-      compiler,
+      ...(compiler ? { compiler } : {}),
     })
     const jobId = res.job_id
 
