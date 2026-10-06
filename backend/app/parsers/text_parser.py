@@ -20,8 +20,8 @@ class TextParser(AbstractParser):
             section_hints = self._extract_sections_heuristic(text)
             return self._build_parsed_resume(text, filename, section_hints=list(section_hints))
         except Exception as e:
-            logger.error(f"Error parsing text file: {e}")
-            raise ValueError(f"Failed to parse text file: {str(e)}")
+            logger.error("Error parsing text file", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse text input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         try:
@@ -29,5 +29,5 @@ class TextParser(AbstractParser):
             if not content.strip():
                 return False, "Text file is empty"
             return True, None
-        except Exception as e:
-            return False, str(e)
+        except Exception:
+            return False, "Text validation failed"
