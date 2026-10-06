@@ -20,14 +20,16 @@ function readRedirect(params: URLSearchParams): string | null {
 
 function LoginInner() {
   const { t } = useI18n()
-  const redirect = readRedirect(useSearchParams())
+  const searchParams = useSearchParams()
+  const redirect = readRedirect(searchParams)
+  const oauthError = searchParams.get('error') ?? undefined
   const signupHref = redirect ? `/signup?redirect=${encodeURIComponent(redirect)}` : '/signup'
 
   return (
     <div className="bg-bg text-fg">
       <div className="mx-auto flex min-h-[80vh] max-w-6xl items-center justify-center px-5 py-16 sm:px-8">
         <div className="w-full max-w-md space-y-6">
-          <SignInForm redirect={redirect ?? undefined} />
+          <SignInForm redirect={redirect ?? undefined} oauthError={oauthError} />
 
           <p className="text-center font-body text-sm text-fg-3">
             {t('auth.noAccount')}{' '}
