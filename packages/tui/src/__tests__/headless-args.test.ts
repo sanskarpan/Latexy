@@ -54,6 +54,8 @@ describe('parseHeadlessArgs', () => {
     expect(paths(['compile', 'cv.tex', '--output'])).toEqual(['compile', 'cv.tex'])
     expect(paths(['compile', '--output', '--json', 'cv.tex'])).toEqual(['compile', 'cv.tex'])
     expect(parseHeadlessArgs(['compile', '--output', '--json']).flags['--output']).toBeUndefined()
+    expect(parseHeadlessArgs(['compile', '--output', '--json']).missingValueFlags).toEqual(['--output'])
+    expect(parseHeadlessArgs(['compile', '--output=']).missingValueFlags).toEqual(['--output'])
   })
 
   it('bare flags are not positionals', () => {
@@ -66,5 +68,22 @@ describe('parseHeadlessArgs', () => {
     // be read as a subcommand called "xelatex".
     expect(paths(['--json', 'compile', 'cv.tex'])[0]).toBe('compile')
     expect(paths(['--compiler', 'xelatex', 'compile', 'cv.tex'])[0]).toBe('compile')
+  })
+
+  it('records unknown and command-irrelevant options for deterministic rejection', () => {
+    expect(parseHeadlessArgs(['compile', '--complier', 'xelatex', 'cv.tex'], 'compile'))
+      .toMatchObject({ unknownFlags: ['--complier'] })
+    expect(parseHeadlessArgs(['optimize', '--jd', 'JD'], 'compile'))
+      .toMatchObject({ irrelevantFlags: ['--jd'] })
+    expect(parseHeadlessArgs(['ats', 'score', 'resume-1', '--output', 'result.pdf'], 'ats'))
+      .toMatchObject({ irrelevantFlags: ['--output'] })
+  })
+
+  it('records boolean switches with values as invalid instead of silently ignoring them', () => {
+    expect(parseHeadlessArgs(['status', 'job-1', '--wait=false'], 'status'))
+      .toMatchObject({ invalidBooleanFlags: ['--wait'] })
+    expect(parseHeadlessArgs(['list', '--json=pretty'], 'list'))
+      .toMatchObject({ invalidBooleanFlags: ['--json'] })
+    expect(parseHeadlessArgs(['status', 'job-1', '--wait'], 'status').flags['--wait']).toBe('true')
   })
 })
