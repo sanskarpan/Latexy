@@ -14,7 +14,11 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import _insert_session
 from fastapi import HTTPException
+from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.snippet_routes import _check_content_safety
 from app.database.models import Snippet, SnippetInstall, SnippetUpvote
@@ -205,6 +209,64 @@ class TestSnippetInstalls:
             await mock_db.commit()
 
         assert snippet.installs_count == initial_count + 1
+
+    async def test_endpoint_install_is_idempotent_and_counter_matches(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        user_id = str(uuid.uuid4())
+        snippet_id = str(uuid.uuid4())
+        await db_session.execute(
+            text(
+                "INSERT INTO users (id, email, email_verified, subscription_plan, "
+                "subscription_status, trial_used) VALUES "
+                "(:user_id, :email, true, 'free', 'active', false)"
+            ),
+            {"user_id": user_id, "email": f"snippet-{user_id}@example.com"},
+        )
+        await db_session.execute(
+            text(
+                "INSERT INTO snippets "
+                "(id, author_id, title, description, content, category, tags, "
+                "is_official, installs_count, upvotes_count) VALUES "
+                "(:id, :author_id, 'Atomic snippet', 'A sufficiently long description', "
+                "'\\\\textbf{Atomic snippet}', 'misc', '{}'::text[], false, 0, 0)"
+            ),
+            {"id": snippet_id, "author_id": user_id},
+        )
+        await db_session.commit()
+        token = await _insert_session(db_session, user_id)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        first = await client.post(f"/snippets/{snippet_id}/install", headers=headers)
+        second = await client.post(f"/snippets/{snippet_id}/install", headers=headers)
+
+        assert first.status_code == 204
+        assert second.status_code == 204
+        row = (
+            await db_session.execute(
+                text(
+                    "SELECT installs_count, "
+                    "(SELECT count(*) FROM snippet_installs WHERE snippet_id = :id) "
+                    "FROM snippets WHERE id = :id"
+                ),
+                {"id": snippet_id},
+            )
+        ).one()
+        assert row == (1, 1)
+
+        removed = await client.delete(f"/snippets/{snippet_id}/install", headers=headers)
+        repeated = await client.delete(f"/snippets/{snippet_id}/install", headers=headers)
+        assert removed.status_code == 204
+        assert repeated.status_code == 204
+        row = (
+            await db_session.execute(
+                text("SELECT installs_count FROM snippets WHERE id = :id"),
+                {"id": snippet_id},
+            )
+        ).scalar_one()
+        assert row == 0
 
 
 # ── Test 4: Upvote toggle ─────────────────────────────────────────────────────
