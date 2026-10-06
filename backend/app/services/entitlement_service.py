@@ -40,7 +40,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -71,7 +72,8 @@ _CACHE_TTL = 60  # seconds
 # clock skew across instances) can still find the key it incremented.
 _QUOTA_TTL = 40 * 86400  # seconds
 
-# INCRBY and EXPIRE as one round-trip, so they cannot come apart.
+# INCRBY, EXPIRE, and the over-limit rollback as one round-trip, so they cannot
+# come apart.
 #
 # Done as two calls, a failure between them left the counter incremented with no
 # TTL: the caller was charged, the request was denied anyway because the error
@@ -79,10 +81,30 @@ _QUOTA_TTL = 40 * 86400  # seconds
 # the next period and the user stayed billed for it permanently. Inside a Lua
 # script the pair either both apply or neither does, and there is no window for a
 # concurrent caller to observe a TTL-less key.
-_INCR_WITH_TTL = """
+_CONSUME_WITH_TTL = """
 local v = redis.call('INCRBY', KEYS[1], ARGV[1])
-if v == tonumber(ARGV[1]) then
+-- Repair counters left without expiry by an interrupted deployment of the old
+-- two-command implementation as well as assigning expiry to brand-new keys.
+if redis.call('TTL', KEYS[1]) < 0 then
   redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+local limit = tonumber(ARGV[3])
+if limit >= 0 and v > limit then
+  -- Reject and restore this exact increment before another Redis command can
+  -- observe it. A separate DECRBY races with refunds and other rejected costs.
+  redis.call('DECRBY', KEYS[1], ARGV[1])
+  return -1
+end
+if #KEYS > 1 then
+  -- The receipt's age is used by recovery workers.  Stamp it from this
+  -- Redis server, rather than trusting the submitting process' wall clock;
+  -- otherwise a skewed API host can make a fresh receipt look stale (or keep
+  -- an orphan alive indefinitely).  cjson is provided by Redis' Lua runtime.
+  local receipt = cjson.decode(ARGV[4])
+  local clock = redis.call('TIME')
+  receipt.created_at = tonumber(clock[1]) + tonumber(clock[2]) / 1000000
+  receipt.created_at_clock = 'redis'
+  redis.call('SET', KEYS[2], cjson.encode(receipt), 'NX', 'EX', ARGV[2])
 end
 return v
 """
@@ -109,6 +131,15 @@ class QuotaTicket:
     allowed: bool
     unavailable: bool = False  # counter store down → denied, not "over limit"
     window: str = "month"  # "day" | "month" — how often ``period`` rolls over
+    # A ticket can pass through several exception/cancellation handlers. Keep a
+    # stable receipt so a synchronous caller cannot refund the same consumption
+    # twice if more than one handler runs. Worker refunds use their job-scoped
+    # marker instead, but carrying this value in the serialized payload keeps
+    # the receipt available for diagnostics and future worker paths.
+    receipt_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    # Present for background submissions so synchronous compensation can remove
+    # the matching pending receipt after refunding the counter.
+    job_id: Optional[str] = None
 
     @property
     def remaining(self) -> Optional[int]:
@@ -128,6 +159,7 @@ class QuotaTicket:
             "user_id": self.user_id,
             "period": self.period,
             "cost": cost,
+            "receipt_id": self.receipt_id,
         }
 
 
@@ -249,8 +281,8 @@ class EntitlementService:
 
             blob = await self._get_blob()
             return self._decide(blob, key, plan)
-        except Exception as exc:
-            logger.warning(f"entitlement_service.has_feature({key}) error: {exc}")
+        except Exception:
+            logger.warning("entitlement_service.has_feature(%s) failed", key, exc_info=True)
             return True  # fail open (never touches the caller's session)
 
     def _decide(self, blob: dict, key: str, plan: Optional[str]) -> bool:
@@ -383,8 +415,8 @@ class EntitlementService:
             role, plan = await self._resolve_user_role_plan(user)
             bypass = role in _ADMIN_ROLES
             blob = None if bypass else await self._get_blob()
-        except Exception as exc:
-            logger.warning(f"entitlement_service.effective_features error: {exc}")
+        except Exception:
+            logger.warning("entitlement_service.effective_features failed", exc_info=True)
             bypass, blob = True, None  # fail open
 
         result: dict[str, bool] = {}
@@ -406,6 +438,7 @@ class EntitlementService:
         user_id: str,
         plan: Optional[str],
         cost: int = 1,
+        job_id: Optional[str] = None,
     ) -> QuotaTicket:
         """Atomically consume ``cost`` units of ``dimension`` for ``user_id``.
 
@@ -424,20 +457,44 @@ class EntitlementService:
         window = get_plan_quota_window(plan, dimension)
         period = _current_period(window)
         key = f"latexy:quota:{dimension}:{user_id}:{period}"
+        receipt_id = uuid.uuid4().hex
+        receipt_key = f"latexy:quota-refund-pending:{job_id}" if job_id else None
+        receipt_payload = json.dumps(
+            {
+                "dimension": dimension,
+                "user_id": user_id,
+                "period": period,
+                "cost": cost,
+                "receipt_id": receipt_id,
+                "created_at": time.time(),
+            }
+        )
 
         try:
             from ..core.redis import get_redis_cache_client
 
             redis = await get_redis_cache_client()
-            used = int(await redis.eval(_INCR_WITH_TTL, 1, key, cost, _QUOTA_TTL))
-        except Exception as exc:
+            # ``-1`` means this exact increment was rejected and restored by
+            # the Lua script. Unlimited plans pass -1 as their script limit.
+            eval_args = [cost, _QUOTA_TTL, limit if limit is not None else -1, receipt_payload]
+            if receipt_key:
+                eval_args.insert(0, receipt_key)
+            raw_used = int(await redis.eval(_CONSUME_WITH_TTL, 2 if receipt_key else 1, key, *eval_args))
+            if raw_used < 0:
+                used = limit or 0
+            else:
+                used = raw_used
+        except Exception:
             # Nothing to meter on an unlimited plan → the counter is pure
             # reporting, so let the request through instead of manufacturing an
             # outage on endpoints that have no other Redis dependency.
             fail_open = limit is None
             logger.error(
-                f"Quota counter unavailable for {dimension}/{user_id}, "
-                f"failing {'open (unlimited plan)' if fail_open else 'closed'}: {exc}"
+                "Quota counter unavailable for %s/%s, failing %s",
+                dimension,
+                user_id,
+                "open (unlimited plan)" if fail_open else "closed",
+                exc_info=True,
             )
             return QuotaTicket(
                 dimension=dimension,
@@ -448,17 +505,11 @@ class EntitlementService:
                 allowed=fail_open,
                 unavailable=True,
                 window=window,
+                receipt_id=receipt_id,
+                job_id=job_id,
             )
 
-        allowed = limit is None or used <= limit
-        if not allowed:
-            # Roll the rejected increment back so a client hammering an exhausted
-            # quota cannot inflate the counter without bound. The INCR above is
-            # still the arbiter of who got a slot, so this cannot let anyone in.
-            try:
-                used = int(await redis.decrby(key, cost))
-            except Exception as exc:
-                logger.warning(f"Quota rollback failed for {key}: {exc}")
+        allowed = limit is None or raw_used >= 0
 
         return QuotaTicket(
             dimension=dimension,
@@ -468,9 +519,11 @@ class EntitlementService:
             limit=limit,
             allowed=allowed,
             window=window,
+            receipt_id=receipt_id,
+            job_id=job_id,
         )
 
-    async def refund_quota(self, ticket: QuotaTicket, cost: int = 1) -> None:
+    async def refund_quota(self, ticket: QuotaTicket, cost: int = 1) -> bool:
         """Give back units consumed by a ticket whose work never happened.
 
         Called when the metered spend is abandoned AFTER consumption (queue
@@ -478,15 +531,59 @@ class EntitlementService:
         costs the user one unit, whereas a lost consumption costs us money.
         """
         if ticket.unavailable:
-            return
+            # No counter increment was confirmed, so there is nothing to
+            # compensate.  Treat this as successful cleanup for callers that
+            # gate receipt removal on the return value.
+            return True
         key = f"latexy:quota:{ticket.dimension}:{ticket.user_id}:{ticket.period}"
+        # Background jobs use the same job-scoped marker as the worker-side
+        # refund path.  This closes the enqueue exception race where a worker
+        # can terminalize and refund a task while the submitting process is
+        # still deciding whether to compensate its own failed dispatch call.
+        # Synchronous callers retain receipt-scoped idempotency.
+        marker_key = (
+            f"latexy:quota-refund:{ticket.dimension}:{ticket.job_id}"
+            if ticket.job_id
+            else (
+                f"latexy:quota-refund:{ticket.dimension}:{ticket.user_id}:"
+                f"{ticket.period}:{ticket.receipt_id}"
+            )
+        )
+        # A refund is compensating work and can be reached by multiple
+        # exception/cancellation paths. SET-NX makes it exactly-once per
+        # consumption receipt; clamping at zero prevents an oversized or
+        # duplicated refund from creating a negative balance that bypasses the
+        # quota on later requests. Both operations are one atomic script.
+        refund_script = """
+        if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
+          return 0
+        end
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+        local refund = tonumber(ARGV[1])
+        if current <= 0 then
+          return 1
+        elseif current <= refund then
+          redis.call('SET', KEYS[1], '0', 'KEEPTTL')
+        else
+          redis.call('DECRBY', KEYS[1], refund)
+        end
+        return 1
+        """
         try:
             from ..core.redis import get_redis_cache_client
 
             redis = await get_redis_cache_client()
-            await redis.decrby(key, cost)
-        except Exception as exc:
-            logger.warning(f"Quota refund failed for {key}: {exc}")
+            # A zero result means the marker already existed: the prior refund
+            # completed atomically, so it is still safe to remove the receipt.
+            await redis.eval(refund_script, 2, key, marker_key, cost, _QUOTA_TTL)
+            if ticket.job_id:
+                await redis.delete(f"latexy:quota-refund-pending:{ticket.job_id}")
+            return True
+        except Exception:
+            logger.warning("Quota refund failed for %s", key, exc_info=True)
+            # Keep a job-scoped pending receipt on failure.  Cleanup/recovery
+            # can retry it after Redis becomes available.
+            return False
 
     async def enforce_quota(
         self,
@@ -495,13 +592,16 @@ class EntitlementService:
         user_id: str,
         plan: Optional[str],
         cost: int = 1,
+        job_id: Optional[str] = None,
     ) -> QuotaTicket:
         """Consume quota and raise the standard error envelope when denied.
 
         402 Payment Required when the plan's allowance is spent (the client's cue
         to show an upgrade prompt); 503 when the counter store is down.
         """
-        ticket = await self.consume_quota(dimension, user_id=user_id, plan=plan, cost=cost)
+        ticket = await self.consume_quota(
+            dimension, user_id=user_id, plan=plan, cost=cost, job_id=job_id
+        )
         if ticket.allowed:
             return ticket
 
@@ -555,8 +655,8 @@ class EntitlementService:
                     f"latexy:quota:{dimension}:{user_id}:{periods[dimension]}"
                 )
                 counts[dimension] = int(raw or 0)
-        except Exception as exc:
-            logger.warning(f"Quota snapshot unavailable for {user_id}: {exc}")
+        except Exception:
+            logger.warning("Quota snapshot unavailable for %s", user_id, exc_info=True)
 
         # Top-level period/resets_at describe the monthly billing window; each
         # dimension carries its own because the windows differ per plan.
@@ -597,8 +697,8 @@ class EntitlementService:
                 return False
             family = resolve_plan_family(plan_family or "free")
             return bool(blob.get("matrix", {}).get(family, {}).get(key, True))
-        except Exception as exc:
-            logger.debug(f"sync_has_feature({key}) blob error: {exc}")
+        except Exception:
+            logger.debug("sync_has_feature(%s) blob error", key, exc_info=True)
             return True  # fail open
 
     # ---------------------------------------------------------------- #
@@ -617,15 +717,15 @@ class EntitlementService:
             if raw is None:
                 return None
             return json.loads(raw)
-        except Exception as exc:
-            logger.debug(f"entitlement_service._read_from_redis error: {exc}")
+        except Exception:
+            logger.debug("entitlement_service._read_from_redis failed", exc_info=True)
             return None
         finally:
             if r is not None:
                 try:
                     await r.aclose()
-                except Exception as exc:
-                    logger.debug(f"entitlement_service Redis close error: {exc}")
+                except Exception:
+                    logger.debug("entitlement_service Redis close failed", exc_info=True)
 
     async def _push_to_redis(self, blob: dict) -> None:
         """Write the entitlements blob to Redis (async, best-effort)."""
@@ -636,14 +736,14 @@ class EntitlementService:
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await r.set(REDIS_BLOB_KEY, json.dumps(blob))
-        except Exception as exc:
-            logger.debug(f"entitlement_service._push_to_redis error: {exc}")
+        except Exception:
+            logger.debug("entitlement_service._push_to_redis failed", exc_info=True)
         finally:
             if r is not None:
                 try:
                     await r.aclose()
-                except Exception as exc:
-                    logger.debug(f"entitlement_service Redis close error: {exc}")
+                except Exception:
+                    logger.debug("entitlement_service Redis close failed", exc_info=True)
 
     def _sync_read_from_redis(self) -> Optional[dict]:
         """Read + parse the entitlements blob from Redis (sync). None on miss/error."""
@@ -674,15 +774,15 @@ class EntitlementService:
             if raw is None:
                 return None
             return json.loads(raw)
-        except Exception as exc:
-            logger.debug(f"entitlement_service._sync_read_from_redis error: {exc}")
+        except Exception:
+            logger.debug("entitlement_service._sync_read_from_redis failed", exc_info=True)
             return None
         finally:
             if r is not None:
                 try:
                     r.close()
-                except Exception as exc:
-                    logger.debug(f"entitlement_service Redis close error: {exc}")
+                except Exception:
+                    logger.debug("entitlement_service Redis close failed", exc_info=True)
 
 
 # ---------------------------------------------------------------------- #
