@@ -20,8 +20,10 @@ fixing one without removing it from the waiver also fails, so the list cannot ro
 from __future__ import annotations
 
 import ast
+import base64
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -38,6 +40,38 @@ DEPLOY_WORKFLOW = BACKEND.parent / ".github" / "workflows" / "deploy-modal.yml"
 
 def _parse(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _extract_modal_string_constant(name: str) -> str:
+    """Extract one literal from modal_app.py without importing Modal or building images."""
+    tree = _parse(MODAL_APP)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            value = ast.literal_eval(node.value)
+            assert isinstance(value, str), f"{name} must remain a string literal"
+            return value
+    raise AssertionError(f"modal_app.py has no literal {name}")
+
+
+def _extract_modal_shell_encoder():
+    """Extract only the encoder so this test never imports modal_app.py."""
+    tree = _parse(MODAL_APP)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_encode_shell_script"
+    )
+    isolated = ast.Module(
+        body=[ast.Import(names=[ast.alias(name="base64")]), function],
+        type_ignores=[],
+    )
+    namespace: dict[str, object] = {}
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+    encoder = namespace["_encode_shell_script"]
+    assert callable(encoder)
+    return encoder
 
 
 def _modal_function_names() -> set[str]:
@@ -415,9 +449,54 @@ def test_modal_latex_image_prewarms_the_same_closed_mixed_font_contract():
     for fragment in required:
         assert fragment in modal, f"Modal cache probe is missing {fragment!r}"
         assert fragment in local, f"Local cache probe is missing {fragment!r}"
-    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE)" in modal
+    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)" in modal
     assert modal.index("fc-cache --force --system-only") < modal.index("lualatex -no-shell-escape")
     assert local.index("fc-cache --force --system-only") < local.index("lualatex -no-shell-escape")
+
+
+def test_modal_warmup_encoder_roundtrips_multiline_control_characters():
+    """The Dockerfile transport must preserve arbitrary shell-script bytes."""
+    encode = _extract_modal_shell_encoder()
+    script = (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        "value='quotes \" and $() and \\\\backslash'\n"
+        "printf 'line one\nline two\t\x01 • हिंदी\n'\n"
+    )
+
+    command = encode(script)
+    match = re.fullmatch(r"printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| sh", command)
+    assert match, "the serialized command must be a one-line base64 shell wrapper"
+    assert base64.b64decode(match.group(1)).decode("utf-8") == script
+
+    warmup_command = encode(_extract_modal_string_constant("_WARM_TEX_CACHE"))
+    assert "\n" not in warmup_command
+    assert warmup_command.startswith("printf '%s' '")
+
+
+def test_modal_warmup_encoder_executes_and_propagates_shell_failure():
+    """The wrapper must run the decoded script and retain its non-zero status."""
+    encode = _extract_modal_shell_encoder()
+
+    success = subprocess.run(
+        ["/bin/sh", "-c", encode("set -eu\nprintf 'warmup-ok\\n'\n")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+    assert success.returncode == 0
+    assert success.stdout == "warmup-ok\n"
+
+    failure = subprocess.run(
+        ["/bin/sh", "-c", encode("set -eu\nfalse\nprintf 'unreachable'\n")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+    assert failure.returncode != 0
+    assert failure.stdout == ""
 
 
 def test_production_dockerfile_contains_the_same_mixed_language_runtime():
