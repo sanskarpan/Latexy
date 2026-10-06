@@ -112,6 +112,28 @@ async def test_metrics_exposes_new_series(client: AsyncClient):
 # anything watching health.
 
 
+async def test_health_engine_subprocess_probe_runs_off_event_loop(client: AsyncClient, monkeypatch):
+    import threading
+
+    from app.api import routes
+    from app.services import storage_service
+
+    event_loop_thread = threading.get_ident()
+    probe_threads = []
+
+    def engine_probe():
+        probe_threads.append(threading.get_ident())
+        return True
+
+    monkeypatch.setenv("DEPLOY_TARGET", "local")
+    monkeypatch.setattr(routes.latex_compiler, "is_available", engine_probe)
+    monkeypatch.setattr(storage_service, "probe", lambda: (True, "ok"))
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["latex_available"] is True
+    assert probe_threads and all(thread != event_loop_thread for thread in probe_threads)
+
+
 async def test_health_reports_storage_ok_when_reachable(client: AsyncClient):
     from app.services import storage_service
 
