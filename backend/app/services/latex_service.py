@@ -775,7 +775,9 @@ def run_latex_subprocess(
     can include any extra payload (e.g. ``optimized_latex``).
     """
     # Lazy import to avoid circular imports (workers → services → workers)
+    from ..workers.buffered_events import BufferedEventPublisher  # noqa: PLC0415
     from ..workers.event_publisher import is_cancelled, publish_event  # noqa: PLC0415
+    from .render_engine.cancellation import CancellationPoll  # noqa: PLC0415
 
     job_dir = settings.TEMP_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -842,41 +844,42 @@ def run_latex_subprocess(
         is_cancelled=lambda: is_cancelled(job_id),
     ).start()
     try:
-        for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
-            if not line:
-                continue
-            escaped = find_engine_read_escape(line, workspace)
-            if escaped:
-                # Kill before publishing: the next lines would carry the file's contents.
-                proc.kill()
-                cleanup_docker_container(container_name)
-                proc.wait()
-                logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
-                return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
+        with BufferedEventPublisher(job_id, publisher=publish_event) as events:
+            cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
+            for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
+                if not line:
+                    continue
+                escaped = find_engine_read_escape(line, workspace)
+                if escaped:
+                    # Kill before publishing: the next lines would carry the file's contents.
+                    proc.kill()
+                    cleanup_docker_container(container_name)
+                    proc.wait()
+                    logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
+                    return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
 
-            line_lower = line.lower()
-            is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
-            publish_event(
-                job_id,
-                "log.line",
-                {
-                    "source": "pdflatex",
-                    "line": bound_log_line(line)[0],
-                    "is_error": is_error,
-                },
-            )
+                line_lower = line.lower()
+                is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
+                events.publish(
+                    "log.line",
+                    {
+                        "source": "pdflatex",
+                        "line": bound_log_line(line)[0],
+                        "is_error": is_error,
+                    },
+                )
 
-            if timeout is not None and time.time() - start_time > timeout:
-                proc.kill()
-                cleanup_docker_container(container_name)
-                proc.wait()
-                return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
+                if timeout is not None and time.time() - start_time > timeout:
+                    proc.kill()
+                    cleanup_docker_container(container_name)
+                    proc.wait()
+                    return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
 
-            if is_cancelled(job_id):
-                proc.kill()
-                cleanup_docker_container(container_name)
-                proc.wait()
-                raise RuntimeError("Job cancelled during LaTeX compilation")
+                if cancellation_poll():
+                    proc.kill()
+                    cleanup_docker_container(container_name)
+                    proc.wait()
+                    raise RuntimeError("Job cancelled during LaTeX compilation")
     except BaseException:
         cleanup_docker_container(container_name)
         raise

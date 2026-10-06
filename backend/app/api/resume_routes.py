@@ -25,6 +25,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..database.connection import get_db
 from ..database.models import (
     Compilation,
@@ -1567,7 +1568,8 @@ async def quick_tailor_resume(
             if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
             else settings.DEFAULT_LATEX_COMPILER
         )
-        submit_optimize_and_compile(
+        await submit_async(
+            submit_optimize_and_compile,
             latex_content=fork.latex_content,
             job_description=body.job_description,
             job_id=job_id,
@@ -1754,7 +1756,8 @@ async def convert_academic_cv(
             if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
             else settings.DEFAULT_LATEX_COMPILER
         )
-        submit_optimize_and_compile(
+        await submit_async(
+            submit_optimize_and_compile,
             latex_content=variant.latex_content,
             job_description=body.target_role_description,
             job_id=job_id,
@@ -2360,7 +2363,8 @@ async def create_share_link(
 
             anon_job_id = str(uuid4())
             redacted_latex = redact(resume.latex_content)
-            submit_latex_compilation(
+            await submit_async(
+                submit_latex_compilation,
                 latex_content=redacted_latex,
                 job_id=anon_job_id,
                 user_id=user_id,

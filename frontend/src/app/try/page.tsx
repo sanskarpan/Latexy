@@ -448,6 +448,7 @@ export default function TryPage() {
   }, [activeJobId])
 
   const handleDownload = async () => {
+    if (isProcessing || isSubmitting) { toast.error("Wait for the updated PDF to finish"); return }
     const downloadId = stream.pdfJobId ?? activeJobId
     if (!downloadId) { toast.error('No PDF is ready yet'); return }
     try {

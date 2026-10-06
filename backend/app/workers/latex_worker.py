@@ -53,6 +53,7 @@ from ..services.latex_service import (
     find_recorder_read_escape,
     latex_service,
 )
+from ..services.render_engine.cancellation import CancellationPoll
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     MAX_SYNCTEX_COMPRESSED_BYTES,
@@ -66,6 +67,7 @@ from ..utils.bounded_io import (
     read_text_file_bounded,
 )
 from ..utils.process_watchdog import ProcessWatchdog
+from ..workers.buffered_events import BufferedEventPublisher
 from ..workers.event_publisher import (
     _DEFAULT_TTL,
     get_worker_redis,
@@ -792,6 +794,13 @@ def restore_compile_cache(cache_key: Optional[str], job_id: str) -> Optional[Dic
         if not isinstance(result, dict) or result.get("success") is not True:
             redis.delete(cache_key)
             return None
+        # A combined job may seed this renderer cache. Reuse rendering facts
+        # only; optimization, ATS, persistence and auto-fit decisions belong to
+        # the new request and must never be inherited from an earlier job.
+        result = {
+            key: value for key, value in result.items()
+            if key in {"success", "page_count", "slide_count", "is_beamer", "compiler", "pdf_size", "extracted_text"}
+        }
         result.update(
             {
                 "job_id": job_id,
@@ -2083,113 +2092,117 @@ def compile_latex_task(
                 return _terminal_failure(escape_result, accepted=terminal_accepted)
 
             try:
-                for stripped in iter_bounded_lines(proc.stdout):
-                    if not stripped:
-                        continue
+                with BufferedEventPublisher(job_id, publisher=publish_event) as events:
+                    cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
+                    for stripped in iter_bounded_lines(proc.stdout):
+                        if not stripped:
+                            continue
 
-                    # Read confinement: \input-style reads are announced in the transcript.
-                    # Kill before this line is streamed or stored — the following lines
-                    # would carry the file's contents, and the PDF would render them.
-                    # \openin reads announce nothing here; the recorder check after the run
-                    # is what catches those.
-                    escaped = find_engine_read_escape(stripped, workspace)
-                    if escaped:
-                        proc.kill()
-                        cleanup_docker_container(container_name)
-                        proc.wait()
-                        return _fail_read_escape(escaped)
+                        # Read confinement: \input-style reads are announced in the transcript.
+                        # Kill before this line is streamed or stored — the following lines
+                        # would carry the file's contents, and the PDF would render them.
+                        # \openin reads announce nothing here; the recorder check after the run
+                        # is what catches those.
+                        escaped = find_engine_read_escape(stripped, workspace)
+                        if escaped:
+                            proc.kill()
+                            cleanup_docker_container(container_name)
+                            proc.wait()
+                            events.close()
+                            return _fail_read_escape(escaped)
 
-                    bounded_line = transcript.append(stripped)
+                        bounded_line = transcript.append(stripped)
 
-                    # Extract page count from pdflatex summary line
-                    m = PAGE_COUNT_RE.search(stripped)
-                    if m:
-                        page_count = int(m.group(1))
+                        # Extract page count from pdflatex summary line
+                        m = PAGE_COUNT_RE.search(stripped)
+                        if m:
+                            page_count = int(m.group(1))
 
-                    # Capture the first "! <error type>" line for persistent storage
-                    if first_latex_error is None and stripped.startswith("!"):
-                        first_latex_error = stripped[:250]
+                        # Capture the first "! <error type>" line for persistent storage
+                        if first_latex_error is None and stripped.startswith("!"):
+                            first_latex_error = stripped[:250]
 
-                    is_error_line = (
-                        "error" in stripped.lower() or stripped.startswith("!") or "fatal" in stripped.lower()
-                    )
-                    publish_event(
-                        job_id,
-                        "log.line",
-                        {
-                            "line": bounded_line,
-                            "source": compiler,
-                            "is_error": is_error_line,
-                        },
-                    )
-
-                    # ── Cancellation check ───────────────────────────────────
-                    if is_cancelled(job_id):
-                        proc.kill()
-                        cleanup_docker_container(container_name)
-                        proc.wait()
-                        result = {"success": False, "job_id": job_id, "cancelled": True}
-                        terminal_accepted = publish_job_result(job_id, result)
-                        if terminal_accepted:
-                            publish_event(job_id, "job.cancelled", {})
-                        # Cache the partial log so GET /logs/{job_id} still works, and
-                        # move the row out of "processing" — DELETE /jobs/{job_id} is a
-                        # shipped endpoint, so this is a reachable terminal path.
-                        # "cancelled" (not "failed") keeps it out of the error-history
-                        # and failed-compile analytics buckets, both of which already
-                        # understand the value.
-                        cache_compile_log(job_id, transcript.text())
-                        reconcile_compilation_record(
-                            job_id,
-                            success=False,
-                            status="cancelled",
-                            compilation_time=time.time() - start_time,
-                            error_message="cancelled",
-                            lifecycle_owner=reconcile_owner,
-                            lifecycle_epoch=lifecycle_epoch,
-                            terminal_result=result,
+                        is_error_line = (
+                            "error" in stripped.lower() or stripped.startswith("!") or "fatal" in stripped.lower()
                         )
-                        _log_task_timing("cancelled", time.time() - start_time)
-                        return _terminal_failure(result, accepted=terminal_accepted)
-
-                    # ── Timeout check ────────────────────────────────────────
-                    if time.time() - start_time > timeout:
-                        proc.kill()
-                        cleanup_docker_container(container_name)
-                        proc.wait()
-                        record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
-                        upgrade_msg = (
-                            "Upgrade to Pro for a 4-minute compile timeout"
-                            if resolve_plan_family(user_plan) in {"free", "basic"}
-                            else None
+                        events.publish(
+                            "log.line",
+                            {
+                                "line": bounded_line,
+                                "source": compiler,
+                                "is_error": is_error_line,
+                            },
                         )
-                        result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
-                        terminal_accepted = publish_job_result(job_id, result)
-                        if terminal_accepted:
-                            publish_event(
+
+                        # ── Cancellation check ───────────────────────────────────
+                        if cancellation_poll():
+                            proc.kill()
+                            cleanup_docker_container(container_name)
+                            proc.wait()
+                            result = {"success": False, "job_id": job_id, "cancelled": True}
+                            events.close()
+                            terminal_accepted = publish_job_result(job_id, result)
+                            if terminal_accepted:
+                                publish_event(job_id, "job.cancelled", {})
+                            # Cache the partial log so GET /logs/{job_id} still works, and
+                            # move the row out of "processing" — DELETE /jobs/{job_id} is a
+                            # shipped endpoint, so this is a reachable terminal path.
+                            # "cancelled" (not "failed") keeps it out of the error-history
+                            # and failed-compile analytics buckets, both of which already
+                            # understand the value.
+                            cache_compile_log(job_id, transcript.text())
+                            reconcile_compilation_record(
                                 job_id,
-                                "job.failed",
-                                {
-                                    "stage": "latex_compilation",
-                                    "error_code": "compile_timeout",
-                                    "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
-                                    "upgrade_message": upgrade_msg,
-                                    "user_plan": user_plan,
-                                    "timeout_seconds": int(timeout),
-                                    "retryable": False,
-                                },
+                                success=False,
+                                status="cancelled",
+                                compilation_time=time.time() - start_time,
+                                error_message="cancelled",
+                                lifecycle_owner=reconcile_owner,
+                                lifecycle_epoch=lifecycle_epoch,
+                                terminal_result=result,
                             )
-                        reconcile_compilation_record(
-                            job_id,
-                            success=False,
-                            compilation_time=time.time() - start_time,
-                            error_message="compile_timeout",
-                            lifecycle_owner=reconcile_owner,
-                            lifecycle_epoch=lifecycle_epoch,
-                            terminal_result=result,
-                        )
-                        _log_task_timing("compile_timeout", time.time() - start_time)
-                        return _terminal_failure(result, accepted=terminal_accepted)
+                            _log_task_timing("cancelled", time.time() - start_time)
+                            return _terminal_failure(result, accepted=terminal_accepted)
+
+                        # ── Timeout check ────────────────────────────────────────
+                        if time.time() - start_time > timeout:
+                            proc.kill()
+                            cleanup_docker_container(container_name)
+                            proc.wait()
+                            record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+                            upgrade_msg = (
+                                "Upgrade to Pro for a 4-minute compile timeout"
+                                if resolve_plan_family(user_plan) in {"free", "basic"}
+                                else None
+                            )
+                            result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
+                            events.close()
+                            terminal_accepted = publish_job_result(job_id, result)
+                            if terminal_accepted:
+                                publish_event(
+                                    job_id,
+                                    "job.failed",
+                                    {
+                                        "stage": "latex_compilation",
+                                        "error_code": "compile_timeout",
+                                        "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+                                        "upgrade_message": upgrade_msg,
+                                        "user_plan": user_plan,
+                                        "timeout_seconds": int(timeout),
+                                        "retryable": False,
+                                    },
+                                )
+                            reconcile_compilation_record(
+                                job_id,
+                                success=False,
+                                compilation_time=time.time() - start_time,
+                                error_message="compile_timeout",
+                                lifecycle_owner=reconcile_owner,
+                                lifecycle_epoch=lifecycle_epoch,
+                                terminal_result=result,
+                            )
+                            _log_task_timing("compile_timeout", time.time() - start_time)
+                            return _terminal_failure(result, accepted=terminal_accepted)
             finally:
                 watchdog_reason = watchdog.stop()
 

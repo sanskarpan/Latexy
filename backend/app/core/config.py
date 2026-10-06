@@ -112,6 +112,10 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = Field(default="", description="OpenAI-compatible base URL for the platform key (blank = api.openai.com)")
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 4000
+    # Opt in only after quality/provider benchmarks. Unsupported source retains
+    # the legacy optimizer; a started compact call never falls back or retries.
+    RESUME_COMPACT_PATCHES_ENABLED: bool = False
+    RESUME_STAGE_CHECKPOINTS_ENABLED: bool = True
     OPENAI_TEMPERATURE: float = 0.7
 
     # Multi-Provider & BYOK (Phase 10)

@@ -8,6 +8,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import { createSynctexRequestGuard, parseSynctex, synctexHasMappableSource, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
 import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 import { apiClient } from '@/lib/api-client'
+import { trackWebVital } from '@/lib/telemetry'
 
 // PDF.js 5 requires browser DOMMatrix at module evaluation time. Keep the
 // renderer behind a client-only boundary so Next can still prerender every page
@@ -180,6 +181,8 @@ export default function PDFPreview({
   const synctexRequestGuardRef = useRef(createSynctexRequestGuard())
   const pageDimsRef = useRef<Record<number, PageDimensions>>({})
   const [pageDimsVersion, setPageDimsVersion] = useState(0)
+  const firstPaintRef = useRef({ url: null as string | null, started: 0, recorded: false })
+  const paintFrameRef = useRef<number | null>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null)
@@ -237,6 +240,16 @@ export default function PDFPreview({
   // Container width already tracks the panel's available width, so 100% zoom
   // is "fit to width" — reset and fit-width are the same target state.
   const handleResetZoom = () => setZoom(1)
+
+  // Measure artifact-ready → first page paint, separately from network/compile
+  // time. No document identifiers, URLs, source or title enter telemetry.
+  useEffect(() => {
+    firstPaintRef.current = { url: pdfUrl, started: performance.now(), recorded: false }
+    return () => {
+      if (paintFrameRef.current !== null) cancelAnimationFrame(paintFrameRef.current)
+      paintFrameRef.current = null
+    }
+  }, [pdfUrl])
 
   // Measure container width so pages never overflow the panel
   useEffect(() => {
@@ -391,7 +404,7 @@ export default function PDFPreview({
 
   // Forward sync: source line → scroll PDF to the matching page
   useEffect(() => {
-    if (!syncFromLine || !synctexReady || !synctexDataRef.current) return
+    if (isLoading || !syncFromLine || !synctexReady || !synctexDataRef.current) return
     const block = synctexForward(synctexDataRef.current, syncFromLine, sourceFileName)
     if (!block) return
 
@@ -413,7 +426,7 @@ export default function PDFPreview({
       width: Math.max(block.width * scaleX, 40),
       height: Math.max(block.height * scaleY, 8),
     })
-  }, [pageDimsVersion, sourceFileName, syncFromLine, syncFromRequestId, synctexReady])
+  }, [isLoading, pageDimsVersion, sourceFileName, syncFromLine, syncFromRequestId, synctexReady])
 
   function flashOverlay(
     pageEl: HTMLElement,
@@ -455,7 +468,7 @@ export default function PDFPreview({
 
   const resolvePdfLocation = useCallback((e: React.MouseEvent<HTMLDivElement>, pageNumber: number) => {
     const dims = pageDimsRef.current[pageNumber]
-    if (!dims || !synctexDataRef.current) return null
+    if (isLoading || !dims || !synctexDataRef.current) return null
     const rect = e.currentTarget.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0 || e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return null
     const scaleX = rect.width / dims.naturalWidth
@@ -465,7 +478,7 @@ export default function PDFPreview({
     const pdfY = dims.naturalHeight - (e.clientY - rect.top) / scaleY
     const result = synctexReverse(synctexDataRef.current, pageNumber, pdfX, pdfY, sourceFileName)
     return { pdfX, pdfY, result }
-  }, [sourceFileName])
+  }, [isLoading, sourceFileName])
 
   // A regular click only records the selected PDF location. It never scrolls
   // or navigates; Ctrl/Cmd-click retains the explicit source-jump action.
@@ -610,7 +623,7 @@ export default function PDFPreview({
         </div>
 
         {/* SyncTeX indicator */}
-        {synctexReady && (
+        {synctexReady && !isLoading && (
           <div
             className={`flex items-center gap-1 text-[10px] transition ${
               syncHint ? 'text-warn' : 'text-fg-3'
@@ -660,7 +673,8 @@ export default function PDFPreview({
           {onShare && (
             <button
               type="button"
-              onClick={() => void onShare()}
+              disabled={isLoading}
+              onClick={() => { if (!isLoading) void onShare() }}
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Share2 size={12} />
@@ -669,7 +683,8 @@ export default function PDFPreview({
           )}
           {onDownload && (
             <button
-              onClick={onDownload}
+              disabled={isLoading}
+              onClick={() => { if (!isLoading) onDownload() }}
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Download size={12} />
@@ -679,6 +694,12 @@ export default function PDFPreview({
         </div>
       </div>
 
+      {isLoading && (
+        <div role="status" className="flex shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5 text-[11px] text-fg-3">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-accent" />
+          Updating PDF — showing the previous version
+        </div>
+      )}
       {/* Print preview banner */}
       {printPreview && (
         <div className="flex shrink-0 items-center gap-2 border-b border-warn/30 bg-warn/10 px-3 py-1.5">
@@ -714,7 +735,7 @@ export default function PDFPreview({
               </button>
             )}
             {onDownload && (
-              <button onClick={onDownload} className="text-[11px] text-accent-strong hover:underline">
+              <button disabled={isLoading} onClick={() => { if (!isLoading) onDownload() }} className="text-[11px] text-accent-strong hover:underline">
                 Download to view
               </button>
             )}
@@ -770,7 +791,21 @@ export default function PDFPreview({
                     width={pageWidth}
                     renderTextLayer
                     renderAnnotationLayer
-                    onRenderSuccess={(page) => storePagDims(pageNum, page, renderGeneration)}
+                    onRenderSuccess={(page) => {
+                      if (!isCurrentPdfIdentity(renderGeneration)) return
+                      storePagDims(pageNum, page, renderGeneration)
+                      const measurement = firstPaintRef.current
+                      if (pageNum !== 1 || measurement.url !== pdfUrl || measurement.recorded) return
+                      measurement.recorded = true
+                      paintFrameRef.current = requestAnimationFrame(() => {
+                        paintFrameRef.current = requestAnimationFrame(() => {
+                          paintFrameRef.current = null
+                          if (firstPaintRef.current !== measurement) return
+                          trackWebVital({ id: 'pdf-render', name: 'PDF_RENDER_PAINT', value: performance.now() - measurement.started },
+                            window.location.pathname === '/try' ? '/try' : '/workspace')
+                        })
+                      })
+                    }}
                   />
                 </div>
                 {showHeatmap && (

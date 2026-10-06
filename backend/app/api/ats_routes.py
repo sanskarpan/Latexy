@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
@@ -264,7 +265,8 @@ async def score_resume_ats(
                     detail="ATS job service temporarily unavailable. Please try again.",
                 )
             try:
-                submit_ats_scoring(
+                await submit_async(
+                    submit_ats_scoring,
                     latex_content=request.latex_content,
                     job_id=job_id,
                     job_description=request.job_description,

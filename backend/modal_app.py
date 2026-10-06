@@ -270,7 +270,7 @@ def _init_worker_redis() -> None:
     from app.core.config import settings
     from app.workers.event_publisher import initialize_worker_redis
 
-    initialize_worker_redis(settings.REDIS_URL)
+    initialize_worker_redis(settings.REDIS_URL, password=settings.REDIS_PASSWORD or None)
 
 
 # ---------------------------------------------------------------------------

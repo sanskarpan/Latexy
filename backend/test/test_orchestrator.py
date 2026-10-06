@@ -170,15 +170,15 @@ class TestRunAtsStage:
         score, details = _run_ats_stage(str(uuid.uuid4()), GOOD_LATEX, None)
         assert score == 78.0
 
-    def test_scoring_exception_returns_zero_score(self):
+    def test_scoring_exception_returns_unavailable_score(self):
         with patch(
             "app.workers.orchestrator.ats_scoring_service.score_resume",
             new_callable=AsyncMock,
             side_effect=RuntimeError("Scoring broke"),
         ):
             score, details = _run_ats_stage(str(uuid.uuid4()), GOOD_LATEX, JD)
-        assert score == 0.0
-        assert details == {}
+        assert score is None
+        assert details == {"status": "unavailable", "reason_code": "scoring_failed"}
 
     def test_scoring_exception_does_not_propagate(self):
         with patch(
@@ -274,6 +274,8 @@ class TestOrchestratorMissingApiKey:
             mock_settings.TEMP_DIR = MagicMock()
             mock_settings.TEMP_DIR.__truediv__ = lambda self, x: MagicMock()
             mock_settings.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             mock_client = MagicMock()
             mock_openai_cls.return_value = mock_client

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeveloperAPIKey, User
@@ -207,7 +208,8 @@ async def compile_v1(
         await _write_initial_redis_state(job_id, "latex_compilation", api_key.user_id, estimated_seconds)
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        submit_latex_compilation(
+        await submit_async(
+            submit_latex_compilation,
             latex_content=body.latex_content,
             job_id=job_id,
             user_id=api_key.user_id,
@@ -267,7 +269,8 @@ async def optimize_v1(
         await _write_initial_redis_state(job_id, "llm_optimization", api_key.user_id, estimated_seconds)
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        submit_resume_optimization(
+        await submit_async(
+            submit_resume_optimization,
             latex_content=body.latex_content,
             job_description=body.job_description,
             job_id=job_id,

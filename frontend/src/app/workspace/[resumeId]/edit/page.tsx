@@ -2452,6 +2452,7 @@ export default function ResumeEditPage() {
 
 
   const handleDownload = async () => {
+    if (isAnyRunning) { toast.error("Wait for the updated PDF to finish"); return }
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)

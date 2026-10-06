@@ -30,9 +30,15 @@ from app.workers.event_publisher import (
 def reset_worker_redis():
     """Isolate _worker_redis between tests."""
     original = ep._worker_redis
+    original_identity = ep._worker_redis_identity
+    original_checked_at = ep._worker_redis_checked_at
     ep._worker_redis = None
+    ep._worker_redis_identity = None
+    ep._worker_redis_checked_at = 0.0
     yield
     ep._worker_redis = original
+    ep._worker_redis_identity = original_identity
+    ep._worker_redis_checked_at = original_checked_at
 
 
 @pytest.fixture
@@ -181,12 +187,12 @@ class TestInitializeWorkerRedis:
             pos_args, _ = mock_from_url.call_args
             assert pos_args[0] == url
 
-    def test_replaces_existing_client(self):
+    def test_replaces_existing_client_when_url_changes(self):
         first = MagicMock()
         second = MagicMock()
         with patch("redis.from_url", side_effect=[first, second]):
             initialize_worker_redis("redis://localhost:6379/0")
-            initialize_worker_redis("redis://localhost:6379/0")
+            initialize_worker_redis("redis://localhost:6379/1")
         first.close.assert_called_once()
         assert ep._worker_redis is second
 

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.observability import record_job_submitted
 from ..core.redis import get_redis_cache_client, get_redis_client, redis_manager
 from ..database.connection import get_db
@@ -42,6 +43,7 @@ from ..services.cover_letter_signature_service import (
     validate_embedded_signature,
 )
 from ..services.entitlement_service import QuotaTicket, entitlement_service
+from ..services.job_admission_state import initialize_job_state
 from ..services.optimization_personas import VALID_PERSONA_KEYS
 from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
@@ -401,68 +403,10 @@ async def _write_initial_redis_state(
     """
     r = await get_redis_client()
 
-    # State snapshot
-    state = {
-        "status": "queued",
-        "stage": "",
-        "percent": 0,
-        "last_updated": time.time(),
-    }
-    await r.set(f"latexy:job:{job_id}:state", json.dumps(state), ex=_JOB_TTL)
-
-    # Job metadata
-    meta = {
-        "job_id": job_id,
-        "user_id": user_id,
-        "job_type": job_type,
-        "submitted_at": time.time(),
-    }
-    await r.set(f"latexy:job:{job_id}:meta", json.dumps(meta), ex=_JOB_TTL)
-
-    # Index the job under the owning user so GET /jobs/ can list it.
-    # (Owner-less / anonymous jobs are intentionally not indexed.)
-    if user_id:
-        user_zset = f"latexy:user:{user_id}:jobs"
-        await r.zadd(user_zset, {job_id: time.time()})
-        await r.expire(user_zset, _JOB_TTL)
-
-    # job.queued event — persisted to stream + published to Pub/Sub
-    event_id = str(uuid.uuid4())
-    seq_key = f"latexy:job:{job_id}:seq"
-    seq = await r.incr(seq_key)
-    await r.expire(seq_key, _JOB_TTL)
-
-    event = {
-        "event_id": event_id,
-        "job_id": job_id,
-        "timestamp": time.time(),
-        "sequence": seq,
-        "type": "job.queued",
-        "job_type": job_type,
-        "user_id": user_id,
-        "estimated_seconds": estimated_seconds,
-    }
-    payload_json = json.dumps(event)
-
-    stream_key = f"latexy:stream:{job_id}"
-    entry_id = await r.xadd(
-        stream_key,
-        {
-            "payload": payload_json,
-            "type": "job.queued",
-            "sequence": str(seq),
-            "event_id": event_id,
-        },
-        maxlen=10000,
-        approximate=True,
+    await initialize_job_state(
+        r, job_id=job_id, job_type=job_type, user_id=user_id,
+        estimated_seconds=estimated_seconds, ttl=_JOB_TTL,
     )
-    await r.expire(stream_key, _JOB_TTL)
-
-    # Include stream_id so the frontend can track the Redis Stream entry position
-    # for accurate XREAD replay on reconnect.
-    ws_message = json.dumps({"type": "event", "event": event, "stream_id": entry_id})
-    await r.publish(f"latexy:events:{job_id}", ws_message)
-
 
 async def _delete_initial_redis_state(job_id: str, user_id: Optional[str]) -> None:
     """Best-effort cleanup when a job fails before broker dispatch."""
@@ -766,7 +710,8 @@ async def submit_job(
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             await _mark_dispatch_started(job_id)
             dispatch_attempted = True
-            submit_latex_compilation(
+            await submit_async(
+                submit_latex_compilation,
                 latex_content=request.latex_content,
                 job_id=job_id,
                 user_id=user_id,
@@ -787,7 +732,8 @@ async def submit_job(
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             await _mark_dispatch_started(job_id)
             dispatch_attempted = True
-            submit_resume_optimization(
+            await submit_async(
+                submit_resume_optimization,
                 latex_content=request.latex_content,
                 job_description=request.job_description,
                 job_id=job_id,
@@ -806,7 +752,8 @@ async def submit_job(
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             await _mark_dispatch_started(job_id)
             dispatch_attempted = True
-            submit_optimize_and_compile(
+            await submit_async(
+                submit_optimize_and_compile,
                 latex_content=request.latex_content,
                 job_description=request.job_description,
                 job_id=job_id,
@@ -834,7 +781,8 @@ async def submit_job(
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             await _mark_dispatch_started(job_id)
             dispatch_attempted = True
-            submit_ats_scoring(
+            await submit_async(
+                submit_ats_scoring,
                 latex_content=request.latex_content,
                 job_id=job_id,
                 job_description=request.job_description,
@@ -1018,7 +966,8 @@ async def compile_watermarked(
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
 
-        submit_latex_compilation(
+        await submit_async(
+            submit_latex_compilation,
             latex_content=request.latex_content,
             job_id=job_id,
             user_id=user_id,
@@ -1251,7 +1200,8 @@ async def create_batch_tailor(
                 if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
                 else settings.DEFAULT_LATEX_COMPILER
             )
-            submit_optimize_and_compile(
+            await submit_async(
+                submit_optimize_and_compile,
                 latex_content=fork.latex_content,
                 job_description=item.job_description,
                 job_id=job_id,
@@ -1856,9 +1806,9 @@ async def trigger_cleanup(
         # with max_age_hours=0.
         max_age_hours = max(int(max_age_hours), 1)
         if cleanup_type == "temp_files":
-            job_id = submit_temp_files_cleanup(max_age_hours=max_age_hours)
+            job_id = await submit_async(submit_temp_files_cleanup, max_age_hours=max_age_hours)
         elif cleanup_type == "expired_jobs":
-            job_id = submit_expired_jobs_cleanup(max_age_hours=max_age_hours)
+            job_id = await submit_async(submit_expired_jobs_cleanup, max_age_hours=max_age_hours)
         else:
             raise HTTPException(
                 status_code=400,

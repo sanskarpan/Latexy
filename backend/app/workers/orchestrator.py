@@ -60,6 +60,7 @@ from ..services.latex_service import (
 )
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
+from ..services.render_engine.cancellation import CancellationPoll
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     BoundedReadError,
@@ -67,6 +68,7 @@ from ..utils.bounded_io import (
     iter_bounded_lines,
 )
 from ..utils.process_watchdog import ProcessWatchdog
+from ..workers.buffered_events import BufferedEventPublisher
 from ..workers.event_publisher import (
     get_worker_redis,
     is_cancelled,
@@ -83,10 +85,13 @@ from ..workers.latex_worker import (
     cache_compile_log,
     cache_compile_output,
     commit_latex_finalization,
+    compile_cache_key,
     compute_queue_wait_seconds,
     consume_cold_start_seconds,
     is_beamer_document,
     reconcile_compilation_record,
+    remember_compile_cache,
+    restore_compile_cache,
     write_reference_library,
 )
 from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
@@ -293,26 +298,63 @@ def optimize_and_compile_task(
         )
 
     current_stage = "llm_optimization"
+    paid_stage_retry_safe = True
     try:
         # ================================================================ #
         # Stage 1 — LLM optimization with token streaming (0% → 40%)      #
         # ================================================================ #
-        optimized_latex, changes_made, tokens_used, optimization_time = _run_llm_stage(
-            job_id=job_id,
-            latex_content=latex_content,
-            job_description=job_description,
-            optimization_level=optimization_level,
-            api_key=api_key,
-            target_sections=target_sections,
-            custom_instructions=custom_instructions,
-            model=model,
-            persona=persona,
-            industry=industry,
-            seniority=seniority,
-            tone=tone,
-            emphasize=emphasize,
-            downplay=downplay,
-        )
+        from ..services.resume_engine.stages import OptimizationCheckpoint, StageCheckpointError, stage_fingerprint
+
+        checkpoint = None
+        stage_output = None
+        if lifecycle_owned and settings.RESUME_STAGE_CHECKPOINTS_ENABLED is True:
+            fingerprint = stage_fingerprint({
+                "source": latex_content, "job_description": job_description,
+                "owner_scope": user_id or device_fingerprint,
+                "level": optimization_level, "sections": target_sections,
+                "instructions": custom_instructions, "model": model or settings.OPENAI_MODEL,
+                "credential_hash": hashlib.sha256(api_key.encode()).hexdigest(),
+                "provider_url": settings.OPENAI_BASE_URL,
+                "compact_enabled": settings.RESUME_COMPACT_PATCHES_ENABLED,
+                "persona": persona, "industry": industry, "seniority": seniority,
+                "tone": tone, "emphasize": emphasize, "downplay": downplay,
+                "schema": "optimization-stage-v1",
+            })
+            checkpoint = OptimizationCheckpoint(queue_redis, job_id, fingerprint)
+            stage_output = checkpoint.restore()
+            if stage_output is None:
+                if self.request.retries or (lifecycle_epoch or 0) > 1:
+                    raise StageCheckpointError("Retry cannot safely repeat an optimization without its checkpoint")
+                checkpoint.begin()
+                paid_stage_retry_safe = False
+        if stage_output is None:
+            if settings.RESUME_COMPACT_PATCHES_ENABLED is True:
+                paid_stage_retry_safe = False
+            stage_output = _run_llm_stage(
+                job_id=job_id,
+                latex_content=latex_content,
+                job_description=job_description,
+                optimization_level=optimization_level,
+                api_key=api_key,
+                target_sections=target_sections,
+                custom_instructions=custom_instructions,
+                model=model,
+                persona=persona,
+                industry=industry,
+                seniority=seniority,
+                tone=tone,
+                emphasize=emphasize,
+                downplay=downplay,
+            )
+            if checkpoint is not None:
+                checkpoint.complete(stage_output)
+                paid_stage_retry_safe = True
+        else:
+            publish_event(job_id, "llm.complete", {
+                "full_content": stage_output[0], "tokens_total": stage_output[2],
+                "optimization_checkpoint": True,
+            })
+        optimized_latex, changes_made, tokens_used, optimization_time = stage_output
 
         if is_cancelled(job_id):
             result = {"success": False, "job_id": job_id, "cancelled": True}
@@ -344,6 +386,7 @@ def optimize_and_compile_task(
             },
         )
 
+        render_cache_context: Dict[str, Any] = {}
         compilation_ok, compilation_time, compile_error, page_count, pdf_bytes = _run_latex_stage(
             job_id=job_id,
             latex_content=optimized_latex,
@@ -355,6 +398,9 @@ def optimize_and_compile_task(
             main_file=(compile_settings or {}).get("main_file"),
             extra_packages=(compile_settings or {}).get("extra_packages"),
             latexmk_flags=(compile_settings or {}).get("latexmk_flags"),
+            owner_scope=f"user:{user_id}" if user_id else (f"device:{device_fingerprint}" if device_fingerprint else None),
+            compile_settings=compile_settings,
+            cache_context=render_cache_context,
         )
 
         if is_cancelled(job_id):
@@ -580,6 +626,9 @@ def optimize_and_compile_task(
                 return {"success": False, "job_id": job_id, "error": "Compiled PDF could not be durably stored"}
         if not publish_job_result(job_id, result):
             return {"success": False, "job_id": job_id, "error": "Job ownership expired"}
+        # Populate only after the durable finalization and terminal arbiter accept.
+        if not replayed:
+            remember_compile_cache(render_cache_context.get("key"), job_id)
         completion_event = publish_event(
             job_id,
             "job.completed",
@@ -680,7 +729,11 @@ def optimize_and_compile_task(
 
     except Exception as exc:
         logger.error("Orchestrator task %s raised", task_id, extra={"error_type": type(exc).__name__})
-        if self.request.retries < self.max_retries:
+        from ..services.resume_engine.optimizer import CompactOptimizationError
+        from ..services.resume_engine.stages import StageCheckpointError
+
+        if (paid_stage_retry_safe and not isinstance(exc, (CompactOptimizationError, StageCheckpointError))
+                and self.request.retries < self.max_retries):
             # A retry is scheduled — emit a transient 'retrying' event instead of a
             # terminal job.failed so the client doesn't surface a spurious failure for a
             # job that may still succeed on retry.
@@ -744,6 +797,37 @@ def _run_llm_stage(
 
     Returns (optimized_latex, changes_made, tokens_total, optimization_time).
     """
+    if getattr(settings, "RESUME_COMPACT_PATCHES_ENABLED", False) is True:
+        from ..services.resume_engine.document import project_literal_bullets
+        from ..services.resume_engine.optimizer import optimize_snapshot
+        from ..services.resume_engine.patches import CompactOptimizationCancelled
+
+        snapshot = project_literal_bullets(latex_content, target_sections)
+        if snapshot.nodes and len(snapshot.nodes) <= 24:
+            platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+            effective_model = model or (
+                settings.OPENAI_MODEL if platform_base or not settings.OPENAI_BASE_URL else "gpt-4o-mini"
+            )
+            publish_event(job_id, "job.progress", {
+                "percent": 10, "stage": "llm_optimization", "message": "Reviewing supported resume bullets",
+            })
+            try:
+                compact = optimize_snapshot(
+                    snapshot, client_factory=openai.OpenAI, api_key=api_key, model=effective_model,
+                    base_url=settings.OPENAI_BASE_URL if platform_base else None,
+                    count_tokens=llm_service.count_tokens, cancelled=lambda: is_cancelled(job_id),
+                    job_description=job_description, instructions=custom_instructions,
+                    direction={"style": optimization_level, "persona": persona, "industry": industry,
+                               "seniority": seniority, "tone": tone, "emphasize": emphasize, "downplay": downplay},
+                )
+            except CompactOptimizationCancelled as exc:
+                raise LLMStreamCancelled(str(exc)) from exc
+            publish_event(job_id, "llm.complete", {
+                "full_content": compact.latex, "tokens_total": compact.tokens,
+                "optimization_engine": "literal_patch_v1", "source_revision": compact.source_revision,
+            })
+            return compact.latex, compact.changes, compact.tokens, compact.duration_seconds
+
     publish_event(
         job_id,
         "job.progress",
@@ -829,80 +913,82 @@ def _run_llm_stage(
     changes_parts: List[str] = []
     buf = ""  # rolling buffer for delimiter detection
 
-    for chunk in stream:
-        if hasattr(chunk, "usage") and chunk.usage is not None:
-            tokens_total = chunk.usage.total_tokens
-            continue
-        if not chunk.choices:
-            continue
-        choice = chunk.choices[0]
-        reason = getattr(choice, "finish_reason", None)
-        if isinstance(reason, str):
-            finish_reason = reason
-        delta = choice.delta.content
-        if not delta:
-            continue
+    from .buffered_events import BufferedEventPublisher
+    with BufferedEventPublisher(job_id, publisher=publish_event) as content_events:
+        for chunk in stream:
+            if hasattr(chunk, "usage") and chunk.usage is not None:
+                tokens_total = chunk.usage.total_tokens
+                continue
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            reason = getattr(choice, "finish_reason", None)
+            if isinstance(reason, str):
+                finish_reason = reason
+            delta = choice.delta.content
+            if not delta:
+                continue
 
-        accumulated += delta
-        token_count += 1
-        buf += delta
+            accumulated += delta
+            token_count += 1
+            buf += delta
 
-        if token_count % 20 == 0 and is_cancelled(job_id):
-            raise LLMStreamCancelled("Job cancelled during LLM streaming")
+            if token_count % 20 == 0 and is_cancelled(job_id):
+                raise LLMStreamCancelled("Job cancelled during LLM streaming")
 
-        # Process state transitions; loop allows multiple per chunk
-        # (e.g. chunk contains both <<<END_LATEX>>> and <<<CHANGES>>>)
-        for _ in range(4):
-            if llm_state == _BEFORE:
-                if _LS in buf:
-                    buf = buf.split(_LS, 1)[1]
-                    llm_state = _IN_LATEX
-                    continue  # re-process buf with IN_LATEX state
-                else:
-                    if len(buf) >= len(_LS):
-                        buf = buf[-len(_LS) :]  # keep potential partial match
-                break
+            # Process state transitions; loop allows multiple per chunk
+            # (e.g. chunk contains both <<<END_LATEX>>> and <<<CHANGES>>>)
+            for _ in range(4):
+                if llm_state == _BEFORE:
+                    if _LS in buf:
+                        buf = buf.split(_LS, 1)[1]
+                        llm_state = _IN_LATEX
+                        continue  # re-process buf with IN_LATEX state
+                    else:
+                        if len(buf) >= len(_LS):
+                            buf = buf[-len(_LS) :]  # keep potential partial match
+                    break
 
-            elif llm_state == _IN_LATEX:
-                if _LE in buf:
-                    before, _, buf = buf.partition(_LE)
-                    if before:
-                        latex_parts.append(before)
-                        publish_event(job_id, "llm.token", {"token": before})
-                    llm_state = _AFTER_LATEX
-                    continue  # re-process buf with AFTER_LATEX state
-                else:
-                    # Flush safe portion (hold back enough to detect end delimiter)
-                    safe_len = len(buf) - len(_LE) + 1
-                    if safe_len > 0:
-                        safe = buf[:safe_len]
-                        latex_parts.append(safe)
-                        publish_event(job_id, "llm.token", {"token": safe})
-                        buf = buf[safe_len:]
-                break
+                elif llm_state == _IN_LATEX:
+                    if _LE in buf:
+                        before, _, buf = buf.partition(_LE)
+                        if before:
+                            latex_parts.append(before)
+                            content_events.publish("llm.token", {"token": before})
+                        llm_state = _AFTER_LATEX
+                        continue  # re-process buf with AFTER_LATEX state
+                    else:
+                        # Flush safe portion (hold back enough to detect end delimiter)
+                        safe_len = len(buf) - len(_LE) + 1
+                        if safe_len > 0:
+                            safe = buf[:safe_len]
+                            latex_parts.append(safe)
+                            content_events.publish("llm.token", {"token": safe})
+                            buf = buf[safe_len:]
+                    break
 
-            elif llm_state == _AFTER_LATEX:
-                if _CS in buf:
-                    buf = buf.split(_CS, 1)[1]
-                    llm_state = _IN_CHANGES
-                    continue  # re-process buf with IN_CHANGES state
-                else:
-                    if len(buf) >= len(_CS):
-                        buf = buf[-len(_CS) :]
-                break
+                elif llm_state == _AFTER_LATEX:
+                    if _CS in buf:
+                        buf = buf.split(_CS, 1)[1]
+                        llm_state = _IN_CHANGES
+                        continue  # re-process buf with IN_CHANGES state
+                    else:
+                        if len(buf) >= len(_CS):
+                            buf = buf[-len(_CS) :]
+                    break
 
-            elif llm_state == _IN_CHANGES:
-                if _CE in buf:
-                    before, _, _ = buf.partition(_CE)
-                    changes_parts.append(before)
-                    buf = ""
-                else:
-                    # Hold back potential delimiter chars (same pattern as IN_LATEX)
-                    safe_len = len(buf) - len(_CE) + 1
-                    if safe_len > 0:
-                        changes_parts.append(buf[:safe_len])
-                        buf = buf[safe_len:]
-                break
+                elif llm_state == _IN_CHANGES:
+                    if _CE in buf:
+                        before, _, _ = buf.partition(_CE)
+                        changes_parts.append(before)
+                        buf = ""
+                    else:
+                        # Hold back potential delimiter chars (same pattern as IN_LATEX)
+                        safe_len = len(buf) - len(_CE) + 1
+                        if safe_len > 0:
+                            changes_parts.append(buf[:safe_len])
+                            buf = buf[safe_len:]
+                    break
 
     # Never publish or compile a response the provider explicitly says was cut
     # off by the output-token limit. It can contain a deceptively valid prefix
@@ -992,6 +1078,9 @@ def _run_latex_stage(
     main_file: Optional[str] = None,
     extra_packages: Optional[List[str]] = None,
     latexmk_flags: Optional[List[str]] = None,
+    owner_scope: Optional[str] = None,
+    compile_settings: Optional[Dict[str, Any]] = None,
+    cache_context: Optional[Dict[str, Any]] = None,
 ) -> tuple[bool, float, str, Optional[int], Optional[bytes]]:
     """
     Write LaTeX, run the requested compiler (sandboxed Docker engine if available,
@@ -1043,6 +1132,37 @@ def _run_latex_stage(
             },
         )
         return False, 0.0, error_msg, None, None
+
+    content_cache_key = compile_cache_key(
+        latex_content,
+        compiler,
+        {
+            **(compile_settings or {}),
+            "main_file": main_file,
+            "latexmk_flags": custom_flags,
+            "halt_on_error": halt_on_error,
+            # Retain inputs supplied through the legacy stage arguments too.
+            **({"bibtex": bibtex} if bibtex is not None else {}),
+            **({"extra_packages": extra_packages} if extra_packages is not None else {}),
+            **({"draft_mode": True} if draft_mode else {}),
+        },
+        owner_scope,
+    )
+    if cache_context is not None:
+        cache_context["key"] = content_cache_key
+    cached = restore_compile_cache(content_cache_key, job_id)
+    if cached is not None:
+        try:
+            encoded_pdf = get_worker_redis().get(f"latexy:job:{job_id}:pdf")
+            if encoded_pdf:
+                from ..utils.bounded_io import decode_base64_bounded
+
+                pdf_bytes = decode_base64_bounded(encoded_pdf, MAX_COMPILED_PDF_BYTES)
+                return True, 0.0, "", cached.get("page_count"), pdf_bytes
+        except Exception as exc:
+            # Cache transport/expiry races must not repeat the paid LLM stage.
+            # Compile the already-produced source through the normal sandbox.
+            logger.warning("Combined render cache unavailable", extra={"error_type": type(exc).__name__})
 
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -1121,64 +1241,65 @@ def _run_latex_stage(
                 is_cancelled=lambda: is_cancelled(job_id),
             ).start()
             try:
-                for stripped in iter_bounded_lines(proc.stdout):
-                    if stripped:
-                        # Read confinement (see latex_service.find_engine_read_escape):
-                        # kill before the line is streamed, because what follows it is
-                        # the contents of whatever file was opened. \openin reads are
-                        # invisible here — the recorder check after the run covers those.
-                        escaped = find_engine_read_escape(stripped, workspace)
-                        if escaped:
+                with BufferedEventPublisher(job_id, publisher=publish_event) as events:
+                    cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
+                    for stripped in iter_bounded_lines(proc.stdout):
+                        if stripped:
+                            # Read confinement (see latex_service.find_engine_read_escape):
+                            # kill before the line is streamed, because what follows it is
+                            # the contents of whatever file was opened. \openin reads are
+                            # invisible here — the recorder check after the run covers those.
+                            escaped = find_engine_read_escape(stripped, workspace)
+                            if escaped:
+                                proc.kill()
+                                cleanup_docker_container(container_name)
+                                proc.wait()
+                                logger.warning(f"[{job_id}] engine read outside the job directory: {escaped}")
+                                return (
+                                    False,
+                                    time.time() - start_time,
+                                    ENGINE_READ_ESCAPE_ERROR,
+                                    None,
+                                    None,
+                                )
+
+                            bounded_line = transcript.append(stripped)
+
+                            # Extract page count from pdflatex summary line
+                            m = _PAGE_COUNT_RE.search(stripped)
+                            if m:
+                                page_count = int(m.group(1))
+
+                            is_error = "error" in stripped.lower() or stripped.startswith("!")
+                            if "fatal" in stripped.lower():
+                                is_error = True
+                            events.publish(
+                                "log.line",
+                                {
+                                    "line": bounded_line,
+                                    "source": compiler,
+                                    "is_error": is_error,
+                                },
+                            )
+
+                        if cancellation_poll():
                             proc.kill()
                             cleanup_docker_container(container_name)
                             proc.wait()
-                            logger.warning(f"[{job_id}] engine read outside the job directory: {escaped}")
+                            return False, time.time() - start_time, "cancelled", None, None
+
+                        if time.time() - start_time > timeout:
+                            proc.kill()
+                            cleanup_docker_container(container_name)
+                            proc.wait()
+                            record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
                             return (
                                 False,
                                 time.time() - start_time,
-                                ENGINE_READ_ESCAPE_ERROR,
+                                f"Compilation timed out after {int(timeout)}s",
                                 None,
                                 None,
                             )
-
-                        bounded_line = transcript.append(stripped)
-
-                        # Extract page count from pdflatex summary line
-                        m = _PAGE_COUNT_RE.search(stripped)
-                        if m:
-                            page_count = int(m.group(1))
-
-                        is_error = "error" in stripped.lower() or stripped.startswith("!")
-                        if "fatal" in stripped.lower():
-                            is_error = True
-                        publish_event(
-                            job_id,
-                            "log.line",
-                            {
-                                "line": bounded_line,
-                                "source": compiler,
-                                "is_error": is_error,
-                            },
-                        )
-
-                    if is_cancelled(job_id):
-                        proc.kill()
-                        cleanup_docker_container(container_name)
-                        proc.wait()
-                        return False, time.time() - start_time, "cancelled", None, None
-
-                    if time.time() - start_time > timeout:
-                        proc.kill()
-                        cleanup_docker_container(container_name)
-                        proc.wait()
-                        record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
-                        return (
-                            False,
-                            time.time() - start_time,
-                            f"Compilation timed out after {int(timeout)}s",
-                            None,
-                            None,
-                        )
             except SoftTimeLimitExceeded:
                 # Kill the subprocess before the exception propagates to the task handler
                 try:
@@ -1292,7 +1413,7 @@ def _run_ats_stage(
     job_id: str,
     latex_content: str,
     job_description: Optional[str],
-) -> tuple[float, Dict]:
+) -> tuple[Optional[float], Dict]:
     """
     Run ATS scoring (pure-Python async) and return (score, details).
     asyncio.run() is safe here because ats_scoring_service has no
@@ -1314,7 +1435,7 @@ def _run_ats_stage(
         return scoring_result.overall_score, ats_details
     except Exception as exc:
         logger.warning("ATS scoring failed (non-fatal) for job %s", job_id, extra={"error_type": type(exc).__name__})
-        return 0.0, {}
+        return None, {"status": "unavailable", "reason_code": "scoring_failed"}
 
 
 # ------------------------------------------------------------------ #
