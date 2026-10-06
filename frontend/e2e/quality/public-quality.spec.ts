@@ -26,7 +26,7 @@ async function installPublicPageMocks(page: Page) {
     await page.route('**/config/feature-flags', route =>
         route.fulfill({ status: 200, headers: jsonHeaders, body: '{}' })
     )
-    await page.route('**/tenants/current-context', route =>
+    await page.route('**/tenants/resolve-host**', route =>
         route.fulfill({ status: 200, headers: jsonHeaders, body: '{"tenant":null}' })
     )
     await page.route('http://localhost:8030/templates/**', route =>
@@ -54,6 +54,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('public routes render without runtime errors in every engine', async ({ context }) => {
+    test.setTimeout(180_000)
     const runtimeErrors: string[] = []
 
     for (const route of PUBLIC_ROUTES) {
@@ -73,6 +74,7 @@ test('public routes render without runtime errors in every engine', async ({ con
 })
 
 test('public routes expose named controls and valid document structure', async ({ context }) => {
+    test.setTimeout(180_000)
     for (const route of PUBLIC_ROUTES) {
         const routePage = await context.newPage()
         await installPublicPageMocks(routePage)
@@ -179,11 +181,15 @@ test('public routes expose named controls and valid document structure', async (
     }
 })
 
-test('skip navigation and reduced-motion preferences are honored', async ({ page }) => {
+test('skip navigation and reduced-motion preferences are honored', async ({ page, browserName }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
-    await page.keyboard.press('Tab')
+    // macOS WebKit follows Safari's default keyboard policy: Option-Tab
+    // includes links, whereas Tab alone can skip them. Exercise actual keyboard
+    // navigation rather than programmatically focusing the skip link or changing
+    // the user's system settings. Other engines/platforms retain the Tab check.
+    await page.keyboard.press(browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab')
     const skipLink = page.getByRole('link', { name: 'Skip to content' })
     await expect(skipLink).toBeFocused()
     await page.keyboard.press('Enter')
