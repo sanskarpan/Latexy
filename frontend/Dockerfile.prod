@@ -4,23 +4,23 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@9 --activate
+RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
-# Copy the manifest first for layer caching. This image builds with the frontend
-# as build context, so it is deliberately NON-workspace: pnpm sees no
-# pnpm-workspace.yaml here and resolves frontend/package.json standalone. There
-# is intentionally no committed frontend lockfile — the single source of truth is
-# the repo-root pnpm-lock.yaml (used by CI + Vercel + Dependabot); a second
-# committed frontend lockfile would drift the moment Dependabot bumps a dep.
-COPY package.json ./
+# The build context is the repository root. Install from the workspace root so
+# pnpm uses the committed lockfile and preserves workspace/patch resolution.
+COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY frontend/package.json ./frontend/package.json
+COPY packages/browser-extension/package.json ./packages/browser-extension/package.json
+COPY packages/tui/package.json ./packages/tui/package.json
 
-# Install all deps (including devDependencies needed for next build). No frozen
-# lockfile: deps resolve from package.json's pinned ranges (same as before —
-# this build was already --no-frozen against a stale lockfile).
-RUN pnpm install --no-frozen-lockfile
+# Install all deps (including devDependencies needed for next build) exactly as
+# resolved by the repository lockfile.
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
+WORKDIR /app/frontend
 
 # Build the application.
 # NEXT_PUBLIC_* are inlined into the browser bundle at build time, so they must
@@ -31,16 +31,18 @@ COPY . .
 #                          and feeds the result to `new URL()`, which rejects
 #                          relative values. There is no sane default for a public
 #                          origin, so the build fails loudly when it is missing.
+ARG NEXT_PUBLIC_APP_URL=https://latexy.xyz
 ARG NEXT_PUBLIC_API_URL=/api
 ARG NEXT_PUBLIC_WS_URL
 ARG BUILD_VERSION=local
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN case "$NEXT_PUBLIC_WS_URL" in \
       ws://*|wss://*) ;; \
-      *) echo "ERROR: NEXT_PUBLIC_WS_URL build-arg must be an absolute ws:// or wss:// origin (e.g. wss://latexy.com), got '$NEXT_PUBLIC_WS_URL'" >&2; exit 1 ;; \
+      *) echo "ERROR: NEXT_PUBLIC_WS_URL build-arg must be an absolute ws:// or wss:// origin (e.g. wss://latexy.xyz), got '$NEXT_PUBLIC_WS_URL'" >&2; exit 1 ;; \
     esac
 
 RUN pnpm run build
@@ -48,12 +50,15 @@ RUN pnpm run build
 # Production stage
 FROM node:22-alpine AS production
 
+ARG BUILD_VERSION=local
+
 # PORT is read by the Next standalone server (server.js). 5180 is what the nginx
 # `frontend` upstream and the k8s Service target, so it is the image default.
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=5180 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    BUILD_VERSION=$BUILD_VERSION
 
 RUN apk add --no-cache dumb-init
 
@@ -62,9 +67,9 @@ RUN addgroup -g 1001 -S nodejs && \
 
 WORKDIR /app
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/public ./public
 
 USER nextjs
 
