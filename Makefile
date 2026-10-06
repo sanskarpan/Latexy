@@ -7,7 +7,7 @@
 #   make run-prod     ← production stack (nginx + prod images)
 # ==============================================================
 
-.PHONY: help run run-prod run-stop run-logs infra down logs \
+.PHONY: help run run-prod self-host-up run-stop run-logs infra down logs \
         logs-backend logs-celery logs-flower clean \
         backend frontend dev \
         test test-backend test-frontend smoke lint lint-backend lint-frontend \
@@ -19,8 +19,11 @@
 # Root compose = full dev stack (postgres, redis, minio, backend, worker, beat, frontend, flower)
 ROOT_COMPOSE      := docker-compose.yml
 ROOT_COMPOSE_PROD := docker-compose.prod.yml
-# Infra-only compose (Redis + Postgres + workers, no frontend dev server)
-COMPOSE_FILE      := backend/docker-compose.yml
+# All local targets use the canonical root topology. Its database names,
+# credentials and host ports match test-db-setup and scripts/dev.sh.
+COMPOSE_FILE      := $(ROOT_COMPOSE)
+INFRA_SERVICES    := postgres redis minio minio-init worker beat flower
+IMAGE_PREFIX      ?= ghcr.io/sanskarpan
 BACKEND_DIR       := backend
 FRONTEND_DIR      := frontend
 K8S_DIR           := k8s
@@ -35,6 +38,7 @@ help:
 	@echo "                       postgres, redis, minio, backend, worker,"
 	@echo "                       beat, frontend, flower  — one command"
 	@echo "    run-prod         Build + start production stack (nginx, prod images)"
+	@echo "    self-host-up     Validate, migrate, and start a single-server deployment"
 	@echo "    run-stop         Stop whichever stack is running"
 	@echo "    run-logs         Tail all logs from the full stack"
 	@echo ""
@@ -95,18 +99,21 @@ run-detach:
 
 # Production stack: nginx + prod-built images + monitoring
 run-prod:
-	docker compose -f $(ROOT_COMPOSE_PROD) up --build
+	docker compose --env-file .env.production -f $(ROOT_COMPOSE_PROD) up --build
+
+self-host-up:
+	bash scripts/self-host-up.sh
 
 run-stop:
 	docker compose -f $(ROOT_COMPOSE) down 2>/dev/null; \
-	docker compose -f $(ROOT_COMPOSE_PROD) down 2>/dev/null; true
+	docker compose --env-file .env.production -f $(ROOT_COMPOSE_PROD) down 2>/dev/null; true
 
 run-logs:
 	docker compose -f $(ROOT_COMPOSE) logs -f
 
 # ── Infrastructure (infra-only, no frontend dev server) ────────────────────
 infra:
-	docker compose -f $(COMPOSE_FILE) up -d
+	docker compose -f $(COMPOSE_FILE) up -d $(INFRA_SERVICES)
 
 down:
 	docker compose -f $(COMPOSE_FILE) down
@@ -118,7 +125,7 @@ logs-backend:
 	docker compose -f $(COMPOSE_FILE) logs -f backend
 
 logs-celery:
-	docker compose -f $(COMPOSE_FILE) logs -f celery-worker
+	docker compose -f $(COMPOSE_FILE) logs -f worker
 
 logs-flower:
 	docker compose -f $(COMPOSE_FILE) logs -f flower
@@ -132,7 +139,7 @@ clean:
 # ── Development servers ────────────────────────────────────────────────────
 # Requires infra to be running first (make infra)
 backend:
-	cd $(BACKEND_DIR) && uvicorn app.main:app --host 0.0.0.0 --port 8030 --reload
+	cd $(BACKEND_DIR) && uvicorn app.main:app --host 0.0.0.0 --port 8030 --ws-max-size 524288 --reload
 
 frontend:
 	cd $(FRONTEND_DIR) && npm run dev
@@ -197,12 +204,12 @@ redis-backup:
 build: build-backend build-frontend
 
 build-backend:
-	docker build -t ghcr.io/your-org/latexy-backend:latest \
-	  -f $(BACKEND_DIR)/Dockerfile $(BACKEND_DIR)
+	docker build -t $(IMAGE_PREFIX)/latexy-backend:latest \
+	  -f $(BACKEND_DIR)/Dockerfile.prod $(BACKEND_DIR)
 
 build-frontend:
-	docker build -t ghcr.io/your-org/latexy-frontend:latest \
-	  -f $(FRONTEND_DIR)/Dockerfile $(FRONTEND_DIR)
+	docker build -t $(IMAGE_PREFIX)/latexy-frontend:latest \
+	  -f $(FRONTEND_DIR)/Dockerfile.prod .
 
 # ── Kubernetes ─────────────────────────────────────────────────────────────
 k8s-deploy:
