@@ -20,6 +20,14 @@ const EUROPECV_LOCALES = [
   ['sk', 'Slovak'], ['sv', 'Swedish'],
 ] as const
 
+type TemplatePreviewIdentity = { templateId: string | null; generation: number }
+type TemplateUseRequest = {
+  token: number
+  ownerId: string | null
+  ownerGeneration: number
+  preview?: { templateId: string; generation: number }
+}
+
 // ------------------------------------------------------------------ //
 //  Category tab order                                                 //
 // ------------------------------------------------------------------ //
@@ -45,6 +53,37 @@ export default function TemplatesPage() {
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null)
   const [usingTemplateId, setUsingTemplateId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const templateOwnerId = effectiveSession?.user?.id ?? null
+  const templateIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
+  if (templateIdentityRef.current.ownerId !== templateOwnerId) {
+    templateIdentityRef.current = {
+      ownerId: templateOwnerId,
+      generation: templateIdentityRef.current.generation + 1,
+    }
+  }
+  const currentTemplateIdentityGeneration = templateIdentityRef.current.generation
+  const previewIdentityRef = useRef<TemplatePreviewIdentity>({ templateId: null, generation: 0 })
+  const templateUseTokenRef = useRef(0)
+  const activeTemplateUseRef = useRef<TemplateUseRequest | null>(null)
+
+  const isCurrentTemplateUseOwner = useCallback((request: TemplateUseRequest) => {
+    const active = activeTemplateUseRef.current
+    return active?.token === request.token &&
+      templateIdentityRef.current.ownerId === request.ownerId &&
+      templateIdentityRef.current.generation === request.ownerGeneration
+  }, [])
+
+  useEffect(() => {
+    const active = activeTemplateUseRef.current
+    if (!active || isCurrentTemplateUseOwner(active)) return
+    activeTemplateUseRef.current = null
+    setUsingTemplateId(null)
+  }, [currentTemplateIdentityGeneration, isCurrentTemplateUseOwner])
+
+  useEffect(() => () => {
+    activeTemplateUseRef.current = null
+    templateUseTokenRef.current += 1
+  }, [])
 
   // '/' focuses search, unless the user is already typing in a form field.
   useEffect(() => {
@@ -110,10 +149,22 @@ export default function TemplatesPage() {
   [categories])
 
   const handlePreview = useCallback((id: string) => {
+    previewIdentityRef.current = {
+      templateId: id,
+      generation: previewIdentityRef.current.generation + 1,
+    }
     setPreviewTemplateId(id)
   }, [])
 
-  const handleUseTemplate = useCallback(async (id: string) => {
+  const handleClosePreview = useCallback(() => {
+    previewIdentityRef.current = {
+      templateId: null,
+      generation: previewIdentityRef.current.generation + 1,
+    }
+    setPreviewTemplateId(null)
+  }, [])
+
+  const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
     if (sessionPending) return false
     if (usingTemplateId) {
       if (usingTemplateId !== id) toast('Another template is already being created')
@@ -125,6 +176,13 @@ export default function TemplatesPage() {
       router.push(`/login?redirect=${encodeURIComponent(dest)}`)
       return false
     }
+    const request: TemplateUseRequest = {
+      token: ++templateUseTokenRef.current,
+      ownerId: templateIdentityRef.current.ownerId,
+      ownerGeneration: templateIdentityRef.current.generation,
+      preview,
+    }
+    activeTemplateUseRef.current = request
     setUsingTemplateId(id)
     try {
       const selected = templates.find(template => template.id === id)
@@ -140,20 +198,36 @@ export default function TemplatesPage() {
         locale = requested
       }
       const result = await apiClient.useTemplate(id, undefined, locale)
+      if (!isCurrentTemplateUseOwner(request) ||
+        (request.preview && (previewIdentityRef.current.templateId !== request.preview.templateId ||
+          previewIdentityRef.current.generation !== request.preview.generation))) {
+        return false
+      }
       toast.success('Document created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
       return true
     } catch {
-      toast.error('Failed to create resume from template')
+      if (isCurrentTemplateUseOwner(request) &&
+        (!request.preview || (previewIdentityRef.current.templateId === request.preview.templateId &&
+          previewIdentityRef.current.generation === request.preview.generation))) {
+        toast.error('Failed to create resume from template')
+      }
       return false
     } finally {
-      setUsingTemplateId(null)
+      if (isCurrentTemplateUseOwner(request)) {
+        activeTemplateUseRef.current = null
+        setUsingTemplateId(null)
+      }
     }
-  }, [effectiveSession, sessionPending, router, templates, usingTemplateId])
+  }, [effectiveSession, sessionPending, router, templates, usingTemplateId, isCurrentTemplateUseOwner])
 
   // The modal awaits this and shows its own "Creating…" state, then closes
   // itself via onClose (success navigates away, unmounting it).
-  const handleUseFromPreview = useCallback((id: string) => handleUseTemplate(id), [handleUseTemplate])
+  const handleUseFromPreview = useCallback((id: string) => {
+    const preview = previewIdentityRef.current
+    if (preview.templateId !== id) return false
+    return handleUseTemplate(id, { templateId: id, generation: preview.generation })
+  }, [handleUseTemplate])
 
   // Resume the "Use Template" flow after returning from login (?use=<id>).
   const [autoUseHandled, setAutoUseHandled] = useState(false)
@@ -308,7 +382,7 @@ export default function TemplatesPage() {
       <TemplatePreviewModal
         templateId={previewTemplateId}
         onUse={handleUseFromPreview}
-        onClose={() => setPreviewTemplateId(null)}
+        onClose={handleClosePreview}
       />
     </>
   )
