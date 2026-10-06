@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -494,7 +495,9 @@ class TestZoteroImport:
         user = await _get_user(db_session, auth_headers)
         user.user_metadata = {
             "zotero_token": encryption_service.encrypt("tok"),
-            "zotero_user_id": "999",
+            # Provider data is still untrusted when interpolated into the
+            # request path; quoting must keep the API origin fixed.
+            "zotero_user_id": "//169.254.169.254?metadata=1",
         }
         await db_session.commit()
 
@@ -527,6 +530,8 @@ class TestZoteroImport:
 
         assert resp.status_code == 200
         assert any("collections/ABCD1234" in u for u in captured_urls)
+        assert all(urlsplit(u).hostname == "api.zotero.org" for u in captured_urls)
+        assert all(urlsplit(u).username is None for u in captured_urls)
 
     async def test_collection_key_too_long_returns_422(self, client: AsyncClient, auth_headers: dict):
         """collection_key > 20 chars → Pydantic 422."""
