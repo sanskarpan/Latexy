@@ -42,8 +42,46 @@ def mock_r():
     m.incr.return_value = 1
     m.xadd.return_value = "1700000000000-0"
     m.exists.return_value = 0
+    m.hget.return_value = 0
     m.get.return_value = None
     m.set.return_value = True
+
+    def emulate_publish_script(_script, numkeys, *values):
+        if numkeys == 1:
+            result_key, serialized, ttl = values
+            if m.exists(result_key):
+                return 0
+            m.set(result_key, serialized, ex=int(ttl))
+            return 1
+        assert numkeys == 4
+        sequence_key, stream_key, channel, state_key = values[:4]
+        ttl, event_json, event_type, event_id, update_state, state_json = values[4:]
+        sequence = m.incr(sequence_key)
+        m.expire(sequence_key, int(ttl))
+        event = json.loads(event_json)
+        event["sequence"] = sequence
+        payload = json.dumps(event)
+        entry_id = m.xadd(
+            stream_key,
+            {
+                "payload": payload,
+                "type": event_type,
+                "sequence": str(sequence),
+                "event_id": event_id,
+            },
+            maxlen=1000,
+            approximate=True,
+        )
+        m.expire(stream_key, int(ttl))
+        m.publish(
+            channel,
+            json.dumps({"type": "event", "event": event, "stream_id": entry_id}),
+        )
+        if update_state == "1":
+            m.set(state_key, state_json, ex=int(ttl))
+        return [entry_id, str(sequence), payload]
+
+    m.eval.side_effect = emulate_publish_script
     ep._worker_redis = m
     return m
 
@@ -173,6 +211,10 @@ class TestCloseWorkerRedis:
 
 class TestPublishEvent:
 
+    def test_all_core_writes_use_one_atomic_redis_call(self, mock_r, job_id):
+        publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
+        mock_r.eval.assert_called_once()
+
     def test_returns_stream_entry_id(self, mock_r, job_id):
         entry_id = publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
         assert entry_id == "1700000000000-0"
@@ -239,18 +281,18 @@ class TestPublishEvent:
         assert "stream_id" in msg
         assert msg["stream_id"] == "1700000000000-0"
 
-    def test_state_setex_called(self, mock_r, job_id):
+    def test_state_set_with_expiry_called(self, mock_r, job_id):
         publish_event(job_id, "job.progress", {"percent": 30, "stage": "llm", "message": "x"})
-        assert mock_r.setex.called
+        assert mock_r.set.called
 
     def test_state_key_format(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
-        state_key = mock_r.setex.call_args[0][0]
+        state_key = mock_r.set.call_args.args[0]
         assert state_key == f"latexy:job:{job_id}:state"
 
     def test_state_status_processing_for_job_started(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["status"] == "processing"
 
     def test_state_status_completed_for_job_completed(self, mock_r, job_id):
@@ -259,7 +301,7 @@ class TestPublishEvent:
             "changes_made": [], "compilation_time": 1.0,
             "optimization_time": 2.0, "tokens_used": 100,
         })
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["status"] == "completed"
 
     def test_state_status_failed_for_job_failed(self, mock_r, job_id):
@@ -267,7 +309,7 @@ class TestPublishEvent:
             "stage": "llm", "error_code": "internal",
             "error_message": "err", "retryable": False,
         })
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["status"] == "failed"
 
     def test_job_failed_dispatches_owned_email_once(self, mock_r, job_id):
@@ -275,7 +317,14 @@ class TestPublishEvent:
             "user_id": "user-123",
             "job_type": "latex_compilation",
         })
-        mock_r.set.side_effect = [True, False]
+        claims = iter([True, False])
+
+        def set_result(key, *args, **kwargs):
+            if key.endswith(":failure-email-enqueued"):
+                return next(claims)
+            return True
+
+        mock_r.set.side_effect = set_result
         with patch(
             "app.workers.email_worker.submit_job_failure_email",
             return_value=True,
@@ -285,9 +334,13 @@ class TestPublishEvent:
 
         # Redis owns the cross-process exactly-once claim. Simulate the second
         # NX refusal after checking both attempts use the same dedupe key.
-        assert mock_r.set.call_count == 2
-        first_key = mock_r.set.call_args_list[0].args[0]
-        second_key = mock_r.set.call_args_list[1].args[0]
+        claim_calls = [
+            call for call in mock_r.set.call_args_list
+            if call.args[0].endswith(":failure-email-enqueued")
+        ]
+        assert len(claim_calls) == 2
+        first_key = claim_calls[0].args[0]
+        second_key = claim_calls[1].args[0]
         assert first_key == second_key == f"latexy:job:{job_id}:failure-email-enqueued"
         submit.assert_called_once_with(
             "user-123", "latex_compilation", job_id
@@ -315,18 +368,30 @@ class TestPublishEvent:
 
     def test_state_status_cancelled_for_job_cancelled(self, mock_r, job_id):
         publish_event(job_id, "job.cancelled", {})
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["status"] == "cancelled"
 
     def test_state_percent_from_payload(self, mock_r, job_id):
         publish_event(job_id, "job.progress", {"percent": 45, "stage": "llm", "message": "hi"})
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["percent"] == 45
 
     def test_state_stage_from_payload(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "latex_compilation"})
-        state = json.loads(mock_r.setex.call_args[0][2])
+        state = json.loads(mock_r.set.call_args.args[1])
         assert state["stage"] == "latex_compilation"
+
+    def test_llm_token_does_not_erase_progress_snapshot(self, mock_r, job_id):
+        publish_event(job_id, "llm.token", {"token": "\\section{Experience}"})
+        mock_r.set.assert_not_called()
+
+    def test_log_line_does_not_erase_progress_snapshot(self, mock_r, job_id):
+        publish_event(
+            job_id,
+            "log.line",
+            {"source": "pdflatex", "line": "page 1", "is_error": False},
+        )
+        mock_r.set.assert_not_called()
 
     def test_sequence_uses_incr(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
@@ -377,12 +442,12 @@ class TestPublishEvent:
 
     def test_state_ttl_is_24h(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
-        ttl = mock_r.setex.call_args[0][1]
+        ttl = mock_r.set.call_args.kwargs["ex"]
         assert ttl == 86400
 
     def test_custom_ttl_propagates_to_state(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"}, ttl=3600)
-        ttl = mock_r.setex.call_args[0][1]
+        ttl = mock_r.set.call_args.kwargs["ex"]
         assert ttl == 3600
 
 
@@ -390,31 +455,31 @@ class TestPublishEvent:
 
 class TestPublishJobResult:
 
-    def test_calls_setex(self, mock_r, job_id):
+    def test_calls_set_with_expiry(self, mock_r, job_id):
         publish_job_result(job_id, {"success": True, "ats_score": 80.0})
-        mock_r.setex.assert_called_once()
+        mock_r.eval.assert_called_once()
 
     def test_key_format(self, mock_r, job_id):
         publish_job_result(job_id, {"success": True})
-        key = mock_r.setex.call_args[0][0]
+        key = mock_r.eval.call_args.args[2]
         assert key == f"latexy:job:{job_id}:result"
 
     def test_stores_valid_json(self, mock_r, job_id):
         result = {"success": True, "ats_score": 85.5, "tokens_used": 300}
         publish_job_result(job_id, result)
-        stored = mock_r.setex.call_args[0][2]
+        stored = mock_r.eval.call_args.args[3]
         parsed = json.loads(stored)
         assert parsed["success"] is True
         assert parsed["ats_score"] == 85.5
 
     def test_default_ttl_is_24h(self, mock_r, job_id):
         publish_job_result(job_id, {"success": True})
-        ttl = mock_r.setex.call_args[0][1]
+        ttl = mock_r.eval.call_args.args[4]
         assert ttl == 86400
 
     def test_custom_ttl_accepted(self, mock_r, job_id):
         publish_job_result(job_id, {"success": True}, ttl=3600)
-        ttl = mock_r.setex.call_args[0][1]
+        ttl = mock_r.eval.call_args.args[4]
         assert ttl == 3600
 
     def test_nested_result_serialized_correctly(self, mock_r, job_id):
@@ -423,7 +488,7 @@ class TestPublishJobResult:
             "ats_details": {"category_scores": {"formatting": 80}},
         }
         publish_job_result(job_id, result)
-        stored = mock_r.setex.call_args[0][2]
+        stored = mock_r.eval.call_args.args[3]
         parsed = json.loads(stored)
         assert parsed["ats_details"]["category_scores"]["formatting"] == 80
 
@@ -432,28 +497,28 @@ class TestPublishJobResult:
 
 class TestStoreJobMeta:
 
-    def test_setex_called(self, mock_r, job_id):
+    def test_set_with_expiry_called(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="ats_scoring")
-        mock_r.setex.assert_called_once()
+        mock_r.set.assert_called_once()
 
     def test_key_format(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="ats_scoring")
-        key = mock_r.setex.call_args[0][0]
+        key = mock_r.set.call_args.args[0]
         assert key == f"latexy:job:{job_id}:meta"
 
     def test_meta_contains_job_id(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="combined")
-        meta = json.loads(mock_r.setex.call_args[0][2])
+        meta = json.loads(mock_r.set.call_args.args[1])
         assert meta["job_id"] == job_id
 
     def test_meta_contains_job_type(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="latex_compilation")
-        meta = json.loads(mock_r.setex.call_args[0][2])
+        meta = json.loads(mock_r.set.call_args.args[1])
         assert meta["job_type"] == "latex_compilation"
 
     def test_meta_contains_submitted_at_float(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="combined")
-        meta = json.loads(mock_r.setex.call_args[0][2])
+        meta = json.loads(mock_r.set.call_args.args[1])
         assert isinstance(meta["submitted_at"], float)
         assert meta["submitted_at"] > 0
 
@@ -497,12 +562,12 @@ class TestStoreJobMeta:
     def test_meta_user_id_stored(self, mock_r, job_id):
         user_id = str(uuid.uuid4())
         store_job_meta(job_id, user_id=user_id, job_type="combined")
-        meta = json.loads(mock_r.setex.call_args[0][2])
+        meta = json.loads(mock_r.set.call_args.args[1])
         assert meta["user_id"] == user_id
 
     def test_meta_user_id_none_when_no_user(self, mock_r, job_id):
         store_job_meta(job_id, user_id=None, job_type="latex_compilation")
-        meta = json.loads(mock_r.setex.call_args[0][2])
+        meta = json.loads(mock_r.set.call_args.args[1])
         assert meta["user_id"] is None
 
 
