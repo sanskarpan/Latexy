@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -15,6 +15,7 @@ import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ContrastToggle from '@/components/theme/ContrastToggle'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import ATSScoreCard from '@/components/ATSScoreCard'
@@ -29,6 +30,8 @@ import KeywordDensityMap from '@/components/KeywordDensityMap'
 import PublicationsPanel from '@/components/PublicationsPanel'
 import GuidedIntakePanel from '@/components/GuidedIntakePanel'
 import { EMPTY_INTAKE, intakeIsEmpty, type GuidedIntake } from '@/lib/guided-intake'
+import { downloadBlob } from '@/lib/download'
+import SessionLoadError from '@/components/SessionLoadError'
 
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
@@ -47,6 +50,8 @@ export default function OptimizationSuitePage() {
   const resumeId = params.resumeId as string
 
   const [resume, setResume] = useState<{ title: string; latex_content: string } | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   // Live editor content — kept in sync with the editor (manual edits + optimize
   // stream) so the quick ATS badge tracks the current document, not the loaded one.
   const [editorContent, setEditorContent] = useState('')
@@ -62,6 +67,7 @@ export default function OptimizationSuitePage() {
   const [compareAfterLatex, setCompareAfterLatex] = useState<string | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
+  const scoreOptimizationReviewRef = useRef(false)
 
   // Academic-CV awareness — a genuine CV legitimately runs past one page, so the
   // page-overflow warning is suppressed for it (see the banner below).
@@ -93,6 +99,7 @@ export default function OptimizationSuitePage() {
 
   // Optimization persona (Feature 56)
   const [persona, setPersona] = useState<string | null>(null)
+  const [isSavingPersona, setIsSavingPersona] = useState(false)
 
   // Guided intake — user direction for the rewrite (input-driven optimization P1)
   const [intake, setIntake] = useState<GuidedIntake>(EMPTY_INTAKE)
@@ -109,8 +116,13 @@ export default function OptimizationSuitePage() {
     strengths?: string[]
     industry_key?: string
     industry_label?: string
+    locale_key?: string
+    locale_label?: string
+    score_threshold?: number
+    calibration_statement?: string
   } | null>(null)
   const [isRescoringIndustry, setIsRescoringIndustry] = useState(false)
+  const [atsLocale, setATSLocale] = useState<'global' | 'india' | 'united_states' | 'united_kingdom'>('global')
 
   // ATS tools tab
   const [activeToolTab, setActiveToolTab] = useState<'ATS Simulator' | 'Keywords' | 'Publications'>('ATS Simulator')
@@ -121,7 +133,46 @@ export default function OptimizationSuitePage() {
   const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
   const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  // Persona writes must be scoped to the authenticated owner and document that
+  // started them. Advance this generation during render so a deferred A→B→A
+  // response is still stale (effects can run after the response settles).
+  const sessionUserId = session?.user?.id ?? null
+  const personaIdentityKey = `${sessionUserId ?? 'anonymous'}:${resumeId}`
+  const personaIdentityRef = useRef({ key: personaIdentityKey, generation: 0 })
+  const personaMutationBusyRef = useRef(false)
+  const personaMutationGenerationRef = useRef<number | null>(null)
+  const personaMutationIdRef = useRef(0)
+  const personaTransitionKeyRef = useRef(personaIdentityKey)
+  const liveSessionUserIdRef = useRef(sessionUserId)
+  const mountedRef = useRef(false)
+  liveSessionUserIdRef.current = sessionUserId
+  if (personaIdentityRef.current.key !== personaIdentityKey) {
+    personaIdentityRef.current = {
+      key: personaIdentityKey,
+      generation: personaIdentityRef.current.generation + 1,
+    }
+    // Invalidate the old request immediately. The state setter below runs in
+    // the transition effect, so the new owner can never inherit its busy ref.
+    personaMutationBusyRef.current = false
+    personaMutationGenerationRef.current = null
+    personaMutationIdRef.current += 1
+  }
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const personaIdentity = personaIdentityRef.current
+  useEffect(() => {
+    if (personaTransitionKeyRef.current === personaIdentity.key) return
+    personaTransitionKeyRef.current = personaIdentity.key
+    // Do not clear same-owner auth refresh state: the identity key is stable
+    // while useRequireAuth revalidates the existing session.
+    setIsSavingPersona(false)
+  }, [personaIdentity.key])
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(editorContent || resume?.latex_content || '', jobDescription)
@@ -131,11 +182,19 @@ export default function OptimizationSuitePage() {
   const { requestPermission, notify } = usePushNotifications()
 
   useEffect(() => {
-    if (!session || sessionLoading) return
+    if (sessionLoading) return
+    if (!session) {
+      setIsLoading(false)
+      return
+    }
 
+    let cancelled = false
     const fetchResume = async () => {
+      setIsLoading(true)
+      setLoadError(null)
       try {
         const data = await apiClient.getResume(resumeId)
+        if (cancelled) return
         setResume(data)
         setBaselineLatex(data.latex_content)
         setEditorContent(data.latex_content)
@@ -158,27 +217,29 @@ export default function OptimizationSuitePage() {
 
         // Load last-used persona (Feature 56)
         const savedPersona = data.metadata?.last_persona as string | undefined
-        if (savedPersona) setPersona(savedPersona)
+        setPersona(savedPersona || null)
 
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
             const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: resolvedCompiler })
-            if (r.success && r.job_id) { setActiveJobId(r.job_id); setActiveJobKind('compile') }
+            if (!cancelled && r.success && r.job_id) { setActiveJobId(r.job_id); setActiveJobKind('compile') }
           } catch {
             // Silent
           }
         }
-      } catch {
-        toast.error('Failed to load resume')
-        router.push('/workspace')
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load resume')
+        }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       }
     }
 
-    fetchResume()
-  }, [resumeId, router, session, sessionLoading])
+    void fetchResume()
+    return () => { cancelled = true }
+  }, [loadAttempt, resumeId, session, sessionLoading])
 
   // Unsaved-changes guard: manual edits or an un-saved optimize result should not
   // be lost silently on reload or navigation (parity with the edit page).
@@ -192,6 +253,40 @@ export default function OptimizationSuitePage() {
     if (!isDirty) return true
     return window.confirm('You have unsaved changes that will be lost. Leave without saving a new version?')
   }, [isDirty])
+
+  const handlePersonaChange = async (next: string | null) => {
+    if (isSavingPersona && personaMutationGenerationRef.current === personaIdentity.generation) return
+    if (personaMutationBusyRef.current || !sessionUserId) return
+    const previous = persona
+    const mutationId = ++personaMutationIdRef.current
+    const mutationGeneration = personaIdentity.generation
+    const mutationIdentityKey = personaIdentity.key
+    const mutationOwnerId = sessionUserId
+    const isCurrentMutation = () => (
+      mountedRef.current &&
+      personaMutationIdRef.current === mutationId &&
+      personaIdentityRef.current.generation === mutationGeneration &&
+      personaIdentityRef.current.key === mutationIdentityKey &&
+      liveSessionUserIdRef.current === mutationOwnerId
+    )
+    personaMutationBusyRef.current = true
+    personaMutationGenerationRef.current = mutationGeneration
+    setPersona(next)
+    setIsSavingPersona(true)
+    try {
+      await apiClient.updateResumeSettings(resumeId, { last_persona: next ?? '' })
+    } catch {
+      if (!isCurrentMutation()) return
+      setPersona(previous)
+      toast.error('Failed to save optimization style. Your previous selection was restored.')
+    } finally {
+      if (isCurrentMutation()) {
+        personaMutationBusyRef.current = false
+        personaMutationGenerationRef.current = null
+        setIsSavingPersona(false)
+      }
+    }
+  }
 
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return
@@ -223,8 +318,13 @@ export default function OptimizationSuitePage() {
     fetchPdf()
 
     // Capture immutable after-snapshot for before/after comparison
-    if (stream.status === 'completed' && compareOriginalLatex !== null) {
-      setCompareAfterLatex(stream.streamingLatex ?? '')
+    if (stream.status === 'completed' && activeJobKind === 'optimize' && compareOriginalLatex !== null) {
+      const completedLatex = stream.streamingLatex ?? ''
+      setCompareAfterLatex(completedLatex)
+      if (scoreOptimizationReviewRef.current && completedLatex) {
+        setShowReviewModal(true)
+        scoreOptimizationReviewRef.current = false
+      }
     }
 
     // Track completion for analytics
@@ -235,9 +335,10 @@ export default function OptimizationSuitePage() {
       refetchATS()
       setHistoryRefreshKey((k) => k + 1)
     } else if (stream.status === 'failed' && activeJobId) {
+      scoreOptimizationReviewRef.current = false
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, stream.pdfJobId, stream.streamingLatex, activeJobId, stream.tokensUsed, refetchATS, compareOriginalLatex])
+  }, [stream.status, stream.pdfJobId, stream.streamingLatex, activeJobId, activeJobKind, stream.tokensUsed, refetchATS, compareOriginalLatex])
 
   useEffect(() => {
     return () => {
@@ -261,7 +362,7 @@ export default function OptimizationSuitePage() {
     }
   }, [activeJobKind, stream.status, requestPermission])
 
-  const runOptimization = async () => {
+  const runOptimization = async (fromScoreReport = false) => {
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
@@ -269,6 +370,17 @@ export default function OptimizationSuitePage() {
     // A fresh optimize pass produces its own ATS analysis — drop any stale
     // industry-override re-score so we don't show mismatched results.
     setIndustryOverrideResult(null)
+    scoreOptimizationReviewRef.current = fromScoreReport
+
+    const scoreRecommendations = industryOverrideResult?.recommendations ?? stream.atsDetails?.recommendations ?? []
+    const scoreWarnings = industryOverrideResult?.warnings ?? stream.atsDetails?.warnings ?? []
+    const scoreInstructions = fromScoreReport
+      ? [
+          'Create a reviewable draft that addresses these current ATS report findings. Preserve all factual claims and never invent metrics.',
+          ...scoreRecommendations.map((item) => `Recommendation: ${item}`),
+          ...scoreWarnings.map((item) => `Warning: ${item}`),
+        ].join('\n')
+      : undefined
 
     try {
       const response = await apiClient.optimizeAndCompile({
@@ -282,6 +394,7 @@ export default function OptimizationSuitePage() {
         tone: intake.tone || undefined,
         emphasize: intake.emphasize.length ? intake.emphasize : undefined,
         downplay: intake.downplay.length ? intake.downplay : undefined,
+        custom_instructions: scoreInstructions,
       })
 
       if (!response.success || !response.job_id) {
@@ -292,6 +405,7 @@ export default function OptimizationSuitePage() {
       setActiveJobKind('optimize')
       toast.success('Optimization pipeline started')
     } catch (error) {
+      scoreOptimizationReviewRef.current = false
       toast.error(error instanceof Error ? error.message : 'Optimization failed')
     } finally {
       setIsSubmitting(false)
@@ -313,6 +427,7 @@ export default function OptimizationSuitePage() {
         latex_content: currentContent,
         job_description: jobDescription || undefined,
         industry_override: resolvedKey ?? undefined,
+        locale: atsLocale,
       })
       if (res.success) {
         setIndustryOverrideResult(res)
@@ -324,7 +439,29 @@ export default function OptimizationSuitePage() {
     } finally {
       setIsRescoringIndustry(false)
     }
-  }, [resume?.latex_content, jobDescription])
+  }, [resume?.latex_content, jobDescription, atsLocale])
+
+  const handleLocaleOverride = useCallback(async (localeKey: string) => {
+    const locale = localeKey as typeof atsLocale
+    setATSLocale(locale)
+    const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
+    if (!currentContent.trim()) return
+    setIsRescoringIndustry(true)
+    try {
+      const result = await apiClient.scoreATS({
+        latex_content: currentContent,
+        job_description: jobDescription || undefined,
+        industry_override: industryOverride ?? undefined,
+        locale,
+      })
+      if (result.success) setIndustryOverrideResult(result)
+      else toast.error(result.message || 'Failed to re-score for this locale')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to re-score for this locale')
+    } finally {
+      setIsRescoringIndustry(false)
+    }
+  }, [resume?.latex_content, jobDescription, industryOverride])
 
   const restoreOriginal = () => {
     if (!baselineLatex || !editorRef.current) return
@@ -360,6 +497,16 @@ export default function OptimizationSuitePage() {
   // Apply the user's per-change review result (F2-P0): load the reconstructed
   // LaTeX into the editor, make it the new "after" snapshot, and recompile.
   const handleApplyReviewedChanges = useCallback(async (latex: string) => {
+    const currentLatex = editorRef.current?.getValue()
+    if (
+      compareOriginalLatex !== null
+      && currentLatex != null
+      && currentLatex !== compareOriginalLatex
+      && currentLatex !== compareAfterLatex
+    ) {
+      toast.error('Your resume changed after optimization. Run optimization again to avoid overwriting newer edits.')
+      return false
+    }
     editorRef.current?.setValue(latex)
     setEditorContent(latex)
     setCompareAfterLatex(latex)
@@ -375,7 +522,8 @@ export default function OptimizationSuitePage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [resumeId, compiler])
+    return true
+  }, [resumeId, compiler, compareOriginalLatex, compareAfterLatex])
 
   const handleCompareWithParent = useCallback(async () => {
     try {
@@ -506,6 +654,27 @@ export default function OptimizationSuitePage() {
     )
   }
 
+  if (sessionError && !session) {
+    return <SessionLoadError area="Optimization workspace" />
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-6">
+        <div role="alert" className="max-w-md rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Optimization workspace could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">{loadError}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back to workspace</Link>
+            <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) return null
+
   return (
     <div className="content-shell min-h-screen space-y-6 pb-12">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -543,6 +712,7 @@ export default function OptimizationSuitePage() {
               </div>
             )}
           </div>
+          <ContrastToggle />
           <ModeToggle />
           <Link href={`/workspace/${resumeId}/edit`} onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }} className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Editor
@@ -590,12 +760,8 @@ export default function OptimizationSuitePage() {
                 return (
                   <button
                     key={p.key}
-                    onClick={() => {
-                      const next = active ? null : p.key
-                      setPersona(next)
-                      apiClient.updateResumeSettings(resumeId, { last_persona: next ?? '' }).catch(() => {})
-                    }}
-                    disabled={isProcessing}
+                    onClick={() => void handlePersonaChange(active ? null : p.key)}
+                    disabled={isProcessing || isSavingPersona}
                     className={`flex items-start gap-2.5 rounded-[var(--radius-md)] border px-3 py-2 text-left transition disabled:opacity-50 ${
                       active
                         ? 'border-accent bg-accent-soft'
@@ -681,7 +847,7 @@ export default function OptimizationSuitePage() {
               <GuidedIntakePanel value={intake} onChange={setIntake} />
             </div>
             <button
-              onClick={runOptimization}
+              onClick={() => void runOptimization()}
               disabled={isProcessing || isSubmitting}
               className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -755,7 +921,7 @@ export default function OptimizationSuitePage() {
           </section>
         </aside>
 
-        <main className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] min-w-0 flex-col overflow-hidden">
               <div className="flex h-11 items-center justify-between gap-2 border-b border-line bg-surface-2 px-4">
@@ -764,6 +930,8 @@ export default function OptimizationSuitePage() {
                   <button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (2s debounce)"
+                    aria-label="Auto-compile on change"
+                    aria-pressed={autoCompile}
                     className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
                       autoCompile
                         ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
@@ -803,7 +971,7 @@ export default function OptimizationSuitePage() {
               <div className="relative min-h-0 min-w-0 flex-1 overflow-x-auto bg-bg">
                 <LaTeXEditor
                   ref={editorRef}
-                  value={resume?.latex_content || ''}
+                  value={editorContent}
                   onChange={setEditorContent}
                   readOnly={isProcessing}
                   logLines={stream.logLines}
@@ -812,6 +980,7 @@ export default function OptimizationSuitePage() {
                   atsScoreLoading={quickATSLoading}
                   onExplainError={handleExplainError}
                   pageCount={stream.pageCount}
+                  warnOnMultiplePages={!academicReport?.is_academic_cv}
                 />
                 <div className="absolute inset-x-0 bottom-0 z-10">
                   <ErrorExplainerPanel
@@ -880,8 +1049,9 @@ export default function OptimizationSuitePage() {
               {activeToolTab === 'ATS Simulator' ? (
                 <>
                   <p className="mb-5 text-sm text-fg-2">
-                    See how major ATS platforms parse your resume. Select a system to view the
-                    plain-text representation it would extract and identify any compatibility issues.
+                    Compare Latexy&apos;s heuristic checks grouped by common platform constraints.
+                    These are not the vendors&apos; parsers and do not predict screening decisions.
+                    Inspect the extracted plain text and address concrete document issues.
                   </p>
                   <AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
                 </>
@@ -899,7 +1069,16 @@ export default function OptimizationSuitePage() {
                     Fetch your publications from ORCID and insert a formatted bibliography section
                     directly into your resume. Choose a citation style, year range, and publication type.
                   </p>
-                  <PublicationsPanel insertAtCursor={(text) => editorRef.current?.insertAtCursor(text)} />
+                  <PublicationsPanel insertAtCursor={(text) => {
+                    // The side panel can become interactive while the dynamic
+                    // Monaco bundle is still mounting. Never drop a user's
+                    // insertion during that window; with no caret yet, prepend
+                    // it to the controlled buffer just as Monaco's initial
+                    // caret would.
+                    if (!editorRef.current?.insertAtCursor(text)) {
+                      setEditorContent((current) => text + current)
+                    }
+                  }} />
                 </>
               )}
             </div>
@@ -932,7 +1111,10 @@ export default function OptimizationSuitePage() {
                           } catch {
                             // Non-fatal — proceed with save even if snapshot fails
                           }
-                          await apiClient.updateResume(resumeId, { latex_content: latex })
+                          await apiClient.updateResume(resumeId, {
+                            latex_content: latex,
+                            expected_latex_content: baselineLatex,
+                          })
                           setBaselineLatex(latex) // the saved content is the new clean baseline
                           setEditorContent(latex)
                           setHistoryRefreshKey((k) => k + 1)
@@ -952,12 +1134,7 @@ export default function OptimizationSuitePage() {
                         if (!stream.pdfJobId) return
                         try {
                           const blob = await apiClient.downloadPdf(stream.pdfJobId)
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          a.download = 'resume_optimized.pdf'
-                          a.click()
-                          URL.revokeObjectURL(url)
+                          downloadBlob(blob, 'resume_optimized.pdf')
                         } catch {
                           toast.error('Failed to download PDF')
                         }
@@ -977,11 +1154,18 @@ export default function OptimizationSuitePage() {
                   industryLabel={industryOverrideResult?.industry_label ?? (industryOverride ? null : stream.industryLabel)}
                   industryKey={industryOverrideResult?.industry_key ?? industryOverride ?? (stream.atsDetails as any)?.industry_key ?? null}
                   onIndustryOverride={handleIndustryOverride}
+                  localeKey={industryOverrideResult?.locale_key ?? (stream.atsDetails?.locale_key || atsLocale)}
+                  localeLabel={industryOverrideResult?.locale_label ?? stream.atsDetails?.locale_label}
+                  scoreThreshold={industryOverrideResult?.score_threshold ?? stream.atsDetails?.score_threshold}
+                  calibrationStatement={industryOverrideResult?.calibration_statement ?? stream.atsDetails?.calibration_statement}
+                  onLocaleOverride={handleLocaleOverride}
+                  onOptimize={() => void runOptimization(true)}
+                  isOptimizing={isProcessing || isSubmitting}
                 />
               </motion.section>
             )}
           </AnimatePresence>
-        </main>
+        </div>
       </div>
 
       {/* History checkpoint diff modal */}
