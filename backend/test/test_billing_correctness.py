@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import razorpay
+from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -142,6 +143,19 @@ class _FakeRedis:
 
     async def get(self, key):
         return self.store.get(key)
+
+    async def eval(self, script, _numkeys, key, *args):
+        """Execute the two compare-and-set scripts used by webhook claims."""
+        token = args[0]
+        if "DEL" in script:
+            if self.store.get(key) == token:
+                self.store.pop(key, None)
+                return 1
+            return 0
+        if self.store.get(key) == token:
+            self.store[key] = args[1]
+            return 1
+        return 0
 
 
 @pytest.fixture()
@@ -600,20 +614,24 @@ class TestCancellationHonesty:
         )
         payment_id = f"pay_cancel_stale_{_RUN}"
 
-        result = await svc._handle_subscription_charged(
-            db_session,
-            {
-                "subscription": {"entity": {"id": _rz("cancel_stale_charge")}},
-                "payment": {
-                    "entity": {
-                        "id": payment_id,
-                        "amount": 19900,
-                        "currency": "INR",
-                        "method": "card",
-                    }
+        with patch(
+            "app.services.payment_service.referral_service.qualify_paid_payment",
+            new=AsyncMock(return_value={"status": "ignored"}),
+        ):
+            result = await svc._handle_subscription_charged(
+                db_session,
+                {
+                    "subscription": {"entity": {"id": _rz("cancel_stale_charge")}},
+                    "payment": {
+                        "entity": {
+                            "id": payment_id,
+                            "amount": 19900,
+                            "currency": "INR",
+                            "method": "card",
+                        }
+                    },
                 },
-            },
-        )
+            )
 
         assert result["success"] is True
         state = (
@@ -670,12 +688,251 @@ class TestCancellationHonesty:
         assert subscription_id is None, "a dead checkout must not stay pinned to the user"
 
 
+# ---------------------------------------------------------------------------
+# Stale-provider-event protection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestStaleSubscriptionEvents:
+    async def _newer_subscription_fixture(self, db_session: AsyncSession) -> tuple[str, str, str]:
+        """Return a user whose newer provider subscription is authoritative."""
+        suffix = uuid.uuid4().hex[:8]
+        older = f"sub_older_event_{suffix}"
+        newer = f"sub_newer_event_{suffix}"
+        user_id, _ = await _create_user(
+            db_session, plan="pro", status="active", subscription_id=newer
+        )
+        await _add_subscription(db_session, user_id, "basic", "created", older)
+        await _add_subscription(db_session, user_id, "pro", "active", newer)
+        return user_id, older, newer
+
+    async def test_late_activated_event_cannot_replace_newer_entitlement(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, older, newer = await self._newer_subscription_fixture(db_session)
+        result = await svc._handle_subscription_activated(db_session, {"id": older})
+        assert result["success"] is True
+        state = (
+            await db_session.execute(
+                text("SELECT subscription_plan, subscription_status, subscription_id FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+        ).one()
+        assert state == ("pro", "active", newer)
+
+    async def test_late_charged_event_cannot_replace_newer_entitlement(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, older, newer = await self._newer_subscription_fixture(db_session)
+        with patch(
+            "app.services.payment_service.referral_service.qualify_paid_payment",
+            new=AsyncMock(return_value={"status": "ignored"}),
+        ):
+            result = await svc._handle_subscription_charged(
+                db_session,
+                {"subscription": {"id": older}, "payment": {"id": f"pay_stale_{uuid.uuid4().hex}", "amount": 29900, "currency": "INR"}},
+            )
+        assert result["success"] is True
+        state = (
+            await db_session.execute(
+                text("SELECT subscription_plan, subscription_status, subscription_id FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+        ).one()
+        assert state == ("pro", "active", newer)
+
+    async def test_renewal_preserves_a_future_referral_extension(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        subscription_id = f"sub_future_extension_{uuid.uuid4().hex[:8]}"
+        user_id, _ = await _create_user(db_session, plan="pro", status="active", subscription_id=subscription_id)
+        await _add_subscription(
+            db_session, user_id, "pro", "active", subscription_id, period_end_days=60
+        )
+        before = (
+            await db_session.execute(
+                text("SELECT current_period_end FROM subscriptions WHERE razorpay_subscription_id = :rz"),
+                {"rz": subscription_id},
+            )
+        ).scalar_one()
+        await db_session.rollback()
+
+        with patch(
+            "app.services.payment_service.referral_service.qualify_paid_payment",
+            new=AsyncMock(return_value={"status": "ignored"}),
+        ):
+            result = await svc._handle_subscription_charged(
+                db_session,
+                {
+                    "subscription": {"id": subscription_id},
+                    "payment": {"id": f"pay_extension_{_RUN}", "amount": 59900, "currency": "INR"},
+                },
+            )
+        assert result["success"] is True
+        after = (
+            await db_session.execute(
+                text("SELECT current_period_end FROM subscriptions WHERE razorpay_subscription_id = :rz"),
+                {"rz": subscription_id},
+            )
+        ).scalar_one()
+        assert after >= before + timedelta(days=29)
+
+    async def test_duplicate_payment_retries_referral_qualification(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        subscription_id = f"sub_referral_retry_{uuid.uuid4().hex[:8]}"
+        user_id, _ = await _create_user(db_session, plan="pro", status="active", subscription_id=subscription_id)
+        subscription_row = await _add_subscription(
+            db_session, user_id, "pro", "active", subscription_id
+        )
+        payment_id = f"pay_referral_retry_{_RUN}"
+        await db_session.execute(
+            text(
+                "INSERT INTO payments (id, user_id, subscription_id, razorpay_payment_id, amount, currency, status) "
+                "VALUES (:id, :uid, :sid, :pid, 59900, 'INR', 'paid')"
+            ),
+            {"id": str(uuid.uuid4()), "uid": user_id, "sid": subscription_row, "pid": payment_id},
+        )
+        await db_session.commit()
+
+        qualify = AsyncMock(side_effect=[RuntimeError("temporary referral outage"), {"status": "ignored"}])
+        with patch("app.services.payment_service.referral_service.qualify_paid_payment", new=qualify):
+            first = await svc._handle_subscription_charged(
+                db_session,
+                {"subscription": {"id": subscription_id}, "payment": {"id": payment_id, "amount": 59900, "currency": "INR"}},
+            )
+            second = await svc._handle_subscription_charged(
+                db_session,
+                {"subscription": {"id": subscription_id}, "payment": {"id": payment_id, "amount": 59900, "currency": "INR"}},
+            )
+
+        assert first["success"] is False
+        assert second == {"success": True, "message": "Payment already recorded"}
+        assert qualify.await_count == 2
+
+    async def test_unknown_subscription_activation_recovers_from_provider_notes(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, _ = await _create_user(db_session, plan="free", status="active")
+        subscription_id = f"sub_recover_activation_{uuid.uuid4().hex[:8]}"
+        svc.client.subscription.fetch.return_value = {
+            "id": subscription_id,
+            "plan_id": "plan_pro_from_dashboard",
+            "status": "active",
+            "notes": {"user_id": user_id, "plan_id": "pro"},
+        }
+
+        result = await svc._handle_subscription_activated(
+            db_session, {"id": subscription_id}
+        )
+
+        assert result["success"] is True
+        state = (
+            await db_session.execute(
+                text(
+                    "SELECT subscription_plan, subscription_status, subscription_id "
+                    "FROM users WHERE id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).one()
+        assert state == ("pro", "active", subscription_id)
+
+    async def test_unknown_subscription_charge_recovers_from_provider_notes(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, _ = await _create_user(db_session, plan="free", status="active")
+        subscription_id = f"sub_recover_charge_{uuid.uuid4().hex[:8]}"
+        payment_id = f"pay_recover_charge_{uuid.uuid4().hex[:8]}"
+        svc.client.subscription.fetch.return_value = {
+            "id": subscription_id,
+            "plan_id": "plan_pro_from_dashboard",
+            "status": "active",
+            "notes": {"user_id": user_id, "plan_id": "pro"},
+        }
+
+        with patch(
+            "app.services.payment_service.referral_service.qualify_paid_payment",
+            new=AsyncMock(return_value={"status": "ignored"}),
+        ):
+            result = await svc._handle_subscription_charged(
+                db_session,
+                {
+                    "subscription": {"id": subscription_id},
+                    "payment": {
+                        "id": payment_id,
+                        "amount": 59900,
+                        "currency": "INR",
+                    },
+                },
+            )
+
+        assert result == {"success": True, "message": "Payment recorded"}
+        state = (
+            await db_session.execute(
+                text(
+                    "SELECT u.subscription_plan, u.subscription_status, u.subscription_id, "
+                    "s.status, p.razorpay_payment_id "
+                    "FROM users u JOIN subscriptions s ON s.user_id = u.id "
+                    "JOIN payments p ON p.subscription_id = s.id WHERE u.id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).one()
+        assert state == ("pro", "active", subscription_id, "active", payment_id)
+
+    async def test_late_cancelled_paused_and_ended_events_cannot_revoke_newer_entitlement(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        handlers = (
+            svc._handle_subscription_cancelled,
+            svc._handle_subscription_paused,
+            svc._handle_subscription_pending,
+            lambda db, entity: svc._handle_subscription_ended(db, entity, "halted"),
+        )
+        for handler in handlers:
+            user_id, older, newer = await self._newer_subscription_fixture(db_session)
+            result = await handler(db_session, {"id": older})
+            assert result["success"] is True, result
+            state = (
+                await db_session.execute(
+                    text("SELECT subscription_plan, subscription_status, subscription_id FROM users WHERE id = :uid"),
+                    {"uid": user_id},
+                )
+            ).one()
+            assert state == ("pro", "active", newer)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # G4 — webhook replay protection
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 class TestWebhookReplayProtection:
+    async def test_route_forwards_razorpay_delivery_header(
+        self, client: AsyncClient
+    ):
+        handler = AsyncMock(return_value={"success": True})
+        with (
+            patch("app.api.routes.payment_service.is_available", return_value=True),
+            patch("app.api.routes.payment_service.handle_webhook", handler),
+        ):
+            response = await client.post(
+                "/billing/webhook",
+                content=b'{"event":"subscription.activated"}',
+                headers={
+                    "X-Razorpay-Signature": "signed",
+                    "X-Razorpay-Event-Id": "evt_route_g4",
+                },
+            )
+
+        assert response.status_code == 200
+        assert handler.await_args.args[1:] == (
+            b'{"event":"subscription.activated"}',
+            "signed",
+            "evt_route_g4",
+        )
+
     @staticmethod
     def _razorpay_payload(subscription_id: str) -> bytes:
         """A payload shaped like a real Razorpay delivery — no body-level id."""
@@ -746,6 +1003,159 @@ class TestWebhookReplayProtection:
         assert first["success"] is True
         assert second.get("message") == "Event already processed"
         assert list(fake_redis.store) == [f"latexy:webhook:processed:{delivery_id}"]
+
+    async def test_processing_claim_returns_retryable_failure(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        payload = self._razorpay_payload(_rz("processing_g4"))
+        fake_redis = _FakeRedis()
+        key = svc._webhook_idempotency_key(payload, json.loads(payload), None)
+        fake_redis.store[key] = "processing"
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+            patch.object(svc, "_handle_subscription_paused", new=AsyncMock()) as handler,
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result["success"] is False
+        assert "retry later" in result["error"]
+        handler.assert_not_awaited()
+
+    async def test_done_claim_returns_successful_duplicate(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        payload = self._razorpay_payload(_rz("done_g4"))
+        fake_redis = _FakeRedis()
+        key = svc._webhook_idempotency_key(payload, json.loads(payload), None)
+        fake_redis.store[key] = "done"
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result == {"success": True, "message": "Event already processed"}
+
+    async def test_expired_processing_claim_is_reclaimed_and_marked_done(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        payload = json.dumps({"event": "unhandled.test", "payload": {}}).encode()
+        key = svc._webhook_idempotency_key(payload, json.loads(payload), None)
+        fake_redis = MagicMock()
+        # The first claimant sees a stale/expired key, then successfully
+        # reclaims it before handling and promotes it to done.
+        fake_redis.set = AsyncMock(side_effect=[None, True])
+        fake_redis.get = AsyncMock(return_value=None)
+        fake_redis.delete = AsyncMock()
+        fake_redis.eval = AsyncMock(return_value=1)
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result == {"success": True, "message": "Event ignored"}
+        assert fake_redis.set.await_count == 2
+        assert fake_redis.set.await_args_list[0].kwargs == {"nx": True, "ex": 120}
+        assert fake_redis.set.await_args_list[1].kwargs == {"nx": True, "ex": 120}
+        assert fake_redis.eval.await_count == 1
+        assert fake_redis.eval.await_args.args[1] == 1
+        assert fake_redis.eval.await_args.args[2] == key
+        assert fake_redis.eval.await_args.args[4:] == ("done", 86400)
+
+    async def test_stale_success_cannot_promote_new_owner_claim(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        """A handler finishing after lease expiry must not overwrite owner B."""
+        payload = self._razorpay_payload(_rz("stale_owner_success"))
+        key = svc._webhook_idempotency_key(payload, json.loads(payload), None)
+        fake_redis = _FakeRedis()
+
+        async def slow_handler(_db, _entity):
+            # Simulate owner A's 120-second lease expiring and owner B
+            # reclaiming the same delivery before A reaches its final update.
+            fake_redis.store[key] = "owner-b-token"
+            return {"success": True, "message": "Subscription paused"}
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+            patch.object(svc, "_handle_subscription_paused", new=slow_handler),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result["success"] is True
+        assert fake_redis.store[key] == "owner-b-token"
+
+    async def test_stale_failure_cannot_release_new_owner_claim(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        """A stale failure must not delete the replacement owner's claim."""
+        payload = self._razorpay_payload(_rz("stale_owner_failure"))
+        key = svc._webhook_idempotency_key(payload, json.loads(payload), None)
+        fake_redis = _FakeRedis()
+
+        async def slow_handler(_db, _entity):
+            fake_redis.store[key] = "owner-b-token"
+            return {"success": False, "error": "retryable"}
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+            patch.object(svc, "_handle_subscription_paused", new=slow_handler),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result == {"success": False, "error": "retryable"}
+        assert fake_redis.store[key] == "owner-b-token"
+
+    async def test_failed_delivery_releases_processing_claim(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        payload = self._razorpay_payload(_rz("failed_claim_g4"))
+        fake_redis = _FakeRedis()
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+            patch.object(
+                svc,
+                "_handle_subscription_paused",
+                new=AsyncMock(return_value={"success": False, "error": "retryable"}),
+            ),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+            result = await svc.handle_webhook(db_session, payload, _make_signature(payload))
+
+        assert result == {"success": False, "error": "retryable"}
+        assert fake_redis.store == {}
 
     async def test_distinct_events_are_not_deduped(
         self, svc: PaymentService, db_session: AsyncSession
@@ -1206,6 +1616,71 @@ class TestTeamSeatReconciliation:
             )
         ).scalar_one_or_none()
         assert owner_subscription_id is None
+
+    async def test_pause_suspends_and_reactivation_restores_team_seats(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        subscription_id = _rz("team_pause_g6")
+        owner_id, _ = await _create_user(
+            db_session, plan="team", subscription_id=subscription_id
+        )
+        await _add_subscription(db_session, owner_id, "team", "active", subscription_id)
+        member_id, member_email = await _create_user(db_session, plan="team_member")
+        await _add_team_seat(db_session, owner_id, member_id, member_email)
+
+        paused = await svc._handle_subscription_paused(
+            db_session, {"id": subscription_id}
+        )
+
+        assert paused["success"] is True
+        owner = (
+            await db_session.execute(
+                text(
+                    "SELECT subscription_plan, subscription_status FROM users WHERE id = :id"
+                ),
+                {"id": owner_id},
+            )
+        ).one()
+        member = (
+            await db_session.execute(
+                text(
+                    "SELECT subscription_plan, subscription_status FROM users WHERE id = :id"
+                ),
+                {"id": member_id},
+            )
+        ).one()
+        seat_status = (
+            await db_session.execute(
+                text("SELECT status FROM team_seats WHERE owner_user_id = :id"),
+                {"id": owner_id},
+            )
+        ).scalar_one()
+        assert owner == ("free", "paused")
+        assert member == ("free", "paused")
+        assert seat_status == "suspended"
+        await db_session.rollback()
+
+        activated = await svc._handle_subscription_activated(
+            db_session, {"id": subscription_id}
+        )
+
+        assert activated["success"] is True
+        member = (
+            await db_session.execute(
+                text(
+                    "SELECT subscription_plan, subscription_status FROM users WHERE id = :id"
+                ),
+                {"id": member_id},
+            )
+        ).one()
+        seat_status = (
+            await db_session.execute(
+                text("SELECT status FROM team_seats WHERE owner_user_id = :id"),
+                {"id": owner_id},
+            )
+        ).scalar_one()
+        assert member == ("team_member", "active")
+        assert seat_status == "active"
 
     async def test_non_team_cancellation_leaves_other_owners_seats_alone(
         self, svc: PaymentService, db_session: AsyncSession
