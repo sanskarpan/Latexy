@@ -1,0 +1,63 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in,bottom=0.6in,left=0.72in,right=0.72in]{geometry}
+\usepackage{fontspec}
+\usepackage[english,polish,provide=*]{babel}
+\babelfont[polish]{rm}{Latin Modern Roman}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+
+% Replace these values before using the optional consent paragraph.
+\newcommand{\pracodawca}{NAZWA PRACODAWCY}
+\newcommand{\stanowisko}{NAZWA STANOWISKA}
+
+\pagestyle{empty}
+\setlist{nosep,leftmargin=*}
+\titleformat{\section}{\large\bfseries}{}{0pt}{}[\titlerule]
+\titlespacing{\section}{0pt}{6pt}{3pt}
+
+\begin{document}
+\begin{center}
+  {\LARGE\textbf{Aleksandra Nowak}}\\[3pt]
+  Starsza specjalistka ds. operacji\\[2pt]
+  Warszawa \quad
+  \href{mailto:aleksandra.nowak@example.com}{aleksandra.nowak@example.com} \quad
+  +48 500 600 700
+\end{center}
+
+\section{Profil zawodowy}
+Specjalistka z siedmioletnim doświadczeniem w usprawnianiu procesów,
+koordynowaniu projektów i przygotowywaniu raportów zarządczych. Łączy analizę
+danych z jasną komunikacją oraz odpowiedzialnym prowadzeniem dokumentacji.
+
+\section{Doświadczenie zawodowe}
+\textbf{Starsza specjalistka ds. operacji, Przykład Sp. z o.o.} \hfill 2021--obecnie
+\begin{itemize}
+  \item Uporządkowała proces obsługi dostawców i skróciła średni czas akceptacji dokumentów o trzydzieści procent.
+  \item Koordynowała pracę pięcioosobowego zespołu podczas wdrożenia nowego systemu raportowego.
+  \item Przygotowywała miesięczne analizy jakości i przedstawiała rekomendacje kierownictwu.
+\end{itemize}
+
+\textbf{Specjalistka ds. administracji, Firma Demonstracyjna S.A.} \hfill 2018--2021
+\begin{itemize}
+  \item Prowadziła rejestry umów, harmonogramy szkoleń i rozliczenia kosztów projektowych.
+\end{itemize}
+
+\section{Wykształcenie}
+\textbf{Magister zarządzania} \hfill 2018\\
+Szkoła Główna Handlowa w Warszawie
+
+\section{Umiejętności}
+Analiza procesów, Excel, SQL, zarządzanie projektami, raportowanie, negocjacje,
+język angielski C1 oraz język niemiecki B1.
+
+% Source guidance: https://uodo.gov.pl/pl/file/4933
+% UODO guidance says a blanket CV consent is not routinely required. Keep this
+% only when the vacancy asks for employer-specific consent covering additional
+% data, and seek local advice for sensitive data or future recruitment.
+\section{Opcjonalna zgoda rekrutacyjna}
+{\small Wyrażam zgodę na przetwarzanie przez \textbf{\pracodawca}
+dodatkowych danych osobowych zawartych w moim CV w celu przeprowadzenia
+rekrutacji na stanowisko \textbf{\stanowisko}.}
+
+\end{document}
