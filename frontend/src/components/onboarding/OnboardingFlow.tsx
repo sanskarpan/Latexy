@@ -17,6 +17,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
+import { useI18n } from '@/components/I18nProvider'
 
 interface OnboardingStep {
   id: string
@@ -67,6 +68,7 @@ export default function OnboardingFlow({
   onSkip,
   userType = 'new',
 }: OnboardingFlowProps) {
+  const { t } = useI18n()
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   const [freePlanCopy, setFreePlanCopy] = useState(
@@ -169,26 +171,26 @@ export default function OnboardingFlow({
   const steps: OnboardingStep[] = [
     {
       id: 'welcome',
-      title: 'Welcome to Latexy',
-      description: 'Your AI-powered resume optimization platform',
+      title: t('onboarding.welcomeTitle'),
+      description: t('onboarding.welcomeDescription'),
       icon: <Sparkles className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="space-y-6">
           <div className="flex flex-col items-center text-center space-y-4">
             <IconTile size="lg" icon={<FileText className="w-8 h-8" />} />
             <div className="space-y-1.5">
-              <Eyebrow>Welcome</Eyebrow>
+              <Eyebrow>{t('onboarding.gettingStarted')}</Eyebrow>
               <h3 className="text-2xl font-semibold text-fg">Résumés, typeset.</h3>
               <p className="text-fg-2 max-w-md">
                 Latexy pairs LaTeX-grade typesetting with AI tailoring, so every resume you
-                send is precise, ATS-ready, and matched to the role.
+                send is precise, parse-clean, and matched to the role.
               </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { icon: <FileText className="w-5 h-5" />, label: 'Typeset in LaTeX', desc: 'Pixel-perfect, professional formatting.' },
-              { icon: <Target className="w-5 h-5" />, label: 'ATS-aware', desc: 'See how trackers actually read your resume.' },
+              { icon: <Target className="w-5 h-5" />, label: 'Document checks', desc: 'Review structure, readability, and job-description keyword coverage.' },
               { icon: <Sparkles className="w-5 h-5" />, label: 'AI tailoring', desc: 'Match any job description in seconds.' },
             ].map((f) => (
               <Card key={f.label} className="space-y-2">
@@ -205,8 +207,8 @@ export default function OnboardingFlow({
     },
     {
       id: 'how-it-works',
-      title: 'How Latexy works',
-      description: 'Three simple steps to a tailored resume',
+      title: t('onboarding.workflowTitle'),
+      description: t('onboarding.workflowDescription'),
       icon: <Zap className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="space-y-5">
@@ -217,8 +219,8 @@ export default function OnboardingFlow({
           <div className="space-y-3">
             {[
               { n: 1, title: 'Start your resume', desc: 'Pick a template, import an existing file, or write LaTeX in the Studio.' },
-              { n: 2, title: 'Tailor with AI', desc: 'Paste the job description — Latexy rewrites and optimizes for ATS in seconds.' },
-              { n: 3, title: 'Compile & apply', desc: 'Get a clean, typeset PDF with a live ATS score, then send it out with confidence.' },
+              { n: 2, title: 'Tailor with AI', desc: 'Paste the job description — Latexy drafts role-specific edits for you to review.' },
+              { n: 3, title: 'Compile & apply', desc: 'Get a clean, typeset PDF with Latexy’s heuristic document score and detailed checks.' },
             ].map((s) => (
               <Card key={s.n} className="flex items-start gap-4">
                 <span className="grid place-items-center w-8 h-8 shrink-0 rounded-[var(--radius-pill)] bg-accent text-accent-fg text-sm font-semibold">
@@ -310,13 +312,13 @@ export default function OnboardingFlow({
               onClick={onComplete}
               className="w-full rounded-[var(--radius-md)] bg-accent py-3 text-base font-semibold text-accent-fg transition hover:brightness-110"
             >
-              Create my first resume
+              {t('onboarding.createFirst')}
             </button>
             <button
               onClick={onSkip}
               className="w-full py-1.5 text-sm text-fg-2 transition hover:text-fg"
             >
-              Skip and explore on my own
+              {t('onboarding.skipExplore')}
             </button>
           </div>
         </div>
@@ -365,7 +367,7 @@ export default function OnboardingFlow({
         <div className="border-b border-line px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Eyebrow>Getting started</Eyebrow>
+              <Eyebrow>{t('onboarding.gettingStarted')}</Eyebrow>
               <h2 id={titleId} className="text-base font-semibold text-fg">
                 {steps[currentStep].title}
               </h2>
@@ -374,7 +376,7 @@ export default function OnboardingFlow({
               onClick={onSkip}
               className="text-sm text-fg-3 transition hover:text-fg-2"
             >
-              Skip
+              {t('onboarding.skip')}
             </button>
           </div>
 
@@ -438,7 +440,7 @@ export default function OnboardingFlow({
             }`}
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            {t('onboarding.back')}
           </button>
 
           <p className="text-xs font-mono text-fg-3">
@@ -450,7 +452,7 @@ export default function OnboardingFlow({
               onClick={nextStep}
               className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110"
             >
-              Next
+              {t('onboarding.next')}
               <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
