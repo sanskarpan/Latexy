@@ -1,5 +1,32 @@
 # Audit Todo — 2026-05-19
 
+> Historical audit snapshot. The unchecked observability program below predates
+> the current metrics, tracing, exporter, dashboard, alert, SLO, and runbook
+> implementation. Revalidate each item against `docs/observability/`, current
+> source, and GitHub epic #1621 before treating it as open work. The canonical
+> operating handoff is `docs/HANDOFF.md`.
+
+## Current observability reconciliation — 2026-08-31
+
+The unchecked boxes later in this file are preserved as the original May audit
+plan; they are not current TODOs. Current-source verification finds:
+
+| Area | Current status | Evidence |
+|---|---|---|
+| Backend metrics | Shipped | `backend/app/core/observability.py`, `/metrics`, request/task/business instrumentation |
+| Browser telemetry | Shipped with a deliberate architecture change | Browser events are ingested server-side; the nonexistent frontend Prometheus scrape target was removed. See `docs/observability/frontend-telemetry.md`. |
+| Request/job correlation and JSON logs | Shipped | `backend/app/middleware/request_context.py`, `backend/app/core/logging.py`, worker task context |
+| Distributed tracing | Shipped for backend, workers, data stores, and outbound HTTP; browser propagation is shipped without a browser span SDK | `backend/app/core/tracing.py`, `frontend/src/lib/telemetry.ts`, `docs/observability/tracing.md` |
+| Redis/Postgres exporters | Shipped in the production topology | `docker-compose.prod.yml`, `monitoring/prometheus.yml` |
+| Dashboards and alert rules | Shipped | provisioned Grafana dashboards and `monitoring/alert_rules.yml` |
+| SLOs and incident runbooks | Shipped | `docs/observability/slos.md`, `docs/observability/runbooks.md` |
+| Alert delivery destination | Operator configuration required | Delivery is rendered from secrets at deploy time; repository defaults intentionally cannot contain the real on-call destination. See `docs/observability/alert-delivery.md`. |
+
+Accordingly, no repository implementation item in the historical Observability
+Program below should be reopened without a fresh reproduction. The remaining
+alert-destination step is an external deployment responsibility, not missing
+application code.
+
 ## Scope Covered
 - Backend: FastAPI routes, services, models, Celery workers, Redis integration, Alembic/test harness
 - Frontend: Next.js app router pages, shared components, hooks, unit tests, Playwright flows
