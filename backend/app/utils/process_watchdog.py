@@ -73,4 +73,3 @@ class ProcessWatchdog:
         except (OSError, ProcessLookupError):
             # The child may have exited between the last stdout read and this check.
             return
-
