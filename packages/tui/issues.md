@@ -1,5 +1,10 @@
 # TUI audit — round 4
 
+> Historical audit evidence. Its “Remaining” and published-version statements
+> describe the audited revision, not the current package. Use `docs/TUI_PRD.md`,
+> `packages/tui/README.md`, current source/tests, and GitHub issues #1668/#1670
+> for current implementation and delivery status.
+
 Fourth adversarial pass over `packages/tui`. Rounds 1–3 (PR #1075) found 43 defects
 and closed #1065–#1072.
 
