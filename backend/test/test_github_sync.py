@@ -20,6 +20,21 @@ class TestGitHubSyncService:
     def service(self):
         return GitHubSyncService()
 
+    def test_repo_url_keeps_fixed_origin_and_quotes_components(self, service):
+        path = urllib.parse.quote("../../resume.tex?download=1#fragment", safe="/")
+        url = service._repo_url(
+            "owner/../@127.0.0.1",
+            "resume?next=//169.254.169.254#metadata",
+            f"/contents/{path}",
+        )
+        parsed = urllib.parse.urlsplit(url)
+        assert parsed.hostname == "api.github.com"
+        assert parsed.username is None
+        assert parsed.query == ""
+        assert parsed.fragment == ""
+        assert "%2F" in parsed.path
+        assert "%3F" in parsed.path
+
     @pytest.mark.asyncio
     async def test_ensure_repo_already_exists(self, service):
         """If repo already exists (200), no creation call is made."""
