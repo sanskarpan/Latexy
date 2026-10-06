@@ -87,7 +87,7 @@ import ContrastToggle from '@/components/theme/ContrastToggle'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
-import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
+import { useSpellCheck } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import MobileEditor from '@/components/MobileEditor'
@@ -755,6 +755,12 @@ export default function ResumeEditPage() {
   const flags = useFeatureFlags()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  const dictionaryScope = {
+    ownerId: sessionUserId,
+    authToken: sessionData?.session?.token ?? null,
+    // useRequireAuth preserves a known owner during transient refresh/error.
+    confirmed: sessionUserId !== null || (!sessionLoading && !sessionError),
+  }
 
   // Core state
   const [title, setTitle] = useState('')
@@ -870,9 +876,17 @@ export default function ResumeEditPage() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('latexy_spell_check') === 'true'
   })
-  const { issues: spellCheckIssues, loading: spellCheckLoading } = useSpellCheck(
+  const {
+    issues: spellCheckIssues,
+    loading: spellCheckLoading,
+    getPersonalDictionary,
+    addWordToDictionary,
+  } = useSpellCheck(
     latexContent,
     spellCheckEnabled,
+    'en-US',
+    5000,
+    dictionaryScope,
   )
 
   // Deep analysis (Layer 2)
@@ -3603,6 +3617,8 @@ export default function ResumeEditPage() {
               spellCheckIssues={spellCheckIssues}
               spellCheckEnabled={spellCheckEnabled}
               spellCheckLoading={spellCheckLoading}
+              getPersonalDictionary={getPersonalDictionary}
+              onAddWordToDictionary={addWordToDictionary}
               onSpellCheckToggle={() => {
                 setSpellCheckEnabled((prev) => {
                   const next = !prev
