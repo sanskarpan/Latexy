@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { Loader2, Stamp } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
+import { downloadBlob } from '@/lib/download'
 
 interface WatermarkDownloadPopoverProps {
   getLatex: () => string
@@ -48,12 +49,7 @@ export default function WatermarkDownloadPopover({
         return
       }
       const blob = await apiClient.downloadPdf(job_id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${filename.replace(/\s+/g, '_')}_${watermarkText.replace(/\s+/g, '_')}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, `${filename.replace(/\s+/g, '_')}_${watermarkText.replace(/\s+/g, '_')}.pdf`)
       toast.success('Watermarked PDF downloaded')
       setOpen(false)
       setCustom('')
