@@ -41,8 +41,8 @@ the earlier instruction to defer commits and publication. Integration issue:
   leaves the required immutable image tag blank. The validator now supplies
   only a command-scoped current-commit tag for Compose rendering. Full static,
   Prometheus and Alertmanager checks pass; deployment validation stays strict.
-- Fresh strict-warning backend run found six failures. Investigation is active;
-  old backend pass counts do not certify this run.
+- Initial fresh strict-warning backend run found six failures; see the resolved
+  follow-up checkpoint below. Old backend counts were not used as certification.
 - The current registry audit found 40 advisories. Compatible dependency updates
   reduce that to one advisory in `braces@3.0.3`, which has no upstream release
   fixing [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
@@ -55,7 +55,7 @@ the earlier instruction to defer commits and publication. Integration issue:
 
 ## Subsequent independent review
 
-- Fresh frontend suite after the security follow-ups: 155 files / 988 tests
+- Fresh frontend suite after the security follow-ups: 155 files / 989 tests
   pass. The fresh sealed production bundle passes 25 owner-scoped browser
   regressions with zero retries, plus 13 Chromium/Firefox desktop/mobile quality
   checks (two desktop-only mobile-case skips). Linux five-engine CI is separate.
@@ -77,9 +77,32 @@ the earlier instruction to defer commits and publication. Integration issue:
 - Student checkout validates invalid academic addresses normally, but must not
   send a verification email when billing is unavailable. Independent review
   caught and corrected a proposed regression of that safeguard.
-- Backend database ownership remains an active strict-warning blocker. Recent
-  runs reduced the failures, but an unclosed asyncpg connection remains; neither
-  focused green tests nor suppressing warnings is acceptable certification.
+- Backend database ownership was traced to a chat test creating a pool on the
+  pytest loop and then replacing it during a TestClient portal-loop lifespan.
+  The framing test now uses isolated permission reads and an explicitly closed,
+  non-lifespan client; dedicated database-backed ACL tests remain. Websocket
+  protocol tests separately mock durable cancellation, whose DB behavior has
+  its own integration coverage.
+- Fresh complete, plain backend run: **4,219 passed / 5 skipped**, enforcing
+  `ResourceWarning`, `RuntimeWarning`, and pytest unraisable warnings as errors.
+  No diagnostic plugin or warning suppression was used for this acceptance run.
+  One unrelated Starlette deprecation notice remains visible.
+- The disposable browser launcher now generates Monaco assets from its own
+  dependencies before both development and production startup, rather than
+  copying ignored workspace assets. A fresh development copy passes the same
+  13 Chromium/Firefox quality checks with two desktop-only mobile-case skips.
+  Linux CI remains authoritative for the five-engine required browser context.
+
+The source checkpoint for these local results is
+`abc09b791c54c1279df27aa9c08caef22b750381`. This ledger update changes only
+documentation; protected CI still must validate its final published head.
+
+Fresh log locations (ephemeral, not repository artifacts):
+
+- `/tmp/latexy-publication-backend-final-plain-2026-10-06.log`
+- `/tmp/latexy-publication-frontend-final-monaco-2026-10-06.log`
+- `/tmp/latexy-publication-security-browser-regressions-2026-10-06.log`
+- `/tmp/latexy-publication-clean-dev-quality-2026-10-06.log`
 
 ## Security scan follow-ups
 
