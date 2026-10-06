@@ -10,6 +10,7 @@ Environment variables are loaded from the Modal secrets "latexy-backend-secrets"
 DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 """
 
+import base64
 from pathlib import Path
 
 import modal
@@ -180,6 +181,22 @@ test -s "$probe/font-probe.pdf"
 ! grep -Eq 'Missing character|Font shape .*undefined|Some font shapes were not available|Fatal error|^! ' "$probe/font-probe.log"
 """
 
+
+def _encode_shell_script(script: str) -> str:
+    """Transport a multiline script as one safe Dockerfile ``RUN`` command.
+
+    Modal emits each ``run_commands`` argument after a literal ``RUN``. A raw
+    multiline string therefore turns each subsequent line into a Dockerfile
+    instruction. Base64 keeps the generated command on one line while
+    preserving the script byte-for-byte, including shell metacharacters and
+    control characters; only the encoded payload is interpolated.
+    """
+    encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    return f"printf '%s' '{encoded}' | base64 -d | sh"
+
+
+_WARM_TEX_CACHE_COMMAND = _encode_shell_script(_WARM_TEX_CACHE)
+
 # ---------------------------------------------------------------------------
 # Images
 # ---------------------------------------------------------------------------
@@ -198,7 +215,7 @@ test -s "$probe/font-probe.pdf"
 texlive_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE, *_APT_LATEX, "unzip")
-    .run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE)
+    .run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)
 )
 
 api_image = (
