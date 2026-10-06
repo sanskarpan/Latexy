@@ -1,16 +1,15 @@
+#!/bin/bash
 # =====================================================
 # FILE: setup.sh - Development Setup Script
 # =====================================================
-
-#!/bin/bash
 set -e
 
 echo "🚀 Setting up ATS Resume Optimizer - Phase 1"
 
-# Check if Python 3.11+ is installed
+# Check if Python 3.12+ is installed
 python_version=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-if [[ $(echo "$python_version >= 3.11" | bc) -eq 0 ]]; then
-    echo "❌ Python 3.11 or higher is required. Current version: $python_version"
+if [[ $(echo "$python_version >= 3.12" | bc) -eq 0 ]]; then
+    echo "❌ Python 3.12 or higher is required. Current version: $python_version"
     exit 1
 fi
 
@@ -19,14 +18,10 @@ echo "📦 Creating virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
+# Install the reproducible development environment.
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
-pip install -r requirements.txt
-
-# Install development dependencies
-echo "📦 Installing development dependencies..."
-pip install pytest pytest-asyncio httpx
+pip install --require-hashes -r requirements-dev.lock
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
