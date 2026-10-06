@@ -75,4 +75,3 @@ async def test_portfolio_dns_lookups_run_concurrently_off_event_loop():
 
     assert response.verified is True
     assert to_thread.await_count == 2
-
