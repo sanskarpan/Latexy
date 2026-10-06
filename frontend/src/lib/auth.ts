@@ -10,10 +10,78 @@
  */
 
 import { betterAuth } from 'better-auth'
+import { genericOAuth, twoFactor } from 'better-auth/plugins'
+import { createAuthMiddleware } from 'better-auth/api'
+import { deleteSessionCookie } from 'better-auth/cookies'
+import { passkey } from '@better-auth/passkey'
 import { Pool } from 'pg'
 import { assertEmailTransportConfigured, sendEmail } from './email'
+import { handlePasskeyTwoFactorAfterHook } from './passkey-two-factor'
+import { oidcConfiguration, readAdditionalTrustedOrigins } from './oidc-config'
 
 const APP_URL = process.env.BETTER_AUTH_URL || 'http://localhost:5180'
+
+/**
+ * WebAuthn is origin-bound. Keep the relying-party configuration explicit in
+ * production, while still making the two supported local dev ports usable.
+ * PASSKEY_ORIGINS is a comma-separated allow-list so a domain cutover can be
+ * rolled out without invalidating credentials registered on the old origin.
+ */
+function readPasskeyOrigins(): string[] {
+  const configured = (process.env.PASSKEY_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+  if (configured.length > 0) {
+    for (const origin of configured) {
+      let parsed: URL
+      try {
+        parsed = new URL(origin)
+      } catch {
+        throw new Error('PASSKEY_ORIGINS must contain valid absolute origin URLs.')
+      }
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+        throw new Error('PASSKEY_ORIGINS must contain origin-only http(s) URLs.')
+      }
+      if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
+        throw new Error('PASSKEY_ORIGINS must use HTTPS in production.')
+      }
+    }
+    return configured
+  }
+
+  const normalizedAppUrl = APP_URL.replace(/\/$/, '')
+  let appUrl: URL
+  try { appUrl = new URL(normalizedAppUrl) } catch { throw new Error('BETTER_AUTH_URL must be a valid absolute URL for passkey setup.') }
+  if (!['http:', 'https:'].includes(appUrl.protocol) || appUrl.pathname !== '/' || appUrl.search || appUrl.hash) {
+    throw new Error('BETTER_AUTH_URL must be an origin-only http(s) URL for passkey setup.')
+  }
+  if (process.env.NODE_ENV === 'production' && appUrl.protocol !== 'https:') {
+    throw new Error('BETTER_AUTH_URL must use HTTPS in production for passkeys.')
+  }
+  const origins = new Set<string>([normalizedAppUrl])
+  if (process.env.NODE_ENV !== 'production') {
+    origins.add('http://localhost:5180')
+    origins.add('http://localhost:3000')
+  }
+  return [...origins]
+}
+
+function readPasskeyRpId(): string {
+  const configured = process.env.PASSKEY_RP_ID?.trim()
+  const candidate = configured || (() => {
+    try { return new URL(APP_URL).hostname } catch { throw new Error('BETTER_AUTH_URL must be a valid absolute URL for passkey setup.') }
+  })()
+  // rpID is a hostname (or a registrable suffix), never a URL, path, or port.
+  if (!/^[a-z0-9.-]+$/i.test(candidate) || candidate.includes('..') || candidate.startsWith('.') || candidate.endsWith('.')) {
+    throw new Error('PASSKEY_RP_ID must be a valid hostname, not a URL or path.')
+  }
+  return candidate
+}
+
+const PASSKEY_RP_ID = readPasskeyRpId()
+const PASSKEY_ORIGINS = readPasskeyOrigins()
+
 
 /** Shared connection pool — also used by the auth rate-limit gate. */
 export const pool = new Pool({
@@ -98,7 +166,7 @@ export const auth = betterAuth({
     requireEmailVerification: false,
     // Password reset — provider-agnostic. `url` already carries the token and
     // the caller's `redirectTo` (our /reset-password page). Degrades to a
-    // console-logged dev link when RESEND_API_KEY is unset (see lib/email.ts).
+    // in-memory dev preview when RESEND_API_KEY is unset (see lib/email.ts).
     sendResetPassword: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
@@ -132,20 +200,14 @@ export const auth = betterAuth({
     },
   },
 
-  // Second, per-process layer of rate limiting on the Next-server auth
-  // endpoints (the FastAPI limiter does not cover these). The authoritative,
-  // cross-instance limit is the atomic Postgres gate that runs in front of
-  // `auth.handler` — see lib/auth-rate-limit.ts and app/api/auth/[...all].
-  //
-  // Better Auth's limiter is deliberately left on its default in-memory
-  // storage: its interface reads the counter on request and writes it on
-  // response, so no storage backend can make it correct under concurrency,
-  // and a DB-backed `customStorage` additionally lets a DB blip 500 every
-  // auth route (errors propagate straight out of `auth.handler`).
+  // The authoritative cross-instance limiter is the atomic Postgres gate in
+  // front of `auth.handler` (lib/auth-rate-limit.ts). Better Auth's built-in
+  // limiter is intentionally disabled: it is per-process/read-then-write and
+  // its single global 20/minute budget can lock an authenticated user out of
+  // `get-session` during ordinary navigation even though sensitive endpoints
+  // already have tighter, atomic path-specific budgets in the outer gate.
   rateLimit: {
-    enabled: true,
-    window: 60, // seconds
-    max: 20, // requests per window per IP (Better Auth applies stricter rules to sensitive paths internally)
+    enabled: false,
   },
 
   // Social OAuth providers — only active when both client ID + secret are provided
@@ -168,6 +230,58 @@ export const auth = betterAuth({
       : {}),
   },
 
+  plugins: [
+    ...(oidcConfiguration
+      ? [genericOAuth({ config: [oidcConfiguration.provider] })]
+      : []),
+    twoFactor({
+      issuer: 'Latexy',
+      // OAuth/passkey-only users have no password to provide. Better Auth
+      // still requires one automatically when a credential account exists.
+      allowPasswordless: true,
+      // Keep this explicit: backup codes must never be stored as plaintext,
+      // even if Better Auth changes its plugin default in a future release.
+      backupCodeOptions: {
+        storeBackupCodes: 'encrypted',
+      },
+      // `users` is an existing snake_case application table. Plugin schema
+      // overrides are column-name strings (not field descriptors).
+      schema: {
+        user: {
+          fields: {
+            twoFactorEnabled: 'two_factor_enabled',
+          },
+        },
+      },
+      // Account lockout is intentionally enabled and bounded across all 2FA
+      // methods. This protects the pending challenge as well as the account.
+      accountLockout: {
+        enabled: true,
+        maxFailedAttempts: 10,
+        durationSeconds: 15 * 60,
+      },
+      twoFactorCookieMaxAge: 10 * 60,
+      trustDeviceMaxAge: 30 * 24 * 60 * 60,
+    }),
+    passkey({
+      rpID: PASSKEY_RP_ID,
+      rpName: 'Latexy',
+      origin: PASSKEY_ORIGINS,
+    }),
+  ],
+
+  // Better Auth's two-factor plugin intercepts password sign-in, but the
+  // passkey plugin creates a session directly and does not run that hook. If
+  // the account has TOTP enabled, turn that just-created session into the
+  // same signed, short-lived challenge used by the built-in TOTP endpoints.
+  // This keeps the gate in the server session-issuance path; the browser only
+  // navigates to the challenge page after the server confirms the session was
+  // withheld.
+  hooks: {
+    after: createAuthMiddleware(async (ctx) =>
+      handlePasskeyTwoFactorAfterHook(ctx, () => deleteSessionCookie(ctx, true))),
+  },
+
   secret: getAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:5180',
 
@@ -180,6 +294,7 @@ export const auth = betterAuth({
     'https://latexy.xyz',
     'https://www.latexy.xyz',
     'https://latexy-frontend-tau.vercel.app',
+    ...readAdditionalTrustedOrigins(),
   ],
 
   // Session configuration
@@ -187,6 +302,11 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24,     // refresh if used within 1 day of expiry
   },
+
+  // The passkey plugin's built-in delete/update endpoints use an ordinary
+  // session middleware. Add a server-side freshness gate so a stolen but old
+  // session cannot silently remove or rename a login credential. Also prevent
+  // deleting the last available login method for passwordless accounts.
 })
 
 // ─── Email templates ─────────────────────────────────────────────────────────
