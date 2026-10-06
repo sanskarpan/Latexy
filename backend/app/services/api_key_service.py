@@ -3,7 +3,7 @@ API Key Management Service for Phase 10 - BYOK System
 Handles secure storage, validation, and management of user API keys
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import select, update
@@ -21,6 +21,22 @@ from .llm_provider_service import (
 )
 
 logger = get_logger(__name__)
+
+
+def _safe_validation_error(detail: Dict[str, str]) -> str:
+    """Return a provider-independent validation message.
+
+    SDK/provider error bodies can contain request URLs, account identifiers, or
+    other sensitive diagnostics.  They are useful in server-side telemetry but
+    must not be relayed through BYOK response models.
+    """
+    messages = {
+        "format": "The API key format is invalid.",
+        "rejected": "The provider rejected this API key.",
+        "network": "The provider could not be reached to validate this key.",
+        "unknown": "The provider validation failed unexpectedly.",
+    }
+    return messages.get(detail.get("kind", "unknown"), messages["unknown"])
 
 
 class APIKeyEncryption:
@@ -101,7 +117,7 @@ class APIKeyService:
                 # Update existing key
                 existing.encrypted_key = self.encryption.encrypt(api_key)
                 existing.key_name = key_name or existing.key_name
-                existing.last_validated = datetime.utcnow() if validate_key else None
+                existing.last_validated = datetime.now(timezone.utc) if validate_key else None
                 await db.commit()
 
                 # Update provider in service
@@ -124,7 +140,7 @@ class APIKeyService:
                     encrypted_key=encrypted_key,
                     key_name=key_name or f"{provider.title()} API Key",
                     is_active=True,
-                    last_validated=datetime.utcnow() if validate_key else None
+                    last_validated=datetime.now(timezone.utc) if validate_key else None
                 )
 
                 db.add(new_key)
@@ -143,11 +159,11 @@ class APIKeyService:
                 }
 
         except Exception as e:
-            logger.error(f"Error adding API key: {e}")
+            logger.error("Error adding API key (%s)", type(e).__name__)
             await db.rollback()
             return {
                 "success": False,
-                "error": f"Failed to add API key: {str(e)}"
+                "error": "Failed to add API key. Please try again."
             }
 
     async def get_user_api_keys(self, db: AsyncSession, user_id: str) -> List[Dict[str, any]]:
@@ -175,7 +191,7 @@ class APIKeyService:
             ]
 
         except Exception as e:
-            logger.error(f"Error getting user API keys: {e}")
+            logger.error("Error getting user API keys (%s)", type(e).__name__)
             return []
 
     async def delete_api_key(self, db: AsyncSession, user_id: str, key_id: str) -> Dict[str, any]:
@@ -210,11 +226,11 @@ class APIKeyService:
             }
 
         except Exception as e:
-            logger.error(f"Error deleting API key: {e}")
+            logger.error("Error deleting API key (%s)", type(e).__name__)
             await db.rollback()
             return {
                 "success": False,
-                "error": f"Failed to delete API key: {str(e)}"
+                "error": "Failed to delete API key. Please try again."
             }
 
     async def validate_api_key(self, provider: str, api_key: str) -> Dict[str, any]:
@@ -235,7 +251,7 @@ class APIKeyService:
                 detail = getattr(provider_instance, "last_validation_error", None) or {}
                 return {
                     "valid": False,
-                    "error": detail.get("message", "API key validation failed with provider"),
+                    "error": _safe_validation_error(detail),
                     "error_kind": detail.get("kind", "unknown"),
                 }
 
@@ -253,11 +269,11 @@ class APIKeyService:
                     "cost_per_1k_output_tokens": capabilities.cost_per_1k_output_tokens,
                 },
                 "available_models": models[:10],  # Limit to first 10 models
-                "validated_at": datetime.utcnow().isoformat()
+                "validated_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:
-            logger.error(f"Error validating API key for {provider}: {e}")
+            logger.error("Error validating API key for %s (%s)", provider, type(e).__name__)
             return {
                 "valid": False,
                 "error": "Unexpected error while validating the key — please try again in a moment.",
@@ -283,7 +299,7 @@ class APIKeyService:
             return None
 
         except Exception as e:
-            logger.error(f"Error getting user provider key: {e}")
+            logger.error("Error getting user provider key (%s)", type(e).__name__)
             return None
 
     async def update_provider_in_service(self, user_id: str, provider: str, api_key: str):
@@ -303,7 +319,7 @@ class APIKeyService:
             logger.info(f"Updated provider {provider} for user {user_id}")
 
         except Exception as e:
-            logger.error(f"Error updating provider in service: {e}")
+            logger.error("Error updating provider in service (%s)", type(e).__name__)
 
     async def load_user_providers(self, db: AsyncSession, user_id: str):
         """Load all active providers for a user into the service"""
@@ -321,12 +337,17 @@ class APIKeyService:
                     api_key = self.encryption.decrypt(key.encrypted_key)
                     await self.update_provider_in_service(user_id, key.provider, api_key)
                 except Exception as e:
-                    logger.error(f"Error loading provider {key.provider} for user {user_id}: {e}")
+                    logger.error(
+                        "Error loading provider %s for user %s (%s)",
+                        key.provider,
+                        user_id,
+                        type(e).__name__,
+                    )
 
             logger.info(f"Loaded {len(keys)} providers for user {user_id}")
 
         except Exception as e:
-            logger.error(f"Error loading user providers: {e}")
+            logger.error("Error loading user providers (%s)", type(e).__name__)
 
     def mask_api_key(self, provider: str) -> str:
         """Return a masked version of the API key for display"""
@@ -352,7 +373,7 @@ class APIKeyService:
             return user_providers
 
         except Exception as e:
-            logger.error(f"Error getting provider usage stats: {e}")
+            logger.error("Error getting provider usage stats (%s)", type(e).__name__)
             return {}
 
     async def test_provider_connection(self, db: AsyncSession, user_id: str, provider: str) -> Dict[str, any]:
@@ -374,7 +395,7 @@ class APIKeyService:
                         UserAPIKey.user_id == user_id,
                         UserAPIKey.provider == provider,
                         UserAPIKey.is_active
-                    ).values(last_validated=datetime.utcnow())
+                    ).values(last_validated=datetime.now(timezone.utc))
                 )
                 await db.commit()
 
@@ -382,14 +403,14 @@ class APIKeyService:
                 "success": validation_result["valid"],
                 "provider": provider,
                 "validation_details": validation_result,
-                "tested_at": datetime.utcnow().isoformat()
+                "tested_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:
-            logger.error(f"Error testing provider connection: {e}")
+            logger.error("Error testing provider connection (%s)", type(e).__name__)
             return {
                 "success": False,
-                "error": f"Connection test failed: {str(e)}"
+                "error": "Connection test failed. Please try again."
             }
 
     def get_supported_providers(self) -> List[Dict[str, any]]:
@@ -422,7 +443,11 @@ class APIKeyService:
                         "key_format": self.get_key_format_info(provider_name)
                     })
                 except Exception as e:
-                    logger.error(f"Error getting provider info for {provider_name}: {e}")
+                    logger.error(
+                        "Error getting provider info for %s (%s)",
+                        provider_name,
+                        type(e).__name__,
+                    )
 
         return providers
 
