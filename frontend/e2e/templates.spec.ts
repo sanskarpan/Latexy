@@ -1,14 +1,28 @@
 import { test, expect } from '@playwright/test'
 
 // ------------------------------------------------------------------ //
-//  Template Gallery — /workspace/new (no API mocking)                 //
+//  Template Gallery — /workspace/new basic mounted states             //
 // ------------------------------------------------------------------ //
 
 test.describe('Template Gallery Page (/workspace/new)', () => {
 
+  const SESSION = {
+    session: { id: 'basic-s', userId: 'basic-u', token: 'basic-token', expiresAt: '2099-01-01T00:00:00Z' },
+    user: { id: 'basic-u', email: 'basic@example.com', name: 'Basic User' },
+  }
+
   test.beforeEach(async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SESSION) })
+    )
+    await page.route((url) => url.pathname === '/templates/categories', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    )
+    await page.route((url) => url.pathname === '/templates/' || url.pathname === '/templates', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    )
     await page.route('**/ws/**', route => route.abort())
-    await page.goto('/workspace/new')
+    await page.goto('/workspace/new', { waitUntil: 'domcontentloaded' })
   })
 
   test('page loads without runtime errors', async ({ page }) => {
