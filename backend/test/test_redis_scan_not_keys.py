@@ -73,5 +73,7 @@ def test_internal_probe_jobs_are_not_reaped_as_user_work(job_id):
     Treating them as stuck user jobs filled production logs with "marking
     failed" for work nobody submitted.
     """
-    assert job_id.startswith(("health_check_", "cleanup_", "job_cleanup_"))
-    assert 'job_id_to_check.startswith(("health_check_", "cleanup_", "job_cleanup_"))' in SOURCE
+    from app.workers.cleanup_worker import _SYNTHETIC_JOB_PREFIXES
+
+    assert job_id.startswith(_SYNTHETIC_JOB_PREFIXES)
+    assert "job_id_to_check.startswith(_SYNTHETIC_JOB_PREFIXES)" in SOURCE
