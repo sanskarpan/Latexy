@@ -53,7 +53,7 @@ class AnalyticsService:
             return True
 
         except Exception as e:
-            logger.error(f"Error tracking event {event_type}: {e}")
+            logger.error("Error tracking event %s (%s)", event_type, type(e).__name__)
             await db.rollback()
             return False
 
@@ -88,7 +88,7 @@ class AnalyticsService:
                 await redis_manager.redis_client.expire(user_key, 86400 * 30)  # 30 days
 
         except Exception as e:
-            logger.error(f"Error caching event: {e}")
+            logger.error("Error caching event (%s)", type(e).__name__)
 
     async def get_user_analytics(
         self,
@@ -193,7 +193,7 @@ class AnalyticsService:
         except Exception as e:
             # Do NOT mask infra failures as "no data" — let the route return 500
             # rather than a misleading empty/404 result.
-            logger.error(f"Error getting user analytics: {e}")
+            logger.error("Error getting user analytics (%s)", type(e).__name__)
             raise
 
     async def get_user_analytics_timeseries(
@@ -410,7 +410,7 @@ class AnalyticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting user analytics timeseries: {e}")
+            logger.error("Error getting user analytics timeseries (%s)", type(e).__name__)
             return {}
 
     async def get_system_analytics(
@@ -505,7 +505,7 @@ class AnalyticsService:
         except Exception as e:
             # Surface infra failures instead of returning {} (which would 500 via
             # Pydantic validation with no diagnostic).
-            logger.error(f"Error getting system analytics: {e}")
+            logger.error("Error getting system analytics (%s)", type(e).__name__)
             raise
 
     async def _get_real_time_metrics(self) -> Dict[str, Any]:
@@ -559,7 +559,7 @@ class AnalyticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting real-time metrics: {e}")
+            logger.error("Error getting real-time metrics (%s)", type(e).__name__)
             return {}
 
     async def get_conversion_funnel(
@@ -647,7 +647,7 @@ class AnalyticsService:
 
         except Exception as e:
             # Surface infra failures instead of returning {}.
-            logger.error(f"Error getting conversion funnel: {e}")
+            logger.error("Error getting conversion funnel (%s)", type(e).__name__)
             raise
 
     async def track_compilation_event(
