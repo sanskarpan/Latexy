@@ -22,7 +22,7 @@ from httpx import AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Optimization
+from app.database.models import Optimization, Resume
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -519,6 +519,83 @@ class TestAutoSaveWorker:
         assert rows[0].is_checkpoint is True
         assert rows[0].is_auto_save is True
         assert rows[0].optimized_latex == _LATEX
+
+    async def test_generated_content_persistence_is_owner_scoped(
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
+    ):
+        resume_id = await _create_resume(client, auth_headers)
+        owner_id = await _get_user_id(db_session, auth_headers)
+
+        from app.workers.auto_save_worker import _persist_resume_content
+
+        assert await _persist_resume_content(
+            resume_id, owner_id, _LATEX_V2, expected_latex_content=_LATEX, session_factory=db_session_factory
+        ) is True
+        resume = await db_session.get(Resume, resume_id)
+        await db_session.refresh(resume)
+        assert resume.latex_content == _LATEX_V2
+
+        assert await _persist_resume_content(
+            resume_id, str(uuid.uuid4()), _LATEX, expected_latex_content=_LATEX_V2, session_factory=db_session_factory
+        ) is False
+        await db_session.refresh(resume)
+        assert resume.latex_content == _LATEX_V2
+
+    async def test_generated_content_does_not_overwrite_edit_after_dispatch(
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
+    ):
+        """A worker completion with an old dispatch snapshot becomes a recoverable conflict."""
+        resume_id = await _create_resume(client, auth_headers)
+        owner_id = await _get_user_id(db_session, auth_headers)
+
+        from app.workers.auto_save_worker import ResumePersistenceConflict, _persist_resume_content
+
+        # The job captured this source before the user edited the document.
+        dispatched_source = _LATEX
+        edited = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={"latex_content": _LATEX_V2, "expected_latex_content": dispatched_source},
+        )
+        assert edited.status_code == 200, edited.text
+        # Completion carrying the old dispatch snapshot must not clobber the
+        # user's edit; optimized output remains in the job result for recovery.
+        with pytest.raises(ResumePersistenceConflict):
+            await _persist_resume_content(
+                resume_id, owner_id, r"\documentclass{article}\begin{document}Optimized\end{document}",
+                expected_latex_content=dispatched_source,
+                session_factory=db_session_factory,
+            )
+        resume = await db_session.get(Resume, resume_id)
+        await db_session.refresh(resume)
+        assert resume.latex_content == _LATEX_V2
+
+    async def test_generated_content_requires_dispatch_snapshot(
+        self, auth_headers: dict, client: AsyncClient
+    ):
+        resume_id = await _create_resume(client, auth_headers)
+        # The synchronous worker boundary fails closed before opening a DB
+        # session when a caller omits the immutable dispatch snapshot.
+        from app.workers.auto_save_worker import persist_resume_content
+
+        with pytest.raises(ValueError, match="expected_latex_content is required"):
+            persist_resume_content(resume_id, str(uuid.uuid4()), _LATEX, None)
+
+    async def test_generated_content_replay_is_idempotent(
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
+    ):
+        resume_id = await _create_resume(client, auth_headers)
+        owner_id = await _get_user_id(db_session, auth_headers)
+        from app.workers.auto_save_worker import _persist_resume_content
+
+        assert await _persist_resume_content(
+            resume_id, owner_id, _LATEX_V2, expected_latex_content=_LATEX, session_factory=db_session_factory
+        ) is True
+        # A broker retry carries the same generated source but may observe a
+        # source no longer equal to the original dispatch snapshot.
+        assert await _persist_resume_content(
+            resume_id, owner_id, _LATEX_V2, expected_latex_content=_LATEX, session_factory=db_session_factory
+        ) is True
 
     async def test_auto_save_dedup_within_5_min(
         self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
