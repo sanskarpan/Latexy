@@ -78,7 +78,7 @@ class ReferenceService:
             if match.group(1).casefold() in {"comment", "preamble", "string"}:
                 cursor = index
                 continue
-            key_match = re.match(r"@\w+\s*[({]\s*([^,\s]+)\s*,", raw, re.I)
+            key_match = re.match(r"@\w++\s*+[({]\s*+([^,\s]++)\s*+,", raw, re.I)
             if not key_match:
                 raise ValueError("BibTeX entry is missing a cite key")
             entries.append(
