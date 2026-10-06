@@ -10,10 +10,21 @@
  *  - Aggregate stats (members, resumes, compilations)
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
-import { apiClient, TenantResponse, MemberResponse, TenantStats, DomainVerifyResponse } from '@/lib/api-client'
+import {
+  apiClient,
+  type CohortSubmission,
+  type DomainVerifyResponse,
+  type MemberResponse,
+  type TenantCohort,
+  type TenantResponse,
+  type TenantStats,
+} from '@/lib/api-client'
 import { applyTenantTheme } from '@/lib/tenant-theme'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
+import SessionLoadError from '@/components/SessionLoadError'
 
 // ── Minimal icon components ───────────────────────────────────────────────────
 
@@ -34,19 +45,40 @@ function Badge({ label, color = 'zinc' }: { label: string; color?: string }) {
   )
 }
 
+function safeHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TenantAdminPage() {
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const [tenants, setTenants] = useState<TenantResponse[] | null>(null)
   const [selected, setSelected] = useState<TenantResponse | null>(null)
   const [members, setMembers] = useState<MemberResponse[]>([])
   const [stats, setStats] = useState<TenantStats | null>(null)
+  const [cohorts, setCohorts] = useState<TenantCohort[]>([])
+  const [cohortSubmissions, setCohortSubmissions] = useState<Record<string, CohortSubmission[]>>({})
+  const [newCohortName, setNewCohortName] = useState('')
+  const [creatingCohort, setCreatingCohort] = useState(false)
+  const [inviteCohortId, setInviteCohortId] = useState('')
   const [dnsInfo, setDnsInfo] = useState<DomainVerifyResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [tenantListError, setTenantListError] = useState<string | null>(null)
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [membersError, setMembersError] = useState<string | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
+  const [canProvisionTenant, setCanProvisionTenant] = useState(false)
 
   // Branding form state
   const [name, setName] = useState('')
@@ -59,44 +91,80 @@ export default function TenantAdminPage() {
   const [newName, setNewName] = useState('')
   const [newSlug, setNewSlug] = useState('')
   const [creating, setCreating] = useState(false)
+  const safeLogoUrl = safeHttpUrl(logoUrl)
+  const detailRequestRef = useRef(0)
+  const selectedTenantIdRef = useRef<string | null>(null)
 
   const loadTenants = useCallback(async () => {
+    setLoading(true)
+    setTenantListError(null)
     try {
       const data = await apiClient.listMyTenants()
       setTenants(data)
-      if (data.length > 0 && !selected) {
-        selectTenant(data[0])
+      if (data.length > 0 && !selectedTenantIdRef.current) {
+        void selectTenant(data[0])
       }
-    } catch {
-      toast.error('Failed to load tenants')
+    } catch (error) {
+      setTenantListError(error instanceof Error ? error.message : 'Failed to load tenants')
     } finally {
       setLoading(false)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (sessionLoading) return
+    if (!session?.user) {
+      setLoading(false)
+      return
+    }
     loadTenants()
-  }, [loadTenants])
+    apiClient.getMe().then(
+      (account) => setCanProvisionTenant(account.role === 'admin' || account.plan === 'team'),
+      () => setCanProvisionTenant(false),
+    )
+  }, [loadTenants, session, sessionLoading])
 
   const selectTenant = useCallback(async (tenant: TenantResponse) => {
+    const requestId = ++detailRequestRef.current
+    selectedTenantIdRef.current = tenant.id
     setSelected(tenant)
     setName(tenant.name)
     setLogoUrl(tenant.logo_url ?? '')
     setPrimaryColor(tenant.primary_color ?? '#6d28d9')
     setCustomDomain(tenant.custom_domain ?? '')
     setDnsInfo(null)
+    setMembers([])
+    setStats(null)
+    setCohorts([])
+    setCohortSubmissions({})
+    setMembersLoading(true)
+    setStatsLoading(true)
+    setMembersError(null)
+    setStatsError(null)
 
-    try {
-      const [m, s] = await Promise.all([
-        apiClient.listTenantMembers(tenant.id),
-        apiClient.getTenantStats(tenant.id),
-      ])
-      setMembers(m)
-      setStats(s)
-    } catch {
-      toast.error('Failed to load tenant data')
+    const [membersResult, statsResult, cohortsResult] = await Promise.allSettled([
+      apiClient.listTenantMembers(tenant.id),
+      apiClient.getTenantStats(tenant.id),
+      apiClient.listTenantCohorts(tenant.id),
+    ])
+    if (requestId !== detailRequestRef.current) return
+
+    if (membersResult.status === 'fulfilled') {
+      setMembers(membersResult.value)
+    } else {
+      setMembersError(membersResult.reason instanceof Error ? membersResult.reason.message : 'Failed to load tenant members')
     }
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value)
+    } else {
+      setStatsError(statsResult.reason instanceof Error ? statsResult.reason.message : 'Failed to load tenant stats')
+    }
+    if (cohortsResult.status === 'fulfilled') setCohorts(cohortsResult.value)
+    setMembersLoading(false)
+    setStatsLoading(false)
   }, [])
+
+  useEffect(() => () => { detailRequestRef.current += 1 }, [])
 
   const saveBranding = async () => {
     if (!selected) return
@@ -129,15 +197,44 @@ export default function TenantAdminPage() {
     if (!selected || !inviteEmail.trim()) return
     setInviting(true)
     try {
-      const member = await apiClient.inviteTenantMember(selected.id, inviteEmail.trim(), inviteRole)
-      setMembers((prev) => [...prev, member])
+      const member = await apiClient.inviteTenantMember(
+        selected.id,
+        inviteEmail.trim(),
+        inviteRole,
+        inviteCohortId || undefined,
+      )
       setInviteEmail('')
-      toast.success(`${member.email} added as ${member.role}`)
+      toast.success(`Invitation sent to ${member.email}`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to invite member')
     } finally {
       setInviting(false)
+    }
+  }
+
+  const createCohort = async () => {
+    if (!selected || !newCohortName.trim()) return
+    setCreatingCohort(true)
+    try {
+      const cohort = await apiClient.createTenantCohort(selected.id, newCohortName.trim())
+      setCohorts((current) => [...current, cohort])
+      setNewCohortName('')
+      toast.success(`Cohort “${cohort.name}” created`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cohort creation failed')
+    } finally {
+      setCreatingCohort(false)
+    }
+  }
+
+  const loadCohortSubmissions = async (cohortId: string) => {
+    if (!selected) return
+    try {
+      const submissions = await apiClient.listCohortSubmissions(selected.id, cohortId)
+      setCohortSubmissions((current) => ({ ...current, [cohortId]: submissions }))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cohort submissions failed to load')
     }
   }
 
@@ -157,6 +254,15 @@ export default function TenantAdminPage() {
     try {
       const info = await apiClient.verifyTenantDomain(selected.id)
       setDnsInfo(info)
+      if (info.verified) {
+        setSelected((current) => current ? { ...current, domain_verified: true } : current)
+        setTenants((current) => current?.map((tenant) => (
+          tenant.id === selected.id ? { ...tenant, domain_verified: true } : tenant
+        )) ?? null)
+        toast.success('Domain ownership verified')
+      } else {
+        toast.info('DNS record is not visible yet. Add the record and retry.')
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to fetch DNS instructions')
@@ -182,13 +288,15 @@ export default function TenantAdminPage() {
     }
   }
 
-  if (loading) {
+  if (sessionLoading || (session && loading)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner />
       </div>
     )
   }
+  if (sessionError && !session) return <SessionLoadError area="Tenant management" />
+  if (!session?.user) return null
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 space-y-10">
@@ -198,16 +306,18 @@ export default function TenantAdminPage() {
           <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Admin</p>
           <h1 className="mt-1 text-xl font-semibold text-fg">Tenant Management</h1>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110"
-        >
-          + New Tenant
-        </button>
+        {canProvisionTenant && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110"
+          >
+            + New Tenant
+          </button>
+        )}
       </div>
 
       {/* Create tenant modal */}
-      {showCreate && (
+      {showCreate && canProvisionTenant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]">
           <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-bg p-6 shadow-[var(--shadow-2)]">
             <h2 className="mb-5 text-base font-semibold text-fg">Create New Tenant</h2>
@@ -268,7 +378,15 @@ export default function TenantAdminPage() {
         </div>
       )}
 
-      {!selected && (
+      {tenantListError && (
+        <div role="alert" className="rounded-[var(--radius-lg)] border border-err/30 bg-err/5 px-6 py-5 text-center">
+          <p className="text-sm font-semibold text-err">Tenant list could not be loaded</p>
+          <p className="mt-1 text-xs text-fg-2">{tenantListError}</p>
+          <button type="button" onClick={() => void loadTenants()} className="mt-3 rounded border border-line px-3 py-1.5 text-xs text-fg-2 hover:bg-surface-2">Retry</button>
+        </div>
+      )}
+
+      {!selected && !tenantListError && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-12 text-center text-fg-3">
           No tenants yet. Create one to get started.
         </div>
@@ -281,22 +399,23 @@ export default function TenantAdminPage() {
             {/* Stats cards */}
             <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
               <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Stats</p>
-              {stats ? (
+              {statsLoading ? (
+                <div className="flex justify-center py-4"><Spinner /></div>
+              ) : statsError ? (
+                <div role="alert" className="space-y-2 py-3 text-center">
+                  <p className="text-xs text-err">{statsError}</p>
+                  <button type="button" onClick={() => void selectTenant(selected)} className="text-xs text-err underline">Retry tenant data</button>
+                </div>
+              ) : stats ? (
                 <div className="space-y-3">
-                  {[
-                    { label: 'Members', value: stats.member_count },
-                    { label: 'Resumes', value: stats.total_resumes },
-                    { label: 'Compilations', value: stats.total_compilations },
-                  ].map(({ label, value }) => (
+                  {[{ label: 'Members', value: stats.member_count }].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between">
                       <span className="text-sm text-fg-3">{label}</span>
                       <span className="text-sm font-semibold text-fg">{value}</span>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="flex justify-center py-4"><Spinner /></div>
-              )}
+              ) : null}
             </div>
 
             {/* Tenant meta */}
@@ -339,9 +458,9 @@ export default function TenantAdminPage() {
                     placeholder="https://example.com/logo.png"
                     className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                   />
-                  {logoUrl && (
+                  {safeLogoUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoUrl} alt="Logo preview" className="mt-2 h-10 rounded object-contain" />
+                    <img src={safeLogoUrl} alt="Logo preview" className="mt-2 h-10 rounded object-contain" />
                   )}
                 </div>
                 <div>
@@ -383,16 +502,18 @@ export default function TenantAdminPage() {
                 />
                 <button
                   onClick={verifyDomain}
-                  disabled={!selected.custom_domain && !customDomain}
+                  disabled={!selected.custom_domain || customDomain !== selected.custom_domain}
                   className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 transition hover:text-fg disabled:opacity-30"
                 >
-                  DNS Setup
+                  {selected.domain_verified ? 'Recheck DNS' : 'Verify DNS'}
                 </button>
               </div>
 
               {dnsInfo && (
                 <div className="mt-4 rounded-[var(--radius-md)] border border-line bg-bg p-4 space-y-2 text-xs text-fg-2">
-                  <p className="font-medium text-fg">Add this DNS TXT record:</p>
+                  <p className="font-medium text-fg">
+                    {dnsInfo.verified ? 'Domain verified' : 'Add this DNS TXT record:'}
+                  </p>
                   <div>
                     <span className="text-fg-3">Name: </span>
                     <code className="text-accent-strong">{dnsInfo.txt_record_name}</code>
@@ -402,6 +523,72 @@ export default function TenantAdminPage() {
                     <code className="text-accent-strong">{dnsInfo.txt_record_value}</code>
                   </div>
                   <p className="text-fg-3 leading-relaxed">{dnsInfo.instructions}</p>
+                  <p className="text-fg-3 leading-relaxed">
+                    DNS verification proves ownership only. Your deployment operator must also attach this
+                    hostname to the frontend deployment and add it to the explicit authentication origins.
+                  </p>
+                </div>
+              )}
+              {customDomain !== (selected.custom_domain ?? '') && (
+                <p className="mt-2 text-xs text-fg-3">Save branding before verifying a changed domain.</p>
+              )}
+            </section>
+
+            {/* Career-centre cohorts */}
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Student Cohorts</p>
+              <div className="mb-4 flex gap-2">
+                <input
+                  value={newCohortName}
+                  onChange={(event) => setNewCohortName(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && void createCohort()}
+                  placeholder="e.g. Class of 2027"
+                  className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => void createCohort()}
+                  disabled={creatingCohort || !newCohortName.trim()}
+                  className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong disabled:opacity-40"
+                >
+                  {creatingCohort ? 'Creating…' : 'Create cohort'}
+                </button>
+              </div>
+              {cohorts.length === 0 ? (
+                <p className="text-sm text-fg-3">No cohorts yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {cohorts.map((cohort) => (
+                    <div key={cohort.id} className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-fg">{cohort.name}</p>
+                          <p className="text-xs text-fg-3">{cohort.member_count} students/admins · {cohort.resume_count} submissions</p>
+                        </div>
+                        <div className="flex gap-3 text-xs">
+                          <button type="button" onClick={() => void loadCohortSubmissions(cohort.id)} className="text-accent-strong underline">Refresh milestones</button>
+                          <Link href={`/workspaces/${cohort.id}/recruiter`} className="text-accent-strong underline">Review & comment</Link>
+                        </div>
+                      </div>
+                      {cohortSubmissions[cohort.id] && (
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="text-fg-3"><tr><th className="py-1">Student</th><th>Started</th><th>Candidate opened</th><th>Candidate downloaded</th></tr></thead>
+                            <tbody className="text-fg-2">
+                              {cohortSubmissions[cohort.id].map((submission) => (
+                                <tr key={submission.resume_id} className="border-t border-line">
+                                  <td className="py-2 pr-3"><span className="block text-fg">{submission.student_name || submission.student_email}</span><span className="text-fg-3">{submission.title}</span></td>
+                                  <td>{new Date(submission.started_at).toLocaleDateString()}</td>
+                                  <td>{submission.opened_at && submission.opened_actor === 'candidate' && submission.opened_source === 'candidate_self' ? new Date(submission.opened_at).toLocaleDateString() : '—'}</td>
+                                  <td>{submission.downloaded_at && submission.downloaded_actor === 'candidate' && submission.downloaded_source === 'candidate_self' ? new Date(submission.downloaded_at).toLocaleDateString() : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -428,8 +615,19 @@ export default function TenantAdminPage() {
                   className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-2 text-sm text-fg-2 focus:outline-none"
                 >
                   <option value="member">Member</option>
-                  <option value="admin">Admin</option>
+                  {session.user.id === selected.owner_id && <option value="admin">Admin</option>}
                 </select>
+                {cohorts.length > 0 && (
+                  <select
+                    value={inviteCohortId}
+                    onChange={(event) => setInviteCohortId(event.target.value)}
+                    aria-label="Cohort for invited member"
+                    className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-2 text-sm text-fg-2 focus:outline-none"
+                  >
+                    <option value="">No cohort</option>
+                    {cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+                  </select>
+                )}
                 <button
                   onClick={invite}
                   disabled={inviting || !inviteEmail.trim()}
@@ -441,10 +639,17 @@ export default function TenantAdminPage() {
 
               {/* Member list */}
               <div className="space-y-2">
-                {members.length === 0 && (
+                {membersLoading && <div className="flex justify-center py-4"><Spinner /></div>}
+                {!membersLoading && membersError && (
+                  <div role="alert" className="space-y-2 py-3 text-center">
+                    <p className="text-xs text-err">{membersError}</p>
+                    <button type="button" onClick={() => void selectTenant(selected)} className="text-xs text-err underline">Retry tenant data</button>
+                  </div>
+                )}
+                {!membersLoading && !membersError && members.length === 0 && (
                   <p className="text-sm text-fg-3">No members yet.</p>
                 )}
-                {members.map((m) => (
+                {!membersLoading && members.map((m) => (
                   <div
                     key={m.user_id}
                     className="flex items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-4 py-3"
