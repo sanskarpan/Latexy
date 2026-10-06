@@ -787,6 +787,81 @@ def test_modal_scheduled_function_budget_and_cadences_are_explicit():
         assert ast.dump(keywords["schedule"]) == ast.dump(expected_schedule), name
 
 
+def test_health_runner_is_unscheduled_and_all_maintenance_runners_are_registered():
+    """The health runner must not consume a sixth Modal schedule slot."""
+    tree = _parse(MODAL_APP)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    assert "scheduled_health_check" not in functions
+    health_runner = functions["run_scheduled_health_check"]
+    assert not any(
+        isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
+        for dec in health_runner.decorator_list
+    )
+
+    maintenance_runners = {
+        "scheduled_cleanup_expired_jobs",
+        "scheduled_cleanup_temp_files",
+        "run_scheduled_health_check",
+        "scheduled_weekly_digest",
+        "scheduled_tracker_notifications",
+        "scheduled_comment_mention_recovery",
+        "scheduled_document_email_recovery",
+    }
+    assert maintenance_runners <= set(functions)
+
+    for name in maintenance_runners:
+        node = functions[name]
+        app_decorators = [
+            dec
+            for dec in node.decorator_list
+            if isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Attribute)
+            and isinstance(dec.func.value, ast.Name)
+            and dec.func.value.id == "app"
+            and dec.func.attr == "function"
+        ]
+        assert len(app_decorators) == 1, name
+
+    health_keywords = {
+        keyword.arg: keyword.value
+        for keyword in next(
+            dec
+            for dec in health_runner.decorator_list
+            if isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Attribute)
+            and isinstance(dec.func.value, ast.Name)
+            and dec.func.value.id == "app"
+            and dec.func.attr == "function"
+        ).keywords
+    }
+    assert isinstance(health_keywords["image"], ast.Name)
+    assert health_keywords["image"].id == "worker_image"
+    assert isinstance(health_keywords["timeout"], ast.Constant)
+    assert health_keywords["timeout"].value == 300
+
+    fanout = functions["scheduled_five_minute_maintenance"]
+    health_spawns = [
+        node
+        for node in ast.walk(fanout)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "spawn"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "run_scheduled_health_check"
+    ]
+    assert len(health_spawns) == 1
+    assert any(
+        isinstance(node, ast.Constant)
+        and node.value == "run_scheduled_health_check"
+        for node in ast.walk(fanout)
+    )
+
+
 def _run_fanout_wrapper_case(
     wrapper_name: str,
     children: tuple[str, str],
@@ -839,7 +914,7 @@ def test_modal_scheduled_fanouts_attempt_both_children_and_signal_spawn_failures
     """First, second, and both spawn failures cannot hide a sibling or report success."""
     expected = {
         "scheduled_five_minute_maintenance": (
-            "scheduled_health_check",
+            "run_scheduled_health_check",
             "scheduled_tracker_notifications",
         ),
         "scheduled_minute_recovery": (
@@ -875,7 +950,7 @@ def test_modal_scheduled_fanouts_isolate_each_child_spawn():
     }
     expected = {
         "scheduled_five_minute_maintenance": (
-            "scheduled_health_check",
+            "run_scheduled_health_check",
             "scheduled_tracker_notifications",
         ),
         "scheduled_minute_recovery": (
@@ -923,7 +998,7 @@ def test_modal_scheduled_fanouts_isolate_each_child_spawn():
     # The fan-out wrappers return quickly; each independently callable child
     # retains its own 300-second deadline and worker image.
     for child in {
-        "scheduled_health_check",
+        "run_scheduled_health_check",
         "scheduled_tracker_notifications",
         "scheduled_comment_mention_recovery",
         "scheduled_document_email_recovery",
