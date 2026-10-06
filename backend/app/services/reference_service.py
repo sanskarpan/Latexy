@@ -7,17 +7,17 @@ Supports:
   - Redis caching: DOI 30 days, arXiv 7 days
 """
 
+import hashlib
 import re
-import xml.etree.ElementTree as ET
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 # ORCID identifier: XXXX-XXXX-XXXX-XXXX (last char may be X checksum digit)
 _ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$")
-# ORCID in URL
-_ORCID_URL_RE = re.compile(r"orcid\.org/(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])", re.I)
 
 import httpx
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
@@ -29,21 +29,76 @@ _ATOM_NS = "http://www.w3.org/2005/Atom"
 
 # DOI: starts with "10." followed by 4+ digits then "/"
 _DOI_BARE_RE = re.compile(r"^10\.\d{4,}/\S+$")
-# DOI embedded in URL
-_DOI_URL_RE = re.compile(r"(?:https?://(?:dx\.)?doi\.org/|doi:\s*)(10\.\d{4,}/\S+)", re.I)
+_DOI_PREFIX_RE = re.compile(r"doi:\s*(10\.\d{4,}/\S+)", re.I)
 
 # arXiv new-style: YYMM.NNNNN (optionally vN)
 _ARXIV_RE = re.compile(r"^\d{4}\.\d{4,}(?:v\d+)?$")
 # arXiv old-style: category/YYMMNNN
 _ARXIV_OLD_RE = re.compile(r"^[a-z][\w.-]*/\d{7}(?:v\d+)?$", re.I)
-# arXiv in URL
-_ARXIV_URL_RE = re.compile(
-    r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,}(?:v\d+)?|[a-z][\w.-]*/\d{7}(?:v\d+)?)",
-    re.I,
-)
-
-
 class ReferenceService:
+    @staticmethod
+    def parse_bibtex_entries(bibtex: str, *, limit: int = 20) -> list[dict]:
+        """Parse bounded BibTeX metadata without evaluating TeX.
+
+        This deliberately extracts only the fields needed for scholarly-record
+        verification. It is brace-aware, so nested title braces do not split an
+        entry, and never interprets macros or executes content.
+        """
+        entries: list[dict] = []
+        cursor = 0
+        while cursor < len(bibtex):
+            match = re.search(r"@(\w+)\s*([({])", bibtex[cursor:], re.I)
+            if not match:
+                break
+            entry_start = cursor + match.start()
+            body_start = cursor + match.end()
+            opener = match.group(2)
+            closer = "}" if opener == "{" else ")"
+            depth = 1
+            quoted = False
+            escaped = False
+            index = body_start
+            while index < len(bibtex) and depth:
+                char = bibtex[index]
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    quoted = not quoted
+                elif not quoted and char == opener:
+                    depth += 1
+                elif not quoted and char == closer:
+                    depth -= 1
+                index += 1
+            if depth:
+                raise ValueError("BibTeX contains an unterminated entry")
+
+            raw = bibtex[entry_start:index]
+            if match.group(1).casefold() in {"comment", "preamble", "string"}:
+                cursor = index
+                continue
+            key_match = re.match(r"@\w+\s*[({]\s*([^,\s]+)\s*,", raw, re.I)
+            if not key_match:
+                raise ValueError("BibTeX entry is missing a cite key")
+            entries.append(
+                {
+                    "cite_key": key_match.group(1),
+                    "title": ReferenceService._extract_bibtex_field(raw, "title"),
+                    "authors": ReferenceService._extract_bibtex_field(raw, "author"),
+                    "year": ReferenceService._extract_bibtex_field(raw, "year"),
+                    "doi": ReferenceService._extract_bibtex_field(raw, "doi"),
+                    "eprint": ReferenceService._extract_bibtex_field(raw, "eprint"),
+                    "archive_prefix": ReferenceService._extract_bibtex_field(raw, "archivePrefix"),
+                }
+            )
+            if len(entries) > limit:
+                raise ValueError(f"At most {limit} BibTeX entries can be checked at once")
+            cursor = index
+        if not entries:
+            raise ValueError("No BibTeX entries were found")
+        return entries
+
     @staticmethod
     def _strip_arxiv_version(identifier: str) -> str:
         """Strip trailing version suffix (v1, v2, …) from an arXiv ID.
@@ -57,37 +112,50 @@ class ReferenceService:
 
     def detect_type(self, identifier: str) -> Optional[str]:
         """Return 'doi', 'arxiv', or None."""
-        identifier = identifier.strip()
-        if _DOI_URL_RE.search(identifier) or _DOI_BARE_RE.match(identifier):
-            return "doi"
-        if _ARXIV_URL_RE.search(identifier) or _ARXIV_RE.match(identifier) or _ARXIV_OLD_RE.match(identifier):
-            return "arxiv"
-        return None
+        return self.normalize_identifier(identifier)[1]
+
+    @staticmethod
+    def _provider_url_parts(identifier: str) -> tuple[str, list[str]] | None:
+        try:
+            parsed = urlsplit(identifier)
+        except ValueError:
+            return None
+        if parsed.scheme not in {"http", "https"} or parsed.username is not None:
+            return None
+        return (parsed.hostname or "").lower(), [
+            unquote(part) for part in parsed.path.split("/") if part
+        ]
 
     def normalize_identifier(self, identifier: str) -> tuple[str, Optional[str]]:
         """Return (normalized_id, type). Strips URLs and version suffixes."""
         identifier = identifier.strip()
 
-        # DOI in URL
-        m = _DOI_URL_RE.search(identifier)
-        if m:
-            return m.group(1).rstrip(".,;)"), "doi"
+        provider_url = self._provider_url_parts(identifier)
+        if provider_url:
+            host, parts = provider_url
+            if host in {"doi.org", "dx.doi.org"} and parts:
+                doi = "/".join(parts)
+                if _DOI_BARE_RE.fullmatch(doi):
+                    return doi.rstrip(".,;)"), "doi"
+            if host == "arxiv.org" and len(parts) >= 2 and parts[0].lower() in {"abs", "pdf"}:
+                arxiv_id = "/".join(parts[1:]).removesuffix(".pdf")
+                if _ARXIV_RE.fullmatch(arxiv_id) or _ARXIV_OLD_RE.fullmatch(arxiv_id):
+                    return self._strip_arxiv_version(arxiv_id), "arxiv"
 
-        # arXiv in URL
-        m = _ARXIV_URL_RE.search(identifier)
-        if m:
-            return self._strip_arxiv_version(m.group(1)), "arxiv"
+        prefixed_doi = _DOI_PREFIX_RE.fullmatch(identifier)
+        if prefixed_doi:
+            return prefixed_doi.group(1).rstrip(".,;)"), "doi"
 
         # Bare DOI
-        if _DOI_BARE_RE.match(identifier):
+        if _DOI_BARE_RE.fullmatch(identifier):
             return identifier.rstrip(".,;)"), "doi"
 
         # Bare arXiv (new style)
-        if _ARXIV_RE.match(identifier):
+        if _ARXIV_RE.fullmatch(identifier):
             return self._strip_arxiv_version(identifier), "arxiv"
 
         # Bare arXiv (old style)
-        if _ARXIV_OLD_RE.match(identifier):
+        if _ARXIV_OLD_RE.fullmatch(identifier):
             return self._strip_arxiv_version(identifier), "arxiv"
 
         return identifier, None
@@ -100,7 +168,7 @@ class ReferenceService:
         try:
             cached = await cache_manager.get(cache_key)
         except Exception as exc:
-            logger.warning("Reference cache read failed for %s: %s", cache_key, exc)
+            logger.warning("Reference cache read failed", extra={"error_type": type(exc).__name__})
             cached = None
         if cached:
             return {**cached, "cached": True}
@@ -108,12 +176,12 @@ class ReferenceService:
         encoded_doi = quote(doi, safe="")
         url = f"https://api.crossref.org/works/{encoded_doi}/transform/application/x-bibtex"
         headers = {
-            "User-Agent": "Latexy/1.0 (mailto:support@latexy.io; https://latexy.io)",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=10.0)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, headers=headers)
 
             if response.status_code == 200:
                 bibtex = response.text
@@ -133,7 +201,7 @@ class ReferenceService:
                 try:
                     await cache_manager.set(cache_key, result, ttl=86400 * 30)
                 except Exception as exc:
-                    logger.warning("Reference cache write failed for %s: %s", cache_key, exc)
+                    logger.warning("Reference cache write failed", extra={"error_type": type(exc).__name__})
                 return result
 
             raise ValueError(f"DOI not found: {doi} (HTTP {response.status_code})")
@@ -142,6 +210,84 @@ class ReferenceService:
             raise ValueError(f"Timeout fetching DOI: {doi}")
         except httpx.RequestError as exc:
             raise ValueError(f"Network error fetching DOI {doi}: {exc}")
+
+    async def search_crossref(self, title: str, authors: Optional[str] = None) -> dict:
+        """Return the best Crossref work for identifier-free citation metadata."""
+        query = " ".join(part for part in (title.strip(), (authors or "").strip()) if part)
+        digest = hashlib.sha256(query.casefold().encode()).hexdigest()[:32]
+        cache_key = f"citation-search:crossref:{digest}"
+        try:
+            cached = await cache_manager.get(cache_key)
+        except Exception as exc:
+            logger.warning("Citation cache read failed", extra={"error_type": type(exc).__name__})
+            cached = None
+        if cached:
+            return {**cached, "cached": True}
+
+        headers = {
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://api.crossref.org/works",
+                    params={
+                        "query.bibliographic": query,
+                        "rows": 1,
+                        "select": "DOI,title,author,published-print,published-online,issued",
+                    },
+                    headers=headers,
+                )
+            if response.status_code != 200:
+                raise ValueError(f"Crossref search failed (HTTP {response.status_code})")
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+            message = payload.get("message")
+            if not isinstance(message, dict):
+                raise TypeError
+            items = message.get("items", [])
+            if not isinstance(items, list):
+                raise TypeError
+            if not items:
+                raise ValueError("No scholarly match found")
+            item = items[0]
+            if not isinstance(item, dict):
+                raise TypeError
+            titles = item.get("title") or []
+            author_names = [
+                ", ".join(filter(None, (author.get("family"), author.get("given"))))
+                for author in item.get("author") or []
+                if isinstance(author, dict)
+            ]
+            date = (
+                item.get("published-print")
+                or item.get("published-online")
+                or item.get("issued")
+                or {}
+            )
+            parts = date.get("date-parts") or []
+            year = parts[0][0] if parts and parts[0] else None
+            result = {
+                "identifier": item.get("DOI"),
+                "title": titles[0] if titles else None,
+                "authors": " and ".join(author_names) or None,
+                "year": year,
+                "cached": False,
+            }
+            try:
+                await cache_manager.set(cache_key, result, ttl=86400 * 7)
+            except Exception as exc:
+                logger.warning("Citation cache write failed", extra={"error_type": type(exc).__name__})
+            return result
+        except (TypeError, ValueError) as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError("Crossref returned malformed citation metadata") from exc
+        except httpx.TimeoutException:
+            raise ValueError("Crossref citation search timed out")
+        except httpx.RequestError as exc:
+            raise ValueError(f"Crossref citation search failed: {exc}")
 
     # ── arXiv fetcher ─────────────────────────────────────────────────────────
 
@@ -152,15 +298,15 @@ class ReferenceService:
         try:
             cached = await cache_manager.get(cache_key)
         except Exception as exc:
-            logger.warning("Reference cache read failed for %s: %s", cache_key, exc)
+            logger.warning("Reference cache read failed", extra={"error_type": type(exc).__name__})
             cached = None
         if cached:
             return {**cached, "cached": True}
 
-        url = f"https://export.arxiv.org/api/query?id_list={clean_id}"
+        url = "https://export.arxiv.org/api/query"
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, timeout=10.0)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, params={"id_list": clean_id})
 
             if response.status_code != 200:
                 raise ValueError(f"arXiv API error: HTTP {response.status_code}")
@@ -177,7 +323,7 @@ class ReferenceService:
             try:
                 await cache_manager.set(cache_key, result, ttl=86400 * 7)
             except Exception as exc:
-                logger.warning("Reference cache write failed for %s: %s", cache_key, exc)
+                logger.warning("Reference cache write failed", extra={"error_type": type(exc).__name__})
             return result
 
         except httpx.TimeoutException:
@@ -188,7 +334,10 @@ class ReferenceService:
     # ── arXiv XML parser ──────────────────────────────────────────────────────
 
     def _parse_arxiv_xml(self, xml_text: str, arxiv_id: str) -> tuple[str, dict]:
-        root = ET.fromstring(xml_text)
+        try:
+            root = ET.fromstring(xml_text)
+        except (ET.ParseError, DefusedXmlException) as exc:
+            raise ValueError("Invalid arXiv XML response") from exc
         entries = root.findall(f"{{{_ATOM_NS}}}entry")
         if not entries:
             raise ValueError(f"arXiv ID not found: {arxiv_id}")
@@ -272,9 +421,12 @@ class ReferenceService:
             return name
         return f"{parts[-1]}, {' '.join(parts[:-1])}"
 
-    def _extract_bibtex_field(self, bibtex: str, field: str) -> Optional[str]:
+    @staticmethod
+    def _extract_bibtex_field(bibtex: str, field: str) -> Optional[str]:
         """Extract a named field value from a BibTeX entry string."""
-        pattern = re.compile(rf"^\s*{re.escape(field)}\s*=\s*", re.I | re.M)
+        pattern = re.compile(
+            rf"(?:^|,)\s*{re.escape(field)}\s*=\s*", re.I | re.M
+        )
         m = pattern.search(bibtex)
         if not m:
             return None
@@ -309,10 +461,12 @@ class ReferenceService:
     def normalize_orcid(self, raw: str) -> Optional[str]:
         """Extract a bare ORCID ID from a URL or bare string, or return None."""
         raw = raw.strip()
-        m = _ORCID_URL_RE.search(raw)
-        if m:
-            return m.group(1).upper().replace("x", "X")
-        if _ORCID_RE.match(raw):
+        provider_url = self._provider_url_parts(raw)
+        if provider_url:
+            host, parts = provider_url
+            if host == "orcid.org" and len(parts) == 1 and _ORCID_RE.fullmatch(parts[0]):
+                return parts[0].upper().replace("x", "X")
+        if _ORCID_RE.fullmatch(raw):
             return raw.upper().replace("x", "X")
         return None
 
@@ -324,26 +478,26 @@ class ReferenceService:
         Returns a list of dicts with: title, year, journal, doi, url, work_type.
         Sorted by year descending. Cached in Redis for 24h.
         """
-        if not _ORCID_RE.match(orcid_id):
+        if not _ORCID_RE.fullmatch(orcid_id):
             raise ValueError(f"Invalid ORCID identifier: {orcid_id}")
 
         cache_key = f"orcid:works:{orcid_id}"
         try:
             cached = await cache_manager.get(cache_key)
         except Exception as exc:
-            logger.warning("ORCID cache read failed: %s", exc)
+            logger.warning("ORCID cache read failed", extra={"error_type": type(exc).__name__})
             cached = None
         if isinstance(cached, list):
             return cached[:max_results]
 
-        url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
+        url = f"https://pub.orcid.org/v3.0/{quote(orcid_id, safe='')}/works"
         headers = {
             "Accept": "application/json",
-            "User-Agent": "Latexy/1.0 (mailto:support@latexy.io; https://latexy.io)",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
         }
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=15.0)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, headers=headers)
 
             if response.status_code == 404:
                 raise ValueError(f"ORCID profile not found: {orcid_id}")
@@ -356,7 +510,7 @@ class ReferenceService:
             try:
                 await cache_manager.set(cache_key, works, ttl=86400)
             except Exception as exc:
-                logger.warning("ORCID cache write failed: %s", exc)
+                logger.warning("ORCID cache write failed", extra={"error_type": type(exc).__name__})
 
             return works[:max_results]
 
