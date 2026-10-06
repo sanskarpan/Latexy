@@ -86,7 +86,13 @@ async def get_async_db_session():
 
 async def close_db():
     """Close database connection."""
-    global engine
-    if engine:
-        await engine.dispose()
+    global engine, SessionLocal
+    current_engine = engine
+    # Clear published references before awaiting disposal. This makes shutdown
+    # idempotent and prevents a later lifespan (or test event loop) from
+    # borrowing a session factory backed by an engine that has been disposed.
+    engine = None
+    SessionLocal = None
+    if current_engine:
+        await current_engine.dispose()
         logger.info("Database connection closed")
