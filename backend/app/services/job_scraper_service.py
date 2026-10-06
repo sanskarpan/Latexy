@@ -281,7 +281,7 @@ def _normalize_url(url: str) -> str:
 
 
 def _detect_platform(url: str) -> str:
-    domain = urlparse(url).netloc.lstrip("www.").lower()
+    domain = (urlparse(url).hostname or "").lower().removeprefix("www.")
     for pattern, platform in _PLATFORM_MAP.items():
         if domain == pattern or domain.endswith("." + pattern):
             return platform
