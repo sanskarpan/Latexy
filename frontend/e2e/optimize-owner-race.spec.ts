@@ -125,10 +125,13 @@ test.describe('optimization owner-scoped settings', () => {
   })
 
   test('same-owner auth revalidation does not strand a failed persona mutation', async ({ page }) => {
+    let sessionMode: 'ok' | 'error' = 'ok'
     let sessionResponses = 0
     let refreshStarted = false
     let releaseRefresh!: () => void
     const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve })
+    let errorResponseFinished = false
+    let recoveryResponseFinished = false
     let settingsStarted = false
     let settingsFinished = false
     let settingsCalls = 0
@@ -141,6 +144,11 @@ test.describe('optimization owner-scoped settings', () => {
         refreshStarted = true
         await refreshGate
       }
+      if (sessionMode === 'error') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'temporary auth failure' }) })
+        errorResponseFinished = true
+        return
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -149,6 +157,7 @@ test.describe('optimization owner-scoped settings', () => {
           user: { id: 'owner-a', email: 'owner-a@example.com', name: 'Owner A' },
         }),
       })
+      if (sessionResponses > 1) recoveryResponseFinished = true
     })
     await page.route('**/ws/**', route => route.abort())
     await page.route(`**/resumes/${RESUME_ID}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resumeResponse('owner-a')) }))
@@ -169,21 +178,30 @@ test.describe('optimization owner-scoped settings', () => {
     await page.getByRole('button', { name: /Startup \/ Scale-up/ }).click()
     await expect.poll(() => settingsStarted).toBe(true)
 
+    sessionMode = 'error'
     await page.evaluate(() => {
       const message = JSON.stringify({ event: 'session', data: { trigger: 'test-auth-refresh' } })
       localStorage.setItem('better-auth.message', message)
       window.dispatchEvent(new StorageEvent('storage', { key: 'better-auth.message', newValue: message }))
     })
     await expect.poll(() => refreshStarted).toBe(true)
+    releaseRefresh()
+    await expect.poll(() => errorResponseFinished).toBe(true)
 
     releaseSettings()
     await expect.poll(() => settingsFinished).toBe(true)
-    // The failed write must not roll back while auth is pending, and cleanup
-    // must release the busy gate so the same owner can retry after verification.
-    await expectActivePersona(page, 'Startup / Scale-up')
-    releaseRefresh()
-    await expect.poll(() => sessionResponses).toBe(2)
+    // The failed write may restore the persisted value; cleanup must release
+    // the busy gate even though auth is currently in an error state.
+    await expect(page.getByRole('button', { name: /Enterprise \/ Corporate/ })).toBeEnabled()
 
+    sessionMode = 'ok'
+    await page.evaluate(() => {
+      const message = JSON.stringify({ event: 'session', data: { trigger: 'test-auth-recovery' } })
+      localStorage.setItem('better-auth.message', message)
+      window.dispatchEvent(new StorageEvent('storage', { key: 'better-auth.message', newValue: message }))
+    })
+    await expect.poll(() => sessionResponses).toBe(3)
+    await expect.poll(() => recoveryResponseFinished).toBe(true)
     await page.getByRole('button', { name: /Enterprise \/ Corporate/ }).click()
     await expect.poll(() => settingsCalls).toBe(2)
     await expectActivePersona(page, 'Enterprise / Corporate')
