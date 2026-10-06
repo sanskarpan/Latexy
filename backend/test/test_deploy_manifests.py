@@ -253,6 +253,10 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
         "full_stack",
     }
     assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"] == {
+        "group": "ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
     assert set(jobs["classify-changes"]["outputs"]) == scope_keys
     assert jobs["classify-changes"]["outputs"] == {
         scope: "${{ steps.classify.outputs." + scope + " }}" for scope in scope_keys
