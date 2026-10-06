@@ -48,8 +48,8 @@ class LaTeXParser(AbstractParser):
             return parsed_resume
 
         except Exception as e:
-            logger.error(f"Error parsing LaTeX file: {e}")
-            raise ValueError(f"Failed to parse LaTeX file: {str(e)}")
+            logger.error("Error parsing LaTeX file", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse LaTeX input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         """
@@ -79,8 +79,8 @@ class LaTeXParser(AbstractParser):
 
         except UnicodeDecodeError:
             return False, "File is not valid UTF-8 text"
-        except Exception as e:
-            return False, f"Validation error: {str(e)}"
+        except Exception:
+            return False, "LaTeX validation failed"
 
     @staticmethod
     def _extract_brace_content(text: str, cmd_end: int) -> str:
@@ -124,7 +124,7 @@ class LaTeXParser(AbstractParser):
                     parsed_resume.metadata['document_title'] = title
 
         except Exception as e:
-            logger.debug(f"Could not extract basic info from LaTeX: {e}")
+            logger.debug("Could not extract basic info from LaTeX", extra={"error_type": type(e).__name__})
 
     def get_latex_content(self, parsed_resume: ParsedResume) -> str:
         """
@@ -132,4 +132,3 @@ class LaTeXParser(AbstractParser):
         For LaTeX parser, this is just returning the raw_text.
         """
         return parsed_resume.raw_text or ""
-
