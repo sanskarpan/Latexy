@@ -4,15 +4,16 @@ Layer 1: Rule-based (accurate LaTeX extraction + expanded corpus)
 """
 
 import asyncio
-import re
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ..core.logging import get_logger
 from ..core.observability import record_ats_score
 from ..core.tracing import traced
+from ..utils import safe_regex as re
+from .ats_locale_profiles import analyze_locale_conventions
 from .industry_ats_profiles import INDUSTRY_PROFILES, detect_industry, get_profile
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ logger = get_logger(__name__)
 @dataclass
 class ATSScoreResult:
     """ATS scoring result data structure."""
+
     overall_score: float
     category_scores: Dict[str, float]
     recommendations: List[str]
@@ -32,11 +34,16 @@ class ATSScoreResult:
     multi_dim_scores: Optional[Dict[str, float]] = None
     industry_key: Optional[str] = None
     industry_label: Optional[str] = None
+    locale_key: str = "global"
+    locale_label: str = "Global / role-only"
+    score_threshold: int = 80
+    calibration_statement: str = ""
 
 
 @dataclass
 class SectionAnalysis:
     """Analysis result for a resume section."""
+
     found: bool
     score: float
     content_length: int
@@ -54,52 +61,167 @@ class ATSScoringService:
 
     ACTION_VERBS: List[str] = [
         # Leadership
-        "led", "managed", "directed", "supervised", "oversaw", "spearheaded",
-        "championed", "orchestrated", "mentored", "coached", "guided",
+        "led",
+        "managed",
+        "directed",
+        "supervised",
+        "oversaw",
+        "spearheaded",
+        "championed",
+        "orchestrated",
+        "mentored",
+        "coached",
+        "guided",
         # Achievement
-        "achieved", "delivered", "exceeded", "surpassed", "accomplished",
-        "improved", "increased", "reduced", "optimized", "streamlined",
-        "generated", "saved", "boosted", "accelerated", "enhanced",
+        "achieved",
+        "delivered",
+        "exceeded",
+        "surpassed",
+        "accomplished",
+        "improved",
+        "increased",
+        "reduced",
+        "optimized",
+        "streamlined",
+        "generated",
+        "saved",
+        "boosted",
+        "accelerated",
+        "enhanced",
         # Technical
-        "developed", "built", "designed", "implemented", "engineered",
-        "architected", "created", "deployed", "migrated", "integrated",
-        "automated", "refactored", "debugged", "tested", "maintained",
+        "developed",
+        "built",
+        "designed",
+        "implemented",
+        "engineered",
+        "architected",
+        "created",
+        "deployed",
+        "migrated",
+        "integrated",
+        "automated",
+        "refactored",
+        "debugged",
+        "tested",
+        "maintained",
         # Collaboration
-        "collaborated", "coordinated", "partnered", "liaised", "facilitated",
-        "communicated", "presented", "negotiated", "consulted", "advised",
+        "collaborated",
+        "coordinated",
+        "partnered",
+        "liaised",
+        "facilitated",
+        "communicated",
+        "presented",
+        "negotiated",
+        "consulted",
+        "advised",
         # Analysis
-        "analyzed", "evaluated", "assessed", "researched", "identified",
-        "investigated", "measured", "monitored", "tracked", "audited",
+        "analyzed",
+        "evaluated",
+        "assessed",
+        "researched",
+        "identified",
+        "investigated",
+        "measured",
+        "monitored",
+        "tracked",
+        "audited",
         # Other strong verbs
-        "launched", "executed", "established", "initiated", "transformed",
-        "modernized", "scaled", "expanded", "drove", "pioneered",
+        "launched",
+        "executed",
+        "established",
+        "initiated",
+        "transformed",
+        "modernized",
+        "scaled",
+        "expanded",
+        "drove",
+        "pioneered",
     ]
 
     TECH_KEYWORDS: List[str] = [
         # Languages
-        "python", "javascript", "typescript", "java", "go", "rust",
-        "c++", "c#", "ruby", "swift", "kotlin", "scala", "r",
+        "python",
+        "javascript",
+        "typescript",
+        "java",
+        "go",
+        "rust",
+        "c++",
+        "c#",
+        "ruby",
+        "swift",
+        "kotlin",
+        "scala",
+        "r",
         # Frontend
-        "react", "vue", "angular", "nextjs", "node", "html", "css",
+        "react",
+        "vue",
+        "angular",
+        "nextjs",
+        "node",
+        "html",
+        "css",
         # Backend
-        "fastapi", "django", "flask", "spring", "express", "graphql",
+        "fastapi",
+        "django",
+        "flask",
+        "spring",
+        "express",
+        "graphql",
         # Data/ML
-        "sql", "postgresql", "mongodb", "redis", "elasticsearch",
-        "tensorflow", "pytorch", "pandas", "numpy", "spark",
+        "sql",
+        "postgresql",
+        "mongodb",
+        "redis",
+        "elasticsearch",
+        "tensorflow",
+        "pytorch",
+        "pandas",
+        "numpy",
+        "spark",
         # DevOps/Cloud
-        "aws", "gcp", "azure", "docker", "kubernetes", "terraform",
-        "ci/cd", "github", "jenkins", "ansible", "linux",
+        "aws",
+        "gcp",
+        "azure",
+        "docker",
+        "kubernetes",
+        "terraform",
+        "ci/cd",
+        "github",
+        "jenkins",
+        "ansible",
+        "linux",
         # Architecture
-        "microservices", "api", "rest", "kafka", "rabbitmq",
+        "microservices",
+        "api",
+        "rest",
+        "kafka",
+        "rabbitmq",
         # Methodology
-        "agile", "scrum", "git", "devops", "tdd",
+        "agile",
+        "scrum",
+        "git",
+        "devops",
+        "tdd",
     ]
 
     SOFT_SKILLS: List[str] = [
-        "leadership", "communication", "teamwork", "collaboration",
-        "problem-solving", "analytical", "creative", "adaptable",
-        "detail-oriented", "proactive", "initiative", "mentoring",
-        "presentation", "negotiation", "strategic",
+        "leadership",
+        "communication",
+        "teamwork",
+        "collaboration",
+        "problem-solving",
+        "analytical",
+        "creative",
+        "adaptable",
+        "detail-oriented",
+        "proactive",
+        "initiative",
+        "mentoring",
+        "presentation",
+        "negotiation",
+        "strategic",
     ]
 
     def __init__(self):
@@ -110,47 +232,96 @@ class ATSScoringService:
         self.formatting_rules = {
             "fonts": {
                 "preferred": ["Arial", "Helvetica", "Calibri", "Times New Roman", "Georgia"],
-                "avoid": ["Comic Sans", "Papyrus", "Impact", "Brush Script"]
+                "avoid": ["Comic Sans", "Papyrus", "Impact", "Brush Script"],
             },
             "sections": {
                 "required": ["contact", "experience", "education"],
                 "recommended": ["summary", "skills", "achievements"],
-                "optional": ["certifications", "projects", "publications"]
+                "optional": ["certifications", "projects", "publications"],
             },
             "keywords": {
                 "action_verbs": self.__class__.ACTION_VERBS,
                 "quantifiable_terms": [
-                    "percent", "%", "million", "thousand", "increased", "decreased",
-                    "improved", "reduced", "saved", "generated", "revenue"
-                ]
-            }
+                    "percent",
+                    "%",
+                    "million",
+                    "thousand",
+                    "increased",
+                    "decreased",
+                    "improved",
+                    "reduced",
+                    "saved",
+                    "generated",
+                    "revenue",
+                ],
+            },
         }
 
         # Industry-specific keywords
         self.industry_keywords = {
             "technology": [
-                "software", "programming", "development", "coding", "algorithm",
-                "database", "API", "cloud", "DevOps", "agile", "scrum",
-                "machine learning", "artificial intelligence", "full-stack",
+                "software",
+                "programming",
+                "development",
+                "coding",
+                "algorithm",
+                "database",
+                "API",
+                "cloud",
+                "DevOps",
+                "agile",
+                "scrum",
+                "machine learning",
+                "artificial intelligence",
+                "full-stack",
             ],
             "marketing": [
-                "campaign", "brand", "digital marketing", "SEO", "analytics",
-                "conversion", "engagement", "social media", "content", "ROI",
+                "campaign",
+                "brand",
+                "digital marketing",
+                "SEO",
+                "analytics",
+                "conversion",
+                "engagement",
+                "social media",
+                "content",
+                "ROI",
             ],
             "finance": [
-                "financial", "accounting", "budget", "analysis", "investment",
-                "risk", "compliance", "audit", "forecasting", "modeling",
+                "financial",
+                "accounting",
+                "budget",
+                "analysis",
+                "investment",
+                "risk",
+                "compliance",
+                "audit",
+                "forecasting",
+                "modeling",
             ],
             "healthcare": [
-                "patient", "clinical", "medical", "healthcare", "treatment",
-                "diagnosis", "therapy", "pharmaceutical", "research",
-            ]
+                "patient",
+                "clinical",
+                "medical",
+                "healthcare",
+                "treatment",
+                "diagnosis",
+                "therapy",
+                "pharmaceutical",
+                "research",
+            ],
         }
 
         # ATS-unfriendly LaTeX packages
         self.ats_unfriendly_packages = [
-            'tikz', 'pgfplots', 'graphicx', 'tabularx', 'longtable',
-            'multicol', 'fontawesome', 'fontspec',
+            "tikz",
+            "pgfplots",
+            "graphicx",
+            "tabularx",
+            "longtable",
+            "multicol",
+            "fontawesome",
+            "fontspec",
         ]
 
     # ------------------------------------------------------------------ #
@@ -166,36 +337,44 @@ class ATSScoringService:
         text = latex_content
 
         # 1. Extract inner text from text-formatting commands
-        for cmd in ('textbf', 'textit', 'emph', 'underline', 'texttt',
-                    'text', 'mbox', 'hbox', 'textrm', 'textsc', 'textsl'):
-            text = re.sub(rf'\\{cmd}\{{([^}}]*)\}}', r'\1', text)
+        for cmd in (
+            "textbf",
+            "textit",
+            "emph",
+            "underline",
+            "texttt",
+            "text",
+            "mbox",
+            "hbox",
+            "textrm",
+            "textsc",
+            "textsl",
+        ):
+            text = re.sub(rf"\\{cmd}\{{([^}}]*)\}}", r"\1", text)
 
         # 2. Extract section headers — preserve as newline-separated tokens
-        text = re.sub(
-            r'\\(?:section|subsection|subsubsection|chapter|part)\*?\{([^}]*)\}',
-            r'\n\1\n', text
-        )
+        text = re.sub(r"\\(?:section|subsection|subsubsection|chapter|part)\*?\{([^}]*)\}", r"\n\1\n", text)
 
         # 3. Extract href display text (keep second {arg})
-        text = re.sub(r'\\href\{[^}]*\}\{([^}]*)\}', r'\1', text)
+        text = re.sub(r"\\href\{[^}]*\}\{([^}]*)\}", r"\1", text)
 
         # 4. Extract title / author / date content
-        text = re.sub(r'\\(?:title|author|date)\{([^}]*)\}', r'\1\n', text)
+        text = re.sub(r"\\(?:title|author|date)\{([^}]*)\}", r"\1\n", text)
 
         # 5. Remove environment markers (begin/end)
-        text = re.sub(r'\\(?:begin|end)\{[^}]*\}', '', text)
+        text = re.sub(r"\\(?:begin|end)\{[^}]*\}", "", text)
 
         # 6. Remove remaining LaTeX commands (strip command + optional args)
-        text = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^}]*\})*', '', text)
+        text = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^}]*\})*", "", text)
 
         # 7. Remove % comments
-        text = re.sub(r'%.*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"%.*$", "", text, flags=re.MULTILINE)
 
         # 8. Remove leftover braces and backslashes
-        text = re.sub(r'[{}\\]', ' ', text)
+        text = re.sub(r"[{}\\]", " ", text)
 
         # 9. Normalise whitespace
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         return text.strip()
 
@@ -207,19 +386,21 @@ class ATSScoringService:
         """Score grammar quality using rule-based checks."""
         issues = 0
         # Double spaces
-        if re.search(r'  +', text):
+        if re.search(r"  +", text):
             issues += 1
         # Double periods
-        if re.search(r'\.\.', text):
+        if re.search(r"\.\.", text):
             issues += 1
         # Inconsistent tense: flag if both present and past action verbs appear non-trivially
         present_verbs = re.findall(
-            r'\b(?:manage|develop|lead|build|create|analyze|design|implement|drive|own)\b',
-            text, re.IGNORECASE,
+            r"\b(?:manage|develop|lead|build|create|analyze|design|implement|drive|own)\b",
+            text,
+            re.IGNORECASE,
         )
         past_verbs = re.findall(
-            r'\b(?:managed|developed|led|built|created|analyzed|designed|implemented|drove|owned)\b',
-            text, re.IGNORECASE,
+            r"\b(?:managed|developed|led|built|created|analyzed|designed|implemented|drove|owned)\b",
+            text,
+            re.IGNORECASE,
         )
         if present_verbs and past_verbs and len(present_verbs) > 1 and len(past_verbs) > 1:
             issues += 1
@@ -230,18 +411,20 @@ class ATSScoringService:
         # Split on \item for linear-time parsing; each fragment up to the next
         # \item, \end{...}, or end-of-string is one bullet. This also captures a
         # trailing \item not followed by \end{...} (which a lookahead would drop).
-        raw_bullets = re.split(r'\\item\b', text)[1:]  # discard preamble before first \item
+        raw_bullets = re.split(r"\\item\b", text)[1:]  # discard preamble before first \item
         bullet_lines: List[str] = []
         for frag in raw_bullets:
             # Stop the bullet at the first environment terminator, if present
-            frag = re.split(r'\\end\{', frag, maxsplit=1)[0]
+            frag = re.split(r"\\end\{", frag, maxsplit=1)[0]
             bullet_lines.append(frag)
         if not bullet_lines:
             return 0.0
         action_verbs_lower = {v.lower() for v in self.ACTION_VERBS}
         passive_patterns = [
-            r'\bwas\s+\w+ed\b', r'\bwere\s+\w+ed\b',
-            r'\bwas responsible for\b', r'\bwere responsible for\b',
+            r"\bwas\s+\w+ed\b",
+            r"\bwere\s+\w+ed\b",
+            r"\bwas responsible for\b",
+            r"\bwere responsible for\b",
         ]
         scores = []
         for bullet in bullet_lines:
@@ -250,11 +433,11 @@ class ATSScoringService:
                 continue
             score = 0
             # +30 if starts with action verb
-            first_word = re.split(r'\W+', bullet)[0].lower() if bullet else ''
+            first_word = re.split(r"\W+", bullet)[0].lower() if bullet else ""
             if first_word in action_verbs_lower:
                 score += 30
             # +30 if contains a number or percentage
-            if re.search(r'\d+%?|\$\d+|\d+[kmb]\b', bullet, re.IGNORECASE):
+            if re.search(r"\d+%?|\$\d+|\d+[kmb]\b", bullet, re.IGNORECASE):
                 score += 30
             # +20 if appropriate length (80-160 chars)
             if 80 <= len(bullet) <= 160:
@@ -267,10 +450,10 @@ class ATSScoringService:
 
     def _score_section_completeness(self, latex_content: str) -> float:
         """Score how complete the resume sections are."""
-        sections = re.findall(r'\\section\{([^}]+)\}', latex_content, re.IGNORECASE)
+        sections = re.findall(r"\\section\{([^}]+)\}", latex_content, re.IGNORECASE)
         sections_lower = [s.lower() for s in sections]
-        required = ['experience', 'work', 'education', 'skills', 'contact']
-        recommended = ['summary', 'objective', 'projects', 'certifications', 'publications']
+        required = ["experience", "work", "education", "skills", "contact"]
+        recommended = ["summary", "objective", "projects", "certifications", "publications"]
         required_found = sum(1 for r in required if any(r in s for s in sections_lower))
         recommended_found = sum(1 for r in recommended if any(r in s for s in sections_lower))
         return (required_found / len(required)) * 70 + (recommended_found / len(recommended)) * 30
@@ -289,19 +472,14 @@ class ATSScoringService:
             return 50.0
         return max(30.0, 80.0 - (word_count - 1100) * 0.05)
 
-    def _score_keyword_density(
-        self, text: str, job_description: Optional[str] = None
-    ) -> float:
+    def _score_keyword_density(self, text: str, job_description: Optional[str] = None) -> float:
         """Score keyword density; neutral 50 when no job description provided."""
         if not job_description:
             return 50.0
         jd_keywords = self._extract_keywords_from_job_description(job_description)
         if not jd_keywords:
             return 50.0
-        matched = sum(
-            1 for kw in jd_keywords
-            if re.search(rf'\b{re.escape(kw)}\b', text, re.IGNORECASE)
-        )
+        matched = sum(1 for kw in jd_keywords if re.search(rf"\b{re.escape(kw)}\b", text, re.IGNORECASE))
         return min(100.0, (matched / len(jd_keywords)) * 100)
 
     # ------------------------------------------------------------------ #
@@ -314,6 +492,7 @@ class ATSScoringService:
         job_description: Optional[str] = None,
         industry: Optional[str] = None,
         industry_profile_key: str = "generic",
+        locale_key: str = "global",
     ) -> ATSScoreResult:
         """Score a resume for ATS compatibility."""
         start_time = asyncio.get_event_loop().time()
@@ -355,23 +534,28 @@ class ATSScoringService:
                 # Pass raw latex_content so contact detection can find emails in \href
                 structure_score = await self._score_structure(text_content, latex_content)
                 content_score = await self._score_content(
-                    text_content, job_description, industry,
+                    text_content,
+                    job_description,
+                    industry,
                     industry_profile=None if is_generic else profile,
                 )
                 keyword_score = await self._score_keywords(text_content, job_description, industry, industry_key)
                 readability_score = await self._score_readability(text_content)
+                locale_analysis = analyze_locale_conventions(latex_content, text_content, locale_key)
+                content_score["score"] = max(
+                    0.0,
+                    content_score["score"] - locale_analysis["content_penalty"],
+                )
+                content_score.setdefault("warnings", []).extend(locale_analysis["warnings"])
+                content_score.setdefault("recommendations", []).extend(locale_analysis["recommendations"])
 
                 # Multi-dimensional scores (rule-based, fast)
                 multi_dim_scores: Dict[str, float] = {
                     "grammar": round(self._score_grammar(text_content), 1),
                     "bullet_clarity": round(self._score_bullet_clarity(latex_content), 1),
-                    "section_completeness": round(
-                        self._score_section_completeness(latex_content), 1
-                    ),
+                    "section_completeness": round(self._score_section_completeness(latex_content), 1),
                     "page_density": round(self._score_page_density(latex_content), 1),
-                    "keyword_density": round(
-                        self._score_keyword_density(text_content, job_description), 1
-                    ),
+                    "keyword_density": round(self._score_keyword_density(text_content, job_description), 1),
                 }
 
                 category_scores = {
@@ -405,16 +589,13 @@ class ATSScoringService:
                 total_w = sum(effective_weights.values())
                 weights = {k: v / total_w for k, v in effective_weights.items()}
 
-                overall_score = sum(
-                    category_scores[cat] * weights[cat] for cat in category_scores
-                )
+                overall_score = sum(category_scores[cat] * weights[cat] for cat in category_scores)
 
                 recommendations: List[str] = []
                 warnings: List[str] = []
                 strengths: List[str] = []
 
-                for analysis in [formatting_score, structure_score, content_score,
-                                  keyword_score, readability_score]:
+                for analysis in [formatting_score, structure_score, content_score, keyword_score, readability_score]:
                     recommendations.extend(analysis.get("recommendations", []))
                     warnings.extend(analysis.get("warnings", []))
                     strengths.extend(analysis.get("strengths", []))
@@ -433,6 +614,7 @@ class ATSScoringService:
                         "industry_label": industry_label,
                         "profile_applied": industry_key != "generic",
                     },
+                    "locale_calibration": locale_analysis,
                 }
 
                 processing_time = asyncio.get_event_loop().time() - start_time
@@ -445,10 +627,14 @@ class ATSScoringService:
                     strengths=strengths[:5],
                     detailed_analysis=detailed_analysis,
                     processing_time=processing_time,
-                    timestamp=datetime.utcnow().isoformat(),
+                    timestamp=datetime.now(timezone.utc).isoformat(),
                     multi_dim_scores=multi_dim_scores,
                     industry_key=industry_key,
                     industry_label=industry_label,
+                    locale_key=locale_key,
+                    locale_label=locale_analysis["locale_label"],
+                    score_threshold=locale_analysis["threshold"],
+                    calibration_statement=locale_analysis["calibration"],
                 )
 
                 self.logger.info(
@@ -463,7 +649,7 @@ class ATSScoringService:
             # Log full detail server-side, but never present an internal failure as a
             # successful 0/100 score or leak the raw exception text to the caller.
             record_ats_score("comprehensive", "error", time.perf_counter() - perf_start)
-            self.logger.error(f"ATS scoring failed: {e}", exc_info=True)
+            self.logger.error("ATS scoring failed", extra={"error_type": type(e).__name__})
             raise
 
     # ------------------------------------------------------------------ #
@@ -481,31 +667,37 @@ class ATSScoringService:
         deduction = 0
         flagged = []
         for package in self.ats_unfriendly_packages:
-            if re.search(rf'\\usepackage(?:\[[^\]]*\])?\{{{re.escape(package)}\}}', latex_content) \
-               or package in latex_content:
+            if (
+                re.search(rf"\\usepackage(?:\[[^\]]*\])?\{{{re.escape(package)}\}}", latex_content)
+                or package in latex_content
+            ):
                 deduction += 8
                 flagged.append(package)
                 warnings.append(f"Package '{package}' may cause ATS parsing issues")
                 recommendations.append(f"Consider removing or replacing '{package}' package")
         score -= min(deduction, 40)
 
-        if '\\documentclass' in latex_content:
+        if "\\documentclass" in latex_content:
             strengths.append("Proper LaTeX document structure")
         else:
             score -= 20
             warnings.append("Missing document class declaration")
 
-        font_commands = re.findall(r'\\usepackage\{([^}]*font[^}]*)\}', latex_content)
+        font_commands = re.findall(r"\\usepackage\{([^}]*font[^}]*)\}", latex_content)
         for font in font_commands:
-            if any(bad in font.lower() for bad in ['comic', 'script', 'decorative']):
+            if any(bad in font.lower() for bad in ["comic", "script", "decorative"]):
                 score -= 15
                 warnings.append(f"Font package '{font}' may not be ATS-friendly")
             else:
                 strengths.append("Uses standard font packages")
 
         complex_patterns = [
-            r'\\begin\{table\}', r'\\begin\{figure\}', r'\\begin\{minipage\}',
-            r'\\multicolumn', r'\\multirow', r'\\includegraphics',
+            r"\\begin\{table\}",
+            r"\\begin\{figure\}",
+            r"\\begin\{minipage\}",
+            r"\\multicolumn",
+            r"\\multirow",
+            r"\\includegraphics",
         ]
         for pattern in complex_patterns:
             if re.search(pattern, latex_content):
@@ -513,9 +705,9 @@ class ATSScoringService:
                 recommendations.append("Simplify complex formatting for better ATS compatibility")
                 break
 
-        if '\\section' in latex_content:
+        if "\\section" in latex_content:
             strengths.append("Uses clear section headers")
-        if '\\item' in latex_content:
+        if "\\item" in latex_content:
             strengths.append("Uses bullet points effectively")
 
         return {
@@ -525,8 +717,8 @@ class ATSScoringService:
             "strengths": strengths,
             "details": {
                 "unfriendly_packages_found": len(flagged),
-                "has_proper_structure": '\\documentclass' in latex_content,
-                "uses_sections": '\\section' in latex_content,
+                "has_proper_structure": "\\documentclass" in latex_content,
+                "uses_sections": "\\section" in latex_content,
             },
         }
 
@@ -534,9 +726,7 @@ class ATSScoringService:
     #  Structure score (fixed contact detection)                         #
     # ------------------------------------------------------------------ #
 
-    async def _score_structure(
-        self, text_content: str, latex_content: str = ""
-    ) -> Dict[str, Any]:
+    async def _score_structure(self, text_content: str, latex_content: str = "") -> Dict[str, Any]:
         """Score the structural organisation of the resume."""
         score = 100.0
         recommendations: List[str] = []
@@ -545,12 +735,8 @@ class ATSScoringService:
 
         # Contact detection — use raw LaTeX so emails inside \href are found
         raw_to_check = latex_content if latex_content else text_content
-        has_email = bool(re.search(
-            r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', raw_to_check
-        ))
-        has_phone = bool(re.search(
-            r'[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]', raw_to_check
-        ))
+        has_email = bool(re.search(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", raw_to_check))
+        has_phone = bool(re.search(r"[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", raw_to_check))
         contact_found = has_email or has_phone
 
         sections_found: Dict[str, bool] = {}
@@ -565,7 +751,7 @@ class ATSScoringService:
             recommendations.append("Add a clear contact section with email and phone")
 
         # Experience section
-        exp_patterns = [r'experience', r'work', r'employment', r'career']
+        exp_patterns = [r"experience", r"work", r"employment", r"career"]
         exp_found = any(re.search(p, text_content, re.IGNORECASE) for p in exp_patterns)
         sections_found["experience"] = exp_found
         if exp_found:
@@ -576,7 +762,7 @@ class ATSScoringService:
             recommendations.append("Add a clear experience section")
 
         # Education section
-        edu_patterns = [r'education', r'degree', r'university', r'college', r'school']
+        edu_patterns = [r"education", r"degree", r"university", r"college", r"school"]
         edu_found = any(re.search(p, text_content, re.IGNORECASE) for p in edu_patterns)
         sections_found["education"] = edu_found
         if edu_found:
@@ -588,9 +774,9 @@ class ATSScoringService:
 
         # Recommended sections (softer penalty)
         recommended_sections = {
-            "summary": [r'summary', r'objective', r'profile'],
-            "skills": [r'skills', r'competencies', r'technologies'],
-            "achievements": [r'achievements', r'accomplishments', r'awards'],
+            "summary": [r"summary", r"objective", r"profile"],
+            "skills": [r"skills", r"competencies", r"technologies"],
+            "achievements": [r"achievements", r"accomplishments", r"awards"],
         }
         for section, patterns in recommended_sections.items():
             found = any(re.search(p, text_content, re.IGNORECASE) for p in patterns)
@@ -643,8 +829,7 @@ class ATSScoringService:
 
         # Action verbs check (against expanded corpus)
         action_verbs_found = [
-            v for v in self.ACTION_VERBS
-            if re.search(rf'\b{re.escape(v)}\b', text_content, re.IGNORECASE)
+            v for v in self.ACTION_VERBS if re.search(rf"\b{re.escape(v)}\b", text_content, re.IGNORECASE)
         ]
         action_verb_ratio = len(action_verbs_found) / len(self.ACTION_VERBS)
 
@@ -659,13 +844,14 @@ class ATSScoringService:
 
         # Quantifiable achievements
         quantifiable_patterns = [
-            r'\d+%', r'\$\d+', r'\d+\s*(million|thousand|k)',
-            r'increased.*\d+', r'reduced.*\d+', r'improved.*\d+',
+            r"\d+%",
+            r"\$\d+",
+            r"\d+\s*(million|thousand|k)",
+            r"increased.*\d+",
+            r"reduced.*\d+",
+            r"improved.*\d+",
         ]
-        quantifiable_found = sum(
-            1 for p in quantifiable_patterns
-            if re.search(p, text_content, re.IGNORECASE)
-        )
+        quantifiable_found = sum(1 for p in quantifiable_patterns if re.search(p, text_content, re.IGNORECASE))
 
         if quantifiable_found >= 3:
             strengths.append("Includes quantifiable achievements")
@@ -685,8 +871,7 @@ class ATSScoringService:
             profile_keywords = industry_profile["keywords"]
             total_weight = sum(profile_keywords.values())
             keywords_found = [
-                kw for kw in profile_keywords
-                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
+                kw for kw in profile_keywords if re.search(rf"\b{re.escape(kw)}\b", text_content, re.IGNORECASE)
             ]
             weighted_score = sum(profile_keywords[kw] for kw in keywords_found)
             keyword_ratio = weighted_score / max(total_weight, 1)
@@ -701,8 +886,7 @@ class ATSScoringService:
         elif industry and industry in self.industry_keywords:
             industry_keywords = self.industry_keywords[industry]
             keywords_found = [
-                kw for kw in industry_keywords
-                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
+                kw for kw in industry_keywords if re.search(rf"\b{re.escape(kw)}\b", text_content, re.IGNORECASE)
             ]
             keyword_ratio = len(keywords_found) / max(len(industry_keywords), 1)
             if keyword_ratio > 0.4:
@@ -717,8 +901,7 @@ class ATSScoringService:
         if job_description:
             jd_keywords = self._extract_keywords_from_job_description(job_description)
             matching_keywords = [
-                kw for kw in jd_keywords
-                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
+                kw for kw in jd_keywords if re.search(rf"\b{re.escape(kw)}\b", text_content, re.IGNORECASE)
             ]
             match_ratio = len(matching_keywords) / max(len(jd_keywords), 1)
             if match_ratio > 0.6:
@@ -758,7 +941,7 @@ class ATSScoringService:
         never match. Alphanumeric-neighbour lookarounds match such tokens while
         still preventing partial matches (e.g. 'java' must not match 'javascript').
         """
-        pattern = rf'(?<![A-Za-z0-9]){re.escape(keyword)}(?![A-Za-z0-9])'
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(keyword)}(?![A-Za-z0-9])"
         return re.search(pattern, text, re.IGNORECASE) is not None
 
     async def _score_keywords(
@@ -792,10 +975,7 @@ class ATSScoringService:
             if len(word) > 3:
                 word_frequency[word] = word_frequency.get(word, 0) + 1
 
-        stuffed_keywords = [
-            word for word, count in word_frequency.items()
-            if count / word_count > 0.05 and count > 3
-        ]
+        stuffed_keywords = [word for word, count in word_frequency.items() if count / word_count > 0.05 and count > 3]
         if stuffed_keywords:
             score -= 20
             warnings.append("Potential keyword stuffing detected")
@@ -813,7 +993,7 @@ class ATSScoringService:
         if profile_keywords:
             for kw, weight in profile_keywords.items():
                 calibrated_total_weight += weight
-                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE):
+                if re.search(rf"\b{re.escape(kw)}\b", text_content, re.IGNORECASE):
                     calibrated_hit_score += weight
                     calibrated_hits.append(kw)
 
@@ -822,24 +1002,20 @@ class ATSScoringService:
                 strengths.append(f"Strong {profile['label']} keyword presence")
                 score = min(100.0, score + 5)
             elif hit_ratio >= 0.2:
-                recommendations.append(
-                    f"Include more {profile['label']}-specific keywords to improve calibration"
-                )
+                recommendations.append(f"Include more {profile['label']}-specific keywords to improve calibration")
             else:
                 score -= 8
                 recommendations.append(
                     f"Resume lacks key {profile['label']} terminology (e.g. "
-                    + ", ".join(list(profile_keywords.keys())[:4]) + ")"
+                    + ", ".join(list(profile_keywords.keys())[:4])
+                    + ")"
                 )
 
         # Tech keywords (expanded corpus) — only applied to tech/generic profiles
         _TECH_PROFILES = {"generic", "tech_saas"}
         tech_found: List[str] = []
         if industry_key in _TECH_PROFILES:
-            tech_found = [
-                kw for kw in self.TECH_KEYWORDS
-                if self._keyword_in_text(kw, text_content)
-            ]
+            tech_found = [kw for kw in self.TECH_KEYWORDS if self._keyword_in_text(kw, text_content)]
             if len(tech_found) >= 8:
                 strengths.append("Rich technical keyword presence")
             elif len(tech_found) >= 4:
@@ -850,8 +1026,7 @@ class ATSScoringService:
 
         # Soft skills (expanded corpus)
         soft_skills_found = [
-            skill for skill in self.SOFT_SKILLS
-            if re.search(rf'\b{re.escape(skill)}\b', text_content, re.IGNORECASE)
+            skill for skill in self.SOFT_SKILLS if re.search(rf"\b{re.escape(skill)}\b", text_content, re.IGNORECASE)
         ]
         if len(soft_skills_found) >= 4:
             strengths.append("Good soft skills representation")
@@ -919,7 +1094,7 @@ class ATSScoringService:
                 "details": {},
             }
 
-        sentences = re.split(r'[.!?]+', text_content)
+        sentences = re.split(r"[.!?]+", text_content)
         sentences = [s.strip() for s in sentences if s.strip()]
         words = text_content.split()
 
@@ -935,7 +1110,7 @@ class ATSScoringService:
         else:
             strengths.append("Appropriate sentence length")
 
-        passive_indicators = ['was', 'were', 'been', 'being']
+        passive_indicators = ["was", "were", "been", "being"]
         passive_count = sum(1 for w in words if w.lower() in passive_indicators)
         passive_ratio = passive_count / max(len(words), 1)
 
@@ -945,13 +1120,13 @@ class ATSScoringService:
         else:
             strengths.append("Uses active voice effectively")
 
-        filler_words = ['very', 'really', 'quite', 'rather', 'somewhat']
+        filler_words = ["very", "really", "quite", "rather", "somewhat"]
         filler_count = sum(1 for w in words if w.lower() in filler_words)
         if filler_count > len(words) * 0.02:
             score -= 5
             recommendations.append("Remove unnecessary filler words")
 
-        informal_words = ['awesome', 'cool', 'stuff', 'things', 'guys']
+        informal_words = ["awesome", "cool", "stuff", "things", "guys"]
         informal_count = sum(1 for w in words if w.lower() in informal_words)
         if informal_count > 0:
             score -= 10
@@ -978,50 +1153,52 @@ class ATSScoringService:
     #  Section analysis                                                   #
     # ------------------------------------------------------------------ #
 
-    async def _analyze_sections(
-        self, text_content: str, latex_content: str = ""
-    ) -> Dict[str, Any]:
+    async def _analyze_sections(self, text_content: str, latex_content: str = "") -> Dict[str, Any]:
         """Analyse individual resume sections."""
         raw = latex_content if latex_content else text_content
 
         # Contact
-        has_email = bool(re.search(
-            r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', raw
-        ))
-        has_phone = bool(re.search(r'[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]', raw))
+        has_email = bool(re.search(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", raw))
+        has_phone = bool(re.search(r"[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]", raw))
         contact_found = has_email or has_phone
 
-        exp_patterns = [r'experience', r'work', r'employment', r'career']
+        exp_patterns = [r"experience", r"work", r"employment", r"career"]
         exp_found = any(re.search(p, text_content, re.IGNORECASE) for p in exp_patterns)
 
-        edu_patterns = [r'education', r'degree', r'university', r'college']
+        edu_patterns = [r"education", r"degree", r"university", r"college"]
         edu_found = any(re.search(p, text_content, re.IGNORECASE) for p in edu_patterns)
 
         return {
-            "contact": asdict(SectionAnalysis(
-                found=contact_found,
-                score=100 if contact_found else 0,
-                content_length=len(re.findall(r'[@\d\-\.]', raw)),
-                keywords_found=[p for p in ['email', 'phone'] if re.search(p, text_content, re.IGNORECASE)],
-                issues=[] if contact_found else ["Missing contact information"],
-                suggestions=[] if contact_found else ["Add email and phone number"],
-            )),
-            "experience": asdict(SectionAnalysis(
-                found=exp_found,
-                score=100 if exp_found else 0,
-                content_length=len(text_content.split()) // 3,
-                keywords_found=[p for p in exp_patterns if re.search(p, text_content, re.IGNORECASE)],
-                issues=[] if exp_found else ["Missing work experience"],
-                suggestions=[] if exp_found else ["Add work experience section"],
-            )),
-            "education": asdict(SectionAnalysis(
-                found=edu_found,
-                score=100 if edu_found else 0,
-                content_length=len(text_content.split()) // 4,
-                keywords_found=[p for p in edu_patterns if re.search(p, text_content, re.IGNORECASE)],
-                issues=[] if edu_found else ["Missing education information"],
-                suggestions=[] if edu_found else ["Add education section"],
-            )),
+            "contact": asdict(
+                SectionAnalysis(
+                    found=contact_found,
+                    score=100 if contact_found else 0,
+                    content_length=len(re.findall(r"[@\d\-\.]", raw)),
+                    keywords_found=[p for p in ["email", "phone"] if re.search(p, text_content, re.IGNORECASE)],
+                    issues=[] if contact_found else ["Missing contact information"],
+                    suggestions=[] if contact_found else ["Add email and phone number"],
+                )
+            ),
+            "experience": asdict(
+                SectionAnalysis(
+                    found=exp_found,
+                    score=100 if exp_found else 0,
+                    content_length=len(text_content.split()) // 3,
+                    keywords_found=[p for p in exp_patterns if re.search(p, text_content, re.IGNORECASE)],
+                    issues=[] if exp_found else ["Missing work experience"],
+                    suggestions=[] if exp_found else ["Add work experience section"],
+                )
+            ),
+            "education": asdict(
+                SectionAnalysis(
+                    found=edu_found,
+                    score=100 if edu_found else 0,
+                    content_length=len(text_content.split()) // 4,
+                    keywords_found=[p for p in edu_patterns if re.search(p, text_content, re.IGNORECASE)],
+                    issues=[] if edu_found else ["Missing education information"],
+                    suggestions=[] if edu_found else ["Add education section"],
+                )
+            ),
         }
 
     # ------------------------------------------------------------------ #
@@ -1034,11 +1211,11 @@ class ATSScoringService:
         compatibility_score = 100
 
         problematic_elements = {
-            'tables': r'\\begin\{table\}|\\begin\{tabular\}',
-            'graphics': r'\\includegraphics|\\begin\{figure\}',
-            'complex_formatting': r'\\multicolumn|\\multirow',
-            'text_boxes': r'\\fbox|\\framebox',
-            'headers_footers': r'\\fancyhdr|\\pagestyle',
+            "tables": r"\\begin\{table\}|\\begin\{tabular\}",
+            "graphics": r"\\includegraphics|\\begin\{figure\}",
+            "complex_formatting": r"\\multicolumn|\\multirow",
+            "text_boxes": r"\\fbox|\\framebox",
+            "headers_footers": r"\\fancyhdr|\\pagestyle",
         }
 
         for element, pattern in problematic_elements.items():
@@ -1056,32 +1233,75 @@ class ATSScoringService:
     #  Helpers                                                            #
     # ------------------------------------------------------------------ #
 
-    def _prioritize_improvements(
-        self, category_scores: Dict[str, float]
-    ) -> List[Dict[str, Any]]:
+    def _prioritize_improvements(self, category_scores: Dict[str, float]) -> List[Dict[str, Any]]:
         """Prioritise improvements based on category scores."""
         improvements = []
         for category, score in category_scores.items():
             if score < 70:
                 priority = "high" if score < 50 else "medium"
-                improvements.append({
-                    "category": category,
-                    "current_score": score,
-                    "priority": priority,
-                    "potential_impact": 100 - score,
-                })
+                improvements.append(
+                    {
+                        "category": category,
+                        "current_score": score,
+                        "priority": priority,
+                        "potential_impact": 100 - score,
+                    }
+                )
         improvements.sort(key=lambda x: x["potential_impact"], reverse=True)
         return improvements
 
     def _extract_keywords_from_job_description(self, job_description: str) -> List[str]:
         """Extract relevant keywords from job description."""
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', job_description.lower())
+        words = re.findall(r"\b[a-zA-Z]{3,}\b", job_description.lower())
         stop_words = {
-            'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
-            'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his',
-            'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'did',
-            'she', 'use', 'way', 'many', 'will', 'with', 'that', 'this', 'from',
-            'have', 'they', 'been', 'work', 'your', 'more', 'also', 'able', 'each',
+            "the",
+            "and",
+            "for",
+            "are",
+            "but",
+            "not",
+            "you",
+            "all",
+            "can",
+            "had",
+            "her",
+            "was",
+            "one",
+            "our",
+            "out",
+            "day",
+            "get",
+            "has",
+            "him",
+            "his",
+            "how",
+            "its",
+            "may",
+            "new",
+            "now",
+            "old",
+            "see",
+            "two",
+            "who",
+            "did",
+            "she",
+            "use",
+            "way",
+            "many",
+            "will",
+            "with",
+            "that",
+            "this",
+            "from",
+            "have",
+            "they",
+            "been",
+            "work",
+            "your",
+            "more",
+            "also",
+            "able",
+            "each",
         }
         keywords = [w for w in words if w not in stop_words and len(w) > 3]
         return list(dict.fromkeys(keywords))[:30]
