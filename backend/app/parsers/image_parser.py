@@ -1,6 +1,7 @@
 """
 Image Parser - OCR-based text extraction from image files and scanned PDFs.
 """
+import asyncio
 import io
 import logging
 from typing import Optional
@@ -19,6 +20,9 @@ class ImageParser(AbstractParser):
     """Parser for image files (JPEG, PNG, etc.) using OCR."""
 
     async def parse(self, file_content: bytes, filename: str = "") -> ParsedResume:
+        return await asyncio.to_thread(self._parse_sync, file_content, filename)
+
+    def _parse_sync(self, file_content: bytes, filename: str = "") -> ParsedResume:
         if not file_content:
             raise ValueError("Image file is empty")
 
@@ -56,8 +60,8 @@ class ImageParser(AbstractParser):
             return self._build_parsed_resume(text, filename)
 
         except Exception as e:
-            logger.error(f"Error parsing image: {e}")
-            raise ValueError(f"Failed to parse image: {str(e)}")
+            logger.error("Error parsing image", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse image input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         if not file_content:
