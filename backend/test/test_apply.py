@@ -64,6 +64,15 @@ class TestGreenhouseUrlParsing:
         with pytest.raises(ValueError):
             GreenhouseService.parse_url("https://example.com/jobs/42")
 
+    @pytest.mark.parametrize("url", [
+        "https://evil.example/boards.greenhouse.io/acme/jobs/42",
+        "https://boards.greenhouse.io.evil.example/acme/jobs/42",
+        "https://boards.greenhouse.io/acme/../jobs/42",
+    ])
+    def test_lookalike_or_unsafe_url_raises(self, url):
+        with pytest.raises(ValueError):
+            GreenhouseService.parse_url(url)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. URL parsing — Lever
@@ -93,6 +102,19 @@ class TestLeverUrlParsing:
     def test_no_uuid_raises(self):
         with pytest.raises(ValueError):
             LeverService.parse_url("https://jobs.lever.co/acme/not-a-uuid")
+
+    @pytest.mark.parametrize("url", [
+        "https://evil.example/jobs.lever.co/acme/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "https://jobs.lever.co.evil.example/acme/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "https://jobs.lever.co/acme/a1b2c3d4-e5f6-7890-abcd-ef1234567890/extra",
+    ])
+    def test_lookalike_or_unsafe_url_raises(self, url):
+        with pytest.raises(ValueError):
+            LeverService.parse_url(url)
+
+    def test_direct_api_arguments_cannot_change_the_destination_path(self):
+        with pytest.raises(ValueError):
+            LeverService._api_url("../admin", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -312,7 +334,7 @@ class TestSubmissionStatus:
         assert created_subs
         sub = created_subs[0]
         assert sub.status == "failed"
-        assert "Missing required field" in (sub.error_message or "")
+        assert sub.error_message == "Greenhouse rejected the application"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
