@@ -58,6 +58,10 @@ export interface ATSDetails {
   warnings?: string[]
   industry_label?: string | null
   industry_key?: string | null
+  locale_key?: string | null
+  locale_label?: string | null
+  score_threshold?: number
+  calibration_statement?: string | null
 }
 
 export interface ChangeEntry {
@@ -68,7 +72,8 @@ export interface ChangeEntry {
 
 export interface JobCompletedEvent extends BaseEvent {
   type: 'job.completed'
-  pdf_job_id: string
+  /** Null for terminal jobs that produce no PDF (for example cover-letter generation). */
+  pdf_job_id: string | null
   /** null when the job never ran ATS scoring (e.g. a plain compile with no JD) */
   ats_score: number | null
   ats_details: ATSDetails | null
@@ -91,6 +96,7 @@ export interface JobFailedEvent extends BaseEvent {
   /** Present when error_code === 'compile_timeout' */
   upgrade_message?: string
   user_plan?: string
+  timeout_seconds?: number
 }
 
 export interface JobCancelledEvent extends BaseEvent {
