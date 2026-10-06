@@ -407,9 +407,15 @@ async def db_session(db_session_factory) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    # Resolve the test-owned session before constructing the ASGI client. The
+    # autouse dependency override then routes every DB-backed request through
+    # this session instead of lazily creating app.database.connection's
+    # process-global pool on the ASGI event loop. That pool can otherwise be
+    # replaced by a later lifespan on another loop, leaving asyncpg transports
+    # for ResourceWarning/UnraisableException failures.
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://localhost"
     ) as ac:
         yield ac
 
