@@ -38,3 +38,10 @@ requires HTTPS except for loopback tests, constrains source/output paths to
 `GITHUB_WORKSPACE`, limits source size to the API contract, waits at most 180
 seconds by default, and never replaces an existing output with an invalid or
 partial download.
+
+Before reading or writing, the Action canonicalizes the physical workspace and
+rejects source links or output parent directories that resolve outside it;
+internal symlinks remain usable. The final output filename is still replaced
+atomically rather than followed, so an existing output symlink is not written
+through. This validation is not an atomic defense against a concurrent process
+swapping parent directories after validation.
