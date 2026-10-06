@@ -121,6 +121,10 @@ class TestUploadWithSourceHint:
             "app.workers.converter_worker.submit_document_conversion", return_value=None
         ) as mock_submit, patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_started", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_accepted", new_callable=AsyncMock
         ):
             resp = await client.post(
                 "/formats/upload",
@@ -147,6 +151,10 @@ class TestUploadWithSourceHint:
             "app.workers.converter_worker.submit_document_conversion", return_value=None
         ) as mock_submit, patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_started", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_accepted", new_callable=AsyncMock
         ):
             resp = await client.post(
                 "/formats/upload",
@@ -166,6 +174,10 @@ class TestUploadWithSourceHint:
             "app.workers.converter_worker.submit_document_conversion", return_value=None
         ) as mock_submit, patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_started", new_callable=AsyncMock
+        ), patch(
+            "app.api.job_routes._mark_dispatch_accepted", new_callable=AsyncMock
         ):
             resp = await client.post(
                 "/formats/upload",
