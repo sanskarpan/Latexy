@@ -1,7 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { buildLatexHoverPreview, parseBibTeXPreviews } from '@/lib/latex-hover-previews'
+import { markdownLanguage } from '@codemirror/lang-markdown'
+import { buildLatexHoverPreview, markdownCodeSpan, parseBibTeXPreviews } from '@/lib/latex-hover-previews'
+
+function parseRenderedCodeSpan(markdown: string): string {
+  const tree = markdownLanguage.parser.parse(markdown)
+  const code = tree.topNode.getChild('Paragraph')?.getChild('InlineCode')
+  if (!code?.firstChild || !code.lastChild) throw new Error('Expected an inline code span')
+  const body = markdown.slice(code.firstChild.to, code.lastChild.from)
+  return body.startsWith(' ') && body.endsWith(' ') && !/^ +$/.test(body)
+    ? body.slice(1, -1)
+    : body
+}
 
 describe('LaTeX hover previews', () => {
+  it('renders backslash-rich and backtick-rich values as one inline code span', () => {
+    for (const value of [String.raw`\frac{x}{y}`, 'value `` with `ticks`', '`edge`', '  ', String.raw` \alpha `]) {
+      const markdown = markdownCodeSpan(value)
+      expect(markdownLanguage.parser.parse(markdown).toString()).toContain('InlineCode(CodeMark,CodeMark)')
+      expect(parseRenderedCodeSpan(markdown)).toBe(value)
+    }
+  })
+
+  it('normalizes blank paragraphs and handles many backtick runs without argument overflow', () => {
+    expect(parseRenderedCodeSpan(markdownCodeSpan('math\n\n![remote](https://example.test/image)')))
+      .toBe('math  ![remote](https://example.test/image)')
+    const manyRuns = '`x'.repeat(100_000)
+    expect(markdownCodeSpan(manyRuns)).toBe('`` ' + manyRuns + ' ``')
+  })
+
   it('finds inline and display math at the hovered offset', () => {
     const source = 'Text $x^2 + y^2$ and \\[\\frac{a}{b}\\]'
     expect(buildLatexHoverPreview(source, '', source.indexOf('x^2'))).toMatchObject({
