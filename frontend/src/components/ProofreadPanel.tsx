@@ -76,6 +76,7 @@ export default function ProofreadPanel({
 }: ProofreadPanelProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<ProofreadResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set())
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(Object.keys(CATEGORY_LABELS))
@@ -84,13 +85,14 @@ export default function ProofreadPanel({
   const handleRunProofread = useCallback(async () => {
     if (isLoading || !resumeLatex.trim()) return
     setIsLoading(true)
+    setError(null)
     setIgnoredIds(new Set())
     try {
       const res = await apiClient.proofreadResume(resumeLatex)
       setResult(res)
       onProofreadComplete?.(res.issues)
-    } catch {
-      // silently fail — no API key, network, etc.
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Proofreading failed. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -151,6 +153,11 @@ export default function ProofreadPanel({
             </>
           )}
         </button>
+        {error && (
+          <p role="alert" className="text-center text-[11px] text-err">
+            {error}
+          </p>
+        )}
       </div>
 
       {/* ── Results ── */}
