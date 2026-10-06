@@ -10,6 +10,8 @@ if (!manifest.permissions.includes('activeTab')) throw new Error('Explicit activ
 const referenced = [
   manifest.action.default_popup,
   manifest.options_page,
+  ...Object.values(manifest.icons),
+  ...Object.values(manifest.action.default_icon),
   ...manifest.content_scripts.flatMap((entry) => entry.js),
 ]
 await Promise.all(referenced.map((file) => readFile(resolve(root, file))))

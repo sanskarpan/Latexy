@@ -386,7 +386,7 @@ jobs:
         run: >-
           zip -r ../../latexy-browser-extension.zip
           manifest.json extraction.js autofill.js bridge.js popup.html popup.js
-          options.html options.js extension.css README.md
+          options.html options.js extension.css icons README.md
       - name: Upload extension archive
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

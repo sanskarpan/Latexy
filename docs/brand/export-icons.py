@@ -67,6 +67,10 @@ def main() -> None:
     raster(512).save(icons / "icon-512.png", optimize=True)
     raster(512, maskable=True).save(icons / "icon-512-maskable.png", optimize=True)
     raster(180).save(icons / "apple-touch-icon.png", optimize=True)
+    extension_icons = ROOT / "packages" / "browser-extension" / "icons"
+    extension_icons.mkdir(parents=True, exist_ok=True)
+    for size in (16, 32, 48, 128):
+        raster(size).save(extension_icons / f"icon-{size}.png", optimize=True)
     favicon = raster(64)
     favicon.save(FRONTEND / "public" / "favicon.ico", format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
 
