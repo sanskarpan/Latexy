@@ -237,6 +237,7 @@ class TestWebhookSecurity:
         # Redis SET NX reports the key already exists → duplicate delivery
         fake_redis = _fresh_redis()
         fake_redis.set = AsyncMock(return_value=None)  # ← key already present
+        fake_redis.get = AsyncMock(return_value="done")
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -373,12 +374,19 @@ class TestWebhookSecurity:
             result = await svc_available.handle_webhook(db_session, payload, sig)
 
         assert result["success"] is True
-        # Idempotency now uses an atomic SET key NX EX per event.
-        fake_redis.set.assert_awaited_once()
-        set_args, set_kwargs = fake_redis.set.call_args
-        assert event_id in set_args[0]
-        assert set_kwargs.get("nx") is True
-        assert set_kwargs.get("ex") == 86400
+        # Idempotency claims briefly while handling, then stores a long-lived
+        # completed marker for replay suppression.
+        assert fake_redis.set.await_count == 1
+        processing_args, processing_kwargs = fake_redis.set.await_args_list[0]
+        assert event_id in processing_args[0]
+        assert processing_args[1] != "processing"
+        assert processing_kwargs.get("nx") is True
+        assert processing_kwargs.get("ex") == 120
+        assert fake_redis.eval.await_count == 1
+        done_args, done_kwargs = fake_redis.eval.await_args
+        assert done_args[1] == 1
+        assert done_args[2] == processing_args[0]
+        assert done_args[4:] == ("done", 86400)
         # Successful handling must NOT release the idempotency key.
         fake_redis.delete.assert_not_awaited()
 
