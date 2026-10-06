@@ -12,7 +12,6 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.api.ws_routes import _collab_chat_access_ok
-from app.database.models import Resume, User
 from app.main import app
 from app.services import collab_manager as collab
 
@@ -138,29 +137,48 @@ async def test_chat_fanout_uses_server_label_and_discards_client_metadata() -> N
 @pytest.mark.asyncio
 async def test_two_real_websocket_clients_exchange_ephemeral_chat() -> None:
     """Exercise the ASGI websocket route, not only CollabRoom fan-out."""
-    from app.database.connection import get_async_db_session
+    from contextlib import asynccontextmanager
 
     user_id = str(uuid.uuid4())
     resume_id = str(uuid.uuid4())
-    async with get_async_db_session() as db:
-        db.add(User(id=user_id, email=f"test_chat_{user_id}@example.com", name="Alice"))
-        db.add(Resume(id=resume_id, user_id=user_id, title="Chat test", latex_content=""))
-        await db.commit()
 
     async def consume_ticket(*_args, **_kwargs):
         return user_id
+
+    # TestClient runs the websocket app on a short-lived portal loop. Keep the
+    # route's permission reads on a deterministic fake session here rather
+    # than handing the process-global asyncpg pool across that loop boundary;
+    # database-backed authorization is covered by the dedicated route tests.
+    resume_result = MagicMock()
+    resume_result.scalar_one_or_none.return_value = MagicMock(user_id=user_id)
+    name_result = MagicMock()
+    name_result.scalar_one_or_none.return_value = "Alice"
+    route_db = AsyncMock()
+    route_db.execute = AsyncMock(side_effect=[resume_result, name_result, resume_result, name_result])
+
+    @asynccontextmanager
+    async def route_session():
+        yield route_db
 
     with (
         patch("app.api.ws_routes._consume_ws_ticket", new=consume_ticket),
         patch.object(collab, "_subscribe", new_callable=AsyncMock, return_value=None),
         patch.object(collab, "_publish", new_callable=AsyncMock),
         patch.object(collab, "_chat_user_rate_allowed", new_callable=AsyncMock, return_value=True),
+        patch("app.database.connection.get_async_db_session", route_session),
+        patch("app.api.ws_routes._collab_chat_access_ok", new_callable=AsyncMock, return_value=True),
     ):
-        with TestClient(app) as client:
+        # Do not enter TestClient's lifespan here: it would replace the
+        # pytest-owned asyncpg engine on the portal loop. The route's DB reads
+        # are already supplied by route_session above.
+        client = TestClient(app, base_url="http://localhost")
+        try:
             with client.websocket_connect(f"/ws/collab/{resume_id}?ticket=one") as first:
                 with client.websocket_connect(f"/ws/collab/{resume_id}?ticket=two") as second:
                     first.send_bytes(_outgoing_chat("<b>literal</b>"))
                     received = second.receive_bytes()
+        finally:
+            client.close()
 
     _, pos = collab._decode_varuint(received, 0)
     body, end = collab._decode_varbuffer(received, pos)
