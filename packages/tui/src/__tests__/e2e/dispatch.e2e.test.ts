@@ -34,6 +34,7 @@ vi.mock('../../lib/config.js', () => ({
 
 describe('dispatch — LOCAL_HANDLERS', () => {
   beforeEach(async () => {
+    delete process.env['LATEXY_SESSION_TOKEN']
     clearMessages()
     closeOverlay()
     $activeJobId.set(null)
@@ -97,6 +98,16 @@ describe('dispatch — LOCAL_HANDLERS', () => {
     expect(msgs.some(m => m.role === 'system')).toBe(true)
   })
 
+  it('/logout clears the process env override and warns about the parent shell', async () => {
+    process.env['LATEXY_SESSION_TOKEN'] = 'environment-token'
+    const { dispatch } = await import('../../commands/dispatch.js')
+
+    await dispatch('/logout')
+
+    expect(process.env['LATEXY_SESSION_TOKEN']).toBeUndefined()
+    expect($messages.get().at(-1)?.content).toContain('unset it there')
+  })
+
   it('unknown command adds an error message', async () => {
     const { dispatch } = await import('../../commands/dispatch.js')
     await dispatch('/zzznonexistent')
@@ -112,7 +123,8 @@ describe('dispatch — LOCAL_HANDLERS', () => {
     await dispatch('just some text')
     const msgs = $messages.get()
     expect(msgs.some(m => m.role === 'user' && m.content === 'just some text')).toBe(true)
-    expect(msgs.some(m => m.role === 'system')).toBe(true)
+    expect(msgs.some(m => m.role === 'system' && m.content.includes('not available yet'))).toBe(true)
+    expect(msgs.some(m => m.content.includes('select a provider'))).toBe(false)
   })
 })
 
