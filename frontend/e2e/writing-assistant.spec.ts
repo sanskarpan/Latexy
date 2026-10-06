@@ -40,6 +40,20 @@ const MOCK_REWRITE_RESPONSE = {
   cached: false,
 }
 
+const MOCK_VARIANT_SET = {
+  id: 'bullet-variant-set-1',
+  resume_id: RESUME_ID,
+  source_text: TARGET_SELECTION_TEXT,
+  target_label: 'Acme — Staff Engineer',
+  options: [
+    'Directed a payment integration from design through launch',
+    'Orchestrated delivery of a production payment integration',
+    'Led end-to-end implementation of a payment integration',
+  ],
+  created_at: '2026-09-08T00:00:00Z',
+  updated_at: '2026-09-08T00:00:00Z',
+}
+
 // ------------------------------------------------------------------ //
 //  Helpers                                                            //
 // ------------------------------------------------------------------ //
@@ -110,7 +124,9 @@ async function waitForMonacoEditor(page: import('@playwright/test').Page) {
       return typeof editor?.getModel === 'function' && !!editor.getModel()
     },
     null,
-    { timeout: 15_000 }
+    // Monaco is a large dynamic chunk; a cold dev server can take longer than
+    // 15 seconds to compile and mount it when the suite runs in parallel.
+    { timeout: 30_000 }
   )
 }
 
@@ -246,6 +262,13 @@ function getWritingAssistantPanel(page: import('@playwright/test').Page) {
     .first()
 }
 
+async function openLatexGenerator(page: import('@playwright/test').Page) {
+  await gotoEditPage(page)
+  await page.getByRole('button', { name: /^More$/i }).click()
+  await page.getByRole('menuitem', { name: 'Generate LaTeX', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Generate LaTeX' })).toBeVisible()
+}
+
 // ------------------------------------------------------------------ //
 //  Test suite                                                         //
 // ------------------------------------------------------------------ //
@@ -287,6 +310,11 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await expect(page.getByRole('button', { name: /Quantify/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Power Verbs/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Expand/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Paraphrase/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Concise/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Scientific/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Split sentences/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Join sentences/i })).toBeVisible()
   })
 
   // ── 4. Selected text preview ───────────────────────────────────── //
@@ -325,6 +353,67 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect((capturedBody!.selected_text as string).length).toBeGreaterThan(0)
     expect(capturedBody!.selected_text).toBe(TARGET_SELECTION_TEXT)
     expect(capturedBody!.action).toBe('improve')
+  })
+
+  test('named rewrite modes send their distinct operation', async ({ page }) => {
+    const capturedActions: string[] = []
+    await page.route((url) => url.pathname === '/ai/rewrite', async route => {
+      capturedActions.push(route.request().postDataJSON().action)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_REWRITE_RESPONSE),
+      })
+    })
+    await gotoEditPage(page)
+    await triggerWritingAssistant(page)
+
+    const modes = [
+      ['Paraphrase', 'paraphrase'],
+      ['Concise', 'concise'],
+      ['Scientific', 'scientific'],
+      ['Split sentences', 'split'],
+      ['Join sentences', 'join'],
+    ] as const
+    for (const [label, action] of modes) {
+      const response = page.waitForResponse(result => new URL(result.url()).pathname === '/ai/rewrite')
+      await page.getByRole('button', { name: new RegExp(`^${label}`) }).click()
+      await response
+      expect(capturedActions[capturedActions.length - 1]).toBe(action)
+      await page.getByRole('button', { name: 'Try a different action' }).click()
+    }
+  })
+
+  test('synonym suggestions are contextual and replace only after selection', async ({ page }) => {
+    let capturedBody: Record<string, unknown> | null = null
+    const replacement = 'Accountable for constructing payment integration'
+    await page.route((url) => url.pathname === '/ai/synonyms', async route => {
+      capturedBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          synonyms: [replacement, 'Led payment integration development'],
+          cached: false,
+        }),
+      })
+    })
+    await gotoEditPage(page)
+    await triggerWritingAssistant(page)
+    await page.getByRole('button', { name: /^Synonyms/ }).click()
+
+    await expect(page.getByText('Choose one replacement')).toBeVisible()
+    expect(capturedBody).toMatchObject({ text: TARGET_SELECTION_TEXT, count: 5 })
+    expect(typeof capturedBody!.context).toBe('string')
+    await page.getByRole('button', { name: new RegExp(`^${replacement}`) }).click()
+
+    await expect(page.getByRole('button', { name: 'Close writing assistant' })).not.toBeVisible()
+    await expect.poll(() => page.evaluate(() => {
+      const editor = (window as Window & {
+        __latexyMonacoEditor?: { getModel: () => { getValue: () => string } | null }
+      }).__latexyMonacoEditor
+      return editor?.getModel()?.getValue() ?? ''
+    })).toContain(replacement)
   })
 
   // ── 6. Loading state ───────────────────────────────────────────── //
@@ -505,5 +594,335 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect(capturedBody!.selected_text).toBe(TARGET_SELECTION_TEXT)
     expect(typeof capturedBody!.context).toBe('string')
     expect((capturedBody!.context as string).length).toBeGreaterThan(0)
+  })
+
+  test('generates three persisted variants, shows their diffs, and applies one', async ({ page }) => {
+    let capturedBody: Record<string, unknown> | null = null
+    await page.route((url) => url.pathname === '/ai/bullet-variants', async (route) => {
+      capturedBody = JSON.parse(route.request().postData() || '{}')
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_VARIANT_SET),
+      })
+    })
+
+    await gotoEditPage(page)
+    await triggerWritingAssistant(page)
+    await page.getByRole('button', { name: /Generate 3 variants/i }).click()
+    await expect(page.getByText('Three reviewable variants')).toBeVisible()
+    await page.getByPlaceholder('e.g. Acme — Staff Engineer').fill('Acme — Staff Engineer')
+
+    const responsePromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/ai/bullet-variants'
+    )
+    await page.getByRole('button', { name: /Generate and save 3 variants/i }).click()
+    await responsePromise
+
+    expect(capturedBody).toMatchObject({
+      resume_id: RESUME_ID,
+      source_text: TARGET_SELECTION_TEXT,
+      target_label: 'Acme — Staff Engineer',
+    })
+    await expect(page.getByText(MOCK_VARIANT_SET.options[0], { exact: true })).toBeVisible()
+    await expect(page.getByText(MOCK_VARIANT_SET.options[1], { exact: true })).toBeVisible()
+    await expect(page.getByText(MOCK_VARIANT_SET.options[2], { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Apply this variant' }).first().click()
+    await expect(page.getByRole('button', { name: 'Close writing assistant' })).not.toBeVisible()
+    await expect.poll(() => page.evaluate(() => {
+      const editor = (window as Window & {
+        __latexyMonacoEditor?: { getModel: () => { getValue: () => string } | null }
+      }).__latexyMonacoEditor
+      return editor?.getModel()?.getValue() ?? ''
+    })).toContain(MOCK_VARIANT_SET.options[0])
+  })
+
+  test('loads saved bullet variants for the current resume', async ({ page }) => {
+    await page.route((url) => url.pathname === '/ai/bullet-variants', (route) => {
+      const url = new URL(route.request().url())
+      expect(url.searchParams.get('resume_id')).toBe(RESUME_ID)
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([MOCK_VARIANT_SET]),
+      })
+    })
+
+    await gotoEditPage(page)
+    await triggerWritingAssistant(page)
+    await page.getByRole('button', { name: 'Saved bullet library' }).click()
+
+    await expect(page.getByText('Acme — Staff Engineer')).toBeVisible()
+    await expect(page.getByText(MOCK_VARIANT_SET.options[0], { exact: false })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Apply to selection' }).first()).toBeVisible()
+  })
+})
+
+test.describe('B18.1 — Natural language to LaTeX', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonRoutes(page)
+  })
+
+  test('previews a generated fragment and inserts it only after explicit approval', async ({ page }) => {
+    const fragment = '\\section{Projects}\n\\begin{itemize}\n\\item Built a compiler\n\\end{itemize}'
+    let capturedBody: Record<string, unknown> | null = null
+    await page.route((url) => url.pathname === '/ai/generate-latex', async (route) => {
+      capturedBody = JSON.parse(route.request().postData() || '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ latex: fragment, cached: false }),
+      })
+    })
+
+    await openLatexGenerator(page)
+    const intent = page.getByRole('textbox', { name: 'What should be created?' })
+    await intent.fill('Create a Projects section with one concise item')
+    const response = page.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname === '/ai/generate-latex'
+    )
+    await page.getByRole('button', { name: 'Generate fragment' }).click()
+    await response
+
+    expect(capturedBody).not.toBeNull()
+    expect(capturedBody!.intent).toBe('Create a Projects section with one concise item')
+    expect(capturedBody!.document_context).toContain('Responsible for building payment integration')
+    await expect(page.getByText(fragment, { exact: true })).toBeVisible()
+
+    const beforeInsert = await page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')
+    expect(beforeInsert).not.toContain('\\section{Projects}')
+
+    await page.evaluate(() => {
+      const editor = (
+        window as Window & {
+          __latexyMonacoEditor?: { setPosition(position: { lineNumber: number; column: number }): void }
+        }
+      ).__latexyMonacoEditor
+      editor?.setPosition({ lineNumber: 1, column: 1 })
+    })
+    await page.getByRole('button', { name: 'Insert at cursor' }).click()
+
+    await expect.poll(() => page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')).toMatch(/^\\section\{Projects\}/)
+    await expect(page.getByRole('button', { name: 'Inserted at cursor' })).toBeDisabled()
+  })
+
+  test('keeps the document unchanged when generation fails', async ({ page }) => {
+    await page.route((url) => url.pathname === '/ai/generate-latex', (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'AI provider returned unsafe or malformed LaTeX' }),
+      })
+    )
+
+    await openLatexGenerator(page)
+    const original = await page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')
+    await page.getByRole('textbox', { name: 'What should be created?' }).fill('Create a Projects section')
+    await page.getByRole('button', { name: 'Generate fragment' }).click()
+
+    const generator = page.getByRole('region', { name: 'Generate LaTeX' })
+    await expect(generator.getByRole('alert')).toContainText('unsafe or malformed LaTeX')
+    await expect(page.getByRole('button', { name: 'Insert at cursor' })).toHaveCount(0)
+    const after = await page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')
+    expect(after).toBe(original)
+  })
+})
+
+test.describe('B18.2 — Text or image to LaTeX table', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonRoutes(page)
+  })
+
+  test('converts pasted CSV to a reviewable table and inserts it at the cursor', async ({ page }) => {
+    const table = [
+      '\\begin{table}[htbp]',
+      '\\centering',
+      '\\begin{tabular}{lr}',
+      '\\hline',
+      '\\textbf{Name} & \\textbf{Score} \\\\',
+      '\\hline',
+      'Ada & 99 \\\\',
+      '\\hline',
+      '\\end{tabular}',
+      '\\end{table}',
+    ].join('\n')
+    let capturedBody: Record<string, unknown> | null = null
+    await page.route((url) => url.pathname === '/ai/generate-table', async (route) => {
+      capturedBody = JSON.parse(route.request().postData() || '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ latex: table, rows: 2, columns: 2, source: 'text' }),
+      })
+    })
+
+    await openLatexGenerator(page)
+    await page.getByRole('tab', { name: 'Table' }).click()
+    await page.getByRole('textbox', { name: 'Paste CSV or TSV' }).fill('Name,Score\nAda,99')
+    const response = page.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname === '/ai/generate-table'
+    )
+    await page.getByRole('button', { name: 'Generate table' }).click()
+    await response
+
+    expect(capturedBody).toEqual({ table_text: 'Name,Score\nAda,99', first_row_header: true })
+    await expect(page.getByText('2 rows × 2 columns')).toBeVisible()
+    await expect(page.getByText(table, { exact: true })).toBeVisible()
+
+    await page.evaluate(() => {
+      const editor = (
+        window as Window & {
+          __latexyMonacoEditor?: { setPosition(position: { lineNumber: number; column: number }): void }
+        }
+      ).__latexyMonacoEditor
+      editor?.setPosition({ lineNumber: 1, column: 1 })
+    })
+    await page.getByRole('button', { name: 'Insert at cursor' }).click()
+    await expect.poll(() => page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')).toMatch(/^\\begin\{table\}/)
+  })
+
+  test('uploads a table image as multipart and previews the recognized shape', async ({ page }) => {
+    const table = [
+      '\\begin{table}[htbp]',
+      '\\centering',
+      '\\begin{tabular}{ll}',
+      '\\hline',
+      'A & B \\\\',
+      '\\hline',
+      '\\end{tabular}',
+      '\\end{table}',
+    ].join('\n')
+    let contentType = ''
+    let postData = ''
+    await page.route((url) => url.pathname === '/ai/generate-table-image', async (route) => {
+      contentType = route.request().headers()['content-type'] ?? ''
+      postData = route.request().postData() ?? ''
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ latex: table, rows: 1, columns: 2, source: 'image' }),
+      })
+    })
+
+    await openLatexGenerator(page)
+    await page.getByRole('tab', { name: 'Table' }).click()
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'scores.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
+    })
+    await expect(page.getByText('scores.png')).toBeVisible()
+    const response = page.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname === '/ai/generate-table-image'
+    )
+    await page.getByRole('button', { name: 'Generate table' }).click()
+    await response
+
+    expect(contentType).toContain('multipart/form-data; boundary=')
+    expect(postData).toContain('name="first_row_header"')
+    expect(postData).toContain('true')
+    expect(postData).toContain('filename="scores.png"')
+    await expect(page.getByText('1 rows × 2 columns')).toBeVisible()
+  })
+})
+
+test.describe('B18.3 — Text or image to LaTeX math', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonRoutes(page)
+  })
+
+  test('converts a math description, applies the requested wrapper, and inserts it', async ({ page }) => {
+    const latex = '\\begin{equation}\nE = mc^2\n\\end{equation}'
+    let capturedBody: Record<string, unknown> | null = null
+    await page.route((url) => url.pathname === '/ai/generate-math', async (route) => {
+      capturedBody = JSON.parse(route.request().postData() || '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ latex, display_mode: 'equation', source: 'text', cached: false }),
+      })
+    })
+
+    await openLatexGenerator(page)
+    await page.getByRole('tab', { name: 'Math' }).click()
+    await page.getByRole('textbox', { name: 'Describe or paste math' }).fill('energy equals mass times speed of light squared')
+    await page.getByRole('radio', { name: 'equation' }).click()
+    const response = page.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname === '/ai/generate-math'
+    )
+    await page.getByRole('button', { name: 'Generate math' }).click()
+    await response
+
+    expect(capturedBody).toEqual({
+      math_text: 'energy equals mass times speed of light squared',
+      display_mode: 'equation',
+    })
+    await expect(page.getByText(latex, { exact: true })).toBeVisible()
+
+    await page.evaluate(() => {
+      const editor = (
+        window as Window & {
+          __latexyMonacoEditor?: { setPosition(position: { lineNumber: number; column: number }): void }
+        }
+      ).__latexyMonacoEditor
+      editor?.setPosition({ lineNumber: 1, column: 1 })
+    })
+    await page.getByRole('button', { name: 'Insert at cursor' }).click()
+    await expect.poll(() => page.evaluate(() => (
+      window as Window & { __latexyMonacoEditor?: { getValue(): string } }
+    ).__latexyMonacoEditor?.getValue() ?? '')).toMatch(/^\\begin\{equation\}/)
+  })
+
+  test('uploads a math image with its selected display mode', async ({ page }) => {
+    let contentType = ''
+    let postData = ''
+    await page.route((url) => url.pathname === '/ai/generate-math-image', async (route) => {
+      contentType = route.request().headers()['content-type'] ?? ''
+      postData = route.request().postData() ?? ''
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          latex: '$x^2$',
+          display_mode: 'inline',
+          source: 'image',
+          cached: false,
+        }),
+      })
+    })
+
+    await openLatexGenerator(page)
+    await page.getByRole('tab', { name: 'Math' }).click()
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'formula.webp',
+      mimeType: 'image/webp',
+      buffer: Buffer.from('52494646', 'hex'),
+    })
+    await page.getByRole('radio', { name: 'inline' }).click()
+    const response = page.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname === '/ai/generate-math-image'
+    )
+    await page.getByRole('button', { name: 'Generate math' }).click()
+    await response
+
+    expect(contentType).toContain('multipart/form-data; boundary=')
+    expect(postData).toContain('filename="formula.webp"')
+    expect(postData).toContain('name="display_mode"')
+    expect(postData).toContain('inline')
+    await expect(page.getByText('$x^2$', { exact: true })).toBeVisible()
   })
 })
