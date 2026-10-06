@@ -18,6 +18,7 @@ revision, production probes, and the linked GitHub issue take precedence.
 | [prd/2026-08-02-external-sources-to-resume.md](prd/2026-08-02-external-sources-to-resume.md) | External-source import specification and shipped-status reconciliation |
 | [prd/2026-08-02-input-driven-optimization.md](prd/2026-08-02-input-driven-optimization.md) | Collaborative optimization specification and shipped-status reconciliation |
 | [qa/issues.md](qa/issues.md) | Historical August QA register with explicit current-resolution notes |
+| [qa/local-remediation-2026-08-31.md](qa/local-remediation-2026-08-31.md) | Working evidence ledger for the current local QA pass; reconcile with GitHub before publication |
 
 The active senior-QA remediation tracker is GitHub issue
 [#1621](https://github.com/sanskarpan/Latexy/issues/1621). Each unresolved
