@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, X } from 'lucide-react'
+import { Search, ShieldCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/lib/auth-client'
 
@@ -12,19 +12,36 @@ import TemplateCard from '@/components/TemplateCard'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal'
 import { TEMPLATE_CATEGORY_ORDER } from '@/lib/template-categories'
 
+const EUROPECV_LOCALES = [
+  ['bg', 'Bulgarian'], ['ca', 'Catalan'], ['cs', 'Czech'], ['da', 'Danish'],
+  ['de', 'German'], ['el', 'Greek'], ['en', 'English'], ['es', 'Spanish'],
+  ['et', 'Estonian'], ['fi', 'Finnish'], ['fr', 'French'], ['hu', 'Hungarian'],
+  ['it', 'Italian'], ['lt', 'Lithuanian'], ['pl', 'Polish'], ['pt', 'Portuguese'],
+  ['sk', 'Slovak'], ['sv', 'Swedish'],
+] as const
+
 // ------------------------------------------------------------------ //
 //  Category tab order                                                 //
 // ------------------------------------------------------------------ //
 
 export default function TemplatesPage() {
   const router = useRouter()
-  const { data: session, isPending: sessionPending } = useSession()
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession()
+  const lastKnownSessionRef = useRef<typeof session>(null)
+  if (session) {
+    lastKnownSessionRef.current = session
+  } else if (!sessionPending && !sessionError) {
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((sessionPending || sessionError) ? lastKnownSessionRef.current : null)
 
   const [templates, setTemplates] = useState<TemplateResponse[]>([])
   const [categories, setCategories] = useState<TemplateCategoryCount[]>([])
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null)
   const [usingTemplateId, setUsingTemplateId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -47,20 +64,23 @@ export default function TemplatesPage() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setLoadError(null)
     Promise.all([apiClient.getTemplates(), apiClient.getTemplateCategories()])
       .then(([tmpl, cats]) => {
         if (cancelled) return
         setTemplates(tmpl)
         setCategories(cats)
       })
-      .catch(() => {
-        if (!cancelled) toast.error('Failed to load templates')
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load templates')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [loadAttempt])
 
   // Filtered templates (client-side)
   const filteredTemplates = useMemo(() => {
@@ -99,7 +119,7 @@ export default function TemplatesPage() {
       if (usingTemplateId !== id) toast('Another template is already being created')
       return false
     }
-    if (!session) {
+    if (!effectiveSession) {
       toast('Sign in to use templates')
       const dest = `/templates?use=${id}`
       router.push(`/login?redirect=${encodeURIComponent(dest)}`)
@@ -107,7 +127,19 @@ export default function TemplatesPage() {
     }
     setUsingTemplateId(id)
     try {
-      const result = await apiClient.useTemplate(id)
+      const selected = templates.find(template => template.id === id)
+      let locale: string | undefined
+      if (selected?.name === 'Europecv') {
+        const choices = EUROPECV_LOCALES.map(([code, label]) => `${code} (${label})`).join(', ')
+        const requested = window.prompt(`Europecv language code (${choices})`, 'en')?.trim().toLowerCase()
+        if (!requested) return false
+        if (!EUROPECV_LOCALES.some(([code]) => code === requested)) {
+          toast.error('Choose one of the listed Europecv language codes')
+          return false
+        }
+        locale = requested
+      }
+      const result = await apiClient.useTemplate(id, undefined, locale)
       toast.success('Document created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
       return true
@@ -117,7 +149,7 @@ export default function TemplatesPage() {
     } finally {
       setUsingTemplateId(null)
     }
-  }, [session, sessionPending, router, usingTemplateId])
+  }, [effectiveSession, sessionPending, router, templates, usingTemplateId])
 
   // The modal awaits this and shows its own "Creating…" state, then closes
   // itself via onClose (success navigates away, unmounting it).
@@ -131,8 +163,8 @@ export default function TemplatesPage() {
     if (!useId) return
     setAutoUseHandled(true)
     router.replace('/templates')
-    if (session) handleUseTemplate(useId)
-  }, [autoUseHandled, loading, session, sessionPending, router, handleUseTemplate])
+    if (effectiveSession) handleUseTemplate(useId)
+  }, [autoUseHandled, loading, effectiveSession, sessionPending, router, handleUseTemplate])
 
   const tabClass = (isActive: boolean) =>
     `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
@@ -155,6 +187,15 @@ export default function TemplatesPage() {
               Browse professional résumé, academic, and presentation templates. Preview any
               template, then use it to start building.
             </p>
+            <div className="mt-6 flex max-w-2xl items-start gap-3 rounded-[var(--radius-lg)] border border-ok/30 bg-ok/5 px-4 py-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-ok" aria-hidden="true" />
+              <p className="font-body text-sm leading-relaxed text-fg-2">
+                <span className="font-semibold text-fg">Verified PDF text contract.</span>{' '}
+                Every built-in template is compiled in CI and checked for embedded Unicode mapping
+                and readable text extraction. Inspect your edited result in Studio&apos;s ATS Text View;
+                employer parsers may differ.
+              </p>
+            </div>
           </header>
 
           {/* Search + count */}
@@ -218,6 +259,12 @@ export default function TemplatesPage() {
                     className="h-64 rounded-[var(--radius-lg)] border border-line bg-surface-2 motion-safe:animate-pulse"
                   />
                 ))}
+              </div>
+            ) : loadError ? (
+              <div role="alert" className="flex flex-col items-center gap-3 border-t border-line py-20 text-center">
+                <p className="font-body text-sm font-semibold text-err">Template library could not be loaded</p>
+                <p className="max-w-md font-body text-sm text-fg-2">{loadError}</p>
+                <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 font-ui text-xs font-semibold uppercase tracking-[0.08em] text-accent-fg">Retry</button>
               </div>
             ) : filteredTemplates.length === 0 ? (
               <div className="flex flex-col items-center gap-3 border-t border-line py-20 text-center" role="status" aria-live="polite">
