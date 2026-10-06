@@ -137,10 +137,11 @@ export default function ChangesPanel({
                   </div>
 
                   {/* Actions */}
-                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="flex shrink-0 items-center gap-1">
                     <button
                       onClick={() => onAccept(c.id)}
                       title="Accept"
+                      aria-label={`Accept ${c.type} from ${c.userName}`}
                       className="rounded p-1 text-ok transition hover:bg-ok/15"
                     >
                       <Check size={12} />
@@ -148,6 +149,7 @@ export default function ChangesPanel({
                     <button
                       onClick={() => onReject(c.id)}
                       title="Reject"
+                      aria-label={`Reject ${c.type} from ${c.userName}`}
                       className="rounded p-1 text-err transition hover:bg-err/15"
                     >
                       <X size={12} />
