@@ -1,11 +1,18 @@
 """Tests for Feature 38 — Compiler Settings per Resume."""
 
+import shutil
+import subprocess
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.api.resume_routes import ALLOWED_LATEXMK_FLAGS, ResumeSettingsUpdate
-from app.workers.latex_worker import _inject_packages
+from app.api.resume_routes import (
+    ALLOWED_LATEXMK_FLAGS,
+    MAX_EXTRA_PACKAGES,
+    MAX_LATEXMK_FLAGS,
+    ResumeSettingsUpdate,
+)
+from app.workers.latex_worker import _MAX_EXTRA_PACKAGES, _inject_draft_graphics, _inject_packages
 
 # ── ResumeSettingsUpdate validation ──────────────────────────────────────────
 
@@ -28,6 +35,14 @@ class TestResumeSettingsValidation:
         body = ResumeSettingsUpdate(latexmk_flags=ALLOWED_LATEXMK_FLAGS)
         assert body.latexmk_flags == ALLOWED_LATEXMK_FLAGS
 
+    def test_latexmk_flags_are_deduplicated(self):
+        body = ResumeSettingsUpdate(latexmk_flags=["--file-line-error", "--file-line-error"])
+        assert body.latexmk_flags == ["--file-line-error"]
+
+    def test_latexmk_flags_cardinality_is_bounded(self):
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(latexmk_flags=["--file-line-error"] * (MAX_LATEXMK_FLAGS + 1))
+
     def test_main_file_path_traversal_rejected(self):
         """Path traversal attempts in main_file are rejected."""
         with pytest.raises(Exception):
@@ -47,6 +62,10 @@ class TestResumeSettingsValidation:
         """The default 'resume.tex' filename is accepted."""
         body = ResumeSettingsUpdate(main_file="resume.tex")
         assert body.main_file == "resume.tex"
+
+    def test_main_file_trailing_newline_rejected(self):
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(main_file="resume.tex\n")
 
     def test_texlive_version_2023_accepted(self):
         """A valid 4-digit TeX Live year is accepted and stored correctly."""
@@ -68,6 +87,14 @@ class TestResumeSettingsValidation:
         body = ResumeSettingsUpdate(extra_packages=["xcolor", "multicol", "fontawesome5"])
         assert body.extra_packages == ["xcolor", "multicol", "fontawesome5"]
 
+    def test_extra_packages_are_deduplicated(self):
+        body = ResumeSettingsUpdate(extra_packages=["xcolor", "xcolor", "multicol"])
+        assert body.extra_packages == ["xcolor", "multicol"]
+
+    def test_extra_packages_cardinality_is_bounded(self):
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(extra_packages=["xcolor"] * (MAX_EXTRA_PACKAGES + 1))
+
     def test_extra_packages_too_long_rejected(self):
         """Package names exceeding 50 chars are rejected."""
         with pytest.raises(Exception):
@@ -77,6 +104,11 @@ class TestResumeSettingsValidation:
         """Package names with special characters are rejected."""
         with pytest.raises(Exception):
             ResumeSettingsUpdate(extra_packages=["xcolor; rm -rf /"])
+
+    def test_extra_packages_trailing_newline_rejected(self):
+        """A package name must be a complete token, not a token plus newline."""
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(extra_packages=["xcolor\n"])
 
     def test_extra_packages_underscore_rejected(self):
         """Underscores in package names are rejected (only alphanum + hyphens)."""
@@ -89,6 +121,16 @@ class TestResumeSettingsValidation:
         assert body.compiler is None
         assert body.main_file is None
         assert body.extra_packages is None
+
+    def test_stop_on_first_error_requires_a_real_boolean(self):
+        assert ResumeSettingsUpdate(halt_on_error=False).halt_on_error is False
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(halt_on_error="false")
+
+    def test_draft_mode_requires_a_real_boolean(self):
+        assert ResumeSettingsUpdate(draft_mode=True).draft_mode is True
+        with pytest.raises(Exception):
+            ResumeSettingsUpdate(draft_mode="true")
 
 
 # ── Package injection helper ──────────────────────────────────────────────────
@@ -129,6 +171,11 @@ class TestInjectPackages:
         assert r"\usepackage{xcolor}" in result
         assert r"\usepackage{multicol}" in result
 
+    def test_legacy_package_payload_is_bounded(self):
+        packages = [f"pkg{i}" for i in range(_MAX_EXTRA_PACKAGES + 10)]
+        result = _inject_packages(self.BASIC_LATEX, packages)
+        assert result.count(r"\usepackage{") == _MAX_EXTRA_PACKAGES
+
     def test_no_documentclass_unchanged(self):
         """Content without \\documentclass is returned unchanged."""
         content = "Hello world"
@@ -139,6 +186,59 @@ class TestInjectPackages:
         """Empty package list returns content unchanged."""
         result = _inject_packages(self.BASIC_LATEX, [])
         assert result == self.BASIC_LATEX
+
+
+class TestDraftGraphicsInjection:
+    def test_injects_graphicx_draft_option_after_documentclass(self):
+        source = "\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}x\\end{document}"
+        result = _inject_draft_graphics(source)
+        assert result.index(r"\documentclass") < result.index(r"\PassOptionsToPackage{draft}{graphicx}")
+        assert result.index(r"\PassOptionsToPackage{draft}{graphicx}") < result.index(r"\usepackage{graphicx}")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            r"\documentclass[draft]{article}\begin{document}x\end{document}",
+            r"\documentclass{article}\usepackage[draft]{graphicx}\begin{document}x\end{document}",
+            r"\documentclass{article}\PassOptionsToPackage{draft}{graphicx}\begin{document}x\end{document}",
+        ],
+    )
+    def test_existing_draft_configuration_is_not_duplicated(self, source):
+        assert _inject_draft_graphics(source) == source
+
+    def test_injection_is_idempotent_and_requires_documentclass(self):
+        source = r"\documentclass{article}\begin{document}x\end{document}"
+        once = _inject_draft_graphics(source)
+        assert _inject_draft_graphics(once) == once
+        assert _inject_draft_graphics("plain text") == "plain text"
+
+    @pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
+    def test_real_draft_compile_skips_a_missing_image(self, tmp_path):
+        source = (
+            "\\documentclass{article}\n"
+            "\\usepackage{graphicx}\n"
+            "\\begin{document}\n"
+            "\\includegraphics[width=2cm,height=1cm]{missing-image.png}\n"
+            "\\end{document}\n"
+        )
+        tex_file = tmp_path / "draft.tex"
+        tex_file.write_text(_inject_draft_graphics(source), encoding="utf-8")
+        result = subprocess.run(
+            [
+                "pdflatex",
+                "-no-shell-escape",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "draft.tex",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout[-2000:]
+        assert (tmp_path / "draft.pdf").is_file()
 
 
 # ── Endpoint tests ────────────────────────────────────────────────────────────
@@ -154,8 +254,11 @@ def authed_client():
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
     client = TestClient(app, raise_server_exceptions=False)
-    yield client
-    app.dependency_overrides.pop(get_current_user_required, None)
+    try:
+        yield client
+    finally:
+        client.close()
+        app.dependency_overrides.pop(get_current_user_required, None)
 
 
 def _make_mock_resume(extra_meta=None):
@@ -233,10 +336,14 @@ class TestCompileSettingsEndpoint:
                     "main_file": "main.tex",
                     "latexmk_flags": ["--halt-on-error"],
                     "extra_packages": ["xcolor"],
+                    "halt_on_error": False,
+                    "draft_mode": True,
                 },
             )
             # Should succeed (200) — the endpoint finds the resume via mock
             assert resp.status_code == 200
+            assert mock_resume.resume_settings["halt_on_error"] is False
+            assert mock_resume.resume_settings["draft_mode"] is True
         finally:
             app.dependency_overrides.pop(get_db, None)
 
