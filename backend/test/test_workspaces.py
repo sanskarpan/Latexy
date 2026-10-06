@@ -17,8 +17,12 @@ Covers:
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,14 @@ async def _create_resume(
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+async def _user_id_for_headers(db: AsyncSession, headers: dict) -> str:
+    token = headers["Authorization"].removeprefix("Bearer ")
+    result = await db.execute(
+        text('SELECT "userId" FROM session WHERE token = :token'), {"token": token}
+    )
+    return str(result.scalar_one())
 
 
 # ── create workspace ──────────────────────────────────────────────────────────
@@ -410,3 +422,238 @@ class TestDeleteWorkspace:
         # Subsequent GET returns 404
         get_resp = await client.get(f"/workspaces/{ws['id']}", headers=auth_headers)
         assert get_resp.status_code in (403, 404)
+
+
+# ── role enforcement for recruiter notes ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestRecruiterNoteRoles:
+    @pytest.mark.parametrize(("role", "expected"), [("editor", 201), ("viewer", 403)])
+    async def test_member_role_controls_note_creation(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        auth_headers: dict,
+        auth_headers2: dict,
+        role: str,
+        expected: int,
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)
+        shared = await client.post(
+            f"/workspaces/{ws['id']}/resumes/{resume['id']}", headers=auth_headers
+        )
+        assert shared.status_code == 201
+
+        member_id = await _user_id_for_headers(db_session, auth_headers2)
+        await db_session.execute(
+            text(
+                "INSERT INTO workspace_members "
+                "(workspace_id, user_id, role, joined_at) "
+                "VALUES (:workspace_id, :user_id, :role, now())"
+            ),
+            {"workspace_id": ws["id"], "user_id": member_id, "role": role},
+        )
+        await db_session.commit()
+
+        response = await client.post(
+            f"/workspaces/{ws['id']}/resumes/{resume['id']}/notes",
+            headers=auth_headers2,
+            json={"content": "Candidate has strong systems experience."},
+        )
+        assert response.status_code == expected, response.text
+
+    async def test_demoted_viewer_cannot_modify_existing_own_note(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        auth_headers: dict,
+        auth_headers2: dict,
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)
+        assert (
+            await client.post(
+                f"/workspaces/{ws['id']}/resumes/{resume['id']}",
+                headers=auth_headers,
+            )
+        ).status_code == 201
+
+        member_id = await _user_id_for_headers(db_session, auth_headers2)
+        await db_session.execute(
+            text(
+                "INSERT INTO workspace_members "
+                "(workspace_id, user_id, role, joined_at) "
+                "VALUES (:workspace_id, :user_id, 'editor', now())"
+            ),
+            {"workspace_id": ws["id"], "user_id": member_id},
+        )
+        await db_session.commit()
+        created = await client.post(
+            f"/workspaces/{ws['id']}/resumes/{resume['id']}/notes",
+            headers=auth_headers2,
+            json={"content": "Initial assessment"},
+        )
+        assert created.status_code == 201
+
+        await db_session.execute(
+            text(
+                "UPDATE workspace_members SET role = 'viewer' "
+                "WHERE workspace_id = :workspace_id AND user_id = :user_id"
+            ),
+            {"workspace_id": ws["id"], "user_id": member_id},
+        )
+        await db_session.commit()
+        note_url = (
+            f"/workspaces/{ws['id']}/resumes/{resume['id']}"
+            f"/notes/{created.json()['id']}"
+        )
+        update = await client.patch(
+            note_url,
+            headers=auth_headers2,
+            json={"content": "Viewer mutation"},
+        )
+        delete = await client.delete(note_url, headers=auth_headers2)
+        assert update.status_code == 403
+        assert delete.status_code == 403
+
+
+@pytest.mark.asyncio
+class TestCareerCentreCohortPrivacy:
+    async def test_student_submits_own_resume_without_seeing_classmates(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        auth_headers: dict,
+        auth_headers2: dict,
+    ):
+        owner_id = await _user_id_for_headers(db_session, auth_headers)
+        student_id = await _user_id_for_headers(db_session, auth_headers2)
+        ws = await _create_workspace(client, auth_headers, name='Test Cohort')
+        tenant_id = str(uuid.uuid4())
+        await db_session.execute(
+            text(
+                "INSERT INTO tenants (id, slug, name, owner_id, plan_id, max_members) "
+                "VALUES (:id, :slug, 'Test University', :owner, 'university', 200)"
+            ),
+            {'id': tenant_id, 'slug': f'test-{uuid.uuid4().hex[:10]}', 'owner': owner_id},
+        )
+        await db_session.execute(
+            text("UPDATE workspaces SET tenant_id = :tenant WHERE id = :workspace"),
+            {'tenant': tenant_id, 'workspace': ws['id']},
+        )
+        await db_session.execute(
+            text(
+                "INSERT INTO workspace_members (workspace_id, user_id, role, joined_at) "
+                "VALUES (:workspace, :student, 'viewer', now())"
+            ),
+            {'workspace': ws['id'], 'student': student_id},
+        )
+        await db_session.commit()
+
+        owner_resume = await _create_resume(client, auth_headers, title='Admin Resume')
+        assert (await client.post(
+            f"/workspaces/{ws['id']}/resumes/{owner_resume['id']}", headers=auth_headers
+        )).status_code == 201
+        student_resume = await _create_resume(client, auth_headers2, title='Student Resume')
+        submitted = await client.post(
+            f"/workspaces/{ws['id']}/resumes/{student_resume['id']}",
+            headers=auth_headers2,
+        )
+        assert submitted.status_code == 201, submitted.text
+        assert submitted.json()['owner_id'] == student_id
+
+        student_list = await client.get(
+            f"/workspaces/{ws['id']}/resumes", headers=auth_headers2
+        )
+        assert student_list.status_code == 200
+        assert [item['id'] for item in student_list.json()] == [student_resume['id']]
+        assert student_list.json()[0]['opened_at'] is not None
+        assert student_list.json()[0]['opened_actor'] == 'candidate'
+        assert student_list.json()[0]['opened_source'] == 'candidate_self'
+
+        owner_list = await client.get(
+            f"/workspaces/{ws['id']}/resumes", headers=auth_headers
+        )
+        assert {item['id'] for item in owner_list.json()} == {
+            owner_resume['id'], student_resume['id']
+        }
+        student_owner_view = next(
+            item for item in owner_list.json() if item['id'] == student_resume['id']
+        )
+        assert student_owner_view['opened_actor'] == 'candidate'
+        assert student_owner_view['opened_source'] == 'candidate_self'
+
+        hidden_download = await client.get(
+            f"/workspaces/{ws['id']}/resumes/{owner_resume['id']}/download",
+            headers=auth_headers2,
+        )
+        assert hidden_download.status_code == 404
+
+        missing_job_id = f'missing-{uuid.uuid4()}'
+        await db_session.execute(
+            text(
+                "INSERT INTO compilations (id, user_id, resume_id, job_id, status) "
+                "VALUES (:id, :user, :resume, :job, 'completed')"
+            ),
+            {
+                'id': str(uuid.uuid4()),
+                'user': student_id,
+                'resume': student_resume['id'],
+                'job': missing_job_id,
+            },
+        )
+        await db_session.commit()
+        unavailable = await client.get(
+            f"/workspaces/{ws['id']}/resumes/{student_resume['id']}/download",
+            headers=auth_headers2,
+        )
+        assert unavailable.status_code == 404
+        milestone = await db_session.execute(
+            text(
+                'SELECT downloaded_at FROM workspace_resumes '
+                'WHERE workspace_id = :workspace AND resume_id = :resume'
+            ),
+            {'workspace': ws['id'], 'resume': student_resume['id']},
+        )
+        assert milestone.scalar_one() is None
+
+        # The legacy milestone columns are candidate-only. Even when a
+        # download milestone exists, both workspace and cohort responses must
+        # identify it as candidate self-activity rather than reviewer activity.
+        await db_session.execute(
+            text(
+                'UPDATE workspace_resumes SET downloaded_at = now() '
+                'WHERE workspace_id = :workspace AND resume_id = :resume'
+            ),
+            {'workspace': ws['id'], 'resume': student_resume['id']},
+        )
+        await db_session.commit()
+        owner_with_download = await client.get(
+            f"/workspaces/{ws['id']}/resumes", headers=auth_headers
+        )
+        downloaded_item = next(
+            item for item in owner_with_download.json() if item['id'] == student_resume['id']
+        )
+        assert downloaded_item['downloaded_actor'] == 'candidate'
+        assert downloaded_item['downloaded_source'] == 'candidate_self'
+
+        cohort_list = await client.get(
+            f"/tenants/{tenant_id}/cohorts/{ws['id']}/submissions",
+            headers=auth_headers,
+        )
+        assert cohort_list.status_code == 200, cohort_list.text
+        cohort_item = next(
+            item for item in cohort_list.json() if item['resume_id'] == student_resume['id']
+        )
+        assert cohort_item['opened_actor'] == 'candidate'
+        assert cohort_item['opened_source'] == 'candidate_self'
+        assert cohort_item['downloaded_actor'] == 'candidate'
+        assert cohort_item['downloaded_source'] == 'candidate_self'
+
+        withdrawn = await client.delete(
+            f"/workspaces/{ws['id']}/resumes/{student_resume['id']}",
+            headers=auth_headers2,
+        )
+        assert withdrawn.status_code == 204
