@@ -150,4 +150,27 @@ def setup_logging() -> None:
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance."""
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    if not any(isinstance(item, DiagnosticMessageFilter) for item in logger.filters):
+        logger.addFilter(DiagnosticMessageFilter())
+    return logger
+
+
+class DiagnosticMessageFilter(logging.Filter):
+    """Keep application diagnostics safe even under a plain worker formatter.
+
+    The API JSON formatter already escapes control characters. Celery or an
+    operator's plain-text handler may not, so enforce this at the logger before
+    records fan out to handlers. Do not change exception/stack diagnostics here.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = _sanitize_string(record.getMessage())
+        record.msg = "".join(
+            f"\\u{ord(char):04x}"
+            if ord(char) < 32 or 127 <= ord(char) <= 159 or char in "\u2028\u2029"
+            else char
+            for char in message
+        )
+        record.args = ()
+        return True
