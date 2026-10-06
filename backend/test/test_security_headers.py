@@ -49,21 +49,20 @@ class TestEffectiveCorsOrigins:
         monkeypatch.setattr(
             settings,
             "CORS_ORIGINS",
-            ["http://localhost:5180", "http://127.0.0.1:3000", "https://latexy.com"],
+            ["http://localhost:5180", "http://127.0.0.1:3000", "https://latexy.xyz"],
         )
         origins = settings.effective_cors_origins()
-        assert origins == ["https://latexy.com"]
+        assert origins == ["https://latexy.xyz"]
 
     def test_localhost_kept_in_development(self, monkeypatch):
         monkeypatch.setattr(settings, "ENVIRONMENT", "development")
         monkeypatch.setattr(
             settings,
             "CORS_ORIGINS",
-            ["http://localhost:5180", "https://latexy.com"],
+            ["http://localhost:5180", "https://latexy.xyz"],
         )
         origins = settings.effective_cors_origins()
-        assert "http://localhost:5180" in origins
-        assert "https://latexy.com" in origins
+        assert origins == ["http://localhost:5180", "https://latexy.xyz"]
 
 
 class TestDocsGating:
