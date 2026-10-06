@@ -1,9 +1,34 @@
 """E2E tests for the consistent error envelope and global exception handlers."""
 
+import json
+import math
+from typing import Any
+
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import BaseModel, field_validator
 
 from app.core.errors import error_body, register_exception_handlers
+
+
+class _FiniteMetadataPayload(BaseModel):
+    metadata: dict[str, Any]
+
+    @field_validator("metadata")
+    @classmethod
+    def require_finite_numbers(cls, value: dict[str, Any]) -> dict[str, Any]:
+        def visit(item: Any) -> None:
+            if isinstance(item, dict):
+                for child in item.values():
+                    visit(child)
+            elif isinstance(item, list):
+                for child in item:
+                    visit(child)
+            elif isinstance(item, float) and not math.isfinite(item):
+                raise ValueError("metadata values must be finite JSON numbers")
+
+        visit(value)
+        return value
 
 
 def test_error_body_shape():
@@ -41,6 +66,10 @@ def _build_app() -> FastAPI:
     @app.post("/validate")
     async def validate(payload: dict):
         return payload
+
+    @app.post("/validate-finite")
+    async def validate_finite(payload: _FiniteMetadataPayload):
+        return {"ok": True, "metadata": payload.metadata}
 
     @app.get("/gated")
     async def gated():
@@ -108,3 +137,28 @@ async def test_validation_error_returns_422_envelope_with_details():
     err = resp.json()["error"]
     assert err["code"] == "validation_error"
     assert isinstance(err["details"], list)
+
+
+async def test_validation_error_sanitizes_nonfinite_mixed_nested_input_and_preserves_finite_values():
+    app = _build_app()
+    async with await _client(app) as ac:
+        finite = await ac.post(
+            "/validate-finite",
+            content=json.dumps({"metadata": {"finite": 1.25}}, allow_nan=False),
+            headers={"content-type": "application/json"},
+        )
+        invalid = await ac.post(
+            "/validate-finite",
+            content=json.dumps(
+                {"metadata": {"finite": 1.25, "nested": [float("nan"), float("inf"), float("-inf")]}},
+                allow_nan=True,
+            ),
+            headers={"content-type": "application/json"},
+        )
+
+    assert finite.status_code == 200
+    assert finite.json() == {"ok": True, "metadata": {"finite": 1.25}}
+    assert invalid.status_code == 422
+    details = invalid.json()["error"]["details"]
+    assert details[0]["input"]["finite"] == 1.25
+    assert details[0]["input"]["nested"] == [None, None, None]
