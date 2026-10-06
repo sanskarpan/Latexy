@@ -45,7 +45,7 @@ app = modal.App("latexy-backfill-template-assets")
 @app.function(
     image=latex_image,
     secrets=_secrets,
-    # ~150 templates, two pdflatex passes each plus a PNG conversion. Generous, and
+    # ~150 templates, two compiler passes each plus a PNG conversion. Generous, and
     # it only has to hold for a single manual run.
     timeout=3600,
 )
