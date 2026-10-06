@@ -122,4 +122,3 @@ def subn(
 def __getattr__(name: str) -> Any:
     """Expose compatible constants/helpers such as IGNORECASE and escape."""
     return getattr(_regex, name)
-
