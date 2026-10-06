@@ -2,16 +2,46 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..parsers.base_parser import ParsedResume
 
 SUPPORTED_BUILDER_CATEGORIES = frozenset(
     {"ats_safe", "minimal", "software_engineering", "executive", "graduate"}
 )
+
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
+
+
+def _safe_identity(value: str, *, fallback: str, max_length: int) -> str:
+    """Keep imported IDs usable in version keys without trusting raw input."""
+    raw = str(value or "").strip()
+    if _SAFE_ID_RE.fullmatch(raw) and len(raw) <= max_length:
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    prefix = re.sub(r"[^A-Za-z0-9._:-]+", "-", raw).strip(".-:_")
+    prefix = (prefix or fallback)[: max_length - len(digest) - 1].rstrip(".-:_")
+    return f"{prefix}-{digest}"
+
+
+def _bullet_id(entry_id: str, index: int, used: set[str]) -> str:
+    slot = f"-bullet-{index}"
+    safe_entry = _safe_identity(entry_id, fallback="entry", max_length=max(1, 96 - len(slot)))
+    base = f"{safe_entry}{slot}"
+    candidate = base
+    if candidate in used:
+        suffix = hashlib.sha256(f"{entry_id}:{index}".encode("utf-8")).hexdigest()[:10]
+        candidate = f"{base[:96 - len(suffix) - 1]}-{suffix}"
+    counter = 2
+    while candidate in used:
+        suffix = f"-{counter}"
+        candidate = f"{base[:96 - len(suffix)]}{suffix}"
+        counter += 1
+    return candidate
 
 
 class BuilderBasics(BaseModel):
@@ -36,7 +66,23 @@ class BuilderExperienceEntry(BaseModel):
     current: bool = False
     summary: str = ""
     bullets: List[str] = Field(default_factory=list)
+    # Persisted IDs keep element history attached when bullet text changes.
+    # Existing documents are backfilled deterministically during validation.
+    bullet_ids: List[str] = Field(default_factory=list)
     technologies: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_bullet_ids(self) -> "BuilderExperienceEntry":
+        seen: set[str] = set()
+        ids: list[str] = []
+        for index in range(len(self.bullets)):
+            candidate = self.bullet_ids[index].strip() if index < len(self.bullet_ids) else ""
+            if not _SAFE_ID_RE.fullmatch(candidate) or candidate in seen:
+                candidate = _bullet_id(self.id, index, seen)
+            seen.add(candidate)
+            ids.append(candidate)
+        self.bullet_ids = ids
+        return self
 
 
 class BuilderEducationEntry(BaseModel):
@@ -60,7 +106,21 @@ class BuilderProjectEntry(BaseModel):
     end_date: str = ""
     description: str = ""
     bullets: List[str] = Field(default_factory=list)
+    bullet_ids: List[str] = Field(default_factory=list)
     technologies: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_bullet_ids(self) -> "BuilderProjectEntry":
+        seen: set[str] = set()
+        ids: list[str] = []
+        for index in range(len(self.bullets)):
+            candidate = self.bullet_ids[index].strip() if index < len(self.bullet_ids) else ""
+            if not _SAFE_ID_RE.fullmatch(candidate) or candidate in seen:
+                candidate = _bullet_id(self.id, index, seen)
+            seen.add(candidate)
+            ids.append(candidate)
+        self.bullet_ids = ids
+        return self
 
 
 class BuilderSkillGroup(BaseModel):
@@ -168,7 +228,13 @@ class ResumeBuilderService:
         return StructuredResume().model_dump()
 
     def normalize(self, raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        data = StructuredResume.model_validate(raw or {}).model_dump()
+        # Incoming builder payloads are an API contract: reject coercion and
+        # unknown keys rather than silently discarding misspelled user data.
+        # Historical persisted documents remain readable through the model's
+        # compatibility behavior in render()/build_preview().
+        data = StructuredResume.model_validate(
+            raw or {}, strict=True, extra="forbid"
+        ).model_dump()
         return data
 
     def from_parsed_resume(self, parsed: ParsedResume) -> Dict[str, Any]:
