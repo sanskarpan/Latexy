@@ -622,3 +622,37 @@ compiler repair.
   its vendored React canary runtime: package React 18 paths or stale `.next`
   references do not prove a runtime mismatch. Diagnostic-only files are kept
   out of accepted PRs; a diagnostic that records errors is not a safety pass.
+
+### Uploader publication and deployed-asset synthetic coverage
+
+- Uploader PR #1780 was updated normally against owner-fix main and passed all
+  21 current required contexts at head
+  `8117003f2c81e10dad1972e0d098d4810bd2a260`. Clean mergeability and no unresolved
+  threads were checked before a normal protected rebase merge. Main is
+  `f647c16988a1d22455ff3b56c5e3e88d91400117`, source-identical for both uploader
+  files. Main CI 37469041048, Vercel verification 37469837538 and every step of
+  automatic Modal rollout 37469837522 passed. Independent identities confirm
+  Vercel at that SHA and Modal v58. Local main and origin/main match; branch
+  protections remain strict, linear, administrator-enforced and conversation-
+  resolving. The reviewed owner and uploader repairs are now on main.
+- A separate **11-case, zero-retry production-frontend synthetic run** passed
+  against actual `https://latexy.xyz` assets, with that same SHA before and
+  after. Five owner/session and six upload-order/lifetime cases kept page-error
+  assertions enabled and empty. The disposable fixture blocks unmatched API,
+  external and non-GET traffic, while explicit synthetic auth/API fixtures
+  satisfy the tested flows. No real resume/auth/provider/database write occurred.
+  Root reviewed `/tmp/latexy-production-owner-upload-qa-stub-f647c169.log`.
+- Initial live synthetic cases had correct functional assertions but failed
+  their page-error gates because Playwright's `serviceWorkers: block` replaces
+  `register()` with an async function returning undefined. Root independently
+  confirmed this in installed Playwright source and the live Workbox chunk's
+  subsequent `registration.waiting` access. A faithful registration dependency
+  mock exists only in the disposable test fixture; the error was not filtered
+  or waived. This does **not** certify real PWA installation/update/offline
+  lifecycle, real authentication or database integration, or the actual API
+  origin/CORS path. Public gallery fetch coverage is a separate pending check.
+- The next theme acceptance snapshot also corrects the existing owner test's
+  entitlement endpoint to `/config/entitlements` and mocks tenant resolution,
+  avoiding misleading ancillary HTTP failures. This test-only improvement
+  changes no owner assertion or application behavior. The theme source and
+  completed-body six-case safety fixture remain pending fresh-source proof.
