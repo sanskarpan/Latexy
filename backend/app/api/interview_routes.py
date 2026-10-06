@@ -1,21 +1,26 @@
 """Interview preparation API routes."""
 
+import json
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+import openai
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..services.entitlement_service import entitlement_service
 from ..utils.uuid_guard import ensure_uuid
 from ..workers.interview_prep_worker import submit_interview_prep_generation
+from .ai_routes import _charge_ai_assist, _meter_identity, _resolve_ai_api_key
 
 logger = get_logger(__name__)
 
@@ -61,6 +66,48 @@ class InterviewPrepResponse(BaseModel):
     updated_at: str
 
 
+class SimulationAnswer(BaseModel):
+    question_index: int = Field(..., ge=0, le=49)
+    answer: str = Field(..., min_length=20, max_length=1200)
+
+
+class EvaluateSimulationRequest(BaseModel):
+    mode: Literal["coach", "mock"]
+    answers: list[SimulationAnswer] = Field(..., min_length=1, max_length=15)
+
+    @model_validator(mode="after")
+    def validate_answers(self):
+        indexes = [answer.question_index for answer in self.answers]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("question indexes must be unique")
+        if sum(len(answer.answer) for answer in self.answers) > 18_000:
+            raise ValueError("answers contain too much text")
+        return self
+
+
+class SimulationQuestionFeedback(BaseModel):
+    question_index: int
+    score: int = Field(..., ge=0, le=100)
+    strengths: list[str] = Field(..., min_length=1, max_length=3)
+    improvements: list[str] = Field(..., min_length=1, max_length=3)
+    suggested_outline: list[str] = Field(..., min_length=1, max_length=5)
+
+    @field_validator("strengths", "improvements", "suggested_outline")
+    @classmethod
+    def validate_feedback_text(cls, values: list[str]) -> list[str]:
+        normalized = [" ".join(value.split()) for value in values]
+        if any(not value or len(value) > 500 for value in normalized):
+            raise ValueError("feedback items must contain 1 to 500 characters")
+        return normalized
+
+
+class EvaluateSimulationResponse(BaseModel):
+    mode: Literal["coach", "mock"]
+    feedback: list[SimulationQuestionFeedback]
+    average_score: int = Field(..., ge=0, le=100)
+    overall_feedback: str = Field(..., max_length=1000)
+
+
 def _serialize(prep: InterviewPrep) -> dict:
     return {
         "id": prep.id,
@@ -92,6 +139,7 @@ async def generate_interview_prep(
     db: AsyncSession = Depends(get_db),
 ) -> GenerateInterviewPrepResponse:
     """Start interview question generation for a resume."""
+    ensure_uuid(body.resume_id, "Resume not found")
     # Verify resume ownership
     result = await db.execute(
         select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
@@ -134,7 +182,11 @@ async def generate_interview_prep(
             role_title=body.role_title,
         )
     except Exception as exc:
-        logger.error(f"Failed to enqueue interview prep {prep_id}: {exc}")
+        logger.error(
+            "Failed to enqueue interview prep %s",
+            prep_id,
+            extra={"error_type": type(exc).__name__},
+        )
         await db.delete(prep)
         await db.commit()
         raise HTTPException(
@@ -157,12 +209,7 @@ async def get_interview_prep(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific interview prep session."""
-    # prep_id is UUID-typed; a non-UUID literal (e.g. "my") falling through to
-    # this catch-all route would raise asyncpg DataError -> 500. Return 404.
-    try:
-        uuid.UUID(str(prep_id))
-    except (ValueError, AttributeError, TypeError):
-        raise HTTPException(status_code=404, detail="Interview prep not found")
+    ensure_uuid(prep_id, "Interview prep not found")
     result = await db.execute(
         select(InterviewPrep).where(
             InterviewPrep.id == prep_id,
@@ -173,6 +220,115 @@ async def get_interview_prep(
     if not prep:
         raise HTTPException(status_code=404, detail="Interview prep not found")
     return _serialize(prep)
+
+
+@router.post(
+    "/{prep_id}/simulate",
+    response_model=EvaluateSimulationResponse,
+    dependencies=[Depends(require_feature("interview_prep"))],
+)
+async def evaluate_interview_simulation(
+    prep_id: str,
+    body: EvaluateSimulationRequest,
+    http_request: Request,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Evaluate transient text answers in Coach or Mock mode."""
+    ensure_uuid(prep_id, "Interview prep not found")
+    result = await db.execute(
+        select(InterviewPrep).where(
+            InterviewPrep.id == prep_id,
+            InterviewPrep.user_id == user_id,
+        )
+    )
+    prep = result.scalar_one_or_none()
+    if not prep:
+        raise HTTPException(status_code=404, detail="Interview prep not found")
+    questions = prep.questions or []
+    evaluation_input = []
+    for answer in body.answers:
+        if answer.question_index >= len(questions):
+            raise HTTPException(status_code=422, detail="Question index is outside this session")
+        question = questions[answer.question_index]
+        if not isinstance(question, dict) or not question.get("question"):
+            raise HTTPException(
+                status_code=502, detail="This interview session contains an invalid question"
+            )
+        evaluation_input.append(
+            {
+                "question_index": answer.question_index,
+                "question": question.get("question", ""),
+                "assessment": question.get("what_interviewer_assesses", ""),
+                "recommended_outline": question.get("ideal_response_outline", []),
+                "answer": answer.answer,
+            }
+        )
+
+    resolved = await _resolve_ai_api_key(
+        db, user_id, _meter_identity(http_request, user_id)
+    )
+    if not resolved:
+        raise HTTPException(
+            status_code=503,
+            detail="Interview simulation is temporarily unavailable. Configure an OpenAI key and retry.",
+        )
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
+    try:
+        client = openai.AsyncOpenAI(api_key=resolved.key)
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Evaluate text-only interview practice answers. Be specific, constructive, and "
+                        "grounded only in the supplied question, rubric, and answer. Do not infer hiring "
+                        "outcomes or endorse unverifiable claims. Return JSON with feedback entries containing "
+                        "question_index, integer score 0-100, strengths, improvements, and suggested_outline; "
+                        "also return overall_feedback. Use one to three concise strengths/improvements and one "
+                        "to five outline points per answer."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"mode": body.mode, "answers": evaluation_input}, ensure_ascii=False
+                    ),
+                },
+            ],
+            max_tokens=5000,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        parsed = json.loads(response.choices[0].message.content or "{}")
+        if not isinstance(parsed, dict):
+            raise ValueError("response is not an object")
+        raw_feedback = parsed.get("feedback")
+        if not isinstance(raw_feedback, list):
+            raise ValueError("feedback is not a list")
+        feedback = [SimulationQuestionFeedback.model_validate(item) for item in raw_feedback]
+        expected_indexes = [answer.question_index for answer in body.answers]
+        if [item.question_index for item in feedback] != expected_indexes:
+            raise ValueError("feedback does not match submitted answers")
+        overall = parsed.get("overall_feedback")
+        if not isinstance(overall, str) or not overall.strip():
+            raise ValueError("overall feedback is missing")
+        average = round(sum(item.score for item in feedback) / len(feedback))
+        return EvaluateSimulationResponse(
+            mode=body.mode,
+            feedback=feedback,
+            average_score=average,
+            overall_feedback=overall.strip(),
+        )
+    except Exception as exc:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        logger.error("Interview simulation evaluation failed", extra={"error_type": type(exc).__name__})
+        raise HTTPException(
+            status_code=502,
+            detail="AI provider could not evaluate this practice session. Please retry.",
+        ) from exc
 
 
 @router.delete("/{prep_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -212,6 +368,7 @@ async def list_resume_interview_prep(
     db: AsyncSession = Depends(get_db),
 ) -> List[dict]:
     """List all interview prep sessions for a resume, newest first."""
+    ensure_uuid(resume_id, "Resume not found")
     # Verify resume ownership
     res_result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
