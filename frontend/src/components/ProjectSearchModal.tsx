@@ -90,8 +90,10 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ResumeSearchResult[]>([])
   const [loading, setLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestRef = useRef(0)
 
   // Focus input when opened
   useEffect(() => {
@@ -99,32 +101,59 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
       setQuery('')
       setResults([])
       setSelectedIndex(0)
+      setSearchError(null)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])
 
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    searchRequestRef.current += 1
+  }, [])
+
   const doSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
+      searchRequestRef.current += 1
       setResults([])
+      setSearchError(null)
+      setLoading(false)
       return
     }
+    const requestId = ++searchRequestRef.current
     setLoading(true)
+    setSearchError(null)
     try {
       const res = await apiClient.searchResumes(q.trim())
+      if (requestId !== searchRequestRef.current) return
       setResults(res.results)
       setSelectedIndex(0)
-    } catch {
+    } catch (error) {
+      if (requestId !== searchRequestRef.current) return
       setResults([])
+      setSearchError(error instanceof Error ? error.message : 'Search failed. Please try again.')
     } finally {
-      setLoading(false)
+      if (requestId === searchRequestRef.current) setLoading(false)
     }
   }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
+    // Invalidate the previous response as soon as the visible query changes,
+    // rather than leaving a debounce-sized window for stale results to land.
+    searchRequestRef.current += 1
     setQuery(val)
+    setSearchError(null)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => doSearch(val), 300)
+  }
+
+  const clearSearch = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    searchRequestRef.current += 1
+    setQuery('')
+    setResults([])
+    setSearchError(null)
+    setLoading(false)
   }
 
   const navigate = useCallback((resumeId: string, lineNumber?: number) => {
@@ -176,7 +205,7 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
             <div className="w-4 h-4 border-2 border-line border-t-accent rounded-full animate-spin shrink-0" />
           )}
           {!loading && query && (
-            <button onClick={() => { setQuery(''); setResults([]) }} aria-label="Clear search" className="text-fg-3 hover:text-fg-2">
+            <button onClick={clearSearch} aria-label="Clear search" className="text-fg-3 hover:text-fg-2">
               <X className="w-4 h-4" />
             </button>
           )}
@@ -196,7 +225,20 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
             ))
           )}
 
-          {!loading && query.trim().length >= 2 && results.length === 0 && (
+          {!loading && searchError && (
+            <div role="alert" className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
+              <p className="text-sm text-err">{searchError}</p>
+              <button
+                type="button"
+                onClick={() => void doSearch(query)}
+                className="rounded border border-line px-3 py-1.5 text-xs text-fg-2 hover:bg-surface-2"
+              >
+                Retry search
+              </button>
+            </div>
+          )}
+
+          {!loading && !searchError && query.trim().length >= 2 && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-fg-3">
               <Search className="w-8 h-8 mb-3 opacity-40" />
               <p className="text-sm">No results for <span className="text-fg-3">"{query}"</span></p>
