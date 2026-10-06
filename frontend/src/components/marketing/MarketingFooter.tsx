@@ -43,6 +43,7 @@ export default function MarketingFooter() {
           <nav className="flex flex-wrap items-center gap-4 font-ui text-xs text-fg-3">
             <Link href="/privacy" className="transition hover:text-fg">Privacy</Link>
             <Link href="/terms" className="transition hover:text-fg">Terms</Link>
+            <Link href="/accessibility" className="transition hover:text-fg">Accessibility</Link>
             <a href="mailto:support@latexy.com" className="transition hover:text-fg">Contact</a>
           </nav>
         </div>
