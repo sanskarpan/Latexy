@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { BrandMark } from '@/components/brand/BrandLogo'
 import {
   AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, DownloadCloud,
   FileCode2, Files, Gauge, GitBranch, LayoutTemplate, Link2, Loader2, MapPin,
@@ -1085,7 +1086,9 @@ export default function TryPage() {
       <h1 className="sr-only">Résumé Studio</h1>
       {/* ── top project bar ── */}
       <header className="flex h-12 flex-shrink-0 items-center gap-1 border-b border-line bg-surface px-2 sm:gap-3 sm:px-3">
-        <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
+        <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent text-accent-fg" title="Home" aria-label="Latexy home">
+          <BrandMark className="h-6 w-6" />
+        </Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
         <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg-3 md:inline">resume.tex</span>
         <span

@@ -4,6 +4,8 @@ body { margin: 0; background: #111318; color: #f5f6f8; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 main { max-width: 760px; margin: 36px auto; padding: 0 20px 48px; }
 h1 { font-size: 24px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; }
+.brand img { flex-shrink: 0; }
 p { color: #b7bbc5; }
 label { display: grid; gap: 5px; margin: 10px 0; color: #cfd2da; font-size: 12px; font-weight: 600; }
 input, textarea, select { box-sizing: border-box; width: 100%; border: 1px solid #3a3e49; border-radius: 7px; background: #1b1e25; color: #fff; padding: 8px 9px; font: inherit; }
