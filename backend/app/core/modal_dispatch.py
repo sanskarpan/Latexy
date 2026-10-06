@@ -10,6 +10,9 @@ import weakref
 from collections.abc import Callable
 from typing import Any
 
+from .engine_observability import engine_span
+from .tracing import inject_trace_context
+
 logger = logging.getLogger(__name__)
 
 _APP_NAME = "latexy-backend"
@@ -28,11 +31,13 @@ async def submit_async(submission: Callable[..., Any], *args: Any, **kwargs: Any
     """
     loop = asyncio.get_running_loop()
     limit = _submission_limits.setdefault(loop, asyncio.Semaphore(_SUBMISSION_CONCURRENCY))
-    await limit.acquire()
+    with engine_span("dispatch_wait"):
+        await limit.acquire()
 
     async def run() -> Any:
         try:
-            return await asyncio.to_thread(submission, *args, **kwargs)
+            with engine_span("dispatch_call"):
+                return await asyncio.to_thread(submission, *args, **kwargs)
         finally:
             limit.release()
 
@@ -52,5 +57,10 @@ def spawn(function_name: str, payload: dict) -> None:
     """Fire-and-forget a Modal function by name."""
     import modal  # noqa: PLC0415 — intentionally lazy
     fn = modal.Function.from_name(_APP_NAME, function_name)
+    if function_name in {"run_latex_task", "run_orchestrator_task", "run_llm_task"}:
+        carrier = inject_trace_context({})
+        safe_carrier = {key: value for key, value in carrier.items() if key in {"traceparent", "tracestate"}}
+        if safe_carrier:
+            payload = {**payload, "_trace_context": safe_carrier}
     fn.spawn(payload)
     logger.debug("Modal spawn: %s", function_name)

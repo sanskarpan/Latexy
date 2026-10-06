@@ -6,6 +6,7 @@ import threading
 import time
 from collections import deque
 
+from ..core.engine_observability import engine_span
 from .event_publisher import get_worker_redis, publish_event, publish_event_batch
 from .job_lifecycle import clear_current_owner, current_owner, current_owner_epoch, set_current_capability
 
@@ -138,11 +139,12 @@ class BufferedEventPublisher:
                     self._bytes = 0
                     self._flush_requested = False
                     self._condition.notify_all()
-                if self.publisher is publish_event:
-                    publish_event_batch(self.job_id, batch)
-                else:
-                    for kind, payload in batch:
-                        self.publisher(self.job_id, kind, payload)
+                with engine_span("event_publication"):
+                    if self.publisher is publish_event:
+                        publish_event_batch(self.job_id, batch)
+                    else:
+                        for kind, payload in batch:
+                            self.publisher(self.job_id, kind, payload)
                 with self._condition:
                     self._completed += len(batch)
                     self._condition.notify_all()
