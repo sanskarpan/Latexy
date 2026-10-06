@@ -52,6 +52,9 @@
       radial-gradient(circle at 21% 82%, rgba(255, 255, 255, 0.04), transparent 24%);
     background-attachment: fixed;
   }
+  :root[data-contrast="high"] body {
+    background-image: none;
+  }
 
   /* Global keyboard focus indicator (WCAG 2.4.7). Applies to any focusable
      element — nav/footer/menu links included — that doesn't already define its
