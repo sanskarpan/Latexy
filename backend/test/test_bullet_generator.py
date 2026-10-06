@@ -24,8 +24,10 @@ from httpx import AsyncClient
 # Helper: build a fake OpenAI response
 # ---------------------------------------------------------------------------
 
+
 def _make_openai_response(bullets: list[str]) -> MagicMock:
     import json
+
     choice = MagicMock()
     choice.message.content = json.dumps({"bullets": bullets})
     resp = MagicMock()
@@ -61,6 +63,7 @@ def _mock_settings(mock):
 class TestBulletCacheKey:
     def test_returns_16_hex_chars(self):
         from app.api.ai_routes import _bullet_cache_key
+
         key = _bullet_cache_key("SWE", "Built API", "technical", 5)
         suffix = key.removeprefix("ai:bullets:")
         assert len(suffix) == 16
@@ -68,18 +71,21 @@ class TestBulletCacheKey:
 
     def test_same_inputs_same_key(self):
         from app.api.ai_routes import _bullet_cache_key
+
         k1 = _bullet_cache_key("SWE", "Built API", "technical", 5)
         k2 = _bullet_cache_key("SWE", "Built API", "technical", 5)
         assert k1 == k2
 
     def test_different_tone_different_key(self):
         from app.api.ai_routes import _bullet_cache_key
+
         k1 = _bullet_cache_key("SWE", "Built API", "technical", 5)
         k2 = _bullet_cache_key("SWE", "Built API", "leadership", 5)
         assert k1 != k2
 
     def test_different_count_different_key(self):
         from app.api.ai_routes import _bullet_cache_key
+
         k1 = _bullet_cache_key("SWE", "Built API", "technical", 5)
         k2 = _bullet_cache_key("SWE", "Built API", "technical", 3)
         assert k1 != k2
@@ -136,18 +142,15 @@ class TestBulletGeneratorValidation:
 
     async def test_anon_accessible(self, client: AsyncClient):
         """Endpoint works without Authorization header."""
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_5)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_5))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -165,19 +168,64 @@ class TestBulletGeneratorValidation:
 
 @pytest.mark.asyncio
 class TestBulletGeneratorLLM:
-    async def test_default_count_returns_5_bullets(self, client: AsyncClient):
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+    async def test_unverified_metrics_become_placeholders_but_user_metrics_remain(self, client: AsyncClient):
+        bullets = [
+            "Led 8 engineers and reduced latency 40% for the platform",
+        ]
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch(
+                "app.api.ai_routes.cache_manager.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_5)
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(bullets))
+            mock_cls.return_value = mock_openai
+            response = await client.post(
+                "/ai/generate-bullets",
+                json={
+                    "job_title": "Engineering Manager",
+                    "responsibility": "Led 8 engineers",
+                    "count": 1,
+                },
             )
+
+        assert response.status_code == 200
+        assert response.json()["bullets"] == ["Led 8 engineers and reduced latency [X]% for the platform"]
+
+    async def test_old_cached_bullets_are_sanitized_before_return(self, client: AsyncClient):
+        with patch(
+            "app.api.ai_routes.cache_manager.get",
+            new_callable=AsyncMock,
+            return_value={"bullets": ["Saved 25% across 4 teams"]},
+        ):
+            response = await client.post(
+                "/ai/generate-bullets",
+                json={
+                    "job_title": "Engineer",
+                    "responsibility": "Improved efficiency",
+                    "count": 1,
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["bullets"] == ["Saved [X]% across [X] teams"]
+
+    async def test_default_count_returns_5_bullets(self, client: AsyncClient):
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_5))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -190,18 +238,15 @@ class TestBulletGeneratorLLM:
             assert data["cached"] is False
 
     async def test_each_bullet_starts_with_capital(self, client: AsyncClient):
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_5)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_5))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -214,18 +259,15 @@ class TestBulletGeneratorLLM:
                 assert bullet[0].isupper(), f"Bullet does not start with capital: {bullet!r}"
 
     async def test_count_3_returns_3_bullets(self, client: AsyncClient):
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_3)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_3))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -258,18 +300,15 @@ class TestBulletGeneratorLLM:
             assert len(data["bullets"]) == 5
 
     async def test_response_has_bullets_and_cached_fields(self, client: AsyncClient):
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_5)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_5))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -284,18 +323,15 @@ class TestBulletGeneratorLLM:
 
     async def test_context_field_accepted(self, client: AsyncClient):
         """context optional field should be accepted without error."""
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_SAMPLE_5)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_SAMPLE_5))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -312,9 +348,10 @@ class TestBulletGeneratorLLM:
 
     async def test_no_api_key_returns_empty_bullets(self, client: AsyncClient):
         """When no API key is available, endpoint returns empty bullets gracefully."""
-        with patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(_SETTINGS_PATCH) as mock_settings:
+        with (
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch(_SETTINGS_PATCH) as mock_settings,
+        ):
             mock_settings.OPENAI_API_KEY = ""
             mock_settings.OPENAI_MODEL = "gpt-4o-mini"
 
