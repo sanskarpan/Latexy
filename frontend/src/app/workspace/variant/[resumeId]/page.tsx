@@ -79,11 +79,53 @@ export default function LinkedVariantPage() {
   const [dirty, setDirty] = useState(false)
   const editRevision = useRef(0)
   const loadGeneration = useRef(0)
+  const loadedOwnerEpochRef = useRef<number | null>(null)
+  const ownerId = session?.user?.id ?? null
+  const ownerEpochRef = useRef<{ ownerId: string | null; resumeId: string; epoch: number }>({ ownerId, resumeId, epoch: 0 })
+  if (ownerEpochRef.current.ownerId !== ownerId || ownerEpochRef.current.resumeId !== resumeId) {
+    ownerEpochRef.current = {
+      ownerId,
+      resumeId,
+      epoch: ownerEpochRef.current.epoch + 1,
+    }
+  }
+  const ownerEpoch = ownerEpochRef.current.epoch
+  const renderOwnerId = ownerId
+  const renderResumeId = resumeId
+  const renderOwnerEpoch = ownerEpoch
+  const mountedRef = useRef(false)
+  const saveRequestRef = useRef(0)
+  const activeSaveRef = useRef(false)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      saveRequestRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    saveRequestRef.current += 1
+    activeSaveRef.current = false
+    setSaving(false)
+  }, [ownerEpoch, resumeId])
 
   useEffect(() => {
     const generation = ++loadGeneration.current
+    const requestEpoch = ownerEpochRef.current.epoch
+    const requestOwnerId = ownerEpochRef.current.ownerId
+    const requestResumeId = resumeId
+    const isCurrentLoad = () => (
+      mountedRef.current &&
+      requestOwnerId !== null &&
+      loadGeneration.current === generation &&
+      ownerEpochRef.current.epoch === requestEpoch &&
+      ownerEpochRef.current.ownerId === requestOwnerId &&
+      ownerEpochRef.current.resumeId === requestResumeId
+    )
     if (isPending) return
-    if (!session) {
+    if (requestOwnerId === null) {
       setLoading(false)
       return () => {
         if (loadGeneration.current === generation) loadGeneration.current += 1
@@ -94,24 +136,25 @@ export default function LinkedVariantPage() {
     setLoadError(null)
     apiClient.getVariantVisibility(resumeId)
       .then((response) => {
-        if (loadGeneration.current !== generation) return
+        if (!isCurrentLoad()) return
+        loadedOwnerEpochRef.current = requestEpoch
         setData(response)
         setVisibility(cloneVisibility(response.visibility))
         setTitle(response.resume.title)
         setDirty(false)
       })
       .catch((reason) => {
-        if (loadGeneration.current === generation) {
+        if (isCurrentLoad()) {
           setLoadError(reason instanceof Error ? reason.message : 'Variant could not be loaded')
         }
       })
       .finally(() => {
-        if (loadGeneration.current === generation) setLoading(false)
+        if (isCurrentLoad()) setLoading(false)
       })
     return () => {
       if (loadGeneration.current === generation) loadGeneration.current += 1
     }
-  }, [isPending, reload, resumeId, session])
+  }, [isPending, reload, ownerEpoch, resumeId])
 
   const markEdited = () => {
     editRevision.current += 1
@@ -159,15 +202,38 @@ export default function LinkedVariantPage() {
   }
 
   const save = async () => {
-    if (!visibility || !title.trim()) return
+    if (
+      !mountedRef.current ||
+      activeSaveRef.current ||
+      !renderOwnerId ||
+      renderOwnerEpoch !== ownerEpochRef.current.epoch ||
+      renderOwnerId !== ownerEpochRef.current.ownerId ||
+      renderResumeId !== ownerEpochRef.current.resumeId ||
+      loadedOwnerEpochRef.current !== renderOwnerEpoch ||
+      !visibility ||
+      !title.trim()
+    ) return
     const revision = editRevision.current
     const snapshotTitle = title.trim()
     const snapshotVisibility = cloneVisibility(visibility)
+    const requestToken = ++saveRequestRef.current
+    const requestEpoch = renderOwnerEpoch
+    const requestOwnerId = renderOwnerId
+    const requestResumeId = renderResumeId
+    activeSaveRef.current = true
+    const isCurrentSave = () => (
+      mountedRef.current &&
+      saveRequestRef.current === requestToken &&
+      ownerEpochRef.current.epoch === requestEpoch &&
+      ownerEpochRef.current.ownerId === requestOwnerId &&
+      ownerEpochRef.current.resumeId === requestResumeId
+    )
     setSaving(true)
     try {
       const response = await apiClient.updateVariantVisibility(resumeId, {
         title: snapshotTitle, visibility: snapshotVisibility,
       })
+      if (!isCurrentSave()) return
       if (revision === editRevision.current) {
         setData(response)
         setVisibility(cloneVisibility(response.visibility))
@@ -177,9 +243,12 @@ export default function LinkedVariantPage() {
         toast.success('Earlier visibility saved; newer edits remain unsaved')
       }
     } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : 'Variant could not be saved')
+      if (isCurrentSave()) toast.error(reason instanceof Error ? reason.message : 'Variant could not be saved')
     } finally {
-      setSaving(false)
+      if (isCurrentSave()) {
+        activeSaveRef.current = false
+        setSaving(false)
+      }
     }
   }
 
@@ -187,6 +256,7 @@ export default function LinkedVariantPage() {
   if (sessionError && !session) return <SessionLoadError area="Linked variant" />
   if (!session) return null
   if (loadError || !data || !visibility) {
+    if (!loadError && loading) return <LoadingSpinner />
     return (
       <div className="content-shell py-16 text-center">
         <h1 className="text-xl font-semibold text-fg">Linked variant could not be loaded</h1>
@@ -195,6 +265,7 @@ export default function LinkedVariantPage() {
       </div>
     )
   }
+  if (loadedOwnerEpochRef.current !== ownerEpoch) return <LoadingSpinner />
 
   return (
     <div className="content-shell space-y-6 pb-16">
