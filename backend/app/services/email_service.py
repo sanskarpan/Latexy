@@ -7,18 +7,34 @@ EMAIL_ENABLED master toggle — when False, every call is a no-op.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import smtplib
 import ssl
+from dataclasses import dataclass
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from html import escape
-from typing import Optional
+from typing import Optional, Sequence
 from urllib.parse import quote
 
 from ..core.config import settings
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
+
+MAX_EMAIL_ATTACHMENT_BYTES = 8 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class EmailAttachment:
+    """A bounded, already-authorized attachment for a transactional email."""
+
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
 
 
 class EmailService:
@@ -30,22 +46,54 @@ class EmailService:
         subject: str,
         html_body: str,
         text_body: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        attachments: Optional[Sequence[EmailAttachment]] = None,
     ) -> bool:
         """Send an email. Returns True if sent, False if skipped or failed."""
         if not settings.EMAIL_ENABLED:
-            logger.debug(f"Email disabled — skipping: {subject!r} → {to}")
+            logger.debug("Email disabled — skipping send")
+            return False
+
+        safe_attachments = tuple(attachments or ())
+        try:
+            self._validate_attachments(safe_attachments)
+        except (TypeError, ValueError):
+            logger.warning("Email attachment validation failed")
             return False
 
         try:
             if settings.EMAIL_PROVIDER == "resend":
-                return await self._send_via_resend(to, subject, html_body, text_body)
+                return await self._send_via_resend(
+                    to, subject, html_body, text_body, idempotency_key, safe_attachments
+                )
             elif settings.EMAIL_PROVIDER == "smtp":
-                return self._send_via_smtp(to, subject, html_body, text_body)
+                # Resend's SMTP gateway honors the idempotency header; other
+                # SMTP relays may ignore it. A timeout after DATA can therefore
+                # result in one duplicate on a later retry with non-Resend SMTP.
+                if idempotency_key:
+                    logger.debug("SMTP transport idempotency depends on relay support")
+                smtp_args = (to, subject, html_body, text_body)
+                if idempotency_key:
+                    if safe_attachments:
+                        return await asyncio.to_thread(
+                            self._send_via_smtp,
+                            *smtp_args,
+                            idempotency_key,
+                            safe_attachments,
+                        )
+                    return await asyncio.to_thread(self._send_via_smtp, *smtp_args, idempotency_key)
+                if safe_attachments:
+                    return await asyncio.to_thread(
+                        self._send_via_smtp, *smtp_args, None, safe_attachments
+                    )
+                return await asyncio.to_thread(self._send_via_smtp, *smtp_args)
             else:
                 logger.warning(f"Unknown EMAIL_PROVIDER: {settings.EMAIL_PROVIDER!r}")
                 return False
         except Exception as exc:
-            logger.error(f"Email send failed to {to}: {exc}")
+            # Provider/network errors and recipient/subject values may contain
+            # credentials or personal data. Keep operational logs metadata-only.
+            logger.error("Email send failed (%s)", type(exc).__name__)
             return False
 
     async def _send_via_resend(
@@ -54,6 +102,8 @@ class EmailService:
         subject: str,
         html_body: str,
         text_body: Optional[str],
+        idempotency_key: Optional[str] = None,
+        attachments: Sequence[EmailAttachment] = (),
     ) -> bool:
         if not settings.RESEND_API_KEY:
             logger.warning("RESEND_API_KEY not set — cannot send email")
@@ -69,18 +119,29 @@ class EmailService:
         }
         if text_body:
             payload["text"] = text_body
+        if attachments:
+            payload["attachments"] = [
+                {
+                    "filename": attachment.filename,
+                    "content": base64.b64encode(attachment.content).decode("ascii"),
+                }
+                for attachment in attachments
+            ]
 
         async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {"Authorization": f"Bearer {settings.RESEND_API_KEY}"}
+            if idempotency_key:
+                headers["Idempotency-Key"] = idempotency_key
             resp = await client.post(
                 "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                headers=headers,
                 json=payload,
             )
             if resp.status_code in (200, 201):
-                logger.info(f"Email sent via Resend: {subject!r} → {to}")
+                logger.info("Email sent via Resend")
                 return True
             else:
-                logger.error(f"Resend returned {resp.status_code}: {resp.text[:200]}")
+                logger.error("Resend returned HTTP %s", resp.status_code)
                 return False
 
     def _send_via_smtp(
@@ -89,30 +150,78 @@ class EmailService:
         subject: str,
         html_body: str,
         text_body: Optional[str],
+        idempotency_key: Optional[str] = None,
+        attachments: Sequence[EmailAttachment] = (),
     ) -> bool:
         if not settings.SMTP_HOST:
             logger.warning("SMTP_HOST not set — cannot send email")
             return False
 
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed" if attachments else "alternative")
         msg["Subject"] = subject
         msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
         msg["To"] = to
+        if idempotency_key:
+            # Resend's SMTP gateway honors this header. Other SMTP relays may
+            # ignore it, so SMTP delivery remains best-effort on retry.
+            msg["Resend-Idempotency-Key"] = idempotency_key
 
+        body = MIMEMultipart("alternative") if attachments else msg
         if text_body:
-            msg.attach(MIMEText(text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+            body.attach(MIMEText(text_body, "plain"))
+        body.attach(MIMEText(html_body, "html"))
+        if attachments:
+            msg.attach(body)
+            for attachment in attachments:
+                major, _, minor = attachment.content_type.partition("/")
+                part = MIMEBase(major or "application", minor or "octet-stream")
+                part.set_payload(attachment.content)
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition", "attachment", filename=attachment.filename
+                )
+                msg.attach(part)
 
         context = ssl.create_default_context()
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
             server.ehlo()
             server.starttls(context=context)
             if settings.SMTP_USER:
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.sendmail(settings.EMAIL_FROM, to, msg.as_string())
+            # smtplib reports per-recipient refusal as a return dictionary
+            # rather than raising.  With one recipient, any refused address
+            # means the provider did not accept this delivery and must remain
+            # retryable in the durable delivery state machine.
+            refused = server.sendmail(settings.EMAIL_FROM, to, msg.as_string())
+            if isinstance(refused, dict) and refused:
+                logger.warning("SMTP provider refused recipient(s)")
+                return False
 
-        logger.info(f"Email sent via SMTP: {subject!r} → {to}")
+        logger.info("Email sent via SMTP")
         return True
+
+    @staticmethod
+    def _validate_attachments(attachments: Sequence[EmailAttachment]) -> None:
+        if len(attachments) > 3:
+            raise ValueError("too many email attachments")
+        for attachment in attachments:
+            if not isinstance(attachment, EmailAttachment):
+                raise TypeError("invalid email attachment")
+            if (
+                not attachment.filename
+                or len(attachment.filename) > 255
+                or any(char in attachment.filename for char in ("/", "\\", "\r", "\n"))
+            ):
+                raise ValueError("invalid attachment filename")
+            if not isinstance(attachment.content, bytes):
+                raise TypeError("attachment content must be bytes")
+            if len(attachment.content) > MAX_EMAIL_ATTACHMENT_BYTES:
+                raise ValueError("attachment too large")
+            major, separator, minor = attachment.content_type.partition("/")
+            if not separator or not major or not minor or any(
+                char in attachment.content_type for char in ("\r", "\n", ";")
+            ):
+                raise ValueError("invalid attachment content type")
 
 
 # ── HTML templates ────────────────────────────────────────────────────────────
@@ -255,6 +364,61 @@ def render_share_viewed_email(
         f"Hi {user_name},\n\n"
         f"A new visitor viewed {resume_title or 'Untitled resume'}.{detail_text}\n\n"
         f"Open your resume: {resume_url}\n\n"
+        f"Manage notification preferences: {settings.FRONTEND_URL}/settings"
+    )
+    return html, text
+
+
+def render_document_delivery_email(user_name: str, resume_title: str) -> tuple[str, str]:
+    """Return a minimal message for a user-requested compiled PDF delivery."""
+    safe_user_name = escape(user_name or "there")
+    safe_title = escape(resume_title or "your resume")
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">Your compiled resume is attached</h2>
+    <p>Hi {safe_user_name},</p>
+    <p>The compiled PDF for <strong>{safe_title}</strong> is attached to this email.</p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px">
+      This message was sent because you requested the document from Latexy.<br>
+      Manage notification preferences at <a href="{settings.FRONTEND_URL}/settings" style="color:#a78bfa">Latexy settings</a>.
+    </p>
+  </div>
+</body>
+</html>"""
+    text = (
+        "Your compiled resume is attached\n\n"
+        f"Hi {user_name or 'there'},\n\n"
+        f"The compiled PDF for {resume_title or 'your resume'} is attached to this email.\n\n"
+        "This message was sent because you requested the document from Latexy.\n"
+        f"Manage notification preferences: {settings.FRONTEND_URL}/settings"
+    )
+    return html, text
+
+
+def render_comment_mention_email(
+    resume_url: str,
+) -> tuple[str, str]:
+    """Render a privacy-conscious notification for a resolved @mention.
+
+    The comment body is intentionally omitted. Access can be revoked between
+    the final ACL check and provider I/O, so email must not disclose private
+    comment text in that unavoidable TOCTOU window.
+    """
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">You were mentioned in a resume comment</h2>
+    <p>A collaborator mentioned you in a Latexy resume comment.</p>
+    <p><a href="{escape(resume_url, quote=True)}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Open comment</a></p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px"><a href="{escape(settings.FRONTEND_URL, quote=True)}/settings" style="color:#a78bfa">Manage notification preferences</a></p>
+  </div>
+</body></html>"""
+    text = (
+        "You were mentioned in a resume comment\n\n"
+        "A collaborator mentioned you in a Latexy resume comment.\n\n"
+        f"Open comment: {resume_url}\n\n"
         f"Manage notification preferences: {settings.FRONTEND_URL}/settings"
     )
     return html, text
