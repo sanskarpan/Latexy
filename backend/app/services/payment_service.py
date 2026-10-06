@@ -1052,12 +1052,15 @@ class PaymentService:
                         "success": False,
                         "error": "Student plan requires a verified .edu or academic email address",
                     }
-                # Student checkout is deliberately a two-step flow: the
-                # verification email is sent before a provider subscription
-                # exists, and the provider is checked again when the token is
-                # redeemed.  Keeping this pre-check out of the request phase
-                # also lets invalid student addresses return the normal
-                # validation response instead of a misleading billing 503.
+                # Validate the address before exposing billing availability,
+                # but do not send a verification email when billing is
+                # disabled. The provider is checked again when the token is
+                # redeemed, after the email has been verified.
+                if not self.client:
+                    return {
+                        "success": False,
+                        "error": self._base_status["message"],
+                    }
                 return await self._request_student_verification(
                     db=db,
                     user_id=user_id,
