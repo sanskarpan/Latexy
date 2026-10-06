@@ -10,6 +10,7 @@ Covers:
 """
 
 import hashlib
+import inspect
 
 import pytest
 
@@ -213,6 +214,13 @@ class TestSemanticKeywordMatchStructure:
 # ────────────────────────────────────────────────────────────────────────────
 
 class TestSemanticMatchEndpoint:
+
+    def test_default_query_does_not_omit_resume_21_and_beyond(self):
+        from app.api.ats_routes import semantic_match_resumes
+
+        source = inspect.getsource(semantic_match_resumes)
+        assert ".limit(20)" not in source
+        assert "Resume.archived_at.is_(None)" in source
 
     @pytest.mark.asyncio
     async def test_requires_auth(self, client):
