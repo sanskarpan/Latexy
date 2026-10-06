@@ -39,8 +39,9 @@ CATEGORY_META: dict[str, dict] = {
     "medical":              {"order": 9, "description": "Medical and healthcare career templates."},
     "legal":                {"order": 10, "description": "Templates for legal professionals."},
     "graduate":             {"order": 11, "description": "Entry-level and graduate / career-change templates."},
+    "regional":             {"order": 12, "description": "Locale-specific employment and biodata formats."},
     # Feature 86 — Beamer presentation templates
-    "presentation":         {"order": 12, "description": "LaTeX Beamer presentation templates for conferences, seminars, and pitches."},
+    "presentation":         {"order": 13, "description": "LaTeX Beamer presentation templates for conferences, seminars, and pitches."},
 }
 
 # Category → document_type mapping (Feature 86)
