@@ -118,4 +118,3 @@ class TestSynonymsEndpoint:
             response = await client.post("/ai/synonyms", json={"text": "led"})
         assert response.status_code == 503
         assert "unavailable" in response.json()["detail"].casefold()
-
