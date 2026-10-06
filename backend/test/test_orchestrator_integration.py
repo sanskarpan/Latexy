@@ -14,6 +14,32 @@ from unittest.mock import MagicMock, patch
 import pytest
 from httpx import AsyncClient
 
+
+@pytest.fixture(autouse=True)
+def _docker_capability_probe():
+    """Default to local execution; Docker-specific cases opt in explicitly."""
+    with patch("app.workers.orchestrator.docker_engine_available", return_value=False):
+        yield
+
+
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
+
 # ─── Fix 1: Docker fallback ───────────────────────────────────────────────────
 
 class TestDockerFallback:
@@ -42,7 +68,7 @@ class TestDockerFallback:
 
             # Mock successful pdflatex run
             mock_proc = MagicMock()
-            mock_proc.stdout = iter(["This is pdfTeX\n", "Output written on resume.pdf\n"])
+            mock_proc.stdout = _BoundedSyncStream(["This is pdfTeX\n", "Output written on resume.pdf\n"])
             mock_proc.returncode = 0
             mock_popen.return_value = mock_proc
 
@@ -61,6 +87,30 @@ class TestDockerFallback:
             # cwd must be set (not None) for local execution
             assert mock_popen.call_args[1].get("cwd") is not None
 
+    def test_stop_on_first_error_can_be_disabled(self, tmp_path):
+        from app.workers.orchestrator import _run_latex_stage
+
+        job_id = "test-continue-after-errors"
+        job_dir = tmp_path / job_id
+        job_dir.mkdir()
+        sample_tex = r"\documentclass{article}\begin{document}Hello\end{document}"
+        with (
+            patch("app.workers.orchestrator.subprocess.Popen") as mock_popen,
+            patch("app.workers.orchestrator.publish_event"),
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.TEMP_DIR = tmp_path
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
+            mock_proc = MagicMock(stdout=_BoundedSyncStream([]), returncode=1)
+            mock_popen.return_value = mock_proc
+            _run_latex_stage(job_id, sample_tex, halt_on_error=False)
+
+        command = mock_popen.call_args.args[0]
+        assert "-interaction=nonstopmode" in command
+        assert "-halt-on-error" not in command
+
     def test_uses_docker_when_available(self, tmp_path):
         """When Docker is available, orchestrator uses docker run."""
         from app.workers.orchestrator import _run_latex_stage
@@ -71,6 +121,7 @@ class TestDockerFallback:
 
         with (
             patch("app.workers.orchestrator.shutil.which", return_value="/usr/bin/docker"),
+            patch("app.workers.orchestrator.docker_engine_available", return_value=True),
             patch("app.workers.orchestrator.subprocess.Popen") as mock_popen,
             patch("app.workers.orchestrator.publish_event"),
             patch("app.workers.orchestrator.is_cancelled", return_value=False),
@@ -82,7 +133,7 @@ class TestDockerFallback:
             mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             mock_proc = MagicMock()
-            mock_proc.stdout = iter([])
+            mock_proc.stdout = _BoundedSyncStream([])
             mock_proc.returncode = 0
             mock_popen.return_value = mock_proc
 
@@ -136,7 +187,7 @@ class TestCombinedJobArtifacts:
             mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             mock_proc = MagicMock()
-            mock_proc.stdout = iter(["This is pdfTeX\n", "Output written on resume.pdf (1 page)\n"])
+            mock_proc.stdout = _BoundedSyncStream(["This is pdfTeX\n", "Output written on resume.pdf (1 page)\n"])
             mock_proc.returncode = 0
             mock_popen.return_value = mock_proc
 
@@ -280,6 +331,78 @@ class TestDelimiterStreaming:
         # No tokens emitted to frontend (state machine never entered IN_LATEX)
         assert published_tokens == []
 
+    def test_unclosed_latex_delimiter_flushes_the_complete_document(self):
+        """EOF must not discard the delimiter-sized LaTeX hold-back buffer."""
+        latex_body = r"\documentclass{article}\begin{document}complete\end{document}"
+        response = f"<<<LATEX>>>{latex_body}"
+
+        published_tokens = []
+
+        def capture_publish(job_id, event_type, payload, **kwargs):
+            if event_type == "llm.token":
+                published_tokens.append(payload["token"])
+
+        with (
+            patch("app.workers.orchestrator.publish_event", side_effect=capture_publish),
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("app.workers.orchestrator.llm_service") as mock_llm_svc,
+            patch("app.workers.orchestrator.openai.OpenAI") as mock_openai,
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_MODEL = "gpt-4o"
+            mock_settings.OPENAI_MAX_TOKENS = 4096
+            mock_settings.OPENAI_TEMPERATURE = 0.7
+            mock_settings.OPENAI_BASE_URL = ""
+            mock_settings.OPENAI_API_KEY = "platform-key"
+            mock_llm_svc.extract_keywords_from_job_description.return_value = []
+            mock_llm_svc._create_optimization_prompt.return_value = "prompt"
+            mock_llm_svc.count_tokens.return_value = 100
+
+            stream_chunks = [self._make_stream_chunk(response), self._make_usage_chunk(200)]
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = iter(stream_chunks)
+            mock_openai.return_value = mock_client
+
+            from app.workers.orchestrator import _run_llm_stage
+            optimized, _, _, _ = _run_llm_stage(
+                "test-unclosed-delimiter", latex_body, None, "balanced", "fake-key"
+            )
+
+        assert optimized == latex_body
+        assert "".join(published_tokens) == latex_body
+
+    def test_token_limit_finish_is_rejected_even_with_valid_latex(self):
+        latex_body = r"\documentclass{article}\begin{document}cut off\end{document}"
+        response = f"<<<LATEX>>>{latex_body}<<<END_LATEX>>>"
+
+        with (
+            patch("app.workers.orchestrator.publish_event"),
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("app.workers.orchestrator.llm_service") as mock_llm_svc,
+            patch("app.workers.orchestrator.openai.OpenAI") as mock_openai,
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_MODEL = "gpt-4o"
+            mock_settings.OPENAI_MAX_TOKENS = 4096
+            mock_settings.OPENAI_TEMPERATURE = 0.7
+            mock_settings.OPENAI_BASE_URL = ""
+            mock_settings.OPENAI_API_KEY = "platform-key"
+            mock_llm_svc.extract_keywords_from_job_description.return_value = []
+            mock_llm_svc._create_optimization_prompt.return_value = "prompt"
+
+            chunk = self._make_stream_chunk(response)
+            chunk.choices[0].finish_reason = "length"
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = iter([chunk])
+            mock_openai.return_value = mock_client
+
+            from app.workers.orchestrator import _run_llm_stage
+
+            with pytest.raises(RuntimeError, match="token limit"):
+                _run_llm_stage(
+                    "test-truncated", latex_body, None, "balanced", "fake-key"
+                )
+
 
 # ─── Fix 3: Preserve LaTeX on compile fail ───────────────────────────────────
 
@@ -380,6 +503,107 @@ class TestCancelledCombinedJobReconciles:
         result, mock_reconcile = self._run(cancel_after_llm=False)
         assert result["cancelled"] is True
         assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
+
+    def test_mid_stream_cancel_is_terminal_and_never_retried(self):
+        from app.workers.orchestrator import LLMStreamCancelled, optimize_and_compile_task
+
+        task_instance = MagicMock()
+        task_instance.request.id = "task-stream-cancel"
+        task_instance.request.retries = 0
+        task_instance.max_retries = 1
+
+        with (
+            patch("app.workers.orchestrator.publish_event") as mock_publish,
+            patch("app.workers.orchestrator._run_llm_stage", side_effect=LLMStreamCancelled()),
+            patch("app.workers.orchestrator.reconcile_compilation_record") as mock_reconcile,
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_API_KEY = "fake-key"
+            result = optimize_and_compile_task.__wrapped__(
+                task_instance,
+                r"\documentclass{article}\begin{document}x\end{document}",
+                job_id="test-stream-cancel",
+            )
+
+        assert result["cancelled"] is True
+        task_instance.retry.assert_not_called()
+        assert any(call.args[1] == "job.cancelled" for call in mock_publish.call_args_list)
+        assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
+
+
+class TestBatchVariantPersistence:
+    def _run(self, persist_succeeds: bool):
+        from app.workers.orchestrator import optimize_and_compile_task
+
+        optimized = r"\documentclass{article}\begin{document}tailored\end{document}"
+        events = []
+
+        def capture_event(_job_id, event_type, payload, **_kwargs):
+            events.append((event_type, payload))
+
+        task_instance = MagicMock()
+        task_instance.request.id = "task-batch-persist"
+        task_instance.request.retries = 0
+        task_instance.max_retries = 1
+
+        with (
+            patch("app.workers.orchestrator.publish_event", side_effect=capture_event),
+            patch("app.workers.orchestrator.publish_job_result") as mock_result,
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch(
+                "app.workers.orchestrator._run_llm_stage",
+                return_value=(optimized, [], 100, 1.0),
+            ),
+            patch(
+                "app.workers.orchestrator._run_latex_stage",
+                return_value=(True, 0.5, "", 1, b"%PDF-1.7"),
+            ),
+            patch("app.workers.orchestrator._run_ats_stage", return_value=(80.0, {})),
+            patch("app.workers.orchestrator.reconcile_compilation_record") as mock_reconcile,
+            patch(
+                "app.workers.auto_save_worker.persist_resume_content",
+                return_value=persist_succeeds,
+            ) as mock_persist,
+            patch("app.workers.auto_save_worker.submit_auto_save_checkpoint"),
+            patch("app.workers.email_worker.submit_job_completion_email"),
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_API_KEY = "fake-key"
+            result = optimize_and_compile_task.__wrapped__(
+                task_instance,
+                r"\documentclass{article}\begin{document}parent\end{document}",
+                job_id="batch-job",
+                user_id="owner-id",
+                resume_id="variant-id",
+                metadata={
+                    "persist_optimized_resume": True,
+                    "expected_latex_content": r"\documentclass{article}\begin{document}parent\end{document}",
+                },
+            )
+
+        return result, events, mock_result, mock_reconcile, mock_persist, optimized
+
+    def test_completed_batch_job_persists_tailored_variant_first(self):
+        result, events, _result_store, _reconcile, mock_persist, optimized = self._run(True)
+
+        assert result["success"] is True
+        mock_persist.assert_called_once_with(
+            "variant-id", "owner-id", optimized,
+            expected_latex_content=r"\documentclass{article}\begin{document}parent\end{document}",
+        )
+        assert any(event_type == "job.completed" for event_type, _ in events)
+
+    def test_persistence_failure_is_terminal_without_second_llm_call(self):
+        result, events, result_store, reconcile, _persist, optimized = self._run(False)
+
+        assert result["success"] is False
+        assert result["optimized_latex"] == optimized
+        assert not any(event_type == "job.completed" for event_type, _ in events)
+        failed = [payload for event_type, payload in events if event_type == "job.failed"]
+        assert failed[0]["error_code"] == "resume_persistence_failed"
+        assert failed[0]["retryable"] is False
+        assert result_store.call_args.args[1]["optimized_latex"] == optimized
+        assert reconcile.call_args.kwargs["error_message"] == "Tailored resume could not be saved"
 
 
 # ─── Feature 3: Section-specific prompt ──────────────────────────────────────
