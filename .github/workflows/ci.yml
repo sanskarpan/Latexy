@@ -215,6 +215,7 @@ jobs:
         # repository code in CI and a critical Vitest advisory was previously
         # invisible to the production-only audit.
         run: |
+          node --test ../scripts/ci/sharp-runtime.test.cjs
           node --test ../scripts/ci/dependency-audit.test.mjs
           node ../scripts/ci/audit-dependencies.mjs
       - name: Run ESLint
