@@ -21,6 +21,16 @@ from app.services import latex_service as ls
 from app.services.latex_service import find_recorder_read_escape as real_find_recorder
 
 
+@pytest.fixture(autouse=True)
+def mocked_worker_environment(monkeypatch):
+    # Worker tests replace both the compiler and Path metadata. Exercise their
+    # command construction with the real credential-stripped base environment;
+    # job-cache filesystem confinement is covered with real paths separately.
+    safe = ls.engine_env()
+    monkeypatch.setattr("app.workers.latex_worker.engine_env", lambda *_: dict(safe))
+    monkeypatch.setattr("app.workers.orchestrator.engine_env", lambda *_: dict(safe))
+
+
 class _EmptyPipe:
     async def read(self, size: int) -> bytes:
         return b""

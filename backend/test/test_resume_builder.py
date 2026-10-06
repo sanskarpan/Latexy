@@ -157,7 +157,8 @@ class TestResumeBuilder:
         )
         assert update_resp.status_code == 200
         updated = update_resp.json()
-        assert updated["resume"]["structured_version"] >= 2
+        assert updated["resume"]["structured_version"] == 1
+        assert updated["resume"]["content_revision"] >= 2
         assert updated["resume"]["structured_content"]["basics"]["name"] == "Updated Name"
 
     async def test_manual_editor_update_detaches_builder(self, client: AsyncClient, auth_headers: dict, db_session):

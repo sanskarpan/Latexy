@@ -33,7 +33,13 @@ def compile_probe(monkeypatch, tmp_path):
         job_dir = tmp_path / "combined-settings"
         captured["command"] = command
         captured["kwargs"] = kwargs
-        captured["files"] = {path.name: path.read_bytes() for path in job_dir.iterdir()}
+        children = list(job_dir.iterdir())
+        # Only the per-job engine cache may be a directory. All input assets
+        # remain regular non-symlink files confined to this job workspace.
+        assert all(not path.is_symlink() for path in children)
+        assert all(path.name == ".tex-cache" for path in children if path.is_dir())
+        captured["files"] = {path.name: path.read_bytes() for path in children if path.is_file()}
+        assert not (tmp_path / "escape.tex").exists()
         return SimpleNamespace(stdout=io.BytesIO(b"! controlled test failure\n"), returncode=1, wait=lambda: None)
 
     monkeypatch.setattr(orchestrator.subprocess, "Popen", spawn)

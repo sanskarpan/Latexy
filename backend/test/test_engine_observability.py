@@ -40,6 +40,16 @@ def test_cancelled_span_preserves_cancellation():
         assert record.call_args.args[2] == "cancelled"
 
 
+def test_slow_phase_logs_only_fixed_phase_outcome_and_duration():
+    with patch("app.core.engine_observability.time.perf_counter", side_effect=[10, 11]), \
+         patch("app.core.engine_observability.logger.info") as log:
+        with pytest.raises(ValueError):
+            with engine_span("cache_lookup"):
+                raise ValueError("private source")
+    assert log.call_args.kwargs["extra"] == {"phase": "cache_lookup", "outcome": "error", "latency_seconds": 1}
+    assert "private" not in str(log.call_args)
+
+
 def test_worker_trace_drops_baggage_and_detaches_on_error(monkeypatch):
     from opentelemetry import context
     monkeypatch.setattr(tracing, "HAS_OTEL", True)

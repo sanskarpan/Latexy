@@ -140,6 +140,7 @@ class ResumeResponse(ResumeBase):
     builder_status: str = "detached"
     structured_content: Optional[Dict[str, Any]] = None
     structured_version: int = 1
+    content_revision: int = 1
     # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
     metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
     share_token: Optional[str] = None
@@ -222,6 +223,7 @@ def _resume_response_from_obj(resume: Any, *, access_role: str = "owner") -> Res
         "builder_status": _typed_attr(resume, "builder_status", str, "detached"),
         "structured_content": _typed_attr(resume, "structured_content", dict),
         "structured_version": int(getattr(resume, "structured_version", 1) or 1),
+        "content_revision": _typed_attr(resume, "content_revision", int, 1),
         "metadata": _typed_attr(resume, "resume_settings", dict),
         "share_token": _typed_attr(resume, "share_token", str),
         "share_url": _typed_attr(resume, "share_url", str),
@@ -916,7 +918,8 @@ async def update_builder_resume(
         resume.title = body.title.strip()
     if body.structured_content is not None:
         resume.structured_content = _normalize_builder_input(body.structured_content)
-        resume.structured_version = (resume.structured_version or 1) + 1
+        # Schema version is independent of source/content edit revision.
+        resume.structured_version = 1
     elif not resume.structured_content:
         resume.structured_content = resume_builder_service.empty_document()
 
@@ -2269,6 +2272,7 @@ async def create_share_link(
             .where(
                 Compilation.resume_id == resume_id,
                 Compilation.status == "completed",
+                Compilation.artifact_accepted.is_(True),
             )
             .order_by(Compilation.created_at.desc())
             .limit(1)
@@ -2623,6 +2627,7 @@ async def bulk_export(
             .where(
                 Compilation.resume_id.in_([resume.id for resume in resumes]),
                 Compilation.status == "completed",
+                Compilation.artifact_accepted.is_(True),
             )
             .distinct(Compilation.resume_id)
             .order_by(Compilation.resume_id, Compilation.created_at.desc())

@@ -46,7 +46,12 @@ def eager_celery():
 @pytest.fixture(autouse=True)
 def docker_capability_probe():
     """Use an explicit capability result while subprocesses are mocked."""
-    with patch("app.workers.orchestrator.docker_engine_available", return_value=False):
+    from app.services.latex_service import engine_env
+
+    with (
+        patch("app.workers.orchestrator.docker_engine_available", return_value=False),
+        patch("app.workers.orchestrator.engine_env", side_effect=lambda *_: engine_env()),
+    ):
         yield
 
 

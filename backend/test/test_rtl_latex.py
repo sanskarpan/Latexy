@@ -201,6 +201,10 @@ def test_lualatex_rtl_compile_and_pdf_text_layer(
         text=True,
         check=True,
     ).stdout
-    assert arabic in extracted
+    import unicodedata
+
+    # Poppler may return Arabic presentation forms. Require the exact words
+    # after Unicode compatibility normalization, preserving their order.
+    assert arabic in unicodedata.normalize("NFKC", extracted)
     assert hebrew in extracted
     assert "Acme Corp" in extracted

@@ -11,9 +11,12 @@ DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 """
 
 import base64
+import hashlib
 from pathlib import Path
 
 import modal
+
+from app.core.engine_capacity import capacity_options
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -196,6 +199,13 @@ def _encode_shell_script(script: str) -> str:
 
 
 _WARM_TEX_CACHE_COMMAND = _encode_shell_script(_WARM_TEX_CACHE)
+_fingerprint_source = (_BACKEND_DIR / "scripts" / "write_renderer_fingerprint.py").read_text(encoding="utf-8")
+_fingerprint_encoded = base64.b64encode(_fingerprint_source.encode("utf-8")).decode("ascii")
+_cache_seed_digest = hashlib.sha256(_WARM_TEX_CACHE.encode("utf-8")).hexdigest()
+_WRITE_RENDERER_FINGERPRINT_COMMAND = (
+    f"LATEXY_CACHE_SEED_SHA256={_cache_seed_digest} "
+    f"python3 -c \"import base64; exec(base64.b64decode('{_fingerprint_encoded}'))\""
+)
 
 # ---------------------------------------------------------------------------
 # Images
@@ -216,6 +226,11 @@ texlive_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE, *_APT_LATEX, "unzip")
     .run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)
+    .add_local_file(str(_BACKEND_DIR / "scripts/build_trusted_render_formats.py"),
+                    remote_path="/opt/latexy-format-build/scripts/build_trusted_render_formats.py", copy=True)
+    .add_local_file(str(_BACKEND_DIR / "app/services/render_engine/managed_preamble.py"),
+                    remote_path="/opt/latexy-format-build/app/services/render_engine/managed_preamble.py", copy=True)
+    .run_commands("python3 /opt/latexy-format-build/scripts/build_trusted_render_formats.py", _WRITE_RENDERER_FINGERPRINT_COMMAND)
 )
 
 api_image = (
@@ -286,18 +301,19 @@ def _init_worker_redis() -> None:
     # which dominated compile latency (warm compile work is only ~3.5s). min_containers=1
     # eliminates the cold start for the common single-compile path. scaledown_window keeps
     # extra burst containers around briefly so bursts stay warm too.
-    min_containers=1,
-    scaledown_window=120,
+    **capacity_options("LATEX"),
 )
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
     _init_worker_redis()
-    from app.workers.latex_worker import compile_latex_task
-
     # throw=False: prevents Celery's self.retry() Retry exception from propagating
     # to Modal (which would cause a double-execution via Modal's retry mechanism).
     # The Celery task publishes its own error events; Modal must not independently retry.
-    compile_latex_task.apply(kwargs=payload, throw=False)
+    from app.core.tracing import worker_trace
+    from app.workers.latex_worker import compile_latex_task
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        compile_latex_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(
@@ -311,29 +327,32 @@ def run_latex_task(payload: dict) -> None:
     # made the flagship "Optimize + Compile" flow take ~230s. Warm it so combined
     # jobs are ~40-50s (LLM-bound) instead. scaledown_window keeps burst
     # containers around for back-to-back runs.
-    min_containers=1,
-    scaledown_window=180,
+    **capacity_options("ORCHESTRATOR"),
 )
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
     _init_worker_redis()
+    from app.core.tracing import worker_trace
     from app.workers.orchestrator import optimize_and_compile_task
-
-    optimize_and_compile_task.apply(kwargs=payload, throw=False)
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        optimize_and_compile_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    scaledown_window=60,
+    **capacity_options("LLM"),
 )
 def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
     _init_worker_redis()
+    from app.core.tracing import worker_trace
     from app.workers.llm_worker import optimize_resume_task
-
-    optimize_resume_task.apply(kwargs=payload, throw=False)
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        optimize_resume_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(

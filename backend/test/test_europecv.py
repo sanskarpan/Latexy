@@ -97,4 +97,5 @@ def test_compiled_pdf_extraction_contains_standard_and_candidate_text(tmp_path: 
         text=True,
     ).stdout
     assert "Alex Morgan" in extracted
-    assert "Données personnelles" in extracted or "Informations personnelles" in extracted
+    normalized = " ".join(extracted.split())
+    assert "Données personnelles" in normalized or "Informations personnelles" in normalized

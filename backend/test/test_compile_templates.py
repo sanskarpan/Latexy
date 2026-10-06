@@ -97,8 +97,8 @@ async def test_asset_backfill_uses_new_resume_engine_for_latin_and_unicode_templ
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
         tex_path = Path(command[-1])
-        sources[tex_path.read_text(encoding="utf-8")] = command[0]
-        output_dir = Path(command[3])
+        sources[tex_path.read_text(encoding="utf-8")] = command[command.index("-interaction=nonstopmode") - 1]
+        output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\n")
         return SimpleNamespace(returncode=0)
 
@@ -118,7 +118,7 @@ async def test_asset_backfill_uses_new_resume_engine_for_latin_and_unicode_templ
 
     assert calls
     assert len(calls) == len(templates) * 2
-    assert {command[0] for command in calls} == {"lualatex"}
+    assert {command[command.index("-interaction=nonstopmode") - 1] for command in calls} == {"lualatex"}
     assert any("{europecv}" in source and "\\documentclass[totpages,helvetica,openbib,nologo,nobranding,notitle,english]" in source for source in sources)
     assert {key for key, _data, _content_type in uploaded} == {
         f"templates/{template.id}.{extension}"
@@ -136,7 +136,7 @@ async def test_asset_backfill_propagates_failed_compilation(monkeypatch):
 
     def run(command, **kwargs):
         calls.append(command)
-        output_dir = Path(command[3])
+        output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.log").write_text("! synthetic compiler failure\nl.1", encoding="utf-8")
         return SimpleNamespace(returncode=1)
 
@@ -153,6 +153,6 @@ async def test_asset_backfill_propagates_failed_compilation(monkeypatch):
         await compile_templates.main()
 
     assert len(calls) == len(templates) * 2
-    assert all(command[0] == "lualatex" for command in calls)
+    assert all(command[command.index("-interaction=nonstopmode") - 1] == "lualatex" for command in calls)
     assert uploaded == []
     assert _engine.disposed

@@ -451,7 +451,8 @@ def test_modal_latex_image_prewarms_the_same_closed_mixed_font_contract():
     for fragment in required:
         assert fragment in modal, f"Modal cache probe is missing {fragment!r}"
         assert fragment in local, f"Local cache probe is missing {fragment!r}"
-    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)" in modal
+    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND, _WRITE_RENDERER_FINGERPRINT_COMMAND)" in modal
+    assert "write_renderer_fingerprint.py" in modal
     assert modal.index("fc-cache --force --system-only") < modal.index("lualatex -no-shell-escape")
     assert local.index("fc-cache --force --system-only") < local.index("lualatex -no-shell-escape")
 
@@ -562,6 +563,11 @@ def test_local_engine_gate_across_real_topologies(monkeypatch, topology, env, cg
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(latex_service.settings, "DEPLOY_TARGET", env.get("DEPLOY_TARGET", "local"))
     monkeypatch.setattr(latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False)
+    # Running this test in Docker must not override the modeled bare-host case.
+    original_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda path: False if str(path) in {
+        "/.dockerenv", "/run/.containerenv",
+    } else original_exists(path))
     monkeypatch.setattr(Path, "read_text", lambda self, **kw: cgroup, raising=False)
 
     assert latex_service.local_engine_allowed() is expected, (

@@ -8,7 +8,7 @@ import json
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.params import Depends as DependsParam
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
@@ -83,6 +83,16 @@ router.include_router(analytics_router)
 from .resume_routes import router as resume_router
 
 router.include_router(resume_router)
+
+from .resume_engine_routes import public_router as resume_engine_public_router
+from .resume_engine_routes import router as resume_engine_router
+
+router.include_router(resume_engine_router)
+router.include_router(resume_engine_public_router)
+
+from .render_artifact_routes import router as render_artifact_router
+
+router.include_router(render_artifact_router)
 
 # Immutable per-element history (B52). Kept separate from the document editor
 # routes so history writes cannot accidentally mutate the resume text.
@@ -670,6 +680,7 @@ async def _query_owned_durable_pdf(
                 Compilation.job_id == job_id,
                 Compilation.user_id == user_id,
                 Compilation.status == "completed",
+                Compilation.artifact_accepted.is_(True),
                 JobFinalization.resume_id.is_not_distinct_from(Compilation.resume_id),
             )
         )
@@ -694,6 +705,7 @@ async def _query_owned_durable_pdf(
         or compilation.job_id != job_id
         or compilation.user_id != user_id
         or compilation.status != "completed"
+        or getattr(compilation, "artifact_accepted", True) is not True
     ):
         raise HTTPException(status_code=404, detail="PDF not found")
     # Both rows must point at the same immutable object.  A path from either
@@ -701,6 +713,16 @@ async def _query_owned_durable_pdf(
     # compilation.
     if not finalization.pdf_path or finalization.pdf_path != compilation.pdf_path:
         raise HTTPException(status_code=404, detail="PDF not found")
+    if isinstance((getattr(finalization, "result_payload", None) or {}).get("artifact"), dict):
+        # New content-addressed paths are bound by a canonical private manifest,
+        # not by relaxing the legacy compilation key check below.
+        from ..core.redis import get_redis_client
+        from .render_artifact_routes import _durable_fence, load_manifest
+
+        redis = await get_redis_client()
+        manifest = await load_manifest(db, redis, job_id, user_id, None)
+        await _durable_fence(db, redis, manifest, user_id, export=True)
+        return {"render_manifest": manifest, "render_user_id": user_id}
     try:
         from ..services.storage_service import compilation_pdf_key
 
@@ -765,6 +787,12 @@ async def _serve_durable_pdf(artifact: dict[str, object], job_id: str) -> Respon
     """Download and integrity-check one already-authorized durable PDF."""
     from ..services import storage_service
 
+    if artifact.get("render_manifest") is not None:
+        from .render_artifact_routes import serve_artifact
+
+        async with get_async_db_session() as session:
+            return await serve_artifact(session, job_id, artifact["render_user_id"], None, export=True)
+
     try:
         pdf_bytes = await asyncio.to_thread(
             storage_service.download_bytes,
@@ -825,6 +853,7 @@ async def download_pdf(
     job_id: str,
     user_id: Optional[str] = Depends(get_current_user_optional),
     db: Optional[AsyncSession] = Depends(get_db),
+    fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ):
     """Download compiled PDF."""
     from ..core.redis import get_redis_client
@@ -849,6 +878,16 @@ async def download_pdf(
         # the authority.  Do not let an unrelated/stale Redis or local copy
         # override its integrity checks.
         return await _serve_durable_pdf(durable_artifact, job_id)
+
+    r = await get_redis_client()
+    if await r.get(f"latexy:job:{job_id}:artifact"):
+        from .render_artifact_routes import serve_artifact
+
+        fp = fingerprint if isinstance(fingerprint, str) else None
+        if db is not None and not isinstance(db, DependsParam):
+            return await serve_artifact(db, job_id, user_id, fp, export=True)
+        async with get_async_db_session() as session:
+            return await serve_artifact(session, job_id, user_id, fp, export=True)
 
     # Primary path: PDF bytes cached in Redis (works in serverless/multi-container envs).
     try:
@@ -896,6 +935,8 @@ async def download_pdf(
 async def download_synctex(
     job_id: str,
     user_id: Optional[str] = Depends(get_current_user_optional),
+    db: Optional[AsyncSession] = Depends(get_db),
+    fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ):
     """Serve decompressed SyncTeX data for bidirectional editor↔PDF sync."""
     from fastapi.responses import Response
@@ -903,6 +944,15 @@ async def download_synctex(
     from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
+    r = await get_redis_client()
+    if await r.get(f"latexy:job:{job_id}:artifact"):
+        from .render_artifact_routes import serve_artifact
+
+        fp = fingerprint if isinstance(fingerprint, str) else None
+        if db is not None and not isinstance(db, DependsParam):
+            return await serve_artifact(db, job_id, user_id, fp, kind="synctex")
+        async with get_async_db_session() as session:
+            return await serve_artifact(session, job_id, user_id, fp, kind="synctex")
     await _assert_job_download_access(job_id, user_id)
 
     # Primary: SyncTeX text cached in Redis by the worker (the on-disk job_dir is
@@ -1838,6 +1888,7 @@ async def get_shared_resume(
         .where(
             Compilation.resume_id == resume.id,
             Compilation.status == "completed",
+            Compilation.artifact_accepted.is_(True),
         )
         .order_by(Compilation.created_at.desc())
         .limit(1)

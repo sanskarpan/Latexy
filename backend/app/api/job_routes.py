@@ -17,6 +17,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -25,12 +26,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import resolve_plan_family, settings
+from ..core.engine_observability import record_phase
 from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.observability import record_job_submitted
 from ..core.redis import get_redis_cache_client, get_redis_client, redis_manager
 from ..database.connection import get_db
-from ..database.models import Compilation, JobFinalization, Resume, User
+from ..database.models import Compilation, JobFinalization, Resume, ResumeTemplate, User
 from ..middleware.auth_middleware import (
     get_current_user_optional,
     get_current_user_required,
@@ -45,6 +47,7 @@ from ..services.cover_letter_signature_service import (
 from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..services.job_admission_state import initialize_job_state
 from ..services.optimization_personas import VALID_PERSONA_KEYS
+from ..services.render_engine.artifacts import get_public_job_artifact
 from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
 from ..workers.ats_worker import submit_ats_scoring
@@ -317,6 +320,7 @@ class JobStateResponse(BaseModel):
     stage: str
     percent: int
     last_updated: float
+    artifact: Optional[Dict[str, Any]] = None
 
 
 class JobResultResponse(BaseModel):
@@ -487,7 +491,9 @@ async def submit_job(
     finalization_record: Optional[JobFinalization] = None
     job_id: Optional[str] = None
     dispatched = False
+    cache_executed = False
     dispatch_attempted = False
+    admission_started = time.perf_counter()
     try:
         ip_address = http_request.client.host if http_request.client else None
         job_id = str(uuid.uuid4())
@@ -546,6 +552,48 @@ async def submit_job(
             "submitted_via": "api",
             **safe_meta,
         }
+        semantic_requested = (request.metadata or {}).get("optimization_engine") == "semantic_v1"
+        owned_resume = None
+        if semantic_requested:
+            from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
+            from ..services.resume_engine.document import digest
+            from ..services.resume_engine.provider import resolve_provider
+            from ..services.resume_engine.semantic import project_document
+
+            if request.job_type != "combined" or not user_id:
+                raise HTTPException(422, "Semantic optimization requires an authenticated combined job")
+            if not settings.RESUME_SEMANTIC_ENGINE_ENABLED:
+                raise HTTPException(503, "Semantic optimization is unavailable")
+            resume_id = _uuid_or_none(safe_meta.get("resume_id"))
+            if not resume_id:
+                raise HTTPException(422, "A resume is required for semantic optimization")
+            owned_resume = (await db.execute(select(Resume).where(
+                Resume.id == resume_id, Resume.user_id == user_id,
+            ))).scalar_one_or_none()
+            if owned_resume is None:
+                raise HTTPException(404, "Resume not found")
+            expected = safe_meta.get("expected_content_revision")
+            if (type(expected) is not int or expected != owned_resume.content_revision
+                    or safe_meta.get("expected_source_sha256") != digest(owned_resume.latex_content)
+                    or request.latex_content != owned_resume.latex_content):
+                raise HTTPException(409, "Document changed; refresh before optimizing")
+            template = await db.get(ResumeTemplate, owned_resume.selected_template_id) if owned_resume.selected_template_id else None
+            document = project_document(owned_resume, template.category if template else None)
+            if document.get("source_mode") != "managed":
+                raise HTTPException(422, "This document needs a managed template for bounded optimization")
+            if not (user_api_key or settings.OPENAI_API_KEY):
+                raise HTTPException(503, "Configure an AI provider before optimizing")
+            try:
+                initial_budget(safe_meta.get("optimization_effort", "standard"), safe_meta.get("max_cost_usd"))
+                resolve_provider(user_api_key or settings.OPENAI_API_KEY or "", safe_model)
+            except (BudgetExceeded, TypeError, ValueError) as exc:
+                raise HTTPException(422, str(exc)) from exc
+            # Generic metadata cannot turn a reviewed candidate into an autosave.
+            for key in ("persist_optimized_resume", "expected_latex_content"):
+                extra_meta.pop(key, None)
+                safe_meta.pop(key, None)
+            safe_meta.update({"skip_auto_save": True, "branch": "candidate"})
+            extra_meta.update({"optimization_engine": "semantic_v1", "skip_auto_save": True, "branch": "candidate"})
 
         if request.job_type == "auto_fit":
             if not user_id:
@@ -592,12 +640,15 @@ async def submit_job(
 
             try:
                 resume_result = await db.execute(
-                    sa_select(Resume.resume_settings).where(
+                    sa_select(Resume).where(
                         Resume.id == safe_meta["resume_id"],
                         Resume.user_id == user_id,
                     )
                 )
-                resume_meta = resume_result.scalar_one_or_none()
+                settings_resume = resume_result.scalar_one_or_none()
+                if isinstance(settings_resume, Resume):
+                    owned_resume = settings_resume
+                resume_meta = settings_resume.resume_settings if isinstance(settings_resume, Resume) else settings_resume
                 if isinstance(resume_meta, dict):
                     if not request.compiler:
                         stored_compiler = resume_meta.get("compiler", "")
@@ -704,26 +755,51 @@ async def submit_job(
             db.add(finalization_record)
             await db.commit()
 
+        render_request = None
+        if request.job_type == "latex_compilation":
+            from ..services.resume_engine.document import digest
+            from ..services.resume_engine.semantic import project_document
+
+            if owned_resume is not None and owned_resume.latex_content == request.latex_content:
+                template = await db.get(ResumeTemplate, owned_resume.selected_template_id) if owned_resume.selected_template_id else None
+                source_document = project_document(owned_resume, template.category if template else None)
+                render_request = {"source_document": source_document, "document_id": str(owned_resume.id),
+                                  "content_revision": owned_resume.content_revision}
+            elif not user_id:
+                source_document = project_document(SimpleNamespace(
+                    id="guest", user_id="guest", latex_content=request.latex_content, content_revision=1,
+                ))
+                render_request = {"source_document": source_document, "document_id": "guest", "content_revision": 1}
+
         if request.job_type in {"latex_compilation", "auto_fit"}:
             if compilation_record is None:
                 quota_ticket = await _consume_job_quota(request.job_type, user_id, resolved_plan)
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
+            task_kwargs = {
+                "latex_content": request.latex_content, "job_id": job_id, "user_id": user_id,
+                "user_plan": resolved_plan, "device_fingerprint": request.device_fingerprint,
+                "metadata": extra_meta, "compiler": compiler, "compile_settings": compile_settings,
+                "quota_refund": quota_ticket.refund_payload() if quota_ticket else None,
+                "auto_fit": request.job_type == "auto_fit", "auto_fit_intensity": request.auto_fit_intensity,
+            }
+            if render_request:
+                task_kwargs["render_request"] = render_request
+            from ..services.render_engine.admission_cache import execute_exact_render_cache, has_exact_render_cache
+
+            redis = await get_redis_client()
+            cache_hit = await has_exact_render_cache(redis, task_kwargs)
             await _mark_dispatch_started(job_id)
             dispatch_attempted = True
-            await submit_async(
-                submit_latex_compilation,
-                latex_content=request.latex_content,
-                job_id=job_id,
-                user_id=user_id,
-                user_plan=resolved_plan,
-                device_fingerprint=request.device_fingerprint,
-                metadata=extra_meta,
-                compiler=compiler,
-                compile_settings=compile_settings,
-                quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
-                auto_fit=request.job_type == "auto_fit",
-                auto_fit_intensity=request.auto_fit_intensity,
-            )
+            if cache_hit:
+                # The executor accepts this cache-only operation locally. Mark
+                # acceptance before it can finish; no broker/TeX fallback is
+                # allowed if a pointer disappears after this decision.
+                await _mark_dispatch_accepted(job_id)
+                cache_executed = True
+                dispatched = True
+                await submit_async(execute_exact_render_cache, task_kwargs)
+            else:
+                await submit_async(submit_latex_compilation, **task_kwargs)
 
         elif request.job_type == "llm_optimization":
             quota_ticket = await _consume_job_quota(
@@ -799,7 +875,8 @@ async def submit_job(
                 detail=f"Unsupported job_type: {request.job_type!r}",
             )
 
-        await _mark_dispatch_accepted(job_id)
+        if not cache_executed:
+            await _mark_dispatch_accepted(job_id)
         dispatched = True
 
         record_job_submitted(request.job_type, authenticated=user_id is not None)
@@ -885,6 +962,11 @@ async def submit_job(
             await _delete_initial_redis_state(job_id, user_id)
         logger.error("Error submitting job", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        record_phase(
+            "admission", time.perf_counter() - admission_started,
+            "success" if dispatched else "error",
+        )
 
 
 # ------------------------------------------------------------------ #
@@ -1464,6 +1546,8 @@ async def get_job_state(
                     percent=100 if terminal_state == "completed" else 0,
                     last_updated=time.time(),
                 )
+        if snapshot.get("status") not in {"failed", "cancelled"}:
+            snapshot["artifact"] = await get_public_job_artifact(r, job_id)
         return snapshot
     except HTTPException:
         raise

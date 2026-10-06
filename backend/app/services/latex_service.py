@@ -7,6 +7,8 @@ import hashlib
 import os
 import shutil
 import subprocess
+import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +24,7 @@ from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     MAX_RECORDER_BYTES,
     BoundedReadError,
+    BoundedTranscript,
     bound_log_line,
     capture_process_output_bounded,
     iter_bounded_lines,
@@ -59,6 +62,51 @@ logger = get_logger(__name__)
 
 # Flags appended to every engine invocation (Docker and local alike).
 LATEX_SANDBOX_FLAGS: tuple[str, ...] = ("-no-shell-escape", "-recorder")
+LUALATEX_POLICY_VERSION = "lua-landlock-seccomp-v2"
+
+
+def engine_sandbox_flags(compiler: str) -> tuple[str, ...]:
+    """Lua capability restrictions are enforced by its kernel launcher."""
+    return LATEX_SANDBOX_FLAGS
+
+
+def native_engine_command(compiler: str, arguments: list[str], workspace: str | Path) -> list[str]:
+    if compiler == "lualatex":
+        launcher = Path(__file__).resolve().parents[1] / "utils/linux_engine_sandbox.py"
+        return [sys.executable, str(launcher), str(Path(workspace).resolve()), compiler, *arguments]
+    return [compiler, *arguments]
+
+
+_LUA_DOCKER_BOOTSTRAP = r"""set -eu
+workspace="$1"
+shift
+export TEXMFOUTPUT=/usr/share/texlive/texmf-dist
+cache="$workspace/.tex-cache"
+for dir in "$cache" "$cache/luatex-cache" "$cache/luatex-cache/generic" "$cache/luatex-cache/generic/names"; do
+  test ! -L "$dir" || exit 70
+  mkdir -p "$dir"
+done
+for name in luaotfload-names.lua.gz luaotfload-names.luc.gz; do
+  source="/var/lib/texmf/luatex-cache/generic/names/$name"
+  target="$cache/luatex-cache/generic/names/$name"
+  test ! -L "$target" || exit 70
+  if test -f "$source" && test ! -e "$target"; then
+    test "$(wc -c < "$source")" -le 16777216 || exit 70
+    cp "$source" "$target"
+  fi
+done
+exec python3 /latexy-engine-sandbox.py "$workspace" "$@"
+"""
+
+
+def docker_engine_command(compiler: str, arguments: list[str], workspace: str = "/workspace") -> list[str]:
+    """Trusted image-side cache bootstrap; arguments never become shell source."""
+    if workspace not in {"/workspace", "/work", "/workdir"}:
+        raise ValueError("Invalid engine mount")
+    if compiler == "lualatex":
+        return ["sh", "-c", _LUA_DOCKER_BOOTSTRAP, "latexy-lua-bootstrap", workspace, compiler, *arguments]
+    return [compiler, *arguments]
+
 
 # kpathsea knobs, passed through the engine environment.
 _LATEX_SANDBOX_KPSE_VARS: dict[str, str] = {
@@ -94,6 +142,7 @@ _ENGINE_ENV_PASSTHROUGH: tuple[str, ...] = (
     "SOURCE_DATE_EPOCH",
     "TEXMFHOME",
     "TEXMFVAR",
+    "TEXMFCACHE",
     "TEXMFCONFIG",
     "TEXMFCNF",
     "TEXINPUTS",
@@ -161,18 +210,51 @@ def docker_engine_available() -> bool:
         return False
 
 
-def docker_sandbox_args() -> list[str]:
+def docker_sandbox_args(workspace: str = "/workspace", compiler: str = "pdflatex") -> list[str]:
     """``docker run`` arguments that confine the LaTeX engine."""
     args = list(_DOCKER_SANDBOX_FLAGS)
     for name, value in _LATEX_SANDBOX_KPSE_VARS.items():
         args += ["-e", f"{name}={value}"]
+    args += ["-e", f"TEXMFVAR={workspace}/.tex-cache", "-e", f"TEXMFCACHE={workspace}/.tex-cache:$TEXMFSYSVAR"]
+    if compiler == "lualatex":
+        launcher = Path(__file__).resolve().parents[1] / "utils/linux_engine_sandbox.py"
+        args += ["-v", f"{launcher}:/latexy-engine-sandbox.py:ro"]
     return args
 
 
-def engine_env() -> dict[str, str]:
+def engine_env(workspace: str | Path | None = None, compiler: str = "pdflatex") -> dict[str, str]:
     """Minimal environment for the engine subprocess (no app credentials)."""
     env = {name: os.environ[name] for name in _ENGINE_ENV_PASSTHROUGH if name in os.environ}
     env.update(_LATEX_SANDBOX_KPSE_VARS)
+    if workspace is not None:
+        root = Path(workspace).resolve()
+        cache = root / ".tex-cache"
+        if cache.is_symlink() or not cache.resolve().is_relative_to(root):
+            raise ValueError("TeX cache escapes workspace")
+        cache.mkdir(mode=0o700, exist_ok=True)
+        # Job-local writable data cannot poison another tenant's font caches.
+        # The image's prebuilt system caches remain readable and immutable.
+        seed = env.get("TEXMFCACHE") or "$TEXMFSYSVAR"
+        env["TEXMFVAR"] = str(cache)
+        env["TEXMFCACHE"] = f"{cache}{os.pathsep}{seed}"
+        if Path(compiler).name == "lualatex":
+            # The kernel launcher is mandatory. It changes its own input mode
+            # only after confinement; --safer breaks luaotfload/fontspec.
+            env["TEXMFOUTPUT"] = "/usr/share/texlive/texmf-dist"
+            names = cache / "luatex-cache/generic/names"
+            if not names.resolve().is_relative_to(root):
+                raise ValueError("Lua font cache escapes workspace")
+            names.mkdir(parents=True, exist_ok=True)
+            # luaotfload reads its names index ONLY from its writable prefix.
+            # Seed exactly the image's two bounded immutable compressed indexes,
+            # preventing an expensive scan without sharing tenant writable data.
+            seed_root = Path("/var/lib/texmf/luatex-cache/generic/names")
+            for name in ("luaotfload-names.lua.gz", "luaotfload-names.luc.gz"):
+                trusted, target = seed_root / name, names / name
+                if target.is_symlink():
+                    raise ValueError("Lua font index escapes workspace")
+                if trusted.is_file() and not target.exists():
+                    target.write_bytes(read_file_bounded(trusted, 16 * 1024 * 1024))
     return env
 
 
@@ -579,12 +661,15 @@ class LaTeXService:
                 workspace = "/workspace"
             else:
                 assert_local_engine_allowed(job_id)
+                from .render_engine.trusted_profiles import trusted_format_flags
+
                 compile_cmd = [
                     "pdflatex",
                     *LATEX_SANDBOX_FLAGS,
+                    *trusted_format_flags(latex_content, "pdflatex"),
                     "-interaction=nonstopmode",
                     "-output-directory",
-                    str(job_dir),
+                    ".",
                     "-jobname",
                     "resume",
                     "resume.tex",
@@ -600,7 +685,7 @@ class LaTeXService:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=compile_cwd,
-                env=engine_env(),
+                env=engine_env(job_dir),
             )
 
             timeout = get_compile_timeout(user_plan)
@@ -663,6 +748,46 @@ class LaTeXService:
 
             # Check if compilation was successful
             if process.returncode == 0 and pdf_file.exists():
+                from .render_engine.passes import RenderPassError, converge
+
+                transcript = BoundedTranscript()
+                for line in log_output.splitlines():
+                    transcript.append(line)
+                cancelled = threading.Event()
+                convergence = asyncio.create_task(asyncio.to_thread(
+                    converge, job_id=job_id, job_dir=job_dir, command=compile_cmd,
+                    cwd=compile_cwd, workspace=workspace, compiler="pdflatex",
+                    timeout=timeout, started_at=start_time, transcript=transcript,
+                    is_cancelled=cancelled.is_set, publisher=lambda *_args: None,
+                    container_name=container_name,
+                ))
+                try:
+                    await asyncio.shield(convergence)
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    # to_thread cancellation alone does not stop its subprocess.
+                    # Wait for watchdog termination before deleting its files.
+                    while not convergence.done():
+                        try:
+                            await asyncio.shield(convergence)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    if convergence.done():
+                        try:
+                            convergence.result()
+                        except Exception:
+                            pass
+                    await cleanup_docker_container_async(container_name)
+                    self.cleanup_temp_files(job_dir)
+                    raise
+                except RenderPassError as exc:
+                    await cleanup_docker_container_async(container_name)
+                    self.cleanup_temp_files(job_dir)
+                    return CompilationResponse(success=False, job_id=job_id,
+                        message=str(exc), compilation_time=time.time() - start_time)
+                compilation_time = time.time() - start_time
                 pdf_size = pdf_file.stat().st_size
                 if pdf_size > MAX_COMPILED_PDF_BYTES:
                     await cleanup_docker_container_async(container_name)
@@ -835,7 +960,7 @@ def run_latex_subprocess(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         cwd=compile_cwd,
-        env=engine_env(),
+        env=engine_env(job_dir),
     )
 
     watchdog = ProcessWatchdog(

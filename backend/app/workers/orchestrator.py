@@ -46,17 +46,19 @@ from ..services.ats_scoring_service import ats_scoring_service
 from ..services.cover_letter_signature_service import materialize_embedded_signature
 from ..services.latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
-    LATEX_SANDBOX_FLAGS,
     RECORDER_SUFFIX,
     assert_local_engine_allowed,
     cleanup_docker_container,
     docker_container_name,
     docker_engine_available,
+    docker_engine_command,
     docker_sandbox_args,
     engine_env,
+    engine_sandbox_flags,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
+    native_engine_command,
 )
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
@@ -307,7 +309,24 @@ def optimize_and_compile_task(
 
         checkpoint = None
         stage_output = None
-        if lifecycle_owned and settings.RESUME_STAGE_CHECKPOINTS_ENABLED is True:
+        semantic_candidate_document = None
+        semantic_run = (metadata or {}).get("optimization_engine") == "semantic_v1"
+        if semantic_run:
+            from ..services.resume_engine.service import run_semantic_optimization
+
+            # Durable stage intents supersede the transient Redis checkpoint.
+            # Ambiguous paid stages are never replayed automatically.
+            paid_stage_retry_safe = False
+            stage_output, semantic_candidate_document = run_semantic_optimization(
+                job_id=job_id, source=latex_content, job_description=job_description,
+                user_id=user_id, metadata=metadata or {}, api_key=api_key, model=model,
+                redis=queue_redis, cancelled=lambda: is_cancelled(job_id), publish=publish_event,
+                target_sections=target_sections, custom_instructions=custom_instructions,
+                direction_fields={"level": optimization_level, "persona": persona, "industry": industry,
+                    "seniority": seniority, "tone": tone, "emphasize": emphasize, "downplay": downplay},
+            )
+            paid_stage_retry_safe = True
+        if not semantic_run and lifecycle_owned and settings.RESUME_STAGE_CHECKPOINTS_ENABLED is True:
             fingerprint = stage_fingerprint({
                 "source": latex_content, "job_description": job_description,
                 "owner_scope": user_id or device_fingerprint,
@@ -349,7 +368,7 @@ def optimize_and_compile_task(
             if checkpoint is not None:
                 checkpoint.complete(stage_output)
                 paid_stage_retry_safe = True
-        else:
+        elif not semantic_run:
             publish_event(job_id, "llm.complete", {
                 "full_content": stage_output[0], "tokens_total": stage_output[2],
                 "optimization_checkpoint": True,
@@ -401,6 +420,10 @@ def optimize_and_compile_task(
             owner_scope=f"user:{user_id}" if user_id else (f"device:{device_fingerprint}" if device_fingerprint else None),
             compile_settings=compile_settings,
             cache_context=render_cache_context,
+            render_request={"source_document": semantic_candidate_document,
+                "document_id": (metadata or {}).get("resume_id"),
+                "content_revision": (metadata or {}).get("expected_content_revision"),
+                "branch": "candidate", "run_id": job_id} if semantic_run else None,
         )
 
         if is_cancelled(job_id):
@@ -509,11 +532,16 @@ def optimize_and_compile_task(
             "is_beamer": is_beamer,
             "pdf_size": len(pdf_bytes) if pdf_bytes else None,
         }
+        from ..services.render_engine.artifacts import get_job_manifest
+
+        ready_manifest = get_job_manifest(get_worker_redis(), job_id)
+        if ready_manifest:
+            result["artifact"] = ready_manifest.public()
 
         _resume_id = resume_id or (metadata or {}).get("resume_id")
         generated_resume_content = None
         expected_resume_sha256 = None
-        if (metadata or {}).get("persist_optimized_resume") and _resume_id and user_id:
+        if not semantic_run and (metadata or {}).get("persist_optimized_resume") and _resume_id and user_id:
             expected_latex_content = (metadata or {}).get("expected_latex_content")
             generated_resume_content = optimized_latex
             if isinstance(expected_latex_content, str):
@@ -561,7 +589,7 @@ def optimize_and_compile_task(
             # Ownerless legacy jobs keep the historical generated-resume CAS
             # contract. Lifecycle-owned jobs pass this content to the typed
             # commit above, so they never mutate Resume in a separate commit.
-            if (metadata or {}).get("persist_optimized_resume") and _resume_id and user_id:
+            if not semantic_run and (metadata or {}).get("persist_optimized_resume") and _resume_id and user_id:
                 from .auto_save_worker import ResumePersistenceConflict, persist_resume_content
 
                 expected_latex_content = (metadata or {}).get("expected_latex_content")
@@ -662,7 +690,7 @@ def optimize_and_compile_task(
         )
 
         # Auto-save checkpoint if resume_id is known
-        if not replayed and _resume_id and user_id:
+        if not replayed and _resume_id and user_id and not semantic_run and not (metadata or {}).get("skip_auto_save"):
             from .auto_save_worker import submit_auto_save_checkpoint
 
             submit_auto_save_checkpoint(_resume_id, user_id, optimized_latex)
@@ -1081,6 +1109,7 @@ def _run_latex_stage(
     owner_scope: Optional[str] = None,
     compile_settings: Optional[Dict[str, Any]] = None,
     cache_context: Optional[Dict[str, Any]] = None,
+    render_request: Optional[Dict[str, Any]] = None,
 ) -> tuple[bool, float, str, Optional[int], Optional[bytes]]:
     """
     Write LaTeX, run the requested compiler (sandboxed Docker engine if available,
@@ -1092,12 +1121,13 @@ def _run_latex_stage(
     streamed back over the job's log.line events.
 
     Returns (success, compilation_time, error_message, page_count, pdf_bytes).
-    The log and (on success) the PDF + SyncTeX data are cached in Redis before
-    job_dir is removed, so GET /download/{job_id}, /logs/{job_id} and
-    /download/{job_id}/synctex keep working — same artifacts as latex_worker.
+    Admitted jobs persist immutable PDF/SyncTeX objects and compact manifest
+    pointers before job_dir is removed. Legacy ownerless callers retain the
+    Redis compatibility path. Artifact readiness precedes durable success.
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
+    requested_source = latex_content
     # Validate compiler
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
         compiler = settings.DEFAULT_LATEX_COMPILER
@@ -1150,9 +1180,31 @@ def _run_latex_stage(
     )
     if cache_context is not None:
         cache_context["key"] = content_cache_key
-    cached = restore_compile_cache(content_cache_key, job_id)
+    from ..services.render_engine.version import renderer_fingerprint
+    from .job_lifecycle import current_owner_epoch
+
+    prepared_request = {
+        **(render_request or {}), "source": requested_source,
+        "render_source": latex_content, "compiler": compiler, "owner_scope": owner_scope,
+        "settings": {**(compile_settings or {}), "main_file": main_file,
+                     "latexmk_flags": custom_flags, "halt_on_error": halt_on_error,
+                     **({"bibtex": bibtex} if bibtex is not None else {}),
+                     **({"extra_packages": extra_packages} if extra_packages is not None else {}),
+                     **({"draft_mode": True} if draft_mode else {})},
+        "engine_fingerprint": renderer_fingerprint(), "cache_key": content_cache_key,
+    } if owner_scope and current_owner_epoch(job_id) is not None else None
+    cached = restore_compile_cache(content_cache_key, job_id, prepared_request) if prepared_request else restore_compile_cache(content_cache_key, job_id)
     if cached is not None:
         try:
+            render_cached_bytes = cached.pop("_pdf_bytes", None)
+            if isinstance(render_cached_bytes, bytes):
+                return True, 0.0, "", cached.get("page_count"), render_cached_bytes
+            if cached.get("artifact"):
+                from ..services.render_engine.artifacts import download_object, get_job_manifest
+
+                manifest = get_job_manifest(get_worker_redis(), job_id)
+                if manifest:
+                    return True, 0.0, "", manifest.page_count, download_object(manifest.pdf, MAX_COMPILED_PDF_BYTES)
             encoded_pdf = get_worker_redis().get(f"latexy:job:{job_id}:pdf")
             if encoded_pdf:
                 from ..utils.bounded_io import decode_base64_bounded
@@ -1164,13 +1216,32 @@ def _run_latex_stage(
             # Compile the already-produced source through the normal sandbox.
             logger.warning("Combined render cache unavailable", extra={"error_type": type(exc).__name__})
 
+    render_lease = None
+    if prepared_request and content_cache_key:
+        from ..services.render_engine.coalescing import await_render_slot
+        from ..services.render_engine.passes import RenderPassError
+
+        try:
+            render_lease = await_render_slot(get_worker_redis(), content_cache_key, job_id, float(timeout_seconds or get_compile_timeout("free")))
+        except RenderPassError as exc:
+            return False, 0.0, str(exc), None, None
+        coalesced = restore_compile_cache(content_cache_key, job_id, prepared_request)
+        if coalesced is not None:
+            if render_lease:
+                render_lease.close()
+            return True, 0.0, "", coalesced.get("page_count"), coalesced.pop("_pdf_bytes", None)
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
+    auxiliary_workspace = None
     try:
         tex_file = job_dir / main_file
         tex_file.write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, job_dir)
         write_reference_library(job_dir, bibtex)
+        if prepared_request:
+            from ..services.render_engine.auxiliary import AuxiliaryWorkspace
+
+            auxiliary_workspace = AuxiliaryWorkspace(get_worker_redis(), job_dir, prepared_request, float(timeout_seconds or settings.COMPILE_TIMEOUT))
         error_mode_flags = ["-interaction=nonstopmode"]
         if halt_on_error:
             error_mode_flags.append("-halt-on-error")
@@ -1184,20 +1255,21 @@ def _run_latex_stage(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(),
+                *docker_sandbox_args("/workdir", compiler),
                 "-v",
                 f"{job_dir}:/workdir",
                 "-w",
                 "/workdir",
                 settings.LATEX_DOCKER_IMAGE,
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+                *docker_engine_command(compiler, [
+                *engine_sandbox_flags(compiler),
                 *error_mode_flags,
                 "-synctex=1",
                 "-jobname",
                 "resume",
                 *custom_flags,
                 main_file,
+                ], "/workdir"),
             ]
             cwd = None
             workspace = "/workdir"
@@ -1206,9 +1278,11 @@ def _run_latex_stage(
             # Relative paths + cwd=job_dir: the sandbox sets openin_any/openout_any=p
             # (paranoid), under which kpathsea refuses ABSOLUTE read/write paths, so
             # an absolute /tmp/.../resume.tex fails with "Not reading … (openin_any=p)".
-            cmd = [
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+            from ..services.render_engine.trusted_profiles import trusted_format_flags
+
+            cmd = native_engine_command(compiler, [
+                *engine_sandbox_flags(compiler),
+                *trusted_format_flags(latex_content, compiler),
                 *error_mode_flags,
                 "-synctex=1",
                 "-jobname",
@@ -1217,7 +1291,7 @@ def _run_latex_stage(
                 ".",
                 *custom_flags,
                 main_file,
-            ]
+            ], job_dir)
             cwd = str(job_dir)
             workspace = str(job_dir)
 
@@ -1230,8 +1304,11 @@ def _run_latex_stage(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
-                env=engine_env(),
+                env=engine_env(job_dir, compiler),
             )
+            from ..services.render_engine.process_timing import ProcessTiming
+
+            process_timing = ProcessTiming(proc)
 
             page_count: Optional[int] = None
             transcript = BoundedTranscript()
@@ -1273,14 +1350,15 @@ def _run_latex_stage(
                             is_error = "error" in stripped.lower() or stripped.startswith("!")
                             if "fatal" in stripped.lower():
                                 is_error = True
-                            events.publish(
-                                "log.line",
-                                {
-                                    "line": bounded_line,
-                                    "source": compiler,
-                                    "is_error": is_error,
-                                },
-                            )
+                            if compiler != "lualatex":
+                                events.publish(
+                                    "log.line",
+                                    {
+                                        "line": bounded_line,
+                                        "source": compiler,
+                                        "is_error": is_error,
+                                    },
+                                )
 
                         if cancellation_poll():
                             proc.kill()
@@ -1344,6 +1422,7 @@ def _run_latex_stage(
             proc.wait()
             compilation_time = time.time() - start_time
         _compile_duration = time.perf_counter() - _perf_start
+        process_timing.finish()
 
         # Post-run read confinement: the -recorder .fls file lists every file the
         # engine opened, including the \openin reads the transcript never mentions.
@@ -1351,11 +1430,34 @@ def _run_latex_stage(
         recorder_escape = find_recorder_read_escape(
             job_dir / f"resume{RECORDER_SUFFIX}",
             workspace,
-            require_recorder=proc.returncode == 0,
+            require_recorder=proc.returncode == 0 or compiler == "lualatex",
         )
         if recorder_escape:
             logger.warning(f"[{job_id}] engine read outside the job directory: {recorder_escape}")
             return False, compilation_time, ENGINE_READ_ESCAPE_ERROR, None, None
+        if compiler == "lualatex":
+            from ..services.render_engine.log_gating import publish_verified_log
+
+            publish_verified_log(job_id, transcript, compiler, publish_event)
+
+        if prepared_request and proc.returncode == 0:
+            from ..services.render_engine.passes import RenderPassError, converge
+
+            try:
+                converged_pages = converge(job_id=job_id, job_dir=job_dir, command=cmd,
+                    cwd=cwd, workspace=workspace, compiler=compiler, timeout=timeout,
+                    started_at=start_time, transcript=transcript, is_cancelled=lambda: is_cancelled(job_id),
+                    publisher=publish_event, container_name=container_name,
+                    force_second_pass=bool(auxiliary_workspace and auxiliary_workspace.loaded))
+            except RenderPassError as exc:
+                return False, time.time() - start_time, str(exc), None, None
+            except (BoundedReadError, OSError, UnicodeError):
+                return False, time.time() - start_time, "Auxiliary artifacts invalid or unavailable", None, None
+            page_count = converged_pages if converged_pages is not None else page_count
+            compilation_time = time.time() - start_time
+            _compile_duration = time.perf_counter() - _perf_start
+            if auxiliary_workspace:
+                auxiliary_workspace.save()
 
         cache_compile_log(job_id, transcript.text())
 
@@ -1384,7 +1486,7 @@ def _run_latex_stage(
             # works from the API container (Modal has no shared worker/API FS).
             # This supersedes the earlier inline PDF-only cache (same key).
             try:
-                cached_pdf = cache_compile_output(job_id, job_dir)
+                cached_pdf = cache_compile_output(job_id, job_dir, render_request=prepared_request, page_count=page_count) if prepared_request else cache_compile_output(job_id, job_dir)
             except BoundedReadError:
                 return (
                     False,
@@ -1407,6 +1509,10 @@ def _run_latex_stage(
         ):
             cleanup_docker_container(locals().get("container_name"))
         shutil.rmtree(job_dir, ignore_errors=True)
+        if auxiliary_workspace:
+            auxiliary_workspace.close()
+        if render_lease:
+            render_lease.close()
 
 
 def _run_ats_stage(

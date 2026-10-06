@@ -655,6 +655,7 @@ async def download_workspace_resume(
         .where(
             Compilation.resume_id == resume_id,
             Compilation.status == "completed",
+            Compilation.artifact_accepted.is_(True),
         )
         .order_by(Compilation.created_at.desc())
         .limit(1)

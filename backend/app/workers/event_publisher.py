@@ -448,7 +448,7 @@ def _prepare_event(r, job_id, event_type, payload_extra, ttl):
     # High-frequency content deltas are not state transitions and carry no
     # stage/percent. Persisting them would both add needless writes and reset the
     # REST fallback progress snapshot to blank/zero.
-    update_state = event_type not in {"llm.token", "log.line"}
+    update_state = event_type not in {"llm.token", "log.line", "artifact.ready", "context.ready", "section.ready", "patch.ready", "review.ready"}
     if update_state:
         from ..models.event_schemas import status_from_event_type
 

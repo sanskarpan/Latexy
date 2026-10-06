@@ -1,6 +1,7 @@
 """Bounded phase metrics: durations overlap and must never be added blindly."""
 from __future__ import annotations
 
+import logging
 import math
 import time
 from contextlib import contextmanager
@@ -8,6 +9,8 @@ from contextlib import contextmanager
 from prometheus_client import Histogram
 
 from .tracing import traced
+
+logger = logging.getLogger(__name__)
 
 PHASES = frozenset({
     "admission", "dispatch_wait", "dispatch_call", "worker_initialization",
@@ -51,4 +54,7 @@ def engine_span(phase: str):
         outcome = "cancelled" if isinstance(exc, (KeyboardInterrupt, SystemExit)) or type(exc).__name__ == "CancelledError" else "error"
         raise
     finally:
-        record_phase(phase, time.perf_counter() - start, outcome)
+        duration = time.perf_counter() - start
+        record_phase(phase, duration, outcome)
+        if phase in PHASES and duration >= .25:
+            logger.info("resume_engine_slow_phase", extra={"phase": phase, "outcome": outcome, "latency_seconds": duration})

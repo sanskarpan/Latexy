@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..parsers.base_parser import ParsedResume
+from .render_engine.managed_preamble import MANAGED_ENGLISH_PREAMBLE_LINES
 
 SUPPORTED_BUILDER_CATEGORIES = frozenset(
     {"ats_safe", "minimal", "software_engineering", "executive", "graduate"}
@@ -44,6 +45,18 @@ def _bullet_id(entry_id: str, index: int, used: set[str]) -> str:
     return candidate
 
 
+def _stable_item_ids(entry_id: str, field: str, items: list[str], existing: list[str]) -> list[str]:
+    seen: set[str] = set()
+    identities = []
+    for index in range(len(items)):
+        candidate = existing[index].strip() if index < len(existing) else ""
+        if not _SAFE_ID_RE.fullmatch(candidate) or candidate in seen:
+            candidate = _bullet_id(entry_id + "-" + field, index, seen)
+        seen.add(candidate)
+        identities.append(candidate)
+    return identities
+
+
 class BuilderBasics(BaseModel):
     name: str = ""
     label: str = ""
@@ -70,6 +83,7 @@ class BuilderExperienceEntry(BaseModel):
     # Existing documents are backfilled deterministically during validation.
     bullet_ids: List[str] = Field(default_factory=list)
     technologies: List[str] = Field(default_factory=list)
+    technology_ids: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def ensure_bullet_ids(self) -> "BuilderExperienceEntry":
@@ -82,6 +96,7 @@ class BuilderExperienceEntry(BaseModel):
             seen.add(candidate)
             ids.append(candidate)
         self.bullet_ids = ids
+        self.technology_ids = _stable_item_ids(self.id, "technology", self.technologies, self.technology_ids)
         return self
 
 
@@ -95,6 +110,12 @@ class BuilderEducationEntry(BaseModel):
     end_date: str = ""
     gpa: str = ""
     highlights: List[str] = Field(default_factory=list)
+    highlight_ids: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_highlight_ids(self) -> "BuilderEducationEntry":
+        self.highlight_ids = _stable_item_ids(self.id, "highlight", self.highlights, self.highlight_ids)
+        return self
 
 
 class BuilderProjectEntry(BaseModel):
@@ -108,6 +129,7 @@ class BuilderProjectEntry(BaseModel):
     bullets: List[str] = Field(default_factory=list)
     bullet_ids: List[str] = Field(default_factory=list)
     technologies: List[str] = Field(default_factory=list)
+    technology_ids: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def ensure_bullet_ids(self) -> "BuilderProjectEntry":
@@ -120,6 +142,7 @@ class BuilderProjectEntry(BaseModel):
             seen.add(candidate)
             ids.append(candidate)
         self.bullet_ids = ids
+        self.technology_ids = _stable_item_ids(self.id, "technology", self.technologies, self.technology_ids)
         return self
 
 
@@ -127,6 +150,12 @@ class BuilderSkillGroup(BaseModel):
     id: str
     name: str = ""
     keywords: List[str] = Field(default_factory=list)
+    keyword_ids: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_keyword_ids(self) -> "BuilderSkillGroup":
+        self.keyword_ids = _stable_item_ids(self.id, "keyword", self.keywords, self.keyword_ids)
+        return self
 
 
 class BuilderCertificationEntry(BaseModel):
@@ -540,16 +569,7 @@ class ResumeBuilderService:
                 body.append(rendered)
 
         document = [
-            r"\documentclass[11pt,letterpaper]{article}",
-            r"\usepackage[margin=0.65in]{geometry}",
-            r"\usepackage[T1]{fontenc}",
-            r"\usepackage[utf8]{inputenc}",
-            r"\usepackage{enumitem}",
-            r"\usepackage[hidelinks]{hyperref}",
-            r"\usepackage{xcolor}",
-            r"\setlist[itemize]{leftmargin=1.2em, itemsep=0.15em, topsep=0.15em}",
-            r"\pagestyle{empty}",
-            r"\setlength{\parindent}{0pt}",
+            *MANAGED_ENGLISH_PREAMBLE_LINES,
             r"\begin{document}",
             *body,
             r"\end{document}",

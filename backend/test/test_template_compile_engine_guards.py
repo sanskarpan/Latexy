@@ -1,5 +1,6 @@
 """Focused, offline contract for the template backfill compiler boundary."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -69,7 +70,7 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
         assert kwargs["timeout"] == 60
-        output_dir = Path(command[3])
+        output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\nsynthetic\n")
         return SimpleNamespace(returncode=0)
 
@@ -82,15 +83,20 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
 
     assert len(calls) == 2
     for command, kwargs in calls:
-        assert command[0] == compile_templates.settings.DEFAULT_NEW_RESUME_COMPILER
-        assert command[3]  # Existing output-directory position remains stable.
+        engine_index = command.index("-interaction=nonstopmode") - 1
+        assert command[engine_index] == compile_templates.settings.DEFAULT_NEW_RESUME_COMPILER
+        output_dir = command[command.index("-output-directory") + 1]
+        if command[engine_index] == "lualatex":
+            assert command[1].endswith("linux_engine_sandbox.py")
+            assert Path(command[2]).resolve() == Path(output_dir).resolve()
         assert command[-1].endswith("template.tex")
-        assert kwargs["cwd"] == command[3]
+        assert kwargs["cwd"] == output_dir
         assert "-no-shell-escape" in command
         assert "-recorder" in command
         child_env = kwargs["env"]
         assert child_env["SOURCE_DATE_EPOCH"] == "1640995200"
-        assert child_env["TEXMFVAR"] == "/tmp/synthetic-texmfvar"
+        assert child_env["TEXMFVAR"] == str(Path(command[command.index("-output-directory") + 1]).resolve() / ".tex-cache")
+        assert child_env["TEXMFCACHE"].startswith(child_env["TEXMFVAR"] + os.pathsep)
         assert child_env["TEXMFHOME"] == "/tmp/synthetic-texmfhome"
         assert child_env["openin_any"] == "p"
         assert child_env["openout_any"] == "p"

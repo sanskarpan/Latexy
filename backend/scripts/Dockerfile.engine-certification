@@ -1,0 +1,10 @@
+# Reuse the installed local dependency image; only bake the new trusted cache
+# layer. This image never copies application code, env files or credentials.
+FROM latexy-local-worker:latest
+USER root
+COPY scripts/warm_tex_cache.sh /usr/local/bin/latexy-warm-tex-cache
+RUN sh /usr/local/bin/latexy-warm-tex-cache
+COPY scripts/write_renderer_fingerprint.py /usr/local/bin/latexy-write-renderer-fingerprint.py
+RUN python /usr/local/bin/latexy-write-renderer-fingerprint.py
+ENV TEXMFCACHE=/var/lib/texmf
+USER appuser
