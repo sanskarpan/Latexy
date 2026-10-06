@@ -29,8 +29,10 @@ load_dotenv(_backend.parent / ".env")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.config import settings
 from app.database.models import ResumeTemplate
 from app.services import storage_service
+from app.services.europecv import configure_europecv_latex, is_europecv_source
 from app.utils.bounded_io import MAX_COMPILED_PDF_BYTES, read_file_bounded
 
 
@@ -46,6 +48,21 @@ def _db_url() -> str:
     if not url:
         raise RuntimeError("DATABASE_URL not set")
     return normalize_database_url(url)
+
+
+def _prepare_template(latex_content: str) -> tuple[str, str]:
+    """Return the source and engine used for a template asset.
+
+    Template assets must follow the same default compiler contract as newly
+    created resumes.  The real ``europecv`` class additionally needs its
+    closed locale rewrite; using that helper avoids trying to infer Unicode
+    support from arbitrary source text and keeps the asset source identical to
+    the source users receive from the template route.
+    """
+
+    if is_europecv_source(latex_content):
+        return configure_europecv_latex(latex_content, "en")
+    return latex_content, settings.DEFAULT_NEW_RESUME_COMPILER
 
 
 async def main():
@@ -80,13 +97,14 @@ async def main():
 
                 with tempfile.TemporaryDirectory() as tmpdir:
                     tex_path = Path(tmpdir) / "template.tex"
-                    tex_path.write_text(t.latex_content, encoding="utf-8")
+                    source, compiler = _prepare_template(t.latex_content)
+                    tex_path.write_text(source, encoding="utf-8")
 
-                    # Run pdflatex twice for references
+                    # Run the configured engine twice for references.
                     ok = True
                     for _pass in range(2):
                         result = subprocess.run(
-                            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_path)],
+                            [compiler, "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_path)],
                             # Diagnostics are read from the bounded .log below;
                             # never retain arbitrary compiler pipes in memory.
                             stdout=subprocess.DEVNULL,
@@ -94,7 +112,7 @@ async def main():
                             timeout=60,
                         )
                         if result.returncode != 0 and _pass == 1:
-                            print(f"FAIL (pdflatex exit {result.returncode})")
+                            print(f"FAIL ({compiler} exit {result.returncode})")
                             log_path = Path(tmpdir) / "template.log"
                             diagnostic = ""
                             if log_path.is_file():
