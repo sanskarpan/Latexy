@@ -2,7 +2,7 @@
  * useJobStream - accumulates all typed WebSocket events into UI state.
  */
 
-import { useEffect, useReducer, useCallback } from 'react'
+import { useEffect, useReducer, useCallback, useRef } from 'react'
 import { wsClient } from '@/lib/ws-client'
 import { apiClient } from '@/lib/api-client'
 import type { AnyEvent } from '@/lib/event-types'
@@ -40,10 +40,30 @@ export interface JobRetryingEvent {
   attempt: number
 }
 
-export type StreamAction = ReducerAction | JobRetryingEvent
+export type StreamAction = ReducerAction | JobRetryingEvent | {
+  type: '__recovery_unavailable__'
+  job_id: string
+}
+
+const OUTPUT_UNAVAILABLE_MESSAGE = 'Job completed, but its generated output is unavailable.'
 
 /** jobStreamReducer plus the events the shared reducer does not model. */
 export function streamReducer(state: JobStreamState, action: StreamAction): JobStreamState {
+  if (action.type === '__recovery_unavailable__') {
+    if (state.status === 'cancelled' || state.status === 'failed') return state
+    // This is a client delivery error, not a new worker terminal decision.
+    // A missed-output WS completion must not hide it behind first-writer-wins.
+    return {
+      ...state,
+      status: 'failed',
+      stage: 'recovery',
+      message: OUTPUT_UNAVAILABLE_MESSAGE,
+      error: OUTPUT_UNAVAILABLE_MESSAGE,
+      errorCode: 'output_unavailable',
+      retryable: false,
+      timeoutError: null,
+    }
+  }
   if (action.type === 'job.retrying') {
     return {
       ...state,
@@ -63,6 +83,12 @@ export interface UseJobStreamResult {
   state: JobStreamState
   cancel: () => void
   reset: () => void
+  applySnapshot: (snapshot: {
+    status: 'queued' | 'processing'
+    stage: string
+    percent: number
+    message?: string
+  }) => void
 }
 
 /** Server rejections we retry rather than fail on — the WS layer throttles at
@@ -70,16 +96,100 @@ export interface UseJobStreamResult {
 const RATE_LIMIT_RETRY_DELAY = 500 // ms
 const MAX_RATE_LIMIT_RETRIES = 5
 
+type RecoverableJobResult = Awaited<ReturnType<typeof apiClient.getJobResult>> | null
+
+/**
+ * Rebuild the terminal event sequence from the canonical REST result. Keeping
+ * this pure makes the missed-event path testable without a live WebSocket and
+ * ensures every replay uses the exact job id supplied by its caller.
+ */
+export function buildJobResultRecoveryEvents(jobId: string, result: RecoverableJobResult): StreamAction[] {
+  const events: StreamAction[] = []
+  // The result endpoint is owner-scoped, but a proxy/cache or a stale client
+  // response must not be relabeled as this job and exposed in the UI.
+  if (!result || result.job_id !== jobId) return events
+  if (result.recovery_complete === false) {
+    return [{ type: '__recovery_unavailable__', job_id: jobId }]
+  }
+  if (!result.success) return events
+  if (typeof result?.extracted_text === 'string') {
+    events.push({
+      type: 'job.pdf_extracted',
+      job_id: jobId,
+      text: result.extracted_text,
+      page_count: result.page_count ?? 1,
+    } as unknown as AnyEvent)
+  }
+
+  const deepAnalysis = result?.deep_analysis
+  if (deepAnalysis && typeof deepAnalysis.overall_score === 'number') {
+    events.push({
+      type: 'ats.deep_complete',
+      event_id: `rest-recovery-${jobId}`,
+      job_id: jobId,
+      timestamp: Date.now() / 1000,
+      sequence: 0,
+      overall_score: deepAnalysis.overall_score,
+      overall_feedback: deepAnalysis.overall_feedback,
+      sections: deepAnalysis.sections,
+      ats_compatibility: deepAnalysis.ats_compatibility,
+      job_match: deepAnalysis.job_match,
+      tokens_used: deepAnalysis.tokens_used ?? result?.tokens_used ?? 0,
+      analysis_time: deepAnalysis.analysis_time ?? result?.analysis_time ?? 0,
+      multi_dim_scores: deepAnalysis.multi_dim_scores,
+      industry_key: deepAnalysis.industry_key,
+      industry_label: deepAnalysis.industry_label,
+    } as unknown as AnyEvent)
+  }
+
+  if (typeof result?.cover_letter_latex === 'string' && result.cover_letter_latex.length > 0) {
+    events.push({
+      type: 'llm.complete',
+      event_id: `rest-recovery-${jobId}-cover-letter`,
+      job_id: jobId,
+      timestamp: Date.now() / 1000,
+      sequence: 0,
+      full_content: result.cover_letter_latex,
+      tokens_total: result.tokens_used ?? 0,
+    } as unknown as AnyEvent)
+  }
+
+  events.push({
+    type: 'job.completed',
+    job_id: jobId,
+    // Null is authoritative for jobs that do not produce a PDF artifact.
+    pdf_job_id: result?.pdf_job_id ?? null,
+    ats_score: result?.ats_score ?? null,
+    ats_details: result?.ats_details ?? null,
+    changes_made: result?.changes_made ?? [],
+    compilation_time: result?.compilation_time ?? 0,
+    optimization_time: result?.optimization_time ?? 0,
+    tokens_used: result?.tokens_used ?? 0,
+    page_count: result?.page_count,
+  } as unknown as AnyEvent)
+  return events
+}
+
 export function useJobStream(jobId: string | null): UseJobStreamResult {
   const [state, dispatch] = useReducer(streamReducer, initialState)
+  const committedJobIdRef = useRef(jobId)
+  const requestedJobIdRef = useRef(jobId)
+  // This ref is intentionally updated during render only for stale callback
+  // gating. State ownership uses committedJobIdRef below, so StrictMode or a
+  // concurrent re-render cannot accidentally unmask the previous job state.
+  requestedJobIdRef.current = jobId
+  // A prop switch renders before the reset effect below flushes. Do not expose
+  // the previous job's completed/content state during that one render; doing
+  // so lets a page start a compile or PDF fetch for the newly selected job.
+  const stateForJob = committedJobIdRef.current === jobId ? state : initialState
 
   useEffect(() => {
+    committedJobIdRef.current = jobId
+    dispatch({ type: '__reset__' })
     if (!jobId) return
 
-    dispatch({ type: '__reset__' })
-
     const handleEvent = (event: AnyEvent) => {
-      if (event.job_id === jobId) {
+      if (requestedJobIdRef.current === jobId && event.job_id === jobId) {
         dispatch(event)
       }
     }
@@ -96,11 +206,14 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     // when this is the sole subscription, otherwise one bad frame would fail
     // every job on the page.
     const handleServerError = (err: { code: string; message: string; job_id?: string }) => {
+      if (requestedJobIdRef.current !== jobId) return
       if (err.job_id ? err.job_id !== jobId : wsClient.subscriptionCount > 1) return
 
       if (err.code === 'rate_limited' && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
         rateLimitRetries++
-        retryTimer = setTimeout(() => wsClient.subscribe(jobId), RATE_LIMIT_RETRY_DELAY)
+        retryTimer = setTimeout(() => {
+          if (requestedJobIdRef.current === jobId) wsClient.subscribe(jobId)
+        }, RATE_LIMIT_RETRY_DELAY)
         return
       }
       dispatch({
@@ -138,45 +251,64 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   // client (e.g. cross-container Pub/Sub on serverless Redis in production), the
   // WS subscribes but never receives a terminal event, so the PDF never loads.
   // Poll the authoritative job state/result and synthesize the terminal event.
-  // The reducer ignores post-terminal transitions, so this never conflicts with
-  // a WS event that arrives first.
+  // The reducer ignores conflicting post-terminal transitions while allowing a
+  // same-job completion to enrich fields missing from an earlier WS event.
   useEffect(() => {
     if (!jobId) return
     let stopped = false
     let attempts = 0
     const MAX_POLLS = 150 // ~10 min at 4s — cap so a wedged job can't poll forever
+    const POLL_INTERVAL_MS = 4000
     let timer: ReturnType<typeof setTimeout> | null = null
+    const isCurrent = () => !stopped && requestedJobIdRef.current === jobId
 
     const poll = async () => {
       attempts += 1
       try {
         const snap = await apiClient.getJobState(jobId)
-        if (stopped) return
+        if (!isCurrent()) return
         if (snap?.status === 'cancelled') {
           dispatch({ type: 'job.cancelled', job_id: jobId } as unknown as AnyEvent)
           return // terminal → stop polling
         }
         if (snap?.status === 'completed') {
-          let result: Record<string, unknown> = {}
+          let result: Awaited<ReturnType<typeof apiClient.getJobResult>> | null = null
           try {
-            const res = (await apiClient.getJobResult(jobId)) as unknown as Record<string, unknown>
-            result = (res?.result as Record<string, unknown>) ?? res ?? {}
+            result = await apiClient.getJobResult(jobId)
           } catch {
             /* result fetch best-effort */
           }
-          if (stopped) return
-          dispatch({
-            type: 'job.completed',
-            job_id: jobId,
-            pdf_job_id: (result.pdf_job_id as string) ?? jobId,
-            ats_score: result.ats_score,
-            ats_details: result.ats_details,
-            changes_made: result.changes_made,
-            compilation_time: result.compilation_time,
-            optimization_time: result.optimization_time,
-            tokens_used: result.tokens_used,
-            page_count: result.page_count,
-          } as unknown as AnyEvent)
+          if (!isCurrent()) return
+
+          // Unlike a briefly missing Redis result, a bounded integrity marker
+          // is an explicit delivery failure. Stop polling without re-enqueueing
+          // or rewriting the already-completed server decision.
+          if (result?.job_id === jobId && result.recovery_complete === false) {
+            for (const event of buildJobResultRecoveryEvents(jobId, result)) dispatch(event)
+            return
+          }
+
+          // The state snapshot and result are written by separate Redis
+          // operations. A completed snapshot can therefore briefly be visible
+          // before /result (and its PDF artifact) is readable. Keep polling in
+          // that window instead of synthesizing a terminal event with a guessed
+          // job id; doing so makes the page stop retrying a still-propagating
+          // PDF and leaves the preview on its placeholder forever.
+          if (!result?.success) {
+            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
+            return
+          }
+
+          // The worker publishes these events on the healthy WS path, but the
+          // REST result is authoritative when Pub/Sub or stream replay missed
+          // them. Preserve an explicit null PDF id for non-PDF jobs. A result
+          // for another job is rejected and retried rather than relabeled.
+          const recoveryEvents = buildJobResultRecoveryEvents(jobId, result)
+          if (recoveryEvents.length === 0) {
+            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
+            return
+          }
+          for (const event of recoveryEvents) dispatch(event)
           return // terminal → stop polling
         }
         if (snap?.status === 'failed') {
@@ -191,14 +323,22 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
           } as unknown as AnyEvent)
           return
         }
+        if (snap?.status === 'queued' || snap?.status === 'processing') {
+          dispatch({
+            type: '__snapshot__',
+            status: snap.status,
+            stage: snap.stage ?? '',
+            percent: snap.percent ?? 0,
+          })
+        }
       } catch {
         /* transient — keep polling */
       }
-      if (!stopped && attempts < MAX_POLLS) timer = setTimeout(poll, 4000)
+      if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
     }
 
     // Delay the first poll so a healthy WS stream gets the first chance.
-    timer = setTimeout(poll, 4000)
+    timer = setTimeout(poll, POLL_INTERVAL_MS)
     return () => {
       stopped = true
       if (timer) clearTimeout(timer)
@@ -213,5 +353,14 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     dispatch({ type: '__reset__' })
   }, [])
 
-  return { state, cancel, reset }
+  const applySnapshot = useCallback((snapshot: {
+    status: 'queued' | 'processing'
+    stage: string
+    percent: number
+    message?: string
+  }) => {
+    dispatch({ type: '__snapshot__', ...snapshot })
+  }, [])
+
+  return { state: stateForJob, cancel, reset, applySnapshot }
 }
