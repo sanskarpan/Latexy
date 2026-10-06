@@ -149,14 +149,15 @@ async def main():
                         from pdf2image import convert_from_path
 
                         images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=150)
-                        if images:
-                            import io
-                            buf = io.BytesIO()
-                            images[0].save(buf, format="PNG")
-                            storage_service.upload_bytes(png_key, buf.getvalue(), "image/png")
+                        if not images:
+                            raise RuntimeError("PNG conversion returned no images")
+                        import io
+                        buf = io.BytesIO()
+                        images[0].save(buf, format="PNG")
+                        storage_service.upload_bytes(png_key, buf.getvalue(), "image/png")
                     except Exception as e:
-                        print(f"WARN (PDF ok, PNG failed: {e})")
-                        compiled += 1
+                        print(f"FAIL (PDF ok, PNG failed: {e})")
+                        failed += 1
                         continue
 
                     print("OK")
