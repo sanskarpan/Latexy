@@ -22,10 +22,19 @@ describe('shared and linked variant async reliability', () => {
     expect(sharedRoute).toContain('requestGeneration.current += 1')
   })
 
-  it('keeps newer linked-variant edits dirty when an older save resolves', () => {
+  it('guards linked-variant loads by mounted owner epoch and keeps newer edits dirty', () => {
     expect(linkedVariantRoute).toContain('const loadGeneration = useRef(0)')
-    expect(linkedVariantRoute).toContain('if (loadGeneration.current !== generation) return')
-    expect(linkedVariantRoute).toContain('if (loadGeneration.current === generation) setLoading(false)')
+    expect(linkedVariantRoute).toContain('const requestEpoch = ownerEpochRef.current.epoch')
+    expect(linkedVariantRoute).toContain('const requestOwnerId = ownerEpochRef.current.ownerId')
+    expect(linkedVariantRoute).toContain('const isCurrentLoad = () => (')
+    expect(linkedVariantRoute).toContain('mountedRef.current &&')
+    expect(linkedVariantRoute).toContain('requestOwnerId !== null &&')
+    expect(linkedVariantRoute).toContain('loadGeneration.current === generation &&')
+    expect(linkedVariantRoute).toContain('ownerEpochRef.current.epoch === requestEpoch &&')
+    expect(linkedVariantRoute).toContain('ownerEpochRef.current.ownerId === requestOwnerId &&')
+    expect(linkedVariantRoute).toContain('ownerEpochRef.current.resumeId === requestResumeId')
+    expect(linkedVariantRoute).toContain('if (!isCurrentLoad()) return')
+    expect(linkedVariantRoute).toContain('if (isCurrentLoad()) setLoading(false)')
     expect(linkedVariantRoute).toContain('const [dirty, setDirty] = useState(false)')
     expect(linkedVariantRoute).toContain('const editRevision = useRef(0)')
     expect(linkedVariantRoute).toContain('const revision = editRevision.current')
