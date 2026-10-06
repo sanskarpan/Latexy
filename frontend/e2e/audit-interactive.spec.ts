@@ -7,8 +7,14 @@
  */
 import { test, expect, Page, BrowserContext } from '@playwright/test'
 import fs from 'fs'
+import os from 'os'
+import path from 'path'
 
 const ALICE = { email: 'audit.alice@example.com', password: 'AuditPassw0rd!alice' }
+const BE = process.env.AUDIT_BE ?? 'http://localhost:8030'
+const backendOrigin = new URL(BE).origin
+const AUDIT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'latexy-interactive-audit-'))
+const SHOT_DIR = path.join(AUDIT_DIR, 'screenshots')
 
 async function login(context: BrowserContext) {
   const res = await context.request.post('/api/auth/sign-in/email', {
@@ -18,6 +24,19 @@ async function login(context: BrowserContext) {
 }
 
 type Net = { method: string; url: string; status: number }
+
+function isBackendUrl(url: string) {
+  try {
+    return new URL(url).origin === backendOrigin
+  } catch {
+    return false
+  }
+}
+
+function backendPath(url: string) {
+  const parsed = new URL(url)
+  return `${parsed.pathname}${parsed.search}`
+}
 
 function trackNet(page: Page, sink: Net[]) {
   page.on('response', async (r) => {
@@ -44,25 +63,35 @@ function trackWs(page: Page, frames: string[]) {
 
 test.describe.configure({ mode: 'serial' })
 
+test.beforeAll(() => {
+  fs.mkdirSync(SHOT_DIR, { mode: 0o700 })
+})
+
 test('requests fired by one dashboard load (rate-limit budget)', async ({ browser }) => {
   test.setTimeout(180_000)
   const ctx = await browser.newContext()
   await login(ctx)
   const page = await ctx.newPage()
   const net: Net[] = []
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
   trackNet(page, net)
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(6000)
-  const api = net.filter((n) => n.url.includes(':8030'))
+  const api = net.filter((n) => isBackendUrl(n.url))
   console.log(`\n=== BACKEND REQUESTS FROM ONE /dashboard LOAD: ${api.length} ===`)
   const counts = new Map<string, number>()
   for (const a of api) {
-    const key = `${a.method} ${a.url.replace(/http:\/\/localhost:8030/, '').split('?')[0]} [${a.status}]`
+    const key = `${a.method} ${new URL(a.url).pathname} [${a.status}]`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   ;[...counts.entries()].sort((x, y) => y[1] - x[1]).forEach(([k, v]) => console.log(`  ${v}x ${k}`))
   const limited = api.filter((a) => a.status === 429)
   console.log(`429s during a single page load: ${limited.length}`)
+  expect(api.length, 'dashboard made no backend requests').toBeGreaterThan(0)
+  expect(limited, 'dashboard exhausted a rate-limit bucket').toEqual([])
+  expect(api.filter((request) => request.status >= 500), 'dashboard received a server error').toEqual([])
+  expect(pageErrors, 'dashboard raised uncaught browser errors').toEqual([])
   await ctx.close()
 })
 
@@ -72,28 +101,26 @@ test('anonymous /try: compile a resume end-to-end and watch WS events', async ({
   const page = await ctx.newPage()
   const frames: string[] = []
   const net: Net[] = []
+  const pageErrors: string[] = []
   trackWs(page, frames)
   trackNet(page, net)
+  page.on('pageerror', (error) => pageErrors.push(error.message))
 
   await page.goto('/try', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(5000)
-  await page.screenshot({ path: '/tmp/audit_shots/try_initial.png', fullPage: true })
+  await page.screenshot({ path: path.join(SHOT_DIR, 'try_initial.png'), fullPage: true })
 
   const bodyText = await page.evaluate(() => document.body.innerText)
   console.log('\n=== /try page text (first 1200 chars) ===\n' + bodyText.slice(0, 1200))
 
-  // Find the compile affordance by accessible name.
-  const candidates = ['Compile', 'Preview', 'Build', 'Generate PDF', 'Run']
-  let clicked = ''
-  for (const name of candidates) {
-    const btn = page.getByRole('button', { name: new RegExp(name, 'i') }).first()
-    if (await btn.count() > 0 && await btn.isVisible().catch(() => false)) {
-      await btn.click().catch(() => {})
-      clicked = name
-      break
-    }
-  }
-  console.log('clicked compile-ish button:', clicked || 'NONE FOUND')
+  const compileButton = page.getByRole('button', { name: /^(re)?compile\b/i }).first()
+  await expect(compileButton).toBeVisible()
+  await expect(compileButton).toBeEnabled()
+  const submitted = page.waitForResponse(
+    (response) => response.url().includes('/jobs/submit') && response.request().method() === 'POST',
+  )
+  await compileButton.click()
+  expect((await submitted).status()).toBe(200)
 
   const allButtons = await page.getByRole('button').all()
   const names: string[] = []
@@ -104,12 +131,12 @@ test('anonymous /try: compile a resume end-to-end and watch WS events', async ({
   }
   console.log('buttons present on /try:', JSON.stringify(names))
 
-  await page.waitForTimeout(35_000)
-  await page.screenshot({ path: '/tmp/audit_shots/try_after_compile.png', fullPage: true })
+  await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible({ timeout: 180_000 })
+  await page.screenshot({ path: path.join(SHOT_DIR, 'try_after_compile.png'), fullPage: true })
 
-  const compileCalls = net.filter((n) => /compile|jobs/.test(n.url) && n.url.includes(':8030'))
+  const compileCalls = net.filter((n) => /compile|jobs/.test(n.url) && isBackendUrl(n.url))
   console.log('\n=== compile-related backend calls ===')
-  compileCalls.forEach((c) => console.log(`  ${c.status} ${c.method} ${c.url.replace('http://localhost:8030', '')}`))
+  compileCalls.forEach((c) => console.log(`  ${c.status} ${c.method} ${backendPath(c.url)}`))
 
   console.log('\n=== WS FRAMES OBSERVED ===')
   frames.slice(0, 60).forEach((f) => console.log('  ' + f))
@@ -126,7 +153,13 @@ test('anonymous /try: compile a resume end-to-end and watch WS events', async ({
     }
   })
   console.log('\npdf surface after compile:', JSON.stringify(pdfPresent))
-  fs.writeFileSync('/tmp/audit_try_frames.json', JSON.stringify({ frames, compileCalls }, null, 2))
+  expect(compileCalls.some((request) => request.status === 200 && request.url.includes('/jobs/submit'))).toBe(true)
+  expect(compileCalls.filter((request) => request.status >= 400)).toEqual([])
+  expect(frames.some((frame) => /completed/i.test(frame)), 'no terminal completion arrived over WebSocket').toBe(true)
+  expect(pdfPresent.canvas).toBeGreaterThan(0)
+  expect(pdfPresent.textMentionsError).toBe(false)
+  expect(pageErrors).toEqual([])
+  fs.writeFileSync(path.join(AUDIT_DIR, 'audit_try_frames.json'), JSON.stringify({ frames, compileCalls }, null, 2), { mode: 0o600 })
   await ctx.close()
 })
 
@@ -137,20 +170,40 @@ test('authenticated editor: compile + ATS score, does the UI ever finish?', asyn
   const page = await ctx.newPage()
   const frames: string[] = []
   const net: Net[] = []
+  const pageErrors: string[] = []
   trackWs(page, frames)
   trackNet(page, net)
+  page.on('pageerror', (error) => pageErrors.push(error.message))
 
   // Grab a resume id
-  const r = await ctx.request.get('http://localhost:8030/resumes/')
+  const r = await ctx.request.get(`${BE}/resumes/`)
   const body = await r.json().catch(() => ({}))
   const list = Array.isArray(body) ? body : body.resumes ?? body.items ?? []
-  const id = list[0]?.id
+  // The editor intentionally skips initial compile and quick ATS scoring for
+  // tiny documents. Pick a realistic fixture so this audit exercises both
+  // pipelines instead of hanging on a short security-test résumé.
+  const candidate = list.find((resume: { latex_content?: string }) =>
+    (resume.latex_content?.length ?? 0) >= 200,
+  )
+  const id = candidate?.id
   console.log('editing resume:', id)
   test.skip(!id, 'no resume')
 
+  // The editor intentionally auto-compiles a loaded résumé. Install every
+  // listener before navigation so a fast local worker cannot finish before the
+  // assertion starts observing the network.
+  const submitted = page.waitForResponse(
+    (response) => response.url().includes('/jobs/submit') && response.request().method() === 'POST',
+  )
+  const quickScore = page.waitForResponse(
+    (response) => response.url().includes('/ats/quick-score') && response.request().method() === 'POST',
+  )
+  const synctex = page.waitForResponse(
+    (response) => /\/download\/[^/]+\/synctex$/.test(new URL(response.url()).pathname),
+  )
   await page.goto(`/workspace/${id}/edit`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(8000)
-  await page.screenshot({ path: '/tmp/audit_shots/editor_initial.png', fullPage: true })
+  await page.screenshot({ path: path.join(SHOT_DIR, 'editor_initial.png'), fullPage: true })
 
   const txt = await page.evaluate(() => document.body.innerText)
   console.log('\n=== editor page text (first 1500) ===\n' + txt.slice(0, 1500))
@@ -163,17 +216,12 @@ test('authenticated editor: compile + ATS score, does the UI ever finish?', asyn
   }
   console.log('\nbuttons in editor:', JSON.stringify(btns))
 
-  // Try to trigger a compile
-  for (const name of ['Compile', 'Preview', 'Build']) {
-    const b = page.getByRole('button', { name: new RegExp(`^${name}`, 'i') }).first()
-    if (await b.count() > 0 && await b.isVisible().catch(() => false)) {
-      console.log('clicking', name)
-      await b.click().catch(() => {})
-      break
-    }
-  }
-  await page.waitForTimeout(40_000)
-  await page.screenshot({ path: '/tmp/audit_shots/editor_after_compile.png', fullPage: true })
+  expect((await submitted).status()).toBe(200)
+  await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible({ timeout: 180_000 })
+  expect((await quickScore).status()).toBe(200)
+  expect((await synctex).status()).toBe(200)
+  await expect(page.getByText(/Ctrl\+click to sync/i)).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: path.join(SHOT_DIR, 'editor_after_compile.png'), fullPage: true })
 
   console.log('\n=== WS FRAMES (authenticated editor) ===')
   frames.slice(0, 80).forEach((f) => console.log('  ' + f))
@@ -181,8 +229,8 @@ test('authenticated editor: compile + ATS score, does the UI ever finish?', asyn
 
   console.log('\n=== backend calls ===')
   const seen = new Map<string, number>()
-  net.filter((n) => n.url.includes(':8030')).forEach((n) => {
-    const k = `${n.status} ${n.method} ${n.url.replace('http://localhost:8030', '').split('?')[0]}`
+  net.filter((n) => isBackendUrl(n.url)).forEach((n) => {
+    const k = `${n.status} ${n.method} ${new URL(n.url).pathname}`
     seen.set(k, (seen.get(k) ?? 0) + 1)
   })
   ;[...seen.entries()].sort((a, b) => b[1] - a[1]).forEach(([k, v]) => console.log(`  ${v}x ${k}`))
@@ -197,6 +245,12 @@ test('authenticated editor: compile + ATS score, does the UI ever finish?', asyn
     }
   })
   console.log('\nUI state after 40s:', JSON.stringify(stuck))
-  fs.writeFileSync('/tmp/audit_editor_frames.json', JSON.stringify({ frames, net: [...seen] }, null, 2))
+  const backendFailures = net.filter((request) => isBackendUrl(request.url) && request.status >= 400)
+  expect(backendFailures).toEqual([])
+  expect(frames.some((frame) => /completed/i.test(frame)), 'no terminal completion arrived over WebSocket').toBe(true)
+  expect(stuck.mentionsCompiling).toBe(false)
+  expect(stuck.mentionsError).toBe(false)
+  expect(pageErrors).toEqual([])
+  fs.writeFileSync(path.join(AUDIT_DIR, 'audit_editor_frames.json'), JSON.stringify({ frames, net: [...seen] }, null, 2), { mode: 0o600 })
   await ctx.close()
 })
