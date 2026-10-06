@@ -11,6 +11,7 @@ import { apiClient, type AcademicCVReport, type CheckpointEntry, type DiffWithPa
 import CompilerSelector from '@/components/CompilerSelector'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import { useJobStream } from '@/hooks/useJobStream'
+import { usePreviewScheduler } from '@/hooks/usePreviewScheduler'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
@@ -494,7 +495,7 @@ export default function OptimizationSuitePage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (isProcessing || isSubmitting) return
+    if (isProcessing || isSubmitting) return null
     setIsSubmitting(true)
     try {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
@@ -502,6 +503,7 @@ export default function OptimizationSuitePage() {
       editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
       setActiveJobKind('compile')
+      return response.job_id
     } catch {
       // Silent fail
     } finally {
@@ -664,6 +666,12 @@ export default function OptimizationSuitePage() {
       setIsScraping(false)
     }
   }, [jobUrl, isScraping])
+
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:optimize`, enabled: autoCompile,
+    blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
+
 
   if (isLoading) {
     return (
@@ -995,10 +1003,11 @@ export default function OptimizationSuitePage() {
                   readOnly={isProcessing}
                   logLines={stream.logLines}
                   onCompile={handleEditorCompile}
-                  onAutoCompile={handleAutoCompile}
+                  onAutoCompile={autoCompile ? queuePreview : undefined}
                   autoCompileEnabled={autoCompile}
-                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileBusy={false}
                   autoCompileDocumentKey={personaIdentityKey}
+                  autoCompileDebounceMs={0}
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
                   onExplainError={handleExplainError}

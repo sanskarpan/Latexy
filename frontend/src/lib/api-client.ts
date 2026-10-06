@@ -5,7 +5,7 @@
  */
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
-import type { ATSDeepAnalysis } from './event-types'
+import type { ATSDeepAnalysis, RenderArtifact } from './event-types'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -150,6 +150,7 @@ export interface WebSocketTicketResponse {
 }
 
 export interface JobStateResponse {
+  artifact?: RenderArtifact | null
   job_id?: string
   job_type?: JobType
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
@@ -1617,8 +1618,8 @@ class ApiClient {
   //  Job state & result                                               //
   // ---------------------------------------------------------------- //
 
-  async getJobState(jobId: string): Promise<JobStateResponse> {
-    return this.request<JobStateResponse>(`/jobs/${encodeURIComponent(jobId)}/state`)
+  async getJobState(jobId: string, fingerprint?: string): Promise<JobStateResponse> {
+    return this.request<JobStateResponse>(`/jobs/${encodeURIComponent(jobId)}/state`, { headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined })
   }
 
   async getJobResult(jobId: string): Promise<JobResultResponse> {
@@ -1920,6 +1921,84 @@ class ApiClient {
     const res = await this.authedFetch(this.getPdfUrl(jobId), { signal })
     if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
     return res.blob()
+  }
+
+  async downloadArtifactPdf(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<Blob> {
+    const res = await this.authedFetch(`${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+    if (!res.ok) throw new Error(`PDF preview failed: HTTP ${res.status}`)
+    return res.blob()
+  }
+
+  async getArtifactManifest(jobId: string, fingerprint?: string, signal?: AbortSignal) {
+    return this.request<import('@/lib/event-types').RenderArtifact | null>(`/download/${encodeURIComponent(jobId)}/preview/manifest`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+  }
+
+  async getArtifactGeometry(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal) {
+    return this.request<import('@/lib/resume-engine-types').ArtifactGeometry>(`/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}/geometry`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+  }
+
+  async optimizeEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; job_description: string
+    effort: import('@/lib/resume-engine-types').OptimizationEffort
+  }) {
+    return this.request<JobSubmitResponse>(`/resumes/${encodeURIComponent(resumeId)}/engine/optimize`, {
+      method: 'POST', body: JSON.stringify(body),
+    })
+  }
+
+  async getEngineRun(resumeId: string, runId: string) {
+    return this.request<import('@/lib/resume-engine-types').SemanticOptimizationRun>(`/resumes/${encodeURIComponent(resumeId)}/engine/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async decideEngineRun(resumeId: string, runId: string, body: {
+    accept_patch_ids: string[]; reject_patch_ids: string[]; expected_content_revision: number; expected_source_sha256: string
+  }) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument;
+      decisions: import('@/lib/resume-engine-types').OptimizationDecisions }>(`/resumes/${encodeURIComponent(resumeId)}/engine/runs/${encodeURIComponent(runId)}/decisions`, {
+      method: 'POST', body: JSON.stringify(body),
+    })
+  }
+
+  async getGuestEngineDocument(latex_content: string) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>('/public/engine/document', {
+      method: 'POST', body: JSON.stringify({ latex_content }),
+    })
+  }
+
+  async patchGuestEngineDocument(body: {
+    latex_content: string; expected_source_sha256: string
+    patches: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>('/public/engine/document/patch', {
+      method: 'POST', body: JSON.stringify(body),
+    })
+  }
+
+  async getEngineDocument(resumeId: string) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`)
+  }
+
+  async patchEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; merge_disjoint: boolean
+    patches: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    })
+  }
+
+  async downloadArtifactSynctex(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<string | null> {
+    const response = await this.authedFetch(`${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}/synctex`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+    if (!response.ok) return null
+    return response.text()
   }
 
   async downloadSynctex(jobId: string, signal?: AbortSignal): Promise<string | null> {

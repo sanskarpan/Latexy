@@ -15,12 +15,21 @@ import { apiClient, type ExplainErrorResponse, type ScrapeJobResponse } from '@/
 import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
-import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
+import LaTeXEditor from '@/components/DeferredLaTeXEditor'
+import type { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import ChangeReviewModal from '@/components/ChangeReviewModal'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
+import { useArtifactPreview, useSourceHash } from '@/hooks/useArtifactPreview'
+import ResumeFieldsEditor from '@/components/ResumeFieldsEditor'
+import { previewErrorMessage } from '@/lib/preview-errors'
+import { canExportArtifact } from '@/lib/artifact-policy'
+import { editableGeometry } from '@/lib/artifact-geometry'
+import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
+import type { ArtifactReadyEvent } from '@/lib/event-types'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import { insertProjectLatex } from '@/lib/github-projects-latex'
@@ -59,12 +68,18 @@ export default function TryPage() {
   const flags = useFeatureFlags()
   const [hydrated, setHydrated] = useState(false)
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
+  const [editorMode, setEditorMode] = useState<'pdf' | 'source'>('pdf')
+  const [engineDocument, setEngineDocument] = useState<ResumeEngineDocument | null>(null)
+  const [engineError, setEngineError] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [geometry, setGeometry] = useState<ArtifactGeometry | null>(null)
   const [jobDescription, setJobDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   // Only the successfully adopted blob may provide a PDF/SyncTeX pairing.
   const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
+  const [displayedArtifact, setDisplayedArtifact] = useState<ArtifactReadyEvent | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -137,12 +152,56 @@ export default function TryPage() {
     pdfUrlRef.current = null
     setPdfUrl(null)
     setRenderedPdfJobId(null)
+    setDisplayedArtifact(null)
   }, [])
-  const { state: stream } = useJobStream(activeJobId)
-  const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
   const { data: session, isPending: sessionPending } = useSession()
+  const { state: stream } = useJobStream(activeJobId, { fingerprint: trialStatus.fingerprint })
+  const { state: deepStream } = useJobStream(deepAnalysisJobId)
+  const sourceAtRenderRef = useRef(latexContent)
+  sourceAtRenderRef.current = latexContent
+  const sourceHash = useSourceHash(latexContent)
+  useEffect(() => {
+    if (editorMode !== 'pdf' || !sourceHash) return
+    let stale = false
+    setEngineError(null)
+    apiClient.getGuestEngineDocument(latexContent).then((response) => {
+      if (!stale) setEngineDocument(response.document)
+    }).catch(() => { if (!stale) setEngineError('Resume fields are temporarily unavailable. Your document is preserved.') })
+    return () => { stale = true }
+  }, [editorMode, sourceHash, latexContent])
+  useEffect(() => {
+    setGeometry(null)
+    if (!displayedArtifact?.geometry_url || editorMode !== 'pdf') return
+    const controller = new AbortController()
+    apiClient.getArtifactGeometry(displayedArtifact.job_id, displayedArtifact.artifact_id, trialStatus.fingerprint, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setGeometry(result) }).catch(() => {})
+    return () => controller.abort()
+  }, [displayedArtifact, editorMode, trialStatus.fingerprint])
+  const semanticGeometry = editableGeometry(displayedArtifact, geometry, engineDocument, sourceHash)
+  const artifactPreview = useArtifactPreview({ artifact: stream.artifact, identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, fingerprint: trialStatus.fingerprint, onReady: (blob, artifact) => {
+    const url = URL.createObjectURL(blob)
+    if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+    pdfUrlRef.current = url
+    setPdfUrl(url)
+    setRenderedPdfJobId(artifact.job_id)
+    setDisplayedArtifact(artifact)
+  } })
   const resolvedSession = hydrated ? session : null
+  useEffect(() => {
+    if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
+  }, [artifactPreview.error, editorMode])
+  const previewAccountIdentity = `${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`
+  const previewRequestIdentityRef = useRef(previewAccountIdentity)
+  previewRequestIdentityRef.current = previewAccountIdentity
+
+  const previewAccountRef = useRef(previewAccountIdentity)
+  useEffect(() => {
+    if (previewAccountRef.current === previewAccountIdentity) return
+    previewAccountRef.current = previewAccountIdentity
+    clearPdfPreview()
+    setActiveJobId(null)
+  }, [previewAccountIdentity, clearPdfPreview])
   // When trial_limits flag is off, every visitor can run without restriction
   const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
   // Anonymous visitor who has exhausted their free compiles
@@ -266,7 +325,7 @@ export default function TryPage() {
 
     const fetchPdf = async () => {
       const pdfJobId = stream.pdfJobId
-      if (stream.status === 'completed' && pdfJobId) {
+      if (stream.status === 'completed' && pdfJobId && !stream.artifact) {
         const generationAtStart = previewGenerationRef.current
         const isCurrentGeneration = () => generationAtStart === previewGenerationRef.current
         // Redis state/result/artifact writes are deliberately independent. A
@@ -306,7 +365,7 @@ export default function TryPage() {
       disposed = true
       controller.abort()
     }
-  }, [stream.status, stream.pdfJobId, activeJobId])
+  }, [stream.status, stream.pdfJobId, stream.artifact, activeJobId])
 
   // Keep completion analytics and ATS refresh independent from PDF-fetch
   // lifetime. Source edits can change refetchATS without restarting a pending
@@ -396,6 +455,8 @@ export default function TryPage() {
 
   const runCompile = async (mode: 'compile' | 'combined') => {
     if (isProcessing || isSubmitting) return
+    const identityAtStart = previewRequestIdentityRef.current
+    const actionStarted = performance.now()
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
     if (trialBlocked) { notifyTrialBlocked(); return }
@@ -423,14 +484,16 @@ export default function TryPage() {
               device_fingerprint: trialStatus.fingerprint,
             })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
+      if (previewRequestIdentityRef.current !== identityAtStart) return null
       if (mode === 'compile') editorRef.current?.markAutoCompileCompiled?.(currentContent)
       setActiveJobId(response.job_id)
+      recordPreviewAction(response.job_id, actionStarted)
       if (!resolvedSession) trialStatus.incrementUsage()
       toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Submission failed')
+      toast.error(previewErrorMessage(error, editorMode === 'pdf'))
     } finally {
-      setIsSubmitting(false)
+      if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
     }
   }
 
@@ -449,10 +512,18 @@ export default function TryPage() {
 
   const handleDownload = async () => {
     if (isProcessing || isSubmitting) { toast.error("Wait for the updated PDF to finish"); return }
+    if (displayedArtifact && !canExportArtifact(displayedArtifact, sourceHash, activeJobId, stream.status, displayedArtifact.job_id)) {
+      toast.error('Compile your current resume before downloading. Review AI suggestions before accepting them.')
+      return
+    }
     const downloadId = stream.pdfJobId ?? activeJobId
     if (!downloadId) { toast.error('No PDF is ready yet'); return }
+    const identityAtStart = previewRequestIdentityRef.current
+    const sourceAtStart = latexContent
     try {
-      const blob = await apiClient.downloadPdf(downloadId)
+      const blob = artifactPreview.verified && artifactPreview.verified.artifact.artifact_id === displayedArtifact?.artifact_id
+        ? artifactPreview.verified.blob : await apiClient.downloadPdf(downloadId)
+      if (previewRequestIdentityRef.current !== identityAtStart || sourceAtRenderRef.current !== sourceAtStart) return
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -469,8 +540,9 @@ export default function TryPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (isProcessing || isSubmitting) return
-    if (!resolvedSession && !effectiveCanRun) return
+    const identityAtStart = previewRequestIdentityRef.current
+    if (isProcessing || isSubmitting) return null
+    if (!resolvedSession && !effectiveCanRun) return null
     setIsSubmitting(true)
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
@@ -478,8 +550,10 @@ export default function TryPage() {
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       editorRef.current?.markAutoCompileCompiled?.(content)
       autoCompileTriggeredRef.current = true
+      if (previewRequestIdentityRef.current !== identityAtStart) return null
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
+      return response.job_id
     } catch (error) {
       // Auto-compile fires on a debounce rather than a click, so a hard failure to
       // even submit (network/API error, trial exhausted, etc.) needs the same
@@ -489,12 +563,17 @@ export default function TryPage() {
       const msg = error instanceof Error ? error.message : 'Auto-compile failed'
       if (lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
-        toast.error(msg)
+        toast.error(previewErrorMessage(error, editorMode === 'pdf'))
       }
     } finally {
-      setIsSubmitting(false)
+      if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
     }
-  }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun])
+  }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun, editorMode])
+
+  const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompile || editorMode === 'pdf',
+    blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
   // compile's result is visible — the status badge already turns red for any
@@ -507,12 +586,12 @@ export default function TryPage() {
       const msg = stream.error || 'Auto-compile failed — open Live Logs for details'
       if (lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
-        toast.error(msg, { description: 'Auto-compile failed. Open Live Logs to see the LaTeX error.' })
+        toast.error(editorMode === 'source' ? msg : 'Your PDF could not be updated. Your last preview is preserved.', { description: editorMode === 'source' ? 'Open Live Logs for details.' : 'Try again or choose another layout.' })
       }
     } else if (stream.status === 'completed') {
       lastAutoCompileErrorRef.current = null
     }
-  }, [stream.status, stream.error])
+  }, [stream.status, stream.error, editorMode])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
     setExplainerLine(error.line)
@@ -711,6 +790,16 @@ export default function TryPage() {
       toast.error('Copy failed')
     }
   }
+  const saveGuestField = async (node: ResumeEngineNode, text: string) => {
+    const actionStarted = performance.now()
+    if (!engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
+    const response = await apiClient.patchGuestEngineDocument({ latex_content: latexContent,
+      expected_source_sha256: engineDocument.source_sha256,
+      patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }] })
+    if (latexContent !== sourceAtRenderRef.current) throw new Error('Stale field')
+    setLatexContent(response.latex_content); setEngineDocument(response.document)
+    queuePreview(response.latex_content, actionStarted)
+  }
   const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
   const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
   const atsDisplay = stream.atsScore ?? quickATSScore
@@ -734,11 +823,11 @@ export default function TryPage() {
           aria-current="true"
           className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] bg-accent-soft px-2 py-1.5 text-left font-mono text-[12px] text-accent-strong transition hover:brightness-105"
         >
-          <FileCode2 size={13} className="flex-shrink-0 opacity-70" /> resume.tex
+          <FileCode2 size={13} className="flex-shrink-0 opacity-70" /> {editorMode === 'source' ? 'resume.tex' : 'Your resume'}
         </button>
       </div>
       <div className="border-t border-line p-3">
-        <p className="mb-2 font-ui text-[12px] text-fg-3">Source</p>
+        <p className="mb-2 font-ui text-[12px] text-fg-3">{editorMode === 'source' ? 'Source' : 'Document'}</p>
         <div className="grid grid-cols-2 gap-1.5">
           <button onClick={resetEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
             <RotateCcw size={11} /> Reset
@@ -815,7 +904,7 @@ export default function TryPage() {
               </p>
               <div className="mt-2 grid grid-cols-3 gap-1">
                 <button
-                  onClick={() => setShowOptimizeDiff(true)}
+                  onClick={() => { if (editorMode === 'source') setShowOptimizeDiff(true); else { setMobilePane('pdf'); setPdfOpen(true) } }}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
                   Review changes
@@ -827,7 +916,7 @@ export default function TryPage() {
                   Discard
                 </button>
                 <button
-                  onClick={() => applyStagedOptimization()}
+                  onClick={() => { const candidate = stagedOptimization; if (applyStagedOptimization() && candidate) queuePreview(candidate) }}
                   className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   Apply
@@ -842,10 +931,10 @@ export default function TryPage() {
               <span className="font-ui text-[12px] text-fg-2">AI rewrote your resume.</span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setShowOptimizeDiff(true)}
+                  onClick={() => { if (editorMode === 'source') setShowOptimizeDiff(true); else { setMobilePane('pdf'); setPdfOpen(true) } }}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
-                  View diff
+                  {editorMode === 'source' ? 'View diff' : 'Review PDF'}
                 </button>
                 <button
                   onClick={() => revertOptimize()}
@@ -857,7 +946,7 @@ export default function TryPage() {
             </div>
           </div>
         )}
-        {showOptimizeDiff && stagedOptimization != null && (
+        {editorMode === 'source' && showOptimizeDiff && stagedOptimization != null && (
           <ChangeReviewModal
             originalLatex={preRunSnapshotRef.current || latexContent}
             optimizedLatex={stagedOptimization}
@@ -868,7 +957,7 @@ export default function TryPage() {
             onClose={() => setShowOptimizeDiff(false)}
           />
         )}
-        {showOptimizeDiff && stagedOptimization == null && optimizeSnapshot != null && (
+        {editorMode === 'source' && showOptimizeDiff && stagedOptimization == null && optimizeSnapshot != null && (
           <DiffViewerModal
             resumeId=""
             checkpointA={null}
@@ -1021,7 +1110,14 @@ export default function TryPage() {
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3">
         <FileCode2 size={13} className="text-fg-3" />
-        <span className="font-mono text-xs text-fg-2">resume.tex</span>
+        <span className="text-xs text-fg-2">{editorMode === 'source' ? 'resume.tex' : 'Your resume'}</span>
+        <div className="ml-auto flex rounded-md border border-line p-0.5" role="group" aria-label="Editing mode">
+          {(['pdf', 'source'] as const).map((mode) => <button key={mode} type="button" aria-pressed={editorMode === mode}
+            onClick={() => setEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+            {mode === 'pdf' ? 'Resume' : 'Source'}</button>)}
+        </div>
+        {editorMode === 'source' && <>
+
         <button
           onClick={copySource}
           title="Copy LaTeX source"
@@ -1031,11 +1127,13 @@ export default function TryPage() {
           {sourceCopied ? <Check size={11} className="text-ok" /> : <Copy size={11} />}
           {sourceCopied ? 'Copied' : 'Copy'}
         </button>
-        <span className="font-ui text-[12px] text-fg-3">⌘F to find</span>
+        <span className="font-ui text-[12px] text-fg-3">⌘F to find</span></>}
       </div>
       <div className="relative min-h-0 flex-1">
-        <LaTeXEditor
-          ref={editorRef}
+        {editorMode === 'pdf' ? <ResumeFieldsEditor document={engineDocument} currentSourceHash={sourceHash}
+          selectedNode={selectedNode} onSelect={setSelectedNode} onSave={saveGuestField}
+          readOnly={false} error={engineError} /> : <LaTeXEditor
+          editorRef={editorRef}
           value={latexContent}
           onChange={setLatexContent}
           readOnly={isProcessing}
@@ -1050,17 +1148,18 @@ export default function TryPage() {
             setSourceSyncLine(line)
             setSourceSyncRequestId((value) => value + 1)
           }}
-          onAutoCompile={handleAutoCompile}
+          onAutoCompile={autoCompile ? queuePreview : undefined}
           autoCompileEnabled={autoCompile}
-          autoCompileBusy={isProcessing || isSubmitting}
+          autoCompileBusy={false}
           autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try`}
+          autoCompileDebounceMs={0}
           atsScore={quickATSScore}
           atsScoreLoading={quickATSLoading}
           onATSBadgeClick={() => openTool('ats')}
           onExplainError={handleExplainError}
           pageCount={stream.pageCount}
-        />
-        <div className="absolute inset-x-0 bottom-0 z-10">
+        />}
+        {editorMode === 'source' && <div className="absolute inset-x-0 bottom-0 z-10">
           <ErrorExplainerPanel
             isOpen={explainerOpen}
             isLoading={explainerLoading}
@@ -1069,7 +1168,7 @@ export default function TryPage() {
             onClose={() => setExplainerOpen(false)}
             onApplyFix={handleApplyExplainerFix}
           />
-        </div>
+        </div>}
       </div>
     </section>
   )
@@ -1116,6 +1215,10 @@ export default function TryPage() {
 
       <div className="relative min-h-0 flex-1">
         <PDFPreview
+          artifactIdentity={displayedArtifact ? { jobId: displayedArtifact.job_id, artifactId: displayedArtifact.artifact_id, fingerprint: trialStatus.fingerprint } : null}
+            onFirstPaint={() => { const jobId = displayedArtifact?.job_id ?? stream.pdfJobId ?? activeJobId; if (jobId) recordPreviewFirstPaint(jobId) }}
+            revisionLabel={displayedArtifact?.branch === 'candidate' ? 'AI candidate preview · review and accept suggestions before exporting.'
+              : displayedArtifact && displayedArtifact.source_sha256 !== sourceHash ? 'Previous resume version · updating your current PDF.' : null}
           pdfUrl={pdfUrl}
           isLoading={isProcessing}
           onDownload={handleDownload}
@@ -1123,15 +1226,17 @@ export default function TryPage() {
           latexContent={latexContent}
           onPdfSelectionChange={setPdfSelection}
           onSyncReadyChange={setPdfSyncReady}
-          syncFromLine={sourceSyncLine}
+          syncFromLine={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? sourceSyncLine : null}
           syncFromRequestId={sourceSyncRequestId}
-          onSyncToSource={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
-          onJumpToLine={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
+          onSyncToSource={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
+          onJumpToLine={editorMode === 'source' ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
+          semanticGeometry={semanticGeometry}
+          onSemanticSelect={(nodeId) => { setSelectedNode(nodeId); if (!isDesktop) setMobilePane('editor') }}
         />
       </div>
 
       {/* compile status / logs footer — only once there's something to report */}
-      {(stream.logLines.length > 0 || isProcessing || stream.status === 'completed' || stream.status === 'failed') && (
+      {editorMode === 'source' && (stream.logLines.length > 0 || isProcessing || stream.status === 'completed' || stream.status === 'failed') && (
         <div className="flex-shrink-0 border-t border-line bg-surface">
           <div className="flex w-full items-center gap-2 px-3 py-1.5">
             <button onClick={() => setLogsOpen((v) => !v)} aria-expanded={logsOpen} className="flex flex-1 items-center gap-2 text-left">
@@ -1174,7 +1279,7 @@ export default function TryPage() {
           <BrandMark className="h-6 w-6" />
         </Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
-        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg-3 md:inline">resume.tex</span>
+        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg-3 md:inline">{editorMode === 'source' ? 'resume.tex' : 'Your resume'}</span>
         <span
           title={persistState === 'saved' ? 'Draft autosaved to this browser' : 'Saving your draft locally…'}
           className="hidden items-center gap-1 font-ui text-[12px] text-fg-3 lg:inline-flex"
@@ -1187,12 +1292,12 @@ export default function TryPage() {
         <div className="ml-0 flex items-center sm:ml-2">
           <button
             onClick={() => runCompile('compile')}
-            disabled={isSubmitting || isProcessing}
-            aria-label="Recompile"
+            disabled={!hydrated || isSubmitting || isProcessing}
+            aria-label={editorMode === 'source' ? 'Recompile' : 'Update PDF'}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-2 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5"
           >
             {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
-            <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}</span>
+            <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Updating…' : editorMode === 'source' ? 'Recompile' : 'Update PDF'}</span>
           </button>
         </div>
         <button
@@ -1326,13 +1431,13 @@ export default function TryPage() {
           {/* splitter (lg+) */}
           {pdfOpen && (
             <div className="relative hidden w-2 flex-shrink-0 lg:flex">
-              <SourcePdfDivider
+              {editorMode === 'source' && <SourcePdfDivider
                 sourceLine={cursorLine}
                 pdfSelection={pdfSelection}
                 pdfReady={pdfSyncReady}
                 onSourceToPdf={handleSourceToPdf}
                 onPdfToSource={handlePdfToSource}
-              />
+              />}
               <div
                 role="separator"
                 aria-orientation="vertical"

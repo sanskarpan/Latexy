@@ -170,7 +170,7 @@ export function buildJobResultRecoveryEvents(jobId: string, result: RecoverableJ
   return events
 }
 
-export function useJobStream(jobId: string | null): UseJobStreamResult {
+export function useJobStream(jobId: string | null, options?: { fingerprint?: string }): UseJobStreamResult {
   const [state, dispatch] = useReducer(streamReducer, initialState)
   const committedJobIdRef = useRef(jobId)
   const requestedJobIdRef = useRef(jobId)
@@ -182,6 +182,9 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   // the previous job's completed/content state during that one render; doing
   // so lets a page start a compile or PDF fetch for the newly selected job.
   const stateForJob = committedJobIdRef.current === jobId ? state : initialState
+  const artifactRef = useRef(stateForJob.artifact)
+  artifactRef.current = stateForJob.artifact
+  const fingerprint = options?.fingerprint
 
   useEffect(() => {
     committedJobIdRef.current = jobId
@@ -269,8 +272,12 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
       inFlight = true
       attempts += 1
       try {
-        const snap = await apiClient.getJobState(jobId)
+        const snap = await apiClient.getJobState(jobId, fingerprint)
         if (!isCurrent()) return
+        if (snap.artifact && artifactRef.current?.artifact_id !== snap.artifact.artifact_id) {
+          dispatch({ ...snap.artifact, type: 'artifact.ready', job_id: jobId,
+            event_id: `artifact-recovery-${snap.artifact.artifact_id}`, timestamp: Date.now() / 1000, sequence: 0 })
+        }
         if (snap?.status === 'cancelled') {
           dispatch({ type: 'job.cancelled', job_id: jobId } as unknown as AnyEvent)
           terminal = true
@@ -359,7 +366,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
       wsClient.off('connected', recoverOnReconnect)
       if (timer) clearTimeout(timer)
     }
-  }, [jobId])
+  }, [jobId, fingerprint])
 
   const cancel = useCallback(() => {
     if (jobId) wsClient.cancelJob(jobId)

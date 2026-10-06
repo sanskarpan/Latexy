@@ -49,7 +49,7 @@ describe('peer review UI safety and capability gating', () => {
   })
 
   it('keeps editor review access separate from ordinary comments and chat', () => {
-    expect(editorPage).toContain("rightTab === 'review'")
+    expect(editorPage).toContain("visibleRightTab === 'review'")
     expect(editorPage).toContain("canResolve={collabRole === 'owner' || collabRole === 'editor'}")
     expect(surface).toContain('Existing dots open their comment.')
   })

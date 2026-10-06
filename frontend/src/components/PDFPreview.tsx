@@ -9,6 +9,7 @@ import { createSynctexRequestGuard, parseSynctex, synctexHasMappableSource, sync
 import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 import { apiClient } from '@/lib/api-client'
 import { trackWebVital } from '@/lib/telemetry'
+import type { ArtifactGeometry } from '@/lib/resume-engine-types'
 
 // PDF.js 5 requires browser DOMMatrix at module evaluation time. Keep the
 // renderer behind a client-only boundary so Next can still prerender every page
@@ -55,6 +56,11 @@ interface PDFPreviewProps {
   /** Persistent cache/recovery error (toasts are intentionally insufficient). */
   offlineError?: string | null
   onRetryOffline?: () => void
+  semanticGeometry?: ArtifactGeometry | null
+  onSemanticSelect?: (nodeId: string) => void
+  onFirstPaint?: () => void
+  revisionLabel?: string | null
+  artifactIdentity?: { jobId: string; artifactId: string; fingerprint?: string } | null
 }
 
 interface PageDimensions {
@@ -136,8 +142,18 @@ export default function PDFPreview({
   isOfflinePreview = false,
   offlineError,
   onRetryOffline,
+  semanticGeometry,
+  onSemanticSelect,
+  onFirstPaint,
+  revisionLabel,
+  artifactIdentity,
 }: PDFPreviewProps) {
   const [numPages, setNumPages] = useState(0)
+  const synctexJobId = artifactIdentity?.jobId ?? jobId
+  const synctexArtifactId = artifactIdentity?.artifactId
+  const synctexFingerprint = artifactIdentity?.fingerprint
+  const firstPaintCallbackRef = useRef(onFirstPaint)
+  firstPaintCallbackRef.current = onFirstPaint
   const [zoom, setZoom] = useState(1)
   const [currentPage, setCurrentPage] = useState(1)
   const [renderError, setRenderError] = useState(false)
@@ -201,7 +217,7 @@ export default function PDFPreview({
   // react-pdf may finish loading a previous PDF after the props have already
   // advanced to a new compile.  Keep a render-time identity so those callbacks
   // cannot republish dimensions, errors, or overlays into the new document.
-  const pdfIdentityKey = `${jobId ?? ''}\u0000${pdfUrl ?? ''}\u0000${sourceFileName ?? ''}`
+  const pdfIdentityKey = `${jobId ?? ''}\u0000${pdfUrl ?? ''}\u0000${sourceFileName ?? ''}\u0000${synctexArtifactId ?? ''}\u0000${synctexFingerprint ?? ''}`
   const pdfIdentityRef = useRef<{ key: string; generation: number; jobId: string | null; pdfUrl: string | null; sourceFileName?: string } | null>(null)
   if (pdfIdentityRef.current?.key !== pdfIdentityKey) {
     pdfIdentityRef.current = {
@@ -380,14 +396,17 @@ export default function PDFPreview({
     setRenderError(false)
     synctexDataRef.current = null
     synctexTextRef.current = null
-    if (!jobId) {
+    if (!synctexJobId) {
       guard.reset()
       return
     }
 
-    const token = guard.begin(jobId)
+    const token = guard.begin(`${synctexJobId}:${synctexArtifactId ?? 'legacy'}:${synctexFingerprint ?? ''}`)
     const controller = new AbortController()
-    apiClient.downloadSynctex(jobId, controller.signal)
+    const request = synctexArtifactId
+      ? apiClient.downloadArtifactSynctex(synctexJobId, synctexArtifactId, synctexFingerprint, controller.signal)
+      : apiClient.downloadSynctex(synctexJobId, controller.signal)
+    request
       .then((text) => {
         if (!guard.isCurrent(token) || !text) return
         parseCurrentSynctex(text)
@@ -400,7 +419,7 @@ export default function PDFPreview({
       controller.abort()
       guard.invalidate(token)
     }
-  }, [jobId, pdfUrl, sourceFileName, parseCurrentSynctex])
+  }, [jobId, pdfUrl, sourceFileName, parseCurrentSynctex, synctexJobId, synctexArtifactId, synctexFingerprint])
 
   // Forward sync: source line → scroll PDF to the matching page
   useEffect(() => {
@@ -623,7 +642,7 @@ export default function PDFPreview({
         </div>
 
         {/* SyncTeX indicator */}
-        {synctexReady && !isLoading && (
+        {synctexReady && onSyncToSource && !isLoading && (
           <div
             className={`flex items-center gap-1 text-[10px] transition ${
               syncHint ? 'text-warn' : 'text-fg-3'
@@ -694,6 +713,7 @@ export default function PDFPreview({
         </div>
       </div>
 
+      {revisionLabel && <p role="status" className="border-b border-line bg-surface-2 px-3 py-2 text-xs text-fg-2">{revisionLabel}</p>}
       {isLoading && (
         <div role="status" className="flex shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5 text-[11px] text-fg-3">
           <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-accent" />
@@ -803,11 +823,22 @@ export default function PDFPreview({
                           if (firstPaintRef.current !== measurement) return
                           trackWebVital({ id: 'pdf-render', name: 'PDF_RENDER_PAINT', value: performance.now() - measurement.started },
                             window.location.pathname === '/try' ? '/try' : '/workspace')
+                          firstPaintCallbackRef.current?.()
                         })
                       })
                     }}
                   />
                 </div>
+                {semanticGeometry && onSemanticSelect && semanticGeometry.boxes.filter((box) => box.page === pageNum).map((box, index) => {
+                  const dimensions = semanticGeometry.pages.find((page) => page.page === pageNum)
+                  if (!dimensions || dimensions.rotation !== 0) return null
+                  const scale = pageWidth / dimensions.width
+                  return <button key={`${box.node_id}:${index}`} type="button"
+                    aria-label={`Edit resume field: ${box.text}`} title={`Edit: ${box.text}`}
+                    onClick={(event) => { event.stopPropagation(); onSemanticSelect(box.node_id) }}
+                    className="absolute z-10 rounded border border-transparent bg-transparent transition hover:border-accent hover:bg-accent/10 focus:border-accent focus:bg-accent/10 focus:outline-none"
+                    style={{ left: box.x * scale, top: box.y * scale, width: box.width * scale, height: box.height * scale }} />
+                })}
                 {showHeatmap && (
                   <HeatmapCanvas
                     pageIndex={pageNum - 1}
