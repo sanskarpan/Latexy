@@ -25,6 +25,7 @@ import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import { insertProjectLatex } from '@/lib/github-projects-latex'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
 
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
 const PDFPreview = dynamic(() => import('@/components/PDFPreview'))
@@ -96,6 +97,12 @@ export default function TryPage() {
   const [persistState, setPersistState] = useState<'saved' | 'pending'>('saved')
   const [sourceCopied, setSourceCopied] = useState(false)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
+  const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
+  const [syncFromRequestId, setSyncFromRequestId] = useState(0)
+  const [sourceSyncLine, setSourceSyncLine] = useState<number | null>(null)
+  const [sourceSyncRequestId, setSourceSyncRequestId] = useState(0)
+  const [pdfSelection, setPdfSelection] = useState<PdfSelectionLocation | null>(null)
+  const [pdfSyncReady, setPdfSyncReady] = useState(false)
   const rehydratedRef = useRef(false)
   // Baseline the editor is considered "clean" against (demo, restored draft, or last compiled)
   const cleanBaselineRef = useRef(DEMO_RESUME_TEMPLATE)
@@ -329,7 +336,36 @@ export default function TryPage() {
 
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
+  const handleSyncToSource = useCallback((line: number) => {
+    if (!Number.isInteger(line) || line < 1) return
+    setSyncFromLine(line)
+    setSyncFromRequestId((value) => value + 1)
+    if (!isDesktop) editorRef.current?.highlightLine(line)
+  }, [isDesktop])
+
+  const handleSourceToPdf = useCallback(() => {
+    if (cursorLine === null || cursorLine < 1 || !pdfSyncReady) return
+    setSourceSyncLine(cursorLine)
+    setSourceSyncRequestId((value) => value + 1)
+  }, [cursorLine, pdfSyncReady])
+
+  const handlePdfToSource = useCallback(() => {
+    const line = pdfSelection?.line
+    if (!line || line < 1) return
+    handleSyncToSource(line)
+  }, [handleSyncToSource, pdfSelection])
+
+  useEffect(() => {
+    setPdfSelection(null)
+    setPdfSyncReady(false)
+    setSourceSyncLine(null)
+    setSyncFromLine(null)
+    setSyncFromRequestId((value) => value + 1)
+    setSourceSyncRequestId((value) => value + 1)
+  }, [resolvedSession?.user?.id, activeJobId, stream.pdfJobId])
+
   const runCompile = async (mode: 'compile' | 'combined') => {
+    if (isProcessing || isSubmitting) return
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
     if (trialBlocked) { notifyTrialBlocked(); return }
@@ -357,6 +393,7 @@ export default function TryPage() {
               device_fingerprint: trialStatus.fingerprint,
             })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
+      if (mode === 'compile') editorRef.current?.markAutoCompileCompiled?.(currentContent)
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
       toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
@@ -408,6 +445,7 @@ export default function TryPage() {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      editorRef.current?.markAutoCompileCompiled?.(content)
       autoCompileTriggeredRef.current = true
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
@@ -972,7 +1010,17 @@ export default function TryPage() {
           onCompile={() => runCompile('compile')}
           onSave={persistNow}
           onCursorChange={setCursorLine}
-          onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+          syncLine={syncFromLine}
+          syncRequestId={syncFromRequestId}
+          onSyncToPdf={(line) => {
+            setCursorLine(line)
+            setSourceSyncLine(line)
+            setSourceSyncRequestId((value) => value + 1)
+          }}
+          onAutoCompile={handleAutoCompile}
+          autoCompileEnabled={autoCompile}
+          autoCompileBusy={isProcessing || isSubmitting}
+          autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try`}
           atsScore={quickATSScore}
           atsScoreLoading={quickATSLoading}
           onATSBadgeClick={() => openTool('ats')}
@@ -1040,9 +1088,12 @@ export default function TryPage() {
           onDownload={handleDownload}
           jobId={stream.pdfJobId}
           latexContent={latexContent}
-          syncFromLine={cursorLine}
-          onSyncToSource={(line) => { editorRef.current?.highlightLine(line); if (!isDesktop) setMobilePane('editor') }}
-          onJumpToLine={(line) => { editorRef.current?.highlightLine(line); if (!isDesktop) setMobilePane('editor') }}
+          onPdfSelectionChange={setPdfSelection}
+          onSyncReadyChange={setPdfSyncReady}
+          syncFromLine={sourceSyncLine}
+          syncFromRequestId={sourceSyncRequestId}
+          onSyncToSource={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
+          onJumpToLine={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
         />
       </div>
 
@@ -1241,21 +1292,30 @@ export default function TryPage() {
 
           {/* splitter (lg+) */}
           {pdfOpen && (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize editor and preview panes"
-              aria-valuenow={Math.round(split)}
-              aria-valuemin={28}
-              aria-valuemax={72}
-              tabIndex={0}
-              onMouseDown={() => { draggingRef.current = true; document.body.style.cursor = 'col-resize' }}
-              onDoubleClick={() => setSplit(50)}
-              onKeyDown={handleSplitKey}
-              title="Drag to resize · double-click to reset · arrow keys to nudge"
-              className="group hidden w-2 flex-shrink-0 cursor-col-resize items-center justify-center bg-transparent focus:outline-none lg:flex"
-            >
-              <div className="h-full w-px bg-line transition-colors group-hover:bg-accent group-focus-visible:w-[3px] group-focus-visible:bg-accent" />
+            <div className="relative hidden w-2 flex-shrink-0 lg:flex">
+              <SourcePdfDivider
+                sourceLine={cursorLine}
+                pdfSelection={pdfSelection}
+                pdfReady={pdfSyncReady}
+                onSourceToPdf={handleSourceToPdf}
+                onPdfToSource={handlePdfToSource}
+              />
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize editor and preview panes"
+                aria-valuenow={Math.round(split)}
+                aria-valuemin={28}
+                aria-valuemax={72}
+                tabIndex={0}
+                onMouseDown={() => { draggingRef.current = true; document.body.style.cursor = 'col-resize' }}
+                onDoubleClick={() => setSplit(50)}
+                onKeyDown={handleSplitKey}
+                title="Drag to resize · double-click to reset · arrow keys to nudge"
+                className="group flex h-full w-full cursor-col-resize items-center justify-center bg-transparent focus:outline-none"
+              >
+                <div className="h-full w-px bg-line transition-colors group-hover:bg-accent group-focus-visible:w-[3px] group-focus-visible:bg-accent" />
+              </div>
             </div>
           )}
 
