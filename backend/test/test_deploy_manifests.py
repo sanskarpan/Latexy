@@ -129,6 +129,9 @@ def test_ci_lock_freshness_starts_from_both_committed_resolutions():
     ci = _read(".github/workflows/ci.yml")
     assert 'cp requirements.lock "$lock_tmp/requirements.lock"' in ci
     assert 'cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"' in ci
+    assert ci.count("uv pip compile --universal --python-version 3.12 --generate-hashes") == 4
+    assert "uv pip compile --python-version 3.12 --generate-hashes requirements.txt" not in ci
+    assert "uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt" not in ci
 
 
 def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency():
@@ -165,7 +168,7 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
     ci = _read(".github/workflows/ci.yml")
     assert "uv pip install -r requirements-dev.txt" not in ci
     assert ci.count("uv pip sync --require-hashes --verify-hashes requirements-dev.lock") == 4
-    assert "uv pip compile --python-version 3.12 --generate-hashes" in ci
+    assert "uv pip compile --universal --python-version 3.12 --generate-hashes" in ci
     assert "--custom-compile-command" in ci
     assert "diff -u <(sed '/^[[:space:]]*#/d' requirements.lock)" in ci
     assert "diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock)" in ci
