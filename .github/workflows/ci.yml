@@ -139,15 +139,15 @@ jobs:
           # today's latest registry versions instead of checking this lock.
           cp requirements.lock "$lock_tmp/requirements.lock"
           cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"
-          uv pip compile --python-version 3.12 --generate-hashes \
-            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
+          uv pip compile --universal --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --universal --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
             requirements.txt -o "$lock_tmp/requirements.lock"
-          uv pip compile --python-version 3.12 --generate-hashes \
-            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
+          uv pip compile --universal --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
             requirements-dev.txt -o "$lock_tmp/requirements-dev.lock"
-          # Resolver provenance comments can differ by host (for example,
-          # SQLAlchemy's platform-specific greenlet edge). Compare all actual
-          # lock data, including pins, markers and hashes, not those comments.
+          # A universal resolution retains platform markers and covers Windows,
+          # macOS, and Linux from the same resolved lock data. Compare pins,
+          # markers, and hashes (not resolver provenance comments).
           diff -u <(sed '/^[[:space:]]*#/d' requirements.lock) \
             <(sed '/^[[:space:]]*#/d' "$lock_tmp/requirements.lock")
           diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock) \
