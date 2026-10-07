@@ -11,7 +11,7 @@
  */
 
 import { createAuthClient } from 'better-auth/react'
-import { twoFactorClient } from 'better-auth/client/plugins'
+import { genericOAuthClient, twoFactorClient } from 'better-auth/client/plugins'
 import { passkeyClient } from '@better-auth/passkey/client'
 import { useSyncExternalStore } from 'react'
 
@@ -21,6 +21,7 @@ export const authClient = createAuthClient({
       ? window.location.origin
       : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5180',
   plugins: [
+    genericOAuthClient(),
     twoFactorClient({ twoFactorPage: '/two-factor' }),
     passkeyClient(),
   ],
