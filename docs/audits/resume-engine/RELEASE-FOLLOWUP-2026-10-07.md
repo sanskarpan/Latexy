@@ -46,7 +46,10 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   admission interval in the draft scheduler. Explicitly saved field/structure
   and review decisions remain prompt but share the single-running-preview
   fence and backend quotas. Scheduler and existing auto-compile tests: 21 passed.
-- [ ] Fix and measure renderer module-load serialization after artifact arrival.
+- [x] Preload and share the browser-only renderer promise before artifacts arrive;
+  retry rejected chunk loads. Actual production Chromium test passed and proved
+  the PDF.js bundle loaded before preview admission. This proves ordering, not a
+  measured speedup or an end-to-end latency target.
 - [ ] Reproduce the previously observed 20–30 second pre-delivery delay with
   current isolated services, separating admission, queue, worker, storage and
   browser paint. Old contended samples are not current performance proof.
@@ -64,7 +67,12 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   host-dependent renderer selection and an undeclared `pdftotext` test dependency
   were investigated and repaired without dropping security assertions. The five
   renderer fixture files independently passed all 57 cases.
-- A fresh full run at `a67647b9` / backend tree `76e2953b` is pending. An earlier
+- A fresh full run with backend tree `76e2953b` produced 4,735 passed, three failed,
+  13 skipped and one existing deprecation warning in 1,077 seconds. The streaming
+  response, incremental semantic patch and pre-header provider watchdog checks
+  all passed a serial rerun in 17 seconds without changing assertions/deadlines.
+  The contended full-suite failure is not waived or reported as a green suite.
+  An earlier
   rerun used the wrong Redis environment variable names and was interrupted;
   only the rerun with `TEST_REDIS_URL` / `TEST_REDIS_CACHE_URL` pointing at the
   isolated QA Redis instance is eligible for acceptance.
@@ -73,6 +81,38 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   template compile acceptance still requires fresh protected CI.
 - Native macOS does not certify Linux Lua confinement or Windows file-system
   guards. Real object-storage and browser acceptance remain separate gates.
+- Frontend tree `0a8340cf` passed 1,093 unit tests, typecheck, full lint, a fresh
+  production build and one production-bundle Chromium field/preview contract.
+  This is not complete cross-browser or production semantic-edit acceptance.
+- New Linux QA image build was stopped before exhausting this Mac's disk
+  (three GiB free during the attempt); Homebrew Poppler installation also failed
+  in Homebrew's Ruby JSON initialization. Existing unrelated images/worktrees
+  were preserved. An exact kernel-only probe in the existing ARM64 TeX image
+  found Landlock syscall 444 unavailable (`ENOSYS`) under unchanged Docker
+  protections, so no Linux confinement denial certificate was established.
+
+## Modal default-renderer blockers
+
+New managed resumes, template uses and PDF adaptations persist LuaLaTeX by
+default. Its Modal capability remains closed until the intended pinned image
+and assets pass actual multilingual, isolation and default-flow acceptance.
+
+- The first operator attempt lacked the optional Modal SDK in the backend venv;
+  it did not create a VM. The installed CLI environment has pinned SDK 1.5.4.
+- Actual bounded cached-image probing retained the CJK error: the harness reused
+  Hindi's `resume.aux` in an unrelated Japanese fixture and accepted a stale
+  `resume.pdf` presence. Per-case job names now isolate outputs, with six offline
+  regression cases passing; no security probes were removed.
+- A tighter actual Python 3.12 / Modal 1.5.4 / PDFMiner 20260107 probe observed no
+  renderer fingerprint in cached image `im-1fho7eMXjj9Z60ziS7Kf6J`. Latin and all
+  three hostile probes passed. Hindi compiled with exit zero but extracted as
+  `\ufffdहंदी`, not `हिंदी`; bundled pypdf independently corroborated that result.
+  Its rendered page looks correct, showing why visual/PDF-presence checks alone
+  do not certify text fidelity. The run stopped at this failure; CJK was not
+  recertified by this tightened pass. No production safety gate was opened.
+
+Raw diagnostic logs and fabricated PDF scratch files remain local, not committed.
+Full-run log SHA-256: `cac560cdfe7a363b74322631b7c75472facbf5b30c3e0190a77cf6559dbf40c9`.
 
 The one-second fresh PDF and 500-ms cached-paint targets remain uncertified.
 Broad Modal Lua capability stays closed. No paid model test, live billing charge,
