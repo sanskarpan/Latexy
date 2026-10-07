@@ -5,6 +5,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
+from pdfminer.high_level import extract_text
 
 from app.services.latex_service import LATEX_SANDBOX_FLAGS, engine_env, find_recorder_read_escape
 from app.services.render_engine.auxiliary import AuxiliaryWorkspace
@@ -53,7 +54,7 @@ def test_real_tex_reference_and_classic_bibliography_converge(tmp_path, bibliogr
         transcript=transcript, is_cancelled=lambda: False,
         publisher=lambda job, kind, payload: events.append(payload), container_name=None)
     assert pages == 1
-    extracted = subprocess.check_output(["pdftotext", str(tmp_path / "resume.pdf"), "-"], timeout=3).decode()
+    extracted = extract_text(str(tmp_path / "resume.pdf"))
     assert "Reference: 1." in extracted
     if bibliography:
         assert "Verified Title" in extracted or "Verified title" in extracted
