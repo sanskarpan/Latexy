@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -104,6 +105,48 @@ def configure_signed_test_webhooks(monkeypatch: pytest.MonkeyPatch) -> bytes:
     monkeypatch.setattr(settings, "DODO_TEST_BUSINESS_ID", "biz_test")
     monkeypatch.setattr(settings, "DODO_TEST_PRODUCT_PRO_MONTHLY", "p_test_pro")
     return secret
+
+
+@pytest.mark.asyncio
+async def test_webhook_failure_log_does_not_include_untrusted_event_type(
+    configure_signed_test_webhooks: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event_type = "payment.succeeded\r\nFORGED: admin authorized refund"
+    payload = json.dumps({"business_id": "biz_test", "type": event_type, "data": {}}).encode()
+
+    class FakeSession:
+        event: Any = None
+
+        async def scalar(self, *_args: Any) -> Any:
+            return self.event
+
+        def add(self, event: Any) -> None:
+            self.event = event
+
+        async def commit(self) -> None:
+            pass
+
+        async def rollback(self) -> None:
+            pass
+
+    async def fail_processing(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise ValueError("synthetic processing failure")
+
+    monkeypatch.setattr(PaymentService, "_process_webhook_event", fail_processing)
+
+    with caplog.at_level(logging.ERROR, logger="app.services.payment_service"):
+        result = await PaymentService().handle_webhook(
+            FakeSession(), payload,
+            _signed_headers(payload, configure_signed_test_webhooks, f"evt_log_{uuid.uuid4().hex}"),
+        )
+
+    assert result == {"success": False, "retryable": True, "error": "Webhook processing failed"}
+    assert "Dodo webhook processing failed" in caplog.text
+    assert "FORGED" not in caplog.text
+    assert "event_type" not in caplog.records[-1].__dict__
+    assert caplog.records[-1].error_type == "ValueError"
 
 
 @pytest.mark.asyncio
