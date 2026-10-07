@@ -172,8 +172,19 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
   output replay. Key rotation intentionally changes the private context ID.
   The six focused helper/private-context/ledger/checkpoint/fairness suites
   passed all 116 cases on real isolated PostgreSQL/Redis, with Ruff and diff
-  checks passing. Fresh CodeQL and a full run at this follow-up are pending;
-  neither finding is claimed cleared based only on the API change.
+  checks passing. A frozen full run at `df06c98c`, backend tree `8b51d0de`,
+  then passed **4,766 tests with 13 skips**, zero failures/errors and one
+  existing warning in 396.06 seconds. Infrastructure checks remained enabled;
+  no production credentials or provider calls were used.
+- Fresh CodeQL run `37667571215` at `df06c98c` still reports two high findings:
+  generic `stage_fingerprint` reached through the durable ledger's admission
+  context, and the test-only previous stdlib HMAC equivalence expression.
+  SARIF confirms these exact paths. The production credential helper itself
+  is no longer annotated, but this does **not** mean security acceptance is
+  complete. Review private durable input identity separately from public output
+  checksums; do not change all checksums, rename tainted variables, suppress
+  findings or claim a green scan. The test fixture is synthetic, not an exposed
+  password verifier. Remaining findings are handed back for focused review.
 - Quota outage logs now omit owner identifiers and preserve the existing
   unlimited-plan fail-open versus limited-plan fail-closed policy. All 40 quota
   tests passed, including two new privacy/injection regressions.
@@ -191,6 +202,10 @@ Raw diagnostic logs and fabricated PDF scratch files remain local, not committed
 Full-run log SHA-256: `cac560cdfe7a363b74322631b7c75472facbf5b30c3e0190a77cf6559dbf40c9`.
 Successful frozen follow-up full-run log SHA-256:
 `8306f03604470889572e058b5425948c4fd69c280d34747f82445ed73742f96b`.
+Private-context follow-up full-run log SHA-256:
+`8851d290051a5ef82ba94f6884c0b650c5fb4c32e9c1e3d083cf99c07c4418d3`.
+JUnit SHA-256:
+`9dfead5be4632c6bab2b35bc202127b6d8b75d0bb2837f88b1aeb3bb0e57467b`.
 
 The one-second fresh PDF and 500-ms cached-paint targets remain uncertified.
 Broad Modal Lua capability stays closed. No paid model test, live billing charge,
