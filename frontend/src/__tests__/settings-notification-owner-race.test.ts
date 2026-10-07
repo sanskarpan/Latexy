@@ -37,6 +37,12 @@ function findToggle(root: VNode): VNode {
   return match
 }
 
+function findButton(root: VNode, label: string): VNode {
+  const match = walk(root, (node) => node.type === 'button' && textContent(node) === label)
+  if (!match) throw new Error(`${label} button not found`)
+  return match
+}
+
 function textContent(root: unknown): string {
   if (typeof root === 'string' || typeof root === 'number') return String(root)
   if (Array.isArray(root)) return root.map(textContent).join('')
@@ -70,6 +76,7 @@ type Harness = {
   getCalls: Array<{ owner: string; context?: AccountPreferenceRequestContext }>
   putCalls: Array<{ owner: string; prefs: NotificationPrefs; context?: AccountPreferenceRequestContext }>
   deferNextPut: (gate: Deferred<NotificationPrefs>) => void
+  failNextGet: (error: Error) => void
   stateUpdates: unknown[]
 }
 
@@ -85,11 +92,17 @@ async function loadHarness(initialACompleted = false): Promise<Harness> {
   const getCalls: Harness['getCalls'] = []
   const putCalls: Harness['putCalls'] = []
   let deferredPut: Deferred<NotificationPrefs> | null = null
+  let nextGetError: Error | null = null
 
   const apiClient = {
     getNotificationPrefs: vi.fn((context?: AccountPreferenceRequestContext) => {
       const owner = session.user.id
       getCalls.push({ owner, context })
+      if (nextGetError) {
+        const error = nextGetError
+        nextGetError = null
+        return Promise.reject(error)
+      }
       return Promise.resolve(prefs(owner === 'owner-a' ? initialACompleted : false))
     }),
     updateNotificationPrefs: vi.fn((next: NotificationPrefs, context?: AccountPreferenceRequestContext) => {
@@ -225,6 +238,7 @@ async function loadHarness(initialACompleted = false): Promise<Harness> {
     getCalls,
     putCalls,
     deferNextPut: (gate) => { deferredPut = gate },
+    failNextGet: (error) => { nextGetError = error },
     stateUpdates,
   }
 }
@@ -370,7 +384,7 @@ describe('Settings notification owner state', () => {
     expect(harness.stateUpdates).toHaveLength(updatesAtUnmount)
   })
 
-  it('retains a same-owner optimistic draft across token refresh and clears a recovered read error', async () => {
+  it('retains a same-owner optimistic draft across token refresh', async () => {
     const harness = await loadHarness(false)
     await renderSettled(harness)
     const gate = deferred<NotificationPrefs>()
@@ -387,5 +401,28 @@ describe('Settings notification owner state', () => {
     gate.resolve(prefs(true))
     await pending
     expect(findToggle(harness.render()).props['aria-checked']).toBe(true)
+  })
+
+  it('shows a same-owner read failure, then clears it after retry succeeds', async () => {
+    const harness = await loadHarness(true)
+    const initiallyLoaded = await renderSettled(harness)
+    expect(findToggle(initiallyLoaded).props['aria-checked']).toBe(true)
+
+    harness.failNextGet(new Error('Synthetic preference read failure'))
+    harness.setSession({ user: { id: 'owner-a' }, session: { token: 'token-a-refreshed' } })
+    harness.render()
+    harness.runEffects()
+    const failedRefresh = await renderSettled(harness)
+    expect(hasExactText(failedRefresh, 'Failed to load preferences')).toBe(true)
+    expect(textContent(findButton(failedRefresh, 'Retry notification preferences'))).toBe('Retry notification preferences')
+    expect(findToggle(failedRefresh).props['aria-checked']).toBe(true)
+
+    findButton(failedRefresh, 'Retry notification preferences').props.onClick()
+    harness.render()
+    harness.runEffects()
+    const recovered = await renderSettled(harness)
+    expect(hasExactText(recovered, 'Failed to load preferences')).toBe(false)
+    expect(textContent(recovered)).not.toContain('Retry notification preferences')
+    expect(findToggle(recovered).props['aria-checked']).toBe(true)
   })
 })
