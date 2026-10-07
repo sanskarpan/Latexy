@@ -70,6 +70,7 @@ export default function GlobalHeader() {
   // design-tokens.css can't reach JS/WAAPI-driven transforms).
   const reduceMotion = useReducedMotion()
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileRef = useRef<HTMLDivElement>(null)
   const lastOfflinePdfOwnerRef = useRef<string | null>(null)
@@ -160,7 +161,10 @@ export default function GlobalHeader() {
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsMobileMenuOpen(false)
+      if (e.key === 'Escape') {
+        setIsMobileMenuOpen(false)
+        mobileTriggerRef.current?.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     const id = requestAnimationFrame(() => {
@@ -417,6 +421,7 @@ export default function GlobalHeader() {
           <ModeToggle />
           <LocaleSwitcher compact />
           <button
+            ref={mobileTriggerRef}
             className="rounded-[var(--radius-md)] border border-line px-3 py-1 font-ui text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
             onClick={() => setIsMobileMenuOpen((open) => !open)}
             aria-label={isMobileMenuOpen ? t('nav.closeNavigationMenu') : t('nav.openNavigationMenu')}
@@ -435,7 +440,7 @@ export default function GlobalHeader() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
             onKeyDown={handleMobileKeyDown}
-            className="border-t border-line bg-surface md:hidden"
+            className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line bg-surface md:hidden"
           >
             <div className="space-y-1 p-4">
               {activeNav.map((item) => {
@@ -488,6 +493,46 @@ export default function GlobalHeader() {
                     {t('nav.tryFree')}
                   </Link>
                 </div>
+              )}
+
+              {isAuthenticated && (
+                <section aria-label={t('nav.account')} className="mt-3 border-t border-line pt-3">
+                  <div className="px-4 pb-2">
+                    <p className="font-ui text-[10px] uppercase tracking-[0.2em] text-fg-3">{t('nav.account')}</p>
+                    <p className="mt-1 truncate px-0 font-ui text-sm font-semibold text-fg">{resolvedUser?.email || 'Unknown account'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    {flags.billing && (
+                      <Link href="/billing" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.billing')}</Link>
+                    )}
+                    <Link href="/developer" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.developerApi')}</Link>
+                    <Link href="/byok" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.aiProviders')}</Link>
+                    <Link href="/settings" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.settings')}</Link>
+                    {isAdmin && (
+                      <Link href="/admin" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.admin')}</Link>
+                    )}
+                    <Link href="/privacy" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.privacy')}</Link>
+                    <Link href="/terms" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.terms')}</Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false)
+                        void handleSignOut()
+                      }}
+                      disabled={isSigningOut}
+                      aria-busy={isSigningOut}
+                      className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-4 py-2.5 text-left font-ui text-sm text-err transition hover:bg-[color-mix(in_srgb,var(--err)_12%,transparent)] disabled:cursor-wait disabled:opacity-70"
+                    >
+                      {isSigningOut && (
+                        <span
+                          aria-hidden
+                          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-err/30 border-t-err motion-reduce:animate-none"
+                        />
+                      )}
+                      {isSigningOut ? t('nav.signingOut') : t('nav.signOut')}
+                    </button>
+                  </div>
+                </section>
               )}
             </div>
           </motion.div>
