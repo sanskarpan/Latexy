@@ -37,12 +37,23 @@ export function readOidcConfig(
     throw new Error('OIDC_DISCOVERY_URL must use HTTPS (except localhost development).')
   }
 
+  const issuer = env.OIDC_ISSUER?.trim()
+  if (issuer) {
+    const issuerUrl = new URL(issuer)
+    const localIssuer =
+      issuerUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(issuerUrl.hostname)
+    if (issuerUrl.protocol !== 'https:' && !localIssuer) {
+      throw new Error('OIDC_ISSUER must use HTTPS (except localhost development).')
+    }
+  }
+
   return {
     provider: {
       providerId: providerId!,
       discoveryUrl: discovery.href,
       clientId: clientId!,
       clientSecret: clientSecret!,
+      issuer: issuer || undefined,
       scopes: ['openid', 'profile', 'email'],
       pkce: true,
     },
