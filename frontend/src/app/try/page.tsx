@@ -798,7 +798,7 @@ export default function TryPage() {
       patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }] })
     if (latexContent !== sourceAtRenderRef.current) throw new Error('Stale field')
     setLatexContent(response.latex_content); setEngineDocument(response.document)
-    queuePreview(response.latex_content, actionStarted)
+    queuePreview(response.latex_content, actionStarted, true)
   }
   const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
   const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
@@ -916,7 +916,7 @@ export default function TryPage() {
                   Discard
                 </button>
                 <button
-                  onClick={() => { const candidate = stagedOptimization; if (applyStagedOptimization() && candidate) queuePreview(candidate) }}
+                  onClick={() => { const candidate = stagedOptimization; if (applyStagedOptimization() && candidate) queuePreview(candidate, undefined, true) }}
                   className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   Apply
