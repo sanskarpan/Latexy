@@ -17,7 +17,7 @@ server compares the successful payment amount, in the currency's smallest
 unit, against its local quote before it grants access. Core plans include tax,
 so configure `price.tax_inclusive=true` and match the gross amount. A plan with
 `tax_inclusive=false` instead matches the amount before tax. This choice is
-stored on each intent by revision `0060`, so later configuration changes cannot
+stored on each intent by revision `0066`, so later configuration changes cannot
 alter the original quote. Configure every plan you
 intend to offer:
 
@@ -72,7 +72,7 @@ in `billing_webhook_events` and replay after correcting the cause.
 
 ## Migration and historical records
 
-Alembic revision `0059` adds provider-neutral identifiers and webhook/refund
+Alembic revision `0065` adds provider-neutral identifiers and webhook/refund
 tables. It copies existing Razorpay IDs into the new columns and labels those
 rows `provider='razorpay'`; the legacy database columns remain for historical
 records and rollback. New checkouts and webhooks use `provider='dodo'`. Run the
@@ -82,7 +82,7 @@ Do not delete historical Razorpay payment or subscription records. Revenue
 analytics includes paid Dodo payments and historical paid/captured payment
 statuses, subtracting successful partial and full refunds.
 
-Revision `0059` does not cancel Razorpay mandates or import them into Dodo. Before
+Revision `0065` does not cancel Razorpay mandates or import them into Dodo. Before
 switching production webhook traffic, reconcile every migrated subscription row
 with `provider='razorpay'` and a chargeable status in the Razorpay dashboard,
 then cancel or otherwise settle that mandate there. Until an old row is
@@ -103,7 +103,7 @@ pending or unknown.
 
 ## Coupons and access state
 
-Revision `0061` associates new coupon reservations with their checkout intent.
+Revision `0067` associates new coupon reservations with their checkout intent.
 Confirmed payments redeem reservations. Definitive checkout or subscription
 failure releases an unused reservation; an unknown provider result retains it
 for reconciliation. A failed individual charge can be retried without consuming
