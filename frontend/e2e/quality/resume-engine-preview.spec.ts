@@ -28,6 +28,22 @@ function project(source: string, text = original) {
 test('guest Resume mode edits plain fields and submits exactly one quota-governed preview', async ({ page }) => {
   test.setTimeout(240000)
   const errors: string[] = []; const submissions: Record<string, unknown>[] = []
+  const pdfRendererChunks: Array<{ url: string; transferMs: number }> = []
+  let rendererReadyAt = 0
+  let firstAdmissionAt = 0
+  const scriptRequestStarts = new WeakMap<object, number>()
+  page.on('request', request => {
+    if (request.resourceType() === 'script') scriptRequestStarts.set(request, Date.now())
+  })
+  page.on('response', async response => {
+    if (response.request().resourceType() !== 'script' || !response.ok()) return
+    const body = await response.text().catch(() => '')
+    // This marker is in the actual react-pdf/PDF.js browser bundle, not the
+    // lightweight ReactPdfClient export shim.
+    if (!body.includes('AnnotationLayer') || !body.includes('GlobalWorkerOptions')) return
+    const startedAt = scriptRequestStarts.get(response.request())
+    if (startedAt !== undefined) pdfRendererChunks.push({ url: new URL(response.url()).pathname, transferMs: Date.now() - startedAt })
+  })
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close({ code: 1000, reason: 'Contract test uses state recovery' }))
   page.on('pageerror', error => errors.push(error.message))
   await page.route('http://localhost:8030/**', route => route.fulfill({ json: {} }))
@@ -50,6 +66,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   })
   await page.route('**/jobs/submit', async route => {
     submissions.push(route.request().postDataJSON())
+    firstAdmissionAt = Date.now()
     await route.fulfill({ json: { success: true, job_id: 'guest-preview', message: 'Queued' } })
   })
   await page.route('**/jobs/guest-preview/state', route => route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
@@ -57,10 +74,13 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await expect(page.getByRole('heading', { name: 'Edit your resume' })).toBeVisible()
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Copy LaTeX source' })).toHaveCount(0)
+  await expect.poll(() => pdfRendererChunks.length, { timeout: 30000 }).toBeGreaterThan(0)
+  rendererReadyAt = Date.now()
   await page.getByRole('button', { name: new RegExp(original) }).click()
   await page.getByLabel('Experience · bullet').fill('Built internal design system used across 8 product surfaces')
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(1)
+  expect(firstAdmissionAt).toBeGreaterThanOrEqual(rendererReadyAt)
   expect(submissions[0].job_type).toBe('latex_compilation')
   expect(submissions[0].latex_content).toContain('across 8 product surfaces')
   expect(submissions[0].device_fingerprint).toBeTruthy()
