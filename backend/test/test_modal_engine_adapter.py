@@ -273,7 +273,7 @@ def test_batch_parser_rejects_malformed_or_truncated_frames(corruption):
         _decode_remote_batch(bytes(payload))
 
 
-@pytest.mark.parametrize("file_kind", ["symlink", "fifo"])
+@pytest.mark.parametrize("file_kind", ["symlink", "fifo", "directory"])
 def test_batch_remote_export_rejects_unsafe_files_without_following_or_blocking(
     tmp_path, file_kind
 ):
@@ -283,10 +283,12 @@ def test_batch_remote_export_rejects_unsafe_files_without_following_or_blocking(
         outside = tmp_path / "outside.pdf"
         outside.write_bytes(b"must not be read")
         (workspace / "resume.pdf").symlink_to(outside)
-    else:
+    elif file_kind == "fifo":
         os.mkfifo(workspace / "resume.pdf")
+    else:
+        (workspace / "resume.pdf").mkdir()
     script = _BATCH_EXPORT.replace(
-        "path='/workspace/'+name", f"path={str(workspace)!r}+'/'+name"
+        "path='/workspace/'+name", "path=os.environ['LATEXY_TEST_WORKSPACE']+'/'+name"
     )
 
     result = subprocess.run(
@@ -294,6 +296,7 @@ def test_batch_remote_export_rejects_unsafe_files_without_following_or_blocking(
         capture_output=True,
         check=False,
         timeout=2,
+        env={"LATEXY_TEST_WORKSPACE": str(workspace)},
     )
     assert result.returncode == 78
     if file_kind == "symlink":
@@ -311,7 +314,7 @@ def test_batch_remote_script_emits_bounded_raw_binary_frames(tmp_path):
     for name, data in files.items():
         (workspace / name).write_bytes(data)
     script = _BATCH_EXPORT.replace(
-        "path='/workspace/'+name", f"path={str(workspace)!r}+'/'+name"
+        "path='/workspace/'+name", "path=os.environ['LATEXY_TEST_WORKSPACE']+'/'+name"
     )
 
     result = subprocess.run(
@@ -319,6 +322,7 @@ def test_batch_remote_script_emits_bounded_raw_binary_frames(tmp_path):
         capture_output=True,
         check=False,
         timeout=2,
+        env={"LATEXY_TEST_WORKSPACE": str(workspace)},
     )
     assert result.returncode == 0
     records = _decode_remote_batch(result.stdout)
@@ -326,6 +330,28 @@ def test_batch_remote_script_emits_bounded_raw_binary_frames(tmp_path):
     assert records[".log"] == files["resume.log"]
     assert records["engine.stdout"] == files["engine.stdout"]
     assert records[".aux"] is None
+
+
+def test_batch_remote_export_rejects_oversized_sparse_file(tmp_path):
+    workspace = tmp_path / "remote-workspace"
+    workspace.mkdir()
+    with (workspace / "resume.pdf").open("wb") as oversized:
+        oversized.truncate(20 * 1024 * 1024 + 1)
+    script = _BATCH_EXPORT.replace(
+        "path='/workspace/'+name", "path=os.environ['LATEXY_TEST_WORKSPACE']+'/'+name"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script, "resume"],
+        capture_output=True,
+        check=False,
+        timeout=2,
+        env={"LATEXY_TEST_WORKSPACE": str(workspace)},
+    )
+    assert result.returncode == 78
+    # The exporter writes its fixed preamble before examining slots, but must
+    # not frame or emit any bytes from the oversized artifact.
+    assert result.stdout == _BATCH_EXPORT_MAGIC + bytes((len(_BATCH_EXPORT_SLOTS),))
 
 
 def test_batch_export_rejects_nonzero_exit_and_never_materializes_partial_frame(tmp_path):
@@ -369,6 +395,29 @@ def test_batch_export_uses_remaining_session_deadline_and_rejects_late_response(
     assert sandbox.calls[0][1]["timeout"] == 2
     assert sandbox.terminated
     assert not (tmp_path / "resume.pdf").exists()
+
+
+def test_batch_export_caps_command_timeout_when_session_budget_is_long(tmp_path, monkeypatch):
+    sandbox = _ExportSandbox(_batch_payload({}))
+    timer = SimpleNamespace(cancel=lambda: None)
+    session = ModalEngineSession(
+        sandbox, timer, time.monotonic() + 180, tmp_path, "kernel", "image", None
+    )
+    observed = {}
+
+    def read_batch(_sandbox, _basename, timeout):
+        observed["timeout"] = timeout
+        return {
+            name: None for name, _limit in _BATCH_EXPORT_SLOTS
+        }
+
+    monkeypatch.setattr(
+        "app.services.render_engine.modal_sandbox._read_remote_batch", read_batch
+    )
+    process = _adapter_process(tmp_path, sandbox, session=session)
+
+    assert process.wait() == 0
+    assert observed["timeout"] == 30
 
 
 def test_batch_export_cancellation_during_stream_prevents_local_writes(tmp_path):
