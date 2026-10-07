@@ -8,7 +8,7 @@ import json
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.params import Depends as DependsParam
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
@@ -19,6 +19,7 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
+from ..core.telemetry_metadata import validate_metadata
 from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, JobFinalization, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
@@ -1103,12 +1104,18 @@ class TrialStatusResponse(BaseModel):
 
 
 class TrackUsageRequest(BaseModel):
-    deviceFingerprint: str
-    sessionId: Optional[str] = None
-    action: str
-    resourceType: Optional[str] = None
-    userAgent: Optional[str] = None
+    deviceFingerprint: str = Field(..., min_length=1, max_length=255)
+    sessionId: Optional[str] = Field(default=None, max_length=255)
+    action: str = Field(..., min_length=1, max_length=100)
+    resourceType: Optional[str] = Field(default=None, max_length=50)
+    # Match the existing 500-character public-view telemetry cap.
+    userAgent: Optional[str] = Field(default=None, max_length=500)
     metadata: Optional[dict] = None
+
+    @field_validator("metadata")
+    @classmethod
+    def _validate_metadata(cls, value: Optional[dict]) -> Optional[dict]:
+        return validate_metadata(value)
 
 
 class TrackUsageResponse(BaseModel):
@@ -1122,8 +1129,8 @@ class TrackUsageResponse(BaseModel):
 
 @router.get("/public/trial-status", response_model=TrialStatusResponse)
 async def get_trial_status(
-    fingerprint: str,
     request: Request,
+    fingerprint: str = Query(..., min_length=1, max_length=255),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
