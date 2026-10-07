@@ -11,8 +11,15 @@ The canonical `CI` workflow has three intentionally different entry points:
 There is no feature-branch push workflow and no duplicate push-only feature
 check: manual dispatch uses this same workflow. New revisions cancel superseded
 CI runs for the same PR; main and manual runs are never cancelled this way.
-The workflow always runs the
-privacy guard. A dependency-free change classifier then selects component jobs:
+Non-cancelled runs fail closed when classification fails; cancelled runs stop
+their dependent jobs so superseded PR revisions release their runners promptly.
+Every non-cancelled run still executes the privacy guard; a dependency-free
+change classifier selects component jobs. Job-level conditions use `!cancelled()` rather than
+`always()` because GitHub documents that `always()` jobs can continue after a
+workflow cancellation; step-level cleanup/upload conditions may still use
+`always()` where retaining artifacts is intentional. See the official
+[workflow cancellation guidance](https://docs.github.com/en/actions/how-tos/troubleshoot-workflows)
+and [`jobs.<job_id>.if` status checks](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idif).
 
 | Scope | Jobs |
 | --- | --- |
@@ -48,3 +55,19 @@ Deployment workflows are separate from this policy and keep their own
 provenance, freshness, and environment guards. This document describes CI
 selection only; it does not authorize deployment or imply that a skipped
 component was tested.
+
+## Superseded-run cancellation regression (#1822)
+
+PR #1821 exposed this distinction: run `37513121390` continued its component
+jobs after being superseded by `37513425642`, delaying the newer revision.
+The repair preserves required job names, failure propagation, component scopes,
+main/manual concurrency and step-level cleanup. Local actionlint and 91 manifest
+tests pass, including non-cancelled classifier-failure and cancellation truth
+tables. Repair PR #1823's initial run `37517638728` passes all 14 jobs.
+An isolated manual run `37518518147` on the same repair head was normally
+cancelled after its component jobs started: every still-active component stopped
+with a cancelled conclusion, the full-stack dependent did not execute, and the
+workflow completed cancelled by 19:24:36 UTC after the 19:23:32 cancellation
+request (6 October 2026). No force-cancel or protection bypass was used.
+This verifies normal GitHub cancellation of active jobs, not just local
+expressions; automatic PR supersession still needs its own observed evidence.
