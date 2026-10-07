@@ -2,7 +2,6 @@
 
 import asyncio
 import copy
-import hashlib
 import json
 import os
 import threading
@@ -15,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 import redis
+from cryptography.fernet import Fernet
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -33,6 +33,7 @@ from app.database.models import (
 from app.services.resume_engine.acceptance import is_candidate_export_accepted
 from app.services.resume_engine.budgets import initial_budget
 from app.services.resume_engine.context import build_context
+from app.services.resume_engine.credential_scope import credential_scope
 from app.services.resume_engine.document import digest
 from app.services.resume_engine.ledger import DurableOptimizationLedger
 from app.services.resume_engine.semantic import apply_node_edits, project_managed_document
@@ -136,7 +137,7 @@ def admitted(request):
         effort="quick",
         provider="openai",
         model="gpt-4o-mini",
-        credential_scope=hashlib.sha256(b"semantic-test-key").hexdigest(),
+        credential_scope=credential_scope("semantic-test-key"),
         budget=initial_budget("quick"),
     )
     ledger.create_or_restore(**args)
@@ -155,7 +156,7 @@ def admitted(request):
     clear_current_owner(job_id)
 
 
-def optimize(admitted):
+def optimize(admitted, observed_calls=None):
     ledger, args, user_id, resume_id, job_id, client = admitted
     calls = []
     set_current_capability(job_id, ledger.owner, ledger.epoch)
@@ -163,6 +164,8 @@ def optimize(admitted):
     def create(**kwargs):
         data = json.loads(kwargs["messages"][1]["content"])["input"]
         calls.append(data)
+        if observed_calls is not None:
+            observed_calls.append(data)
         if "nodes" in data:
             node = data["nodes"][0]
             fact = next(f for f in data["facts"] if f["node_id"] == node["node_id"])
@@ -218,6 +221,16 @@ def optimize(admitted):
     second = run_semantic_optimization(**kwargs)
     assert first[0][0] == second[0][0] and len(calls) == 2  # generation + independent review, never repaid
     return first
+
+
+def test_encryption_key_rotation_fails_closed_for_pending_run(admitted, monkeypatch):
+    observed_calls = []
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+
+    with pytest.raises(StageCheckpointError, match="Durable optimization context changed"):
+        optimize(admitted, observed_calls)
+
+    assert observed_calls == []
 
 
 def test_actual_candidate_roundtrip_replay_then_explicit_acceptance(admitted):
