@@ -2,6 +2,7 @@
 
 import base64
 import io
+import os
 import sys
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -22,6 +23,58 @@ class _RemoteProcess:
 
     def wait(self):
         return self.returncode
+
+
+class _FakeTextProcess:
+    def __init__(self, output=b"", returncode=0):
+        read_fd, write_fd = os.pipe()
+        with os.fdopen(write_fd, "wb") as output_pipe:
+            output_pipe.write(output)
+        self.stdout = os.fdopen(read_fd, "rb")
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+class _FakeHangingTextProcess:
+    def __init__(self):
+        read_fd, self.write_fd = os.pipe()
+        self.stdout = os.fdopen(read_fd, "rb")
+        self.returncode = None
+        self.killed = False
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        os.close(self.write_fd)
+        self.returncode = -9
+
+
+def _install_fake_pdftotext(monkeypatch, output_by_name, *, returncode=0):
+    calls = []
+
+    def fake_popen(command, **kwargs):
+        calls.append((command, kwargs))
+        assert command[0] == "/fake/bin/pdftotext"
+        assert command[1:4] == ["-layout", "-enc", "UTF-8"]
+        assert command[-1] == "-"
+        return _FakeTextProcess(output_by_name.get(command[-2].split("/")[-1], b""), returncode)
+
+    monkeypatch.setattr(certification.shutil, "which", lambda name: "/fake/bin/pdftotext" if name == "pdftotext" else None)
+    monkeypatch.setattr(certification.subprocess, "Popen", fake_popen)
+    return calls
 
 
 class _FakeSandbox:
@@ -78,18 +131,12 @@ def _install_fake_operator_environment(monkeypatch, tmp_path, *, missing_pdf=Non
     fake_modal = SimpleNamespace(App=lambda _name: _FakeApp())
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
 
-    import pdfminer.high_level
-
     extracted_by_name = {
-        "resume.pdf": "Latin Bold",
-        "hindi.pdf": "हिंदी",
-        "cjk.pdf": "日本語",
+        "resume.pdf": b"Latin Bold",
+        "hindi.pdf": "हिंदी".encode("utf-8"),
+        "cjk.pdf": "日本語".encode("utf-8"),
     }
-    monkeypatch.setattr(
-        pdfminer.high_level,
-        "extract_text",
-        lambda pdf: extracted_by_name.get(pdf.name, ""),
-    )
+    poppler_calls = _install_fake_pdftotext(monkeypatch, extracted_by_name)
 
     constructed_basenames = []
 
@@ -117,11 +164,11 @@ def _install_fake_operator_environment(monkeypatch, tmp_path, *, missing_pdf=Non
     monkeypatch.setattr(certification, "create_modal_engine", create_engine)
     fake_script = tmp_path / "fake-repo" / "backend" / "scripts" / "certify_modal_vm_engine.py"
     monkeypatch.setattr(certification, "__file__", str(fake_script))
-    return sandbox, constructed_basenames
+    return sandbox, constructed_basenames, poppler_calls
 
 
 def test_main_uses_case_jobnames_and_certifies_extracted_text(monkeypatch, tmp_path, capsys):
-    sandbox, constructed = _install_fake_operator_environment(monkeypatch, tmp_path)
+    sandbox, constructed, poppler_calls = _install_fake_operator_environment(monkeypatch, tmp_path)
 
     certification.main()
 
@@ -130,14 +177,18 @@ def test_main_uses_case_jobnames_and_certifies_extracted_text(monkeypatch, tmp_p
     assert constructed == ["resume", "hindi", "cjk"]
     assert "/workspace/hindi.pdf" in sandbox.export_calls
     assert "/workspace/cjk.pdf" in sandbox.export_calls
-    assert '"asset_identity_verified": true' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert '"asset_fingerprint_discovered": true' in output
+    assert '"asset_identity_comparison": "not_configured"' in output
+    assert len(poppler_calls) == 3
+    assert all(args[0][1:4] == ["-layout", "-enc", "UTF-8"] for args in poppler_calls)
     assert sandbox.terminated
 
 
 def test_main_rejects_missing_case_pdf_instead_of_accepting_stale_resume_pdf(
     monkeypatch, tmp_path, capsys
 ):
-    sandbox, constructed = _install_fake_operator_environment(
+    sandbox, constructed, poppler_calls = _install_fake_operator_environment(
         monkeypatch, tmp_path, missing_pdf="cjk"
     )
 
@@ -155,13 +206,14 @@ def test_main_rejects_missing_case_pdf_instead_of_accepting_stale_resume_pdf(
     assert '"case": "cjk"' in output
     assert '"pdf": false' in output
     assert '"text_and_glyphs_checked": false' in output
+    assert len(poppler_calls) == 2
     assert sandbox.terminated
 
 
 def test_main_cannot_certify_valid_fixture_outputs_without_asset_identity(
     monkeypatch, tmp_path
 ):
-    sandbox, _ = _install_fake_operator_environment(monkeypatch, tmp_path, marker=b"not-a-fingerprint\n")
+    sandbox, _, _ = _install_fake_operator_environment(monkeypatch, tmp_path, marker=b"not-a-fingerprint\n")
 
     with pytest.raises(RuntimeError, match="immutable renderer asset identity is unavailable"):
         certification.main()
@@ -177,18 +229,63 @@ def test_main_cannot_certify_valid_fixture_outputs_without_asset_identity(
     [
         ("Missing character: There is no Devanagari glyph\n", "हिंदी"),
         ("! Undefined control sequence.\n", "हिंदी"),
+        ("clean compile log\n", "\ufffdहंदी"),
         ("clean compile log\n", "unrelated text"),
     ],
 )
 def test_verify_fixture_rejects_glyph_errors_and_text_mismatch(
     monkeypatch, tmp_path, log, extracted
 ):
-    import pdfminer.high_level
-
     pdf = tmp_path / "hindi.pdf"
     log_path = tmp_path / "hindi.log"
     pdf.write_bytes(b"nonempty synthetic PDF")
     log_path.write_text(log, encoding="utf-8")
-    monkeypatch.setattr(pdfminer.high_level, "extract_text", lambda _pdf: extracted)
+    calls = _install_fake_pdftotext(monkeypatch, {"hindi.pdf": extracted.encode("utf-8")})
 
     assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
+    if "Missing character" in log or log.startswith("!"):
+        assert calls == []
+
+
+def test_main_requires_pdftotext_before_constructing_modal_app(monkeypatch):
+    monkeypatch.setattr(certification.shutil, "which", lambda _name: None)
+    fake_modal = SimpleNamespace(App=lambda _name: pytest.fail("Modal app must not be created"))
+    monkeypatch.setitem(sys.modules, "modal", fake_modal)
+
+    with pytest.raises(RuntimeError, match=r"pdftotext \(Poppler\) is required"):
+        certification.main()
+
+
+def test_verify_fixture_rejects_nonzero_pdftotext_exit(monkeypatch, tmp_path):
+    pdf = tmp_path / "hindi.pdf"
+    log_path = tmp_path / "hindi.log"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    log_path.write_text("clean compile log\n", encoding="utf-8")
+    _install_fake_pdftotext(monkeypatch, {"hindi.pdf": "हिंदी".encode("utf-8")}, returncode=1)
+
+    assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
+
+
+def test_verify_fixture_bounds_pdftotext_output(monkeypatch, tmp_path):
+    pdf = tmp_path / "hindi.pdf"
+    log_path = tmp_path / "hindi.log"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    log_path.write_text("clean compile log\n", encoding="utf-8")
+    monkeypatch.setattr(certification, "MAX_FIXTURE_TEXT_BYTES", 3)
+    _install_fake_pdftotext(monkeypatch, {"hindi.pdf": "हिंदी".encode("utf-8")})
+
+    assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
+
+
+def test_verify_fixture_times_out_and_kills_pdftotext(monkeypatch, tmp_path):
+    pdf = tmp_path / "hindi.pdf"
+    log_path = tmp_path / "hindi.log"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    log_path.write_text("clean compile log\n", encoding="utf-8")
+    monkeypatch.setattr(certification.shutil, "which", lambda name: "/fake/bin/pdftotext" if name == "pdftotext" else None)
+    monkeypatch.setattr(certification, "PDFTOTEXT_TIMEOUT_SECONDS", 0.01)
+    process = _FakeHangingTextProcess()
+    monkeypatch.setattr(certification.subprocess, "Popen", lambda *_args, **_kwargs: process)
+
+    assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
+    assert process.killed
