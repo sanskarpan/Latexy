@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { CtrlSafeTextInput } from '../CtrlSafeTextInput.js'
 import { useOverlaySize } from '../../lib/overlay-size.js'
-import { useCtrlKeyGuard } from '../../lib/ctrl-key-guard.js'
 import { closeOverlay } from '../../stores/overlay.js'
 import { writeConfig } from '../../lib/config.js'
 import { addMessage } from '../../stores/messages.js'
@@ -51,10 +50,6 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
     return () => { alive = false }
   }, [archived, documentType])
 
-  // Ctrl+L clears the transcript underneath; without this its letter lands in
-  // this overlay's filter box instead.
-  useCtrlKeyGuard(setFilter)
-
   const filtered = filter
     ? resumes.filter(r => r.title.toLowerCase().includes(filter.toLowerCase()))
     : resumes
@@ -99,7 +94,7 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
       </Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
-        <TextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
+        <CtrlSafeTextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
       </Box>
       <Box marginTop={1} flexDirection="column">
         {loading && <Text color="yellow">Loading resumes…</Text>}
