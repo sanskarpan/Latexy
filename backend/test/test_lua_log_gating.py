@@ -6,6 +6,9 @@ from app.workers import orchestrator
 
 
 def test_lua_stdout_is_withheld_when_recorder_fails(tmp_path, monkeypatch):
+    # Keep descriptor selection deterministic on hosts with Docker CLI but no
+    # usable daemon; the selected backend is server configuration, not a probe.
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     settings = MagicMock(ALLOWED_LATEX_COMPILERS=["lualatex"], DEFAULT_LATEX_COMPILER="lualatex",
                          TEMP_DIR=str(tmp_path), COMPILE_TIMEOUT=10)
     monkeypatch.setattr(orchestrator, "settings", settings)
