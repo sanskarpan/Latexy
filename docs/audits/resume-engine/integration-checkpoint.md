@@ -2,6 +2,8 @@
 
 Work is isolated on `codex/resume-engine`. At the user's request, this snapshot is being committed and published as a draft PR. Further implementation, validation, deployment and merge are paused pending their approval.
 
+Draft PR: [#1833](https://github.com/sanskarpan/Latexy/pull/1833). Portable reproduction commands, regression fixtures, benchmark interpretation and next acceptance gates are recorded in [HANDOFF.md](HANDOFF.md). All 49 earlier full-suite failed node IDs are preserved in [backend-full-suite-post-rebase-summary.json](backend-full-suite-post-rebase-summary.json); final frozen-suite status remains pending.
+
 Implemented: immutable owner-bound PDF/SyncTeX/geometry artifacts; shared renderer/cache/pass policies; authorized exact-cache admission; revision-specific preview readiness; latest-only frontend scheduling; bounded semantic optimization and paid-stage recovery; evidence-bound acceptance; tenant capacity caps; persistent imported-field identity reconciliation; managed heading/reorder controls; preserved private original-PDF attachments and explicit deterministic template adaptation. Migrations 0060–0064 are included.
 
 Recorded verification before the final snapshot/rebase:
