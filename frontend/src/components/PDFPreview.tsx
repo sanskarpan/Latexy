@@ -10,16 +10,18 @@ import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 import { apiClient } from '@/lib/api-client'
 import { trackWebVital } from '@/lib/telemetry'
 import type { ArtifactGeometry } from '@/lib/resume-engine-types'
+import { loadPdfRenderer } from '@/lib/pdf-renderer-loader'
+import { usePreloadPdfRenderer } from '@/hooks/usePreloadPdfRenderer'
 
 // PDF.js 5 requires browser DOMMatrix at module evaluation time. Keep the
 // renderer behind a client-only boundary so Next can still prerender every page
 // that includes the preview.
 const Document = dynamic(
-  () => import('@/components/ReactPdfClient').then((module) => module.PdfDocument),
+  () => loadPdfRenderer().then((module) => module.PdfDocument),
   { ssr: false },
 )
 const Page = dynamic(
-  () => import('@/components/ReactPdfClient').then((module) => module.PdfPage),
+  () => loadPdfRenderer().then((module) => module.PdfPage),
   { ssr: false },
 )
 
@@ -148,6 +150,11 @@ export default function PDFPreview({
   revisionLabel,
   artifactIdentity,
 }: PDFPreviewProps) {
+  // Start the browser-only renderer while the user is editing/compiling. The
+  // same promise is consumed by Document and Page once a verified PDF arrives,
+  // moving chunk latency out of the artifact-to-first-paint critical path.
+  usePreloadPdfRenderer()
+
   const [numPages, setNumPages] = useState(0)
   const synctexJobId = artifactIdentity?.jobId ?? jobId
   const synctexArtifactId = artifactIdentity?.artifactId
