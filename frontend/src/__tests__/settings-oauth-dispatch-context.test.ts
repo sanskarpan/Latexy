@@ -6,6 +6,16 @@ async function settle() {
   for (let index = 0; index < 8; index += 1) await Promise.resolve()
 }
 
+function hasConnectingButton(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasConnectingButton)
+  if (!node || typeof node !== 'object' || !('props' in node)) return false
+  const vnode = node as VNode
+  const children = vnode.props.children
+  if (vnode.type === 'button' && Array.isArray(children)
+    && children.some((child) => child === 'Authorizing…' || child === 'Connecting…')) return true
+  return hasConnectingButton(children)
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.doUnmock('react')
@@ -25,21 +35,27 @@ afterEach(() => {
 })
 
 describe('GitHub OAuth completion captured account context', () => {
-  async function loadRealSettingsWithApiToken(apiToken: string | null) {
+  async function loadRealSettingsWithApiToken(apiToken: string | null, options: { sessionError?: Error; holdCompletion?: boolean } = {}) {
     vi.resetModules()
     let session = { user: { id: 'owner-b' }, session: { token: 'token-b' } }
     let queryActive = true
+    let ticketValue = 'ticket-b'
+    let sessionPending = false
+    let sessionError = options.sessionError ?? null
     let hookIndex = 0
     const refs: Array<{ current: unknown }> = []
     const states: unknown[] = []
     const effects: Array<() => void | (() => void)> = []
     const requests: Array<{ url: string; init: RequestInit }> = []
+    let releaseCompletion!: () => void
+    const completionGate = new Promise<void>((resolve) => { releaseCompletion = resolve })
 
     vi.stubGlobal('window', { opener: null, location: { origin: 'http://localhost:3000' } })
     vi.stubGlobal('confirm', () => true)
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input)
       requests.push({ url, init })
+      if (options.holdCompletion && url.endsWith('/github/complete')) await completionGate
       const body = url.endsWith('/github/complete')
         ? { success: true, message: 'ok' }
         : url.endsWith('/github/status')
@@ -88,7 +104,7 @@ describe('GitHub OAuth completion captured account context', () => {
     }))
     vi.doMock('next/navigation', () => ({
       useSearchParams: () => ({
-        get: (key: string) => queryActive && key === 'github' ? 'complete' : queryActive && key === 'ticket' ? 'ticket-b' : null,
+        get: (key: string) => queryActive && key === 'github' ? 'complete' : queryActive && key === 'ticket' ? ticketValue : null,
       }),
       useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
       usePathname: () => '/settings',
@@ -96,8 +112,8 @@ describe('GitHub OAuth completion captured account context', () => {
     vi.doMock('@/hooks/useRequireAuth', () => ({
       useRequireAuth: () => ({
         session,
-        isPending: false,
-        error: null,
+        isPending: sessionPending,
+        error: sessionError,
       }),
     }))
     vi.doMock('@/components/onboarding/OnboardingFlow', () => ({ useOnboarding: () => ({ resetOnboarding: vi.fn() }) }))
@@ -120,7 +136,7 @@ describe('GitHub OAuth completion captured account context', () => {
     const render = () => {
       hookIndex = 0
       effects.length = 0
-      ;(content.type as () => VNode)()
+      return (content.type as () => VNode)()
     }
     const runEffects = () => {
       while (effects.length) {
@@ -137,7 +153,10 @@ describe('GitHub OAuth completion captured account context', () => {
       render,
       runEffects,
       setSession: (next: typeof session) => { session = next },
+      setAuthState: (pending: boolean, error: Error | null = null) => { sessionPending = pending; sessionError = error },
       clearQuery: () => { queryActive = false },
+      setTicket: (ticket: string) => { ticketValue = ticket; queryActive = true },
+      releaseCompletion,
       cleanup: () => { while (cleanups.length) cleanups.pop()?.() },
     }
   }
@@ -199,5 +218,72 @@ describe('GitHub OAuth completion captured account context', () => {
     const completions = harness.requests.filter(({ url }) => url.endsWith('/github/complete'))
     expect(completions).toHaveLength(1)
     expect((completions[0].init.headers as Record<string, string>).Authorization).toBe('Bearer token-b')
+  })
+
+  it('does not start a callback or strand connecting UI on a retained-session error', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b', { sessionError: new Error('synthetic auth refresh error') })
+    expect(harness.requests.some(({ url }) => url.endsWith('/github/complete'))).toBe(false)
+    expect(hasConnectingButton(harness.render())).toBe(false)
+  })
+
+  it('clears obsolete connecting UI after same-owner token rotation', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b', { holdCompletion: true })
+    expect(hasConnectingButton(harness.render())).toBe(true)
+    harness.clearQuery()
+    harness.setSession({ user: { id: 'owner-b' }, session: { token: 'rotated-token-b' } })
+    harness.apiClient.setAuthToken('rotated-token-b')
+    harness.render()
+    harness.runEffects()
+    harness.releaseCompletion()
+    await settle()
+    expect(hasConnectingButton(harness.render())).toBe(false)
+  })
+
+  it('clears held callback UI when a retained session refresh fails', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b', { holdCompletion: true })
+    expect(hasConnectingButton(harness.render())).toBe(true)
+    harness.clearQuery()
+    harness.setAuthState(false, new Error('synthetic refresh failure'))
+    harness.render()
+    harness.runEffects()
+    harness.releaseCompletion()
+    await settle()
+    expect(hasConnectingButton(harness.render())).toBe(false)
+  })
+
+  it('does not reinterpret an already-started ticket as the replacement account', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b', { holdCompletion: true })
+    harness.setSession({ user: { id: 'owner-a' }, session: { token: 'token-a' } })
+    harness.apiClient.setAuthToken('token-a')
+    harness.render()
+    harness.runEffects()
+    await settle()
+    expect(harness.requests.filter(({ url }) => url.endsWith('/github/complete'))).toHaveLength(1)
+    harness.releaseCompletion()
+    await settle()
+  })
+
+  it('allows a genuinely new callback ticket for the replacement account', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b')
+    harness.setSession({ user: { id: 'owner-a' }, session: { token: 'token-a' } })
+    harness.apiClient.setAuthToken('token-a')
+    harness.setTicket('fresh-ticket-a')
+    harness.render()
+    harness.runEffects()
+    await settle()
+    const completions = harness.requests.filter(({ url }) => url.endsWith('/github/complete'))
+    expect(completions).toHaveLength(2)
+    expect((completions[1].init.headers as Record<string, string>).Authorization).toBe('Bearer token-a')
+    expect(completions[1].init.body).toBe(JSON.stringify({ ticket: 'fresh-ticket-a' }))
+  })
+
+  it('starts the preserved callback after the retained session error clears', async () => {
+    const harness = await loadRealSettingsWithApiToken('token-b', { sessionError: new Error('synthetic error') })
+    expect(harness.requests.some(({ url }) => url.endsWith('/github/complete'))).toBe(false)
+    harness.setAuthState(false)
+    harness.render()
+    harness.runEffects()
+    await settle()
+    expect(harness.requests.filter(({ url }) => url.endsWith('/github/complete'))).toHaveLength(1)
   })
 })
