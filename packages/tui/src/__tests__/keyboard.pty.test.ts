@@ -1,8 +1,9 @@
 /**
  * Keyboard behaviour, driven through a real pty against the built CLI.
  *
- * This is the only automated coverage of the input layer. `ink-testing-library@4`
- * does not deliver keystrokes to Ink 5 — a minimal `useInput` probe that appends
+ * The real pty suite covers CLI integration; `ctrl-key-guard-runtime.test.ts`
+ * covers direct Ink dispatch. `ink-testing-library@4` does not deliver keystrokes
+ * to Ink 5 — a minimal `useInput` probe that appends
  * every character it receives renders `[]` after two writes to its stdin — so
  * every keyboard fix was previously verified by hand, and three of them shipped
  * wrong before they were right (#1132).
@@ -86,6 +87,18 @@ function run(scenario: string): Result {
 
     it('does not append to text already typed', () => {
       expect(run('ctrl_l_text').prompt).toBe('hello')
+    }, 90_000)
+
+    it('does not corrupt a Ctrl+L inserted at the middle cursor', () => {
+      expect(run('ctrl_l_middle').prompt).toBe('abc')
+    }, 90_000)
+
+    it('keeps the middle cursor position for the next character', () => {
+      expect(run('ctrl_l_middle_then_x').prompt).toBe('abxc')
+    }, 90_000)
+
+    it('handles repeated Ctrl+L keypresses independently', () => {
+      expect(run('ctrl_l_repeated').prompt).toBe('')
     }, 90_000)
 
     it('does not eat a real trailing l, nor double it', () => {
