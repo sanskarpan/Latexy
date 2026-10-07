@@ -1,15 +1,15 @@
 """Store whether a subscription quote includes tax.
 
-Revision ID: 0060
-Revises: 0059
+Revision ID: 0066
+Revises: 0065
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0060"
-down_revision = "0059"
+revision = "0066"
+down_revision = "0065"
 branch_labels = None
 depends_on = None
 
