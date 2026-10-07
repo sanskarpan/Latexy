@@ -1,12 +1,12 @@
 """Literal aliases guide coverage without inventing experience or entailment."""
-from test.test_resume_semantic_engine import document
-
 import pytest
 
 from app.services.resume_engine.context import build_context
 from app.services.resume_engine.semantic_patches import validate_candidates
 from app.services.resume_engine.service import plan_groups
 from app.services.resume_engine.skills import skill_mention
+
+from .test_resume_semantic_engine import document
 
 
 def context(text, jd="PostgreSQL required"):
