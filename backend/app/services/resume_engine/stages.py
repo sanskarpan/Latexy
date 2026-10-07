@@ -6,6 +6,7 @@ import json
 import math
 
 from ...workers.job_lifecycle import write_owned_artifacts
+from .credential_scope import _private_stage_context_fingerprint
 
 
 class StageCheckpointError(RuntimeError):
@@ -14,6 +15,17 @@ class StageCheckpointError(RuntimeError):
 
 def stage_fingerprint(context: dict) -> str:
     return hashlib.sha256(json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def private_stage_context_fingerprint(context: dict) -> str:
+    """Key private admission context used to decide whether paid output may replay.
+
+    This protects low-entropy user text from offline matching against the stored
+    context identifier. It is deliberately separate from generic output hashes.
+    Rotating the server key changes the ID and causes pending work to fail closed.
+    """
+    serialized = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return _private_stage_context_fingerprint(serialized)
 
 
 def _validate_output(output) -> tuple:
