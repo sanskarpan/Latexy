@@ -62,6 +62,21 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   Docker renderer images. A new static regression failed before the repair;
   all 121 deployment/parity guards passed afterward. CI-only installation would
   not have fixed deployment images. Fresh image build/compile remains required.
+- [x] Replace ten serial artifact-export commands with one fixed, ordered binary
+  batch using the pinned Modal 1.5.4 SDK's `text=False` byte-stream contract.
+  Preserve no-follow/nonblocking regular-file checks, per-file limits, the
+  32.75-MiB aggregate raw ceiling and 66-byte framing cap. Malformed, truncated,
+  oversized and nonzero-exit batches fail before local artifact writes. Optional
+  missing outputs still skip; missing stdout still fails only on stream read.
+  Retain the 30-second command timeout cap within the absolute session budget,
+  cancellation checks and existing output-drain metric. Root review requested
+  and verified timeout/test-code corrections. The two adapter/certification
+  suites passed 48 cases; combined with deployment/parity guards, 169 pure/static
+  cases passed with Ruff and diff checks. Infrastructure checks were skipped
+  only for these pure/static fixtures, not for the full backend runs above.
+- [ ] Full backend/Linux CI and real Modal byte-stream/artifact acceptance after
+  this batch-export follow-up. The 4,766-case full run predates it. Fewer command
+  starts are source/test evidence, not a measured production latency improvement.
 - [ ] Reproduce the previously observed 20–30 second pre-delivery delay with
   current isolated services, separating admission, queue, worker, storage and
   browser paint. Old contended samples are not current performance proof.
