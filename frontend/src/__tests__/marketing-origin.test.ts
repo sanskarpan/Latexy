@@ -35,7 +35,9 @@ describe('marketing origin consistency', () => {
         const html = renderToStaticMarkup(createElement(LandingPage))
         const schema = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/)?.[1]
         expect(JSON.parse(schema || '{}').url).toBe(origin)
-        expect(sitemap().every(item => item.url.startsWith(origin))).toBe(true)
+        const sitemapHasOrigin = (url: string) => new URL(url).origin === origin
+        expect(sitemap().every(item => sitemapHasOrigin(item.url))).toBe(true)
+        expect(sitemapHasOrigin(`${origin}.attacker.invalid/sitemap.xml`)).toBe(false)
         expect(robots().sitemap).toBe(`${origin}/sitemap.xml`)
         const text = await llms().text()
         expect(text).toContain(`${origin}/try?mode=visual`)
