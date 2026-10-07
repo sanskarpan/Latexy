@@ -54,7 +54,8 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   current isolated services, separating admission, queue, worker, storage and
   browser paint. Old contended samples are not current performance proof.
 - [ ] Controlled fresh/cache distributions and production action-to-paint.
-- [ ] Resolve template-font and test-package CI failures without weakening guards.
+- [x] Resolve template-font and test-package CI failures without weakening guards;
+  fresh Linux template extraction and backend CI passed at `66a76a0c`.
 - [ ] Independent review, protected checks, production rollout and live QA.
 
 ## Current reproducibility checks
@@ -77,8 +78,10 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   only the rerun with `TEST_REDIS_URL` / `TEST_REDIS_CACHE_URL` pointing at the
   isolated QA Redis instance is eligible for acceptance.
 - Template CI now installs `fonts-texgyre`, matching the shipped EuropeCV face;
-  the complete 92-case deployment-manifest guard suite passes. Actual Linux
-  template compile acceptance still requires fresh protected CI.
+  the complete 92-case deployment-manifest guard suite passes. GitHub run
+  `37659795432` at `66a76a0c` subsequently passed the actual Linux template PDF
+  extraction contract and Backend Tests. Full-stack smoke failed in that run;
+  investigation and cross-browser results remain separate gates.
 - Native macOS does not certify Linux Lua confinement or Windows file-system
   guards. Real object-storage and browser acceptance remain separate gates.
 - Frontend tree `0a8340cf` passed 1,093 unit tests, typecheck, full lint, a fresh
@@ -107,9 +110,23 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
   renderer fingerprint in cached image `im-1fho7eMXjj9Z60ziS7Kf6J`. Latin and all
   three hostile probes passed. Hindi compiled with exit zero but extracted as
   `\ufffdहंदी`, not `हिंदी`; bundled pypdf independently corroborated that result.
-  Its rendered page looks correct, showing why visual/PDF-presence checks alone
-  do not certify text fidelity. The run stopped at this failure; CJK was not
-  recertified by this tightened pass. No production safety gate was opened.
+  The run stopped at this extraction check; CJK was not recertified by this
+  tightened pass. No production safety gate was opened.
+- Correction after independent PDF inspection: the Hindi PDF contains the
+  original characters in a marked-content `/ActualText` span. Its rendered
+  page is correct and actual Poppler 22.12.0 `pdftotext` extracts exactly
+  `हिंदी`. PDFMiner and pypdf do not use that span here; their agreement was
+  not independent proof of corrupted PDF generation. The certification must
+  use the production-primary Poppler parser, retaining exact Unicode and
+  missing-glyph checks. PDF.js text extraction also omitted the span in a
+  diagnostic; browser selection/search interoperability remains a separate
+  item to verify, not a demonstrated compiler defect.
+- The Poppler diagnostic used a small Debian QA image, no network during
+  inspection, a read-only fixture mount and unchanged Docker protections.
+  This is parser evidence, not a certified production renderer image or a
+  browser latency measurement. The cached Modal image's missing immutable
+  asset fingerprint remains a genuine release blocker regardless of the
+  Hindi parser correction.
 
 Raw diagnostic logs and fabricated PDF scratch files remain local, not committed.
 Full-run log SHA-256: `cac560cdfe7a363b74322631b7c75472facbf5b30c3e0190a77cf6559dbf40c9`.
