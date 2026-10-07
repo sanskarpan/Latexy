@@ -1,6 +1,5 @@
 """Offline regressions for the operator-only Modal VM certification harness."""
 
-import base64
 import io
 import os
 import sys
@@ -9,7 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.render_engine.modal_sandbox import _BOUNDED_EXPORT, ModalEngineProcess
+from app.services.render_engine.modal_sandbox import (
+    _BATCH_EXPORT,
+    _BATCH_EXPORT_HEADER,
+    _BATCH_EXPORT_MAGIC,
+    _BATCH_EXPORT_SLOTS,
+    ModalEngineProcess,
+)
 from scripts import certify_modal_vm_engine as certification
 
 
@@ -93,12 +98,21 @@ class _FakeSandbox:
         self.files[path] = data
 
     def exec(self, *args, **kwargs):
-        if len(args) >= 3 and args[0:2] == ("python3", "-c") and args[2] == _BOUNDED_EXPORT:
-            path = args[3]
-            self.export_calls.append(path)
-            if path not in self.files:
-                return _RemoteProcess(returncode=44)
-            return _RemoteProcess(base64.b64encode(self.files[path]))
+        if len(args) >= 4 and args[0:3] == ("python3", "-c", _BATCH_EXPORT):
+            basename = args[3]
+            payload = bytearray(_BATCH_EXPORT_MAGIC)
+            payload.append(len(_BATCH_EXPORT_SLOTS))
+            for index, (suffix, _limit) in enumerate(_BATCH_EXPORT_SLOTS):
+                name = "engine.stdout" if suffix == "engine.stdout" else basename + suffix
+                path = "/workspace/" + name
+                self.export_calls.append(path)
+                data = self.files.get(path)
+                if data is None:
+                    payload.extend(_BATCH_EXPORT_HEADER.pack(index, 0, 0))
+                else:
+                    payload.extend(_BATCH_EXPORT_HEADER.pack(index, 1, len(data)))
+                    payload.extend(data)
+            return _RemoteProcess(bytes(payload))
 
         if args[0:2] == ("python3", "-c"):
             return _RemoteProcess(self.marker)
