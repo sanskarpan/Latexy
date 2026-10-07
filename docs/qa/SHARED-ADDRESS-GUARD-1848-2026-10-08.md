@@ -27,7 +27,7 @@ redirects, timeouts, quotas, caching or extraction.
 
 ## Verification boundary
 
-- Scraper and URL-import suites: **116 passed, 0 skipped/errors/failures**.
+- Initial scraper and URL-import suites: **116 passed, 0 skipped/errors/failures**.
 - Includes public IPv4/IPv6 controls and existing multicast/private denials.
 - Ruff on both changed files and Git whitespace checks passed.
 - Actual isolated PostgreSQL on port 5547 and Redis on port 6397, databases
@@ -36,6 +36,13 @@ redirects, timeouts, quotas, caching or extraction.
   `ca6d7d8005b855d87c9303662bbeff6377d9efd31f24480fe2ddd053bce641e2`.
 - The run predates the publication-only rebase onto homepage checkpoint
   `d80afa55`; the backend implementation and test bytes are unchanged.
+
+Independent read-only review found no substantive concern and requested a mapped
+public-address control. With `::ffff:8.8.8.8` added, the final rebased source
+passed **117 tests, 0 skips/errors/failures**, plus Ruff and whitespace checks.
+The same isolated infrastructure and blank provider configuration were used.
+Final JUnit: `/private/tmp/latexy-main-shared-address-final-20261008.xml`, SHA-256
+`f73ca7b2f5f7783fdde24b39a71cd0e5f23a54c08dfd3fafb87bcffadcab6e1a`.
 
 No full-suite, Linux CI, actual upstream connection, production rollout or
 network-policy certificate is inferred from these focused mocked tests.
