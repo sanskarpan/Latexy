@@ -1,12 +1,12 @@
 """Legacy async compilation shares convergence and owns cancelled thread work."""
 import asyncio
 import shutil
-import subprocess
 import threading
 import time
 from types import SimpleNamespace
 
 import pytest
+from pdfminer.high_level import extract_text
 
 from app.services import latex_service as service_module
 
@@ -22,7 +22,7 @@ async def test_legacy_compile_resolves_reference_with_common_passes(tmp_path, mo
               r"\section{Section}\label{sec:one}\end{document}")
     result = await service_module.LaTeXService().compile_latex(source, job_id="legacy-reference-proof")
     assert result.success is True, result.message
-    text = subprocess.check_output(["pdftotext", str(tmp_path / "legacy-reference-proof/resume.pdf"), "-"], timeout=10).decode()
+    text = extract_text(str(tmp_path / "legacy-reference-proof/resume.pdf"))
     assert "Reference: 1." in text
     assert "??" not in text
 
