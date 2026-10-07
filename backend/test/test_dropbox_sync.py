@@ -209,8 +209,8 @@ class TestDropboxEndpoints:
         )
         mock_http.assert_not_called()
 
-    def test_complete_rejects_cross_user_and_replay(self, authed_client):
-        """A mismatched Dropbox grant is consumed before exchange and cannot replay."""
+    def test_complete_rejects_cross_user_without_consuming_ticket(self, authed_client):
+        """A mismatched Dropbox grant leaves the rightful owner's ticket intact."""
         from app.database.connection import get_db
         from app.main import app
 
@@ -221,22 +221,20 @@ class TestDropboxEndpoints:
                 patch("app.api.dropbox_routes.cache_manager") as mock_cache,
                 patch("httpx.AsyncClient") as mock_http,
             ):
-                mock_cache.pop = AsyncMock(
-                    side_effect=[
-                        {"user_id": "attacker-user", "code": "victim-code"},
-                        None,
-                    ]
-                )
+                ticket = {"user_id": "attacker-user", "code": "victim-code"}
+                mock_cache.get = AsyncMock(return_value=ticket)
+                mock_cache.pop = AsyncMock()
                 first = authed_client.post(
                     "/dropbox/complete", json={"ticket": "one-time-ticket"}
                 )
-                replay = authed_client.post(
+                second_wrong_owner_attempt = authed_client.post(
                     "/dropbox/complete", json={"ticket": "one-time-ticket"}
                 )
 
             assert first.status_code == 403
-            assert replay.status_code == 400
-            assert mock_cache.pop.await_count == 2
+            assert second_wrong_owner_attempt.status_code == 403
+            assert mock_cache.get.await_count == 2
+            mock_cache.pop.assert_not_awaited()
             mock_http.assert_not_called()
             mock_db.execute.assert_not_called()
             mock_db.commit.assert_not_called()
