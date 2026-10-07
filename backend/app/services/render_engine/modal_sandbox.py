@@ -294,7 +294,7 @@ class ModalEngineProcess:
                     remaining = session.deadline - time.monotonic()
                     if session.closed or remaining <= 0:
                         raise ModalEngineUnavailable("Renderer output deadline exceeded")
-                    export_timeout = max(1, math.ceil(remaining))
+                    export_timeout = min(30, max(1, math.ceil(remaining)))
                 records = _read_remote_batch(self.sandbox, self.basename, export_timeout)
                 if self.killed:
                     raise ModalEngineUnavailable("Renderer output export cancelled")
