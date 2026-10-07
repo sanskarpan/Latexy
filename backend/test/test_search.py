@@ -47,7 +47,7 @@ async def _create_resume(
 @pytest.fixture
 async def auth_headers_2(db_session: AsyncSession) -> dict:
     """Auth headers for a second independent test user."""
-    from conftest import _insert_session  # type: ignore[import]
+    from .conftest import _insert_session  # type: ignore[import]
 
     user_id = str(uuid.uuid4())
     await db_session.execute(
