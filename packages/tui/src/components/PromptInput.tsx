@@ -1,11 +1,10 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text } from 'ink'
-import TextInput from 'ink-text-input'
+import { CtrlSafeTextInput } from './CtrlSafeTextInput.js'
 import { useStore } from '@nanostores/react'
 import { $isBlocked } from '../stores/overlay.js'
 import { $activeJobId } from '../stores/messages.js'
 import { SlashSuggestions } from './SlashSuggestions.js'
-import { useCtrlKeyGuard } from '../lib/ctrl-key-guard.js'
 
 interface Props {
   onSubmit: (input: string) => void
@@ -30,9 +29,9 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
    *
    *  - A *pasted* command carries its own newline, so `/health\r` was inserted
    *    literally, grew the box to two lines, and never ran.
-   *  - Control bytes that another component already handled. AppShell's useInput
-   *    consumes Ctrl+L to clear the transcript, but this input receives the same
-   *    keypress and appended a literal "l" to the prompt.
+   *  - Raw control bytes that arrive as part of a pasted chunk. AppShell handles
+   *    standalone Ctrl+L through Ink's key metadata, while CtrlSafeTextInput
+   *    prevents its normalized letter from entering the controlled value.
    */
   const handleChange = useCallback((next: string) => {
     // C0 controls minus \t \n \r, which are handled below.
@@ -53,10 +52,6 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
     }
     setValue(strip(tail))
   }, [onSubmit])
-
-  // Ctrl+L (and any ctrl-letter) would otherwise leave its letter in the box.
-  useCtrlKeyGuard(setValue, !isBlocked)
-
 
   const isSlash = value.startsWith('/')
   const slashQuery = isSlash ? value.slice(1) : ''
@@ -92,7 +87,7 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
         {activeJobId != null
           ? <Text dimColor>Running… (/cancel to stop)</Text>
           : (
-            <TextInput
+            <CtrlSafeTextInput
               value={value}
               onChange={handleChange}
               onSubmit={handleSubmit}
