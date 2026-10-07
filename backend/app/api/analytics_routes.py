@@ -2,7 +2,6 @@
 Analytics API routes for tracking and retrieving usage data.
 """
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -12,6 +11,14 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
+from ..core.telemetry_metadata import (
+    MAX_METADATA_BYTES,
+    MAX_METADATA_DEPTH,
+    REDACTED_METADATA_KEYS,
+    payload_depth,
+    redact_metadata,
+    validate_metadata,
+)
 from ..database.connection import get_db
 from ..middleware.auth_middleware import (
     get_current_user_optional,
@@ -26,60 +33,13 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 # Limits for untrusted, client-supplied event metadata (SEC/DoS guard).
-_MAX_METADATA_BYTES = 4096
-_MAX_METADATA_DEPTH = 5
-_REDACTED_METADATA_KEYS = frozenset(
-    {
-        "authorization",
-        "cookie",
-        "password",
-        "token",
-        "secret",
-        "api_key",
-        "access_token",
-        "refresh_token",
-        "email",
-        "phone",
-        "name",
-        "first_name",
-        "last_name",
-        "address",
-        "ip_address",
-        "user_agent",
-        "resume_content",
-        "latex_content",
-        "prompt",
-    }
-)
-
-
-def _payload_depth(obj: Any, depth: int = 1) -> int:
-    """Return the maximum nesting depth of a JSON-like structure."""
-    if isinstance(obj, dict):
-        if not obj:
-            return depth
-        return max(_payload_depth(v, depth + 1) for v in obj.values())
-    if isinstance(obj, list):
-        if not obj:
-            return depth
-        return max(_payload_depth(v, depth + 1) for v in obj)
-    return depth
-
-
-def _redact_metadata(value: Any) -> Any:
-    """Strip credentials and direct identifiers before telemetry persistence."""
-    if isinstance(value, dict):
-        return {
-            key: (
-                "[redacted]"
-                if str(key).casefold() in _REDACTED_METADATA_KEYS
-                else _redact_metadata(item)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_metadata(item) for item in value]
-    return value
+# Keep these private names as compatibility aliases for existing tests and
+# operator tooling while the policy itself lives in one shared module.
+_MAX_METADATA_BYTES = MAX_METADATA_BYTES
+_MAX_METADATA_DEPTH = MAX_METADATA_DEPTH
+_REDACTED_METADATA_KEYS = REDACTED_METADATA_KEYS
+_payload_depth = payload_depth
+_redact_metadata = redact_metadata
 
 
 # Pydantic models for request/response
@@ -100,15 +60,7 @@ class EventTrackingRequest(BaseModel):
         """Reject oversized / deeply-nested metadata to prevent storage DoS."""
         if value is None:
             return value
-        try:
-            serialized = json.dumps(value, default=str)
-        except (TypeError, ValueError):
-            raise ValueError("metadata must be JSON-serializable")
-        if len(serialized.encode("utf-8")) > _MAX_METADATA_BYTES:
-            raise ValueError(f"metadata exceeds maximum allowed size of {_MAX_METADATA_BYTES} bytes")
-        if _payload_depth(value) > _MAX_METADATA_DEPTH:
-            raise ValueError(f"metadata nesting exceeds maximum depth of {_MAX_METADATA_DEPTH}")
-        return _redact_metadata(value)
+        return validate_metadata(value)
 
 class UserAnalyticsResponse(BaseModel):
     user_id: str
@@ -384,7 +336,7 @@ async def track_compilation(
     compilation_id: str,
     compilation_status: str = Query(..., alias="status"),
     device_fingerprint: Optional[str] = None,
-    compilation_time: Optional[float] = None,
+    compilation_time: Optional[float] = Query(default=None, allow_inf_nan=False),
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
