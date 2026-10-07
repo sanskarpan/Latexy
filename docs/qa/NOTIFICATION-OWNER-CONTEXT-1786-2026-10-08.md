@@ -1,6 +1,6 @@
 # Notification preference ownership: #1786
 
-Status: focused candidate in progress; not merged or production-accepted.
+Status: locally verified focused candidate; not merged or production-accepted.
 
 ## Publication scope
 
@@ -52,17 +52,61 @@ Evidence log: `/private/tmp/latexy-notification-red-browser-20261008.log`, SHA-2
 Traces/screenshots are under
 `/private/tmp/latexy-notification-red-browser-20261008/`.
 
+## Candidate repair and verification
+
+The candidate ports the notification-only repair, retaining the parent's
+provider changes. Notification owner epochs reject ABA, revisions protect
+newer edits and Saved timers, and mounted lifetime invalidates completions.
+GET/PUT receive captured bearer contexts checked after the API auth wait.
+New saves require confirmed auth and a synchronous in-flight lock. An
+already-dispatched same-owner save may complete across token refresh; a
+refresh GET must not erase its optimistic draft.
+
+The first integrated candidate browser run was **22 passed, 1 failed**. The
+same-owner refresh failure retained the correct preference, but its error
+paragraph had no alert role and the loaded-controls branch exposed no Retry
+action. This was not an owner-isolation regression or a reason to weaken the
+test. The candidate now announces that error and provides a retry while
+preserving the loaded preferences. The unit file also required indexed array
+access rather than `.at()` to respect the existing TypeScript library target.
+
+The final application production bundle is source checkpoint
+`8b5c4f50` (later unit/doc/base-merge changes do not change application sources).
+On localhost 5523, the exact three-file CI command ran one Chromium worker,
+zero retries, with strict page-error checks: **23 passed** (5 editor, 6 provider
+action, 12 notification). Both held-B-save cases now proceed through A body
+consumption while B is saving, keep B disabled without stale Saved/error
+notices, and enable B only after its own response. Initial/read retry,
+same-owner success/failure and token-refresh draft, unmount, and ABA controls
+also pass. This run does not reproduce or close #1772.
+
+Final browser log:
+`/private/tmp/latexy-notification-integrated-final-browser-20261008.log`, SHA-256
+`531bf089b05da49e0139fca1f3f4677975297edde113a3ee4bc4c9169bf79a4f`.
+The original 22/1 log is retained separately, SHA-256
+`79cbfef0fb3b852d97ea3a45d073bcd618ea9a1d67a35618eaae14f7f55cc21d`.
+
+New focused API tests before implementation: **4 failed, 3 passed**; after
+repair their ordinary captured-token and already-dispatched refresh controls
+remain green. Dependency-aware mocked-hook tests cover owner/ABA/unmount,
+old-finally versus B saving, stale Saved timer versus newer save, duplicate
+initiation/auth-error gates and actual same-owner GET-error/retry recovery.
+They are not a substitute for React browser scheduling.
+
+Root's full frontend unit run after parent refresh: **172 files, 1,122 tests
+passed**. TypeScript (`--noEmit --incremental false`) and targeted ESLint pass.
+Deployment-manifest tests: **92 passed**; CI classifier: **21 passed**. The new
+notification browser suite joins the existing shared production build, not
+a new all-change workflow.
+
+The parent #1854 has been normally updated onto main, head `e6f82436`, and
+merged into this leaf without conflicts. Only provider backend/tests/report
+files changed in that refresh; `git diff` confirms no frontend or CI change
+from the locally verified candidate. Exact published-head CI and deployed
+acceptance remain required.
+
 ## Acceptance remaining
 
-- Review ported GET/PUT dispatch contexts and owner epoch, request/edit
-  revision, mounted lifetime, success/error/finally/Saved timer guards.
-- Preserve same-owner token-refresh drafts and already-dispatched ordinary
-  completions, while rejecting pre-dispatch token retargeting.
-- Fail closed while a new owner's preferences are unavailable, with a usable
-  retry and no exposure of the previous owner's controls.
-- Run all browser controls against the exact candidate production bundle,
-  including a live B save while A's response is consumed; run focused and
-  full frontend units, types/lint, CI-selection/deployment contracts.
 - Publish a focused dependent PR linked to #1786, refresh against its final
   parent/main, and retain green required checks before a normal merge.
 - Verify the resulting production revision and synthetic browser behavior
