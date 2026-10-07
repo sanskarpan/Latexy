@@ -164,6 +164,16 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
   follows the SHA-256 primitive inside a keyed HMAC; the other follows the
   generic stage-context checksum. Neither was dismissed or suppressed; narrow
   follow-up and a fresh scan remain required before security acceptance.
+- The narrow follow-up uses the explicit cryptography HMAC primitive while
+  retaining exactly the initial credential-scope bytes. Legacy paid-stage
+  admission context now has a separate HKDF purpose label and HMAC domain;
+  generic stage hashes and output checksums are unchanged. Missing/invalid key
+  configuration and old unkeyed checkpoint contexts fail closed before paid
+  output replay. Key rotation intentionally changes the private context ID.
+  The six focused helper/private-context/ledger/checkpoint/fairness suites
+  passed all 116 cases on real isolated PostgreSQL/Redis, with Ruff and diff
+  checks passing. Fresh CodeQL and a full run at this follow-up are pending;
+  neither finding is claimed cleared based only on the API change.
 - Quota outage logs now omit owner identifiers and preserve the existing
   unlimited-plan fail-open versus limited-plan fail-closed policy. All 40 quota
   tests passed, including two new privacy/injection regressions.
