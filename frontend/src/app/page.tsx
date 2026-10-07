@@ -1,4 +1,13 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
+
+// Public ownership proof supplied by the approved Google Search Console setup.
+// Keep this homepage-only; it is not an OAuth credential or a user permission.
+export const metadata: Metadata = {
+  verification: {
+    google: '-JuXguMIM_kaznXdcKY8ygd7x6Iuhndu1xvV3_arsHs',
+  },
+}
 
 /**
  * Landing page — "Typeset" reference (redesign, PRD 2026-08-03).
