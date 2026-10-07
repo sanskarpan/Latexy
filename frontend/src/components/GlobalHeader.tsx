@@ -259,7 +259,10 @@ export default function GlobalHeader() {
       // Non-critical — proceed with sign out regardless.
     }
     try {
-      await signOut()
+      // The next action destroys this document. A session refetch/broadcast
+      // here is redundant and can race the hard navigation. Still await the
+      // real sign-out POST; the new document reads its own session normally.
+      await signOut({ fetchOptions: { disableSignal: true } })
     } finally {
       // No `setIsSigningOut(false)` on success — the imminent full-page
       // redirect below makes the button irrelevant, and leaving it disabled
