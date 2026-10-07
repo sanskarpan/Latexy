@@ -239,17 +239,20 @@ describe('Playwright Next cache isolation', () => {
     const pidFile = join(root, 'descendant-pid')
     const readyFile = join(root, 'descendant-ready')
     const descendantCode = [
-      'const fs = require(\'node:fs\')',
-      `fs.writeFileSync(${JSON.stringify(readyFile)}, 'ready')`,
-      `process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(marker)}, 'stopped'); process.exit(0) })`,
+      "const fs = require('node:fs')",
+      'const [marker, readyFile] = process.argv.slice(1)',
+      "fs.writeFileSync(readyFile, 'ready')",
+      "process.on('SIGTERM', () => { fs.writeFileSync(marker, 'stopped'); process.exit(0) })",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const launcherCode = [
-      'const { spawn } = require(\'node:child_process\')',
-      `const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendantCode)}], { stdio: 'ignore' }); require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid))`,
+      "const { spawn } = require('node:child_process')",
+      'const [descendantCode, marker, pidFile, readyFile] = process.argv.slice(1)',
+      "const child = spawn(process.execPath, ['-e', descendantCode, marker, readyFile], { stdio: 'ignore' })",
+      "require('node:fs').writeFileSync(pidFile, String(child.pid))",
       'setInterval(() => {}, 1000)',
     ].join(';')
-    const launcher = spawn(process.execPath, ['-e', launcherCode], {
+    const launcher = spawn(process.execPath, ['-e', launcherCode, descendantCode, marker, pidFile, readyFile], {
       detached: true,
       stdio: 'ignore',
     })
@@ -280,17 +283,19 @@ describe('Playwright Next cache isolation', () => {
     ).href
     const monitoredCode = [
       "import { writeFileSync } from 'node:fs'",
-      `import { watchParent } from ${JSON.stringify(launcherModule)}`,
-      `watchParent(() => { writeFileSync(${JSON.stringify(marker)}, 'gone'); process.exit(0) })`,
-      `writeFileSync(${JSON.stringify(ready)}, 'ready')`,
+      'const [launcherModule, marker, ready] = process.argv.slice(1)',
+      'const { watchParent } = await import(launcherModule)',
+      "watchParent(() => { writeFileSync(marker, 'gone'); process.exit(0) })",
+      "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const parentCode = [
       "const { spawn } = require('node:child_process')",
-      `spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(monitoredCode)}], { stdio: 'ignore', detached: process.platform === 'win32', windowsHide: true })`,
-      `setInterval(() => { if (require('node:fs').existsSync(${JSON.stringify(ready)})) process.exit(0) }, 25)`,
+      'const [monitoredCode, launcherModule, marker, ready] = process.argv.slice(1)',
+      "spawn(process.execPath, ['--input-type=module', '-e', monitoredCode, launcherModule, marker, ready], { stdio: 'ignore', detached: process.platform === 'win32', windowsHide: true })",
+      "setInterval(() => { if (require('node:fs').existsSync(ready)) process.exit(0) }, 25)",
     ].join(';')
-    const parent = spawn(process.execPath, ['-e', parentCode], {
+    const parent = spawn(process.execPath, ['-e', parentCode, monitoredCode, launcherModule, marker, ready], {
       detached: process.platform !== 'win32',
       stdio: 'ignore',
     })
