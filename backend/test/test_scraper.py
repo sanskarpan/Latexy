@@ -24,7 +24,88 @@ import pytest
 from httpx import AsyncClient
 
 from app.services import url_projects_service as url_import
-from app.services.job_scraper_service import SSRFError, _SSRFGuardTransport
+from app.services.job_scraper_service import (
+    SSRFError,
+    _assert_public_url,
+    _ip_is_public,
+    _resolve_public_addresses,
+    _SSRFGuardTransport,
+)
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["100.64.0.0", "100.64.0.1", "100.127.255.254", "100.127.255.255", "::ffff:100.64.0.1"],
+)
+def test_ssrf_guard_rejects_shared_address_space(address: str) -> None:
+    assert _ip_is_public(address) is False
+
+
+@pytest.mark.parametrize("address", ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])
+def test_ssrf_guard_preserves_public_unicast(address: str) -> None:
+    assert _ip_is_public(address) is True
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["127.0.0.1", "10.0.0.1", "169.254.169.254", "224.0.0.1", "::1", "ff02::1", "invalid"],
+)
+def test_ssrf_guard_preserves_existing_exclusions(address: str) -> None:
+    assert _ip_is_public(address) is False
+
+
+@pytest.mark.parametrize("addresses", [("100.64.0.1",), ("8.8.8.8", "100.127.255.254")])
+def test_ssrf_guard_rejects_shared_and_mixed_dns_answers(addresses: tuple[str, ...]) -> None:
+    infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0)) for address in addresses]
+    with patch("app.services.job_scraper_service.socket.getaddrinfo", return_value=infos):
+        assert _resolve_public_addresses("shared.example") == ()
+        with pytest.raises(SSRFError, match="non-public"):
+            _assert_public_url("https://shared.example/portfolio")
+
+
+@pytest.mark.asyncio
+async def test_ssrf_transport_never_sends_to_shared_dns_answer() -> None:
+    infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.0.1", 0))]
+    transport = _SSRFGuardTransport()
+    request = httpx.Request("GET", "https://shared.example/portfolio")
+    try:
+        with (
+            patch("app.services.job_scraper_service.socket.getaddrinfo", return_value=infos),
+            patch.object(
+                httpx.AsyncHTTPTransport,
+                "handle_async_request",
+                new=AsyncMock(return_value=httpx.Response(200, content=b"blocked")),
+            ) as send,
+        ):
+            with pytest.raises(httpx.ConnectError, match="non-public"):
+                await transport.handle_async_request(request)
+            send.assert_not_awaited()
+    finally:
+        await transport.aclose()
+
+
+@pytest.mark.asyncio
+async def test_url_import_rejects_shared_address_redirect() -> None:
+    sent: list[httpx.Request] = []
+
+    async def fake_inner_request(_transport, request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if len(sent) == 1:
+            return httpx.Response(302, headers={"location": "http://shared.example/portfolio"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, content=b"shared body")
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        address = {"public.example": "8.8.8.8", "shared.example": "100.64.0.1"}[host]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
+
+    with (
+        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
+    ):
+        with pytest.raises(SSRFError, match="Blocked or unreachable host"):
+            await url_import.fetch_url_text("https://public.example/portfolio")
+
+    assert [request.url.host for request in sent] == ["8.8.8.8"]
 
 # ---------------------------------------------------------------------------
 # HTML fixtures
