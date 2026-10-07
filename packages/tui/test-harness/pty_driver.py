@@ -160,6 +160,11 @@ class Session:
             time.sleep(PACE)
         self.pump(settle)
 
+    def key(self, sequence: str, settle: float = 1.0) -> None:
+        """Send one escaped key sequence separately from neighboring input."""
+        os.write(self.fd, sequence.encode())
+        self.pump(settle)
+
     def enter(self, settle: float = 2.0) -> None:
         """Send Enter as its own write, well after the last character."""
         time.sleep(0.3)
@@ -245,6 +250,36 @@ def _ctrl_l_case(prefix: str) -> dict:
 def s_ctrl_l_empty() -> dict:        return _ctrl_l_case("")
 def s_ctrl_l_text() -> dict:         return _ctrl_l_case("hello")
 def s_ctrl_l_trailing_l() -> dict:   return _ctrl_l_case("abcl")
+
+
+def s_ctrl_l_middle() -> dict:
+    s = Session(); ready = s.await_prompt()
+    s.type("abc", settle=1.0)
+    s.key("\x1b[D")
+    s.key(CTRL_L)
+    out = {"prompt": s.prompt()}
+    out.update(s.close())
+    return out
+
+
+def s_ctrl_l_middle_then_x() -> dict:
+    s = Session(); ready = s.await_prompt()
+    s.type("abc", settle=1.0)
+    s.key("\x1b[D")
+    s.key(CTRL_L)
+    s.type("x", settle=1.0)
+    out = {"prompt": s.prompt()}
+    out.update(s.close())
+    return out
+
+
+def s_ctrl_l_repeated() -> dict:
+    s = Session(); ready = s.await_prompt()
+    s.key(CTRL_L)
+    s.key(CTRL_L)
+    out = {"prompt": s.prompt()}
+    out.update(s.close())
+    return out
 
 
 def s_ctrl_a_text() -> dict:
