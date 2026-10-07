@@ -143,3 +143,98 @@ def test_corrupt_pdf_never_reaches_a_preserved_attachment():
     validate_original_pdf(actual_pdf())
     with pytest.raises(ValueError):
         validate_original_pdf(b"%PDF-1.4\nnot a PDF structure")
+
+
+def test_readable_encrypted_pdf_is_not_an_unencrypted_original(monkeypatch):
+    import pdfminer.pdfdocument
+
+    original_document = pdfminer.pdfdocument.PDFDocument
+
+    def encrypted_document(*args, **kwargs):
+        document = original_document(*args, **kwargs)
+        # Empty-user-password encryption can be opened without a password.
+        # Successful parsing alone is not proof that the original is unencrypted.
+        document.encryption = ([], {"Filter": "Standard"})
+        return document
+
+    monkeypatch.setattr(pdfminer.pdfdocument, "PDFDocument", encrypted_document)
+    with pytest.raises(ValueError, match="unencrypted"):
+        validate_original_pdf(actual_pdf())
+
+
+def test_page_limit_stops_validation_at_the_first_unsupported_page(monkeypatch):
+    from pdfminer.pdfpage import PDFPage
+
+    visited = []
+
+    def pages(_):
+        for index in range(1000):
+            visited.append(index)
+            yield object()
+
+    monkeypatch.setattr(PDFPage, "create_pages", pages)
+    with pytest.raises(ValueError, match="fifty pages"):
+        validate_original_pdf(actual_pdf())
+    assert len(visited) == 51
+
+
+def test_oversized_original_is_rejected_before_the_pdf_parser(monkeypatch):
+    import pdfminer.pdfdocument
+
+    from app.services.resume_engine.pdf_imports import MAX_ORIGINAL_BYTES
+
+    def forbidden_open(*args, **kwargs):
+        pytest.fail("Oversized originals must not enter the PDF parser")
+
+    monkeypatch.setattr(pdfminer.pdfdocument, "PDFDocument", forbidden_open)
+    with pytest.raises(ValueError, match="ten MiB"):
+        validate_original_pdf(b"%PDF-" + b"x" * MAX_ORIGINAL_BYTES)
+
+
+async def test_cross_owner_cannot_adapt_discard_or_open_saved_attachment(import_scope, db_session_factory):
+    owner, other, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        body = AdaptImport(template_id=template, title="Private original",
+                           expected_original_sha256=receipt["original"]["sha256"])
+        for operation in (
+            lambda: adapt_import(receipt["import_id"], body, db, other),
+            lambda: discard_import(receipt["import_id"], db, other),
+        ):
+            with pytest.raises(HTTPException) as error:
+                await operation()
+            assert error.value.status_code == 404
+        response = await adapt_import(receipt["import_id"], body, db, owner)
+        with pytest.raises(HTTPException) as error:
+            await resume_import(response["resume_id"], db, other)
+        assert error.value.status_code == 404
+        assert (await original_pdf(receipt["import_id"], db, owner)).body == actual_pdf()
+
+
+async def test_tampered_original_is_never_served(import_scope, db_session_factory):
+    owner, _, _ = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        row = await db.get(ResumePdfImport, receipt["import_id"])
+        row.original_pdf = actual_pdf().replace(b"Jane Example", b"Fake Example")
+        await db.commit()
+        with pytest.raises(HTTPException) as error:
+            await original_pdf(row.id, db, owner)
+        assert error.value.status_code == 409
+
+
+async def test_expired_unbound_original_cannot_be_read_or_adapted(import_scope, db_session_factory):
+    owner, _, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        row = await db.get(ResumePdfImport, receipt["import_id"])
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        for operation in (
+            lambda: original_pdf(row.id, db, owner),
+            lambda: adapt_import(row.id, AdaptImport(template_id=template, title="Expired",
+                expected_original_sha256=receipt["original"]["sha256"]), db, owner),
+        ):
+            with pytest.raises(HTTPException) as error:
+                await operation()
+            assert error.value.status_code == 404
