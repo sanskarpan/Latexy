@@ -67,6 +67,16 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                                               timeout=300, sdk=modal, app=app, enabled=True, image_id=image_id,
                                               policy="credential_free_vm")
                 sandbox = process.sandbox
+                marker = sandbox.exec(
+                    "python3", "-c",
+                    "import json; print(json.load(open('/opt/latexy-renderer-version.json')).get('fingerprint_sha256'))",
+                    timeout=10, text=False, secrets=[],
+                )
+                marker_output = marker.stdout.read()
+                assets = marker_output.decode("ascii", errors="replace").strip() if len(marker_output) <= 128 else ""
+                asset_identity_verified = marker.wait() == 0 and bool(re.fullmatch(r"[0-9a-f]{64}", assets))
+                print(json.dumps({"image_id": image_id, "assets_fingerprint": assets if asset_identity_verified else None,
+                                  "asset_identity_verified": asset_identity_verified}))
                 code = process.wait(timeout=90)
                 output = b""
                 while chunk := process.stdout.read(8192):
@@ -112,6 +122,8 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                         (evidence / "engine.stdout").write_bytes(child.stdout.read(262144))
                         print(json.dumps({"private_failure_artifacts": str(evidence)}))
                         raise RuntimeError("VM multilingual proof failed")
+                if not asset_identity_verified:
+                    raise RuntimeError("VM fixtures passed but immutable renderer asset identity is unavailable")
         finally:
             if sandbox is not None:
                 sandbox.terminate(wait=False)
