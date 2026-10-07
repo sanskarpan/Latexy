@@ -1,76 +1,129 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
-import { MotionItem, MotionReveal, MotionStagger } from '@/components/marketing/MotionPrimitives'
+import { MarketingCTA } from '@/components/marketing/MarketingSections'
+
+export const metadata: Metadata = {
+    title: 'Resume Builder Questions, Answered | Latexy FAQ',
+    description:
+        'Find out how to start a resume without code, try Latexy as a guest, review AI suggestions, understand resume scores, and save your work.',
+    alternates: { canonical: '/faq' },
+    openGraph: {
+        title: 'A few answers before your first edit | Latexy',
+        description:
+            'Clear answers about visual editing, the guest trial, AI suggestions, resume checks, and saving your work.',
+        url: '/faq',
+        type: 'website',
+    },
+}
 
 const faqs = [
-  {
-    q: 'What does the Latexy score measure?',
-    a: 'It reports heuristic checks for structure, text extraction, and job-description keyword coverage. It does not emulate an employer ATS or predict a hiring outcome.',
-  },
-  {
-    q: 'Can I use my own model provider?',
-    a: 'Yes. BYOK supports provider key management so you can run optimization using your own credentials.',
-  },
-  {
-    q: 'Is LaTeX output deterministic?',
-    a: 'The platform is designed for deterministic compilation with queue-based processing and observable execution logs.',
-  },
-  {
-    q: 'Do I need to use all features every run?',
-    a: 'No. You can compile only, optimize + compile, or run ATS checks independently based on workflow stage.',
-  },
+    {
+        question: 'Do I need to know LaTeX or write code?',
+        answer: 'No. Choose Visual mode to edit your words directly in a document. Source mode is an optional LaTeX editor for more detailed layout control. Some custom layouts may need Source mode; Latexy will tell you when visual editing is not supported.',
+    },
+    {
+        question: 'What can I try without an account?',
+        answer: 'The guest studio lets you explore a sample, edit it, and create a PDF without signing up or entering a card. Guest usage is limited. Create an account to save resumes and continue working in your workspace.',
+    },
+    {
+        question: 'Can I start with a template?',
+        answer: 'Yes. Browse the template gallery to find a layout. Templates vary in style and structure; choose one that makes your experience easy to read. Custom templates may require the source editor.',
+    },
+    {
+        question: 'Will AI change my resume automatically?',
+        answer: 'AI suggestions are presented for review. You can accept, edit, or reject them. Check the wording and facts before applying a suggestion, and include only experience, skills, and results you can honestly support.',
+    },
+    {
+        question: 'How do I tailor my resume to a job?',
+        answer: 'Add the job description in the studio to get relevant writing suggestions and keyword feedback. Focus on the experience that matters for the role while keeping your facts accurate. Tailoring changes the emphasis, not your history.',
+    },
+    {
+        question: 'What does the resume score mean?',
+        answer: 'The score combines checks such as structure, readability, text extraction, and keyword coverage. It helps you find things to improve. It does not reproduce an employer’s applicant tracking system or predict whether you will get an interview.',
+    },
+    {
+        question: 'Can I keep different resumes for different roles?',
+        answer: 'Yes. A signed-in workspace lets you save resumes and create variations. You can also work on cover letters, practise interviews through text, and track applications. Usage and feature availability depend on your plan.',
+    },
+    {
+        question: 'Can I use my own AI provider key?',
+        answer: 'Yes. Supported providers can be connected through the bring-your-own-key settings in your account. You can start with the available guest experience without setting up a provider key.',
+    },
 ]
 
 export default function FAQPage() {
-  return (
-    <div className="bg-bg text-fg">
-      {/* ── masthead ── */}
-      <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
-        <MotionReveal>
-          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">
-            Frequently asked
-          </p>
-          <h1 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[1.0] tracking-[-0.025em] text-fg">
-            Clear answers for product, workflow, and reliability.
-          </h1>
-          <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
-            The questions we hear most, answered plainly — no fine print, no fabricated numbers.
-          </p>
-        </MotionReveal>
-      </section>
-
-      {/* ── the list, set as hairline-ruled entries ── */}
-      <section className="border-t border-line">
-        <MotionStagger className="mx-auto max-w-6xl px-5 sm:px-8">
-          {faqs.map((item) => (
-            <MotionItem key={item.q}>
-              <article className="border-b border-line py-8">
-                <h2 className="text-balance font-display text-[clamp(1.35rem,2.4vw,1.85rem)] font-semibold leading-snug text-fg">
-                  {item.q}
-                </h2>
-                <p className="mt-3 max-w-[62ch] font-body text-base leading-relaxed text-fg-2">
-                  {item.a}
+    return (
+        <div className="bg-bg text-fg">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        '@context': 'https://schema.org',
+                        '@type': 'FAQPage',
+                        mainEntity: faqs.map(item => ({
+                            '@type': 'Question',
+                            name: item.question,
+                            acceptedAnswer: { '@type': 'Answer', text: item.answer },
+                        })),
+                    }).replace(/</g, '\\u003c'),
+                }}
+            />
+            <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
+                <p className="text-sm font-semibold text-accent-strong">
+                    Frequently asked questions
                 </p>
-              </article>
-            </MotionItem>
-          ))}
-        </MotionStagger>
-      </section>
-
-      {/* ── closing prompt ── */}
-      <section className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
-        <h2 className="text-balance font-display text-[clamp(1.8rem,4.5vw,3rem)] font-semibold leading-[1.04] tracking-[-0.02em] text-fg">
-          Still have a question?
-        </h2>
-        <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
-          The fastest answer is a compile. Bring your own key or use ours — three free runs, no card.
-        </p>
-        <Link
-          href="/try"
-          className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
-        >
-          Open the studio →
-        </Link>
-      </section>
-    </div>
-  )
+                <h1 className="mt-5 max-w-[20ch] font-display text-[clamp(2.5rem,5vw,3.75rem)] font-semibold leading-[1.04] tracking-[-.04em] text-balance">
+                    A few answers before{' '}
+                    <span className="text-accent-strong">your first edit.</span>
+                </h1>
+                <p className="mt-6 max-w-[48ch] text-lg leading-relaxed text-fg-2">
+                    What you need to get started, understand the suggestions, and keep your work
+                    moving.
+                </p>
+            </section>
+            <section className="border-y border-line bg-surface">
+                <div className="mx-auto max-w-6xl divide-y divide-line px-5 sm:px-8">
+                    {faqs.map(item => (
+                        <article
+                            key={item.question}
+                            className="grid gap-4 py-8 md:grid-cols-[.9fr_1.1fr] md:gap-12"
+                        >
+                            <h2 className="font-display text-2xl font-semibold leading-snug tracking-tight">
+                                {item.question}
+                            </h2>
+                            <p className="max-w-[62ch] leading-relaxed text-fg-2">{item.answer}</p>
+                        </article>
+                    ))}
+                </div>
+            </section>
+            <section className="mx-auto max-w-6xl px-5 py-16 text-center sm:px-8">
+                <h2 className="font-display text-3xl font-semibold tracking-tight">
+                    See how it feels.
+                </h2>
+                <p className="mx-auto mt-4 max-w-[45ch] leading-relaxed text-fg-2">
+                    Open the sample and make one edit. For writing advice, visit our{' '}
+                    <Link
+                        href="/resources"
+                        className="text-accent-strong underline underline-offset-4"
+                    >
+                        practical resources
+                    </Link>
+                    .
+                </p>
+                <div className="mt-7">
+                    <MarketingCTA />
+                </div>
+                <p className="mt-5 text-sm text-fg-3">
+                    Still need help?{' '}
+                    <a
+                        href="mailto:support@latexy.com"
+                        className="text-accent-strong underline underline-offset-4"
+                    >
+                        Contact support
+                    </a>
+                    .
+                </p>
+            </section>
+        </div>
+    )
 }

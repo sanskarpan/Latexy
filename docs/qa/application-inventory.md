@@ -1,5 +1,10 @@
 # Latexy — Complete Application Inventory (QA Audit Reference)
 
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](../BILLING_DODO.md) and the October 2026 migration audit.
+
+
 > Generated for a production-readiness QA audit. The route table remains a static source inventory; the HTTP totals below were recomputed from the current FastAPI OpenAPI schema. This document drives the QA test matrix; completeness is prioritized over prose. Includes surfaces not reachable from the visible nav.
 >
 > **Reproducibility (2026-09-26):** with the local backend serving on port 8030,

@@ -79,12 +79,14 @@ interface MultiFormatUploadProps {
   onFileUpload: (content: string) => void
   sourceHint?: string
   serverConversionEnabled?: boolean
+  visualOnly?: boolean
 }
 
 export default function MultiFormatUpload({
   onFileUpload,
   sourceHint,
   serverConversionEnabled = true,
+  visualOnly = false,
 }: MultiFormatUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<string | null>(null)
@@ -188,7 +190,7 @@ export default function MultiFormatUpload({
     const result = await startConversion(file, sourceHint)
     if (result) {
       onFileUpload(result)
-      toast.success(`${getFormatLabel(file.name)} file converted to LaTeX`)
+      toast.success(visualOnly ? 'Your résumé is ready to edit' : `${getFormatLabel(file.name)} file converted to LaTeX`)
     }
   }, [onFileUpload, startConversion, isConverting, sourceHint])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -200,10 +202,10 @@ export default function MultiFormatUpload({
 
     if (status === 'done' && convertedLatex && prevStatus === 'converting') {
       onFileUpload(convertedLatex)
-      toast.success('File converted to LaTeX successfully')
+      toast.success(visualOnly ? 'Your résumé is ready to edit' : 'File converted to LaTeX successfully')
     }
     if (status === 'error' && error && prevStatus !== 'error') {
-      toast.error(`Conversion failed: ${error}`)
+      toast.error(visualOnly ? 'Could not import the document. Please try again.' : `Conversion failed: ${error}`)
     }
   })
 
@@ -262,7 +264,7 @@ export default function MultiFormatUpload({
                 <span className="truncate">{uploadedFile}</span>
               </p>
               <p className="text-xs text-fg-3 mt-0.5">
-                {isTexFile(uploadedFile) ? 'LaTeX file loaded' : `${getFormatLabel(uploadedFile)} converted to LaTeX`}
+                {visualOnly ? 'Your document is ready to edit' : isTexFile(uploadedFile) ? 'LaTeX file loaded' : `${getFormatLabel(uploadedFile)} converted to LaTeX`}
               </p>
             </div>
           </div>
@@ -288,7 +290,7 @@ export default function MultiFormatUpload({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-fg truncate">{uploadedFile}</p>
             <p className="text-xs text-fg-3 mt-0.5">
-              {status === 'uploading' ? 'Uploading…' : `Converting to LaTeX… ${progress}%`}
+              {status === 'uploading' ? 'Uploading…' : visualOnly ? `Preparing your résumé… ${progress}%` : `Converting to LaTeX… ${progress}%`}
             </p>
           </div>
         </div>
@@ -313,7 +315,7 @@ export default function MultiFormatUpload({
             <AlertCircle className="w-4 h-4 shrink-0 text-err" />
             <div className="min-w-0">
               <p className="text-sm font-medium text-fg">Conversion failed</p>
-              <p className="text-xs text-err mt-0.5 truncate">{error}</p>
+              <p className="text-xs text-err mt-0.5 truncate">{visualOnly ? 'Please try again or choose another document.' : error}</p>
             </div>
           </div>
           <button

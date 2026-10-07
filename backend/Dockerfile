@@ -41,7 +41,9 @@ COPY . .
 RUN mkdir -p /app/temp /var/lib/celery /pycache && \
     addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 --ingroup appgroup --no-create-home appuser && \
-    chown -R appuser:appgroup /app/temp /var/lib/celery /pycache
+    chown -R appuser:appgroup /app/temp /var/lib/celery /pycache && \
+    mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config && \
+    chown appuser:appgroup /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config
 
 # Switch to non-root user
 USER appuser
@@ -53,6 +55,9 @@ EXPOSE 8030
 ENV PYTHONPATH=/app
 ENV TEMP_DIR=/app/temp
 ENV PORT=8030
+# System users have no home directory; LuaLaTeX still needs a writable font cache.
+ENV TEXMFVAR=/var/lib/texmf/latexy-cache \
+    TEXMFCONFIG=/var/lib/texmf/latexy-config
 
 # Health check — longer start period to allow uvicorn to start + DB connections
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

@@ -94,6 +94,58 @@ class TestSystemAnalyticsMetrics:
         assert 0 <= analytics["conversion_rate"] <= 100
         assert analytics["period_days"] == 7
 
+    @pytest.mark.asyncio
+    async def test_full_refund_is_net_zero_revenue(self, db_session: AsyncSession):
+        """A fully refunded payment stays in gross revenue before refunds are subtracted."""
+        baseline = await analytics_service.get_system_analytics(db=db_session, days=7)
+        user_id = uuid4()
+        payment_id = uuid4()
+        await db_session.execute(
+            text(
+                "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+                "subscription_status, trial_used) VALUES (:id, :email, 'Refund User', "
+                "true, 'free', 'active', false)"
+            ),
+            {"id": str(user_id), "email": f"test_refund_{user_id.hex}@example.com"},
+        )
+        await db_session.execute(
+            text(
+                "INSERT INTO payments (id, user_id, provider, provider_payment_id, amount, currency, status) "
+                "VALUES (:id, :user_id, 'dodo', :provider_id, 1200, 'INR', 'refunded')"
+            ),
+            {"id": str(payment_id), "user_id": str(user_id), "provider_id": f"pay_{payment_id.hex}"},
+        )
+        await db_session.execute(
+            text(
+                "INSERT INTO payment_refunds (id, payment_id, provider, provider_refund_id, amount, currency, status) "
+                "VALUES (:id, :payment_id, 'dodo', :provider_id, 1200, 'INR', 'succeeded')"
+            ),
+            {
+                "id": str(uuid4()),
+                "payment_id": str(payment_id),
+                "provider_id": f"refund_{payment_id.hex}",
+            },
+        )
+        await db_session.commit()
+
+        try:
+            analytics = await analytics_service.get_system_analytics(db=db_session, days=7)
+            assert analytics["total_revenue_inr"] == baseline["total_revenue_inr"]
+        finally:
+            await db_session.execute(
+                text("DELETE FROM payment_refunds WHERE payment_id = :payment_id"),
+                {"payment_id": str(payment_id)},
+            )
+            await db_session.execute(
+                text("DELETE FROM payments WHERE id = :payment_id"),
+                {"payment_id": str(payment_id)},
+            )
+            await db_session.execute(
+                text("DELETE FROM users WHERE id = :user_id"),
+                {"user_id": str(user_id)},
+            )
+            await db_session.commit()
+
 
 class TestTrackEndpointAuth:
     """POST /analytics/track must attribute events to the session user, not the body."""

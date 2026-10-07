@@ -126,9 +126,16 @@ function SecuritySettingsForm({ twoFactorEnabled: initialTwoFactorEnabled, isCur
       const result = await authClient.twoFactor.enable({ ...(password ? { password } : {}), issuer: 'Latexy' })
       if (result.error || !result.data) throw result.error || new Error('Two-factor setup failed')
       if (!isMounted() || requestId !== actionRequestRef.current) return
-      setTotpUri(result.data.totpURI)
+      if ('method' in result.data && result.data.method !== 'totp') {
+        throw new Error('Authenticator setup is unavailable for this account. Contact support for help.')
+      }
+      if (!('totpURI' in result.data) || !('backupCodes' in result.data)) {
+        throw new Error('Authenticator setup is unavailable for this account. Contact support for help.')
+      }
+      const { totpURI, backupCodes: newBackupCodes } = result.data
+      setTotpUri(totpURI)
       try {
-        const qrDataUrl = await QRCode.toDataURL(result.data.totpURI, {
+        const qrDataUrl = await QRCode.toDataURL(totpURI, {
           errorCorrectionLevel: 'M',
           margin: 1,
           width: 220,
@@ -141,7 +148,7 @@ function SecuritySettingsForm({ twoFactorEnabled: initialTwoFactorEnabled, isCur
         setTotpQrDataUrl(null)
       }
       if (!isMounted() || requestId !== actionRequestRef.current) return
-      setBackupCodes(result.data.backupCodes)
+      setBackupCodes(newBackupCodes)
       setAcknowledged(false)
       setPassword('')
     } catch (e) {

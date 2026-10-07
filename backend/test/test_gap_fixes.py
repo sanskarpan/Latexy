@@ -485,9 +485,8 @@ def _set_minimal_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "BETTER_AUTH_SECRET",
         "JWT_SECRET_KEY",
         "API_KEY_ENCRYPTION_KEY",
-        "RAZORPAY_KEY_ID",
-        "RAZORPAY_KEY_SECRET",
-        "RAZORPAY_WEBHOOK_SECRET",
+        "DODO_TEST_API_KEY",
+        "DODO_TEST_WEBHOOK_KEY",
         "BILLING_MODE",
         "SKIP_ENV_VALIDATION",
     ]:
@@ -537,15 +536,15 @@ class TestProductionConfigHardening:
         with pytest.raises(ValueError, match="valid Fernet key"):
             Settings(_env_file=None)
 
-    def test_settings_reject_partial_razorpay_config(self, monkeypatch):
+    def test_settings_reject_partial_dodo_config(self, monkeypatch):
         from app.core.config import Settings
 
         _set_minimal_settings_env(monkeypatch)
         monkeypatch.setenv("ENVIRONMENT", "development")
         monkeypatch.setenv("BILLING_MODE", "auto")
-        monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_key")
+        monkeypatch.setenv("DODO_TEST_API_KEY", "dodo_test_key")
 
-        with pytest.raises(ValueError, match="Partial Razorpay configuration"):
+        with pytest.raises(ValueError, match="Dodo API key and webhook signing key together"):
             Settings(_env_file=None)
 
     def test_encryption_service_rejects_missing_key_in_production_env(self):
@@ -574,6 +573,7 @@ class TestBillingStatusContract:
         from app.services.payment_service import PaymentService
 
         original_mode = cfg.settings.BILLING_MODE
+        original_dodo_mode = cfg.settings.DODO_MODE
 
         try:
             cfg.settings.BILLING_MODE = "disabled"
@@ -589,25 +589,25 @@ class TestBillingStatusContract:
         from app.services.payment_service import PaymentService
 
         original_mode = cfg.settings.BILLING_MODE
-        original_key_id = cfg.settings.RAZORPAY_KEY_ID
-        original_key_secret = cfg.settings.RAZORPAY_KEY_SECRET
-        original_webhook_secret = cfg.settings.RAZORPAY_WEBHOOK_SECRET
+        original_dodo_mode = cfg.settings.DODO_MODE
+        original_api_key = cfg.settings.DODO_TEST_API_KEY
+        original_webhook_key = cfg.settings.DODO_TEST_WEBHOOK_KEY
 
         try:
             cfg.settings.BILLING_MODE = "auto"
-            cfg.settings.RAZORPAY_KEY_ID = ""
-            cfg.settings.RAZORPAY_KEY_SECRET = ""
-            cfg.settings.RAZORPAY_WEBHOOK_SECRET = ""
+            cfg.settings.DODO_MODE = "test"
+            cfg.settings.DODO_TEST_API_KEY = ""
+            cfg.settings.DODO_TEST_WEBHOOK_KEY = ""
             service = PaymentService()
             status = service.get_status()
             assert status["mode"] == "unconfigured"
             assert status["available"] is False
-            assert "Razorpay" in status["message"]
+            assert "Dodo" in status["message"]
         finally:
             cfg.settings.BILLING_MODE = original_mode
-            cfg.settings.RAZORPAY_KEY_ID = original_key_id
-            cfg.settings.RAZORPAY_KEY_SECRET = original_key_secret
-            cfg.settings.RAZORPAY_WEBHOOK_SECRET = original_webhook_secret
+            cfg.settings.DODO_MODE = original_dodo_mode
+            cfg.settings.DODO_TEST_API_KEY = original_api_key
+            cfg.settings.DODO_TEST_WEBHOOK_KEY = original_webhook_key
 
     @pytest.mark.asyncio
     async def test_subscription_plans_exposes_billing_status(self, client: AsyncClient):

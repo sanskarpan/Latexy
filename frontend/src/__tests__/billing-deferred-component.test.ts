@@ -42,7 +42,7 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
   let hookIndex = 0
   let states: unknown[] = []
   let refs: Array<{ current: unknown }> = []
-  let effects: Array<() => void | (() => void)> = []
+  let effects: Array<{ effect: () => void | (() => void); dependencies?: readonly unknown[] }> = []
   const cleanups: Array<() => void> = []
   const verify = vi.fn()
   const preview = vi.fn().mockResolvedValue({ success: true, data: { success: true, message: 'Ready' } })
@@ -54,7 +54,7 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
     useCallback: (callback: unknown) => callback,
-    useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
+    useEffect: (effect: () => void | (() => void), dependencies?: readonly unknown[]) => { effects.push({ effect, dependencies }) },
     useMemo: (factory: () => unknown) => factory(),
     useRef: (initial: unknown) => {
       const index = hookIndex++
@@ -105,14 +105,14 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
     return (content.type as () => VNode)()
   }
   const runStudentEffect = () => {
-    const effect = effects[2]
+    const effect = effects.find((entry) => entry.dependencies?.includes(studentToken))?.effect
     if (!effect) throw new Error('student verification effect was not registered')
     const cleanup = effect()
     if (cleanup) cleanups.push(cleanup)
     return cleanup as () => void
   }
   const runTeamEffect = () => {
-    const effect = effects[3]
+    const effect = effects.find((entry) => entry.dependencies?.includes(teamToken))?.effect
     if (!effect) throw new Error('team invitation effect was not registered')
     const cleanup = effect()
     if (cleanup) cleanups.push(cleanup)

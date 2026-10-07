@@ -80,6 +80,7 @@ describe('Playwright Next cache isolation', () => {
   })
 
   it('does not inherit ambient credentials into the disposable server', () => {
+    const pathKeys = process.platform === 'win32' ? ['PATH'] : ['PATH', 'Path']
     const keys = [
       'SUPABASE_SERVICE_ROLE_KEY',
       'OPENAI_API_KEY',
@@ -91,8 +92,7 @@ describe('Playwright Next cache isolation', () => {
       'HTTP_PROXY',
       'PLAYWRIGHT_DATABASE_URL',
       'PLAYWRIGHT_BETTER_AUTH_SECRET',
-      'PATH',
-      'Path',
+      ...pathKeys,
       'SystemRoot',
       'SYSTEMROOT',
       'ComSpec',
@@ -100,7 +100,11 @@ describe('Playwright Next cache isolation', () => {
       'USERPROFILE',
       'npm_Config_User_Agent',
     ]
-    const previous = new Map(keys.map((key) => [key, process.env[key]]))
+    const userAgentKeys = Object.keys(process.env).filter(
+      (key) => key.toLowerCase() === 'npm_config_user_agent',
+    )
+    keys.push(...userAgentKeys)
+    const previous = new Map([...new Set(keys)].map((key) => [key, process.env[key]]))
     try {
       process.env.SUPABASE_SERVICE_ROLE_KEY = 'production-service-role'
       process.env.OPENAI_API_KEY = 'production-openai-key'
@@ -113,12 +117,15 @@ describe('Playwright Next cache isolation', () => {
       process.env.PLAYWRIGHT_DATABASE_URL = 'postgresql://test.example/isolated'
       process.env.PLAYWRIGHT_BETTER_AUTH_SECRET = 'playwright-secret-override'
       process.env.PATH = '/test/bin'
-      process.env.Path = 'C:\\Windows\\System32'
+      if (process.platform !== 'win32') process.env.Path = 'C:\\Windows\\System32'
       process.env.SystemRoot = 'C:\\Windows'
       process.env.SYSTEMROOT = 'C:\\Windows'
       process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe'
       process.env.COMSPEC = 'C:\\Windows\\System32\\cmd.exe'
       process.env.USERPROFILE = 'C:\\Users\\playwright'
+      // POSIX env keys are case-sensitive, so avoid inheriting a second
+      // ambient spelling of this allowlisted variable in Linux CI.
+      for (const key of userAgentKeys) delete process.env[key]
       process.env.npm_Config_User_Agent = 'npm/10 node/v22'
 
       const inherited = inheritedEnvironment()
@@ -132,14 +139,16 @@ describe('Playwright Next cache isolation', () => {
       expect(inherited.REDIS_URL).toBeUndefined()
       expect(inherited.HTTPS_PROXY).toBeUndefined()
       expect(inherited.HTTP_PROXY).toBeUndefined()
-      expect(inherited.PATH).toBe('/test/bin')
-      expect(inherited.Path).toBe('C:\\Windows\\System32')
-      expect(inherited.SystemRoot).toBe('C:\\Windows')
-      expect(inherited.SYSTEMROOT).toBe('C:\\Windows')
-      expect(inherited.ComSpec).toBe('C:\\Windows\\System32\\cmd.exe')
-      expect(inherited.COMSPEC).toBe('C:\\Windows\\System32\\cmd.exe')
+      const getEnvironmentValue = (environment: Record<string, string | undefined>, name: string) =>
+        Object.entries(environment).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+      expect(getEnvironmentValue(inherited, 'PATH')).toBe('/test/bin')
+      if (process.platform !== 'win32') {
+        expect(inherited.Path).toBe('C:\\Windows\\System32')
+      }
+      expect(getEnvironmentValue(inherited, 'SystemRoot')).toBe('C:\\Windows')
+      expect(getEnvironmentValue(inherited, 'ComSpec')).toBe('C:\\Windows\\System32\\cmd.exe')
       expect(inherited.USERPROFILE).toBe('C:\\Users\\playwright')
-      expect(inherited.npm_Config_User_Agent).toBe('npm/10 node/v22')
+      expect(getEnvironmentValue(inherited, 'npm_Config_User_Agent')).toBe('npm/10 node/v22')
       expect(environment.DATABASE_URL).toBe('postgresql://test.example/isolated')
       expect(environment.BETTER_AUTH_SECRET).toBe('playwright-secret-override')
     } finally {
@@ -260,6 +269,11 @@ describe('Playwright Next cache isolation', () => {
   }, 10_000)
 
   it('runs cleanup when its direct launcher disappears', async () => {
+    // Windows does not consistently reparent child processes or expose the
+    // parent PID's liveness after exit, so this POSIX process-lifecycle check
+    // cannot be asserted there.
+    if (process.platform === 'win32') return
+
     const root = await mkdtemp(join(tmpdir(), 'latexy-playwright-parent-'))
     const marker = join(root, 'parent-gone')
     const launcherModule = pathToFileURL(
@@ -277,7 +291,7 @@ describe('Playwright Next cache isolation', () => {
       'setTimeout(() => process.exit(0), 500)',
     ].join(';')
     const parent = spawn(process.execPath, ['-e', parentCode], {
-      detached: process.platform !== 'win32',
+      detached: true,
       stdio: 'ignore',
     })
 

@@ -20,7 +20,7 @@ FRONTEND_PORT = "5180"
 
 
 def _read(relative: str) -> str:
-    return (REPO_ROOT / relative).read_text()
+    return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
 
 def _load_all(relative: str) -> list:
@@ -30,7 +30,7 @@ def _load_all(relative: str) -> list:
 def _k8s_manifests() -> list:
     docs = []
     for path in sorted((REPO_ROOT / "k8s").rglob("*.yaml")):
-        docs.extend(doc for doc in yaml.safe_load_all(path.read_text()) if doc)
+        docs.extend(doc for doc in yaml.safe_load_all(path.read_text(encoding="utf-8")) if doc)
     return docs
 
 
@@ -95,6 +95,19 @@ def test_shipped_workflow_actions_are_pinned_to_commit_shas():
         )
 
 
+def test_backend_images_provide_non_root_lualatex_cache():
+    """Lua font loading must work for system users without a home directory."""
+    for relative, owner in (
+        ("backend/Dockerfile", "appuser:appgroup"),
+        ("backend/Dockerfile.prod", "latexy:latexy"),
+    ):
+        dockerfile = _read(relative)
+        assert "mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config" in dockerfile
+        assert f"chown {owner} /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config" in dockerfile
+        assert "TEXMFVAR=/var/lib/texmf/latexy-cache" in dockerfile
+        assert "TEXMFCONFIG=/var/lib/texmf/latexy-config" in dockerfile
+
+
 def test_ci_audits_the_complete_javascript_dependency_graph():
     """Development dependencies execute in CI and need the same advisory gate."""
     ci = _read(".github/workflows/ci.yml")
@@ -133,7 +146,7 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
     locked_versions = {
         re.sub(r"[-_.]+", "-", match.group(1).lower()): match.group(2)
         for match in re.finditer(
-            r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s]+)", production, re.MULTILINE
+            r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s;]+)", production, re.MULTILINE
         )
     }
     assert _pinned_requirements("backend/requirements.txt") == {
@@ -1023,6 +1036,17 @@ def test_plain_http_health_endpoint_is_not_a_redirect():
     http_server = re.search(r"server \{\s*\n\s*listen 80;(.*?)\n    \}", conf, re.S)
     assert http_server, "no plain-HTTP server block found"
     assert "location /health {" in http_server.group(1)
+
+
+def test_frontend_runner_matches_the_workspace_standalone_layout():
+    """Root-workspace builds emit standalone/frontend/server.js."""
+    dockerfile = _read("frontend/Dockerfile.prod")
+    assert "WORKDIR /app" in dockerfile
+    assert "/app/frontend/.next/standalone ./" in dockerfile
+    assert "/app/frontend/.next/static ./frontend/.next/static" in dockerfile
+    assert "/app/frontend/public ./frontend/public" in dockerfile
+    assert 'CMD ["node", "frontend/server.js"]' in dockerfile
+    assert 'CMD ["node", "server.js"]' not in dockerfile
 
 
 def test_frontend_ws_url_build_arg_must_be_absolute():

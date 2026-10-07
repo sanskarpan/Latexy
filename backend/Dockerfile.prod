@@ -65,7 +65,9 @@ RUN groupadd -r latexy && useradd -r -g latexy latexy
 # Create app directory and set permissions
 WORKDIR /app
 RUN mkdir -p /app/temp /app/logs && \
-    chown -R latexy:latexy /app
+    chown -R latexy:latexy /app && \
+    mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config && \
+    chown latexy:latexy /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config
 
 # Copy application code
 COPY --chown=latexy:latexy . /app/
@@ -78,6 +80,9 @@ USER latexy
 # k8s containerPort/probes). Override with -e PORT=... if you must.
 ENV PORT=8030 \
     UVICORN_WORKERS=4
+# Keep the non-root font cache in the TeX runtime tree recognized by the sandbox.
+ENV TEXMFVAR=/var/lib/texmf/latexy-cache \
+    TEXMFCONFIG=/var/lib/texmf/latexy-config
 
 # Health check (shell form so $PORT is expanded at runtime)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

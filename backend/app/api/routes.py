@@ -1299,12 +1299,8 @@ class CreateSubscriptionRequest(BaseModel):
 class CreateSubscriptionResponse(BaseModel):
     success: bool
     subscriptionId: Optional[str] = None
+    checkoutSessionId: Optional[str] = None
     shortUrl: Optional[str] = None
-    customerId: Optional[str] = None
-    orderId: Optional[str] = None
-    amount: Optional[int] = None
-    currency: Optional[str] = None
-    keyId: Optional[str] = None
     checkoutType: Optional[str] = None
     verificationRequired: bool = False
     verificationPreviewUrl: Optional[str] = None
@@ -1400,12 +1396,8 @@ async def create_subscription(
         return CreateSubscriptionResponse(
             success=result["success"],
             subscriptionId=result.get("subscription_id"),
+            checkoutSessionId=result.get("checkout_session_id"),
             shortUrl=result.get("short_url"),
-            customerId=result.get("customer_id"),
-            orderId=result.get("order_id"),
-            amount=result.get("amount"),
-            currency=result.get("currency"),
-            keyId=result.get("key_id"),
             checkoutType=result.get("checkout_type"),
             verificationRequired=bool(result.get("verification_required")),
             verificationPreviewUrl=result.get("verification_preview_url"),
@@ -1518,26 +1510,18 @@ async def cancel_subscription(
 
 
 @router.post("/billing/webhook")
-async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handle Razorpay webhook events."""
+async def dodo_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Verify and process Dodo Standard Webhooks using the raw request body."""
     try:
-        if not payment_service.is_available():
-            raise HTTPException(
-                status_code=503,
-                detail=payment_service.get_status()["message"],
-            )
-
         payload = await request.body()
-        signature = request.headers.get("X-Razorpay-Signature", "")
-        event_id = request.headers.get("X-Razorpay-Event-Id")
-
-        result = await payment_service.handle_webhook(db, payload, signature, event_id)
+        result = await payment_service.handle_webhook(db, payload, dict(request.headers))
 
         if result["success"]:
             return {"status": "ok"}
         else:
-            logger.error("Webhook processing failed")
-            raise HTTPException(status_code=400, detail="Webhook processing failed")
+            logger.error("Dodo webhook rejected or failed", extra={"retryable": bool(result.get("retryable"))})
+            raise HTTPException(status_code=500 if result.get("retryable") else 400,
+                                detail="Webhook processing failed")
 
     except HTTPException:
         raise

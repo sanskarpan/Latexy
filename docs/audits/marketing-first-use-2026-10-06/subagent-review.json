@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-06",
+  "reviewers": ["marketing", "theme", "visual_editor"],
+  "method": "Independent evidence-based reviews, parent code cross-checks, focused reproduction tests, and parent browser verification. Findings required concrete triggers and fixes before implementation.",
+  "implemented": [
+    {"finding":"Controlled visual fields dropped trailing spaces and whitespace-only edits", "evidence":"Parser trimming and reproduced typing tests; parent browser kept 'Alex ' then 'Alex Morgan'", "area":"visual-projection"},
+    {"finding":"Multiline edits could disappear from formatted fields", "evidence":"Source span/parser reproductions and multiline regressions", "area":"visual-projection"},
+    {"finding":"Repeated section names merged distinct sections", "evidence":"Title-only grouping; parent browser confirmed two independent Skills sections after fix", "area":"VisualResumeEditor"},
+    {"finding":"Unknown/code environments exposed raw contents and could confuse insertion boundaries", "evidence":"Listing/verbatim/minted/custom environment reproduction tests, including literal document/list endings preserved during insertion", "area":"visual-projection"},
+    {"finding":"Windows CRLF lines added blank lines to fields and hid the headline", "evidence":"Full LF/CRLF projection equality and exact span patch tests; parent browser confirmed restored headline and no extra textarea scrollbars", "area":"visual-projection"},
+    {"finding":"Manual guest PDF preview reset the AI review baseline and could allow overwriting newer edits", "evidence":"runCompile wrote the shared baseline for normal compile; now only rewrite submission captures it", "area":"try"},
+    {"finding":"Completed AI PDFs could be treated as current documents before approval", "evidence":"PDF loading/export paths read raw rewrite stream results; approved selection policy and guest source guard added", "area":"PDF preview/export"},
+    {"finding":"Discarded failed AI output remained available through Apply anyway", "evidence":"Discard cleared baseline while stream retained candidate; discarded job now cleared", "area":"authenticated editor"},
+    {"finding":"AI trim did not capture its own review baseline", "evidence":"Compared trim and ordinary optimization call paths; trim now captures baseline and owner identity", "area":"authenticated editor"},
+    {"finding":"Closing a pending document-assistant request left loading stuck after reopening", "evidence":"Request invalidation skipped old finally cleanup; close now clears loading", "area":"DocumentAssistantPanel"},
+    {"finding":"Busy auto-preview could drop edits, while manual preview could duplicate submissions", "evidence":"Baseline advanced before busy submission guard and manual acceptance did not settle it; queued edit acknowledgement and captured submission baselines revised", "area":"visual auto-preview"},
+    {"finding":"Active contrast toggle foreground classes conflicted", "evidence":"Actual Tailwind cascade test plus settled parent browser black-on-yellow colors", "area":"ContrastToggle"},
+    {"finding":"Destructive labels lacked contrast in dark palettes", "evidence":"Actual generated utility/palette contrast tests; semantic err-fg token added", "area":"theme and shared controls"},
+    {"finding":"Mobile guest editor had no reachable appearance controls", "evidence":"Header controls hidden below sm and global header excluded; controls added to mobile tools pane", "area":"try"},
+    {"finding":"Visual section navigation ignored reduced-motion preference", "evidence":"Explicit smooth API option; navigation now selects auto when requested", "area":"VisualResumeEditor"},
+    {"finding":"Public guest CTAs could reopen saved Source mode", "evidence":"Header URL plus initialization path; explicit visual query added", "area":"GlobalHeader"},
+    {"finding":"Template copy omitted sign-in requirement", "evidence":"Gallery use handler redirects guests to login; marketing copy corrected", "area":"marketing"},
+    {"finding":"Hardcoded marketing origins conflicted with configurable discovery URLs", "evidence":"Runtime alternate-origin integration test", "area":"metadata"},
+    {"finding":"Illustrative rewrites introduced facts absent from their original examples", "evidence":"Before/after text comparison; originals now contain all rewritten facts", "area":"ResumeStory and Resources"}
+  ],
+  "not_implemented": [
+    {"suggestion":"Raise tablet navigation breakpoint", "reason":"Plausible crowding risk, but no observed collision or viewport evidence. Avoided speculative layout change."},
+    {"suggestion":"Further contrast CSS change based on orange/intermediate runtime colors", "reason":"Parent cross-check showed a 150ms transition, followed by correct settled black/yellow. No extra fix needed."},
+    {"suggestion":"Question advertised priority processing or AI-key support", "reason":"Reviewer found actual worker priorities and plan/provider implementation supporting the claims."},
+    {"suggestion":"Broaden this pass to legacy Updates animations", "reason":"Separate optional enhancement; not a confirmed regression from current changes."}
+  ],
+  "verification": {"focusedTestFiles":9,"focusedTestsPassed":64,"targetedLint":"passed with zero warnings","typescript":"passed","browser":"whitespace, multiline, duplicate sections, CRLF, contrast, visual exports, entry links, and favicon metadata checked"},
+  "limits": ["Local backend/database still prevent live AI/PDF and authenticated end-to-end verification", "Asynchronous preview and assistant request fixes are code-flow verified, not live end-to-end verified", "Mobile viewport behavior remains unverified in the available in-app browser", "Some custom template styled headers, links, and complex layouts remain outside conservative visual projection; source is preserved and the UI discloses this", "No ranking or conversion improvement is claimed", "No deployment performed"]
+}

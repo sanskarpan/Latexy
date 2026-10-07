@@ -52,7 +52,10 @@ async def _ensure_subscription_extension_schema(db: AsyncSession) -> None:
               id UUID PRIMARY KEY,
               coupon_id UUID REFERENCES coupon_codes(id) ON DELETE SET NULL,
               user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-              redeemed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              subscription_id UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
+              status TEXT NOT NULL DEFAULT 'redeemed',
+              redeemed_at TIMESTAMPTZ,
+              CONSTRAINT uq_coupon_redemptions_coupon_user UNIQUE (coupon_id, user_id)
             )
             """
         )
@@ -109,30 +112,26 @@ class TestAdvancedSubscriptions:
         )
         await db_session.commit()
 
-        # A percentage discount is only usable when it is mapped to a Razorpay
-        # offer; otherwise checkout would refuse what the UI just accepted.
-        with patch(
-            "app.core.config.settings.RAZORPAY_COUPON_OFFERS",
-            '{"SAVE20": "offer_test"}',
-        ):
-            response = await client.post(
-                "/billing/validate-coupon",
-                json={"code": "SAVE20", "planId": "pro", "billingPeriod": "monthly"},
-            )
+        # The coupon is validated locally and applied by code at the Dodo hosted
+        # checkout; operators must create the same discount code in Dodo.
+        response = await client.post(
+            "/billing/validate-coupon",
+            json={"code": "SAVE20", "planId": "pro", "billingPeriod": "monthly"},
+        )
         assert response.status_code == 200
         payload = response.json()
         assert payload["valid"] is True
         assert payload["discountPercent"] == 20
 
-        # Unmapped: refuse at the apply step rather than at Subscribe.
+        # Validation alone does not reserve or consume the coupon; checkout
+        # creation reserves it, and the successful payment webhook redeems it.
         response = await client.post(
             "/billing/validate-coupon",
             json={"code": "SAVE20", "planId": "pro", "billingPeriod": "monthly"},
         )
         assert response.status_code == 200
         unmapped = response.json()
-        assert unmapped["valid"] is False
-        assert "cannot be applied" in unmapped["message"]
+        assert unmapped["valid"] is True
 
     async def test_validate_coupon_rejects_expired_code(
         self,
@@ -197,7 +196,7 @@ class TestAdvancedSubscriptions:
 
         with (
             patch("app.api.routes.feature_flag_service.get_flag", new=AsyncMock(return_value=True)),
-            patch("app.api.routes.payment_service.client", new=object()),
+            patch("app.api.routes.payment_service.is_available", return_value=True),
             patch("app.services.payment_service.email_service.send_email", new=AsyncMock(return_value=True)) as send_email,
         ):
             response = await client.post(

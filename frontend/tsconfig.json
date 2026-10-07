@@ -34,9 +34,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-webpack-debug/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-webpack-debug/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

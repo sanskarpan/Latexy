@@ -5,6 +5,10 @@ const EDITOR = readFileSync(
   new URL('../app/workspace/[resumeId]/edit/page.tsx', import.meta.url),
   'utf8',
 )
+const VISUAL_EDITOR = readFileSync(
+  new URL('../components/VisualResumeEditor.tsx', import.meta.url),
+  'utf8',
+)
 
 describe('editor save reliability', () => {
   it('rejects invalid titles before manual or automatic API writes', () => {
@@ -65,9 +69,10 @@ describe('editor save reliability', () => {
   })
 
   it('rebuilds the visual document when visual mode was persisted across reload', () => {
-    expect(EDITOR).toContain("editorMode !== 'wysiwyg' || wysiwygDoc || !latexContent")
-    expect(EDITOR).toContain('const { doc, warnings } = parseResume(latexContent)')
-    expect(EDITOR).toContain("warning.type === 'unrecognised_block'")
+    expect(EDITOR).toContain("localStorage.getItem(`latexy_editor_mode_${resumeId}`) === 'source' ? 'source' : 'wysiwyg'")
+    expect(EDITOR).toContain('localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)')
+    expect(EDITOR).toContain('<VisualResumeEditor value={latexContent} onChange={setLatexContent} readOnly={!canEditDocument} />')
+    expect(VISUAL_EDITOR).toContain('useMemo(() => projectVisualResume(value), [value])')
   })
 
   it('retains the last successful PDF while a replacement compile runs or fails', () => {

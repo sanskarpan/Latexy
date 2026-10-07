@@ -1,0 +1,307 @@
+- main:
+  - link "Resumatic home":
+    - /url: /
+    - generic: RESUMATIC
+  - navigation "Main":
+    - link "AI Tools":
+      - /url: /ai-resume-tools
+    - link "Builder":
+      - /url: /tools/ai-resume-builder
+    - link "Templates":
+      - /url: /resume-templates
+    - link "Examples":
+      - /url: /resume-examples
+    - link "Blog":
+      - /url: /blog
+    - link "Pricing":
+      - /url: /pricing
+  - link "Sign in":
+    - /url: https://resumatic.rezi.ai/signup
+  - link "Start free":
+    - /url: https://resumatic.rezi.ai/signup
+  - navigation "Breadcrumb":
+    - link "Blog":
+      - /url: /blog
+    - generic: /
+    - link "Resume Writing":
+      - /url: /blog?category=resume-writing
+  - heading "ChatGPT Resume Prompts I Tested (and Where Each One Broke)" [level=1]
+  - paragraph: Eight ChatGPT resume prompts tested on a real profile, with the actual output shown. See where the generic prompt invented tools, where a "good" draft inflated results, and the prompts that fixed it.
+  - generic: AK
+  - generic: Alex Khamis, CPRW
+  - generic: Co-founder of Resumatic, founder of Final Draft Resumes
+  - generic: September 16, 2026 · 12 min read
+  - article:
+    - generic: KEY TAKEAWAY
+    - list:
+      - listitem: The prompt wording matters less than the notes you paste in. A prompt with no inputs produces a summary that could belong to anyone, and partly did not belong to this candidate.
+      - listitem: Current chatbots rarely invent a whole job. They inflate at the edges (i.e., a stronger verb, a dropped qualifier, or an outcome you never actually measured).
+      - listitem: The most useful prompts make ChatGPT interview you, audit its own draft against your notes, and tell you which job requirements you can’t honestly claim.
+    - paragraph:
+      - emphasis: By Alex Khamis, CPRW | Published 16 September 2026
+    - paragraph:
+      - text: ChatGPT
+      - link "resume prompts work":
+        - /url: https://www.nber.org/papers/w30886
+      - text: when they control what the chatbot is allowed to use and force it to say what it doesn’t know. In testing eight prompts against a real person’s profile, the generic “write a professional summary” prompt invented tools the candidate had never used, while prompts that supplied notes, banned inflated verbs, and required a list of missing information produced more usable, and more importantly, more honest drafts.
+    - heading "Can ChatGPT write a good resume?" [level=2]
+    - paragraph:
+      - text: ChatGPT can write a usable resume for students, early-career professionals, and anyone who needs a resume this week and can’t hire a writer in time. The output is only as accurate as the notes supplied, and
+      - link "OpenAI’s own help documentation":
+        - /url: https://help.openai.com/en/articles/6783457-what-is-chatgpt
+      - text: states that ChatGPT “will occasionally make up facts.” Prompts that supply real source material, give it guardrails, and require it to flag gaps produce drafts that hold up. Prompts that supply a job title and nothing else do not.
+    - paragraph: That’s my position after reviewing and writing thousands resumes and moderating a very large community for those seeking resume help, where a growing share of the resumes posted for review are clearly chatbot drafts.
+    - paragraph: The people I’d typically tell to use ChatGPT are typically those that don’t require a whole lot of strategy. Think students, those just starting out with under a few years of experience, those with linear careers, or even people that need a resume to apply to a sudden opportunity that just arose. The people I’d advise against using it are the ones whose problem isn’t the wording. A career changer, a senior manager, someone whose most relevant experience is two jobs back. In scenarios that require strategy and tactics, I've found ChatGPT to be lacking (though it has an overly confident facade).
+    - paragraph:
+      - text: Hiring managers have noticed. In a
+      - link "Robert Half Canada survey":
+        - /url: https://press.roberthalf.ca/2026-03-10-New-survey-61-per-cent-of-HR-leaders-report-AI-generated-applications-are-slowing-hiring
+      - text: of 1,500 hiring managers fielded in November 2025 and published in March 2026, 64% said AI-enhanced resumes make skills harder to verify. The idea here isn’t that you shouldn’t use AI - I think it’s here to stay so you may as well learn how to use it.
+    - heading "I tested a real profile with eight prompts and here’s what I found" [level=2]
+    - paragraph: "The test used an anonymized profile from a real client: Dana, a partner marketing coordinator with 4.5 years at an e-commerce membership program owned by a Fortune 100 logistics company, promoted once, now stuck in a sales operations role after the program shut down. Each prompt was run in a fresh chatbot session with no prior context. Names, employers, and brand partners were changed; the figures and the work stayed the same."
+    - paragraph: "A note on the chatbot. The prompts were run through a current general-purpose AI assistant of the same class as ChatGPT. For resume drafting, ChatGPT, Claude, and Gemini behave the same way: they have same tendency toward inflated verbs, same willingness to fill gaps, same response to constraints."
+    - paragraph: Dana’s notes include a partner book that grew from about 40 to over 100 as her team shrank from four people to one, daily email campaigns in Iterable, affiliate commission negotiations with three partners, two pop-up events in New York, a process change that cut partner edits to one round, and one number from her old resume, a 0.50% CTR lift, that she isn’t sure is accurate. That last detail turned out to matter.
+    - paragraph: "The eight prompts, in the order I’d actually use them:"
+    - list:
+      - strong: "Baseline summary, no inputs:"
+      - text: the prompt I included to show what it produces.
+      - strong: Baseline bullets from raw notes
+      - text: ": “turn these notes into strong bullets with metrics.”"
+      - strong: Constrained summary
+      - text: ": states what a summary must contain and bans adjectives."
+      - strong: Constrained summary with a word cap
+      - text: ": the same prompt after the first attempt ran to 150 words."
+      - strong: Job overview statement
+      - text: ": two or three sentences describing the company and the role."
+      - strong: Constrained bullets
+      - text: ": accurate verbs, named deliverables, no invented results, list what’s missing."
+      - strong: Interview me first
+      - text: ": ChatGPT asks eight questions before writing anything."
+      - strong: Gap analysis against a posting
+      - text: ": what matches, what you can’t claim, what to rename."
+    - paragraph: Plus a ninth I’ll show at the end, the audit prompt, which compares any AI draft back to your notes.
+    - heading "What the prompt everyone uses actually produces" [level=2]
+    - paragraph: The most common ChatGPT resume prompt, a job title and years of experience with no supporting notes, produces a summary built from the statistical average of every resume in its training data.
+    - paragraph: In the test, that prompt returned “Results-Driven Marketing Coordinator” with a “proven track record,” “skilled in” partner relationships, and “adept at leveraging CRM platforms (e.g., Salesforce, HubSpot, Marketo).” Dana has used Salesforce. She has never opened HubSpot or Marketo.
+    - paragraph: "The prompt was: “Write a professional resume summary for a marketing coordinator with 5 years of experience in email and partner marketing who is looking for a CRM specialist role.”"
+    - paragraph: Nothing in what the AI gave us is a lie in the traditional sense. After all, it had to make assumptions to fill in gaps. It filled the space where her experience should be with what a CRM specialist typically lists, and two of the three tools it named were guesses presented as facts.
+    - paragraph: "The second baseline is more interesting. I pasted Dana’s full notes and asked for “strong resume bullet points with metrics.” The output was decent. Eight bullets, mostly faithful, and it flagged the uncertain CTR figure without being asked. I’d say the results were good enough tto satisfy most people. Then I ran the audit prompt (below) and it found four problems in its own work:"
+    - list:
+      - listitem: Her notes say she “reported bugs, worked through fixes” with a search vendor. The bullet said she was “driving bug resolution” through “cross-functional” meetings. The meetings weren’t described as cross-functional anywhere, and I’m not really sure what “driving” means - it sounds like one of those buzzwords that sounds like you’re doing a lot, but in reality has a lot of built in ambiguity.
+      - listitem: Her notes say the old edit process had “too many last-minute changes.” The bullet said “unlimited last-minute revisions,” and then added “reducing production delays and rework,” an outcome nobody measured.
+      - listitem: Her notes say she coordinated a coffee-bar activation at SXSW. The bullet said she “produced” it.
+      - listitem: Her notes give a revenue range for the whole partner book. The bullet attached that range to the 45 accounts she personally managed and dropped “at peak” from the $2M figure.
+    - paragraph: None of these are egregious errors by any means, but they’re still problematic. The verb choices matter here. There’s a difference between producing something and coordinating it.
+    - heading "What’s the most effective ChatGPT prompt for a resume summary?" [level=2]
+    - paragraph: The best ChatGPT resume summary prompt states what the summary must contain (years of experience, types of companies, industries, and the types of initiatives led or supported), bans adjectives that describe the candidate, bans metrics and tool names, sets a hard word limit of about 60 words, and restricts the chatbot to the notes provided. Without the word limit, the same prompt produced a 150-word paragraph.
+    - paragraph: "Here’s the prompt that worked, after one revision:"
+    - paragraph:
+      - emphasis: "Write a resume summary for me for CRM specialist and email marketing roles. Hard limit: 60 words, and count them. It must state my years of experience, the types of companies I’ve worked for, the industries, and the types of initiatives I’ve led or supported. No adjectives describing me. No metrics, no tool names, no list of every task. This is the 20,000-foot view, not the bullets. Use only what’s in my notes."
+    - paragraph: "And the output, at 58 words:"
+    - paragraph: Marketing professional with 5+ years spanning a Fortune 100 logistics company and a multi-retailer e-commerce membership program covering apparel, beauty, and department stores. Managed partner relationships and led email marketing initiatives, including campaign strategy, segmentation, and site merchandising. Supported cross-functional programs spanning affiliate partnerships, vendor integrations, and in-person brand activations, including SXSW.
+    - paragraph: That’s usable. It answers the important questions a recruiter has in the first few seconds.
+    - paragraph: "One thing the 58-word version gets wrong that no prompt fixed: it gives Dana’s current sales operations job, which she took to stay employed and wants out of, equal billing with five years of marketing. A resume writer would open on the marketing career and treat sales ops as a footnote. The chatbot has no way to know which of your jobs is the point, and it won’t ask. That’s a hierarchy decision, and hierarchy is where these tools stop."
+    - heading "How do you get ChatGPT to write resume bullet points without making things up?" [level=2]
+    - paragraph: To stop ChatGPT inventing content in resume bullets, the prompt needs to restrict it to the notes supplied, require the verb that accurately describes the contribution, forbid adding any number or tool not in the notes, and require a list of every bullet where a number was wanted but missing. In the test this produced five accurate bullets and a list of three places Dana should go find data.
+    - paragraph: "The prompt:"
+    - paragraph: "Write 5 resume bullet points for my previous job from my notes. Rules: 1. One sentence each, under 30 words. 2. Start with the verb that accurately describes what I did. No inflated verbs like “spearheaded,” “orchestrated,” “leveraged,” “drove.” 3. Name the actual thing I produced or changed (the process, the campaign, the deal), not an abstraction like “operational excellence.” 4. If my notes give a result, include it. If they only give what I was trying to do, state that, don’t invent a result. 5. Do not add any number, tool, or skill that is not in my notes. 6. After the bullets, list any bullet where you wanted a number and didn’t have one, so I can go find it."
+    - paragraph: "Two of the five bullets it returned:"
+    - paragraph: Negotiated affiliate commission rates with 3 partners around peak promo windows, securing rates up to 12% versus the standard 3 to 5% in exchange for added exposure.
+    - paragraph: Standardized the partner edit process to one round of changes with a two-business-day approval window, rolling it out to about 45 partners to reduce last-minute changes.
+    - heading "How do you use ChatGPT to tailor a resume to a job description?" [level=2]
+    - paragraph:
+      - text: I’ve found that a reliable way to
+      - link "tailor a resume":
+        - /url: /articles/how-to-tailor-resume-to-job-description-and-land-interviews
+      - text: "with ChatGPT is to paste the job posting and your notes and ask it for three lists:"
+    - list:
+      - listitem: which of your experiences match each requirement,
+      - listitem: which requirements you don’t meet, and
+      - listitem: which of your terms should be renamed to the posting’s terms where they mean the same thing, with an explicit instruction not to suggest adding anything you haven’t done.
+    - paragraph: In the test this was the most dependable output of all eight prompts.
+    - paragraph: I gave it a sample posting for an Email and CRM Marketing Specialist at a home-goods retailer. It matched what should match and correctly listed what she didn’t. And it suggested sensible renames.
+    - paragraph: "The one judgment call I’d push back on: it suggested describing her employer as a “B2C brand” to match the posting. The program was B2B2C, marketing partner brands to consumers. Close enough for a keyword, but what happens when an HM asks “tell me about owning a B2C brand’s email program”?."
+    - paragraph: If you only use one prompt from this article, use this one, before you write a single bullet.
+    - 'heading "Two other useful prompts: interview me, then audit yourself" [level=2]'
+    - paragraph: I also found two other useful ChatGPT resume prompts.
+    - paragraph: "The first asks the AI to interview you before drafting: “Act as a resume writer preparing to write up my previous job. Before writing anything, ask me the 8 questions you’d need answered to write strong bullets, focused on scope, decisions I made, what changed because of me, and numbers I might actually have.”"
+    - paragraph: The second asks it to audit a draft against your notes and classify every unsupported claim as an invented fact, an inferred result, or an inflated verb.
+    - paragraph: The interview prompt, given only Dana’s old resume text, came back with eight questions I’d have asked on a discovery call. Things like how many partners, which were the biggest and what made them hers, before-and-after on the commission rates, whether “executed the creative process” meant briefing designers or doing the design, a process she changed, event results, and whether she was promoted.
+    - paragraph: It also asked one bad question. Her old resume said she “led vendor server training,” an awkward phrase from a 2020 draft, and the chatbot asked how many vendors she trained. She trained no one; she was the point of contact for a search vendor’s integration. If you start from a weak resume instead of notes, the questions chase the weak resume’s framing. This is what’s often called GIGO (garbage in, garbage out).
+    - paragraph: "The audit prompt is the one I’d make mandatory:"
+    - paragraph: Compare these resume bullets against my notes. List every claim, number, result, or skill in the bullets that is not directly supported by my notes, and say for each whether it’s an invented fact, an inferred result, or an inflated verb. Then give a corrected version of each bullet that has a problem.
+    - paragraph: Run against the baseline bullets, it found all four problems described earlier, classified each correctly, and rewrote them. The same model that upgraded “reported bugs” to “driving bug resolution” on the way out caught the upgrade on the way back, once it was asked to compare rather than compose.
+    - heading "When should you stop using ChatGPT for your resume?" [level=2]
+    - paragraph: I wouldn’t use ChatGPT, Claude or any other AI when your situation is more complex than the cases I mentioned above. If you’re an exec and you need help first developing your professional branding, that’s not something ChatGPT can do well. I can’t tell you how many director-level folks have come to me for help after going through several iterations of a ChatGPT resume and dozens of applications that went nowhere.
+    - paragraph:
+      - strong: About the author
+    - paragraph:
+      - text: I’m Alex Khamis, CPRW and I’m the Founder of Resumatic and Final Draft Resumes. I moderates one of the largest resume help communities on Earth, and I’ve personally written and reviewed thousands of resumes.
+      - link "LinkedIn":
+        - /url: https://www.linkedin.com/in/
+      - text: "|"
+      - link "About Resumatic":
+        - /url: /about
+  - complementary:
+    - navigation "On this page":
+      - generic: ON THIS PAGE
+      - list:
+        - link "Can ChatGPT write a good resume?":
+          - /url: "#can-chatgpt-write-a-good-resume"
+        - link "I tested a real profile with eight prompts and here’s what I found":
+          - /url: "#i-tested-a-real-profile-with-eight-prompts-and-heres-what-i-found"
+        - link "What the prompt everyone uses actually produces":
+          - /url: "#what-the-prompt-everyone-uses-actually-produces"
+        - link "What’s the most effective ChatGPT prompt for a resume summary?":
+          - /url: "#whats-the-most-effective-chatgpt-prompt-for-a-resume-summary"
+        - link "How do you get ChatGPT to write resume bullet points without making things up?":
+          - /url: "#how-do-you-get-chatgpt-to-write-resume-bullet-points-without-making-things-up"
+        - link "How do you use ChatGPT to tailor a resume to a job description?":
+          - /url: "#how-do-you-use-chatgpt-to-tailor-a-resume-to-a-job-description"
+        - 'link "Two other useful prompts: interview me, then audit yourself"':
+          - /url: "#two-other-useful-prompts-interview-me-then-audit-yourself"
+        - link "When should you stop using ChatGPT for your resume?":
+          - /url: "#when-should-you-stop-using-chatgpt-for-your-resume"
+    - generic: WRITTEN BY
+    - generic: Alex Khamis, CPRW
+    - generic: Last updated September 16, 2026.
+  - heading "Keep sharpening your resume" [level=2]
+  - link "All articles":
+    - /url: /blog
+  - link "8 Synonyms for Contribute to Use on Your Resume in 2026 Resume Writing 8 Synonyms for Contribute to Use on Your Resume in 2026 Alex Khamis · 15 min read":
+    - /url: /articles/synonyms-for-contribute
+    - img "8 Synonyms for Contribute to Use on Your Resume in 2026"
+    - generic: Resume Writing
+    - heading "8 Synonyms for Contribute to Use on Your Resume in 2026" [level=3]
+    - generic: Alex Khamis · 15 min read
+  - link "How Far Back Should My Resume Go? 2026 Guide Resume Writing How Far Back Should My Resume Go? 2026 Guide Alex Khamis · 16 min read":
+    - /url: /articles/how-far-back-should-my-resume-go
+    - img "How Far Back Should My Resume Go? 2026 Guide"
+    - generic: Resume Writing
+    - heading "How Far Back Should My Resume Go? 2026 Guide" [level=3]
+    - generic: Alex Khamis · 16 min read
+  - link "Skills to Put on a Resume in 2026 (With Examples by Job Type) Resume Writing Skills to Put on a Resume in 2026 (With Examples by Job Type) Alex Khamis · 7 min read":
+    - /url: /articles/skills-to-put-on-a-resume-in-2026
+    - img "Skills to Put on a Resume in 2026 (With Examples by Job Type)"
+    - generic: Resume Writing
+    - heading "Skills to Put on a Resume in 2026 (With Examples by Job Type)" [level=3]
+    - generic: Alex Khamis · 7 min read
+  - generic: Moderator Recommended on /r/resumes
+  - heading "Your next job starts with a better resume." [level=2]
+  - paragraph: Join 4.5M job seekers tailoring every application in about ninety seconds.
+  - link "Build my resume":
+    - /url: https://resumatic.rezi.ai/signup
+  - generic: Charles Bloomberg
+  - generic: Seoul, South Korea
+  - generic: ·
+  - generic: charlesbloomberg@gmail.com
+  - generic: ·
+  - generic: (621)799-5548
+  - generic: ·
+  - generic: in/cbloomberg
+  - heading "SUMMARY" [level=3]
+  - paragraph: Passion for building inspiring consumer software companies through industry-leading tech, design, and execution. An experienced early-stage global executive with an economics degree from the University of Wisconsin Madison.
+  - heading "EXPERIENCE" [level=3]
+  - generic: CEO & Founder
+  - generic: Rezi
+  - generic: August 2015 - Present, Seoul, South Korea
+  - generic: · Launched Rezi, the leading AI-powered resume
+  - generic: SaaS
+  - generic: software, garnering trust from over 4,533,800
+  - generic: users
+  - generic: globally.
+  - generic: · Initiated Rezi at the age of 22, and within a year, successfully globalized into South Korea, raising over $550,000 in capital fundraising
+  - generic: efforts and gaining recognition as South Korea's leading English resume company.
+  - generic: · Adapted to market by developing business models, resulting in the creation of advanced AI features to outcompete alternatives. Led
+  - generic: prototyping in Figma and a shared design system with the development team, and formulated zero-investment
+  - generic: growth strategies
+  - generic: that
+  - generic: led to an addition of 1,500,000
+  - generic: users
+  - generic: in six months.
+  - generic: · Maintained a robust financial structure, supporting a company valuation of $45,000,000, with a dedicated team of 9 full-time
+  - generic: employees and an expanding user base.
+  - generic: · Devised and pursued strategic objectives that guide the company's decisions and propel it towards its goals. Assembled an advisory
+  - generic: board that has been instrumental in providing direction to corporate structure and
+  - generic: strategic planning
+  - generic: .
+  - generic: Marketing Analyst
+  - generic: Kaplan
+  - generic: May 2016 - May 2017, La Crosse, WI
+  - paragraph: · Relied and implement Tableau dashboards to track 6 marketing KPIs. Used data to create reports circulated amongst leadership. Collaborated with marketing specialists to improve marketing strategies to maximize ROI such as introducing Facebook retargeting.
+  - paragraph: · Used SurveyMonkey to collect over 100 customer feedbacks used to conduct analysis, identify market trends, and calculate NPS. Used customer feedback data and optimization software to present and suggest website improvements to management.
+  - paragraph: · Managed mobile 2 PPC strategy efforts, using Google AdWords Editor and Marin, by teaching marketing specialists best practices to prepare for the behavioral shift towards increased reliance on mobile.
+  - generic: Web Developer
+  - generic: Kaplan
+  - generic: January 2015 - January 2016, La Crosse, WI
+  - paragraph: · Executed website redesign of kaplancleantech.com using Expression Engine as a CMS while working with marketing and sales teams. Optimized 3 landing page variants using HTML, A/B testing software and customer feedback to increase leads for sales teams.
+  - paragraph: · Lead the developing SEO strategies monitoring campaigns using MOZ Analytics for a 500k budget. Maintained performance through site analysis, and new keyword research. Prepared analytics and ranking reports presented to management.
+  - paragraph: · Executed Google Analytics tracking campaigns to maximize the effectiveness of 5 email re-marketing initiatives deployed using Salesforce software. Used Salesforce Object Query Language, C, and Python to search for data for specific information.
+  - paragraph: · Contributed to Deck Writing, Channel Allocation, Budgeting, and more.
+  - heading "PROJECT" [level=3]
+  - generic: Early-Stage Startup Architect
+  - generic: Startup Consultant · May 2016 - Present
+  - paragraph: · Mentored 3 global founders to bring well-executed MVPs to market through no-code and "ship-first" methodologies.
+  - heading "EDUCATION" [level=3]
+  - generic: Bachelor of Science in Economics with a Mathematics Emphasis
+  - generic: University of Wisconsin - Madison · 2014
+  - heading "SKILLS" [level=3]
+  - paragraph: "Leadership: Speaking, Fundraising, Product Development, Communication, Partnerships, International Marketing"
+  - paragraph: "Fields of Interest: Early-Stage Fundraising, Global Entrepreneurship, Web Design, Growth"
+  - paragraph: "Front End: HTML, CSS, Bootstrap, Webflow"
+  - paragraph: "Design: Photoshop, Illustrator, Sketch"
+  - generic: Job match
+  - generic: Strong
+  - generic: 92%
+  - generic: KEYWORDS MATCHED
+  - text: SaaS
+  - text: growth strategies
+  - text: users
+  - text: strategic planning
+  - generic: Notion · Head of Growth
+  - link "Resumatic home":
+    - /url: /
+    - generic: RESUMATIC
+  - paragraph: The AI resume builder that gets you interviews, powered by ChatGPT.
+  - generic: AI TOOLS
+  - link "AI resume builder":
+    - /url: /tools/ai-resume-builder
+  - link "Cover letter generator":
+    - /url: /tools/cover-letter-generator
+  - link "ATS resume checker":
+    - /url: /tools/ats-resume-checker
+  - link "LinkedIn resume builder":
+    - /url: /tools/linkedin-resume-builder
+  - link "AI resume agent":
+    - /url: /tools/ai-resume-agent
+  - generic: RESOURCES
+  - link "Resume templates":
+    - /url: /resume-templates
+  - link "Resume examples":
+    - /url: /resume-examples
+  - link "Blog":
+    - /url: /blog
+  - link "FAQ":
+    - /url: /resources/faq
+  - generic: COMPARE
+  - link "vs ChatGPT":
+    - /url: /vs/resumatic-vs-chatgpt
+  - link "vs Kickresume":
+    - /url: /vs/resumatic-vs-kickresume
+  - link "vs Teal":
+    - /url: /vs/resumatic-vs-teal
+  - generic: COMPANY
+  - link "Pricing":
+    - /url: /pricing
+  - link "Support":
+    - /url: mailto:support@rezi.io
+  - link "Privacy":
+    - /url: https://www.rezi.ai/privacy
+  - link "Terms":
+    - /url: https://www.rezi.ai/terms
+  - text: © 2026 Resumatic · Powered by
+  - link "Rezi Enterprise":
+    - /url: https://www.rezi.ai/enterprise
+  - generic: METRICS AND RATINGS AGGREGATED WITH REZI
+- region "Notifications alt+T"
+- alert: ChatGPT Resume Prompts I Tested (and Where Each One Broke) | Resumatic

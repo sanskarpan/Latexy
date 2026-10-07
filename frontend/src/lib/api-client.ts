@@ -254,13 +254,9 @@ export interface CouponValidationResponse {
 
 export interface SubscriptionCreateResponse {
   shortUrl?: string
+  checkoutSessionId?: string
   subscriptionId?: string
-  customerId?: string
-  orderId?: string
-  amount?: number
-  currency?: string
-  keyId?: string
-  checkoutType?: 'one_time' | 'subscription'
+  checkoutType?: 'hosted'
   message?: string
   verificationRequired?: boolean
   verificationPreviewUrl?: string | null

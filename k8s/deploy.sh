@@ -172,7 +172,7 @@ resolve_secret_value() {
 # Nothing secret is committed to this repo. Values that only the cluster needs
 # (database/redis/flower passwords, signing keys) are generated here on the
 # first deploy and reused afterwards. Values owned by third parties (LLM and
-# Razorpay credentials) must come from the environment.
+# Dodo credentials) must come from the environment.
 #
 # Set SKIP_SECRET_PROVISIONING=true when the Secrets are managed by an external
 # system (External Secrets Operator, Sealed Secrets, Vault, a CSI secret store).
@@ -205,7 +205,7 @@ provision_secrets() {
 
     # Third-party credentials: never generated, only passed through.
     for var in OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY \
-               RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET \
+               DODO_TEST_API_KEY DODO_TEST_WEBHOOK_KEY DODO_LIVE_API_KEY DODO_LIVE_WEBHOOK_KEY \
                RESEND_API_KEY GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET \
                SMTP_HOST SMTP_USER SMTP_PASSWORD; do
         if [[ -z "${!var:-}" ]]; then
@@ -230,18 +230,18 @@ provision_secrets() {
         --from-literal=redis-cache-url="redis://:${redis_password}@redis-service:6379/1" \
         --from-literal=better-auth-secret="$better_auth_secret" \
         --from-literal=jwt-secret-key="$jwt_secret_key" \
+        --from-literal=dodo-mode="${DODO_MODE:-test}" \
         --from-literal=api-key-encryption-key="$api_key_encryption_key" \
         --from-literal=openai-api-key="${OPENAI_API_KEY:-}" \
         --from-literal=anthropic-api-key="${ANTHROPIC_API_KEY:-}" \
         --from-literal=google-api-key="${GOOGLE_API_KEY:-}" \
         --from-literal=openrouter-api-key="${OPENROUTER_API_KEY:-}" \
-        --from-literal=razorpay-key-id="${RAZORPAY_KEY_ID:-}" \
-        --from-literal=razorpay-key-secret="${RAZORPAY_KEY_SECRET:-}" \
-        --from-literal=razorpay-webhook-secret="${RAZORPAY_WEBHOOK_SECRET:-}" \
-        --from-literal=razorpay-plan-weekly="${RAZORPAY_PLAN_WEEKLY:-}" \
-        --from-literal=razorpay-weekly-amount="${RAZORPAY_WEEKLY_AMOUNT:-0}" \
-        --from-literal=razorpay-lifetime-amount="${RAZORPAY_LIFETIME_AMOUNT:-0}" \
-        --from-literal=razorpay-billing-currency="${RAZORPAY_BILLING_CURRENCY:-INR}" \
+        --from-literal=dodo-test-api-key="${DODO_TEST_API_KEY:-}" \
+        --from-literal=dodo-test-webhook-key="${DODO_TEST_WEBHOOK_KEY:-}" \
+        --from-literal=dodo-test-business-id="${DODO_TEST_BUSINESS_ID:-}" \
+        --from-literal=dodo-live-api-key="${DODO_LIVE_API_KEY:-}" \
+        --from-literal=dodo-live-webhook-key="${DODO_LIVE_WEBHOOK_KEY:-}" \
+        --from-literal=dodo-live-business-id="${DODO_LIVE_BUSINESS_ID:-}" \
         --from-literal=resend-api-key="${RESEND_API_KEY:-}" \
         --from-literal=google-drive-client-id="${GOOGLE_DRIVE_CLIENT_ID:-}" \
         --from-literal=google-drive-client-secret="${GOOGLE_DRIVE_CLIENT_SECRET:-}" \
@@ -559,7 +559,8 @@ usage() {
     echo ""
     echo "  Third-party credentials must be exported before deploying:"
     echo "    OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY,"
-    echo "    RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET"
+    echo "    DODO_MODE, active-mode DODO_*_API_KEY and DODO_*_WEBHOOK_KEY"
+    echo "    DODO_*_PRODUCT_* IDs, DODO_*_BUSINESS_ID, WEEKLY_AMOUNT_MINOR, LIFETIME_AMOUNT_MINOR"
     echo ""
     echo "  Private registry (optional):"
     echo "    REGISTRY_SERVER, REGISTRY_USERNAME, REGISTRY_PASSWORD"

@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
@@ -17,12 +18,6 @@ import {
 } from '@/lib/api-client'
 
 type BillingPeriod = 'monthly' | 'annual'
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void }
-  }
-}
 
 /**
  * Navigate a pre-opened tab to `url`. The tab must be opened synchronously
@@ -118,6 +113,15 @@ function BillingPageContent() {
   const isAuthenticated = Boolean(sessionUser?.email)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const checkoutReturned = searchParams.get('checkout') === 'return'
+  const checkoutStatusParam = searchParams.get('status')?.toLowerCase()
+  const checkoutStatus = checkoutReturned
+    ? checkoutStatusParam === 'failed'
+      ? 'failed'
+      : checkoutStatusParam === 'cancelled' || checkoutStatusParam === 'canceled'
+        ? 'cancelled'
+        : null
+    : null
   const flags = useFeatureFlags()
 
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
@@ -180,19 +184,6 @@ function BillingPageContent() {
   useEffect(() => {
     fetchPlans()
   }, [fetchPlans])
-
-  useEffect(() => {
-    // Standard Checkout is only needed when the server has exposed a
-    // configured lifetime order. Entitlements still come exclusively from the
-    // signed server webhook, never from this browser callback.
-    if (!plans.lifetime || document.querySelector('script[data-razorpay-checkout]')) return
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-    script.dataset.razorpayCheckout = 'true'
-    document.body.appendChild(script)
-    return () => script.remove()
-  }, [plans.lifetime])
 
   const studentVerifyToken = searchParams.get('student_verify')
   const teamInviteToken = searchParams.get('team_invite')
@@ -371,6 +362,13 @@ function BillingPageContent() {
   // Free plan card's CTA and behavior stay consistent with the subscription panel.
   const isFreeTier =
     !currentSubscription || (currentSubscription.planId === 'free' && !currentSubscription.subscriptionId)
+  const cancellationScheduled = currentSubscription?.status === 'cancel_scheduled'
+  const currentPaidPlanId =
+    currentSubscription?.subscriptionId &&
+    currentSubscription.planId !== 'free' &&
+    ['active', 'cancel_scheduled'].includes(currentSubscription.status)
+      ? currentSubscription.planId
+      : null
 
   const appliedCoupon = couponState?.valid ? couponState : null
   const couponScopePlan = couponPlanId ? plans[couponPlanId] ?? null : null
@@ -446,8 +444,7 @@ function BillingPageContent() {
   }, [currentSubscription?.planId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Selecting Free schedules a paid subscription to end with its current
-  // billing cycle. Razorpay keeps it active until then, so the UI must not
-  // claim that the account was downgraded immediately.
+  // billing cycle, so the UI must not claim that access ends immediately.
   const handleDowngradeToFree = async () => {
     if (
       !confirm(
@@ -537,28 +534,6 @@ function BillingPageContent() {
     if (result.data.shortUrl) {
       openInTab(checkoutTab, result.data.shortUrl)
       toast.success('Payment link opened in a new tab.')
-      return
-    }
-
-    if (result.data.checkoutType === 'one_time' && result.data.orderId) {
-      if (!window.Razorpay || !result.data.keyId) {
-        checkoutTab?.close()
-        toast.error('Lifetime checkout is temporarily unavailable. Please try again.')
-        return
-      }
-      checkoutTab?.close()
-      const checkout = new window.Razorpay({
-        key: result.data.keyId,
-        amount: result.data.amount,
-        currency: result.data.currency,
-        order_id: result.data.orderId,
-        name: 'Latexy',
-        description: 'Latexy Lifetime plan',
-        prefill: { email: sessionUser.email, name: sessionUser.name || '' },
-        handler: () => toast.success('Payment received. Your Lifetime access will appear after verification.'),
-        modal: { ondismiss: () => undefined },
-      })
-      checkout.open()
       return
     }
 
@@ -858,14 +833,20 @@ function BillingPageContent() {
                       isLoading={activePlan === plan.id}
                       disabled={
                         plan.id === 'free'
-                          ? isFreeTier
-                          : !!billingStatus && !billingStatus.available
+                          ? isFreeTier || cancellationScheduled
+                          : plan.id === currentPaidPlanId || (!!billingStatus && !billingStatus.available)
                       }
-                      disabledLabel={plan.id === 'free' ? 'Current Plan' : 'Unavailable'}
+                      disabledLabel={
+                        plan.id === 'free'
+                          ? cancellationScheduled ? 'Free plan scheduled' : 'Current Plan'
+                          : plan.id === currentPaidPlanId ? 'Current Plan' : 'Unavailable'
+                      }
                     />
-                    {plan.id === 'free' && !isFreeTier && (
+                    {plan.id === 'free' && currentPaidPlanId && (
                       <p className="mt-2 text-xs text-fg-3">
-                        Selecting this cancels your current subscription and reverts your account to Free.
+                        {cancellationScheduled
+                          ? 'Your paid access continues through the current billing period, then your account returns to Free.'
+                          : 'Selecting Free schedules cancellation at the end of your current billing period. Your paid access continues until then.'}
                       </p>
                     )}
                   </div>
@@ -939,6 +920,8 @@ function BillingPageContent() {
               <SubscriptionManager
                 authToken={sessionToken}
                 billingStatus={billingStatus}
+                checkoutReturned={checkoutReturned}
+                checkoutStatus={checkoutStatus}
                 onUpgrade={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 onLoaded={setCurrentSubscription}
               />
@@ -948,12 +931,12 @@ function BillingPageContent() {
                 <p className="mt-2 text-sm text-fg-2">
                   Sign in to subscribe, manage billing, or redeem team invitations.
                 </p>
-                <button
-                  onClick={() => router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)}
+                <Link
+                  href={`/login?redirect=${encodeURIComponent('/billing')}`}
                   className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
                 >
                   Sign In to Subscribe
-                </button>
+                </Link>
               </div>
             )}
           </div>

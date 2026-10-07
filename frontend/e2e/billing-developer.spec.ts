@@ -98,6 +98,75 @@ test.describe('Billing page', () => {
     await page.getByRole('button', { name: 'Annual' }).click()
     await expect(page.getByRole('heading', { name: 'Basic Annual' })).toBeVisible()
     await expect(page.getByText('₹239.25/month effective')).toBeVisible()
+    await page.getByRole('link', { name: 'Sign In to Subscribe' }).click()
+    await expect(page).toHaveURL(/\/login\?redirect=%2Fbilling$/)
+  })
+
+  test('current paid plan is selected and Free explains end-of-cycle cancellation', async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-basic', email: 'basic@example.com', name: 'Basic User' },
+          session: { id: 'sess-basic', userId: 'user-basic', token: 'basic-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) =>
+      route.fulfill({ json: plansPayload }),
+    )
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-basic',
+          planId: 'basic',
+          planName: 'Basic',
+          status: 'active',
+          features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
+          subscriptionId: 'sub_basic_1',
+          currentPeriodEnd: '2099-01-01T00:00:00Z',
+        },
+      }),
+    )
+
+    await page.goto('/billing')
+    const basicCard = page.locator('article').filter({
+      has: page.getByRole('heading', { name: 'Basic', exact: true }),
+    })
+    await expect(basicCard.getByRole('button', { name: 'Current Plan' })).toBeDisabled()
+    await expect(page.getByText(
+      'Selecting Free schedules cancellation at the end of your current billing period. Your paid access continues until then.',
+    )).toBeVisible()
+  })
+
+  test('failed checkout return reports the result but keeps server subscription state authoritative', async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-failed-checkout', email: 'failed@example.com', name: 'Test User' },
+          session: { id: 'sess-failed-checkout', userId: 'user-failed-checkout', token: 'failed-checkout-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) =>
+      route.fulfill({ json: plansPayload }),
+    )
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-failed-checkout',
+          planId: 'free',
+          planName: 'Free Trial',
+          status: 'active',
+          features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
+        },
+      }),
+    )
+
+    await page.goto('/billing?checkout=return&status=failed')
+    await expect(page.getByRole('status')).toHaveText(
+      'This checkout was reported as unsuccessful. Your current subscription status is shown below.',
+    )
+    await expect(page.getByText("You're currently on the Free plan.")).toBeVisible()
   })
 
   test('coupon input validates and signed-in team user can manage seats', async ({ page }) => {

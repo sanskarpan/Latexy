@@ -1,141 +1,180 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
-import { FileText, GitBranch, Radio, KeyRound } from 'lucide-react'
+import { ArrowRight, Check, FileText, MessageSquare, Layers, Briefcase, Code2 } from 'lucide-react'
+import { MarketingCTA, MarketingSectionHeading } from '@/components/marketing/MarketingSections'
 
-/**
- * Platform page — "Typeset" re-skin.
- * Server-rendered, token-driven, CSS-only motion. Honest copy; fabricated
- * SLA/latency/volume numbers removed in favour of facts we can stand behind.
- */
-
-const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_both]'
-
+export const metadata: Metadata = {
+    title: 'How Latexy Works | Resumes, Cover Letters & Interview Practice',
+    description:
+        'Write a resume visually, review AI suggestions, tailor it to a job, and prepare your next application with cover letters, interview practice, and tracking.',
+    alternates: { canonical: '/platform' },
+    openGraph: {
+        title: 'A calmer way to prepare your next application | Latexy',
+        description: 'From your first draft to interview practice. Explore what Latexy can do.',
+        url: '/platform',
+        type: 'website',
+    },
+}
 const capabilities = [
-  {
-    icon: FileText,
-    title: 'AI Rewrite Pipeline',
-    copy: 'Context-aware rewrite of bullets with conservative, balanced, and aggressive modes — you accept, reject, or edit each change.',
-  },
-  {
-    icon: Radio,
-    title: 'ATS Signal Engine',
-    copy: 'Keyword alignment, section-structure confidence, and role-fit scoring — measured against the actual job description, not a vanity number.',
-  },
-  {
-    icon: GitBranch,
-    title: 'Live Job Streaming',
-    copy: 'Observe queue state, progress, and compile logs in real time over WebSocket while runs execute.',
-  },
-  {
-    icon: KeyRound,
-    title: 'BYOK Security',
-    copy: 'Encrypted provider-key storage with controlled runtime decryption — your key, your models, never logged.',
-  },
+    {
+        icon: FileText,
+        title: 'Build a résumé that reads well',
+        copy: 'Start visually, choose a professional template, and focus on your experience. Preview the PDF before you download it.',
+        availability: 'Start in the guest studio',
+    },
+    {
+        icon: Check,
+        title: 'Improve it with clear feedback',
+        copy: 'Check structure, readability, and keywords. Use feedback to find useful improvements instead of chasing a number.',
+        availability: 'Resume checks in the studio',
+    },
+    {
+        icon: Layers,
+        title: 'Keep a version for each opportunity',
+        copy: 'Save your resumes and create variations for different roles. Your original is there when you need to come back to it.',
+        availability: 'In your saved workspace',
+    },
+    {
+        icon: FileText,
+        title: 'Write the letter that goes with it',
+        copy: 'Create a cover letter draft from your resume and a job description. Review the details and make the introduction personal.',
+        availability: 'In your saved workspace',
+    },
+    {
+        icon: MessageSquare,
+        title: 'Practise explaining your experience',
+        copy: 'Prepare with text-based interview questions and feedback on your answers. Build confidence before the real conversation.',
+        availability: 'In your saved workspace',
+    },
+    {
+        icon: Briefcase,
+        title: 'Keep track of where you applied',
+        copy: 'Organise opportunities, application stages, and notes. See your next step without juggling another spreadsheet.',
+        availability: 'In your saved workspace',
+    },
 ]
-
-const facts: [string, string][] = [
-  ['Compile processing', 'Queued with live logs'],
-  ['Model providers', 'OpenAI · Anthropic · Gemini · OpenRouter'],
-  ['Change review', 'Per-line accept / reject / edit'],
-  ['Engines', 'pdflatex · xelatex · lualatex'],
-]
-
 export default function PlatformPage() {
-  return (
-    <div className="bg-bg text-fg">
-      {/* ── hero ── */}
-      <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-24">
-        <div className={reveal}>
-          <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Platform</span>
-          <h1 className="mt-5 font-display text-[clamp(2.4rem,6vw,4.6rem)] font-semibold leading-[1.0] tracking-[-0.025em] text-balance text-fg">
-            A full execution layer for <span className="text-accent">résumé operations.</span>
-          </h1>
-          <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
-            Latexy is built for job seekers and teams that need deterministic output, inspectable
-            document checks, and a fast iteration workflow.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="/try"
-              className="inline-flex items-center rounded-[var(--radius-md)] bg-accent px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
-            >
-              Open Studio →
-            </Link>
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
-            >
-              View Dashboard
-            </Link>
-          </div>
-        </div>
-
-        {/* system snapshot — honest facts */}
-        <div
-          className={`relative rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] ${reveal} motion-safe:[animation-delay:.12s]`}
-        >
-          <div className="absolute -top-2.5 left-5 bg-surface px-2 font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
-            System Snapshot
-          </div>
-          <dl className="mt-2 divide-y divide-line">
-            {facts.map(([k, v]) => (
-              <div key={k} className="flex items-baseline justify-between gap-4 py-3 first:pt-1">
-                <dt className="font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3">{k}</dt>
-                <dd className="text-right font-body text-sm text-fg">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </section>
-
-      {/* ── trust strip ── */}
-      <div className="border-y border-line bg-surface-2">
-        <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-2 px-5 py-3 font-ui text-xs text-fg-3 sm:px-8">
-          <span><span className="text-fg">Deterministic</span> compiles</span>
-          <span><span className="text-fg">Inspectable</span> document checks</span>
-          <span><span className="text-accent-strong">BYOK</span> — your key, your models</span>
-          <span><span className="text-fg">Real-time</span> job streaming</span>
-        </div>
-      </div>
-
-      {/* ── capabilities ── */}
-      <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
-        <div className="mb-8 flex items-baseline gap-3">
-          <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Capabilities</span>
-          <span className="h-px flex-1 bg-line" />
-        </div>
-        <div className="grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line md:grid-cols-2">
-          {capabilities.map((item) => {
-            const Icon = item.icon
-            return (
-              <article key={item.title} className="bg-surface p-6">
-                <div className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-fg-3" aria-hidden="true" strokeWidth={1.5} />
+    return (
+        <div className="bg-bg text-fg">
+            <section className="mx-auto grid max-w-6xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:py-24">
+                <div>
+                    <p className="text-sm font-semibold text-accent-strong">How Latexy helps</p>
+                    <h1 className="mt-5 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1.04] tracking-[-.04em] text-balance">
+                        A calmer way to prepare your{' '}
+                        <span className="text-accent-strong">next application.</span>
+                    </h1>
+                    <p className="mt-6 max-w-[48ch] text-lg leading-relaxed text-fg-2">
+                        Your résumé is the beginning. Bring your writing, role-specific versions,
+                        cover letters, and preparation into one workspace.
+                    </p>
+                    <div className="mt-8">
+                        <MarketingCTA />
+                    </div>
+                    <p className="mt-4 text-sm text-fg-3">
+                        Try the studio without an account. Sign up to save your work.
+                    </p>
                 </div>
-                <h2 className="mt-4 font-display text-xl font-semibold text-fg">{item.title}</h2>
-                <p className="mt-2 font-body text-sm leading-relaxed text-fg-2">{item.copy}</p>
-              </article>
-            )
-          })}
+                <ol className="divide-y divide-line rounded-[var(--radius-lg)] border border-line bg-surface px-6 shadow-[var(--shadow-2)]">
+                    {[
+                        ['Your experience', 'Start with the work you’ve done.'],
+                        [
+                            'A specific opportunity',
+                            'Focus your story on what matters for the role.',
+                        ],
+                        ['Your decisions', 'Review the suggestions and keep your voice.'],
+                        ['Ready for the next step', 'Preview your document and prepare to apply.'],
+                    ].map(([title, text], i) => (
+                        <li key={title} className="flex gap-4 py-6">
+                            <span className="font-ui text-sm text-accent-strong">0{i + 1}</span>
+                            <div>
+                                <h2 className="font-display text-xl font-semibold">{title}</h2>
+                                <p className="mt-1 text-sm text-fg-2">{text}</p>
+                            </div>
+                        </li>
+                    ))}
+                </ol>
+            </section>
+            <section className="border-y border-line bg-surface-2">
+                <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
+                    <MarketingSectionHeading
+                        eyebrow="A useful toolkit, one step at a time"
+                        title="Choose what helps you move forward."
+                        copy="Start with the résumé. Explore the rest when you need it."
+                    />
+                    <div className="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-2">
+                        {capabilities.map(item => (
+                            <article key={item.title} className="border-t border-line pt-6">
+                                <item.icon
+                                    className="h-6 w-6 text-accent-strong"
+                                    strokeWidth={1.5}
+                                    aria-hidden="true"
+                                />
+                                <h3 className="mt-4 font-display text-2xl font-semibold tracking-tight">
+                                    {item.title}
+                                </h3>
+                                <p className="mt-3 leading-relaxed text-fg-2">{item.copy}</p>
+                                <p className="mt-4 text-sm text-fg-3">{item.availability}</p>
+                            </article>
+                        ))}
+                    </div>
+                    <p className="mt-8 text-sm text-fg-3">
+                        Saved workspace features require an account. Usage and availability depend
+                        on your plan. Resume scores are guidance, not interview guarantees.
+                    </p>
+                </div>
+            </section>
+            <section className="mx-auto grid max-w-6xl gap-8 px-5 py-20 sm:px-8 md:grid-cols-2">
+                <div>
+                    <Code2 className="h-6 w-6 text-accent-strong" aria-hidden="true" />
+                    <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight">
+                        Simple to start.
+                        <br />
+                        Room to go deeper.
+                    </h2>
+                    <p className="mt-5 leading-relaxed text-fg-2">
+                        Work visually when you want to focus on your words. Switch to the LaTeX
+                        source editor when you need detailed layout control. The technical tools are
+                        there when you want them.
+                    </p>
+                </div>
+                <div className="border-l-2 border-accent pl-6">
+                    <h3 className="font-display text-xl font-semibold">
+                        For people who like more control
+                    </h3>
+                    <p className="mt-3 leading-relaxed text-fg-2">
+                        Use custom templates, connect a supported AI provider with your own key, or
+                        explore the developer tools. Start with a simple document and build from
+                        there.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-5">
+                        <Link
+                            href="/templates"
+                            className="inline-flex min-h-11 items-center gap-2 font-semibold text-accent-strong"
+                        >
+                            Explore templates
+                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                        <Link
+                            href="/developer"
+                            className="inline-flex min-h-11 items-center gap-2 font-semibold text-accent-strong"
+                        >
+                            Developer tools
+                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                    </div>
+                </div>
+            </section>
+            <section className="border-t border-line">
+                <div className="mx-auto max-w-6xl px-5 py-16 text-center sm:px-8">
+                    <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+                        Start with one good edit.
+                    </h2>
+                    <p className="mt-4 text-fg-2">Open the sample and see how it feels.</p>
+                    <div className="mt-7">
+                        <MarketingCTA />
+                    </div>
+                </div>
+            </section>
         </div>
-      </section>
-
-      {/* ── closing ── */}
-      <section className="border-t border-line">
-        <div className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
-          <h2 className="font-display text-[clamp(2rem,5vw,3.4rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance text-fg">
-            Run résumés like <span className="text-accent">infrastructure.</span>
-          </h2>
-          <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
-            Deterministic output, measurable performance, and iteration speed — from a single studio.
-          </p>
-          <Link
-            href="/try"
-            className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
-          >
-            Open the studio →
-          </Link>
-        </div>
-      </section>
-    </div>
-  )
+    )
 }

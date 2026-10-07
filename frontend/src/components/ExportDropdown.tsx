@@ -44,6 +44,8 @@ interface ExportDropdownProps {
    *  'inline'  — medium size, sits alongside px-4 py-2 toolbar buttons (/try page)
    */
   variant?: 'toolbar' | 'card' | 'inline'
+  /** Keep the beginner export menu focused on human-readable documents. */
+  visualOnly?: boolean
 }
 
 export default function ExportDropdown({
@@ -52,6 +54,7 @@ export default function ExportDropdown({
   onPdfExport,
   className = '',
   variant = 'inline',
+  visualOnly = false,
 }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
@@ -69,6 +72,7 @@ export default function ExportDropdown({
   useEffect(() => { setMounted(true) }, [])
 
   const isExporting = loading !== null
+  const visibleFormats = visualOnly ? EXPORT_FORMATS.filter(format => ['pdf', 'docx', 'txt'].includes(format.key)) : EXPORT_FORMATS
 
   function openDropdown() {
     if (isExporting) return
@@ -219,6 +223,7 @@ export default function ExportDropdown({
       else if (format === 'email' && message.includes('503')) message = 'Email provider did not accept the PDF — please retry'
       else if (message.includes('500') || message.includes('502') || message.includes('503'))
         message = 'Server error — please try again'
+      if (visualOnly) message = 'Could not export this document. Try again, or update the PDF preview first.'
       setExportError({ format, message })
       toast.error(message)
     } finally {
@@ -298,12 +303,12 @@ export default function ExportDropdown({
               </p>
             </div>
             <div className="pb-1.5">
-              {EXPORT_FORMATS.map((fmt, idx) => {
+              {visibleFormats.map((fmt, idx) => {
                 const Icon = fmt.icon
                 const isLoading = loading === fmt.key
                 const isDesignExport = fmt.key === 'canva' || fmt.key === 'figma'
                 // Separator before design exports
-                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(EXPORT_FORMATS[idx - 1].key)
+                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(visibleFormats[idx - 1].key)
                 return (
                   <div key={fmt.key}>
                     {showSeparator && (
@@ -326,7 +331,7 @@ export default function ExportDropdown({
                       )}
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-fg">{fmt.label}</div>
-                        <div className="text-[11px] text-fg-3 truncate">{fmt.desc}</div>
+                        <div className="text-[11px] text-fg-3 truncate">{visualOnly && fmt.key === 'pdf' ? 'Your résumé as a PDF document' : fmt.desc}</div>
                       </div>
                     </button>
                   </div>
