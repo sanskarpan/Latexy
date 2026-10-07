@@ -1,14 +1,14 @@
 """Versioned semantic documents and durable optimization stages.
 
 Revision ID: 0060
-Revises: 0058
+Revises: 0059
 """
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "0060"
-down_revision = "0058"
+down_revision = "0059"
 branch_labels = None
 depends_on = None
 
