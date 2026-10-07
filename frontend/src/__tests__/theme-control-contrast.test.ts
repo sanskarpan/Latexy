@@ -62,7 +62,7 @@ function hasExactClassSelector(selectorText: string, className: string, hover = 
   selectorParser((root) => {
     root.each((selector) => {
       const classes: string[] = []
-      selector.walkClasses((node) => classes.push(node.value))
+      selector.walkClasses((node) => { classes.push(node.value) })
       const pseudos = selector.nodes.filter((node) => node.type === 'pseudo')
       const exactHover = hover
         ? pseudos.length === 1 && pseudos[0].value === ':hover'
