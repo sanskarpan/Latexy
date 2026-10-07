@@ -11,6 +11,10 @@ Draft #1834 is being completed separately; neither draft is release-certified.
 - [x] Preserve subsequently accepted main `b5e2735a` action pins. PR #1840
   completed protected CI, Modal rollout and Vercel production certification;
   production identity matched that commit and backend readiness was healthy.
+- [x] The independently reviewable quota-log repair was accepted on main in
+  PR #1844, preserving limited/unlimited policy. Main `0d628cba` passed CI,
+  automatic Modal deployment and Vercel production certification; direct live
+  identity matched that commit and backend DB/Redis/cache/storage were healthy.
 - [x] Keep deployed OAuth revision `0059`; engine `0060` now descends from it.
 - [x] Real isolated PostgreSQL: fresh initial schema through `0064`, upgrade
   from deployed-main `0059` through `0064`, and engine rollback to `0059` then
@@ -85,6 +89,12 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   rerun used the wrong Redis environment variable names and was interrupted;
   only the rerun with `TEST_REDIS_URL` / `TEST_REDIS_CACHE_URL` pointing at the
   isolated QA Redis instance is eligible for acceptance.
+- A subsequent frozen full run at `0f75149c`, backend tree `02f3edd1`, passed
+  **4,760 tests with 13 skips**, zero errors/failures and one existing warning
+  in 388.50 seconds. JUnit independently records 4,773 tests, 13 skips and zero
+  failures/errors. This includes the initial keyed credential-scope repair,
+  but not the later private-stage-context follow-up. No production credentials,
+  provider calls or skipped infrastructure checks were used for this result.
 - Template CI now installs `fonts-texgyre`, matching the shipped EuropeCV face;
   the complete 92-case deployment-manifest guard suite passes. GitHub run
   `37659795432` at `66a76a0c` subsequently passed the actual Linux template PDF
@@ -148,7 +158,12 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
   [#1843](https://github.com/sanskarpan/Latexy/issues/1843); no dismissal or check
   override was used. These scopes are not password verifiers, but unkeyed
   fingerprints permit offline credential candidate confirmation/correlation.
-  Keyed scope repair and a fresh scan remain required before acceptance.
+  The initial keyed scope repair passed 79 focused helper/ledger/checkpoint/
+  fairness tests and the frozen full suite. Its fresh scan cleared the log and
+  generated-test-code findings but still reported two hashing findings. One
+  follows the SHA-256 primitive inside a keyed HMAC; the other follows the
+  generic stage-context checksum. Neither was dismissed or suppressed; narrow
+  follow-up and a fresh scan remain required before security acceptance.
 - Quota outage logs now omit owner identifiers and preserve the existing
   unlimited-plan fail-open versus limited-plan fail-closed policy. All 40 quota
   tests passed, including two new privacy/injection regressions.
@@ -164,6 +179,8 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
 
 Raw diagnostic logs and fabricated PDF scratch files remain local, not committed.
 Full-run log SHA-256: `cac560cdfe7a363b74322631b7c75472facbf5b30c3e0190a77cf6559dbf40c9`.
+Successful frozen follow-up full-run log SHA-256:
+`8306f03604470889572e058b5425948c4fd69c280d34747f82445ed73742f96b`.
 
 The one-second fresh PDF and 500-ms cached-paint targets remain uncertified.
 Broad Modal Lua capability stays closed. No paid model test, live billing charge,
