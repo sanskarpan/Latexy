@@ -7,6 +7,7 @@ const authenticatedSession = {
 
 const diagnosticsByPage = new WeakMap<Page, {
   pageErrors: string[]
+  authTimeline: string[]
   unmockedApiRequests: string[]
   unexpectedAuthRequests: Map<Request, string>
   getSessionReads: () => number
@@ -18,6 +19,7 @@ async function mockHeaderDependencies(
   options: { authenticated: boolean; role?: string; billing?: boolean },
 ) {
   const pageErrors: string[] = []
+  const authTimeline: string[] = []
   const unmockedApiRequests: string[] = []
   const unexpectedAuthRequests = new Map<Request, string>()
   const mockedAuthRequests = new WeakSet<Request>()
@@ -30,30 +32,44 @@ async function mockHeaderDependencies(
     ?? `http://127.0.0.1:${qualityPort + 2000}`
   const backendOrigin = new URL(backendUrl).origin
   const appOrigin = new URL(`http://localhost:${qualityPort}`).origin
+  const startedAt = Date.now()
+  const timeline = (event: string, method: string, path: string, status?: number) => {
+    const elapsedMs = Date.now() - startedAt
+    authTimeline.push(`${event} +${elapsedMs}ms ${method} ${path}${status === undefined ? '' : ` -> ${status}`}`)
+  }
 
-  page.on('pageerror', error => pageErrors.push(error.message))
+  page.on('pageerror', error => {
+    pageErrors.push(error.message)
+    const path = error.message.match(/\/api\/auth\/[A-Za-z0-9/_-]+/)?.[0] ?? '(path unavailable)'
+    timeline('PAGEERROR', '-', path)
+  })
   page.on('request', request => {
     const url = new URL(request.url())
     if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
     unexpectedAuthRequests.set(request, `${request.method()} ${url.pathname} (pending)`)
+    timeline('REQUEST', request.method(), url.pathname)
   })
   page.on('response', response => {
     const request = response.request()
+    const url = new URL(request.url())
+    if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
+    timeline('RESPONSE', request.method(), url.pathname, response.status())
     if (!unexpectedAuthRequests.has(request)) return
     if (mockedAuthRequests.has(request)) {
       unexpectedAuthRequests.delete(request)
       return
     }
-    const url = new URL(request.url())
     unexpectedAuthRequests.set(request, `${request.method()} ${url.pathname} -> ${response.status()}`)
   })
   page.on('requestfailed', request => {
+    const url = new URL(request.url())
+    if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
+    timeline('REQUEST_FAILED', request.method(), url.pathname)
     if (!unexpectedAuthRequests.has(request)) return
     if (mockedAuthRequests.has(request)) {
       unexpectedAuthRequests.delete(request)
       return
     }
-    const url = new URL(request.url())
     unexpectedAuthRequests.set(request, `${request.method()} ${url.pathname} -> failed`)
   })
 
@@ -105,6 +121,7 @@ async function mockHeaderDependencies(
 
   const diagnostics = {
     pageErrors,
+    authTimeline,
     unmockedApiRequests,
     unexpectedAuthRequests,
     getSessionReads() {
@@ -141,6 +158,7 @@ test.describe('mobile account navigation', () => {
     await testInfo.attach('mobile-account-navigation-diagnostics.json', {
       body: Buffer.from(JSON.stringify({
         pageErrors: diagnostics.pageErrors,
+        authTimeline: diagnostics.authTimeline,
         unmockedApiRequests: diagnostics.unmockedApiRequests,
         unexpectedAuthRequests: [...diagnostics.unexpectedAuthRequests.values()],
         sessionReads: diagnostics.getSessionReads(),
@@ -160,9 +178,11 @@ test.describe('mobile account navigation', () => {
     let signOutCalls = 0
     const qualityPort = Number.parseInt(process.env.PLAYWRIGHT_QUALITY_PORT ?? '5182', 10)
     const appOrigin = new URL(`http://localhost:${qualityPort}`).origin
+    const signOutMethods: string[] = []
     await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/sign-out', route => {
       fixture.markMockedAuthRequest(route.request())
       signOutCalls += 1
+      signOutMethods.push(route.request().method())
       fixture.setAuthenticated(false)
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
     })
@@ -194,6 +214,7 @@ test.describe('mobile account navigation', () => {
     await menuButton.click()
     await page.getByRole('button', { name: 'Sign Out', exact: true }).click()
     await expect.poll(() => signOutCalls).toBe(1)
+    expect(signOutMethods).toEqual(['POST'])
     await expect(page).toHaveURL(/\/$/, { timeout: 90_000 })
     await expect.poll(() => fixture.getGuestSessionReads()).toBeGreaterThan(0)
     // A full reload proves the mock sign-out changed the backing session view;
