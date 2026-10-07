@@ -186,8 +186,9 @@ retains private-data cleanup and a fresh session read in the new document.
   place the access-control error after logout and before root navigation
   completes, not at the test's later explicit reload. Successful captured auth
   requests are same-origin 200 responses; traces do not identify the exact
-  interrupted request. The SDK option is a mitigation pending fresh Linux
-  evidence, not a proven root-cause claim or CORS/security bypass.
+  interrupted request. The SDK option was a mitigation candidate awaiting the
+  subsequent Linux regression run, not a proven exact root-cause claim or
+  CORS/security bypass.
 - Updated PR CI [37622340380](https://github.com/sanskarpan/Latexy/actions/runs/37622340380)
   passed on accepted head `e3df2093`: 37 quality cases (including all 15 mobile
   account cases across five engines), five compile/sync cases and one hydration
@@ -201,8 +202,21 @@ retains private-data cleanup and a fresh session read in the new document.
   session passed. Local screenshot evidence: `latexy-mobile-account-production-20261007.png`,
   `latexy-google-real-logout-protected-20261007.png`, and
   `latexy-google-real-relogin-success-20261007.png` (not committed with account
-  details). Automatic main CI/Modal/certification are still pending at this
-  writing. No mock or page-error suppression substitutes for live acceptance.
+  details). Canonical main CI
+  [37624238813](https://github.com/sanskarpan/Latexy/actions/runs/37624238813),
+  actual Modal rollout [37625647521](https://github.com/sanskarpan/Latexy/actions/runs/37625647521),
+  and Vercel certificate [37625647820](https://github.com/sanskarpan/Latexy/actions/runs/37625647820)
+  all succeeded. No mock or page-error suppression substitutes for live acceptance.
+
+## Documentation-only CI observation
+
+The one-file [#1839](https://github.com/sanskarpan/Latexy/pull/1839) follow-up
+registered CI [37625789148](https://github.com/sanskarpan/Latexy/actions/runs/37625789148):
+classification and privacy guards ran, while backend, frontend lint/build,
+cross-browser, full-stack, TUI, extension, template, observability and reusable
+action jobs all skipped cleanly. General platform security checks remain in
+place. No feature-branch duplicate full CI run was introduced. This is real
+scope-wiring evidence, not just a local test or a waiver of required checks.
 
 ## Integration checklist
 
