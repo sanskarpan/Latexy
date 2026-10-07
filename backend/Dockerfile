@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     texlive-lang-greek \
     fonts-noto-cjk \
     fonts-noto-core \
+    fonts-texgyre \
     texlive-lang-english \
     fonts-lohit-deva \
     curl \
