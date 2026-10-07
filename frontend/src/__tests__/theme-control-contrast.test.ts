@@ -3,6 +3,7 @@ import path from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import postcss from 'postcss'
+import selectorParser from 'postcss-selector-parser'
 import type { AcceptedPlugin } from 'postcss'
 import tailwindcss from 'tailwindcss'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -56,16 +57,32 @@ function contrastRatio(a: string, b: string) {
   return (values[0] + 0.05) / (values[1] + 0.05)
 }
 
+function hasExactClassSelector(selectorText: string, className: string, hover = false) {
+  let matched = false
+  selectorParser((root) => {
+    root.each((selector) => {
+      const classes: string[] = []
+      selector.walkClasses((node) => classes.push(node.value))
+      const pseudos = selector.nodes.filter((node) => node.type === 'pseudo')
+      const exactHover = hover
+        ? pseudos.length === 1 && pseudos[0].value === ':hover'
+        : pseudos.length === 0
+      const simpleSelector = selector.nodes.every((node) => node.type === 'class' || node.type === 'pseudo')
+      if (simpleSelector && classes.length === 1 && classes[0] === className && exactHover) matched = true
+    })
+  }).processSync(selectorText)
+  return matched
+}
+
 // Resolve actual generated utility order rather than assuming class-string order.
 // This catches competing foreground classes and equal-colored hover states.
 function renderedColors(html: string, colors: Record<string, string>, hover = false) {
   const classes = html.match(/class="([^"]+)"/)![1].split(/\s+/)
   const resolved: Record<string, string> = { color: colors['--fg'], 'background-color': colors['--bg'] }
   utilities.walkRules((rule) => {
-    const matches = classes.some((className) => {
-      const selector = `.${className.replace(/:/g, '\\:')}`
-      return rule.selector === selector || (hover && rule.selector === `${selector}:hover`)
-    })
+    const matches = classes.some((className) =>
+      hasExactClassSelector(rule.selector, className) ||
+      (hover && hasExactClassSelector(rule.selector, className, true)))
     if (!matches) return
     rule.walkDecls((decl) => {
       if (decl.prop !== 'color' && decl.prop !== 'background-color') return
@@ -79,6 +96,12 @@ function renderedColors(html: string, colors: Record<string, string>, hover = fa
 }
 
 describe('theme foreground contrast', () => {
+  it('matches escaped CSS class tokens without partial backslash escaping', () => {
+    expect(hasExactClassSelector(String.raw`.foo\:bar`, 'foo:bar')).toBe(true)
+    expect(hasExactClassSelector(String.raw`.foo\\bar`, 'foo\\bar')).toBe(true)
+    expect(hasExactClassSelector(String.raw`.foo\\bar`, 'foo/bar')).toBe(false)
+  })
+
   it('keeps actual destructive buttons and badges readable in all palette variants', () => {
     const variants = [['typeset', 'light'], ['typeset', 'dark'], ['compiler', 'light'], ['compiler', 'dark']]
     for (const contrast of ['normal', 'high']) {
