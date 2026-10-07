@@ -261,36 +261,34 @@ class TestZoteroConnect:
         )
         mock_http.assert_not_called()
 
-    async def test_complete_rejects_cross_user_and_replay(self, client: AsyncClient, auth_headers: dict):
+    async def test_complete_rejects_cross_user_without_consuming_ticket(self, client: AsyncClient, auth_headers: dict):
         with (
             patch("app.api.zotero_routes.cache_manager") as mock_cache,
             patch("httpx.AsyncClient") as mock_http,
         ):
-            mock_cache.pop = AsyncMock(
-                side_effect=[
-                    {
-                        "user_id": "different-user",
-                        "oauth_token": "request-token",
-                        "oauth_verifier": "verifier",
-                        "request_token_secret": "request-secret",
-                    },
-                    None,
-                ]
-            )
+            ticket = {
+                "user_id": "different-user",
+                "oauth_token": "request-token",
+                "oauth_verifier": "verifier",
+                "request_token_secret": "request-secret",
+            }
+            mock_cache.get = AsyncMock(return_value=ticket)
+            mock_cache.pop = AsyncMock()
             first = await client.post(
                 "/zotero/complete",
                 json={"ticket": "one-time-ticket"},
                 headers=auth_headers,
             )
-            replay = await client.post(
+            second_wrong_owner_attempt = await client.post(
                 "/zotero/complete",
                 json={"ticket": "one-time-ticket"},
                 headers=auth_headers,
             )
 
         assert first.status_code == 403
-        assert replay.status_code == 400
-        assert mock_cache.pop.await_count == 2
+        assert second_wrong_owner_attempt.status_code == 403
+        assert mock_cache.get.await_count == 2
+        mock_cache.pop.assert_not_awaited()
         mock_http.assert_not_called()
 
     async def test_denial_without_verifier_is_friendly(self, client: AsyncClient):
@@ -725,31 +723,29 @@ class TestMendeleyConnect:
         )
         mock_http.assert_not_called()
 
-    async def test_complete_rejects_cross_user_and_replay(self, client: AsyncClient, auth_headers: dict):
+    async def test_complete_rejects_cross_user_without_consuming_ticket(self, client: AsyncClient, auth_headers: dict):
         with (
             patch("app.api.mendeley_routes.cache_manager") as mock_cache,
             patch("httpx.AsyncClient") as mock_http,
         ):
-            mock_cache.pop = AsyncMock(
-                side_effect=[
-                    {"user_id": "different-user", "code": "victim-code"},
-                    None,
-                ]
-            )
+            ticket = {"user_id": "different-user", "code": "victim-code"}
+            mock_cache.get = AsyncMock(return_value=ticket)
+            mock_cache.pop = AsyncMock()
             first = await client.post(
                 "/mendeley/complete",
                 json={"ticket": "one-time-ticket"},
                 headers=auth_headers,
             )
-            replay = await client.post(
+            second_wrong_owner_attempt = await client.post(
                 "/mendeley/complete",
                 json={"ticket": "one-time-ticket"},
                 headers=auth_headers,
             )
 
         assert first.status_code == 403
-        assert replay.status_code == 400
-        assert mock_cache.pop.await_count == 2
+        assert second_wrong_owner_attempt.status_code == 403
+        assert mock_cache.get.await_count == 2
+        mock_cache.pop.assert_not_awaited()
         mock_http.assert_not_called()
 
     async def test_denial_without_code_is_friendly(self, client: AsyncClient):
