@@ -409,6 +409,19 @@ def test_latex_image_contains_the_offline_europecv_locale_contract():
     assert {"texlive-latex-extra", "texlive-lang-european", "texlive-lang-greek"} <= latex
 
 
+def test_europecv_system_font_is_explicit_in_every_renderer_image():
+    """fontspec resolves Heros through fontconfig, not just TeX's font files."""
+    template = (BACKEND / "app/data/templates/regional/europecv.tex").read_text(encoding="utf-8")
+    assert r"\setmainfont{TeX Gyre Heros}" in template
+    images = _modal_apt_packages()
+    for image in ("texlive_image", "api_image", "latex_image"):
+        assert "fonts-texgyre" in images[image], f"{image} lacks EuropeCV's system font"
+    for filename in ("Dockerfile", "Dockerfile.prod"):
+        assert re.search(r"^\s*fonts-texgyre\s+\\$", (BACKEND / filename).read_text(), re.MULTILINE), (
+            f"{filename} lacks EuropeCV's explicit system-font package"
+        )
+
+
 def test_multilingual_adapter_packages_are_explicit_not_transitive_assumptions():
     """Pin the Debian ownership of every generated adapter in all images."""
     latex = _modal_apt_packages().get("latex_image", set())
