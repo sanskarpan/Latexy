@@ -20,8 +20,9 @@ def test_alias_coverage_and_priority_are_positive_source_mentions():
     assert ctx["coverage"][0]["missing_skills"] == []
     assert ctx["facts"][-1]["confirmation_state"] == "source_statement_unverified"
     assert skill_mention("postgresql", "Built Postgres services") == "positive"
-    nodes = [dict(doc["nodes"][-1], node_id="irrelevant", text="Built other services", entry_id="a"),
-             dict(doc["nodes"][-1], node_id="relevant", text="Built Postgres services", entry_id="b")]
+    base = next(node for node in doc["nodes"] if node["kind"] == "bullet" and node["ai_editable"])
+    nodes = [dict(base, node_id="irrelevant", text="Built other services", entry_id="a"),
+             dict(base, node_id="relevant", text="Built Postgres services", entry_id="b")]
     assert plan_groups({"nodes": nodes}, None, "quick", ctx["requirements"])[0][0]["node_id"] == "relevant"
 
 
