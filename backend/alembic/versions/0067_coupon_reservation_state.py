@@ -1,7 +1,7 @@
 """Track reserved coupons against checkout intents.
 
-Revision ID: 0061
-Revises: 0060
+Revision ID: 0067
+Revises: 0066
 """
 
 import sqlalchemy as sa
@@ -9,8 +9,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0061"
-down_revision = "0060"
+revision = "0067"
+down_revision = "0066"
 branch_labels = None
 depends_on = None
 
