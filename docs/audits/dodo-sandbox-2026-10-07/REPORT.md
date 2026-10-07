@@ -1,5 +1,43 @@
 # Dodo migration audit and sandbox evidence
 
+## Integration and re-verification checkpoint
+
+This checkpoint incorporates the reviewed mainline through `5e42d42f` without
+discarding the Dodo implementation. Main's OAuth verification migration keeps
+revision `0059`; the engine migrations remain `0060`–`0064`; Dodo now follows as
+`0065` (provider-neutral billing), `0066` (immutable quote tax basis), and
+`0067` (coupon reservations). Alembic reports a single head at `0067`. These
+source changes and tests do not migrate any production database.
+
+On the isolated QA database upgraded through this exact migration chain, the
+focused provider, billing-correctness, webhook-recovery, entitlement-service,
+and subscription suites pass **88 tests**. With Node `22.23.2` and the frozen
+workspace lock, the full frontend suite passes **1,101 tests across 176 files**;
+frontend lint, TypeScript checking, and the optimized production build (including
+all 44 static pages and artifact validation) also pass. The build used an inert HTTPS test URL and dummy test-only auth
+secrets, not production configuration. The metadata test was adjusted to check
+the homepage verification field without rejecting its existing SEO metadata.
+
+Read-only Dodo test-mode API checks reconfirmed all eight configured sandbox
+products: expected IDs, INR catalog prices, recurring status, and inclusive-tax
+setting match the reviewed catalog. Eight existing payment records were also
+read without creating new activity: seven are successful and one is failed;
+their payment resources report the INR amounts/tax noted in the table below.
+The corresponding existing subscription resources still report USD and
+different recurring pre-tax amounts (for example, Basic monthly `USD 310`
+versus the INR 29,900 payment/catalog). This provider-resource discrepancy is
+unresolved; subscription amounts must not substitute for payment evidence or
+be used to certify plan changes/proration.
+
+No webhook relay was started and no prior signed events were replayed against
+the fresh QA database, which lacks the original checkout-intent records. No
+refund, new checkout, charge, cancellation, live-mode request, or catalog
+mutation was made. Sandbox refunds remain unverified after the documented
+`INSUFFICIENT_WALLET_FUNDS` response; live merchant approval and production
+webhook delivery remain unverified. The existing report limitations below
+still apply, and this source/test checkpoint is not a production-readiness
+claim.
+
 Review date: 7 October 2026 (Asia/Kolkata). Base: `main`,
 `787b935136fcaf63709fb8adc438eb7e3b1ab1fe`. Existing uncommitted product,
 resume editor, design, auth, and infrastructure changes were preserved.
@@ -43,7 +81,7 @@ database migration cannot cancel a remote mandate.
 | Provider adapter | `backend/app/services/dodo_provider.py`: fixed test/live hosts, Bearer auth, checkout/subscription/payment/portal/refund/discount APIs, bounded timeouts, sanitized errors; no automatic checkout creation retries |
 | Business state | `backend/app/services/payment_service.py`: persisted intent, signed webhook inbox, server quote checks, ownership/product matching, lifecycle, refunds, coupons, student/team behavior, legacy mandate guard |
 | API | `backend/app/api/routes.py`: authenticated server identity; hosted checkout contract; `POST /billing/webhook` |
-| Models / migrations | `backend/app/database/models.py`; `0059` preserves historical provider identifiers and adds payment/refund/webhook state; `0060` stores quote tax basis; `0061` tracks reserved/redeemed/released coupons against intents |
+| Models / migrations | `backend/app/database/models.py`; `0065` preserves historical provider identifiers and adds payment/refund/webhook state; `0066` stores quote tax basis; `0067` tracks reserved/redeemed/released coupons against intents |
 | Frontend | Billing page, subscription manager, API client: hosted checkout, backend state refresh, current-plan and scheduled-cancellation state |
 | Reporting | `backend/app/services/analytics_service.py`: paid historical/Dodo gross revenue with successful partial/full refunds deducted once |
 | Deployment | Environment examples, Compose, Kubernetes configuration, dependency requirements and locks |
@@ -163,8 +201,11 @@ Consolidated command results and additional coverage are recorded below.
   and no deployment; required production variables remain enforced.
 - The reusable local sandbox relay passed raw-body/header forwarding, transport
   failure, and live-mode guard checks and connected to the real official relay.
-- Development database is migrated through `0061`; tests use the same migration
-  head in their independent database.
+- The original sandbox snapshot was migrated through its then-current Dodo
+  revision `0061`. During current-main integration, Dodo migrations were
+  renumbered to `0065`–`0067` after main's OAuth `0059` and the coordinated
+  engine prefix `0060`–`0064`. No production database migration is performed
+  by this source integration.
 - Credential scan of changed/new non-ignored paths found zero matches for the
   active API/webhook keys or disposable account passwords/tokens. Root/backend/
   frontend environment files and temporary verification files are ignored.
@@ -194,7 +235,7 @@ removed and the image retained; the normal frontend on port 5180 was restarted.
 The backend development image was rebuilt using the hash-verified dependency
 lock and recreated for API, worker, beat, and Flower. Installed-package probes
 confirm that Razorpay is absent from both API and worker. Dodo remains in test
-mode, the database is at `0061`, and readiness/health checks pass for database,
+mode, the historical sandbox database was at the old `0061` checkpoint, and readiness/health checks pass for database,
 Redis, cache, and private object storage.
 
 On this Windows Docker bind mount, source changes did not reliably trigger
@@ -273,7 +314,7 @@ For production:
    `DODO_LIVE_BUSINESS_ID`, and reviewed `DODO_LIVE_PRODUCT_*` values. Use
    `BILLING_MODE=required`, correct public frontend/CORS URLs, and normal
    production database/storage/auth/email secrets.
-5. Back up the database, apply migrations through `0061`, reconcile all old
+5. Back up the database, apply the coordinated migration chain through `0067`, reconcile all old
    chargeable Razorpay mandates, and deploy matching backend/worker/frontend
    versions. A rollback must not resume old charges without reconciliation.
 6. Independently verify live delivery, payment state, access, cancellation, and
