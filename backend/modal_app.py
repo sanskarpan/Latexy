@@ -100,6 +100,7 @@ _APT_LATEX = [
     "texlive-lang-greek",
     "fonts-noto-cjk",
     "fonts-noto-core",
+    "fonts-texgyre",  # EuropeCV's fontspec TeX Gyre Heros must be visible to fontconfig
     "texlive-lang-english",  # hyphenation patterns; matches backend/Dockerfile
     # Small, freely licensed Devanagari font. LuaHBTeX + explicit HarfBuzz
     # shaping is required for correct Hindi/Marathi glyph order and extraction.
