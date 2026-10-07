@@ -2966,7 +2966,7 @@ export default function ResumeEditPage() {
     setEngineDocument(result.document)
     setLatexContent(result.latex_content)
     setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
-    queuePreview(result.latex_content, actionStarted)
+    queuePreview(result.latex_content, actionStarted, true)
   }, [visibleEngineDocument, sourceHash, canEditDocument, resumeId, queuePreview, sessionUserId, offlinePdfOwnerId, isCurrentOfflinePdfIdentity])
 
   const reorderResumeStructure = useCallback(async (containerId: string, orderedIds: string[]) => {
@@ -2988,7 +2988,7 @@ export default function ResumeEditPage() {
     setEngineDocument(result.document)
     setLatexContent(result.latex_content)
     setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
-    queuePreview(result.latex_content, actionStarted)
+    queuePreview(result.latex_content, actionStarted, true)
   }, [visibleEngineDocument, sourceHash, canEditDocument, resumeId, queuePreview, sessionUserId, offlinePdfOwnerId, isCurrentOfflinePdfIdentity])
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
@@ -4156,7 +4156,7 @@ export default function ResumeEditPage() {
                 disabled={!canEditDocument || !collabIsOwner || isAnyRunning} running={isAiRunning || isAiSubmitting}
                 candidate={stagedAiLatex != null} changes={aiStream.changesMade}
                 onRun={() => { setSemanticRunId(null); void runAiOptimize() }} onPreview={() => setRightTab('preview')}
-                onApply={() => { if (stagedAiLatex && applyOptimizationCandidate(stagedAiLatex, true)) queuePreview(stagedAiLatex) }} onDiscard={handleDiscardOptimization} /> : <SemanticOptimizationPanel resumeId={resumeId} identity={`${sessionUserId}:${resumeId}`}
+                onApply={() => { if (stagedAiLatex && applyOptimizationCandidate(stagedAiLatex, true)) queuePreview(stagedAiLatex, undefined, true) }} onDiscard={handleDiscardOptimization} /> : <SemanticOptimizationPanel resumeId={resumeId} identity={`${sessionUserId}:${resumeId}`}
                 document={visibleEngineDocument} currentSourceHash={sourceHash} disabled={!canEditDocument || !collabIsOwner || isAnyRunning}
                 jobDescription={jobDescription} setJobDescription={setJobDescription} runId={semanticRunId} provisionalPatches={aiJobId === semanticRunId ? aiStream.semanticPatches : []}
                 onStarted={(jobId) => { try { localStorage.setItem(`latexy_semantic_run:${sessionUserId}:${resumeId}`, jobId) } catch {} setSemanticRunId(jobId); setAiJobId(jobId); setLastStartedJobKind('ai'); setStagedAiLatex(null) }}
