@@ -173,7 +173,21 @@ async def mendeley_complete(
     ticket = body.ticket.strip()
     if not ticket:
         raise HTTPException(status_code=400, detail="Missing Mendeley completion ticket")
-    completion = await cache_manager.pop(f"mendeley:complete:{ticket}")
+    # Preserve the rightful owner's one-time completion when a different
+    # authenticated user presents a leaked ticket. Recheck after the atomic
+    # pop so only one matching-owner request can exchange the code.
+    ticket_key = f"mendeley:complete:{ticket}"
+    pending = await cache_manager.get(ticket_key)
+    if not isinstance(pending, dict):
+        raise HTTPException(status_code=400, detail="Mendeley completion ticket is invalid or expired")
+    intended_user_id = str(pending.get("user_id") or "")
+    if not intended_user_id:
+        raise HTTPException(status_code=400, detail="Mendeley completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user Mendeley OAuth completion")
+        raise HTTPException(status_code=403, detail="Mendeley connection belongs to a different user")
+
+    completion = await cache_manager.pop(ticket_key)
     if not isinstance(completion, dict):
         raise HTTPException(status_code=400, detail="Mendeley completion ticket is invalid or expired")
     intended_user_id = str(completion.get("user_id") or "")
