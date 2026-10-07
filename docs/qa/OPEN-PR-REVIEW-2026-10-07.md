@@ -51,7 +51,7 @@ required protections, review the current diff, and run fresh applicable checks.
 | [#1804](https://github.com/sanskarpan/Latexy/pull/1804) | Historical QA evidence on an already-merged feature base. Retarget/rebuild as documentation only if still useful; distinguish dated observations from current state. | Do not close partial #1801 from a documentation checkpoint. |
 | [#1763](https://github.com/sanskarpan/Latexy/pull/1763) | 33-package Python group has failing backend/Ruff checks; refresh and resolve dependency-specific failures. | No issue closer. |
 | [#1756](https://github.com/sanskarpan/Latexy/pull/1756) | 56-package JS group has failing lint/build/browser/Vercel checks; do not batch-merge on old evidence. | No issue closer. |
-| [#1743](https://github.com/sanskarpan/Latexy/pull/1743) | setup-uv action update; refresh after #1824 because both edit CI workflow. | No issue closer. |
+| [#1743](https://github.com/sanskarpan/Latexy/pull/1743) | **Merged** after normal rebase onto `95537f70` and all fresh checks. Four immutable setup-uv pins updated; scoped cancellation conditions preserved. | No related issue; no invented closer. |
 | [#1705](https://github.com/sanskarpan/Latexy/pull/1705) | upload-artifact action update conflicts with current main; refresh serially with CI workflow updates. | No issue closer. |
 | [#1704](https://github.com/sanskarpan/Latexy/pull/1704) | setup-python deployment action update conflicts with current main; refresh and verify manifest/runtime contract. | No issue closer. |
 | [#1520](https://github.com/sanskarpan/Latexy/pull/1520) | setuptools pin update needs current dependency/test validation; coordinate shared requirements file with billing draft. | No issue closer. |
@@ -127,23 +127,45 @@ skipped, one existing unsuppressed deprecation warning. A later direct JSON-safe
 unit regression and explanatory comments were accepted in focused tests; after
 rebasing onto `bbb2b49`, 143 focused/manifest tests passed. Validation errors no
 longer echo request `input` or `ctx`, including private nested metadata. Canonical
-CI [37614920023](https://github.com/sanskarpan/Latexy/actions/runs/37614920023)
-and actual production rollout acceptance are pending at this writing.
+CI [37614920023](https://github.com/sanskarpan/Latexy/actions/runs/37614920023),
+Modal [37615807415](https://github.com/sanskarpan/Latexy/actions/runs/37615807415),
+and Vercel certification [37615807430](https://github.com/sanskarpan/Latexy/actions/runs/37615807430)
+succeeded. Canonical identity reports `95537f70`. Four invalid live probes
+(nested NaN metadata; nan/inf/-inf compilation time) returned 422 without input,
+ctx or synthetic private markers, taking 5,013 / 5,096 / 4,101 / 2,929 ms.
+
+#1743 merged at `12e54dbf655b3fb4c8491a22e1d3691ed3021f9e` after fresh CI
+[37619510856](https://github.com/sanskarpan/Latexy/actions/runs/37619510856)
+and all applicable protections passed. Its automatic main rollout is pending
+at this writing. #1705 and #1704 need immutable SHA replacements instead of
+their submitted mutable tags; root separately passed 92 manifest tests on each
+prepared candidate. Neither is approved for deployment by stale checks alone.
 
 ## Mobile account navigation — #1836
 
 The production 627px menu lacked account controls and Sign Out. The focused fix
 reuses existing session resolution, role/feature gates and shared sign-out cleanup;
 it adds scrollable account navigation and Escape focus restoration, without new
-auth endpoints or changing desktop sign-out behavior.
+auth endpoints. The shared hard-navigation sign-out now opts out of Better Auth's
+redundant pre-unload session signal; it still awaits the real logout POST and
+retains private-data cleanup and a fresh session read in the new document.
 
 - Root Node 22 TypeScript and focused ESLint passed on the corrected frozen test.
 - Root zero-retry Chromium, Firefox and mobile Chromium run: nine passed (59.3s).
-- Root header unit acceptance: 1,057 tests across 166 files passed before the
-  subsequent test-only diagnostic corrections; the header remained unchanged.
+- Root updated-header unit acceptance: 1,057 tests across 166 files passed after
+  adding the SDK-supported sign-out signal option; TypeScript also passed.
 - Earlier failures are preserved: cold route/session timing, a test-only fixture
   closure ReferenceError (fixed), and six macOS WebKit launch SIGSEGV failures.
   The macOS launch failures are not passing tests or permission to waive WebKit.
+- First Linux CI [37619025359](https://github.com/sanskarpan/Latexy/actions/runs/37619025359):
+  35 quality cases passed, two authenticated WebKit cases failed on strict
+  page-error assertions, including retries. All visible logout/navigation
+  assertions passed, but that is not permission to ignore the errors. Traces
+  place the access-control error after logout and before root navigation
+  completes, not at the test's later explicit reload. Successful captured auth
+  requests are same-origin 200 responses; traces do not identify the exact
+  interrupted request. The SDK option is a mitigation pending fresh Linux
+  evidence, not a proven root-cause claim or CORS/security bypass.
 - Linux desktop/mobile WebKit and current-head protected CI remain required
   before merge. Real production UI logout/re-login remains pending deployment.
 
