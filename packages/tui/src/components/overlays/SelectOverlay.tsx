@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { CtrlSafeTextInput } from '../CtrlSafeTextInput.js'
 import { useOverlaySize } from '../../lib/overlay-size.js'
-import { useCtrlKeyGuard } from '../../lib/ctrl-key-guard.js'
 
 import { settlePick, type PickerItem } from '../../lib/pick.js'
 import { theme } from '../../lib/theme.js'
@@ -46,10 +45,6 @@ export function SelectOverlay({ title, load, emptyMessage }: SelectOverlayProps)
   }, [load])
 
   const needle = filter.toLowerCase()
-  // Ctrl+L clears the transcript underneath; without this its letter lands in
-  // this overlay's filter box instead.
-  useCtrlKeyGuard(setFilter)
-
   const filtered = needle
     ? items.filter(i => `${i.label} ${i.detail ?? ''}`.toLowerCase().includes(needle))
     : items
@@ -76,7 +71,7 @@ export function SelectOverlay({ title, load, emptyMessage }: SelectOverlayProps)
       <Text bold color={theme.accent}>{title}</Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
-        <TextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
+        <CtrlSafeTextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
       </Box>
       <Box marginTop={1} flexDirection="column">
         {loading && <Text color={theme.warning}>Loading…</Text>}
