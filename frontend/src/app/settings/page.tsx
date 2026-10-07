@@ -1791,9 +1791,14 @@ function SettingsContent() {
           )}
 
           {notificationDataReady && error && (
-            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
-              {error}
-            </p>
+            <div role="alert" className="space-y-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
+              <p>{error}</p>
+              {error === 'Failed to load preferences' && (
+                <button type="button" onClick={retryNotificationPrefs} disabled={!notificationAuthReady || saving || loading} className="font-semibold underline disabled:opacity-60">
+                  Retry notification preferences
+                </button>
+              )}
+            </div>
           )}
 
           {/* Autosave status — changes persist on toggle, so there is no manual
