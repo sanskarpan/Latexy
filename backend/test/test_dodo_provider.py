@@ -93,6 +93,29 @@ async def test_refund_omits_optional_fields_when_not_provided() -> None:
     assert route.calls.last.request.content == b'{"payment_id":"pay_123"}'
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://test.dodopayments.com",
+        "https://test.dodopayments.com.attacker.invalid",
+        "https://user@test.dodopayments.com",
+        "https://test.dodopayments.com:443",
+        "https://test.dodopayments.com/api",
+        "https://test.dodopayments.com/?target=attacker.invalid",
+        "https://test.dodopayments.com/#fragment",
+        # Explicit overrides cannot cross the active test/live mode boundary.
+        "https://live.dodopayments.com",
+    ],
+)
+def test_provider_rejects_noncanonical_or_wrong_mode_origin(
+    base_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DODO_MODE", "test")
+
+    with pytest.raises(ValueError, match="active mode's official HTTPS origin"):
+        DodoProvider(api_key="test-adapter-key", base_url=base_url)
+
+
 @pytest.mark.asyncio
 async def test_discount_code_is_escaped_as_a_single_path_segment() -> None:
     host = "https://test.dodopayments.com"
