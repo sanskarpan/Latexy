@@ -17,6 +17,10 @@ SOURCE = r"\documentclass{article}\begin{document}Hello\end{document}"
 @pytest.fixture
 def compile_probe(monkeypatch, tmp_path):
     captured = {}
+    # Renderer selection is server-owned and does not follow the mocked
+    # docker_engine_available probe. Choose the test backend explicitly so a
+    # developer's installed Docker CLI cannot select an unavailable daemon.
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     monkeypatch.setattr(orchestrator.settings, "TEMP_DIR", str(tmp_path))
     monkeypatch.setattr(orchestrator, "assert_local_engine_allowed", lambda *_: None)
     monkeypatch.setattr(orchestrator, "is_cancelled", lambda *_: False)
@@ -48,6 +52,7 @@ def compile_probe(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("docker", [False, True])
 def test_combined_settings_reach_engine_and_keep_artifact_names(compile_probe, monkeypatch, docker):
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "docker" if docker else "native")
     monkeypatch.setattr(orchestrator, "docker_engine_available", lambda: docker)
     orchestrator._run_latex_stage(
         "combined-settings", SOURCE, main_file="letter.tex", extra_packages=["xcolor"],
