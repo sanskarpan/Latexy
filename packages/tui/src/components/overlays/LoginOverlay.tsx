@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { CtrlSafeTextInput } from '../CtrlSafeTextInput.js'
 import { ApiClient, initApiClient } from '../../lib/api-client.js'
 import { writeConfig } from '../../lib/config.js'
 import { $session, appUrl } from '../../stores/session.js'
@@ -112,7 +112,7 @@ export function LoginOverlay(): React.ReactElement {
       {step === 'email' && (
         <Box gap={1}>
           <Text>Email:</Text>
-          <TextInput
+          <CtrlSafeTextInput
             value={email}
             onChange={setEmail}
             onSubmit={handleEmailSubmit}
@@ -126,7 +126,7 @@ export function LoginOverlay(): React.ReactElement {
           <Text dimColor>Email: {email}</Text>
           <Box gap={1} marginTop={1}>
             <Text>Password:</Text>
-            <TextInput
+            <CtrlSafeTextInput
               value={password}
               onChange={setPassword}
               onSubmit={(val) => { void handlePasswordSubmit(val) }}
