@@ -16,6 +16,7 @@ from ...core.config import settings
 from ...core.engine_observability import engine_span
 from ..render_engine.cancellation import CancellationPoll
 from .budgets import BudgetExceeded
+from .credential_scope import credential_scope as credential_scope_for_api_key
 from .patches import CompactOptimizationCancelled, CompactOptimizationError
 
 _LIMIT = """
@@ -114,7 +115,7 @@ class SemanticProvider:
     ):
         self.spec, self.api_key, self.ledger, self.deadline = spec, api_key, ledger, deadline
         self.cancelled, self.owner_scope, self.client_factory = cancelled, owner_scope, client_factory
-        self.credential_scope = hashlib.sha256(api_key.encode()).hexdigest()
+        self.credential_scope = credential_scope_for_api_key(api_key)
         self._clients: dict[int, object] = {}
         self._lock = threading.Lock()
         self._stopped = threading.Event()
