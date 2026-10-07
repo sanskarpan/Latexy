@@ -382,7 +382,7 @@ describe('Settings notification owner state', () => {
     harness.runEffects()
     const refreshed = await renderSettled(harness)
     expect(findToggle(refreshed).props['aria-checked']).toBe(true)
-    expect(harness.getCalls.at(-1)?.context?.authToken).toBe('token-a-refreshed')
+    expect(harness.getCalls[harness.getCalls.length - 1]?.context?.authToken).toBe('token-a-refreshed')
 
     gate.resolve(prefs(true))
     await pending
