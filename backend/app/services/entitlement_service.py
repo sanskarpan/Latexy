@@ -631,9 +631,7 @@ class EntitlementService:
             # outage on endpoints that have no other Redis dependency.
             fail_open = limit is None
             logger.error(
-                "Quota counter unavailable for %s/%s, failing %s",
-                dimension,
-                user_id,
+                "Quota counter unavailable, failing %s",
                 "open (unlimited plan)" if fail_open else "closed",
                 extra={"error_type": type(exc).__name__},
             )
