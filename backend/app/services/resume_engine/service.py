@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -15,6 +14,7 @@ from ...core.engine_observability import engine_span
 from ...database.models import Resume, ResumeOptimizationRun, ResumeRequirementContext, ResumeTemplate
 from .budgets import initial_budget
 from .context import build_context
+from .credential_scope import credential_scope as credential_scope_for_api_key
 from .ledger import DurableOptimizationLedger
 from .memory import load_choices
 from .patches import CompactOptimizationCancelled
@@ -134,7 +134,7 @@ def run_semantic_optimization(
     expected_source = metadata.get("expected_source_sha256")
     ledger = DurableOptimizationLedger(redis, job_id)
     spec = resolve_provider(api_key, model)
-    credential_scope = hashlib.sha256(api_key.encode()).hexdigest()
+    credential_scope = credential_scope_for_api_key(api_key)
     extracted_requirements = extract_requirements(job_description)
     decision_memory = None
     frozen_requirements, requirement_plan = None, None
