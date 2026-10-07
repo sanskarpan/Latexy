@@ -16,7 +16,6 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from _entitlement_reset import reset_entitlements_baseline
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +24,8 @@ from app.services.entitlement_service import (
     REDIS_BLOB_KEY,
     entitlement_service,
 )
+
+from ._entitlement_reset import reset_entitlements_baseline
 
 # ── Isolation: reset the all-enabled baseline after every test ───────────────
 
