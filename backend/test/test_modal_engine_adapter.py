@@ -3,14 +3,25 @@
 import base64
 import io
 import json
+import os
+import subprocess
+import sys
 import time
 from types import SimpleNamespace
 
 import pytest
 
 from app.services.render_engine.modal_sandbox import (
+    _BATCH_EXPORT,
+    _BATCH_EXPORT_HEADER,
+    _BATCH_EXPORT_MAGIC,
+    _BATCH_EXPORT_MAX_BYTES,
+    _BATCH_EXPORT_SLOTS,
     _BOUNDED_EXPORT,
+    ModalEngineProcess,
+    ModalEngineSession,
     ModalEngineUnavailable,
+    _decode_remote_batch,
     _read_remote_bounded,
     create_modal_engine,
 )
@@ -124,6 +135,275 @@ def test_remote_export_rejects_overlong_or_invalid_encoded_payload():
     sandbox = SimpleNamespace(exec=lambda *a, **kw: SimpleNamespace(stdout=io.BytesIO(b"A" * 100), wait=lambda: 0))
     with pytest.raises(ModalEngineUnavailable, match="export rejected"):
         _read_remote_bounded(sandbox, "/workspace/resume.pdf", 3)
+
+
+def _batch_payload(records):
+    output = bytearray(_BATCH_EXPORT_MAGIC)
+    output.append(len(_BATCH_EXPORT_SLOTS))
+    for index, (name, _limit) in enumerate(_BATCH_EXPORT_SLOTS):
+        data = records.get(name)
+        if data is None:
+            output.extend(_BATCH_EXPORT_HEADER.pack(index, 0, 0))
+        else:
+            output.extend(_BATCH_EXPORT_HEADER.pack(index, 1, len(data)))
+            output.extend(data)
+    return bytes(output)
+
+
+class _FakeRemoteProcess:
+    def __init__(self, payload=b"", returncode=0, on_read=None):
+        self.stdout = io.BytesIO(payload) if on_read is None else _ReadHook(payload, on_read)
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self):
+        return self.returncode
+
+
+class _ReadHook:
+    def __init__(self, payload, on_read):
+        self.payload = payload
+        self.on_read = on_read
+
+    def read(self):
+        self.on_read()
+        return self.payload
+
+    def __iter__(self):
+        self.on_read()
+        yield self.payload
+
+
+class _ExportSandbox:
+    def __init__(self, payload, *, returncode=0, on_read=None):
+        self.payload = payload
+        self.returncode = returncode
+        self.on_read = on_read
+        self.calls = []
+        self.terminated = False
+
+    def exec(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return _FakeRemoteProcess(self.payload, self.returncode, self.on_read)
+
+    def terminate(self, **_kwargs):
+        self.terminated = True
+
+
+def _adapter_process(tmp_path, sandbox, *, session=None):
+    process = ModalEngineProcess(sandbox, _FakeRemoteProcess(), tmp_path, "resume")
+    if session is not None:
+        process.renderer_session = session
+    return process
+
+
+def test_batch_export_uses_one_bytes_command_and_preserves_artifact_and_stdout_order(tmp_path):
+    records = {
+        ".pdf": b"%PDF\x00\xff",
+        ".log": b"compiler log\n",
+        ".synctex.gz": b"sync\x00data",
+        "engine.stdout": b"engine output\n",
+    }
+    sandbox = _ExportSandbox(_batch_payload(records))
+    process = _adapter_process(tmp_path, sandbox)
+
+    assert process.wait() == 0
+    assert len(sandbox.calls) == 1
+    args, kwargs = sandbox.calls[0]
+    assert args == ("python3", "-c", _BATCH_EXPORT, "resume")
+    assert kwargs == {"timeout": 30, "text": False, "secrets": []}
+    assert (tmp_path / "resume.pdf").read_bytes() == records[".pdf"]
+    assert (tmp_path / "resume.log").read_bytes() == records[".log"]
+    assert (tmp_path / "resume.synctex.gz").read_bytes() == records[".synctex.gz"]
+    assert not (tmp_path / "resume.fls").exists()
+    assert process.stdout.read(64) == b"engine output\n"
+    assert process.stdout.read(64) == b""
+
+
+def test_batch_missing_artifacts_skip_but_missing_stdout_fails_only_when_read(tmp_path):
+    sandbox = _ExportSandbox(_batch_payload({}))
+    process = _adapter_process(tmp_path, sandbox)
+
+    assert process.wait() == 0
+    assert len(sandbox.calls) == 1
+    assert not list(tmp_path.glob("resume.*"))
+    with pytest.raises(FileNotFoundError, match="engine.stdout"):
+        process.stdout.read(64)
+
+
+def test_batch_missing_pdf_is_not_an_export_error(tmp_path):
+    records = {".log": b"no PDF produced\n", "engine.stdout": b"engine output\n"}
+    process = _adapter_process(tmp_path, _ExportSandbox(_batch_payload(records)))
+
+    assert process.wait() == 0
+    assert (tmp_path / "resume.log").read_bytes() == records[".log"]
+    assert not (tmp_path / "resume.pdf").exists()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["magic", "truncated-header", "wrong-count", "wrong-index", "invalid-status",
+     "missing-with-data", "oversized-slot", "truncated-data", "trailing-data"],
+)
+def test_batch_parser_rejects_malformed_or_truncated_frames(corruption):
+    payload = bytearray(_batch_payload({".pdf": b"pdf"}))
+    header_offset = len(_BATCH_EXPORT_MAGIC) + 1
+    if corruption == "magic":
+        payload[0] ^= 0x01
+    elif corruption == "truncated-header":
+        payload = payload[:header_offset + _BATCH_EXPORT_HEADER.size - 1]
+    elif corruption == "wrong-count":
+        payload[len(_BATCH_EXPORT_MAGIC)] -= 1
+    elif corruption == "wrong-index":
+        payload[header_offset] = 1
+    elif corruption == "invalid-status":
+        payload[header_offset + 1] = 9
+    elif corruption == "missing-with-data":
+        payload[header_offset + 1] = 0
+    elif corruption == "oversized-slot":
+        payload[header_offset + 2:header_offset + 6] = (20 * 1024 * 1024 + 1).to_bytes(4, "big")
+    elif corruption == "truncated-data":
+        payload[header_offset + _BATCH_EXPORT_HEADER.size:] = b""
+    elif corruption == "trailing-data":
+        payload.extend(b"x")
+
+    with pytest.raises(ModalEngineUnavailable, match="(Invalid|Truncated|Unexpected)"):
+        _decode_remote_batch(bytes(payload))
+
+
+@pytest.mark.parametrize("file_kind", ["symlink", "fifo"])
+def test_batch_remote_export_rejects_unsafe_files_without_following_or_blocking(
+    tmp_path, file_kind
+):
+    workspace = tmp_path / "remote-workspace"
+    workspace.mkdir()
+    if file_kind == "symlink":
+        outside = tmp_path / "outside.pdf"
+        outside.write_bytes(b"must not be read")
+        (workspace / "resume.pdf").symlink_to(outside)
+    else:
+        os.mkfifo(workspace / "resume.pdf")
+    script = _BATCH_EXPORT.replace(
+        "path='/workspace/'+name", f"path={str(workspace)!r}+'/'+name"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script, "resume"],
+        capture_output=True,
+        check=False,
+        timeout=2,
+    )
+    assert result.returncode == 78
+    if file_kind == "symlink":
+        assert b"must not be read" not in result.stdout
+
+
+def test_batch_remote_script_emits_bounded_raw_binary_frames(tmp_path):
+    workspace = tmp_path / "remote-workspace"
+    workspace.mkdir()
+    files = {
+        "resume.pdf": b"%PDF\x00\xffbinary",
+        "resume.log": b"compile log\n",
+        "engine.stdout": b"stdout\x00\xfe",
+    }
+    for name, data in files.items():
+        (workspace / name).write_bytes(data)
+    script = _BATCH_EXPORT.replace(
+        "path='/workspace/'+name", f"path={str(workspace)!r}+'/'+name"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script, "resume"],
+        capture_output=True,
+        check=False,
+        timeout=2,
+    )
+    assert result.returncode == 0
+    records = _decode_remote_batch(result.stdout)
+    assert records[".pdf"] == files["resume.pdf"]
+    assert records[".log"] == files["resume.log"]
+    assert records["engine.stdout"] == files["engine.stdout"]
+    assert records[".aux"] is None
+
+
+def test_batch_export_rejects_nonzero_exit_and_never_materializes_partial_frame(tmp_path):
+    sandbox = _ExportSandbox(_batch_payload({".pdf": b"partial"}), returncode=78)
+    process = _adapter_process(tmp_path, sandbox)
+
+    with pytest.raises(ModalEngineUnavailable, match="batch export rejected"):
+        process.wait()
+    assert not (tmp_path / "resume.pdf").exists()
+    assert sandbox.terminated
+
+
+def test_batch_export_rejects_truncated_payload_without_partial_artifacts(tmp_path):
+    payload = _batch_payload({".pdf": b"pdf", ".log": b"log"})[:-2]
+    sandbox = _ExportSandbox(payload)
+    process = _adapter_process(tmp_path, sandbox)
+
+    with pytest.raises(ModalEngineUnavailable, match="Truncated"):
+        process.wait()
+    assert not (tmp_path / "resume.pdf").exists()
+    assert not (tmp_path / "resume.log").exists()
+    assert sandbox.terminated
+
+
+def test_batch_export_uses_remaining_session_deadline_and_rejects_late_response(tmp_path):
+    records = {".pdf": b"pdf", "engine.stdout": b"logs"}
+    holder = {}
+    sandbox = _ExportSandbox(
+        _batch_payload(records),
+        on_read=lambda: setattr(holder["session"], "deadline", time.monotonic() - 1),
+    )
+    timer = SimpleNamespace(cancel=lambda: None)
+    session = ModalEngineSession(
+        sandbox, timer, time.monotonic() + 2, tmp_path, "kernel", "image", None
+    )
+    holder["session"] = session
+    process = _adapter_process(tmp_path, sandbox, session=session)
+
+    with pytest.raises(ModalEngineUnavailable, match="deadline exceeded"):
+        process.wait()
+    assert sandbox.calls[0][1]["timeout"] == 2
+    assert sandbox.terminated
+    assert not (tmp_path / "resume.pdf").exists()
+
+
+def test_batch_export_cancellation_during_stream_prevents_local_writes(tmp_path):
+    holder = {}
+    sandbox = _ExportSandbox(
+        _batch_payload({".pdf": b"pdf", "engine.stdout": b"logs"}),
+        on_read=lambda: holder["process"].kill(),
+    )
+    timer = SimpleNamespace(cancel=lambda: None)
+    session = ModalEngineSession(
+        sandbox, timer, time.monotonic() + 30, tmp_path, "kernel", "image", None
+    )
+    process = _adapter_process(tmp_path, sandbox, session=session)
+    holder["process"] = process
+
+    with pytest.raises(ModalEngineUnavailable, match="cancelled"):
+        process.wait()
+    assert sandbox.terminated
+    assert not (tmp_path / "resume.pdf").exists()
+
+
+def test_batch_parser_enforces_total_response_bound_before_parsing():
+    oversized = b"x" * (_BATCH_EXPORT_MAX_BYTES + 1)
+    with pytest.raises(ModalEngineUnavailable, match="exceeds limit"):
+        _decode_remote_batch(oversized)
+
+
+def test_batch_export_rejects_text_stream_from_bytes_api():
+    sandbox = SimpleNamespace(
+        exec=lambda *args, **kwargs: SimpleNamespace(stdout=iter(("not bytes",)), wait=lambda: 0)
+    )
+    from app.services.render_engine.modal_sandbox import _read_remote_batch
+
+    with pytest.raises(ModalEngineUnavailable, match="Invalid remote artifact batch stream"):
+        _read_remote_batch(sandbox, "resume", 5)
 
 
 def test_certificate_handles_actual_tex2022_trailing_space_and_rejects_allowed():
