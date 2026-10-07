@@ -9,21 +9,22 @@ production migration, or deployment was performed for this checkpoint.
 ## Exact source and verification state
 
 - Candidate branch: `fix/1834-dodo-release-20261007`
-- Candidate source commit: `814c671217230e295914b1b7b77bb06fc81e3338`
-- Backend source tree: `c14f5a38d53a2af7162b5d0751bebcfc46498130`
-  (the parent `b2a064da` was the tested code commit; `814c6712` adds only a
-  documentation archive and leaves the backend tree unchanged).
+- Candidate source commit: `bc9fb281471f35b1b7f3c3ab17b1803173ed0c99`
+- Backend source tree: `3eae0a5125ca3541cb0c89c99935ee6ba62caba7`
+  (the backend integration run below is for this exact candidate tree).
 - Dodo schema chain: OAuth `0059`, engine `0060`–`0064`, Dodo `0065`–`0067`,
   single Alembic head `0067`.
-- Isolated full backend suite: **4,313 passed, 5 skipped** (4,318 collected),
-  with no failure/error markers in the completed run. The exact source was tested
+- Isolated full backend suite: **4,315 passed, 5 skipped** (4,320 collected),
+  with zero failures/errors and one Starlette/httpx deprecation warning in the
+  completed run. The exact source was tested
   with the QA PostgreSQL database on port 5547 (`latexy_dodo_release_test`),
   Redis DB 11 and cache DB 10, the worktree backend on `PYTHONPATH`, and no
-  `SKIP_INFRA_CHECK`. Dodo API and webhook credentials were blank. The log is
-  `/tmp/latexy-dodo-full-backend-20261008.log` on the test host. The pytest
-  configuration suppresses its final count summary; the collected total was
-  counted separately and the five skips are visible in the progress output.
-  Log SHA-256: `a07f9970a4896eb98fb91a1fec3aba0819b42e6817b23e15abe55922f6683678`.
+  `SKIP_INFRA_CHECK`. Dodo API and webhook credentials were blank. Pytest's
+  JUnit independently reports `tests=4320`, `failures=0`, `errors=0`,
+  `skipped=5` in `/private/tmp/latexy-dodo-full-final-20261008.xml` (SHA-256
+  `7c2493e1809c59ce5c1a671000e993f94d70d24113c5a285650ca24b6a5f5ea8`).
+  Full pytest log: `/private/tmp/latexy-dodo-full-final-20261008.log` (SHA-256
+  `596839daf090a734dda51202e83f32a3f41ca9974d5fe08bd9f13f4a8c3e19e2`).
 - Focused provider/billing/webhook-recovery/entitlement/subscription suites:
   **88 passed**. The separate latest-main OAuth/public-bound/telemetry/manifest
   regressions: **140 passed**; some paths overlap with the broader suites, so
@@ -47,6 +48,35 @@ production migration, or deployment was performed for this checkpoint.
 All integration tests use a dedicated QA database and test Redis only. Fixture
 configuration blanks inherited Dodo keys; no real payment credentials or
 customer records are part of this test result.
+
+### Subsequent candidate updates verified locally
+
+- Candidate CI maintenance: both Python locks are generated with a universal
+  Python 3.12 resolution. The lockfiles preserve platform markers (including
+  Windows-only `colorama` and non-Windows `uvloop`); CI regeneration and custom
+  provenance comments use the same `--universal` option, and the manifest
+  regression keeps marker differences strict. This fixes the Ubuntu
+  host-specific regeneration mismatch seen in the earlier CI attempt without
+  relaxing hash/marker checks or changing requirement inputs. Focused lock
+  manifest tests passed **2/2** locally; these local commits have not yet been
+  re-run by GitHub Actions.
+- Frontend smoke fixture maintenance: the full-stack test follows the current
+  landing-page “Build my résumé” CTA to `/try?mode=visual`, checks the visual
+  editor and “Update PDF preview” control, then switches to Source and checks
+  Monaco. The mobile quality fixture also targets the current exact “Update PDF
+  preview” accessible name instead of the retired “Recompile” label. A local
+  isolated Chromium run passed **1/1** (`5.5s`) against its dedicated
+  backend/frontend pair. The earlier GitHub smoke run used the old selector
+  and failed because “Start compiling →” no longer exists; that is fixture
+  drift, not evidence that the current smoke passes in GitHub Actions. A macOS
+  WebKit attempt ended in a browser-process crash; it is not a WebKit pass and
+  cross-browser acceptance remains open.
+- Quota outage log privacy: the entitlement service no longer interpolates
+  user IDs into quota-counter outage logs; it records the fail-open/closed
+  disposition and exception type instead. The regression checks that a
+  CR/LF-injected owner identifier is absent from captured logs. Its fixture
+  pins the intended quota policy directly, so this privacy assertion is
+  independent of paid-plan catalog availability in the QA environment.
 
 ## Material sandbox limits still open
 
