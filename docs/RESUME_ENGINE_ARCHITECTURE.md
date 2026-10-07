@@ -2,11 +2,13 @@
 
 Latexy should make editing immediate, refresh simple resume PDFs within a one second warm-path budget, and deliver useful AI changes progressively. The current code already has streaming, exact compile caching, section selection, structured builder data, and warm production workers. The next architecture should connect those foundations through versioned resume nodes, compact AI patches, a bounded parallel optimizer, and an independent rendering service.
 
-The first engineering priority is to remove synchronous event publication from compiler and model output consumption, shorten the two second compile debounce, and expose revision-specific artifact readiness. Retain FastAPI while measuring its actual contribution. A framework rewrite does not remove external inference, TeX work, remote storage, or queue delay.
+The first engineering priority is to remove synchronous event publication from compiler and model output consumption and expose revision-specific artifact readiness. Retain FastAPI while measuring its actual contribution. A framework rewrite does not remove external inference, TeX work, remote storage, or queue delay.
 
 This proposal covers the technical editor, the future PDF-based editing surface, imported resumes, job-description tailoring, contextual memory, effort levels, model routing, deployment, and the migration sequence. The proposed latency numbers below are acceptance targets; they are not current product measurements or guarantees for every custom LaTeX document.
 
 ## Evidence and measurement scope
+
+October 7 follow-up: the engine draft now uses a five-second typing quiet period and a ten-second minimum automatic admission interval, with one running preview and a replaceable pending revision. Explicit saves and review actions remain prompt but share the running-preview fence and backend quotas. The two-second debounce shown in the historical October 6 audit below is not the current draft policy. Measure renderer latency from admission separately from this intentional typing delay; do not shorten it to meet a compiler target or restore per-keystroke requests. See [release follow-up](audits/resume-engine/RELEASE-FOLLOWUP-2026-10-07.md) for current checks and unresolved release gates.
 
 The local checkout was read at commit `317b9b3d0b1cf05cb4a007dbf179129993d67ba5` on October 6, 2026, including concurrent working-copy changes to the visual editor. Source hashes for the principal audited files are recorded in [local measurements](local-measurements.json). GitHub reads initially used snapshot `275a9d28332fc284d803efe51a5139876ffbad02`; conclusions below were checked against the relevant local files. Other project tasks are changing this checkout, so hashes provide the precise scope when line numbers move.
 
@@ -34,7 +36,7 @@ The technical editor submits a complete LaTeX string through `apiClient.compileL
 
 ```mermaid
 flowchart LR
-    Edit[Source or visual text edit] --> Debounce[Two second debounce]
+    Edit[Source or visual text edit] --> Debounce[Historical two second debounce]
     Debounce --> API[FastAPI job admission]
     API --> Dispatch[Celery or Modal dispatch]
     Dispatch --> TeX[TeX subprocess]
@@ -53,7 +55,7 @@ The new local `VisualResumeEditor` edits fields projected from LaTeX using origi
 
 | Finding | Code evidence | Consequence and required change |
 | --- | --- | --- |
-| Auto-compile waits two seconds | [LaTeXEditor](../../../frontend/src/components/LaTeXEditor.tsx), Monaco change listener around line 1202; [editor page](../../../frontend/src/app/workspace/%5BresumeId%5D/edit/page.tsx), visual effect around line 2770 | Automatic refresh cannot meet one second from the last edit. Use a short adaptive debounce with one running compile and one replaceable latest pending revision. |
+| Historical auto-compile waited two seconds | [LaTeXEditor](../../../frontend/src/components/LaTeXEditor.tsx), Monaco change listener around line 1202; [editor page](../../../frontend/src/app/workspace/%5BresumeId%5D/edit/page.tsx), visual effect around line 2770 | Superseded by the October 7 five-second quiet / ten-second minimum admission policy above. Typing cadence and admitted-render latency are separate acceptance measures. |
 | Every output chunk waits for Redis | [event publisher](../../../backend/app/workers/event_publisher.py), `publish_event` around line 379; [LLM worker](../../../backend/app/workers/llm_worker.py), chunk loop; [compile worker](../../../backend/app/workers/latex_worker.py), log loop | One atomic Lua call already replaces multiple Redis writes, but each chunk still incurs synchronous network waiting. Introduce bounded buffering and independent publication. Preserve ordering and lifecycle fences. |
 | Job admission has serial remote work | [job routes](../../../backend/app/api/job_routes.py), `_write_initial_redis_state` around line 392 and `submit_job` around line 554 | Metadata, sequence, stream, expiry, and Pub/Sub setup use several awaited calls, in addition to database and quota operations. Batch independent writes and use atomic scripts where dependencies require them. Keep the durable admission and charging guarantees. |
 | Modal dispatch runs synchronously inside an async request path | [Modal dispatcher](../../../backend/app/core/modal_dispatch.py), `spawn`; callers in job routes | A blocking SDK call can occupy the API event loop. Measure its duration and use an async SDK entry point or a bounded thread handoff while retaining dispatch acknowledgement and recovery. |
