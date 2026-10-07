@@ -39,6 +39,7 @@ def verify_fixture(workspace: Path, basename: str, expected_text: str) -> bool:
 
 def main():
     import modal
+
     # Fail before creating billable infrastructure if the local inspection
     # dependency from the project lock is not installed in the operator env.
     import pdfminer.high_level  # noqa: F401
