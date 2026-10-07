@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api import analytics_routes, routes
+from app.core.errors import register_exception_handlers
 from app.database.models import DeviceTrial, UsageAnalytics
 from app.services import feature_flag_service
 
@@ -93,6 +94,7 @@ async def _submit_to_real_route(
 
 def _test_app() -> FastAPI:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(routes.router)
     return app
 
@@ -112,7 +114,32 @@ async def _post_public_trial(
     app = _test_app()
     app.dependency_overrides[routes.get_db] = override_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/public/track-usage", json=payload)
+        response = await client.post(
+            "/public/track-usage",
+            content=json.dumps(payload, allow_nan=True),
+            headers={"content-type": "application/json"},
+        )
+    return response.status_code, response.json(), db
+
+
+async def _post_analytics_event(
+    payload: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> tuple[int, dict[str, Any], _FakeDB]:
+    db = _FakeDB()
+
+    async def override_db():
+        yield db
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(analytics_routes.router)
+    app.dependency_overrides[analytics_routes.get_db] = override_db
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/analytics/track",
+            content=json.dumps(payload, allow_nan=True),
+            headers={"content-type": "application/json"},
+        )
     return response.status_code, response.json(), db
 
 
@@ -343,3 +370,86 @@ def test_public_trial_serializer_recursion_is_reported_as_validation_error() -> 
             action="compile",
             metadata={"value": _RecursionErrorString()},
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("label", "value", "expected_status"),
+    [
+        ("finite", 1.25, 200),
+        ("nan", float("nan"), 422),
+        ("infinity", float("inf"), 422),
+        ("negative-infinity", float("-inf"), 422),
+    ],
+)
+async def test_public_trial_metadata_requires_finite_nested_numbers(
+    label: str, value: float, expected_status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, body, db = await _post_public_trial(
+        {
+            "deviceFingerprint": f"finite-metadata-{label}",
+            "action": "compile",
+            "metadata": {
+                "nested": {"value": value},
+                "token": "synthetic-token-secret",
+                "password": "synthetic-password-secret",
+                "resume_content": "synthetic-private-resume-content",
+            },
+        },
+        monkeypatch,
+    )
+
+    assert status == expected_status
+    if expected_status == 200:
+        assert body["success"] is True
+        assert any(isinstance(item, UsageAnalytics) for item in db.added)
+    else:
+        assert body["detail"]
+        assert body["error"]["details"][0]["loc"] == ["body", "metadata"]
+        assert "input" not in body["error"]["details"][0]
+        body_text = json.dumps(body)
+        assert "synthetic-token-secret" not in body_text
+        assert "synthetic-password-secret" not in body_text
+        assert "synthetic-private-resume-content" not in body_text
+        assert db.added == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("label", "value", "expected_status"),
+    [
+        ("finite", 1.25, 201),
+        ("nan", float("nan"), 422),
+        ("infinity", float("inf"), 422),
+        ("negative-infinity", float("-inf"), 422),
+    ],
+)
+async def test_analytics_metadata_requires_finite_nested_numbers(
+    label: str, value: float, expected_status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, body, db = await _post_analytics_event(
+        {
+            "event_type": "page_view",
+            "metadata": {
+                "nested": {"value": value},
+                "token": "synthetic-token-secret",
+                "password": "synthetic-password-secret",
+                "resume_content": "synthetic-private-resume-content",
+            },
+        },
+        monkeypatch,
+    )
+
+    assert status == expected_status
+    if expected_status == 201:
+        assert body == {"message": "Event tracked successfully"}
+        assert any(isinstance(item, UsageAnalytics) for item in db.added)
+    else:
+        assert body["detail"]
+        assert body["error"]["details"][0]["loc"] == ["body", "metadata"]
+        assert "input" not in body["error"]["details"][0]
+        body_text = json.dumps(body)
+        assert "synthetic-token-secret" not in body_text
+        assert "synthetic-password-secret" not in body_text
+        assert "synthetic-private-resume-content" not in body_text
+        assert db.added == []
