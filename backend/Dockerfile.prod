@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y \
     texlive-lang-english \
     fonts-noto-cjk \
     fonts-noto-core \
+    fonts-texgyre \
     fonts-lohit-deva \
     tesseract-ocr \
     tesseract-ocr-eng \
