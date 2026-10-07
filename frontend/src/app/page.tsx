@@ -9,6 +9,9 @@ import {
     MarketingSectionHeading,
 } from '@/components/marketing/MarketingSections'
 
+// Public ownership proof supplied by the approved Google Search Console setup.
+// Keep this homepage-only; it is not an OAuth credential or a user permission.
+
 export const metadata: Metadata = {
     title: 'Latexy | AI Resume Builder, Made for You',
     description:
@@ -20,6 +23,9 @@ export const metadata: Metadata = {
             'Build, tailor, and review your resume in one place. You stay in control of every change.',
         url: '/',
         type: 'website',
+    },
+    verification: {
+        google: '-JuXguMIM_kaznXdcKY8ygd7x6Iuhndu1xvV3_arsHs',
     },
 }
 const faq = [
