@@ -39,6 +39,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
+from ..core.engine_observability import engine_span
 from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
@@ -67,6 +68,7 @@ from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     BoundedReadError,
     BoundedTranscript,
+    UntrustedFileError,
     iter_bounded_lines,
 )
 from ..utils.process_watchdog import ProcessWatchdog
@@ -490,6 +492,15 @@ def optimize_and_compile_task(
         is_beamer = is_beamer_document(optimized_latex)
         slide_count = page_count if is_beamer else None
 
+        pdf_quality = None
+        if semantic_run:
+            from ..services.render_engine.quality import review_pdf
+
+            # Preview is already published. Final diagnostics inspect exact PDF
+            # bytes and cannot be inferred from source-based ATS scoring.
+            with engine_span("quality_review"):
+                pdf_quality = review_pdf(pdf_bytes, semantic_candidate_document or {}, optimized_latex)
+
         # ================================================================ #
         current_stage = "ats_scoring"
         # Stage 3 — ATS scoring (80% → 100%)                              #
@@ -537,6 +548,8 @@ def optimize_and_compile_task(
         ready_manifest = get_job_manifest(get_worker_redis(), job_id)
         if ready_manifest:
             result["artifact"] = ready_manifest.public()
+        if pdf_quality is not None:
+            result["pdf_quality"] = pdf_quality
 
         _resume_id = resume_id or (metadata or {}).get("resume_id")
         generated_resume_content = None
@@ -1163,6 +1176,15 @@ def _run_latex_stage(
         )
         return False, 0.0, error_msg, None, None
 
+    from ..services.render_engine.backend import resolve_backend
+    from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
+    from .job_lifecycle import current_owner_epoch
+
+    try:
+        render_backend = resolve_backend(compiler)
+    except ModalEngineUnavailable as exc:
+        return False, 0.0, str(exc), None, None
+
     content_cache_key = compile_cache_key(
         latex_content,
         compiler,
@@ -1180,9 +1202,6 @@ def _run_latex_stage(
     )
     if cache_context is not None:
         cache_context["key"] = content_cache_key
-    from ..services.render_engine.version import renderer_fingerprint
-    from .job_lifecycle import current_owner_epoch
-
     prepared_request = {
         **(render_request or {}), "source": requested_source,
         "render_source": latex_content, "compiler": compiler, "owner_scope": owner_scope,
@@ -1191,7 +1210,7 @@ def _run_latex_stage(
                      **({"bibtex": bibtex} if bibtex is not None else {}),
                      **({"extra_packages": extra_packages} if extra_packages is not None else {}),
                      **({"draft_mode": True} if draft_mode else {})},
-        "engine_fingerprint": renderer_fingerprint(), "cache_key": content_cache_key,
+        "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
     } if owner_scope and current_owner_epoch(job_id) is not None else None
     cached = restore_compile_cache(content_cache_key, job_id, prepared_request) if prepared_request else restore_compile_cache(content_cache_key, job_id)
     if cached is not None:
@@ -1238,7 +1257,7 @@ def _run_latex_stage(
         tex_file.write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, job_dir)
         write_reference_library(job_dir, bibtex)
-        if prepared_request:
+        if prepared_request and render_backend.cacheable:
             from ..services.render_engine.auxiliary import AuxiliaryWorkspace
 
             auxiliary_workspace = AuxiliaryWorkspace(get_worker_redis(), job_dir, prepared_request, float(timeout_seconds or settings.COMPILE_TIMEOUT))
@@ -1246,7 +1265,9 @@ def _run_latex_stage(
         if halt_on_error:
             error_mode_flags.append("-halt-on-error")
 
-        use_docker = docker_engine_available()
+        use_docker = render_backend.kind == "docker"
+        if use_docker and not docker_engine_available():
+            return False, 0.0, "Configured Docker renderer is unavailable", None, None
         container_name = docker_container_name(job_id, "orchestrator") if use_docker else None
         if use_docker:
             cmd = [
@@ -1274,13 +1295,14 @@ def _run_latex_stage(
             cwd = None
             workspace = "/workdir"
         else:
-            assert_local_engine_allowed(job_id)
+            if render_backend.kind == "native":
+                assert_local_engine_allowed(job_id)
             # Relative paths + cwd=job_dir: the sandbox sets openin_any/openout_any=p
             # (paranoid), under which kpathsea refuses ABSOLUTE read/write paths, so
             # an absolute /tmp/.../resume.tex fails with "Not reading … (openin_any=p)".
             from ..services.render_engine.trusted_profiles import trusted_format_flags
 
-            cmd = native_engine_command(compiler, [
+            arguments = [
                 *engine_sandbox_flags(compiler),
                 *trusted_format_flags(latex_content, compiler),
                 *error_mode_flags,
@@ -1291,7 +1313,8 @@ def _run_latex_stage(
                 ".",
                 *custom_flags,
                 main_file,
-            ], job_dir)
+            ]
+            cmd = native_engine_command(compiler, arguments, job_dir) if render_backend.kind == "native" else [compiler, *arguments]
             cwd = str(job_dir)
             workspace = str(job_dir)
 
@@ -1299,13 +1322,19 @@ def _run_latex_stage(
         _perf_start = time.perf_counter()
         with traced("latex.compile", compiler=compiler, docker=(cmd[0] == "docker")):
             start_time = time.time()
-            proc = subprocess.Popen(
+            from ..services.render_engine.backend import start_engine_process
+
+            proc = start_engine_process(
                 cmd,
+                workspace=str(job_dir), compiler=compiler, timeout=timeout,
+                backend=render_backend, popen_factory=subprocess.Popen,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
                 env=engine_env(job_dir, compiler),
             )
+            if render_backend.kind == "modal_vm":
+                workspace = proc.remote_workspace
             from ..services.render_engine.process_timing import ProcessTiming
 
             process_timing = ProcessTiming(proc)
@@ -1314,7 +1343,7 @@ def _run_latex_stage(
             transcript = BoundedTranscript()
             watchdog = ProcessWatchdog(
                 proc,
-                timeout=timeout,
+                timeout=max(0.0, timeout - (time.time() - start_time)),
                 is_cancelled=lambda: is_cancelled(job_id),
             ).start()
             try:
@@ -1440,7 +1469,7 @@ def _run_latex_stage(
 
             publish_verified_log(job_id, transcript, compiler, publish_event)
 
-        if prepared_request and proc.returncode == 0:
+        if proc.returncode == 0:
             from ..services.render_engine.passes import RenderPassError, converge
 
             try:
@@ -1448,6 +1477,7 @@ def _run_latex_stage(
                     cwd=cwd, workspace=workspace, compiler=compiler, timeout=timeout,
                     started_at=start_time, transcript=transcript, is_cancelled=lambda: is_cancelled(job_id),
                     publisher=publish_event, container_name=container_name,
+                    engine_backend=render_backend, engine_session=getattr(proc, "renderer_session", None),
                     force_second_pass=bool(auxiliary_workspace and auxiliary_workspace.loaded))
             except RenderPassError as exc:
                 return False, time.time() - start_time, str(exc), None, None
@@ -1487,6 +1517,8 @@ def _run_latex_stage(
             # This supersedes the earlier inline PDF-only cache (same key).
             try:
                 cached_pdf = cache_compile_output(job_id, job_dir, render_request=prepared_request, page_count=page_count) if prepared_request else cache_compile_output(job_id, job_dir)
+            except UntrustedFileError:
+                return False, compilation_time, ENGINE_READ_ESCAPE_ERROR, None, None
             except BoundedReadError:
                 return (
                     False,
@@ -1499,11 +1531,23 @@ def _run_latex_stage(
 
         record_compile("error", duration_seconds=_compile_duration)
         return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None, None
+    except ModalEngineUnavailable as exc:
+        return False, time.time() - locals().get("start_time", time.time()), str(exc), None, None
     finally:
         # ``--rm`` handles an exited container.  Force-remove only when the
         # client process was interrupted before it reported an exit, avoiding a
         # redundant Docker CLI call on successful/nonzero completion.
         process_obj = locals().get("proc")
+        if process_obj is not None:
+            from ..services.render_engine.backend import close_engine_session
+
+            try:
+                close_engine_session(process_obj)
+            except Exception as cleanup_exc:
+                logger.warning("Renderer session cleanup failed (%s)", type(cleanup_exc).__name__)
+            stdout = getattr(process_obj, "stdout", None)
+            if stdout is not None:
+                stdout.close()
         if locals().get("container_name") and (
             process_obj is None or getattr(process_obj, "returncode", None) is None
         ):

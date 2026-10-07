@@ -17,6 +17,7 @@ import statistics
 import subprocess
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from app.services.latex_service import engine_env, engine_sandbox_flags, find_recorder_read_escape
@@ -84,6 +85,14 @@ def render(directory, source, fmt):
         raise RuntimeError("Experiment did not converge in three passes")
     elapsed = time.perf_counter() - started
     capture(["pdftotext", "-layout", "resume.pdf", "text.txt"], directory, env, "extract.txt")
+    capture(["pdftotext", "-bbox-layout", "resume.pdf", "geometry.xhtml"], directory, env, "bbox.txt")
+    geometry_root = ET.fromstring((directory / "geometry.xhtml").read_bytes())
+    geometry = []
+    for page in geometry_root.iter():
+        if page.tag.rsplit("}", 1)[-1] == "page":
+            geometry.append({"page": dict(page.attrib), "words": [
+                {"text": word.text or "", **word.attrib} for word in page.iter()
+                if word.tag.rsplit("}", 1)[-1] == "word"]})
     capture(["pdftoppm", "-r", "72", "-singlefile", "-png", "resume.pdf", "page"], directory, env, "pixels.txt")
     info = capture(["pdfinfo", "resume.pdf"], directory, env, "info.txt")
     pages = int(re.search(r"^Pages:\s*(\d+)", info, re.M)[1])
@@ -103,6 +112,7 @@ def render(directory, source, fmt):
     return {"elapsed_seconds": elapsed, "passes": passes, "page_count": pages,
         "text_sha256": digest((directory / "text.txt").read_bytes()),
         "pixel_sha256": digest((directory / "page.png").read_bytes()),
+        "geometry_sha256": digest(json.dumps(geometry, sort_keys=True, separators=(",", ":")).encode()),
         "synctex_source_line": line, "synctex_view_coordinates": coords,
         "synctex_has_expected_input": b"resume.tex" in compressed,
         "synctex_source_records": len(source_records),

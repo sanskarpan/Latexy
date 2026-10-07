@@ -77,12 +77,14 @@ function getFormatLabel(filename: string): string {
 
 interface MultiFormatUploadProps {
   onFileUpload: (content: string) => void
+  onPdfSelected?: (file: File) => void
   sourceHint?: string
   serverConversionEnabled?: boolean
 }
 
 export default function MultiFormatUpload({
   onFileUpload,
+  onPdfSelected,
   sourceHint,
   serverConversionEnabled = true,
 }: MultiFormatUploadProps) {
@@ -160,6 +162,12 @@ export default function MultiFormatUpload({
     setLocalReadPending(false)
     setUploadedFile(file.name)
 
+    if (onPdfSelected && file.name.toLowerCase().endsWith('.pdf')) {
+      reset()
+      onPdfSelected(file)
+      return
+    }
+
     // LaTeX files — read directly, no server call needed
     if (isTexFile(file.name)) {
       setLocalReadPending(true)
@@ -190,7 +198,7 @@ export default function MultiFormatUpload({
       onFileUpload(result)
       toast.success(`${getFormatLabel(file.name)} file converted to LaTeX`)
     }
-  }, [onFileUpload, startConversion, isConverting, sourceHint])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onFileUpload, onPdfSelected, startConversion, isConverting, sourceHint, reset])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watch for async conversion completion — must be in useEffect to avoid render-phase side effects
   const prevStatusRef = useRef(status)

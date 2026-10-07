@@ -105,10 +105,12 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
       {run.status === 'partial' && <p className="mt-2">The review stopped early. Validated suggestions below are still available.</p>}
     </div>}
     {run?.pdf_quality && <section aria-label="Candidate PDF checks" className="rounded-lg border border-line p-3 text-xs">
-      <h3 className="font-semibold">Final PDF checks</h3>
+      <h3 className="font-semibold">Limited PDF checks</h3>
       <p className="mt-2 text-fg-3">{run.pdf_quality.status === 'checked'
-        ? 'Checks completed for this candidate PDF.'
+        ? 'Limited checks completed for this candidate PDF. Review its layout before applying suggestions.'
         : 'PDF checks were unavailable. Review the candidate PDF before applying suggestions.'}</p>
+      {run.pdf_quality.checks && <ul className="mt-2 space-y-1 text-fg-3">{Object.entries(run.pdf_quality.checks).map(([name, status]) =>
+        <li key={name}>{name.replace(/_/g, ' ')}: {status === 'checked' ? 'reviewed' : status === 'partial' ? 'partially reviewed' : 'unavailable'}</li>)}</ul>}
       {run.pdf_quality.warnings.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-4 text-warn">
         {run.pdf_quality.warnings.slice(0, 20).map((warning, index) => <li key={index}>{warning}</li>)}
       </ul>}

@@ -1037,6 +1037,9 @@ def _purge_expired_finalization_rows(limit: int = 500) -> int:
         try:
             async with factory() as session:
                 deleted = await purge_expired_finalizations(session, limit=limit)
+                from ..services.resume_engine.pdf_imports import purge_expired_imports
+
+                await purge_expired_imports(session, limit=min(limit, 200))
                 await session.commit()
                 return deleted
         finally:

@@ -34,13 +34,14 @@ def main():
                     raise RuntimeError("Runtime did not select verified installed assets")
                 default = render(root / f"{number}-ordinary", source, None)
                 installed = render(root / f"{number}-installed", source, "installed")
-                for key in ("page_count", "text_sha256", "pixel_sha256", "synctex_source_records_sha256", "synctex_view_coordinates"):
+                for key in ("page_count", "text_sha256", "pixel_sha256", "geometry_sha256", "synctex_source_records_sha256", "synctex_view_coordinates"):
                     if default[key] != installed[key]:
                         raise RuntimeError("Installed profile changed " + key)
                 evidence["variants"].append({"category": category, "source_sha256": digest(source.encode()),
                     "profile_identity": profile["identity_sha256"], "format_sha256": profile["format_sha256"],
                     "page_count": installed["page_count"], "source_record_count": installed["synctex_source_records"],
                     "text_sha256": installed["text_sha256"], "pixel_sha256": installed["pixel_sha256"],
+                    "geometry_sha256": installed["geometry_sha256"],
                     "synctex_source_records_sha256": installed["synctex_source_records_sha256"], "equivalent": True})
             evidence["passed"] = True
     except Exception as exc:

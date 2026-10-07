@@ -6,7 +6,8 @@ from typing import Any
 
 from ...core.config import settings
 from .artifacts import RENDERER_EPOCH, canonical_json, parse_manifest, sha256
-from .version import renderer_fingerprint
+from .backend import resolve_backend
+from .modal_sandbox import ModalEngineUnavailable
 
 
 def prepare_direct_request(kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
@@ -35,6 +36,12 @@ def prepare_direct_request(kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]
     compiler = kwargs.get("compiler") or settings.DEFAULT_LATEX_COMPILER
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
         compiler = settings.DEFAULT_LATEX_COMPILER
+    try:
+        backend = resolve_backend(compiler)
+    except ModalEngineUnavailable:
+        return None
+    if not backend.cacheable:
+        return None
     cs = kwargs.get("compile_settings") or {}
     prepared = source
     packages = cs.get("extra_packages") or []
@@ -60,7 +67,7 @@ def prepare_direct_request(kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]
         return None
     return key, {"owner_scope": scope, "source": source, "render_source": prepared,
                  "compiler": compiler, "settings": canonical_settings,
-                 "engine_fingerprint": renderer_fingerprint()}
+                 "engine_fingerprint": backend.engine_fingerprint}
 
 
 async def has_exact_render_cache(redis_client: Any, kwargs: dict[str, Any]) -> bool:

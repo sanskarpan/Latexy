@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     PrimaryKeyConstraint,
     String,
     Text,
@@ -23,6 +24,28 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 
 from .connection import Base
+
+
+class ResumePdfImport(Base):
+    """Private original attachment, outside hot document/render queries."""
+    __tablename__ = "resume_pdf_imports"
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0 AND size_bytes <= 10485760", name="ck_pdf_import_size"),
+        CheckConstraint("octet_length(original_pdf) = size_bytes", name="ck_pdf_import_bytes"),
+        CheckConstraint("octet_length(structured_seed::text) <= 1048576", name="ck_pdf_import_seed"),
+    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=True, unique=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_pdf: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    structured_seed: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    extraction_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    adaptation_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ResumeOptimizationRun(Base):
@@ -266,6 +289,8 @@ class Resume(Base):
     __tablename__ = "resumes"
     __table_args__ = (
         CheckConstraint("content_revision > 0", name="ck_resumes_content_revision_positive"),
+        CheckConstraint("imported_projection IS NULL OR octet_length(imported_projection::text) <= 131072",
+                        name="ck_resumes_imported_projection_bounded"),
         # DB-015: composite index supports ORDER BY updated_at queries scoped to a user
         Index("idx_resumes_user_updated", "user_id", "updated_at"),
         # DB-009: matches the partial unique index created in migration 0008
@@ -287,6 +312,7 @@ class Resume(Base):
     structured_content: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
     structured_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     content_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    imported_projection: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)

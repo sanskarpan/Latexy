@@ -6,6 +6,7 @@ read-only. SyncTeX is not used as guessed semantic geometry.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import subprocess
@@ -16,7 +17,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from ...utils.bounded_io import read_file_bounded
+from ...utils.bounded_io import MAX_COMPILED_PDF_BYTES, read_file_bounded
+from ...utils.process_watchdog import ProcessWatchdog
 
 MAX_BBOX_BYTES = 16 * 1024 * 1024
 MAX_WORDS = 100_000
@@ -124,33 +126,58 @@ def project_boxes(xml: bytes, document: dict[str, Any], *, pdf_sha256: str, bran
     }
 
 
+def _capture(arguments: list[str], limit: int, deadline: float) -> bytes:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Geometry inspection deadline reached")
+    process = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    watchdog = ProcessWatchdog(process, timeout=remaining, is_cancelled=lambda: False)
+    started = False
+    output = bytearray()
+    try:
+        watchdog.start()
+        started = True
+        while True:
+            chunk = process.stdout.read(65536)
+            if not chunk:
+                break
+            if len(output) + len(chunk) > limit:
+                raise ValueError("Geometry inspection output exceeds limit")
+            output.extend(chunk)
+        process.wait()
+        if watchdog.reason or process.returncode:
+            raise ValueError("Geometry inspection failed")
+        return bytes(output)
+    finally:
+        if started:
+            watchdog.stop()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
+
+
 def extract_geometry(pdf_file: Path, document: dict[str, Any], *, pdf_sha256: str, branch: str) -> dict[str, Any] | None:
     if not shutil.which("pdftotext") or not shutil.which("pdfinfo"):
         return None
+    pdf = read_file_bounded(pdf_file, MAX_COMPILED_PDF_BYTES)
+    if hashlib.sha256(pdf).hexdigest() != pdf_sha256:
+        return None
+    # Poppler receives a private copy from the already validated no-follow
+    # handle, so path replacement cannot redirect its subsequent reads.
     with tempfile.TemporaryDirectory(prefix="latexy-geometry-") as directory:
-        info_path = Path(directory) / "info.txt"
-        # File-backed bounded diagnostics avoid retaining untrusted subprocess
-        # stdout in an unlimited PIPE. No extraction output enters logs.
-        with info_path.open("wb") as info:
-            result = subprocess.run(["pdfinfo", str(pdf_file)], stdout=info, stderr=subprocess.DEVNULL, timeout=3, check=False)
-        if result.returncode:
-            return None
-        information = read_file_bounded(info_path, 64 * 1024).decode("utf-8", errors="replace")
+        pdf_file = Path(directory) / "document.pdf"
+        pdf_file.write_bytes(pdf)
+        deadline = time.monotonic() + 6
+        information = _capture(["pdfinfo", str(pdf_file)], 64 * 1024, deadline).decode("utf-8", errors="replace")
         count_match = re.search(r"^Pages:\s*(\d+)", information, re.MULTILINE)
         if not count_match or not 0 < int(count_match[1]) <= 1000:
             return None
         page_count = int(count_match[1])
-        with info_path.open("wb") as info:
-            result = subprocess.run(["pdfinfo", "-f", "1", "-l", str(page_count), str(pdf_file)], stdout=info, stderr=subprocess.DEVNULL, timeout=3, check=False)
-        if result.returncode:
-            return None
-        information = read_file_bounded(info_path, 256 * 1024).decode("utf-8", errors="replace")
+        information = _capture(["pdfinfo", "-f", "1", "-l", str(page_count), str(pdf_file)], 256 * 1024, deadline).decode("utf-8", errors="replace")
         rotations = re.findall(r"(?:Page(?:\s+\d+)?\s+rot|Page rot):\s*(-?\d+)", information)
         # Rotated documents require an engine-specific verified coordinate adapter.
         if len(rotations) != page_count or any(int(rotation) % 360 for rotation in rotations):
             return None
-        xml_path = Path(directory) / "geometry.xhtml"
-        result = subprocess.run(["pdftotext", "-bbox-layout", "-enc", "UTF-8", str(pdf_file), str(xml_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
-        if result.returncode or not xml_path.exists():
-            return None
-        return project_boxes(read_file_bounded(xml_path, MAX_BBOX_BYTES), document, pdf_sha256=pdf_sha256, branch=branch)
+        xml = _capture(["pdftotext", "-bbox-layout", "-enc", "UTF-8", str(pdf_file), "-"], MAX_BBOX_BYTES, deadline)
+        return project_boxes(xml, document, pdf_sha256=pdf_sha256, branch=branch)

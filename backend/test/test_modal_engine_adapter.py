@@ -134,3 +134,33 @@ def test_certificate_handles_actual_tex2022_trailing_space_and_rejects_allowed()
     assert audit_denials(log, 3)
     assert not audit_denials(log.replace(b"BOOTSTRAP DENIED", b"BOOTSTRAP ALLOWED"), 3)
     assert not audit_denials(log, 4)
+
+
+def test_expected_image_assets_mismatch_rejects_before_upload(tmp_path):
+    sandbox = FakeSandbox()
+    sandbox.observed["assets_fingerprint"] = "a" * 64
+    sdk, _ = fake_sdk(sandbox)
+    with pytest.raises(ModalEngineUnavailable, match="assets differ"):
+        request(tmp_path, sdk, expected_assets="b" * 64)
+    assert sandbox.terminated and not sandbox.uploads
+
+
+def test_one_session_reuses_vm_for_bibliography_and_preserves_deadline(tmp_path):
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
+    first = request(tmp_path, sdk)
+    try:
+        (tmp_path / "resume.bbl").write_text("bounded bibliography", encoding="utf-8")
+        deadline = first.renderer_session.deadline
+        second = create_modal_engine(workspace=tmp_path, compiler="bibtex", arguments=["resume"], timeout=1,
+                                     sdk=sdk, enabled=True, image_id="im-cachedPureTeX",
+                                     session=first.renderer_session)
+        assert second.renderer_session is first.renderer_session
+        assert second.renderer_session.deadline == deadline
+        assert len(calls) == 1
+        assert sandbox.uploads["/workspace/resume.bbl"] == b"bounded bibliography"
+        with pytest.raises(ModalEngineUnavailable, match="identity"):
+            create_modal_engine(workspace=tmp_path, compiler="bibtex", arguments=["resume"], timeout=1,
+                                sdk=sdk, enabled=True, image_id="im-different", session=first.renderer_session)
+    finally:
+        first.close()

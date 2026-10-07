@@ -1041,6 +1041,17 @@ async def update_resume(
         and update_data["latex_content"] is not None
         and update_data["latex_content"] != resume.latex_content
     )
+    previous_imported_document = None
+    if latex_changed:
+        from ..services.resume_engine.imported_identity_db import ensure_imported_projection
+
+        # Source CAS and collaborator recheck above already hold the document
+        # lock. Metadata preparation must remain in that same transaction.
+        category = None
+        if resume.selected_template_id:
+            template = await db.get(ResumeTemplate, resume.selected_template_id)
+            category = template.category if template else None
+        previous_imported_document = await ensure_imported_projection(db, resume, category)
     for key, value in update_data.items():
         setattr(resume, key, value)
 
@@ -1050,6 +1061,11 @@ async def update_resume(
         resume.builder_status = "detached"
         resume.content_source = "manual_latex"
         resume.variant_visibility = None
+
+    if previous_imported_document is not None:
+        from ..services.resume_engine.imported_identity_db import persist_reconciled_projection
+
+        persist_reconciled_projection(resume, previous_imported_document, resume.latex_content)
 
     # Content changed → invalidate the cached anonymous (redacted) share PDF so the
     # next create_share_link call regenerates it from the updated content.

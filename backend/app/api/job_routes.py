@@ -87,6 +87,19 @@ _LIFECYCLE_JOB_TYPES = _FINALIZATION_JOB_TYPES | {"ats_scoring"}
 _FINALIZATION_TTL = timedelta(days=40)
 
 
+def _require_renderer_capability(compiler: str) -> None:
+    from ..services.render_engine.backend import resolve_backend
+    from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
+
+    try:
+        resolve_backend(compiler)
+    except ModalEngineUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="The selected PDF engine is unavailable. Choose a supported engine or try again later.",
+        ) from exc
+
+
 def _uuid_or_none(value: Any) -> Optional[str]:
     """Return only UUID-shaped metadata for FK-backed recovery fields."""
     try:
@@ -696,6 +709,22 @@ async def submit_job(
                 detail=(f"Invalid persona '{request.persona}'. Valid values: {sorted(VALID_PERSONA_KEYS)}"),
             )
 
+        if request.job_type in {"latex_compilation", "combined", "auto_fit"}:
+            # Reject before trial/quota charging or paid optimization.
+            _require_renderer_capability(compiler)
+
+        saved_render_document = None
+        if (request.job_type == "latex_compilation" and owned_resume is not None
+                and owned_resume.latex_content == request.latex_content):
+            from ..services.resume_engine.imported_identity_db import ensure_imported_projection
+            from ..services.resume_engine.semantic import DocumentConflict
+
+            template = await db.get(ResumeTemplate, owned_resume.selected_template_id) if owned_resume.selected_template_id else None
+            try:
+                saved_render_document = await ensure_imported_projection(db, owned_resume, template.category if template else None)
+            except DocumentConflict as exc:
+                raise HTTPException(409, str(exc)) from exc
+
         # Server-side trial enforcement for anonymous resource-consuming jobs is
         # the final gate before dispatch. Authenticated users use plan quotas.
         if user_id is None:
@@ -760,11 +789,9 @@ async def submit_job(
             from ..services.resume_engine.document import digest
             from ..services.resume_engine.semantic import project_document
 
-            if owned_resume is not None and owned_resume.latex_content == request.latex_content:
-                template = await db.get(ResumeTemplate, owned_resume.selected_template_id) if owned_resume.selected_template_id else None
-                source_document = project_document(owned_resume, template.category if template else None)
-                render_request = {"source_document": source_document, "document_id": str(owned_resume.id),
-                                  "content_revision": owned_resume.content_revision}
+            if saved_render_document is not None:
+                render_request = {"source_document": saved_render_document, "document_id": saved_render_document["document_id"],
+                                  "content_revision": saved_render_document["content_revision"]}
             elif not user_id:
                 source_document = project_document(SimpleNamespace(
                     id="guest", user_id="guest", latex_content=request.latex_content, content_revision=1,
@@ -1017,6 +1044,8 @@ async def compile_watermarked(
             )
         compiler = request.compiler
 
+    _require_renderer_capability(compiler)
+
     quota_ticket: Optional[QuotaTicket] = None
     finalization_record: Optional[JobFinalization] = None
     job_id: Optional[str] = None
@@ -1141,6 +1170,11 @@ async def create_batch_tailor(
     parent = result.scalar_one_or_none()
     if parent is None:
         raise HTTPException(status_code=403, detail="Resume not found or access denied")
+
+    stored_compiler = (parent.resume_settings or {}).get("compiler")
+    compiler = stored_compiler if stored_compiler in settings.ALLOWED_LATEX_COMPILERS else settings.DEFAULT_LATEX_COMPILER
+    # No fork, receipt, or paid model stage may start without a renderer.
+    _require_renderer_capability(compiler)
 
     user_result = await db.execute(sa_select(User.subscription_plan).where(User.id == user_id))
     user_plan: str = user_result.scalar_one_or_none() or "free"

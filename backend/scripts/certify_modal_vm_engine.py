@@ -80,6 +80,13 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                     code = child.wait(timeout=80)
                     print(json.dumps({"case": name, "returncode": code, "pdf": (workspace / "resume.pdf").is_file()}))
                     if code or not (workspace / "resume.pdf").is_file():
+                        evidence = Path(__file__).resolve().parents[1] / "temp" / ("vm-certification-failure-" + name + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+                        evidence.mkdir(parents=True, exist_ok=False)
+                        for artifact in ("resume.tex", "resume.log", "resume.fls", "resume.pdf"):
+                            if (workspace / artifact).is_file():
+                                shutil.copyfile(workspace / artifact, evidence / artifact)
+                        (evidence / "engine.stdout").write_bytes(child.stdout.read(262144))
+                        print(json.dumps({"private_failure_artifacts": str(evidence)}))
                         raise RuntimeError("VM multilingual proof failed")
         finally:
             if sandbox is not None:

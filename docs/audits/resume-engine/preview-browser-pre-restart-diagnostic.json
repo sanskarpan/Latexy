@@ -1,0 +1,211 @@
+{
+  "measured_at_utc": "2026-10-06T19:33:56.454Z",
+  "frontend_url": "http://localhost:5361",
+  "backend_url": "http://127.0.0.1:8530",
+  "compiler": "pdflatex",
+  "environment": "isolated local CPU Celery, warm seed image, fresh browser context",
+  "limitations": [
+    "Development Next and local backend, not production or Modal latency",
+    "Three functional samples do not support percentile claims"
+  ],
+  "samples": [],
+  "failures": [
+    {
+      "type": "probe",
+      "message": "Preview did not reach first paint"
+    }
+  ],
+  "diagnostics": {
+    "jobs": [
+      {
+        "status": 200,
+        "body": {
+          "success": true,
+          "job_id": "b5590b33-9fd8-4493-8350-03a72f90f8c9",
+          "message": "Job queued: latex_compilation",
+          "estimated_time": 30
+        }
+      }
+    ],
+    "states": [
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "processing",
+        "stage": "latex_compilation",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "completed",
+        "stage": "",
+        "has_artifact": true
+      }
+    ],
+    "errors": [
+      {
+        "path": "/download/b5590b33-9fd8-4493-8350-03a72f90f8c9/synctex",
+        "status": 404
+      },
+      {
+        "path": "/download/b5590b33-9fd8-4493-8350-03a72f90f8c9/preview/053754716565fe90b2ff6755b2181d13b69a4a3be947b246f2320a9428b17f14",
+        "status": 404
+      }
+    ],
+    "geometry": [],
+    "requests": [
+      {
+        "origin": "http://localhost:5361",
+        "path": "/api/auth/get-session",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/config/feature-flags",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/tenants/resolve-host",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/submit",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/b5590b33-9fd8-4493-8350-03a72f90f8c9/preview/053754716565fe90b2ff6755b2181d13b69a4a3be947b246f2320a9428b17f14",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/b5590b33-9fd8-4493-8350-03a72f90f8c9/synctex",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/compilation",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/feature-usage",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b5590b33-9fd8-4493-8350-03a72f90f8c9/result",
+        "method": "GET"
+      }
+    ],
+    "failedRequests": []
+  }
+}

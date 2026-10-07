@@ -91,6 +91,7 @@ import { editableGeometry } from '@/lib/artifact-geometry'
 import ImportedOptimizationPanel from '@/components/ImportedOptimizationPanel'
 import SemanticOptimizationPanel from '@/components/SemanticOptimizationPanel'
 import ResumeFieldsEditor from '@/components/ResumeFieldsEditor'
+import ResumeOriginalPdf from '@/components/ResumeOriginalPdf'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
 import ModeToggle from '@/components/theme/ModeToggle'
@@ -2950,14 +2951,40 @@ export default function ResumeEditPage() {
 
   const saveResumeField = useCallback(async (node: ResumeEngineNode, text: string) => {
     const actionStarted = performance.now()
+    const sourceAtStart = sourceAtRenderRef.current
     if (!visibleEngineDocument || engineDocumentIdentityRef.current !== `${sessionUserId}:${resumeId}` || visibleEngineDocument.source_sha256 !== sourceHash || !canEditDocument) throw new Error('Stale document')
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
+    const token = apiClient.getAuthToken()
+    if (!token) throw new Error('Session not ready')
     const result = await apiClient.patchEngineDocument(resumeId, {
       expected_content_revision: visibleEngineDocument.content_revision, expected_source_sha256: visibleEngineDocument.source_sha256,
       merge_disjoint: false, patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }],
-    })
+    }, { authToken: token, isCurrent: () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) && sourceAtRenderRef.current === sourceAtStart })
     if (!isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)) return
+    if (sourceAtRenderRef.current !== sourceAtStart) throw new Error('A newer local edit must be saved before applying this field response')
+    setEngineDocument(result.document)
+    setLatexContent(result.latex_content)
+    setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
+    queuePreview(result.latex_content, actionStarted)
+  }, [visibleEngineDocument, sourceHash, canEditDocument, resumeId, queuePreview, sessionUserId, offlinePdfOwnerId, isCurrentOfflinePdfIdentity])
+
+  const reorderResumeStructure = useCallback(async (containerId: string, orderedIds: string[]) => {
+    const actionStarted = performance.now()
+    const sourceAtStart = sourceAtRenderRef.current
+    if (!visibleEngineDocument || visibleEngineDocument.source_mode !== 'managed'
+      || engineDocumentIdentityRef.current !== `${sessionUserId}:${resumeId}`
+      || visibleEngineDocument.source_sha256 !== sourceHash || !canEditDocument) throw new Error('Stale document')
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const token = apiClient.getAuthToken()
+    if (!token) throw new Error('Session not ready')
+    const result = await apiClient.reorderEngineDocument(resumeId, {
+      expected_content_revision: visibleEngineDocument.content_revision, expected_source_sha256: visibleEngineDocument.source_sha256,
+      container_id: containerId, ordered_ids: orderedIds,
+    }, { authToken: token, isCurrent: () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) && sourceAtRenderRef.current === sourceAtStart })
+    if (!isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)) return
+    if (sourceAtRenderRef.current !== sourceAtStart) throw new Error('A newer local edit must be saved before applying this order')
     setEngineDocument(result.document)
     setLatexContent(result.latex_content)
     setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
@@ -3631,6 +3658,7 @@ export default function ResumeEditPage() {
               <FileText size={11} className="text-fg-3" />
               {title || 'Untitled'}{editorMode === 'source' ? '.tex' : ''}
             </div>
+            {sessionUserId && <ResumeOriginalPdf key={`${sessionUserId}:${resumeId}`} resumeId={resumeId} ownerId={sessionUserId} />}
             <div className="ml-auto flex items-center gap-0.5 rounded-[var(--radius-md)] bg-surface-2 p-0.5">
               <button onClick={() => handleToggleEditorMode('pdf')} aria-pressed={editorMode === 'pdf'}
                 className={`rounded px-2 py-0.5 text-[10px] font-medium ${editorMode === 'pdf' ? 'bg-surface text-fg' : 'text-fg-3'}`}>
@@ -3732,7 +3760,7 @@ export default function ResumeEditPage() {
             {/* WYSIWYG mode (Feature 78) */}
             {editorMode === 'pdf' ? (
               <ResumeFieldsEditor document={visibleEngineDocument} currentSourceHash={sourceHash} selectedNode={selectedEngineNode}
-                onSelect={setSelectedEngineNode} onSave={saveResumeField} readOnly={!canEditDocument} error={engineDocumentError} />
+                onSelect={setSelectedEngineNode} onSave={saveResumeField} onReorder={reorderResumeStructure} readOnly={!canEditDocument} error={engineDocumentError} />
             ) : canEditDocument && editorMode === 'wysiwyg' && wysiwygDoc ? (
               <div className="h-full overflow-auto p-4">
                 <WYSIWYGEditor

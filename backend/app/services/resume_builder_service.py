@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -16,6 +17,9 @@ SUPPORTED_BUILDER_CATEGORIES = frozenset(
 )
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
+SECTION_TITLES = {"summary": "Summary", "experience": "Experience", "education": "Education",
+                  "skills": "Skills", "projects": "Projects", "certifications": "Certifications",
+                  "awards": "Awards", "languages": "Languages", "interests": "Interests"}
 
 
 def _safe_identity(value: str, *, fallback: str, max_length: int) -> str:
@@ -196,6 +200,18 @@ class StructuredResume(BaseModel):
         ]
     )
     hidden_sections: List[str] = Field(default_factory=list)
+    section_titles: Dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("section_titles", mode="before")
+    @classmethod
+    def validate_section_titles(cls, value):
+        if not isinstance(value, dict) or any(key not in SECTION_TITLES for key in value):
+            raise ValueError("Section headings require canonical section keys")
+        for title in value.values():
+            if (not isinstance(title, str) or not 1 <= len(title) <= 80 or not title.strip()
+                    or any(unicodedata.category(char).startswith("C") or unicodedata.category(char) in {"Zl", "Zp"} for char in title)):
+                raise ValueError("Section headings require 1–80 visible single-line characters")
+        return value
 
     @field_validator("section_order")
     @classmethod
@@ -520,6 +536,8 @@ class ResumeBuilderService:
                     "title": "Interests",
                     "items": [{"title": item.name, "meta": item.detail} for item in structured.interests if item.name or item.detail],
                 })
+        for section in sections:
+            section["title"] = structured.section_titles.get(section["key"], section["title"])
         return sections
 
     def _render_latex(self, structured: StructuredResume, family: str) -> str:
@@ -531,37 +549,38 @@ class ResumeBuilderService:
             if section in hidden:
                 continue
             rendered = ""
+            title = structured.section_titles.get(section, SECTION_TITLES[section])
             if section == "summary" and structured.basics.summary.strip():
-                rendered = self._section_block("Summary", [self._escape(structured.basics.summary.strip())], family)
+                rendered = self._section_block(title, [self._escape(structured.basics.summary.strip())], family)
             elif section == "experience" and structured.experience:
-                rendered = self._experience_section(structured.experience, family)
+                rendered = self._experience_section(structured.experience, family, title)
             elif section == "education" and structured.education:
-                rendered = self._education_section(structured.education, family)
+                rendered = self._education_section(structured.education, family, title)
             elif section == "skills" and structured.skills:
-                rendered = self._skills_section(structured.skills, family)
+                rendered = self._skills_section(structured.skills, family, title)
             elif section == "projects" and structured.projects:
-                rendered = self._projects_section(structured.projects, family)
+                rendered = self._projects_section(structured.projects, family, title)
             elif section == "certifications" and structured.certifications:
                 rendered = self._named_list_section(
-                    "Certifications",
+                    title,
                     [self._join_meta(item.name, item.issuer, item.date) for item in structured.certifications],
                     family,
                 )
             elif section == "awards" and structured.awards:
                 rendered = self._named_list_section(
-                    "Awards",
+                    title,
                     [self._join_meta(item.name, item.detail) for item in structured.awards],
                     family,
                 )
             elif section == "languages" and structured.languages:
                 rendered = self._named_list_section(
-                    "Languages",
+                    title,
                     [self._join_meta(item.name, item.detail) for item in structured.languages],
                     family,
                 )
             elif section == "interests" and structured.interests:
                 rendered = self._named_list_section(
-                    "Interests",
+                    title,
                     [self._join_meta(item.name, item.detail) for item in structured.interests],
                     family,
                 )
@@ -616,8 +635,8 @@ class ResumeBuilderService:
             return rf"\vspace{{0.7em}}\textcolor{{gray}}{{\textbf{{{escaped}}}}}\\[-0.3em]\hrule\vspace{{0.35em}}"
         return rf"\section*{{{escaped}}}\vspace{{-0.4em}}\hrule\vspace{{0.25em}}"
 
-    def _experience_section(self, items: List[BuilderExperienceEntry], family: str) -> str:
-        lines = [self._section_heading("Experience", family)]
+    def _experience_section(self, items: List[BuilderExperienceEntry], family: str, title: str = "Experience") -> str:
+        lines = [self._section_heading(title, family)]
         for item in items:
             title = self._escape(item.title)
             company = self._escape(item.company)
@@ -639,8 +658,8 @@ class ResumeBuilderService:
             lines.append("")
         return "\n".join(lines)
 
-    def _education_section(self, items: List[BuilderEducationEntry], family: str) -> str:
-        lines = [self._section_heading("Education", family)]
+    def _education_section(self, items: List[BuilderEducationEntry], family: str, title: str = "Education") -> str:
+        lines = [self._section_heading(title, family)]
         for item in items:
             primary = self._join_meta(item.degree, item.field)
             lines.append(rf"\textbf{{{self._escape(item.institution)}}} \hfill {self._escape(self._date_range(item.start_date, item.end_date, False))}\\")
@@ -656,8 +675,8 @@ class ResumeBuilderService:
             lines.append("")
         return "\n".join(lines)
 
-    def _skills_section(self, items: List[BuilderSkillGroup], family: str) -> str:
-        lines = [self._section_heading("Skills", family)]
+    def _skills_section(self, items: List[BuilderSkillGroup], family: str, title: str = "Skills") -> str:
+        lines = [self._section_heading(title, family)]
         for group in items:
             if not group.keywords:
                 continue
@@ -667,8 +686,8 @@ class ResumeBuilderService:
         lines.append("")
         return "\n".join(lines)
 
-    def _projects_section(self, items: List[BuilderProjectEntry], family: str) -> str:
-        lines = [self._section_heading("Projects", family)]
+    def _projects_section(self, items: List[BuilderProjectEntry], family: str, title: str = "Projects") -> str:
+        lines = [self._section_heading(title, family)]
         for item in items:
             lines.append(rf"\textbf{{{self._escape(item.name)}}} \hfill {self._escape(self._date_range(item.start_date, item.end_date, False))}\\")
             secondary = self._join_meta(item.role, item.url)

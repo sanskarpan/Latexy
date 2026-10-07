@@ -16,6 +16,7 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..services.resume_engine.acceptance import valid_run_result, validate_factual_dependencies
 from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
 from ..services.resume_engine.document import digest
+from ..services.resume_engine.imported_identity_db import ensure_imported_projection, persist_reconciled_projection
 from ..services.resume_engine.semantic import (
     DocumentConflict,
     UnsupportedDocument,
@@ -105,7 +106,9 @@ async def patch_guest(body: GuestPatch):
 async def _document(db, resume):
     template = await db.get(ResumeTemplate, resume.selected_template_id) if resume.selected_template_id else None
     try:
-        return project_document(resume, template.category if template else None)
+        return await ensure_imported_projection(db, resume, template.category if template else None)
+    except DocumentConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     except (UnsupportedDocument, ValidationError, ValueError) as exc:
         raise HTTPException(422, "Document cannot be projected safely") from exc
 
@@ -127,7 +130,9 @@ async def get_document(
     resume_id: str, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)
 ):
     resume = await _access(db, resume_id, user_id)
-    return {"document": public_document(await _document(db, resume)), "latex_content": resume.latex_content}
+    document = await _document(db, resume)
+    await db.commit()  # persist metadata-only imported IDs without changing source or content revision
+    return {"document": public_document(document), "latex_content": resume.latex_content}
 
 
 @router.patch("/{resume_id}/engine/document")
@@ -150,6 +155,8 @@ async def patch_document(
     except (DocumentConflict, ValidationError) as exc:
         raise HTTPException(409, str(exc)) from exc
     resume.latex_content = source
+    if document["source_mode"] == "imported":
+        persist_reconciled_projection(resume, document, source, [p.model_dump() for p in body.patches])
     if structured is not None:
         resume.structured_content = structured
         await _sync_linked_variants(resume, db)
@@ -378,3 +385,9 @@ async def decide_run(
         "document": public_document(await _document(db, resume)),
         "latex_content": resume.latex_content,
     }
+
+
+# Child router uses lazy imports of canonical access/projection helpers.
+from .resume_structure_routes import router as structure_router
+
+router.include_router(structure_router)

@@ -37,7 +37,11 @@ _OUTPUT_LIMITS = {
 _IMAGE_PREFLIGHT = """import os,json,ctypes
 keys={'OPENAI_API_KEY','DATABASE_URL','REDIS_PASSWORD','API_KEY_ENCRYPTION_KEY','MODAL_TOKEN_ID','MODAL_TOKEN_SECRET','MODAL_IDENTITY_TOKEN'}
 libc=ctypes.CDLL(None);libc.syscall.restype=ctypes.c_long
-print(json.dumps({'credential_env_present':bool(keys.intersection(os.environ)),
+marker=None
+try:
+ with open('/opt/latexy-renderer-version.json') as f:marker=json.load(f).get('fingerprint_sha256')
+except (OSError,ValueError,TypeError):pass
+print(json.dumps({'assets_fingerprint':marker,'credential_env_present':bool(keys.intersection(os.environ)),
  'application_source_present':os.path.exists('/backend') or os.path.exists('/app'),
  'dotenv_present':any(os.path.exists(p) for p in ['/.env','/root/.env','/app/.env','/backend/.env']),
  'landlock_abi':libc.syscall(444,0,0,1)}))
@@ -99,7 +103,7 @@ class _BoundedRemoteReader:
         self.read_bytes = 0
 
     def read(self, size):
-        if type(size) is not int or not 1 <= size <= MAX_COMPILE_LOG_BYTES:
+        if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= MAX_COMPILE_LOG_BYTES:
             raise ValueError("Bounded read required")
         if self.file is None:
             self.process.wait()
@@ -150,6 +154,10 @@ class ModalEngineProcess:
 
     def kill(self):
         self.killed = True
+        session = getattr(self, "renderer_session", None)
+        if session is not None:
+            session.close()
+            return
         timer = getattr(self, "_deadline_timer", None)
         if timer is not None:
             timer.cancel()
@@ -172,6 +180,8 @@ class ModalEngineProcess:
                     raise subprocess.TimeoutExpired("modal-engine", timeout)
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         code = self.process.wait()
+        if not hasattr(self, "engine_exit_at"):
+            self.engine_exit_at = time.monotonic()
         with self._lock:
             if not self._copied and not self.killed:
                 # Kernel profile denies forks; the VM root bridge reaps its
@@ -195,6 +205,21 @@ class ModalEngineProcess:
         self.kill()
 
 
+class ModalEngineSession:
+    """One credential-free VM and one absolute deadline for all document passes."""
+
+    def __init__(self, sandbox, timer, deadline, workspace, policy, image_id, assets):
+        self.sandbox, self.timer, self.deadline = sandbox, timer, deadline
+        self.workspace, self.policy, self.image_id, self.assets = workspace, policy, image_id, assets
+        self.closed = False
+
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            self.timer.cancel()
+            self.sandbox.terminate(wait=False)
+
+
 def create_modal_engine(
     *,
     workspace: str | Path,
@@ -207,6 +232,8 @@ def create_modal_engine(
     image: Any = None,
     app: Any = None,
     policy: str = "kernel",
+    expected_assets: str | None = None,
+    session: ModalEngineSession | None = None,
 ) -> ModalEngineProcess:
     """Explicitly gated SDK adapter; never inherits worker secrets or mounts."""
     enabled = enabled if enabled is not None else os.getenv("MODAL_ENGINE_VM_SANDBOX_ENABLED") == "true"
@@ -222,7 +249,7 @@ def create_modal_engine(
     for path in root.iterdir():
         if path.is_symlink():
             raise ModalEngineUnavailable("Sandbox inputs cannot be symlinks")
-        if path.is_file() and path.suffix in {".tex", ".bib", ".aux", ".out", ".toc", ".png", ".jpg", ".jpeg"}:
+        if path.is_file() and path.suffix in {".tex", ".bib", ".aux", ".out", ".toc", ".bbl", ".png", ".jpg", ".jpeg"}:
             if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", path.name):
                 raise ModalEngineUnavailable("Invalid sandbox input name")
             data = read_file_bounded(path, _INPUT_LIMIT)
@@ -231,6 +258,8 @@ def create_modal_engine(
                 raise ModalEngineUnavailable("Sandbox input budget exceeded")
             inputs.append((path.name, data))
     source = next((arg for arg in reversed(arguments) if arg.endswith(".tex")), "resume.tex")
+    if compiler == "bibtex" and arguments:
+        source = arguments[-1]
     basename = Path(source).stem
     if "-jobname" in arguments:
         index = arguments.index("-jobname")
@@ -239,6 +268,26 @@ def create_modal_engine(
         basename = arguments[index + 1]
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", basename):
         raise ModalEngineUnavailable("Invalid engine basename")
+    if session is not None:
+        if (session.closed or session.workspace != root or session.policy != policy
+                or session.image_id != image_id or session.assets != expected_assets
+                or time.monotonic() >= session.deadline):
+            raise ModalEngineUnavailable("Renderer session identity or deadline changed")
+        for name, data in inputs:
+            session.sandbox.filesystem.write_bytes(data, _REMOTE + "/" + name)
+        remote_arguments = [(_REMOTE if arg == str(root) else _REMOTE + "/" + Path(arg).name
+                             if Path(arg).is_absolute() and Path(arg).parent == root else arg)
+                            for arg in arguments]
+        process = session.sandbox.exec(
+            "python3", _BOOTSTRAP + "/sandbox_io_bridge.py", _REMOTE, compiler,
+            *(["--credential-free-vm"] if policy == "credential_free_vm" else []), *remote_arguments,
+            timeout=max(1, math.ceil(min(timeout, session.deadline - time.monotonic()))),
+            workdir=_REMOTE, text=False, secrets=[])
+        result = ModalEngineProcess(session.sandbox, process, root, basename)
+        result.renderer_session = session
+        result._deadline_timer = session.timer
+        result.policy_identity = "lua-credential-free-vm-v1" if policy == "credential_free_vm" else "lua-landlock-seccomp-v2"
+        return result
     if sdk is None:
         import modal as sdk
     # A deployment can supply its already-built bare texlive_image object;
@@ -297,14 +346,17 @@ def create_modal_engine(
         if check.wait() != 0 or len(check_output) > 4096:
             raise ModalEngineUnavailable("Sandbox image preflight failed")
         observed = json.loads(check_output)
+        if expected_assets is not None and observed.get("assets_fingerprint") != expected_assets:
+            raise ModalEngineUnavailable("Sandbox image assets differ from admitted renderer identity")
         if (observed.get("credential_env_present") or observed.get("application_source_present")
-                or observed.get("dotenv_present") or type(observed.get("landlock_abi")) is not int
+                or observed.get("dotenv_present") or not isinstance(observed.get("landlock_abi"), int)
+                or isinstance(observed.get("landlock_abi"), bool)
                 or (policy == "kernel" and observed["landlock_abi"] < 3)):
             # Deliberately expose only bounded capability booleans/ABI, never
             # environment values, image paths, or untrusted engine output.
             safe = {key: bool(observed.get(key)) for key in (
                 "credential_env_present", "application_source_present", "dotenv_present")}
-            safe["landlock_abi"] = observed.get("landlock_abi") if type(observed.get("landlock_abi")) is int else None
+            safe["landlock_abi"] = observed.get("landlock_abi") if isinstance(observed.get("landlock_abi"), int) else None
             raise ModalEngineUnavailable("Sandbox image preflight rejected: " + json.dumps(safe, sort_keys=True))
         if policy == "credential_free_vm":
             check_deadline()
@@ -343,6 +395,7 @@ def create_modal_engine(
         check_deadline()
         result = ModalEngineProcess(sandbox, process, root, basename)
         result._deadline_timer = timer
+        result.renderer_session = ModalEngineSession(sandbox, timer, deadline, root, policy, image_id, expected_assets)
         result.policy_identity = "lua-credential-free-vm-v1" if policy == "credential_free_vm" else "lua-landlock-seccomp-v2"
         return result
     except BaseException:

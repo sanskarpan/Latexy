@@ -451,7 +451,22 @@ def test_modal_latex_image_prewarms_the_same_closed_mixed_font_contract():
     for fragment in required:
         assert fragment in modal, f"Modal cache probe is missing {fragment!r}"
         assert fragment in local, f"Local cache probe is missing {fragment!r}"
-    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND, _WRITE_RENDERER_FINGERPRINT_COMMAND)" in modal
+    tree = _parse(MODAL_APP)
+    image = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == "texlive_image" for target in node.targets))
+    calls = []
+    while isinstance(image, ast.Call) and isinstance(image.func, ast.Attribute):
+        calls.append((image.func.attr, [ast.unparse(arg) for arg in image.args]))
+        image = image.func.value
+    calls.reverse()
+    warm = next(i for i, (method, args) in enumerate(calls)
+                if method == "run_commands" and args == ["_INSTALL_ATKINSON", "_WARM_TEX_CACHE_COMMAND"])
+    final = next(i for i, (method, args) in enumerate(calls)
+                 if method == "run_commands" and args == ["'python3 /opt/latexy-format-build/scripts/build_trusted_render_formats.py'", "_WRITE_RENDERER_FINGERPRINT_COMMAND"])
+    assert warm < final
+    between = calls[warm + 1:final]
+    assert any(method == "add_local_file" and "build_trusted_render_formats.py" in " ".join(args) for method, args in between)
+    assert any(method == "add_local_file" and "managed_preamble.py" in " ".join(args) for method, args in between)
     assert "write_renderer_fingerprint.py" in modal
     assert modal.index("fc-cache --force --system-only") < modal.index("lualatex -no-shell-escape")
     assert local.index("fc-cache --force --system-only") < local.index("lualatex -no-shell-escape")

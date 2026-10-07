@@ -10,7 +10,7 @@ from .skills import positive_skill_mention, skill_mention
 def build_context(document: dict, job_description: str, *, language="en", requirements: dict | None = None) -> dict:
     facts = []
     for node in document["nodes"]:
-        if not node["text"].strip():
+        if node["kind"] == "section_heading" or not node["text"].strip():
             continue
         facts.append(
             {
@@ -53,7 +53,7 @@ def build_context(document: dict, job_description: str, *, language="en", requir
             }
         )
     return {
-        "version": "facts-v2",
+        "version": "facts-v3",
         "document_id": document["document_id"],
         "content_revision": document["content_revision"],
         "source_sha256": document["source_sha256"],

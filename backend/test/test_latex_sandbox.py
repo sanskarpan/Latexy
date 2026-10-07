@@ -556,8 +556,10 @@ class TestWorkerInvocation:
             run()
         return seen
 
-    def test_latex_worker_docker_command_is_hardened(self):
+    def test_latex_worker_docker_command_is_hardened(self, monkeypatch):
         import app.workers.latex_worker as lw
+
+        monkeypatch.setenv("LATEXY_RENDER_BACKEND", "docker")
 
         def _run():
             with (
@@ -571,7 +573,7 @@ class TestWorkerInvocation:
                 patch("app.workers.latex_worker.cache_compile_output", return_value=b"%PDF"),
                 patch("app.workers.latex_worker._extract_pdf_text", return_value=""),
                 patch("pathlib.Path.exists", return_value=True),
-                patch("pathlib.Path.stat", return_value=MagicMock(st_size=10)),
+                patch("pathlib.Path.stat", return_value=MagicMock(st_size=10, st_mode=0)),
                 patch("pathlib.Path.write_text"),
                 patch("pathlib.Path.mkdir"),
             ):
@@ -587,8 +589,10 @@ class TestWorkerInvocation:
         assert "-no-shell-escape" in cmd
         assert "DATABASE_URL" not in (seen["env"] or {})
 
-    def test_orchestrator_docker_command_is_hardened(self):
+    def test_orchestrator_docker_command_is_hardened(self, monkeypatch):
         import app.workers.orchestrator as orch
+
+        monkeypatch.setenv("LATEXY_RENDER_BACKEND", "docker")
 
         def _run():
             with (

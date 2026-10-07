@@ -1,4 +1,7 @@
 """Exact-PDF diagnostics must expose clipping and never certify failed inspection."""
+import subprocess
+import sys
+import time
 from hashlib import sha256
 from unittest.mock import Mock
 
@@ -90,6 +93,32 @@ def test_untrusted_warning_text_is_not_a_durable_report():
     with pytest.raises(ValidationError):
         quality.PDFQualityReport(status="checked", pdf_sha256="0" * 64, source_sha256="1" * 64,
                                  warnings=["provider key or arbitrary diagnostics"])
+
+
+@pytest.mark.parametrize("behavior", ["silent", "oversized", "watchdog_start_failure"])
+def test_actual_inspection_children_are_killed_reaped_and_closed(monkeypatch, behavior):
+    real_popen = subprocess.Popen
+    children = []
+    script = "import time; time.sleep(30)"
+    if behavior == "oversized":
+        script = "import sys,time; sys.stdout.buffer.write(b'x' * (20 * 1024 * 1024)); sys.stdout.flush(); time.sleep(30)"
+
+    def child(_arguments, **kwargs):
+        process = real_popen([sys.executable, "-c", script], **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(quality.shutil, "which", lambda tool: tool)
+    monkeypatch.setattr(quality.subprocess, "Popen", child)
+    if behavior == "watchdog_start_failure":
+        def fail(_self):
+            raise RuntimeError("monitor unavailable")
+        monkeypatch.setattr(quality.ProcessWatchdog, "start", fail)
+    started = time.monotonic()
+    report = quality.review_pdf(b"%PDF-test", {"source_sha256": sha256(b"source").hexdigest()}, "source", timeout=.2)
+    assert report["status"] == "unavailable"
+    assert len(children) == 1 and children[0].poll() is not None and children[0].stdout.closed
+    assert time.monotonic() - started < 6  # actual thirty-second child cannot survive the bounded inspection
 
 
 @pytest.mark.parametrize("changed", [None, "pdf_sha256", "source_sha256"])

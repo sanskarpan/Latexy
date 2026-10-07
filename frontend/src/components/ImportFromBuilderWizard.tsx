@@ -130,11 +130,12 @@ function PlatformCard({
 
 interface ImportFromBuilderWizardProps {
   onComplete: (latexContent: string) => void
+  onPdfSelected?: (file: File) => void
 }
 
 type Step = 1 | 2 | 3 | 4
 
-export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilderWizardProps) {
+export default function ImportFromBuilderWizard({ onComplete, onPdfSelected }: ImportFromBuilderWizardProps) {
   const [step, setStep] = useState<Step>(1)
   const [platform, setPlatform] = useState<Platform | null>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -166,6 +167,12 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
   }, [])
 
   const handleFileSelect = useCallback(async (selectedFile: File) => {
+    if (onPdfSelected && selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      previewRequestRef.current += 1
+      resetConversion()
+      onPdfSelected(selectedFile)
+      return
+    }
     const requestId = ++previewRequestRef.current
     setFile(selectedFile)
     setPreview(null)
@@ -185,7 +192,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
       },
       () => setPreviewLoading(false),
     )
-  }, [])
+  }, [onPdfSelected, resetConversion])
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {

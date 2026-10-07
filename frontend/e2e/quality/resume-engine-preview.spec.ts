@@ -120,6 +120,7 @@ test('managed review keeps provisional candidates separate and applies authorita
   await page.route('**/macros', route => route.fulfill({ json: [] }))
   await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'engine-owner', title: 'Managed contract resume', latex_content: authority,
     document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
+  await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ status: 404, json: { detail: 'No original upload' } }))
   await page.route(`**/resumes/${resumeId}/engine/document`, route => {
     if (route.request().method() === 'PATCH') return route.fulfill({ status: 409, json: { detail: 'A newer field revision exists' } })
     return route.fulfill({ json: { document: doc(), latex_content: authority } })
@@ -231,6 +232,44 @@ test('managed review keeps provisional candidates separate and applies authorita
   expect(authority).toBe(baseSource.replace(original, firstSuggestion))
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
   expect(runtimeErrors).toEqual([])
+
+  // A source edit made while an accepted field response is in flight must
+  // survive that response, even when the user switches editing modes.
+  let releaseField!: () => void; let fieldStarted = false
+  const fieldResponse = new Promise<void>((resolve) => { releaseField = resolve })
+  const serverFieldSource = authority.replace(firstSuggestion, 'Server accepted field text')
+  await page.route(`**/resumes/${resumeId}/engine/document`, async route => {
+    if (route.request().method() !== 'PATCH') return route.fulfill({ json: { document: doc(), latex_content: authority } })
+    fieldStarted = true
+    await fieldResponse
+    await route.fulfill({ json: { document: doc(serverFieldSource, revision + 1), latex_content: serverFieldSource } })
+  })
+  await page.getByRole('textbox').first().fill('Server accepted field text')
+  await page.getByRole('button', { name: 'Save field', exact: true }).click()
+  await expect.poll(() => fieldStarted).toBe(true)
+  try {
+    await page.getByRole('button', { name: 'Source', exact: true }).click()
+    await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 60000 })
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    const codeInput = page.locator('.monaco-editor .inputarea, .monaco-editor .native-edit-context')
+    await expect(codeInput).toHaveCount(1)
+    await codeInput.focus()
+    await page.keyboard.press('Control+End')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('% Newer local source edit')
+    await page.keyboard.press('Control+A'); await page.keyboard.press('Control+C')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('% Newer local source edit')
+    const completedField = page.waitForResponse((response) => response.request().method() === 'PATCH'
+      && response.url().endsWith(`/resumes/${resumeId}/engine/document`))
+    releaseField()
+    await completedField
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect.poll(async () => {
+      await codeInput.focus(); await page.keyboard.press('Control+A'); await page.keyboard.press('Control+C')
+      return page.evaluate(() => navigator.clipboard.readText())
+    }).toContain('% Newer local source edit')
+    expect(runtimeErrors).toEqual([])
+  } finally { releaseField() }
 })
 
 test('verified PDF field supports keyboard selection and mobile field pane', async ({ page }) => {

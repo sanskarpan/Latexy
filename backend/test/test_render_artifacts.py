@@ -1,7 +1,6 @@
 """Manifest tenant/capability/integrity and conservative geometry boundaries."""
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -150,15 +149,59 @@ def test_geometry_maps_only_unique_exact_actual_pdf_words():
 
 
 def test_all_page_rotations_are_checked(monkeypatch, tmp_path):
+    import hashlib
+
     monkeypatch.setattr(geometry.shutil, "which", lambda _: "available")
+    pdf = tmp_path / "document.pdf"
+    pdf.write_bytes(b"%PDF-test")
     calls = []
-    def run(args, **kwargs):
+    def capture(args, limit, deadline):
         calls.append(args)
-        kwargs["stdout"].write(b"Pages: 2\nPage rot: 0\n" if len(calls) == 1 else b"Page 1 rot: 0\nPage 2 rot: 90\n")
-        return MagicMock(returncode=0)
-    monkeypatch.setattr(geometry.subprocess, "run", run)
-    assert geometry.extract_geometry(Path("pdf"), doc("Hello"), pdf_sha256="2" * 64, branch="draft") is None
+        return b"Pages: 2\nPage rot: 0\n" if len(calls) == 1 else b"Page 1 rot: 0\nPage 2 rot: 90\n"
+    monkeypatch.setattr(geometry, "_capture", capture)
+    assert geometry.extract_geometry(pdf, doc("Hello"), pdf_sha256=hashlib.sha256(pdf.read_bytes()).hexdigest(), branch="draft") is None
     assert calls[1][1:5] == ["-f", "1", "-l", "2"]
+
+
+@pytest.mark.parametrize("script,limit,budget", [
+    ("import sys; sys.stdout.buffer.write(b'x'*131072); sys.stdout.flush(); import time; time.sleep(5)", 1024, 2),
+    ("import time; time.sleep(5)", 1024, .1),
+])
+def test_geometry_capture_reaps_overflow_and_silent_timeout(monkeypatch, script, limit, budget):
+    import sys
+    import time
+
+    real_popen = geometry.subprocess.Popen
+    processes = []
+    def start(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setattr(geometry.subprocess, "Popen", start)
+    with pytest.raises(ValueError):
+        geometry._capture([sys.executable, "-c", script], limit, time.monotonic() + budget)
+    assert processes[0].poll() is not None
+    assert processes[0].stdout.closed
+
+
+def test_geometry_capture_reaps_process_when_watchdog_start_fails(monkeypatch):
+    import sys
+    import time
+
+    processes = []
+    original = geometry.subprocess.Popen
+    def start(*args, **kwargs):
+        process = original(*args, **kwargs)
+        processes.append(process)
+        return process
+    def failed_start(self):
+        raise RuntimeError("synthetic thread startup failure")
+    monkeypatch.setattr(geometry.subprocess, "Popen", start)
+    monkeypatch.setattr(geometry.ProcessWatchdog, "start", failed_start)
+    with pytest.raises(RuntimeError):
+        geometry._capture([sys.executable, "-c", "import time; time.sleep(5)"], 1024, time.monotonic() + 2)
+    assert processes[0].poll() is not None
+    assert processes[0].stdout.closed
 
 
 @pytest.mark.parametrize("tamper", [None, "owner", "epoch", "tenant", "public_artifact"])

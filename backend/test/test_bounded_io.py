@@ -149,6 +149,128 @@ def test_regular_artifact_read_rejects_size_before_retaining_payload(tmp_path: P
         read_file_bounded(artifact, 16)
 
 
+@pytest.mark.parametrize("compressed", [False, True])
+def test_generated_artifact_reader_rejects_outside_symlink(tmp_path, compressed):
+    import gzip
+
+    sentinel = tmp_path / "outside"
+    sentinel.write_bytes(gzip.compress(b"synthetic-private-sentinel") if compressed else b"synthetic-private-sentinel")
+    job = tmp_path / "job"
+    job.mkdir()
+    artifact = job / "resume.synctex"
+    try:
+        artifact.symlink_to(sentinel)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {type(exc).__name__}")
+    with pytest.raises(BoundedReadError):
+        if compressed:
+            read_gzip_file_bounded(artifact, max_compressed_bytes=1024, max_decompressed_bytes=1024)
+        else:
+            read_file_bounded(artifact, 1024)
+
+
+def test_regular_artifact_reader_rejects_fifo_without_blocking(tmp_path):
+    import os
+
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX FIFO fixture")
+    artifact = tmp_path / "resume.synctex"
+    os.mkfifo(artifact)
+    with pytest.raises(BoundedReadError):
+        read_file_bounded(artifact, 1024)
+
+
+def test_artifact_reader_rejects_directory_handles(tmp_path):
+    with pytest.raises(BoundedReadError):
+        read_file_bounded(tmp_path, 1024)
+
+
+def test_no_follow_checks_file_at_open_not_an_earlier_path_check(tmp_path, monkeypatch):
+    import os
+
+    if os.name == "nt":
+        pytest.skip("POSIX atomic open fixture; Windows uses OPEN_REPARSE_POINT")
+    sentinel = tmp_path / "sentinel"
+    sentinel.write_bytes(b"synthetic-private-sentinel")
+    artifact = tmp_path / "resume.synctex"
+    artifact.write_bytes(b"ordinary")
+    original = os.open
+    def replace_then_open(path, flags, *args, **kwargs):
+        artifact.unlink()
+        artifact.symlink_to(sentinel)
+        return original(path, flags, *args, **kwargs)
+    monkeypatch.setattr(os, "open", replace_then_open)
+    with pytest.raises(BoundedReadError):
+        read_file_bounded(artifact, 1024)
+
+
+def test_windows_same_handle_read_survives_post_open_path_replacement(tmp_path, monkeypatch):
+    import os
+
+    if os.name != "nt":
+        pytest.skip("actual Windows handle proof")
+    import ctypes
+    from ctypes import wintypes
+    from types import SimpleNamespace
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    prototype = ctypes.WINFUNCTYPE(wintypes.HANDLE, wintypes.LPCWSTR, wintypes.DWORD,
+        wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    kernel.CreateFileW.argtypes = list(prototype._argtypes_)
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    artifact = tmp_path / "artifact"
+    artifact.write_bytes(b"original-safe-artifact")
+    @prototype
+    def open_then_replace(*arguments):
+        handle = kernel.CreateFileW(*arguments)
+        artifact.replace(tmp_path / "held-original")
+        artifact.write_bytes(b"replacement-path-content")
+        return handle
+    proxy = SimpleNamespace(CreateFileW=open_then_replace,
+        GetFileInformationByHandle=kernel.GetFileInformationByHandle, CloseHandle=kernel.CloseHandle)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: proxy)
+    assert read_file_bounded(artifact, 1024) == b"original-safe-artifact"
+    assert artifact.read_bytes() == b"replacement-path-content"
+
+
+@pytest.mark.parametrize("rename", [False, True])
+def test_actual_confined_lua_link_never_becomes_a_trusted_artifact(tmp_path, rename):
+    import json
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform != "linux" or not shutil.which("lualatex"):
+        pytest.skip("requires actual Linux Lua kernel launcher")
+    from app.services.latex_service import engine_env, engine_sandbox_flags, native_engine_command
+
+    sentinel = tmp_path / "outside-sentinel"
+    sentinel.write_bytes(b"synthetic-private-sentinel")
+    job = tmp_path / "job"
+    job.mkdir()
+    if rename:
+        # Independently check output renaming without weakening LuaTeX's
+        # existing rejection of link creation under no-shell-escape.
+        (job / "intermediate-link").symlink_to(sentinel)
+        lua = 'assert(os.rename("intermediate-link","untrusted-output"));'
+    else:
+        lua = f'local lfs=require("lfs"); assert(lfs.link({json.dumps(str(sentinel))},"untrusted-output",true));'
+    source = r"\documentclass{article}\begin{document}\directlua{" + lua + r"}Safe visible text\end{document}"
+    (job / "resume.tex").write_text(source, encoding="utf-8")
+    command = native_engine_command("lualatex", [*engine_sandbox_flags("lualatex"),
+        "-interaction=nonstopmode", "-halt-on-error", "-jobname", "resume", "resume.tex"], job)
+    result = subprocess.run(command, cwd=job, env=engine_env(job, "lualatex"),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+    if result.returncode:
+        assert b"LuaTeX: operation not permitted" in result.stdout, result.stdout[-2000:].decode("utf-8", "replace")
+        assert not (job / "untrusted-output").exists()
+        return
+    assert (job / "resume.pdf").read_bytes().startswith(b"%PDF-")
+    assert (job / "untrusted-output").is_symlink()
+    with pytest.raises(BoundedReadError):
+        read_file_bounded(job / "untrusted-output", 1024)
+
+
 def test_pdfminer_sink_aborts_before_retaining_oversized_text():
     sink = latex_worker._BoundedPdfTextWriter(4)
 

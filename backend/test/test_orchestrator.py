@@ -44,9 +44,11 @@ def eager_celery():
 
 
 @pytest.fixture(autouse=True)
-def docker_capability_probe():
+def docker_capability_probe(monkeypatch):
     """Use an explicit capability result while subprocesses are mocked."""
     from app.services.latex_service import engine_env
+
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
 
     with (
         patch("app.workers.orchestrator.docker_engine_available", return_value=False),
@@ -345,7 +347,7 @@ class TestOrchestratorFullPipeline:
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345, st_mode=0)),
             is_cancelled_patch,
         ):
             mock_client = MagicMock()
@@ -494,7 +496,7 @@ class TestOrchestratorPageCount:
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321)),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321, st_mode=0)),
         ):
             mock_client = MagicMock()
             mock_openai_cls.return_value = mock_client

@@ -1,0 +1,145 @@
+"""Real original bytes, owned database receipts, and explicit adaptation."""
+import io
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException, UploadFile
+from sqlalchemy import func, inspect, select
+
+from app.api.pdf_import_routes import (
+    AdaptImport,
+    adapt_import,
+    discard_import,
+    get_import,
+    import_pdf,
+    original_pdf,
+    resume_import,
+)
+from app.database.models import Resume, ResumePdfImport, ResumeTemplate, User
+from app.services.resume_engine.pdf_imports import purge_expired_imports, validate_original_pdf
+
+
+def actual_pdf():
+    content = b"BT /F1 12 Tf 72 720 Td (Jane Example) Tj 0 -18 Td (jane@example.test) Tj 0 -24 Td (EXPERIENCE) Tj 0 -18 Td (Engineer at Acme) Tj 0 -18 Td (Built Python services) Tj ET"
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream"]
+    value, offsets = b"%PDF-1.4\n", [0]
+    for index, obj in enumerate(objects, 1):
+        offsets.append(len(value))
+        value += str(index).encode() + b" 0 obj\n" + obj + b"\nendobj\n"
+    start = len(value)
+    value += b"xref\n0 6\n0000000000 65535 f \n"
+    value += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets[1:])
+    return value + b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + str(start).encode() + b"\n%%EOF\n"
+
+
+@pytest.fixture
+async def import_scope(db_session_factory):
+    user_id, other_id, template_id = (str(uuid4()) for _ in range(3))
+    async with db_session_factory() as db:
+        db.add_all([User(id=user_id, email="pdf_import_scope_" + user_id + "@example.test"),
+                    User(id=other_id, email="pdf_import_other_" + other_id + "@example.test")])
+        db.add(ResumeTemplate(id=template_id, name="Import test", category="ats_safe", latex_content="source", is_active=True))
+        await db.commit()
+    yield user_id, other_id, template_id
+    async with db_session_factory() as db:
+        for identity in (user_id, other_id):
+            await db.delete(await db.get(User, identity))
+        await db.delete(await db.get(ResumeTemplate, template_id))
+        await db.commit()
+
+
+async def uploaded(db, owner, data=None):
+    return await import_pdf(UploadFile(filename="../original.pdf", file=io.BytesIO(data or actual_pdf())), db, owner)
+
+
+async def test_original_is_exact_private_deferred_and_requires_explicit_template(import_scope, db_session_factory):
+    owner, other, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        assert receipt["extraction"]["status"] == "partial"
+        assert {field["confidence"] for field in receipt["extraction"]["fields"]} == {"unknown"}
+        assert receipt["original"]["filename"] == "original.pdf"
+        assert await db.scalar(select(func.count()).select_from(Resume).where(Resume.user_id == owner)) == 0
+        row = await db.get(ResumePdfImport, receipt["import_id"])
+        assert "original_pdf" in inspect(row).unloaded  # not copied through hot metadata queries
+        original = await original_pdf(row.id, db, owner)
+        assert original.body == actual_pdf() and original.headers["cache-control"] == "private, no-store"
+        for operation in (get_import, original_pdf):
+            with pytest.raises(HTTPException) as error:
+                await operation(row.id, db, other)
+            assert error.value.status_code == 404
+        response = await adapt_import(row.id, AdaptImport(template_id=template, title="My adapted resume",
+            expected_original_sha256=receipt["original"]["sha256"]), db, owner)
+        assert response["document"]["source_mode"] == "managed" and "Jane Example" in response["latex_content"]
+        assert (await resume_import(response["resume_id"], db, owner))["import_id"] == row.id
+        assert (await original_pdf(row.id, db, owner)).body == actual_pdf()
+        assert row.expires_at is None
+
+
+async def test_adaptation_hash_field_revision_and_replay_are_strict(import_scope, db_session_factory):
+    owner, _, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        field = next(field for field in receipt["extraction"]["fields"] if field["field_id"] == "basics.name")
+        options = {"template_id": template, "title": "Adapted", "expected_original_sha256": receipt["original"]["sha256"],
+                   "field_edits": [{"node_id": field["field_id"], "expected_node_revision": field["node_revision"], "text": "Jane Doe"}]}
+        for attack in ("original", "field"):
+            bad = {**options, "field_edits": [dict(options["field_edits"][0])]}
+            if attack == "original":
+                bad["expected_original_sha256"] = "0" * 64
+            else:
+                bad["field_edits"][0]["expected_node_revision"] = "0" * 64
+            with pytest.raises(HTTPException) as error:
+                await adapt_import(receipt["import_id"], AdaptImport(**bad), db, owner)
+            assert error.value.status_code == 409
+            await db.rollback()
+        response = await adapt_import(receipt["import_id"], AdaptImport(**options), db, owner)
+        again = await adapt_import(receipt["import_id"], AdaptImport(**options), db, owner)
+        assert response["resume_id"] == again["resume_id"] and "Jane Doe" in response["latex_content"]
+        assert await db.scalar(select(func.count()).select_from(Resume).where(Resume.user_id == owner)) == 1
+        with pytest.raises(HTTPException) as error:
+            await adapt_import(receipt["import_id"], AdaptImport(**{**options, "title": "Different intent"}), db, owner)
+        assert error.value.status_code == 409
+
+
+async def test_expiry_preserves_bound_original_and_cascade_deletes_attachment(import_scope, db_session_factory):
+    owner, _, template = import_scope
+    async with db_session_factory() as db:
+        first, expired = await uploaded(db, owner), await uploaded(db, owner)
+        response = await adapt_import(first["import_id"], AdaptImport(template_id=template, title="Saved",
+            expected_original_sha256=first["original"]["sha256"]), db, owner)
+        row = await db.get(ResumePdfImport, expired["import_id"])
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        assert await purge_expired_imports(db) == 1
+        await db.commit()
+        assert await db.scalar(select(ResumePdfImport.id).where(ResumePdfImport.id == first["import_id"]))
+        await db.delete(await db.get(Resume, response["resume_id"]))
+        await db.commit()
+        assert await db.scalar(select(ResumePdfImport.id).where(ResumePdfImport.user_id == owner)) is None
+
+
+async def test_discard_removes_staged_bytes_and_never_bound_original(import_scope, db_session_factory):
+    owner, _, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+        await discard_import(receipt["import_id"], db, owner)
+        with pytest.raises(HTTPException) as error:
+            await original_pdf(receipt["import_id"], db, owner)
+        assert error.value.status_code == 404
+        receipt = await uploaded(db, owner)
+        await adapt_import(receipt["import_id"], AdaptImport(template_id=template, title="Saved",
+            expected_original_sha256=receipt["original"]["sha256"]), db, owner)
+        with pytest.raises(HTTPException) as error:
+            await discard_import(receipt["import_id"], db, owner)
+        assert error.value.status_code == 409
+
+
+def test_corrupt_pdf_never_reaches_a_preserved_attachment():
+    validate_original_pdf(actual_pdf())
+    with pytest.raises(ValueError):
+        validate_original_pdf(b"%PDF-1.4\nnot a PDF structure")

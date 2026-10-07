@@ -17,7 +17,7 @@ class ProcessTiming:
     """
     def __init__(self, process: Any):
         self.process = process
-        self.started = time.perf_counter()
+        self.started = time.monotonic()
         self.exited = None
         self.thread = threading.Thread(target=self._wait, daemon=True, name="render-exit-timing")
         self.thread.start()
@@ -25,13 +25,16 @@ class ProcessTiming:
     def _wait(self):
         try:
             self.process.wait()
-            self.exited = time.perf_counter()
+            engine_exit = getattr(self.process, "engine_exit_at", None)
+            # Modal wait also copies bounded outputs. Attribute that transport
+            # time to drainage, using the SDK-observed engine exit separately.
+            self.exited = engine_exit if type(engine_exit) in (int, float) else time.monotonic()
         except Exception:
             # Instrumentation cannot change a render's outcome.
             return
 
     def finish(self):
-        drained = time.perf_counter()
+        drained = time.monotonic()
         self.thread.join(timeout=0.05)
         if self.exited is not None:
             outcome = "success" if self.process.returncode == 0 else "error"

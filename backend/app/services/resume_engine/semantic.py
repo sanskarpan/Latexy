@@ -8,7 +8,7 @@ import re
 import unicodedata
 from typing import Any
 
-from ..resume_builder_service import StructuredResume, resume_builder_service
+from ..resume_builder_service import SECTION_TITLES, StructuredResume, resume_builder_service
 from .document import digest, project_literal_bullets
 from .starter import project_starter_fields
 
@@ -61,6 +61,10 @@ def project_managed_document(
     nodes: list[dict] = []
     identities: set[str] = set()
     hidden = set(structured["hidden_sections"])
+
+    # Defaults are materialized for safe dictionary paths without rewriting old source.
+    for section, title in SECTION_TITLES.items():
+        structured["section_titles"].setdefault(section, title)
 
     def add(node_id: str, section: str, kind: str, text: str, path: list, ai=False, entry_id=None):
         if node_id in identities:
@@ -142,6 +146,14 @@ def project_managed_document(
                             ai=field == "bullets",
                             entry_id=entry_id,
                         )
+    visible_sections = {section["key"] for section in resume_builder_service._preview_sections(StructuredResume.model_validate(structured))}
+    for section in structured["section_order"]:
+        if section in visible_sections:
+            add("section." + section + ".heading", section, "section_heading", structured["section_titles"][section],
+                ["section_titles", section])
+    from .structure import managed_containers
+
+    containers = managed_containers(structured, nodes)
     return {
         "document_id": document_id,
         "owner_scope": owner_scope,
@@ -153,13 +165,14 @@ def project_managed_document(
         "template_id": template_id,
         "template_category": category,
         "nodes": nodes,
+        "containers": containers,
         "opaque_blocks": [],
         "_structured_content": structured,
         "_source": source,
     }
 
 
-def project_document(resume: Any, category: str | None = None) -> dict:
+def project_document(resume: Any, category: str | None = None, *, use_imported_identity: bool = True) -> dict:
     """Renderer/frontend shared entry point; source offsets always reference exact source."""
     revision = getattr(resume, "content_revision", 1) or 1
     source = resume.latex_content
@@ -214,7 +227,7 @@ def project_document(resume: Any, category: str | None = None) -> dict:
             }
         )
     nodes.sort(key=lambda node: node["source_span"]["start"])
-    return {
+    document = {
         "document_id": str(resume.id),
         "owner_scope": str(resume.user_id),
         "source_mode": "imported",
@@ -228,6 +241,11 @@ def project_document(resume: Any, category: str | None = None) -> dict:
         "opaque_blocks": [{"start": 0, "end": len(source), "reason": "Custom source remains authoritative"}],
         "_source": source,
     }
+    if use_imported_identity:
+        from .imported_identity import bind_projection
+
+        document = bind_projection(document, getattr(resume, "imported_projection", None))
+    return document
 
 
 def public_document(document: dict) -> dict:

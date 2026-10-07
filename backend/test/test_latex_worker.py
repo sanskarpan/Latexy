@@ -37,7 +37,7 @@ def _celery_eager():
 
 
 @pytest.fixture(autouse=True)
-def _docker_capability_probe():
+def _docker_capability_probe(monkeypatch):
     """Keep worker unit tests independent of the real Docker probe.
 
     These tests patch the shared ``subprocess.run`` module for pdftotext and
@@ -45,6 +45,9 @@ def _docker_capability_probe():
     remains unmodified; this fixture supplies its explicit test result so the
     shared subprocess mock cannot be mistaken for a Docker probe response.
     """
+    # Execution now resolves server backend identity before any process. A
+    # pdftotext locator double must not imply that a Docker CLI is installed.
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
         yield
 
@@ -161,6 +164,19 @@ class TestLatexValidationFailure:
 
 
 class TestLatexCompilationSuccess:
+    def test_untrusted_generated_output_is_terminal_confinement_failure(
+        self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok, mock_popen_success
+    ):
+        from app.utils.bounded_io import UntrustedFileError
+
+        with patch("app.workers.latex_worker.cache_compile_output", side_effect=UntrustedFileError("synthetic link")):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        assert result["success"] is False
+        failures = [call.args[2] for call in mock_publish.call_args_list if call.args[1] == "job.failed"]
+        assert failures[-1]["error_code"] == "engine_read_escape"
+        assert failures[-1]["retryable"] is False
+        assert not any(call.args[1] == "job.completed" for call in mock_publish.call_args_list)
+
     @pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
     def test_real_auto_fit_probe_reports_the_candidate_page_count(self, tmp_path):
         source = r"""\documentclass{article}
@@ -649,8 +665,14 @@ class TestLatexCancellation:
 class TestLatexTimeout:
     def test_timeout_kills_process(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
         mock_proc = _make_popen(0, ["slow output\n", "more output\n"])
-        # Simulate time advancing past timeout on second iteration
-        time_calls = [0.0, 0.0, 9999.0]
+        # Advance the clock when compiler output is read, independently of
+        # logger timestamps and provider startup deadline accounting.
+        clock = [0.0]
+        read_output = mock_proc.stdout.read
+        def slow_read(size=-1):
+            clock[0] = 9999.0
+            return read_output(size)
+        mock_proc.stdout.read = slow_read
         with (
             patch("app.workers.latex_worker.subprocess.Popen", return_value=mock_proc),
             patch("app.workers.latex_worker.docker_engine_available", return_value=True),
@@ -658,7 +680,7 @@ class TestLatexTimeout:
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=False),
             patch(
-                "app.workers.latex_worker.time.time", side_effect=lambda: time_calls.pop(0) if time_calls else 9999.0
+                "app.workers.latex_worker.time.time", side_effect=lambda: clock[0]
             ),
             patch("app.workers.latex_worker.settings") as ms,
         ):
@@ -674,15 +696,21 @@ class TestLatexTimeout:
     def test_timeout_emits_job_failed_with_timeout_code(
         self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok
     ):
-        time_calls = [0.0, 0.0, 9999.0]
+        clock = [0.0]
+        mock_proc = _make_popen(0, ["output\n", "output2\n"])
+        read_output = mock_proc.stdout.read
+        def slow_read(size=-1):
+            clock[0] = 9999.0
+            return read_output(size)
+        mock_proc.stdout.read = slow_read
         with (
-            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["output\n", "output2\n"])),
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=mock_proc),
             patch("app.workers.latex_worker.docker_engine_available", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=False),
             patch(
-                "app.workers.latex_worker.time.time", side_effect=lambda: time_calls.pop(0) if time_calls else 9999.0
+                "app.workers.latex_worker.time.time", side_effect=lambda: clock[0]
             ),
             patch("app.workers.latex_worker.settings") as ms,
         ):

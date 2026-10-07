@@ -12,6 +12,7 @@ DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 
 import base64
 import hashlib
+import os
 from pathlib import Path
 
 import modal
@@ -233,17 +234,26 @@ texlive_image = (
     .run_commands("python3 /opt/latexy-format-build/scripts/build_trusted_render_formats.py", _WRITE_RENDERER_FINGERPRINT_COMMAND)
 )
 
+# A certified VM renderer is an immutable *bare* image pinned by the operator.
+# The new image graph above is not substituted at request time: certification
+# of a previous image never attests newly built fonts/formats/assets.
+_renderer_capability_env = {
+    key: os.environ[key]
+    for key in ("MODAL_ENGINE_VM_CERTIFIED", "MODAL_ENGINE_VM_IMAGE_ID", "MODAL_ENGINE_VM_ASSETS_FINGERPRINT")
+    if key in os.environ
+}
+
 api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
 latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)

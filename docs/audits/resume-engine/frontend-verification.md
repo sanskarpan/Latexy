@@ -39,3 +39,22 @@ Three Chromium browser contracts then passed against that actual Linux standalon
 Post-rebase guard failures were verified as cross-platform test fixture issues: source assertions normalize CRLF, the SyncTeX page-mutation fixture matches either newline style, and environment assertions account for Windows case-insensitive aliases while retaining POSIX exact-key assertions and every credential-exclusion check. The parent-monitor fixture signals readiness before terminating its launcher and uses an independent Windows descendant to exercise cleanup. No guard assertion or timeout was removed. Linux snapshot test dependencies include the source-only authentication migration and canonical privacy policy.
 
 The earlier three real guest probes remain functional evidence under CPU contention; these production browser contracts are mocked correctness checks and do not establish deployment latency percentiles.
+
+
+## Phase 6 final production verification — 2026-10-07
+
+The final Phase 6 frontend snapshot passed **1,059/1,059 unit tests**, full ESLint, and standalone TypeScript checking. Its complete Linux production build exited successfully, generated all 40 static pages, assembled the standalone runtime, and passed build-artifact validation. This used the same independent Linux volume, canonical frozen pnpm 10.10.0 lockfile and Node 22.23.3, inert HTTPS authentication URL and unused dummy database port. Build-generated Windows configuration files were restored to their exact tracked bytes afterward.
+
+All **seven Chromium browser contracts passed with zero retries against that actual Linux standalone production bundle (51.0 seconds)**. They render valid PDF bytes while mocking authentication, API and stream contracts; no paid model calls or production services were used:
+
+- Original PDF preservation and explicit supported-template adaptation, including verified original bytes, uncertain extracted fields, user-approved field patches, and reopening the read-only original (6.5 seconds).
+- Refusal of a receipt whose original hash differs from the selected PDF (2.0 seconds).
+- Explicit unavailable extraction and adaptation using user-supplied details (5.6 seconds).
+- Guest plain-field editing with exactly one quota-governed preview (5.6 seconds).
+- Managed provisional/final review, accepted and rejected decisions, source/revision fences, readable missing requirements, limited PDF check status, and protection of a newer local Source edit from a delayed accepted field response (16.2 seconds).
+- Exact-PDF keyboard selection and mobile field navigation (3.1 seconds).
+- Managed heading edits and section, entry and bullet reorder with stable IDs, complete sibling permutations, source/revision CAS, authoritative preview refresh, mobile keyboard controls and no mounted source editor in Resume mode (6.6 seconds).
+
+The PDF import path is reachable through Workspace → New resume → Import file and the builder import picker. Originals remain owner-only read-only attachments; adaptation requires an explicit supported template. Current extraction confidence is displayed as unknown rather than an invented numeric score. Structural controls are available for managed documents; custom source remains protected. Ambiguous and rotated PDF mappings remain read-only.
+
+This is correctness evidence, not a production performance benchmark or universal ATS/layout certification. The legacy whole-source endpoint already requires expected_latex_content and checks it under a row lock. End-to-end coordination of that existing precondition with concurrent Source, field and structural edits still needs a final integration review. The frontend protects newer local buffers from delayed field responses; the recorded browser contracts do not replace that pending review.

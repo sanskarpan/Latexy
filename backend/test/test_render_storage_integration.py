@@ -38,7 +38,9 @@ async def test_real_admitted_render_cache_preview_export_sync_geometry(db_sessio
                    "text": "Hello World", "editable": True,
                    "source_span": {"start": SOURCE.index("Hello World"), "end": SOURCE.index("Hello World") + 11}}]}
     async with db_session_factory() as session:
-        session.add(User(id=user_id, email=jobs[0] + "@example.com"))
+        # Concurrent unit-suite teardown deletes test_* users globally. This
+        # opt-in fixture cleans up its own IDs and must survive that teardown.
+        session.add(User(id=user_id, email="engine_s3_" + user_id + "@example.com"))
         await session.flush()
         session.add(Resume(id=resume_id, user_id=user_id, title="test resume", latex_content=SOURCE))
         await session.flush()

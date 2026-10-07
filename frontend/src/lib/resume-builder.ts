@@ -341,6 +341,6 @@ export function deriveBuilderPreview(
 
   return {
     template_family: templateFamily,
-    sections,
+    sections: sections.map((section) => ({ ...section, title: structured.section_titles?.[section.key]?.trim() || section.title })),
   }
 }

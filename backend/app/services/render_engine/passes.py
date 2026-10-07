@@ -31,7 +31,8 @@ class RenderPassError(ValueError):
 def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
              workspace: str, compiler: str, timeout: float, started_at: float,
              transcript: BoundedTranscript, is_cancelled: Any, publisher: Any,
-             container_name: str | None, force_second_pass: bool = False) -> int | None:
+             container_name: str | None, force_second_pass: bool = False,
+             engine_backend: Any = None, engine_session: Any = None) -> int | None:
     """First pass already passed confinement. Reuse its isolated auxiliary files.
 
     Every extra TeX pass keeps synchronous read confinement, bounded transport,
@@ -42,11 +43,23 @@ def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
         remaining = timeout - (time.time() - started_at)
         if remaining <= 0:
             raise RenderPassError("compile_timeout")
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                cwd=cwd, env=engine_env(job_dir, compiler))
+        from .backend import resolve_backend, start_engine_process
+        from .modal_sandbox import ModalEngineUnavailable
+
+        chosen = engine_backend or resolve_backend(compiler)
+        if chosen.kind == "modal_vm" and engine_session is None:
+            raise RenderPassError("Isolated renderer session unavailable for convergence")
+        try:
+            proc = start_engine_process(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                cwd=cwd, env=engine_env(job_dir, compiler), workspace=str(job_dir),
+                compiler=compiler, actual_engine=compiler if tex else "bibtex", timeout=remaining,
+                backend=chosen, engine_session=engine_session, popen_factory=subprocess.Popen)
+        except ModalEngineUnavailable as exc:
+            raise RenderPassError(str(exc)) from exc
         from .process_timing import ProcessTiming
 
         process_timing = ProcessTiming(proc)
+        read_workspace = proc.remote_workspace if chosen.kind == "modal_vm" else workspace
         watchdog = ProcessWatchdog(proc, timeout=remaining, is_cancelled=is_cancelled).start()
         output = BoundedTranscript()
         pages = None
@@ -57,7 +70,7 @@ def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
 
             with BufferedEventPublisher(job_id, publisher=publisher) as events:
                 for line in iter_bounded_lines(proc.stdout):
-                    if tex and find_engine_read_escape(line, workspace):
+                    if tex and find_engine_read_escape(line, read_workspace):
                         raise RenderPassError(ENGINE_READ_ESCAPE_ERROR)
                     bounded = output.append(line)
                     transcript.append(line)
@@ -71,7 +84,7 @@ def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
             process_timing.finish()
             if watchdog.reason:
                 raise RenderPassError("cancelled" if watchdog.reason == "cancelled" else "compile_timeout")
-            if tex and find_recorder_read_escape(job_dir / "resume.fls", workspace, require_recorder=True):
+            if tex and find_recorder_read_escape(job_dir / "resume.fls", read_workspace, require_recorder=True):
                 raise RenderPassError(ENGINE_READ_ESCAPE_ERROR)
             if compiler == "lualatex" and tex:
                 from .log_gating import publish_verified_log
@@ -91,8 +104,8 @@ def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
 
     log = transcript.text()
     aux_path = job_dir / "resume.aux"
-    aux = read_file_bounded(aux_path, 256 * 1024).decode("utf-8", errors="replace") if aux_path.exists() else ""
-    if (job_dir / "resume.bcf").exists() or "Please (re)run Biber" in log:
+    aux = read_file_bounded(aux_path, 256 * 1024).decode("utf-8", errors="replace") if aux_path.is_file() else ""
+    if (job_dir / "resume.bcf").is_file() or "Please (re)run Biber" in log:
         raise RenderPassError("Biber bibliography requires an unsupported isolated datasource adapter")
     bibliography = "\\bibdata{" in aux
     if bibliography:

@@ -41,7 +41,6 @@ from ..services.auto_fit_service import (
 from ..services.cover_letter_signature_service import materialize_embedded_signature
 from ..services.latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
-    LUALATEX_POLICY_VERSION,
     RECORDER_SUFFIX,
     assert_local_engine_allowed,
     cleanup_docker_container,
@@ -57,6 +56,7 @@ from ..services.latex_service import (
     native_engine_command,
 )
 from ..services.render_engine.cancellation import CancellationPoll
+from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
 from ..services.render_engine.passes import RenderPassError
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
@@ -64,6 +64,7 @@ from ..utils.bounded_io import (
     MAX_SYNCTEX_DECOMPRESSED_BYTES,
     BoundedReadError,
     BoundedTranscript,
+    UntrustedFileError,
     decode_base64_bounded,
     iter_bounded_lines,
     read_file_bounded,
@@ -326,12 +327,19 @@ def _probe_auto_fit_candidate(
     """Compile an isolated fit candidate without publishing its artifact or log."""
     probe_dir = Path(settings.TEMP_DIR) / f"{job_id}-autofit-{profile_intensity}"
     container_name: Optional[str] = None
+    probe_process = None
+    probe_watchdog = None
     try:
+        from ..services.render_engine.backend import resolve_backend, start_engine_process
+
+        render_backend = resolve_backend(compiler)
         probe_dir.mkdir(parents=True, exist_ok=False)
         (probe_dir / main_file).write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, probe_dir)
         write_reference_library(probe_dir, bibtex)
-        use_docker = docker_engine_available()
+        use_docker = render_backend.kind == "docker"
+        if use_docker and not docker_engine_available():
+            raise RenderPassError("Configured Docker renderer is unavailable")
         container_name = docker_container_name(job_id, "probe") if use_docker else None
         if use_docker:
             command = [
@@ -360,8 +368,9 @@ def _probe_auto_fit_candidate(
             compile_cwd = None
             workspace = "/workspace"
         else:
-            assert_local_engine_allowed(job_id)
-            command = native_engine_command(compiler, [
+            if render_backend.kind == "native":
+                assert_local_engine_allowed(job_id)
+            arguments = [
                 *engine_sandbox_flags(compiler),
                 *error_mode_flags,
                 "-jobname",
@@ -370,20 +379,28 @@ def _probe_auto_fit_candidate(
                 ".",
                 *custom_flags,
                 main_file,
-            ], probe_dir)
+            ]
+            command = native_engine_command(compiler, arguments, probe_dir) if render_backend.kind == "native" else [compiler, *arguments]
             compile_cwd = str(probe_dir)
             workspace = str(probe_dir)
 
-        completed = subprocess.run(
-            command,
-            cwd=compile_cwd,
-            env=engine_env(probe_dir, compiler),
-            # The compiler log is the bounded source of diagnostics/page
-            # counts.  Do not let a generated document fill subprocess pipes.
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=max(1.0, timeout),
-        )
+        if render_backend.kind == "modal_vm":
+            probe_process = start_engine_process(command, cwd=compile_cwd,
+                env=engine_env(probe_dir, compiler), workspace=str(probe_dir),
+                compiler=compiler, timeout=max(1.0, timeout), backend=render_backend,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            workspace = probe_process.remote_workspace
+            probe_watchdog = ProcessWatchdog(probe_process, timeout=max(1.0, timeout),
+                is_cancelled=lambda: is_cancelled(job_id)).start()
+            probe_process.wait(timeout=max(1.0, timeout))
+            completed = probe_process
+        else:
+            completed = subprocess.run(
+                command, cwd=compile_cwd, env=engine_env(probe_dir, compiler),
+                # Diagnostics come from a bounded on-disk compiler log.
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=max(1.0, timeout),
+            )
         log_file = probe_dir / "resume.log"
         transcript = read_text_file_bounded(log_file) if log_file.is_file() else ""
         for line in transcript.splitlines():
@@ -414,6 +431,16 @@ def _probe_auto_fit_candidate(
     except subprocess.TimeoutExpired:
         return False, None, "Auto-fit probe timed out"
     finally:
+        if probe_watchdog is not None:
+            probe_watchdog.stop()
+        if probe_process is not None:
+            from ..services.render_engine.backend import close_engine_session
+
+            try:
+                close_engine_session(probe_process)
+            except Exception as cleanup_exc:
+                logger.warning("Renderer probe cleanup failed (%s)", type(cleanup_exc).__name__)
+            probe_process.stdout.close()
         cleanup_docker_container(container_name)
         if probe_dir.exists():
             shutil.rmtree(probe_dir, ignore_errors=True)
@@ -755,17 +782,24 @@ def compile_cache_key(
     if not owner_scope or not supports_exact_cache(latex_content):
         return None
     from ..services.render_engine.artifacts import RENDERER_EPOCH
+    from ..services.render_engine.backend import resolve_backend
     from ..services.render_engine.trusted_profiles import trusted_format_identity
-    from ..services.render_engine.version import renderer_fingerprint
+
+    try:
+        backend = resolve_backend(compiler)
+    except ModalEngineUnavailable as exc:
+        raise RenderPassError(str(exc)) from exc
+    if not backend.cacheable:
+        return None
 
     material = json.dumps(
         {
             "epoch": _COMPILE_CACHE_EPOCH,
             "image": settings.LATEX_DOCKER_IMAGE,
-            "engine_fingerprint": renderer_fingerprint(),
+            "engine_fingerprint": backend.engine_fingerprint,
             "trusted_format": trusted_format_identity(latex_content, compiler),
             "renderer_epoch": RENDERER_EPOCH,
-            "lua_policy": LUALATEX_POLICY_VERSION if compiler == "lualatex" else None,
+            "lua_policy": backend.policy_identity,
             "owner": owner_scope,
             "compiler": compiler,
             "settings": compile_settings,
@@ -1914,7 +1948,9 @@ def compile_latex_task(
             },
             cache_owner,
         )
-        from ..services.render_engine.version import renderer_fingerprint
+        from ..services.render_engine.backend import resolve_backend
+
+        render_backend = resolve_backend(compiler)
 
         prepared_render_request = {
             **(render_request or {}),
@@ -1922,7 +1958,7 @@ def compile_latex_task(
             "render_source": latex_content, "compiler": compiler,
             "settings": {**_cs, "main_file": main_file, "latexmk_flags": custom_flags,
                          "halt_on_error": _cs.get("halt_on_error") is not False},
-            "engine_fingerprint": renderer_fingerprint(), "cache_key": content_cache_key,
+            "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
         } if lifecycle_owned and cache_owner else None
         _cache_reporting_start = time.monotonic()
         from ..core.engine_observability import engine_span
@@ -2067,7 +2103,7 @@ def compile_latex_task(
         tex_file.write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, job_dir)
         write_reference_library(job_dir, _cs.get("bibtex"))
-        if prepared_render_request:
+        if prepared_render_request and render_backend.cacheable:
             from ..services.render_engine.auxiliary import AuxiliaryWorkspace
 
             auxiliary_workspace = AuxiliaryWorkspace(queue_redis, job_dir, prepared_render_request, timeout)
@@ -2083,7 +2119,9 @@ def compile_latex_task(
         )
 
         # ── Compile ──────────────────────────────────────────────────
-        _use_docker = docker_engine_available()
+        _use_docker = render_backend.kind == "docker"
+        if _use_docker and not docker_engine_available():
+            raise RenderPassError("Configured Docker renderer is unavailable")
         container_name = docker_container_name(job_id, "worker") if _use_docker else None
         if _use_docker:
             cmd = [
@@ -2113,7 +2151,8 @@ def compile_latex_task(
             compile_cwd = None
             workspace = "/workspace"
         else:
-            assert_local_engine_allowed(job_id)
+            if render_backend.kind == "native":
+                assert_local_engine_allowed(job_id)
             # Run WITH cwd=job_dir and pass RELATIVE paths. The sandbox sets
             # openin_any/openout_any=p (paranoid), under which kpathsea refuses to
             # read/write ABSOLUTE paths (e.g. /tmp/.../resume.tex) — pdflatex would
@@ -2121,7 +2160,7 @@ def compile_latex_task(
             # resolve against cwd, which paranoid mode permits.
             from ..services.render_engine.trusted_profiles import trusted_format_flags
 
-            cmd = native_engine_command(compiler, [
+            arguments = [
                 *engine_sandbox_flags(compiler),
                 *trusted_format_flags(latex_content, compiler),
                 *error_mode_flags,
@@ -2132,20 +2171,27 @@ def compile_latex_task(
                 ".",
                 *custom_flags,
                 main_file,
-            ], job_dir)
+            ]
+            cmd = native_engine_command(compiler, arguments, job_dir) if render_backend.kind == "native" else [compiler, *arguments]
             compile_cwd = str(job_dir)
             workspace = str(job_dir)
 
         _perf_start = time.perf_counter()
         with traced("latex.compile", compiler=compiler, docker=_use_docker):
             start_time = time.time()
-            proc = subprocess.Popen(
+            from ..services.render_engine.backend import start_engine_process
+
+            proc = start_engine_process(
                 cmd,
+                workspace=str(job_dir), compiler=compiler, timeout=timeout,
+                backend=render_backend, popen_factory=subprocess.Popen,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=compile_cwd,
                 env=engine_env(job_dir, compiler),
             )
+            if render_backend.kind == "modal_vm":
+                workspace = proc.remote_workspace
             from ..services.render_engine.process_timing import ProcessTiming
 
             process_timing = ProcessTiming(proc)
@@ -2160,7 +2206,7 @@ def compile_latex_task(
 
             watchdog = ProcessWatchdog(
                 proc,
-                timeout=timeout,
+                timeout=max(0.0, timeout - (time.time() - start_time)),
                 is_cancelled=lambda: is_cancelled(job_id),
             ).start()
 
@@ -2398,7 +2444,7 @@ def compile_latex_task(
 
             publish_verified_log(job_id, transcript, compiler, publish_event)
 
-        if prepared_render_request and proc.returncode == 0:
+        if proc.returncode == 0:
             from ..services.render_engine.passes import converge
 
             try:
@@ -2406,6 +2452,7 @@ def compile_latex_task(
                     cwd=compile_cwd, workspace=workspace, compiler=compiler, timeout=timeout,
                     started_at=start_time, transcript=transcript, is_cancelled=lambda: is_cancelled(job_id),
                     publisher=publish_event, container_name=container_name,
+                    engine_backend=render_backend, engine_session=getattr(proc, "renderer_session", None),
                     force_second_pass=bool(auxiliary_workspace and auxiliary_workspace.loaded))
             except (BoundedReadError, OSError, UnicodeError) as exc:
                 raise RenderPassError("Auxiliary artifacts invalid or unavailable") from exc
@@ -2468,6 +2515,8 @@ def compile_latex_task(
 
             try:
                 pdf_bytes = cache_compile_output(job_id, job_dir, render_request=prepared_render_request, page_count=page_count) if prepared_render_request else cache_compile_output(job_id, job_dir)
+            except UntrustedFileError:
+                return _fail_read_escape("<untrusted generated artifact>")
             except BoundedReadError:
                 # The stat gate above normally catches this; retain the same
                 # terminal behavior if the file grows between stat and read.
@@ -2695,7 +2744,7 @@ def compile_latex_task(
         _log_task_timing("soft_time_limit_exceeded")
         return _terminal_failure(result, accepted=terminal_accepted)
 
-    except RenderPassError as exc:
+    except (RenderPassError, ModalEngineUnavailable) as exc:
         result = {"success": False, "job_id": job_id, "error": str(exc)}
         terminal_accepted = publish_job_result(job_id, result)
         if terminal_accepted:
@@ -2747,6 +2796,17 @@ def compile_latex_task(
         _log_task_timing("exception")
         return _terminal_failure(result, accepted=terminal_accepted)
     finally:
+        process_obj = locals().get("proc")
+        if process_obj is not None:
+            from ..services.render_engine.backend import close_engine_session
+
+            try:
+                close_engine_session(process_obj)
+            except Exception as cleanup_exc:
+                logger.warning("Renderer session cleanup failed (%s)", type(cleanup_exc).__name__)
+            stdout = getattr(process_obj, "stdout", None)
+            if stdout is not None:
+                stdout.close()
         if auxiliary_workspace is not None:
             auxiliary_workspace.close()
         if render_lease is not None:

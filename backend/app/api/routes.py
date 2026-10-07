@@ -80,6 +80,10 @@ from .analytics_routes import router as analytics_router
 router.include_router(analytics_router)
 
 # Include Resume routes
+from .pdf_import_routes import router as pdf_import_router
+
+router.include_router(pdf_import_router)
+
 from .resume_routes import router as resume_router
 
 router.include_router(resume_router)

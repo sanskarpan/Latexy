@@ -12,6 +12,7 @@ import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
 import ImportFromBuilderWizard from '@/components/ImportFromBuilderWizard'
+import PdfImportWizard from '@/components/PdfImportWizard'
 import TemplateCard from '@/components/TemplateCard'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -140,6 +141,7 @@ function NewResumePageForm({
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<Mode>('template')
   const [importedContent, setImportedContent] = useState('')
+  const [pdfImportFile, setPdfImportFile] = useState<File | null>(null)
   const [linkedinArchiveRequestedAt, setLinkedinArchiveRequestedAt] = useState<string | null>(null)
 
   // ---- template gallery state ----
@@ -411,10 +413,11 @@ function NewResumePageForm({
 
         {/* Title input */}
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
-          <label className="mb-2 block text-xs uppercase tracking-[0.14em] text-fg-3">
+          <label htmlFor="new-resume-title" className="mb-2 block text-xs uppercase tracking-[0.14em] text-fg-3">
             Resume Title
           </label>
           <input
+            id="new-resume-title"
             type="text"
             placeholder="Senior Backend Engineer – Q3 2026"
             value={title}
@@ -450,7 +453,7 @@ function NewResumePageForm({
         {/* Mode toggle */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <button
-            onClick={() => { setMode('template'); setImportedContent('') }}
+            onClick={() => { setMode('template'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'template'
                 ? 'border-accent bg-accent-soft'
@@ -465,7 +468,7 @@ function NewResumePageForm({
           </button>
 
           <button
-            onClick={() => { setMode('import'); setImportedContent('') }}
+            onClick={() => { setMode('import'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'import'
                 ? 'border-accent bg-accent-soft'
@@ -480,7 +483,7 @@ function NewResumePageForm({
           </button>
 
           <button
-            onClick={() => { setMode('linkedin'); setImportedContent('') }}
+            onClick={() => { setMode('linkedin'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'linkedin'
                 ? 'border-accent bg-accent-soft'
@@ -495,7 +498,7 @@ function NewResumePageForm({
           </button>
 
           <button
-            onClick={() => { setMode('builder'); setImportedContent('') }}
+            onClick={() => { setMode('builder'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'builder'
                 ? 'border-accent bg-accent-soft'
@@ -513,7 +516,12 @@ function NewResumePageForm({
         {/* --- IMPORT MODE --- */}
         {mode === 'import' && (
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
-            <MultiFormatUpload onFileUpload={setImportedContent} />
+            {pdfImportFile ? <PdfImportWizard file={pdfImportFile} title={title} ownerId={session.user.id}
+              onCancel={() => setPdfImportFile(null)}
+              onCreated={(resumeId) => {
+                if (ownerIdentityRef.current.ownerId === session.user.id) router.push(`/workspace/${encodeURIComponent(resumeId)}/edit`)
+              }} /> : <MultiFormatUpload onFileUpload={setImportedContent}
+                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file) }} />}
             {importedContent && (
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-ok">
                 File parsed — {importedContent.length.toLocaleString()} characters ready
@@ -578,7 +586,8 @@ function NewResumePageForm({
             </div>
 
             {/* Upload area — PDF only, LinkedIn-optimised prompt */}
-            <MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin" />
+            <MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin"
+              onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} />
             {importedContent && (
               <p className="text-xs uppercase tracking-[0.12em] text-ok">
                 Profile parsed — {importedContent.length.toLocaleString()} characters ready
@@ -595,7 +604,8 @@ function NewResumePageForm({
                 Resume imported — {importedContent.length.toLocaleString()} characters ready
               </p>
             ) : (
-              <ImportFromBuilderWizard onComplete={setImportedContent} />
+              <ImportFromBuilderWizard onComplete={setImportedContent}
+                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} />
             )}
           </section>
         )}
@@ -722,7 +732,7 @@ function NewResumePageForm({
         )}
 
         {/* Create button — shown for non-template creation flows */}
-        {(mode === 'import' || mode === 'linkedin' || mode === 'builder') && (
+        {(mode === 'import' || mode === 'linkedin' || mode === 'builder') && !(mode === 'import' && pdfImportFile) && (
           <div className="flex items-center justify-end gap-3">
             <button
               onClick={handleCreate}

@@ -470,6 +470,7 @@ export interface AcademicCVConvertResponse {
 }
 
 export interface StructuredResume {
+  section_titles?: Record<string, string>
   basics: {
     name: string
     label: string
@@ -1984,13 +1985,56 @@ class ApiClient {
     return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`)
   }
 
+  async uploadPdfImport(file: File, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    const body = new FormData()
+    body.append('file', file)
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>('/resumes/imports/pdf', {
+      method: 'POST', body, signal,
+    }, accountContext)
+  }
+
+  async getPdfImport(importId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>(`/resumes/imports/${encodeURIComponent(importId)}`, { signal }, accountContext)
+  }
+
+  async getResumePdfImport(resumeId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>(`/resumes/${encodeURIComponent(resumeId)}/engine/import`, { signal }, accountContext)
+  }
+
+  async downloadPdfImportOriginal(importId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal): Promise<Blob> {
+    const response = await this.authedFetch(`${API_BASE}/resumes/imports/${encodeURIComponent(importId)}/original`, { signal }, accountContext)
+    if (!response.ok) throw new Error(`Original PDF could not be loaded (HTTP ${response.status})`)
+    const declared = Number(response.headers.get('Content-Length'))
+    if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) throw new Error('Original PDF exceeds the import size limit')
+    const blob = await response.blob()
+    if (blob.size > 10 * 1024 * 1024 || !blob.size) throw new Error('Original PDF has an invalid size')
+    return blob
+  }
+
+  async adaptPdfImport(importId: string, body: {
+    template_id: string; title: string; expected_original_sha256: string
+    field_edits?: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportAdaptation>(`/resumes/imports/${encodeURIComponent(importId)}/adapt`, {
+      method: 'POST', body: JSON.stringify(body), signal,
+    }, accountContext)
+  }
+
   async patchEngineDocument(resumeId: string, body: {
     expected_content_revision: number; expected_source_sha256: string; merge_disjoint: boolean
     patches: Array<{ node_id: string; expected_node_revision: string; text: string }>
-  }) {
+  }, accountContext?: AccountPreferenceRequestContext) {
     return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`, {
       method: 'PATCH', body: JSON.stringify(body),
-    })
+    }, accountContext)
+  }
+
+  async reorderEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; container_id: string; ordered_ids: string[]
+  }, accountContext: AccountPreferenceRequestContext) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument }>(`/resumes/${encodeURIComponent(resumeId)}/engine/structure`, {
+      method: 'POST', body: JSON.stringify(body),
+    }, accountContext)
   }
 
   async downloadArtifactSynctex(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<string | null> {
