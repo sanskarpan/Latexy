@@ -9,28 +9,25 @@ import { Input } from '@/components/ui/input'
 import { supportsPasskeys } from '@/lib/passkey-security'
 import { useI18n } from '@/components/I18nProvider'
 import { BrandLogo } from '@/components/brand/BrandLogo'
-
-const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
-const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
+import { mapOAuthCallbackError, oauthErrorCallbackURL, safeOAuthDestination } from '@/lib/oauth-callback'
 
 interface OidcProvider {
   id: string
   label: string
 }
 
+interface SocialProviderAvailability {
+  google: boolean
+  github: boolean
+}
+
+interface AuthProvidersResponse extends SocialProviderAvailability {
+  oidc?: OidcProvider | null
+}
+
 // How long a social redirect can sit at "Redirecting..." before we treat the
 // handshake as stalled and hand control back to the user.
 const SOCIAL_TIMEOUT_MS = 8000
-
-/**
- * Coerce an incoming redirect target to a safe same-origin relative path.
- * Rejects absolute URLs and protocol-relative (`//`, `/\`) values to prevent
- * open-redirect. Falls back to the generic workspace landing.
- */
-function safeDest(raw: string | undefined): string {
-  if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/workspace'
-  return raw
-}
 
 /** Map terse/technical Better Auth error text to friendlier copy. */
 function friendlyAuthError(message: string | undefined, fallback: string): string {
@@ -76,19 +73,25 @@ function GithubIcon() {
   )
 }
 
-export default function SignInForm({ redirect }: { redirect?: string }) {
+export default function SignInForm({ redirect, oauthError }: { redirect?: string; oauthError?: string }) {
   const { t } = useI18n()
-  const dest = safeDest(redirect)
+  const dest = safeOAuthDestination(redirect)
+  const callbackError = mapOAuthCallbackError(oauthError)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<'google' | 'github' | 'oidc' | null>(null)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [socialProviders, setSocialProviders] = useState<SocialProviderAvailability>({ google: false, github: false })
   const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(callbackError)
   const errorRef = useRef<HTMLDivElement>(null)
   const socialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setError(callbackError)
+  }, [callbackError])
 
   useEffect(() => {
     if (error && errorRef.current) {
@@ -104,9 +107,13 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/auth/providers', { signal: controller.signal })
-      .then((response) => response.ok ? response.json() as Promise<{ oidc: OidcProvider | null }> : null)
-      .then((payload) => setOidcProvider(payload?.oidc ?? null))
+    fetch('/api/auth/providers', { signal: controller.signal, cache: 'no-store' })
+      .then((response) => response.ok ? response.json() as Promise<AuthProvidersResponse> : null)
+      .then((payload) => {
+        if (!payload || controller.signal.aborted) return
+        setSocialProviders({ google: payload.google === true, github: payload.github === true })
+        setOidcProvider(payload.oidc ?? null)
+      })
       .catch(() => undefined)
     return () => controller.abort()
   }, [])
@@ -147,6 +154,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
   }
 
   const handleSocial = async (provider: 'google' | 'github') => {
+    if (!socialProviders[provider]) return
     setSocialLoading(provider)
     setError('')
     clearSocialTimeout()
@@ -158,7 +166,11 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
       setError('Taking longer than expected — try again.')
     }, SOCIAL_TIMEOUT_MS)
     try {
-      const result = await authClient.signIn.social({ provider, callbackURL: dest })
+      const result = await authClient.signIn.social({
+        provider,
+        callbackURL: dest,
+        errorCallbackURL: oauthErrorCallbackURL('/login', dest),
+      })
       // The client resolves with an `error` instead of throwing, and only sends
       // the browser away once it has an authorization URL. Any other outcome
       // has to release the form — otherwise a failed handshake leaves every
@@ -187,9 +199,10 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
       setError('Taking longer than expected — try again.')
     }, SOCIAL_TIMEOUT_MS)
     try {
-      const result = await authClient.signIn.social({
-        provider: oidcProvider.id,
+      const result = await authClient.signIn.oauth2({
+        providerId: oidcProvider.id,
         callbackURL: dest,
+        errorCallbackURL: oauthErrorCallbackURL('/login', dest),
       })
       if (result?.error || !result?.data?.url) {
         clearSocialTimeout()
@@ -228,7 +241,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
     }
   }
 
-  const anyOAuth = GOOGLE_ENABLED || GITHUB_ENABLED || !!oidcProvider
+  const anyOAuth = socialProviders.google || socialProviders.github || !!oidcProvider
 
   return (
     <div className="mx-auto w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] sm:p-8">
@@ -255,7 +268,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
                   {socialLoading === 'oidc' ? t('auth.redirecting') : `Continue with ${oidcProvider.label}`}
                 </button>
               )}
-              {GOOGLE_ENABLED && (
+              {socialProviders.google && (
                 <button
                   type="button"
                   onClick={() => handleSocial('google')}
@@ -266,7 +279,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
                   {socialLoading === 'google' ? t('auth.redirecting') : 'Google'}
                 </button>
               )}
-              {GITHUB_ENABLED && (
+              {socialProviders.github && (
                 <button
                   type="button"
                   onClick={() => handleSocial('github')}
