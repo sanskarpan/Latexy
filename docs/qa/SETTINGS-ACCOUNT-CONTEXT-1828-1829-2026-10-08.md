@@ -71,6 +71,18 @@ trigger. The stack is minified and identifies no mismatched DOM node. A
 same-bundle controlled auth-response timing comparison is a next diagnostic,
 not proof that the auth store caused this failure.
 
+Follow-up same-bundle experiment: the targeted delayed-replacement test ran
+once with zero session-response delay and once with a 500 ms delay. Both
+passed with zero retries and fatal page-error assertions; neither reproduced
+#418. Initial server HTML was identical (26,629 characters, SHA-256
+`a4e2faf07a041207c8f958fee3c59753537bd768a0dbe879d3219871f9e5e7ee`).
+Traces and attached diagnostic JSON are retained in
+`/private/tmp/latexy-hydration-auth-delay-zero-20261008` and
+`/private/tmp/latexy-hydration-auth-delay-500-20261008`. This non-reproduction
+does not establish/refute the timing hypothesis and does not erase the earlier
+failure or close #1772. The opt-in test-only delay leaves default fixture
+behavior and acceptance assertions intact; no application fix was made.
+
 | Local evidence | SHA-256 |
 | --- | --- |
 | `/private/tmp/latexy-settings-fresh-main-red-20261008.log` | `cb57767a2c1bf0d2749e11f8f70da1f2c7648e52b8885c7bde0d5342a8415c7b` |
@@ -91,6 +103,15 @@ required preview status on concurrent PR #1851 failed due build quota; no
 protection bypass or paid upgrade was attempted. The live frontend still
 reported main `d80757cd`; backend database/Redis/storage/LaTeX/job-health
 checks were healthy. No new fix was claimed deployed.
+
+Subsequent release update: the separate provider-retention PR #1853 obtained a
+successful preview and protected CI, merged normally, and closed #1852. The
+live frontend subsequently reported its exact main merge SHA
+`9c88f40a816b7255082c5f34bae3408494f31ee8`. PR #1851 was updated to that base
+without force-pushing; its required preview and this draft's preview still
+reported the rate-limit failure when rechecked. One successful production
+deployment does not waive either per-head failed check. Main CI and backend
+deployment completion still require independent verification.
 
 Next: diagnose #1772 from the fresh editor trace with an immutable matched
 baseline; repair #1786 notification action ownership separately; complete
