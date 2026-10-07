@@ -165,8 +165,9 @@ class TestCompileLatexTaskCompilerParam:
     """
 
     @pytest.fixture(autouse=True)
-    def _docker_capability_probe(self):
-        """Keep the capability subprocess separate from the Popen command spy."""
+    def _docker_capability_probe(self, monkeypatch):
+        """Use a deterministic server-owned renderer, independent of host Docker."""
+        monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
         with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
             yield
 
