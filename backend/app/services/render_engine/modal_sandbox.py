@@ -12,6 +12,7 @@ import base64
 import math
 import os
 import re
+import struct
 import subprocess
 import threading
 import time
@@ -34,6 +35,16 @@ _OUTPUT_LIMITS = {
     ".bbl": 512 * 1024,
     ".blg": MAX_COMPILE_LOG_BYTES,
 }
+_BATCH_EXPORT_SLOTS = tuple(_OUTPUT_LIMITS.items()) + (("engine.stdout", MAX_COMPILE_LOG_BYTES),)
+_BATCH_EXPORT_MAGIC = b"LXEX\x01"
+_BATCH_EXPORT_HEADER = struct.Struct("!BBI")
+_BATCH_EXPORT_LIMIT = sum(limit for _, limit in _BATCH_EXPORT_SLOTS)
+_BATCH_EXPORT_MAX_BYTES = (
+    len(_BATCH_EXPORT_MAGIC)
+    + 1
+    + len(_BATCH_EXPORT_SLOTS) * _BATCH_EXPORT_HEADER.size
+    + _BATCH_EXPORT_LIMIT
+)
 _IMAGE_PREFLIGHT = """import os,json,ctypes
 keys={'OPENAI_API_KEY','DATABASE_URL','REDIS_PASSWORD','API_KEY_ENCRYPTION_KEY','MODAL_TOKEN_ID','MODAL_TOKEN_SECRET','MODAL_IDENTITY_TOKEN'}
 libc=ctypes.CDLL(None);libc.syscall.restype=ctypes.c_long
@@ -57,6 +68,34 @@ with os.fdopen(fd,'rb') as f:data=f.read(limit+1)
 if len(data)>limit:sys.exit(78)
 sys.stdout.buffer.write(base64.b64encode(data))
 """
+_BATCH_EXPORT_TEMPLATE = """import os,re,sys,stat,struct
+slots=__SLOTS__
+base=sys.argv[1] if len(sys.argv)==2 else ''
+if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',base):sys.exit(78)
+out=sys.stdout.buffer
+out.write(b'LXEX\\x01'+bytes((len(slots),)))
+for index,(suffix,limit) in enumerate(slots):
+ name='engine.stdout' if suffix=='engine.stdout' else base+suffix
+ path='/workspace/'+name
+ try:fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ except FileNotFoundError:
+  out.write(struct.pack('!BBI',index,0,0));continue
+ except OSError:sys.exit(78)
+ try:
+  info=os.fstat(fd)
+  if not stat.S_ISREG(info.st_mode) or info.st_size>limit:sys.exit(78)
+  with os.fdopen(fd,'rb') as source:
+   fd=-1
+   data=source.read(limit+1)
+  if len(data)>limit:sys.exit(78)
+ except OSError:sys.exit(78)
+ finally:
+  if fd>=0:os.close(fd)
+ out.write(struct.pack('!BBI',index,1,len(data)))
+ out.write(data)
+out.flush()
+"""
+_BATCH_EXPORT = _BATCH_EXPORT_TEMPLATE.replace("__SLOTS__", repr(_BATCH_EXPORT_SLOTS))
 _VM_BOUNDARY_PREFLIGHT = """import os,socket,json
 os.setgroups([]);os.setgid(65534);os.setuid(65534)
 result={'uid':os.getuid(),'private_process_read':False,'network_connect':False}
@@ -92,6 +131,65 @@ def _read_remote_bounded(sandbox, path, limit):
     return data
 
 
+def _decode_remote_batch(payload):
+    """Decode the fixed, ordered, bounded binary artifact frame."""
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) > _BATCH_EXPORT_MAX_BYTES:
+        raise ModalEngineUnavailable("Remote artifact batch exceeds limit")
+    view = memoryview(payload)
+    minimum = len(_BATCH_EXPORT_MAGIC) + 1
+    if len(payload) < minimum or payload[:len(_BATCH_EXPORT_MAGIC)] != _BATCH_EXPORT_MAGIC:
+        raise ModalEngineUnavailable("Invalid remote artifact batch header")
+    count = payload[len(_BATCH_EXPORT_MAGIC)]
+    if count != len(_BATCH_EXPORT_SLOTS):
+        raise ModalEngineUnavailable("Invalid remote artifact batch count")
+
+    offset = minimum
+    total = 0
+    records = {}
+    for expected_index, (name, limit) in enumerate(_BATCH_EXPORT_SLOTS):
+        if len(payload) - offset < _BATCH_EXPORT_HEADER.size:
+            raise ModalEngineUnavailable("Truncated remote artifact batch header")
+        index, status, size = _BATCH_EXPORT_HEADER.unpack_from(payload, offset)
+        offset += _BATCH_EXPORT_HEADER.size
+        if index != expected_index:
+            raise ModalEngineUnavailable("Invalid remote artifact batch order")
+        if status == 0:
+            if size != 0:
+                raise ModalEngineUnavailable("Invalid missing artifact frame")
+            records[name] = None
+            continue
+        if status != 1 or size > limit or size > _BATCH_EXPORT_LIMIT - total:
+            raise ModalEngineUnavailable("Invalid remote artifact frame size")
+        if len(payload) - offset < size:
+            raise ModalEngineUnavailable("Truncated remote artifact batch data")
+        records[name] = view[offset:offset + size]
+        offset += size
+        total += size
+    if offset != len(payload):
+        raise ModalEngineUnavailable("Unexpected remote artifact batch data")
+    return records
+
+
+def _read_remote_batch(sandbox, basename, timeout):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", basename):
+        raise ModalEngineUnavailable("Invalid engine basename for artifact export")
+    process = sandbox.exec("python3", "-c", _BATCH_EXPORT, basename,
+                           timeout=timeout, text=False, secrets=[])
+    payload = bytearray()
+    # Modal's pinned text=False stream yields bytes; cap the aggregate while
+    # consuming chunks rather than relying on an unbounded whole-stream read.
+    for chunk in process.stdout:
+        if not isinstance(chunk, bytes):
+            raise ModalEngineUnavailable("Invalid remote artifact batch stream")
+        if len(chunk) > _BATCH_EXPORT_MAX_BYTES - len(payload):
+            raise ModalEngineUnavailable("Remote artifact batch exceeds limit")
+        payload.extend(chunk)
+    code = process.wait()
+    if code != 0:
+        raise ModalEngineUnavailable("Remote artifact batch export rejected")
+    return _decode_remote_batch(payload)
+
+
 class ModalEngineUnavailable(RuntimeError):
     pass
 
@@ -109,10 +207,11 @@ class _BoundedRemoteReader:
             self.process.wait()
             if self.process.killed:
                 return b""
+            if self.process._stdout_data is None:
+                raise FileNotFoundError(_REMOTE + "/engine.stdout")
             import io
 
-            self.file = io.BytesIO(_read_remote_bounded(self.process.sandbox, _REMOTE + "/engine.stdout",
-                                                       MAX_COMPILE_LOG_BYTES))
+            self.file = io.BytesIO(self.process._stdout_data)
         remaining = MAX_COMPILE_LOG_BYTES - self.read_bytes
         if remaining <= 0:
             return b""
@@ -143,6 +242,7 @@ class ModalEngineProcess:
         self.stderr = None
         self._lock = threading.Lock()
         self._copied = False
+        self._stdout_data = None
         self.remote_workspace = _REMOTE
 
     @property
@@ -187,16 +287,34 @@ class ModalEngineProcess:
                 # Kernel profile denies forks; the VM root bridge reaps its
                 # dedicated UID before returning. Export itself remains
                 # no-follow, regular-file-only and bounded even on races.
-                for suffix, limit in _OUTPUT_LIMITS.items():
-                    remote = _REMOTE + "/" + self.basename + suffix
-                    try:
-                        data = _read_remote_bounded(self.sandbox, remote, limit)
-                    except FileNotFoundError:
+                session = getattr(self, "renderer_session", None)
+                if session is None:
+                    export_timeout = 30
+                else:
+                    remaining = session.deadline - time.monotonic()
+                    if session.closed or remaining <= 0:
+                        raise ModalEngineUnavailable("Renderer output deadline exceeded")
+                    export_timeout = max(1, math.ceil(remaining))
+                records = _read_remote_batch(self.sandbox, self.basename, export_timeout)
+                if self.killed:
+                    raise ModalEngineUnavailable("Renderer output export cancelled")
+                if session is not None and (session.closed or time.monotonic() >= session.deadline):
+                    raise ModalEngineUnavailable("Renderer output deadline exceeded")
+
+                artifacts = []
+                for suffix, _limit in _OUTPUT_LIMITS.items():
+                    data = records[suffix]
+                    if data is None:
                         continue
                     target = self.workspace / (self.basename + suffix)
                     if target.is_symlink():
                         raise ModalEngineUnavailable("Local artifact target escapes workspace")
+                    artifacts.append((target, data))
+                # Do not materialize any output until the complete remote frame
+                # and every local target have passed validation.
+                for target, data in artifacts:
                     target.write_bytes(data)
+                self._stdout_data = records["engine.stdout"]
                 self._copied = True
         return code
 
