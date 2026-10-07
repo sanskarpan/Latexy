@@ -47,7 +47,8 @@ function SettingsContent() {
   })
   const providerActionOwnerId = sessionData?.user?.id ?? null
   const providerActionAuthToken = sessionData?.session?.token ?? ''
-  providerActionAuthReadyRef.current = Boolean(sessionData && !sessionLoading && !sessionError)
+  const providerActionAuthReady = Boolean(sessionData && !sessionLoading && !sessionError)
+  providerActionAuthReadyRef.current = providerActionAuthReady
   if (
     providerActionIdentityRef.current.ownerId !== providerActionOwnerId
     || providerActionIdentityRef.current.authToken !== providerActionAuthToken
@@ -221,6 +222,7 @@ function SettingsContent() {
     githubOAuthMountedRef.current = true
     const lifecycle = ++githubOAuthLifecycleRef.current
     return () => {
+      githubOAuthMountedRef.current = false
       // Strict Mode replays cleanup/setup in one turn. Preserve the one-use
       // ticket for that replay, but invalidate it after an actual unmount.
       queueMicrotask(() => {
@@ -264,6 +266,14 @@ function SettingsContent() {
     setGdriveLoading(false)
     setGdriveDisconnecting(false)
   }, [providerActionIdentity.generation])
+
+  useEffect(() => {
+    setGhConnecting(false)
+    if (!providerActionAuthReady && oauthCompletionOwnerRef.current?.provider === 'github') {
+      oauthCompletionOwnerRef.current.active = false
+      oauthCompletionOwnerRef.current = null
+    }
+  }, [providerActionIdentity.generation, providerActionAuthReady])
 
   // Any deferred Google Drive response must lose ownership when this page is
   // removed. The owner also gets replaced when the authenticated account
@@ -451,7 +461,7 @@ function SettingsContent() {
       return
     }
 
-    if (sessionLoading) return
+    if (sessionLoading || (provider === 'github' && sessionError)) return
 
     const ticket = searchParams.get('ticket')
     if (!ticket) {
@@ -465,7 +475,11 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    const completionKey = `${accountKey}:${provider}:${ticket}`
+    // A callback ticket is one intent, not a new intent after account/token
+    // rotation. Never replay a started GitHub ticket as the replacement user.
+    const completionKey = provider === 'github'
+      ? `${provider}:${ticket}`
+      : `${accountKey}:${provider}:${ticket}`
     if (oauthCompletionStartedRef.current === completionKey) return
 
     oauthCompletionStartedRef.current = completionKey
@@ -583,7 +597,7 @@ function SettingsContent() {
         if (providerOwner) providerOwner.active = false
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, router, searchParams, sessionData, sessionLoading])
+  }, [pathname, router, searchParams, sessionData, sessionLoading, sessionError])
 
   // Show success message after OAuth redirect
   useEffect(() => {
