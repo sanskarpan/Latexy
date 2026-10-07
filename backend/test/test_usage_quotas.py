@@ -294,6 +294,37 @@ class TestConsumeQuota:
 @pytest.mark.asyncio
 class TestEnforceQuota:
 
+    @pytest.mark.parametrize("plan,allowed", [("free", False), ("pro", True)])
+    async def test_counter_outage_does_not_log_user_identifiers(
+        self, monkeypatch, caplog, plan, allowed
+    ):
+        import app.core.redis as core_redis
+
+        owner = "test_private_owner\r\nFORGED_QUOTA_EVENT"
+
+        async def unavailable():
+            raise RuntimeError("private diagnostic must not enter logs")
+
+        monkeypatch.setattr(core_redis, "get_redis_cache_client", unavailable)
+        with caplog.at_level("ERROR"):
+            ticket = await entitlement_service.consume_quota(
+                "compilations", user_id=owner, plan=plan
+            )
+
+        assert ticket.allowed is allowed
+        assert ticket.unavailable is True
+        assert ticket.user_id == owner
+        records = [record for record in caplog.records if "Quota counter unavailable" in record.getMessage()]
+        assert len(records) == 1
+        message = records[0].getMessage()
+        assert message == "Quota counter unavailable, failing " + (
+            "open (unlimited plan)" if allowed else "closed"
+        )
+        assert owner not in caplog.text
+        assert "FORGED_QUOTA_EVENT" not in caplog.text
+        assert "private diagnostic" not in caplog.text
+        assert records[0].error_type == "RuntimeError"
+
     async def test_raises_402_with_error_envelope(self):
         from fastapi import HTTPException
 
