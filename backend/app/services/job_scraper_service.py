@@ -60,7 +60,10 @@ def _ip_is_public(ip_str: str) -> bool:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return False
-    return not (
+    # Shared address space (100.64.0.0/10) is neither private nor global.
+    # Negating only the private/reserved flags admits carrier or VPN-local
+    # destinations, including their IPv4-mapped IPv6 representations.
+    return ip.is_global and not (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local
