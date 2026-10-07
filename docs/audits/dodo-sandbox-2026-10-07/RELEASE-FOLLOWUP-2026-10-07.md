@@ -80,6 +80,39 @@ customer records are part of this test result.
 
 ## Material sandbox limits still open
 
+### October 8 handoff checkpoint
+
+The owner requested committed draft handoffs so the feature worktrees can
+continue while root returns to deployed-main QA. Neither draft is merge-ready.
+
+- Security source checkpoint `165f6810`, backend tree `d083d8a8`: restrict the
+  adapter to the exact official HTTPS origin of the active mode, without
+  userinfo/ports/extra paths/query/fragment; omit untrusted webhook event types
+  from failure logs. Test-only URL validation now compares parsed origins, and
+  contrast utilities use a declared, locked CSS selector parser rather than
+  partial escaping. Independent root checks: 31 provider/webhook cases and four
+  frontend cases passed; Ruff/diff checks passed. Agent targeted ESLint/types
+  also passed. A fresh CodeQL scan is required; no alert was dismissed or
+  suppressed. Tracked separately in [#1846](https://github.com/sanskarpan/Latexy/issues/1846).
+  The 4,315-case full run above predates these security follow-ups.
+- GitHub CI `37667949642` at `4a6f8980`: backend lint/tests, frontend lint/build,
+  template extraction, deployment parity and full-stack smoke all passed.
+  Cross-browser quality failed in all five desktop compile/synchronization
+  scenarios during fixture setup: `__latexyMonacoEditor` remained undefined.
+  Review lazy editor-mode initialization before changing assertions; the cause
+  is not certified from that error alone. Browser-quality and complete-current-
+  source acceptance remain open. The earlier failed CI is retained as history.
+- Fresh TEST-only API reads confirm a cross-resource currency inconsistency:
+  the Basic monthly product and linked first/renewal payments show INR 29,900
+  minor units; their subscription reports USD 310 minor units. Payments
+  separately report USD 298 settlement. The provider's
+  [subscription schema](https://docs.dodopayments.com/api-reference/subscriptions/get-subscriptions)
+  describes subscription currency as the payment currency. Do not assume these
+  fields are harmless settlement semantics or normalize currencies. Provider
+  explanation is required before recurring-price/proration acceptance. No
+  checkout, charge, refund, replay or provider-state change was made in this
+  diagnostic; original checkout-intent database access is still required.
+
 1. **Original intent database and event recovery:** the earlier sandbox
    transactions were exercised against a separate local Windows/Docker database
    at the old migration checkpoint. This fresh QA database has the new schema,
