@@ -44,6 +44,24 @@ The same isolated infrastructure and blank provider configuration were used.
 Final JUnit: `/private/tmp/latexy-main-shared-address-final-20261008.xml`, SHA-256
 `f73ca7b2f5f7783fdde24b39a71cd0e5f23a54c08dfd3fafb87bcffadcab6e1a`.
 
+### CI portability correction
+
+[CI 37672931381](https://github.com/sanskarpan/Latexy/actions/runs/37672931381)
+failed only the added unconditional mapped-public control. Its log identifies
+CPython 3.12.3; the local suite used 3.12.10. A direct stdlib comparison confirmed
+`::ffff:8.8.8.8` is global/non-private on both, but `is_reserved` is true on
+3.12.3 and false on 3.12.10. The existing guard therefore legitimately differs
+on this address. No runtime policy was widened to satisfy the new assertion.
+
+The corrected test exercises both reserved-flag states explicitly and preserves
+the existing exclusion. Final local scraper/import acceptance is **118 passed,
+zero skips/errors/failures**, with Ruff and whitespace checks passing. Portable
+JUnit: `/private/tmp/latexy-main-shared-address-portable-20261008.xml`, SHA-256
+`551fb7f99ce5cc17eb860fb6fb751d11d4dfc6db6861a98097bfa41b33439b5a`.
+The exact guard also passed nine stdlib-only address controls on Python 3.12.3,
+including conservative mapped-public rejection; that is not a full-suite run.
+The failed Linux run remains preserved and a fresh final-head CI gate is required.
+
 No full-suite, Linux CI, actual upstream connection, production rollout or
 network-policy certificate is inferred from these focused mocked tests.
 Protected PR checks and post-merge readiness remain separate release gates.
