@@ -1,6 +1,4 @@
 """Actual managed route source-CAS, persistence and collaborator authorization."""
-from test.test_imported_identity_db import run
-from test.test_resume_structure import document
 from uuid import uuid4
 
 import pytest
@@ -11,6 +9,9 @@ from app.api.resume_engine_routes import DocumentPatch, patch_document
 from app.api.resume_structure_routes import StructureMutation, reorder_document
 from app.database.models import Resume, ResumeCollaborator, ResumeTemplate, User
 from app.services.resume_engine.semantic import project_document
+
+from .test_imported_identity_db import run
+from .test_resume_structure import document
 
 
 @pytest.fixture
