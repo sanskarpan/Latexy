@@ -81,7 +81,20 @@ def test_profile_mismatch_falls_back(trusted_profile, field, value):
 
 
 def test_profile_identity_changes_exact_cache_key(monkeypatch):
+    from app.services.render_engine.backend import RendererBackend
     from app.workers.latex_worker import compile_cache_key
+
+    # Cache identity depends on the selected server-owned renderer. Do not let
+    # host Docker discovery choose an unpinned (and correctly non-cacheable)
+    # descriptor for this unit test.
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
+    from app.services.render_engine import backend as render_backend
+
+    monkeypatch.setattr(
+        render_backend,
+        "resolve_backend",
+        lambda compiler: RendererBackend("native", "test-native-renderer", None, cacheable=True),
+    )
     source = MANAGED_ENGLISH_PREAMBLE + r"\begin{document}Hello\end{document}"
     monkeypatch.setattr(profiles, "trusted_format_identity", lambda source, compiler: {"identity_sha256": "a" * 64})
     first = compile_cache_key(source, "pdflatex", {}, "user:test")
