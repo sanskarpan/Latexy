@@ -50,6 +50,14 @@ Draft #1834 is being completed separately; neither draft is release-certified.
   retry rejected chunk loads. Actual production Chromium test passed and proved
   the PDF.js bundle loaded before preview admission. This proves ordering, not a
   measured speedup or an end-to-end latency target.
+- [x] Correct the full-stack smoke to select Source before expecting Monaco;
+  verify initial Resume mode keeps Monaco unloaded. The local real-backend
+  Chromium smoke passed 1/1 in 5.5 seconds. This is route/editor interaction
+  proof, not live OAuth, semantic optimization or compile-latency acceptance.
+- [x] Explicitly install `fonts-texgyre` in the shared Modal TeX image and both
+  Docker renderer images. A new static regression failed before the repair;
+  all 121 deployment/parity guards passed afterward. CI-only installation would
+  not have fixed deployment images. Fresh image build/compile remains required.
 - [ ] Reproduce the previously observed 20–30 second pre-delivery delay with
   current isolated services, separating admission, queue, worker, storage and
   browser paint. Old contended samples are not current performance proof.
@@ -127,6 +135,32 @@ and assets pass actual multilingual, isolation and default-flow acceptance.
   browser latency measurement. The cached Modal image's missing immutable
   asset fingerprint remains a genuine release blocker regardless of the
   Hindi parser correction.
+- The corrected Poppler certifier passed eleven offline regressions and an
+  actual read-only Poppler verification of the retained Hindi PDF. Extraction
+  has byte/time limits and strict UTF-8/exit-code checks; missing Poppler fails
+  before VM creation. Fingerprint discovery is explicitly not a comparison
+  against an independently configured expected production pin.
+
+## Security and combined-release review
+
+- Fresh CodeQL at `66a76a0c` reported seven findings: three unkeyed credential
+  scopes, quota logging and three generated-code test fixtures. Tracked in
+  [#1843](https://github.com/sanskarpan/Latexy/issues/1843); no dismissal or check
+  override was used. These scopes are not password verifiers, but unkeyed
+  fingerprints permit offline credential candidate confirmation/correlation.
+  Keyed scope repair and a fresh scan remain required before acceptance.
+- Quota outage logs now omit owner identifiers and preserve the existing
+  unlimited-plan fail-open versus limited-plan fail-closed policy. All 40 quota
+  tests passed, including two new privacy/injection regressions.
+- Lifecycle fixture child programs now receive paths/modules through argv,
+  not interpolated executable code. All eight focused Node 22 tests and lint
+  passed; a fresh CodeQL scan must confirm those findings are cleared.
+- A no-checkout merge-tree check of engine `8763acb4` and billing `9a5d4a09`
+  found ten conflicted files: migration `0060`, route registration, Playwright
+  server, four frontend contract tests, landing page, trial editor and workspace
+  editor. Other shared files auto-merged, which is not semantic verification.
+  Neither worktree nor draft was overwritten; combined release verification is
+  still required. Each candidate passing alone is not combined acceptance.
 
 Raw diagnostic logs and fabricated PDF scratch files remain local, not committed.
 Full-run log SHA-256: `cac560cdfe7a363b74322631b7c75472facbf5b30c3e0190a77cf6559dbf40c9`.
