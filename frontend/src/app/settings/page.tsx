@@ -63,6 +63,29 @@ function SettingsContent() {
     }
   }
   const providerActionIdentity = providerActionIdentityRef.current
+  type NotificationOwnerIdentity = { ownerId: string | null; generation: number }
+  const notificationOwnerIdentityRef = useRef<NotificationOwnerIdentity>({ ownerId: null, generation: 0 })
+  const notificationMountedRef = useRef(false)
+  const notificationLoadedIdentityRef = useRef<NotificationOwnerIdentity | null>(null)
+  const notificationRequestRef = useRef(0)
+  const notificationEditRevisionRef = useRef(0)
+  const notificationPutInFlightRef = useRef<number | null>(null)
+  const notificationOwnerId = sessionData?.user?.id ?? null
+  const notificationAuthReady = Boolean(
+    notificationOwnerId
+    && sessionData?.session?.token
+    && !sessionLoading
+    && !sessionError,
+  )
+  const notificationAuthReadyRef = useRef(notificationAuthReady)
+  notificationAuthReadyRef.current = notificationAuthReady
+  if (notificationOwnerIdentityRef.current.ownerId !== notificationOwnerId) {
+    notificationOwnerIdentityRef.current = {
+      ownerId: notificationOwnerId,
+      generation: notificationOwnerIdentityRef.current.generation + 1,
+    }
+  }
+  const notificationOwnerIdentity = notificationOwnerIdentityRef.current
 
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
@@ -71,10 +94,19 @@ function SettingsContent() {
     router.push('/workspace')
   }
 
-  // Clear all pending timers on unmount
-  useEffect(() => () => {
-    settingsTimersRef.current.forEach((t) => clearTimeout(t))
-    settingsTimersRef.current.clear()
+  // Deferred notification results and timers belong to this Settings page
+  // lifetime. Invalidate them on unmount and keep Strict Mode replay safe.
+  useEffect(() => {
+    notificationMountedRef.current = true
+    const timers = settingsTimersRef.current
+    return () => {
+      notificationMountedRef.current = false
+      notificationRequestRef.current += 1
+      notificationEditRevisionRef.current += 1
+      notificationPutInFlightRef.current = null
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+    }
   }, [])
 
   function scheduleTimer(fn: () => void, delay: number) {
@@ -130,8 +162,29 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notificationRetryNonce, setNotificationRetryNonce] = useState(0)
   const [desktopNotifs, setDesktopNotifs] = useState(true)
   const [desktopBusy, setDesktopBusy] = useState(false)
+
+  const notificationDataReady = notificationMountedRef.current
+    && notificationAuthReady
+    && notificationLoadedIdentityRef.current?.ownerId === notificationOwnerIdentity.ownerId
+    && notificationLoadedIdentityRef.current?.generation === notificationOwnerIdentity.generation
+
+  // Do not briefly expose the previous user's preferences or save indicators
+  // while the new account's authoritative GET is pending. Same-owner token
+  // refreshes retain local drafts because the owner epoch has not changed.
+  useEffect(() => {
+    notificationLoadedIdentityRef.current = null
+    notificationRequestRef.current += 1
+    notificationEditRevisionRef.current += 1
+    notificationPutInFlightRef.current = null
+    setLoading(Boolean(sessionData))
+    setSaving(false)
+    setSaved(false)
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notificationOwnerIdentity.generation])
 
   // Track the browser's current Notification permission so we can (a) drive the
   // request flow when the toggle is turned on and (b) surface the blocked hint.
@@ -319,15 +372,54 @@ function SettingsContent() {
     const generation = ++integrationStatusGenerationRef.current
     let cancelled = false
     const current = () => !cancelled && integrationStatusGenerationRef.current === generation
+    const ownerIdentity = notificationOwnerIdentity
+    if (!notificationAuthReady) {
+      setLoading(false)
+    } else {
+      if (
+        notificationLoadedIdentityRef.current?.ownerId !== ownerIdentity.ownerId
+        || notificationLoadedIdentityRef.current?.generation !== ownerIdentity.generation
+      ) {
+        setLoading(true)
+      }
+      const notificationRequest = ++notificationRequestRef.current
+      const notificationEditAtStart = notificationEditRevisionRef.current
+      const notificationPutAtStart = notificationPutInFlightRef.current
+      const notificationCurrent = () => (
+        current()
+        && notificationMountedRef.current
+        && notificationOwnerIdentityRef.current.ownerId === ownerIdentity.ownerId
+        && notificationOwnerIdentityRef.current.generation === ownerIdentity.generation
+        && notificationRequestRef.current === notificationRequest
+      )
+      const accountContext = {
+        authToken: sessionData.session?.token ?? '',
+        isCurrent: () => notificationAuthReadyRef.current && notificationCurrent(),
+      }
 
-    apiClient.getNotificationPrefs()
-      .then((nextPrefs) => { if (current()) setPrefs(nextPrefs) })
-      .catch(() => {
-        if (!current()) return
-        console.error('Failed to load notification preferences')
-        setError('Failed to load preferences')
-      })
-      .finally(() => { if (current()) setLoading(false) })
+      apiClient.getNotificationPrefs(accountContext)
+        .then((nextPrefs) => {
+          if (!notificationCurrent()) return
+          notificationLoadedIdentityRef.current = ownerIdentity
+          // A refresh that began before an optimistic edit must not replace
+          // the draft with an older snapshot or supersede an active PUT.
+          if (
+            notificationEditRevisionRef.current === notificationEditAtStart
+            && notificationPutInFlightRef.current === notificationPutAtStart
+            && notificationPutAtStart === null
+          ) {
+            setPrefs(nextPrefs)
+            setError(null)
+          }
+        })
+        .catch(() => {
+          if (!notificationCurrent()) return
+          if (notificationEditRevisionRef.current !== notificationEditAtStart || notificationPutAtStart !== null) return
+          console.error('Failed to load notification preferences')
+          setError('Failed to load preferences')
+        })
+        .finally(() => { if (notificationCurrent()) setLoading(false) })
+    }
 
     apiClient.getGitHubStatus()
       .then((status) => { if (current()) setGhStatus(status) })
@@ -370,7 +462,7 @@ function SettingsContent() {
       if (integrationStatusGenerationRef.current === generation) integrationStatusGenerationRef.current += 1
     }
 
-  }, [sessionData, sessionLoading])
+  }, [sessionData, sessionLoading, sessionError, notificationOwnerIdentity, notificationRetryNonce, notificationAuthReady])
 
   // Do not race an OAuth ticket exchange with the normal status read. A slow
   // pre-redirect `connected: false` response must not overwrite the connected
@@ -665,22 +757,61 @@ function SettingsContent() {
   // instant toggles, so persist immediately and reconcile with the server. On
   // failure we revert to the previous value and surface an error.
   async function persistPrefs(next: NotificationPrefs) {
+    if (
+      !notificationDataReady
+      || !notificationAuthReadyRef.current
+      || !notificationOwnerIdentity.ownerId
+      || !notificationMountedRef.current
+      || notificationPutInFlightRef.current !== null
+      || notificationOwnerIdentityRef.current.ownerId !== notificationOwnerIdentity.ownerId
+      || notificationOwnerIdentityRef.current.generation !== notificationOwnerIdentity.generation
+    ) return
+    const ownerIdentity = notificationOwnerIdentity
+    const revision = ++notificationEditRevisionRef.current
+    notificationPutInFlightRef.current = revision
+    const current = () => (
+      notificationMountedRef.current
+      && notificationOwnerIdentityRef.current.ownerId === ownerIdentity.ownerId
+      && notificationOwnerIdentityRef.current.generation === ownerIdentity.generation
+      && notificationEditRevisionRef.current === revision
+    )
+    const accountContext = {
+      authToken: sessionData?.session?.token ?? '',
+      isCurrent: () => notificationAuthReadyRef.current && current(),
+    }
     const prev = prefs
     setPrefs(next) // optimistic
     setSaving(true)
     setSaved(false)
     setError(null)
     try {
-      const updated = await apiClient.updateNotificationPrefs(next)
+      const updated = await apiClient.updateNotificationPrefs(next, accountContext)
+      if (!current()) return
       setPrefs(updated)
       setSaved(true)
-      scheduleTimer(() => setSaved(false), 2000)
+      scheduleTimer(() => {
+        if (current()) setSaved(false)
+      }, 2000)
     } catch (e: unknown) {
+      if (!current()) return
       setPrefs(prev) // revert optimistic change
       setError(e instanceof Error ? e.message : 'Failed to save preferences')
     } finally {
+      if (!current()) return
+      notificationPutInFlightRef.current = null
       setSaving(false)
     }
+  }
+
+  function retryNotificationPrefs() {
+    if (
+      !notificationOwnerIdentity.ownerId
+      || !notificationAuthReadyRef.current
+      || !notificationMountedRef.current
+    ) return
+    setError(null)
+    setLoading(true)
+    setNotificationRetryNonce((nonce) => nonce + 1)
   }
 
   // Desktop notifications toggle. Turning ON must actually obtain browser
@@ -1417,10 +1548,17 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Email Notifications</h2>
           </div>
 
-          {loading ? (
+          {!notificationDataReady && (loading || sessionLoading) ? (
             <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Loading preferences…
+            </div>
+          ) : !notificationDataReady ? (
+            <div role="alert" className="space-y-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
+              <p>Failed to load preferences.</p>
+              <button type="button" onClick={retryNotificationPrefs} disabled={!notificationAuthReady} className="font-semibold underline disabled:opacity-60">
+                Retry notification preferences
+              </button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1442,7 +1580,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Job completion emails"
                   aria-checked={prefs.job_completed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, job_completed: !prefs.job_completed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1482,7 +1620,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Job failure emails"
                   aria-checked={prefs.job_failed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, job_failed: !prefs.job_failed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1522,7 +1660,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Shared resume view emails"
                   aria-checked={prefs.share_viewed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, share_viewed: !prefs.share_viewed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1562,7 +1700,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Application tracker updates"
                   aria-checked={prefs.tracker_updates}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, tracker_updates: !prefs.tracker_updates })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1596,7 +1734,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Comment mention emails"
                   aria-checked={prefs.comment_mentions}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, comment_mentions: !prefs.comment_mentions })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1630,7 +1768,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Weekly digest emails"
                   aria-checked={prefs.weekly_digest}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, weekly_digest: !prefs.weekly_digest })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1652,7 +1790,7 @@ function SettingsContent() {
             </div>
           )}
 
-          {error && (
+          {notificationDataReady && error && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {error}
             </p>
@@ -1661,12 +1799,12 @@ function SettingsContent() {
           {/* Autosave status — changes persist on toggle, so there is no manual
               Save button and no unsaved state to lose. */}
           <div className="flex items-center gap-1.5 pt-1 text-[11px] text-fg-3" aria-live="polite">
-            {saving ? (
+            {notificationDataReady && saving ? (
               <>
                 <Loader2 size={12} className="animate-spin" />
                 Saving…
               </>
-            ) : saved ? (
+            ) : notificationDataReady && saved ? (
               <>
                 <CheckCircle size={12} className="text-ok" />
                 <span className="text-ok">Saved</span>
