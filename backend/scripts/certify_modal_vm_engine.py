@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,8 +24,24 @@ def audit_denials(output: bytes, expected: int) -> bool:
     return len(audits) == expected and all(verdict == "DENIED" for verdict in audits)
 
 
+def verify_fixture(workspace: Path, basename: str, expected_text: str) -> bool:
+    """A stale/empty PDF or missing glyphs cannot certify a language fixture."""
+    from pdfminer.high_level import extract_text
+
+    pdf, log = workspace / f"{basename}.pdf", workspace / f"{basename}.log"
+    if not pdf.is_file() or not log.is_file() or not pdf.stat().st_size:
+        return False
+    if re.search(r"Missing character|^!", log.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
+        return False
+    extracted = unicodedata.normalize("NFKC", extract_text(pdf))
+    return unicodedata.normalize("NFKC", expected_text) in extracted
+
+
 def main():
     import modal
+    # Fail before creating billable infrastructure if the local inspection
+    # dependency from the project lock is not installed in the operator env.
+    import pdfminer.high_level  # noqa: F401
 
     image_id = "im-1fho7eMXjj9Z60ziS7Kf6J"
     sandbox = None
@@ -54,10 +71,11 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                 while chunk := process.stdout.read(8192):
                     output += chunk
                 denied = audit_denials(output, 3)
+                text_checked = verify_fixture(workspace, "resume", "Latin")
                 print(json.dumps({"case": "fontspec_and_hostile_reads", "returncode": code,
                                   "pdf": (workspace / "resume.pdf").is_file(),
-                                  "three_private_denied": denied}))
-                if code or not denied:
+                                  "three_private_denied": denied, "text_and_glyphs_checked": text_checked}))
+                if code or not denied or not text_checked:
                     evidence = Path(__file__).resolve().parents[1] / "temp" / ("vm-certification-failure-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
                     evidence.mkdir(parents=True, exist_ok=False)
                     for name in ("resume.tex", "resume.log", "resume.fls"):
@@ -81,8 +99,10 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                                           workdir="/workspace", text=False, secrets=[])
                     child = ModalEngineProcess(sandbox, remote, workspace, name)
                     code = child.wait(timeout=80)
-                    print(json.dumps({"case": name, "returncode": code, "pdf": (workspace / f"{name}.pdf").is_file()}))
-                    if code or not (workspace / f"{name}.pdf").is_file():
+                    text_checked = verify_fixture(workspace, name, "हिंदी" if name == "hindi" else "日本語")
+                    print(json.dumps({"case": name, "returncode": code, "pdf": (workspace / f"{name}.pdf").is_file(),
+                                      "text_and_glyphs_checked": text_checked}))
+                    if code or not text_checked:
                         evidence = Path(__file__).resolve().parents[1] / "temp" / ("vm-certification-failure-" + name + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
                         evidence.mkdir(parents=True, exist_ok=False)
                         for artifact in ("resume.tex", f"{name}.log", f"{name}.fls", f"{name}.pdf"):
