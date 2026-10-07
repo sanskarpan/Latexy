@@ -64,6 +64,7 @@ from ..services.latex_service import (
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
 from ..services.render_engine.cancellation import CancellationPoll
+from ..services.resume_engine.credential_scope import credential_scope as credential_scope_for_api_key
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     BoundedReadError,
@@ -334,7 +335,7 @@ def optimize_and_compile_task(
                 "owner_scope": user_id or device_fingerprint,
                 "level": optimization_level, "sections": target_sections,
                 "instructions": custom_instructions, "model": model or settings.OPENAI_MODEL,
-                "credential_hash": hashlib.sha256(api_key.encode()).hexdigest(),
+                "credential_hash": credential_scope_for_api_key(api_key),
                 "provider_url": settings.OPENAI_BASE_URL,
                 "compact_enabled": settings.RESUME_COMPACT_PATCHES_ENABLED,
                 "persona": persona, "industry": industry, "seniority": seniority,
