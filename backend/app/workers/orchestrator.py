@@ -64,7 +64,6 @@ from ..services.latex_service import (
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
 from ..services.render_engine.cancellation import CancellationPoll
-from ..services.resume_engine.credential_scope import credential_scope as credential_scope_for_api_key
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     BoundedReadError,
@@ -308,7 +307,12 @@ def optimize_and_compile_task(
         # ================================================================ #
         # Stage 1 — LLM optimization with token streaming (0% → 40%)      #
         # ================================================================ #
-        from ..services.resume_engine.stages import OptimizationCheckpoint, StageCheckpointError, stage_fingerprint
+        from ..services.resume_engine.credential_scope import credential_scope as credential_scope_for_api_key
+        from ..services.resume_engine.stages import (
+            OptimizationCheckpoint,
+            StageCheckpointError,
+            private_stage_context_fingerprint,
+        )
 
         checkpoint = None
         stage_output = None
@@ -330,7 +334,7 @@ def optimize_and_compile_task(
             )
             paid_stage_retry_safe = True
         if not semantic_run and lifecycle_owned and settings.RESUME_STAGE_CHECKPOINTS_ENABLED is True:
-            fingerprint = stage_fingerprint({
+            fingerprint = private_stage_context_fingerprint({
                 "source": latex_content, "job_description": job_description,
                 "owner_scope": user_id or device_fingerprint,
                 "level": optimization_level, "sections": target_sections,
