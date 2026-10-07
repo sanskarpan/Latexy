@@ -1,6 +1,5 @@
 """Actual PostgreSQL metadata CAS and manual source-save identity integration."""
 import asyncio
-from test.test_imported_identity import SOURCE, identities
 from uuid import uuid4
 
 import pytest
@@ -15,6 +14,8 @@ from app.services.resume_engine.document import digest
 from app.services.resume_engine.imported_identity_db import ensure_imported_projection
 from app.services.resume_engine.semantic import project_document
 from app.utils.db_url import normalize_database_url
+
+from .test_imported_identity import SOURCE, identities
 
 
 def run(operation):
