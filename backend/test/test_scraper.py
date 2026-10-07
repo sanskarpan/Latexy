@@ -41,7 +41,7 @@ def test_ssrf_guard_rejects_shared_address_space(address: str) -> None:
     assert _ip_is_public(address) is False
 
 
-@pytest.mark.parametrize("address", ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])
+@pytest.mark.parametrize("address", ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"])
 def test_ssrf_guard_preserves_public_unicast(address: str) -> None:
     assert _ip_is_public(address) is True
 
