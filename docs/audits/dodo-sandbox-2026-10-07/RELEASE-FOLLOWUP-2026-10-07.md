@@ -65,7 +65,7 @@ customer records are part of this test result.
   editor and “Update PDF preview” control, then switches to Source and checks
   Monaco. The mobile quality fixture also targets the current exact “Update PDF
   preview” accessible name instead of the retired “Recompile” label. A local
-  isolated Chromium run passed **1/1** (`5.5s`) against its dedicated
+  isolated Chromium run passed **1/1** against its dedicated
   backend/frontend pair. The earlier GitHub smoke run used the old selector
   and failed because “Start compiling →” no longer exists; that is fixture
   drift, not evidence that the current smoke passes in GitHub Actions. A macOS
