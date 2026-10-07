@@ -607,7 +607,7 @@ class PaymentService:
                 event.status = "failed"
                 event.last_error = type(exc).__name__[:240]
                 await db.commit()
-            logger.error("Dodo webhook processing failed", extra={"event_type": event_type, "error_type": type(exc).__name__})
+            logger.error("Dodo webhook processing failed", extra={"error_type": type(exc).__name__})
             return {"success": False, "retryable": True, "error": "Webhook processing failed"}
 
     async def _process_webhook_event(
