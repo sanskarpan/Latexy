@@ -10,7 +10,7 @@ from app.services.resume_engine.semantic import DocumentConflict, node_hash
 
 
 def node(identity, text, section="experience", entry="role-a"):
-    return {"node_id": identity, "node_revision": node_hash(identity, text), "text": text,
+    return {"node_id": identity, "node_revision": node_hash(identity, text), "kind": "bullet", "text": text,
             "section": section, "entry_id": entry, "ai_editable": True}
 
 
