@@ -6,7 +6,7 @@ Bearer authentication, and wire request/response details.
 
 import re
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -25,7 +25,24 @@ class DodoProvider:
 
     def __init__(self, *, api_key: str | None = None, base_url: str | None = None, timeout: float = 15.0):
         self.api_key = api_key if api_key is not None else settings.dodo_api_key
-        self.base_url = (base_url or settings.dodo_api_base_url).rstrip("/")
+        configured_url = base_url if base_url is not None else settings.dodo_api_base_url
+        expected_url = settings.dodo_api_base_url
+        parsed_url = urlsplit(configured_url)
+        parsed_expected = urlsplit(expected_url)
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.netloc != parsed_expected.netloc
+            or parsed_url.path not in {"", "/"}
+            or parsed_url.query
+            or parsed_url.fragment
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.port is not None
+        ):
+            # Never send the provider credential to a caller-selected host.
+            # The active DODO_MODE also remains the authority for test/live.
+            raise ValueError("Dodo API base URL must match the active mode's official HTTPS origin")
+        self.base_url = expected_url
         self.timeout = timeout
 
     @property
