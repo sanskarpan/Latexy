@@ -175,7 +175,7 @@ def _patch_orcid_error(exc: Exception):
 
 # conftest already provides: client, auth_headers, expired_auth_headers, db_session
 # Import _insert_session locally so auth tests can build their own sessions.
-from conftest import _insert_session  # noqa: E402
+from .conftest import _insert_session  # noqa: E402
 
 
 @pytest.fixture
