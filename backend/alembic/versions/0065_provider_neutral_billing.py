@@ -1,7 +1,7 @@
 """Add provider-neutral Dodo billing fields without deleting legacy financial data.
 
-Revision ID: 0059
-Revises: 0058
+Revision ID: 0065
+Revises: 0064
 """
 
 import sqlalchemy as sa
@@ -9,8 +9,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0059"
-down_revision = "0058"
+revision = "0065"
+down_revision = "0064"
 branch_labels = None
 depends_on = None
 
