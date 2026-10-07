@@ -103,7 +103,7 @@ export default function LandingPage() {
       {/* ── trust strip (honest facts, no fabricated numbers) ── */}
       <div className="border-y border-line bg-surface-2">
         <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-2 px-5 py-3 font-ui text-xs text-fg-3 sm:px-8">
-          <span><span className="text-fg">Sub-second</span> compiles</span>
+          <span><span className="text-fg">PDF previews</span> as you edit</span>
           <span><span className="text-fg">4</span> import sources: <span className="text-accent-strong">github · url · linkedin · pdf</span></span>
           <span><span className="text-fg">Per-change</span> accept / reject / edit</span>
           <span><span className="text-fg">BYOK</span> — your key, your models</span>
@@ -146,7 +146,7 @@ Go, Rust, Kubernetes, Postgres`}</pre>
           </div>
           <div className="bg-surface p-5">
             <div className="mb-3 flex justify-between font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
-              <span>resume.pdf</span><span>1 page · compiled 0.8s</span>
+              <span>resume.pdf</span><span>PDF preview example</span>
             </div>
             <p className="font-display text-xl font-semibold text-fg">Ada Lovelace</p>
             <p className="font-ui text-xs text-fg-3">Staff Engineer · London</p>
