@@ -5,10 +5,14 @@ volumes, networking or OIDC. Only booleans and fabricated probe text printed.
 """
 
 import json
+import os
 import re
+import selectors
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.render_engine.modal_sandbox import ModalEngineProcess, create_modal_engine
 
+MAX_FIXTURE_PDF_BYTES = 4 * 1024 * 1024
+MAX_FIXTURE_TEXT_BYTES = 256 * 1024
+PDFTOTEXT_TIMEOUT_SECONDS = 10
+
 
 def audit_denials(output: bytes, expected: int) -> bool:
     # TeX can append page/font diagnostics to the same line after a marker.
@@ -24,25 +32,80 @@ def audit_denials(output: bytes, expected: int) -> bool:
     return len(audits) == expected and all(verdict == "DENIED" for verdict in audits)
 
 
-def verify_fixture(workspace: Path, basename: str, expected_text: str) -> bool:
-    """A stale/empty PDF or missing glyphs cannot certify a language fixture."""
-    from pdfminer.high_level import extract_text
+def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
+    """Extract bounded fixture text with the production primary Poppler tool."""
+    if pdf.stat().st_size > MAX_FIXTURE_PDF_BYTES:
+        return None
 
+    process = None
+    selector = None
+    output = bytearray()
+    deadline = time.monotonic() + PDFTOTEXT_TIMEOUT_SECONDS
+    try:
+        process = subprocess.Popen(
+            [pdftotext_bin, "-layout", "-enc", "UTF-8", str(pdf), "-"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        if process.stdout is None:
+            return None
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                return None
+            chunk = os.read(process.stdout.fileno(), min(8192, MAX_FIXTURE_TEXT_BYTES + 1 - len(output)))
+            if not chunk:
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+                if process.returncode != 0:
+                    return None
+                return output.decode("utf-8", errors="strict")
+            output.extend(chunk)
+            if len(output) > MAX_FIXTURE_TEXT_BYTES:
+                return None
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
+        return None
+    finally:
+        if selector is not None:
+            selector.close()
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.SubprocessError:
+                    pass
+            if process.stdout is not None:
+                process.stdout.close()
+
+
+def verify_fixture(
+    workspace: Path, basename: str, expected_text: str, *, pdftotext_bin: str | None = None
+) -> bool:
+    """A stale/empty PDF or missing glyphs cannot certify a language fixture."""
     pdf, log = workspace / f"{basename}.pdf", workspace / f"{basename}.log"
     if not pdf.is_file() or not log.is_file() or not pdf.stat().st_size:
         return False
     if re.search(r"Missing character|^!", log.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
         return False
-    extracted = unicodedata.normalize("NFKC", extract_text(pdf))
+    pdftotext_bin = pdftotext_bin or shutil.which("pdftotext")
+    if not pdftotext_bin:
+        return False
+    extracted = _extract_fixture_text(pdf, pdftotext_bin)
+    if extracted is None:
+        return False
+    extracted = unicodedata.normalize("NFKC", extracted)
     return unicodedata.normalize("NFKC", expected_text) in extracted
 
 
 def main():
-    import modal
+    pdftotext_bin = shutil.which("pdftotext")
+    if not pdftotext_bin:
+        raise RuntimeError("pdftotext (Poppler) is required in the operator environment before VM certification")
 
-    # Fail before creating billable infrastructure if the local inspection
-    # dependency from the project lock is not installed in the operator env.
-    import pdfminer.high_level  # noqa: F401
+    import modal
 
     image_id = "im-1fho7eMXjj9Z60ziS7Kf6J"
     sandbox = None
@@ -74,15 +137,17 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                 )
                 marker_output = marker.stdout.read()
                 assets = marker_output.decode("ascii", errors="replace").strip() if len(marker_output) <= 128 else ""
-                asset_identity_verified = marker.wait() == 0 and bool(re.fullmatch(r"[0-9a-f]{64}", assets))
-                print(json.dumps({"image_id": image_id, "assets_fingerprint": assets if asset_identity_verified else None,
-                                  "asset_identity_verified": asset_identity_verified}))
+                asset_fingerprint_discovered = marker.wait() == 0 and bool(re.fullmatch(r"[0-9a-f]{64}", assets))
+                print(json.dumps({"image_id": image_id,
+                                  "assets_fingerprint": assets if asset_fingerprint_discovered else None,
+                                  "asset_fingerprint_discovered": asset_fingerprint_discovered,
+                                  "asset_identity_comparison": "not_configured"}))
                 code = process.wait(timeout=90)
                 output = b""
                 while chunk := process.stdout.read(8192):
                     output += chunk
                 denied = audit_denials(output, 3)
-                text_checked = verify_fixture(workspace, "resume", "Latin")
+                text_checked = verify_fixture(workspace, "resume", "Latin", pdftotext_bin=pdftotext_bin)
                 print(json.dumps({"case": "fontspec_and_hostile_reads", "returncode": code,
                                   "pdf": (workspace / "resume.pdf").is_file(),
                                   "three_private_denied": denied, "text_and_glyphs_checked": text_checked}))
@@ -110,7 +175,12 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                                           workdir="/workspace", text=False, secrets=[])
                     child = ModalEngineProcess(sandbox, remote, workspace, name)
                     code = child.wait(timeout=80)
-                    text_checked = verify_fixture(workspace, name, "हिंदी" if name == "hindi" else "日本語")
+                    text_checked = verify_fixture(
+                        workspace,
+                        name,
+                        "हिंदी" if name == "hindi" else "日本語",
+                        pdftotext_bin=pdftotext_bin,
+                    )
                     print(json.dumps({"case": name, "returncode": code, "pdf": (workspace / f"{name}.pdf").is_file(),
                                       "text_and_glyphs_checked": text_checked}))
                     if code or not text_checked:
@@ -122,7 +192,7 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                         (evidence / "engine.stdout").write_bytes(child.stdout.read(262144))
                         print(json.dumps({"private_failure_artifacts": str(evidence)}))
                         raise RuntimeError("VM multilingual proof failed")
-                if not asset_identity_verified:
+                if not asset_fingerprint_discovered:
                     raise RuntimeError("VM fixtures passed but immutable renderer asset identity is unavailable")
         finally:
             if sandbox is not None:
