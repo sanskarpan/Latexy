@@ -1,6 +1,8 @@
 """Trusted formats must be exact, immutable, optional and cache-distinct."""
 import hashlib
 import json
+import re
+import shutil
 
 import pytest
 
@@ -12,8 +14,34 @@ from scripts.benchmark_trusted_format import FIXTURE
 
 def test_preamble_extraction_preserves_builder_source():
     source = resume_builder_service.render(FIXTURE, "professional").latex_content
-    assert hashlib.sha256(source.encode()).hexdigest() == "cdd4a6d58032584057c44b07133dd7a19e386c9c147a901569a9ab718175d580"
+    previous_source = source.replace(r"\usepackage[hidelinks,bookmarks=false]{hyperref}", r"\usepackage[hidelinks]{hyperref}")
+    # The intentional preamble option keeps every source line/body unchanged.
+    assert hashlib.sha256(previous_source.encode()).hexdigest() == "cdd4a6d58032584057c44b07133dd7a19e386c9c147a901569a9ab718175d580"
     assert source.startswith(MANAGED_ENGLISH_PREAMBLE + r"\begin{document}")
+
+
+@pytest.mark.parametrize("category", ["ats_safe", "minimal", "software_engineering", "executive", "graduate"])
+def test_owned_builder_has_no_outline_commands(category):
+    source = resume_builder_service.render(FIXTURE, category).latex_content
+    assert source.count(r"\usepackage[hidelinks,bookmarks=false]{hyperref}") == 1
+    assert not re.search(r"\\(?:section|subsection)\{|\\(?:addcontentsline|pdfbookmark|label)\b", source)
+
+
+@pytest.mark.parametrize("compiler", ["lualatex", "pdflatex"])
+def test_real_owned_builder_converges_once_with_links_and_synctex(tmp_path, compiler):
+    if not shutil.which(compiler) or not all(shutil.which(name) for name in ("pdftotext", "pdftoppm", "pdfinfo", "synctex")):
+        pytest.skip("Real TeX/Poppler/SyncTeX tools unavailable")
+    from scripts.benchmark_managed_bookmarks import EXPECTED_URLS, render
+
+    source = resume_builder_service.render(FIXTURE, "ats_safe").latex_content
+    source = source.replace(r"\end{document}", r"\par\href{mailto:avery@example.test}{Email probe} "
+                            r"\href{https://example.test/profile}{Website probe}" + "\n" + r"\end{document}")
+    result = render(tmp_path / "owned", source, compiler)
+    assert result["passes"] == 1
+    assert result["rerun_messages_by_pass"] == [[]]
+    assert result["annotation_urls"] == EXPECTED_URLS
+    assert result["synctex_source_records"] > 0
+    assert not (tmp_path / "owned/resume.out").exists()
 
 
 @pytest.fixture
@@ -67,6 +95,18 @@ def test_exact_profile_and_ordinary_fallbacks(trusted_profile, monkeypatch):
     assert profiles.trusted_format_identity(source, "pdflatex") is None
 
 
+def test_previous_owned_format_never_handles_new_preamble(trusted_profile):
+    profile, save, _, _ = trusted_profile
+    profile["profile_id"] = "latexy-managed-english-v1"
+    previous_preamble = MANAGED_ENGLISH_PREAMBLE.replace(
+        r"\usepackage[hidelinks,bookmarks=false]{hyperref}", r"\usepackage[hidelinks]{hyperref}")
+    profile["preamble_sha256"] = hashlib.sha256(previous_preamble.encode()).hexdigest()
+    save()
+    source = MANAGED_ENGLISH_PREAMBLE + r"\begin{document}Hello\end{document}"
+    assert profiles.trusted_format_identity(source, "pdflatex") is None
+    assert profiles.trusted_format_flags(source, "pdflatex") == []
+
+
 @pytest.mark.parametrize("field,value", [
     ("format_sha256", "f" * 64), ("compiler_binary_sha256", "f" * 64),
     ("preamble_sha256", "f" * 64), ("format_size", True), ("format_size", 100_000_000),
@@ -102,6 +142,9 @@ def test_profile_identity_changes_exact_cache_key(monkeypatch):
     assert compile_cache_key(source, "pdflatex", {}, "user:test") != first
     monkeypatch.setattr(profiles, "trusted_format_identity", lambda source, compiler: None)
     assert compile_cache_key(source, "pdflatex", {}, "user:test") != first
+    previous = source.replace(r"\usepackage[hidelinks,bookmarks=false]{hyperref}", r"\usepackage[hidelinks]{hyperref}")
+    for compiler in ("pdflatex", "lualatex"):
+        assert compile_cache_key(source, compiler, {}, "user:test") != compile_cache_key(previous, compiler, {}, "user:test")
 
 
 def test_replaced_asset_invalidates_memoized_verification(trusted_profile):
