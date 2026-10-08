@@ -76,6 +76,7 @@ export default function TryPage() {
   const [jobDescription, setJobDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [cancelledPreviewJobId, setCancelledPreviewJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   // Only the successfully adopted blob may provide a PDF/SyncTeX pairing.
   const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
@@ -194,6 +195,8 @@ export default function TryPage() {
   const previewAccountIdentity = `${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`
   const previewRequestIdentityRef = useRef(previewAccountIdentity)
   previewRequestIdentityRef.current = previewAccountIdentity
+  const activeJobAtRenderRef = useRef(activeJobId)
+  activeJobAtRenderRef.current = activeJobId
 
   const previewAccountRef = useRef(previewAccountIdentity)
   useEffect(() => {
@@ -201,6 +204,7 @@ export default function TryPage() {
     previewAccountRef.current = previewAccountIdentity
     clearPdfPreview()
     setActiveJobId(null)
+    setCancelledPreviewJobId(null)
   }, [previewAccountIdentity, clearPdfPreview])
   // When trial_limits flag is off, every visitor can run without restriction
   const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
@@ -499,14 +503,20 @@ export default function TryPage() {
 
   const handleCancel = useCallback(async () => {
     if (!activeJobId) return
+    const identityAtStart = previewRequestIdentityRef.current
     try {
       await apiClient.cancelJob(activeJobId)
+      if (previewRequestIdentityRef.current !== identityAtStart) return
+      // The stream is detached below; release the scheduler only after the
+      // server acknowledged cancellation, without waiting for its final event.
+      setCancelledPreviewJobId(activeJobId)
+      if (activeJobAtRenderRef.current !== activeJobId) return
       setStagedOptimization(null)
       lastRunOptimizeRef.current = false
       setActiveJobId(null)
       toast.success('Compile cancelled')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Cancel failed')
+      if (previewRequestIdentityRef.current === identityAtStart) toast.error(error instanceof Error ? error.message : 'Cancel failed')
     }
   }, [activeJobId])
 
@@ -572,6 +582,7 @@ export default function TryPage() {
 
   const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompile || editorMode === 'pdf',
     blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    cancelledJobId: cancelledPreviewJobId,
     submit: async (source) => await handleAutoCompile(source) ?? null,
   })
 
@@ -792,10 +803,12 @@ export default function TryPage() {
   }
   const saveGuestField = async (node: ResumeEngineNode, text: string) => {
     const actionStarted = performance.now()
+    const identityAtStart = previewRequestIdentityRef.current
     if (!engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
     const response = await apiClient.patchGuestEngineDocument({ latex_content: latexContent,
       expected_source_sha256: engineDocument.source_sha256,
       patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }] })
+    if (previewRequestIdentityRef.current !== identityAtStart) throw new Error('Your session changed. Reopen the field before saving.')
     if (latexContent !== sourceAtRenderRef.current) throw new Error('Stale field')
     setLatexContent(response.latex_content); setEngineDocument(response.document)
     queuePreview(response.latex_content, actionStarted, true)

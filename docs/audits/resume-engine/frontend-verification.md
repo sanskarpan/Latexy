@@ -2,7 +2,7 @@
 
 The implementation uses an immutable PDF artifact as the preview, then enables field overlays only when document identity, content revision, source hash, PDF hash, node revision, exact text and source span all match. Rotated pages, ambiguous mappings and opaque custom source remain read-only on the PDF; supported plain fields and advanced Source mode remain available.
 
-The preview scheduler holds one admitted/running job and one replaceable latest source. Its adaptive debounce is 150–250 ms. Backend quota enforcement remains authoritative. A failed or ambiguous admission is not automatically repeated for unchanged source. Explicit accepted/rejected AI decisions rebuild the authoritative draft, including reject-all where the draft text is unchanged.
+The preview scheduler holds one admitted/running job and one replaceable latest source. Automatic typing previews wait for five seconds of quiet and at least ten seconds between admissions. Explicitly saved fields, structure changes and accepted/rejected AI decisions render promptly through the same running-job fence. Backend quota enforcement remains authoritative. A failed or ambiguous admission is not automatically repeated for unchanged source. Explicit accepted/rejected AI decisions rebuild the authoritative draft, including reject-all where the draft text is unchanged.
 
 Managed documents use the persistent semantic run API with Quick, Standard and Deep effort. Provisional suggestions are informational. Decisions require the backend's terminal acceptance-ready receipt. Imported templates use a separate plain-language whole-document review; their custom layout is preserved. Candidate artifacts cannot be exported as accepted drafts. No paid model invocation was used for this verification.
 

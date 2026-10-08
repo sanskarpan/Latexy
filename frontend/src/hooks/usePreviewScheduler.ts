@@ -19,6 +19,8 @@ export function recordPreviewFirstPaint(jobId: string) {
 
 export function usePreviewScheduler(options: {
   identity: string; enabled: boolean; blocked: boolean; jobId: string | null; status: string
+  /** An acknowledged cancellation may detach the stream before its terminal event. */
+  cancelledJobId?: string | null
   submit: (source: string) => Promise<string | null>
 }) {
   const submitRef = useRef(options.submit)
@@ -41,5 +43,8 @@ export function usePreviewScheduler(options: {
   useEffect(() => {
     if (options.jobId && ['completed', 'failed', 'cancelled'].includes(options.status)) scheduler.complete(options.jobId)
   }, [scheduler, options.jobId, options.status])
+  useEffect(() => {
+    if (options.cancelledJobId) scheduler.complete(options.cancelledJobId)
+  }, [scheduler, options.cancelledJobId])
   return useCallback((source: string, editedAt?: number, force = false) => scheduler.request(source, editedAt, force), [scheduler])
 }

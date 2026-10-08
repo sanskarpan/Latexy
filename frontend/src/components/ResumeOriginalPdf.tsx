@@ -8,7 +8,7 @@ import PDFPreview from '@/components/PDFPreview'
 
 /** Original uploads are owner-only attachments, never editable/export artifacts. */
 export default function ResumeOriginalPdf({ resumeId, ownerId }: { resumeId: string; ownerId: string }) {
-  const [receipt, setReceipt] = useState<PdfImportReceipt | null>(null)
+  const [receiptSnapshot, setReceiptSnapshot] = useState<{ identity: string; receipt: PdfImportReceipt } | null>(null)
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -17,17 +17,20 @@ export default function ResumeOriginalPdf({ resumeId, ownerId }: { resumeId: str
   const buttonRef = useRef<HTMLButtonElement>(null)
   const token = apiClient.getAuthToken()
   const identity = `${ownerId}:${resumeId}`
+  // Effects run after paint. Hide another owner's attachment at render time,
+  // including its open blob preview, before asynchronous cleanup runs.
+  const receipt = receiptSnapshot?.identity === identity ? receiptSnapshot.receipt : null
   const currentIdentity = useRef(identity)
   currentIdentity.current = identity
 
   useEffect(() => {
     let stopped = false
     const controller = new AbortController()
-    setReceipt(null); setOpen(false)
+    setReceiptSnapshot(null); setOpen(false)
     if (token) void apiClient.getResumePdfImport(resumeId, {
       authToken: token, isCurrent: () => !stopped && currentIdentity.current === identity,
     }, controller.signal).then((result) => {
-      if (!stopped && currentIdentity.current === identity) setReceipt(result)
+      if (!stopped && currentIdentity.current === identity) setReceiptSnapshot({ identity, receipt: result })
     }).catch(() => { /* Most resumes have no original upload; collaborators cannot access it. */ })
     return () => { stopped = true; controller.abort() }
   }, [resumeId, identity, token])
