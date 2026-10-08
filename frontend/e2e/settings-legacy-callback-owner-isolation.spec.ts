@@ -167,7 +167,9 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       installing: null,
       waiting: null,
       active: null,
-      scope: new URL('/', window.location.href).href,
+      // `window.open()` first creates an about:blank popup before it navigates.
+      // Avoid throwing in that initial document so the callback observer is also installed.
+      scope: window.location.protocol === 'about:' ? '' : `${window.location.origin}/`,
       addEventListener: () => undefined,
       removeEventListener: () => undefined,
       update: async () => registration,
@@ -476,7 +478,7 @@ async function refreshSession(page: Page, fixture: Fixture, next: Owner, token?:
 }
 
 async function flushEffects(page: Page) {
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
 }
 
 async function assertFixtureClean(fixture: Fixture) {
@@ -532,7 +534,7 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-b-1')
     await expect(page.getByText('BobGitHub', { exact: true })).toBeVisible()
     await expect(page.getByText('AliceLegacyGitHub', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toHaveCount(0, { timeout: 1_000 })
     await assertFixtureClean(fixture)
   })
 
@@ -547,8 +549,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await refreshSession(page, fixture, 'b')
     await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-b-1')
     await expect(page.getByText('BobGitHub', { exact: true })).toBeVisible()
-    await expect(page.getByText(/authorization completed, but the connection could not be verified/i)).toHaveCount(0)
-    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toHaveCount(0)
+    await expect(page.getByText(/authorization completed, but the connection could not be verified/i)).toHaveCount(0, { timeout: 1_000 })
+    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toHaveCount(0, { timeout: 1_000 })
     await assertFixtureClean(fixture)
   })
 
