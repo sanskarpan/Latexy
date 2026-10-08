@@ -242,3 +242,12 @@ The live isolated API and worker now use backend tree
 `e2e997bfe6475c847bf52934b5aface464099f3c` (source `36de1a51`) on port 8530.
 The production frontend was unchanged. Main was refetched and remains an
 ancestor. No release gates or issues were closed.
+
+An additional repair in `d095fb83` configures all 59 ORM models before worker
+readiness/fork, opening no database engines/connections. Clean-process regression
+fails on the prior source; startup plus real-S3 suites pass together (8 cases).
+The prior startup fixture's lazy-import mock leak was also repaired; all failed
+and fixed node IDs/hashes are preserved in the latency audit. The new worker's
+first guest task passed all functional checks but took 24.889 s under renewed
+host contention. This result remains recorded and leaves latency uncertified.
+The live worker uses `d095fb83`; the API retains the `36de1a51` storage source.

@@ -129,3 +129,43 @@ not certify a direct transfer of our pdfLaTeX preloaded preamble to Lua, includi
 font state and callbacks. The inference is that a Lua acceleration needs a
 separate owned build and content/link/layout/SyncTeX/isolation proof. No source
 change in this pass silently switches compilers or enables an uncertified format.
+
+## Additional first-task repair: configure ORM metadata before readiness
+
+Source `d095fb837aef3c599a2a5089c110e6a0eb20a583` prepares all ORM relationships
+after required imports and before worker readiness/fork. The previously prepared
+worker still deferred all **59** model mappings to the first ownership query.
+A clean-process diagnostic observed 0.2936 s for that first configuration. The
+new helper leaves zero unconfigured models; a subsequent configuration call
+took 0.000265 s. This moves CPU work into startup; it does not eliminate startup
+cost or establish a full-render speedup. Database engines, sessions and sockets
+are not created by preparation. Failed mappings abort readiness without caching
+a successful preparation. [Exact diagnostic](worker-mapper-preparation-2026-10-08.json).
+
+The clean-process invariant fails on the prior source. The initial combined
+test run exposed an existing fixture leak: patching SQLAlchemy's engine factory
+before importing retention caused retention to retain the raising mock after
+pytest restored SQLAlchemy. That produced two real-storage failures. The fixture
+now imports the alias before patching both locations; initial import safety is
+tested separately in a clean child process. The corrected startup/cold-import
+and actual-S3 suites pass together: **8 passed, zero failed/skipped**, 33.923 s.
+The three S3 cases overlap the earlier three and must not be added as unique tests.
+[All before/failed/fixed counts, node IDs and hashes](mapper-preparation-test-summary-2026-10-08.json).
+Ruff and whitespace checks pass. Test tree `524c1f0f...` differs from committed
+backend tree `d6c7663f...` only by an import-spacing fix in the test fixture.
+
+The new frozen worker reached readiness at 16:35:34 UTC; its first real job was
+`b20a2aaa-9559-4c02-848f-cd94b4537a4b`. The same production guest field flow passed
+actual admission, PDF SHA verification, seven overlays, keyboard/mobile editing
+and Source on demand. No browser/runtime errors or deadline/quota bypass occurred.
+[Full first-task report and screenshots](browser-2026-10-08-mappers-first/preview-browser-benchmark.json).
+Action-to-paint was **24,888.9 ms** and verified-blob-to-paint **1,046.9 ms**.
+The host became substantially slower while the diagnostic tools ran as well;
+this result is retained and does not satisfy the latency gate. One sample cannot
+establish a production distribution or attribute that increase to the code.
+
+Current live isolated worker: `latexy-engine-worker-mappers-20261008`, source
+`d095fb83`, backend tree `d6c7663f38a516d26b94237d39fb717f6dcc6d26`. The API retains
+the storage repair source `36de1a51`; the modified preparation helper runs in the
+worker. The production UI is unchanged. All startup and first-task measurements
+remain local/native; independently pinned cloud acceptance is still outstanding.
