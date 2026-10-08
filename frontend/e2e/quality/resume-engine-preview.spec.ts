@@ -28,6 +28,7 @@ function project(source: string, text = original) {
 test('guest Resume mode edits plain fields and submits exactly one quota-governed preview', async ({ page }) => {
   test.setTimeout(240000)
   const errors: string[] = []; const submissions: Record<string, unknown>[] = []
+  const scoreSources: string[] = []
   const pdfRendererChunks: Array<{ url: string; transferMs: number }> = []
   let rendererReadyAt = 0
   let firstAdmissionAt = 0
@@ -49,9 +50,12 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await page.route('http://localhost:8030/**', route => route.fulfill({ json: {} }))
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
   await page.route('**/config/feature-flags', route => route.fulfill({ json: {} }))
+  await page.route('**/ats/quick-score', route => {
+    scoreSources.push(route.request().postDataJSON().latex_content)
+    return route.fulfill({ json: { score: 49, grade: 'D', sections_found: ['experience'], missing_sections: [], keyword_match_percent: null } })
+  })
   await page.route('**/tenants/resolve-host**', route => route.fulfill({ json: { tenant: null } }))
   await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
-  await page.route('**/ats/quick-score', route => route.fulfill({ json: { score: 80 } }))
   await page.route('**/public/engine/document', async route => {
     const { latex_content } = route.request().postDataJSON()
     const text = latex_content.includes(original) ? original : 'Built internal design system used across 8 product surfaces'
@@ -72,6 +76,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await page.route('**/jobs/guest-preview/state', route => route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
   await page.goto('/try', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Edit your resume' })).toBeVisible()
+  await expect.poll(() => scoreSources.length, { timeout: 6000 }).toBe(1)
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Copy LaTeX source' })).toHaveCount(0)
   await expect.poll(() => pdfRendererChunks.length, { timeout: 30000 }).toBeGreaterThan(0)
@@ -80,6 +85,8 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await page.getByLabel('Experience · bullet').fill('Built internal design system used across 8 product surfaces')
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(1)
+  await expect.poll(() => scoreSources.length, { timeout: 6000 }).toBe(2)
+  expect(scoreSources[1]).toContain('across 8 product surfaces')
   expect(firstAdmissionAt).toBeGreaterThanOrEqual(rendererReadyAt)
   expect(submissions[0].job_type).toBe('latex_compilation')
   expect(submissions[0].latex_content).toContain('across 8 product surfaces')
@@ -99,6 +106,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('across 8 product surfaces')
   await page.getByRole('button', { name: 'Resume', exact: true }).click()
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
+  expect(scoreSources).toHaveLength(2)
   expect(errors).toEqual([])
 })
 

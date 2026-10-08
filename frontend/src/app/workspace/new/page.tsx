@@ -388,7 +388,7 @@ function NewResumePageForm({
   //  Render                                                           //
   // ---------------------------------------------------------------- //
 
-  if (sessionLoading || loadingTemplates) {
+  if (sessionLoading) {
     return (
       <div className="flex h-[70vh] items-center justify-center">
         <LoadingSpinner />
@@ -692,7 +692,7 @@ function NewResumePageForm({
             {/* Template grid */}
             {loadingTemplates ? (
               /* Skeleton */
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div role="status" aria-label="Loading templates" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="h-64 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
                 ))}

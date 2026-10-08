@@ -2699,9 +2699,11 @@ class ApiClient {
   async quickScoreATS(
     latexContent: string,
     jobDescription?: string,
+    signal?: AbortSignal,
   ): Promise<QuickScoreResponse> {
     return this.request<QuickScoreResponse>('/ats/quick-score', {
       method: 'POST',
+      signal,
       body: JSON.stringify({
         latex_content: latexContent,
         job_description: jobDescription ?? null,
