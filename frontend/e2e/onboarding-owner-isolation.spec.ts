@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Page, type Request as PlaywrightRequest, type Route } from '@playwright/test'
 
 type Owner = 'A' | 'B'
 const ownerId = (owner: Owner) => `onboarding-owner-${owner.toLowerCase()}`
@@ -13,6 +13,7 @@ type FixtureOptions = {
 
 type FixtureState = {
   owner: { current: Owner }
+  origins: { app: string; api: string; apiFeatureFlags: string }
   tokens: Record<Owner, string>
   patches: Array<{ owner: Owner; authorization: string | undefined; body: Record<string, unknown> }>
   responseOwners: { me: Owner[]; session: Owner[] }
@@ -20,7 +21,7 @@ type FixtureState = {
   heldMeRegistrations: Owner[]
   heldMeReadIds: string[]
   stopHoldingMe: () => void
-  blockedUnknownRequests: Array<{ method: string; path: string; resourceType: string }>
+  blockedUnknownRequests: Array<{ method: string; path: string; origin: string; resourceType: string }>
   pageErrors: string[]
   releaseHeldMe: (owner: Owner) => void
 }
@@ -44,6 +45,7 @@ async function settle(page: Page) {
 async function installFixture(page: Page, options: FixtureOptions): Promise<FixtureState> {
   const state: FixtureState = {
     owner: { current: options.initialOwner },
+    origins: { app: '', api: '', apiFeatureFlags: '' },
     tokens: { A: ownerToken('A'), B: ownerToken('B') },
     patches: [],
     responseOwners: { me: [], session: [] },
@@ -58,7 +60,29 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
   const pendingMe = new Map<Owner, Array<() => void>>()
   const meCounts: Record<Owner, number> = { A: 0, B: 0 }
   let holdingInitialMe = true
-  const baseOrigin = new URL(test.info().project.use.baseURL as string).origin
+  const baseUrl = new URL(test.info().project.use.baseURL as string)
+  const baseOrigin = baseUrl.origin
+  const apiUrl = process.env.PLAYWRIGHT_API_URL
+    ?? process.env.PLAYWRIGHT_BACKEND_URL
+    ?? `http://127.0.0.1:${Number(baseUrl.port || 5182) + 2000}`
+  const apiBaseUrl = new URL(apiUrl, baseUrl)
+  const apiOrigin = apiBaseUrl.origin
+  const apiBasePath = apiBaseUrl.pathname.replace(/\/+$/, '')
+  const normalizeApiPath = (pathname: string) => {
+    if (!apiBasePath) return pathname
+    if (pathname === apiBasePath) return '/'
+    return pathname.startsWith(`${apiBasePath}/`) ? pathname.slice(apiBasePath.length) : null
+  }
+  state.origins = {
+    app: baseOrigin,
+    api: apiOrigin,
+    apiFeatureFlags: new URL(`${apiBasePath}/config/feature-flags`, `${apiOrigin}/`).href,
+  }
+
+  const recordBlocked = (request: PlaywrightRequest) => {
+    const url = new URL(request.url())
+    state.blockedUnknownRequests.push({ method: request.method(), path: url.pathname, origin: url.origin, resourceType: request.resourceType() })
+  }
 
   await page.addInitScript(() => {
     // Clear only once per browser context. Reloads must preserve the scoped
@@ -120,11 +144,17 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
       await route.continue()
       return
     }
-    state.blockedUnknownRequests.push({ method: request.method(), path: url.pathname, resourceType: request.resourceType() })
+    recordBlocked(request)
     await route.abort()
   })
 
-  await page.route('**/api/auth/get-session', async (route) => {
+  await page.route((url) => url.origin === baseOrigin && url.pathname === '/api/auth/get-session', async (route) => {
+    const request = route.request()
+    if (request.method() !== 'GET') {
+      recordBlocked(request)
+      await route.abort()
+      return
+    }
     const owner = state.owner.current
     state.responseOwners.session.push(owner)
     await route.fulfill({
@@ -147,10 +177,17 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
     '/subscription/plans', '/config/feature-flags', '/config/entitlements',
     '/tenants/resolve-host', '/settings/notifications',
     '/github/status', '/zotero/status', '/mendeley/status', '/dropbox/status', '/google-drive/status',
+    '/templates', '/templates/', '/templates/categories',
   ])
-  await page.route((url) => backendPaths.has(url.pathname), async (route: Route) => {
+  await page.route((url) => url.origin === apiOrigin && backendPaths.has(normalizeApiPath(url.pathname) ?? ''), async (route: Route) => {
     const request = route.request()
-    const path = new URL(request.url()).pathname
+    const path = normalizeApiPath(new URL(request.url()).pathname) ?? ''
+    const allowedMethod = path === '/me/preferences' ? 'PATCH' : 'GET'
+    if (request.method() !== allowedMethod) {
+      recordBlocked(request)
+      await route.abort()
+      return
+    }
     if (path === '/me' && request.method() === 'GET') {
       const authorization = request.headers().authorization
       const owner = authorization === `Bearer ${state.tokens.A}` ? 'A' : authorization === `Bearer ${state.tokens.B}` ? 'B' : null
@@ -182,7 +219,7 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
       })
       return
     }
-    if (path === '/me/preferences' && request.method() === 'PATCH') {
+    if (path === '/me/preferences') {
       const authorization = request.headers().authorization
       const owner = authorization === `Bearer ${state.tokens.A}` ? 'A' : authorization === `Bearer ${state.tokens.B}` ? 'B' : null
       expect(owner).not.toBeNull()
@@ -190,11 +227,6 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
       // Keep the synthetic server preference independent for replay tests; the
       // request payload is captured without making a real account mutation.
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(meResponse(owner as Owner, true)) })
-      return
-    }
-    if (request.method() !== 'GET') {
-      state.blockedUnknownRequests.push({ method: request.method(), path, resourceType: request.resourceType() })
-      await route.abort()
       return
     }
     const bodies: Record<string, unknown> = {
@@ -207,6 +239,7 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
       '/settings/notifications': { job_completed: true, job_failed: true, share_viewed: false, weekly_digest: false, tracker_updates: true, comment_mentions: true },
       '/github/status': { connected: false }, '/zotero/status': { connected: false },
       '/mendeley/status': { connected: false }, '/dropbox/status': { connected: false }, '/google-drive/status': { connected: false },
+      '/templates': [], '/templates/': [], '/templates/categories': [],
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(bodies[path] ?? {}) })
   })
@@ -217,20 +250,55 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
     waiters.splice(0).forEach((release) => release())
   }
   state.stopHoldingMe = () => { holdingInitialMe = false }
-  await page.route((url) => url.pathname === '/templates' || url.pathname === '/templates/', async (route) => {
+  await page.route((url) => url.origin === baseOrigin && (url.pathname === '/templates' || url.pathname === '/templates/'), async (route) => {
     const request = route.request()
     const headers = request.headers()
     const navigation = request.resourceType() === 'document' || headers.rsc === '1' || headers['next-router-prefetch'] === '1' || headers.accept?.includes('text/x-component')
-    if (navigation) return route.continue()
-    if (request.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
-    state.blockedUnknownRequests.push({ method: request.method(), path: '/templates', resourceType: request.resourceType() })
+    if (request.method() === 'GET' && navigation) return route.continue()
+    recordBlocked(request)
     return route.abort()
   })
-  await page.route((url) => url.pathname === '/templates/categories', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
-  await page.route('**/api/auth/passkey/list-user-passkeys', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
-  await page.route('**/api/referral', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: false }) }))
-  await page.route('**/telemetry/frontend', (route) => route.abort())
-  await page.route('**/ws/**', (route) => route.abort())
+  await page.route((url) => url.origin === baseOrigin && url.pathname === '/api/auth/passkey/list-user-passkeys', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+      return
+    }
+    recordBlocked(route.request())
+    await route.abort()
+  })
+  await page.route((url) => url.origin === baseOrigin && url.pathname === '/api/referral', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: false }) })
+      return
+    }
+    recordBlocked(route.request())
+    await route.abort()
+  })
+  await page.route((url) => url.origin === apiOrigin && normalizeApiPath(url.pathname) === '/telemetry/frontend', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.abort()
+      return
+    }
+    recordBlocked(route.request())
+    await route.abort()
+  })
+  const playwrightPort = Number(process.env.PLAYWRIGHT_PORT || baseUrl.port || 5181)
+  const websocketBase = process.env.NEXT_PUBLIC_WS_URL
+    ?? (process.env.PLAYWRIGHT_REQUIRE_BACKEND
+      ? 'ws://localhost:8030'
+      : `ws://127.0.0.1:${playwrightPort + 1000}`)
+  const websocketBaseUrl = new URL(websocketBase, baseUrl)
+  const apiWebSocketOrigin = websocketBaseUrl.origin
+  const apiWebSocketPath = `${websocketBaseUrl.pathname.replace(/\/+$/, '')}/ws/jobs`
+  await page.routeWebSocket(() => true, (socket) => {
+    const url = new URL(socket.url())
+    if (url.origin === apiWebSocketOrigin && url.pathname === apiWebSocketPath) {
+      socket.close()
+      return
+    }
+    state.blockedUnknownRequests.push({ method: 'WEBSOCKET', path: url.pathname, origin: url.origin, resourceType: 'websocket' })
+    socket.close()
+  })
   return state
 }
 
@@ -413,5 +481,55 @@ test.describe('onboarding owner-isolation acceptance', () => {
     await page.getByRole('button', { name: 'Skip', exact: true }).click()
     await expect.poll(() => state.patches.some((patch) => patch.authorization === `Bearer ${ownerToken('B', true)}`)).toBe(true)
     await assertClean(state, 'same-owner token refresh')
+  })
+
+  test('fixture rejects external lookalikes and wrong methods without synthetic success', async ({ page }) => {
+    const state = await installFixture(page, { initialOwner: 'B', onboarded: { A: false, B: true } })
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await waitForSessionOwner(page, 'B')
+
+    const attempts = await page.evaluate(async ({ appOrigin, apiFeatureFlags }) => {
+      const requests: Array<{ url: string; method: string }> = [
+        { url: 'https://onboarding-fixture.invalid/api/auth/get-session', method: 'GET' },
+        { url: 'https://onboarding-fixture.invalid/me', method: 'GET' },
+        { url: `${appOrigin}/api/auth/get-session`, method: 'POST' },
+        { url: `${appOrigin}/api/referral`, method: 'POST' },
+        { url: apiFeatureFlags, method: 'POST' },
+      ]
+      return Promise.all(requests.map(async ({ url, method }) => {
+        try {
+          const response = await fetch(url, { method })
+          return { url, method, fulfilled: true, status: response.status }
+        } catch {
+          return { url, method, fulfilled: false }
+        }
+      }))
+    }, { appOrigin: state.origins.app, apiFeatureFlags: state.origins.apiFeatureFlags })
+
+    const externalWebSocketOutcome = await page.evaluate(() => new Promise<string>((resolve) => {
+      const socket = new WebSocket('wss://onboarding-fixture.invalid/ws/jobs')
+      const timer = window.setTimeout(() => resolve('timeout'), 3_000)
+      const finish = (outcome: string) => {
+        window.clearTimeout(timer)
+        resolve(outcome)
+      }
+      socket.addEventListener('close', () => finish('closed'), { once: true })
+      socket.addEventListener('error', () => finish('error'), { once: true })
+    }))
+
+    expect(attempts.map(({ fulfilled }) => fulfilled)).toEqual([false, false, false, false, false])
+    expect(['closed', 'error']).toContain(externalWebSocketOutcome)
+    const expectedBlocked = [
+      { method: 'GET', origin: 'https://onboarding-fixture.invalid', path: '/api/auth/get-session' },
+      { method: 'GET', origin: 'https://onboarding-fixture.invalid', path: '/me' },
+      { method: 'POST', origin: state.origins.app, path: '/api/auth/get-session' },
+      { method: 'POST', origin: state.origins.app, path: '/api/referral' },
+      { method: 'POST', origin: state.origins.api, path: new URL(state.origins.apiFeatureFlags).pathname },
+      { method: 'WEBSOCKET', origin: 'wss://onboarding-fixture.invalid', path: '/ws/jobs' },
+    ]
+    for (const expected of expectedBlocked) {
+      await expect.poll(() => state.blockedUnknownRequests).toContainEqual(expect.objectContaining(expected))
+    }
+    expect(state.pageErrors).toEqual([])
   })
 })
