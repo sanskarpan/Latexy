@@ -61,6 +61,21 @@ def test_manifest_raw_source_identity_and_closed_public_payload(storage, owned):
     assert artifacts.parse_manifest(value.model_dump()) == value
 
 
+@pytest.mark.parametrize("scope,ttl", [("user:one", artifacts.MANIFEST_TTL), ("device:guest", 86400)])
+def test_manifest_retention_uses_one_clock_sample_across_second_boundary(storage, owned, monkeypatch, scope, ttl):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    clock = Mock(side_effect=[1700000000.999, 1700000001.001])
+    monkeypatch.setattr(artifacts, "time", SimpleNamespace(time=clock))
+    pdf = artifacts._put(artifacts.sha256(scope), "pdf", b"%PDF-checked", "application/pdf")
+    value = artifacts.bind_manifest(owned[0], "job", request(owner_scope=scope), pdf, page_count=1)
+    assert value.expires_at - value.created_at == ttl
+    assert value.created_at == 1700000000
+    assert artifacts.parse_manifest(value.model_dump()) == value
+    clock.assert_called_once()
+
+
 def test_manifest_rejects_tampering_and_cross_tenant_reference(storage, owned):
     value = manifest(storage, owned).model_dump()
     value["source_sha256"] = "0" * 64

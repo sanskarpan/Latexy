@@ -175,11 +175,12 @@ def bind_manifest(
     revision = request.get("content_revision")
     if revision is not None and (isinstance(revision, bool) or not isinstance(revision, int) or revision < 0):
         raise ValueError("invalid content revision")
+    created_at = int(time.time())
     fields = {
         "schema_version": 1, "job_id": job_id,
         "owner_scope_kind": "user" if request["owner_scope"].startswith("user:") else "device",
-        "created_at": int(time.time()),
-        "expires_at": int(time.time()) + (MANIFEST_TTL if request["owner_scope"].startswith("user:") else 86400),
+        "created_at": created_at,
+        "expires_at": created_at + (MANIFEST_TTL if request["owner_scope"].startswith("user:") else 86400),
         "owner_scope_sha256": scope_hash, "owner_token_sha256": sha256(owner), "owner_epoch": epoch,
         "source_sha256": sha256(request["source"]),
         "render_source_sha256": sha256(request["render_source"]),

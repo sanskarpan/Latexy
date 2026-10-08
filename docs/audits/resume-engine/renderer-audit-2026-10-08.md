@@ -6,6 +6,12 @@ default Modal deployment or production performance certification.
 
 ## Verified defects and repairs
 
+- Root follow-up reproduced a second-boundary retention failure for both
+  user and guest artifacts: sampling creation/expiry clocks separately yielded
+  a TTL one second too long and `invalid render retention interval`. Both new
+  tests failed before repair. Creation and expiry now use the same clock sample
+  so the strict retention validator can remain unchanged.
+
 - A reused Modal session checked its deadline only before input upload. An
   upload could consume the remaining time, close the session, or throw, yet
   execution still started or the VM remained open. Three pre-fix regression
@@ -51,8 +57,15 @@ From `backend`, in the Linux QA image with Poppler installed:
 ```text
 python -m pytest -p no:cacheprovider -o addopts= -q \
   test/test_modal_engine_adapter.py test/test_modal_vm_certification.py \
-  test/test_render_artifacts.py test/test_render_cache_admission.py
+  test/test_render_artifacts.py test/test_engine_observability.py \
+  -k 'not durable_finalization'
 ```
+
+This exact run reported `88 passed, 5 deselected in 59.06s`. Its deselection
+excludes the five parameterizations of
+`test_durable_finalization_binds_private_manifest`. Output was retained in the
+agent tool transcript; this passing run did not write JUnit. Do not substitute
+the disappeared JUnit from an earlier failed fixture-setup run.
 
 For infrastructure-free cases only, set `SKIP_INFRA_CHECK=true` and select the
 pure fixtures explicitly. The full backend and actual storage run require
