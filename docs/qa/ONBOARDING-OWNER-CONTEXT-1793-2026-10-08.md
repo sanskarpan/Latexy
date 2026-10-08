@@ -93,3 +93,39 @@ Published checkpoint: draft PR #1858. Security PR #1857 has since merged and
 passed production certification; Settings PR #1854 has also merged. Refresh
 this branch from their canonical main state and obtain new exact-head CI before
 release. Earlier local checks are not a claim of that future combined acceptance.
+
+## Patched-main integration checkpoint
+
+Merged canonical main `26e802ca3e83b11b565365f817407911080c5ff3` into
+the draft without replacing the Settings file. The CI-only conflict was resolved
+by keeping both provider and onboarding suites in the existing shared production
+step. Two inherited manual React test harnesses lacked `useMemo`, causing
+29 failures / 1,095 passes at the integration checkpoint. Only those mocks were
+extended with indexed, dependency-aware memo slots; every original assertion
+was preserved and no application code was weakened to accommodate mocks.
+
+Final full frontend unit suite: **171 files, 1,124 passed**; focused inherited
+Settings tests: 29 passed. Node 22 ESLint, non-incremental types and diff checks
+pass. Dependencies are read-only symlinks to the separately frozen-installed
+15.5.27 security worktree; no install ran through the shared symlinks.
+
+Root rebuilt the combined application/dependency source checkpoint `3bf9c06e`
+in a new disposable production copy on port 5527 (Next.js 15.5.27), then ran
+editor5 + provider6 + onboarding8: **19 passed**, one Chromium worker, zero
+retries, strict page errors and traces. Later changes touch only unit mocks and
+this report, not that validated application source. The deliberate isolation
+case expects its own blocked-traffic records; other cases require no unknown
+traffic. This is synthetic local-browser acceptance, not live account/provider
+or native PWA certification.
+
+| Patched-main evidence | SHA-256 |
+| --- | --- |
+| integrated browser log | `ba69b884e3a55f55b297db7468d23c495ad3bb7010b0ad6fa458971450210800` |
+| full frontend unit log | `4f279ebe9fd7420c2ff45304fb37ded72b6c59c34945f07b4b5868ba8bcaa649` |
+
+Logs: `/private/tmp/latexy-onboarding-patched-main-integrated-browser-20261008.log`
+and `/private/tmp/latexy-onboarding-harness-full-20261008.log`. Browser traces
+are in the former's sibling output directory. Publish this checkpoint to draft
+#1858; require fresh exact-head CI and normal protected merge followed by
+production verification before release acceptance. Notification draft #1855
+and legacy callback issue #1794 remain separate, as does hydration #1772.
