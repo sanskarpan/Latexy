@@ -49,6 +49,12 @@ function SettingsContent() {
   const providerActionAuthToken = sessionData?.session?.token ?? ''
   const providerActionAuthReady = Boolean(sessionData && !sessionLoading && !sessionError)
   providerActionAuthReadyRef.current = providerActionAuthReady
+  const legacyAuthReadyRef = useRef(providerActionAuthReady)
+  const legacyAuthReadyGenerationRef = useRef(0)
+  if (legacyAuthReadyRef.current !== providerActionAuthReady) {
+    legacyAuthReadyRef.current = providerActionAuthReady
+    legacyAuthReadyGenerationRef.current += 1
+  }
   if (
     providerActionIdentityRef.current.ownerId !== providerActionOwnerId
     || providerActionIdentityRef.current.authToken !== providerActionAuthToken
@@ -86,6 +92,36 @@ function SettingsContent() {
     }
   }
   const notificationOwnerIdentity = notificationOwnerIdentityRef.current
+  type LegacyProvider = 'github' | 'zotero' | 'mendeley' | 'dropbox'
+  type LegacyCallbackAttempt = {
+    key: string
+    ownerGeneration: number
+    dispatched: boolean
+    settled: boolean
+  }
+  type LegacyOwnedNotice = { ownerId: string | null; success: string | null; error: string | null }
+  const legacyCallbackStartedRef = useRef<Map<LegacyProvider, LegacyCallbackAttempt>>(new Map())
+  const legacyOperationRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  const legacyStatusRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  const legacyOwnedNoticeRef = useRef<Record<LegacyProvider, LegacyOwnedNotice>>({
+    github: { ownerId: null, success: null, error: null },
+    zotero: { ownerId: null, success: null, error: null },
+    mendeley: { ownerId: null, success: null, error: null },
+    dropbox: { ownerId: null, success: null, error: null },
+  })
+  const legacyOwnerRef = useRef<string | null>(providerActionIdentity.ownerId)
+  const legacyOwnerGenerationRef = useRef(0)
+  if (legacyOwnerRef.current !== providerActionIdentity.ownerId) {
+    legacyOwnerRef.current = providerActionIdentity.ownerId
+    legacyOwnerGenerationRef.current += 1
+  }
+  const legacyNoticeOwnerRef = useRef<string | null>(providerActionIdentity.ownerId)
+  const legacyOwnerNoticeRevisionRef = useRef(0)
+  const legacyProviderNoticeRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  if (legacyNoticeOwnerRef.current !== providerActionIdentity.ownerId) {
+    legacyNoticeOwnerRef.current = providerActionIdentity.ownerId
+    legacyOwnerNoticeRevisionRef.current += 1
+  }
 
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
@@ -295,6 +331,7 @@ function SettingsContent() {
     const lifecycle = ++providerActionLifecycleRef.current
     const revisions = providerActionRevisionRef.current
     const active = providerActionActiveRef.current
+    const legacyCallbackStarted = legacyCallbackStartedRef.current
     return () => {
       if (providerActionLifecycleRef.current !== lifecycle) return
       providerActionMountedRef.current = false
@@ -305,8 +342,32 @@ function SettingsContent() {
       for (const key of Object.keys(revisions) as ProviderActionKey[]) {
         revisions[key] += 1
       }
+      legacyCallbackStarted.clear()
     }
   }, [])
+
+  useEffect(() => {
+    const clearPreviousOwnerNotice = (
+      provider: LegacyProvider,
+      currentSuccess: string | null,
+      currentError: string | null,
+      setSuccess: (message: string | null) => void,
+      setError: (message: string | null) => void,
+    ) => {
+      const notice = legacyOwnedNoticeRef.current[provider]
+      if (notice.ownerId === providerActionIdentity.ownerId) return
+      if (notice.success && currentSuccess === notice.success) setSuccess(null)
+      if (notice.error && currentError === notice.error) setError(null)
+      notice.ownerId = providerActionIdentity.ownerId
+      notice.success = null
+      notice.error = null
+    }
+
+    clearPreviousOwnerNotice('github', ghSuccess, ghError, setGhSuccess, setGhError)
+    clearPreviousOwnerNotice('zotero', zotSuccess, zotError, setZotSuccess, setZotError)
+    clearPreviousOwnerNotice('mendeley', menSuccess, menError, setMenSuccess, setMenError)
+    clearPreviousOwnerNotice('dropbox', dbxSuccess, dbxError, setDbxSuccess, setDbxError)
+  }, [providerActionIdentity.ownerId, ghSuccess, ghError, zotSuccess, zotError, menSuccess, menError, dbxSuccess, dbxError])
 
   // An account/token transition invalidates in-flight provider actions. Clear
   // transient busy indicators, but keep confirmed state until the owner-scoped
@@ -372,6 +433,10 @@ function SettingsContent() {
     const generation = ++integrationStatusGenerationRef.current
     let cancelled = false
     const current = () => !cancelled && integrationStatusGenerationRef.current === generation
+    const initialStatusRevision = { ...legacyStatusRevisionRef.current }
+    const currentStatus = (provider: LegacyProvider) => (
+      current() && legacyStatusRevisionRef.current[provider] === initialStatusRevision[provider]
+    )
     const ownerIdentity = notificationOwnerIdentity
     if (!notificationAuthReady) {
       setLoading(false)
@@ -422,40 +487,40 @@ function SettingsContent() {
     }
 
     apiClient.getGitHubStatus()
-      .then((status) => { if (current()) setGhStatus(status) })
+      .then((status) => { if (currentStatus('github')) setGhStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('github')) return
         console.error('Failed to load GitHub status')
         setGhError('Failed to load GitHub status')
       })
-      .finally(() => { if (current()) setGhLoading(false) })
+      .finally(() => { if (currentStatus('github')) setGhLoading(false) })
 
     apiClient.getZoteroStatus()
-      .then((status) => { if (current()) setZotStatus(status) })
+      .then((status) => { if (currentStatus('zotero')) setZotStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('zotero')) return
         console.error('Failed to load Zotero status')
         setZotError('Failed to load Zotero status')
       })
-      .finally(() => { if (current()) setZotLoading(false) })
+      .finally(() => { if (currentStatus('zotero')) setZotLoading(false) })
 
     apiClient.getMendeleyStatus()
-      .then((status) => { if (current()) setMenStatus(status) })
+      .then((status) => { if (currentStatus('mendeley')) setMenStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('mendeley')) return
         console.error('Failed to load Mendeley status')
         setMenError('Failed to load Mendeley status')
       })
-      .finally(() => { if (current()) setMenLoading(false) })
+      .finally(() => { if (currentStatus('mendeley')) setMenLoading(false) })
 
     apiClient.getDropboxStatus()
-      .then((status) => { if (current()) setDbxStatus(status) })
+      .then((status) => { if (currentStatus('dropbox')) setDbxStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('dropbox')) return
         console.error('Failed to load Dropbox status')
         setDbxError('Failed to load Dropbox status')
       })
-      .finally(() => { if (current()) setDbxLoading(false) })
+      .finally(() => { if (currentStatus('dropbox')) setDbxLoading(false) })
 
     return () => {
       cancelled = true
@@ -693,65 +758,188 @@ function SettingsContent() {
 
   // Show success message after OAuth redirect
   useEffect(() => {
-    let sawConnectedParam = false
+    const connectedProviders = ['github', 'zotero', 'mendeley', 'dropbox'] as const
+    const activeProviders = connectedProviders.filter((provider) => searchParams.get(provider) === 'connected')
 
-    const verifyLegacyConnection = async <T,>(
+    if (!activeProviders.length) {
+      for (const provider of connectedProviders) legacyCallbackStartedRef.current.delete(provider)
+      return
+    }
+    if (!providerActionAuthReady || !providerActionIdentity.ownerId || !providerActionIdentity.authToken) {
+      for (const provider of activeProviders) {
+        const attempt = legacyCallbackStartedRef.current.get(provider)
+        if (
+          attempt?.ownerGeneration === legacyOwnerGenerationRef.current
+          && !attempt.dispatched
+          && legacyCallbackStartedRef.current.get(provider) === attempt
+        ) {
+          legacyOperationRevisionRef.current[provider] += 1
+          legacyCallbackStartedRef.current.delete(provider)
+        }
+      }
+      return
+    }
+
+    const requestKey = `${providerActionIdentity.generation}:${searchParams.toString()}`
+    const ownerGeneration = legacyOwnerGenerationRef.current
+    const clearQueryAfterVerification = () => {
+      if (activeProviders.every((provider) => {
+        const attempt = legacyCallbackStartedRef.current.get(provider)
+        return attempt?.ownerGeneration === ownerGeneration && attempt.settled
+      })) {
+        router.replace(pathname, { scroll: false })
+      }
+    }
+    const verifyLegacyConnection = async <T extends { connected: boolean }>(
+      provider: LegacyProvider,
       providerName: string,
-      loadStatus: () => Promise<T>,
+      loadStatus: (context: { authToken: string; isCurrent: () => boolean }) => Promise<T>,
       setStatus: (status: T) => void,
+      setProviderLoading: (loading: boolean) => void,
       setSuccess: (message: string | null) => void,
       setProviderError: (message: string | null) => void,
-    ): Promise<boolean> => {
+      onVerified?: (isCurrent: () => boolean) => void,
+    ): Promise<void> => {
+      const previousAttempt = legacyCallbackStartedRef.current.get(provider)
+      if (previousAttempt?.ownerGeneration === ownerGeneration && (
+        previousAttempt.key === requestKey
+        || previousAttempt.settled
+        || (previousAttempt.dispatched && !previousAttempt.settled)
+      )) return
+
+      const operationRevision = legacyOperationRevisionRef.current[provider] + 1
+      legacyOperationRevisionRef.current[provider] = operationRevision
+      const providerActionLifecycle = providerActionLifecycleRef.current
+      const capturedIdentity = providerActionIdentity
+      const capturedAuthReadyGeneration = legacyAuthReadyGenerationRef.current
+      const ownerNoticeRevision = legacyOwnerNoticeRevisionRef.current
+      let noticeRevision = legacyProviderNoticeRevisionRef.current[provider]
+      const attempt: LegacyCallbackAttempt = {
+        key: requestKey,
+        ownerGeneration,
+        dispatched: false,
+        settled: false,
+      }
+      legacyCallbackStartedRef.current.set(provider, attempt)
+      const isCurrentResult = () => (
+        providerActionMountedRef.current
+        && providerActionLifecycleRef.current === providerActionLifecycle
+        && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+        && legacyOwnerGenerationRef.current === ownerGeneration
+        && legacyOperationRevisionRef.current[provider] === operationRevision
+      )
+      const isCurrentDispatch = () => {
+        const current = (
+          isCurrentResult()
+          && providerActionAuthReadyRef.current
+          && legacyAuthReadyGenerationRef.current === capturedAuthReadyGeneration
+          && providerActionIdentityRef.current.authToken === capturedIdentity.authToken
+          && providerActionIdentityRef.current.generation === capturedIdentity.generation
+        )
+        if (current) attempt.dispatched = true
+        return current
+      }
+      const isCurrentNotice = () => (
+        providerActionMountedRef.current
+        && providerActionLifecycleRef.current === providerActionLifecycle
+        && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+        && legacyOwnerGenerationRef.current === ownerGeneration
+        && legacyOwnerNoticeRevisionRef.current === ownerNoticeRevision
+        && legacyProviderNoticeRevisionRef.current[provider] === noticeRevision
+      )
+      const accountContext = { authToken: capturedIdentity.authToken, isCurrent: isCurrentDispatch }
+      const verificationFailure = `${providerName} authorization completed, but the connection could not be verified. Refresh or try connecting again.`
+      if (!isCurrentResult()) return
       setProviderError(null)
+      if (legacyOwnedNoticeRef.current[provider].ownerId === capturedIdentity.ownerId) {
+        legacyOwnedNoticeRef.current[provider].error = null
+      }
       try {
-        setStatus(await loadStatus())
-        setSuccess(`${providerName} connected successfully!`)
-        scheduleTimer(() => setSuccess(null), 5000)
-        return true
+        const status = await loadStatus(accountContext)
+        if (!isCurrentResult()) return
+        attempt.settled = true
+        // An ordinary initial status read may finish while this callback is
+        // pending. Keep that known status visible, but once this later read is
+        // verified, don't let an older initial response overwrite it.
+        legacyStatusRevisionRef.current[provider] += 1
+        noticeRevision = legacyProviderNoticeRevisionRef.current[provider] + 1
+        legacyProviderNoticeRevisionRef.current[provider] = noticeRevision
+        setStatus(status)
+        setProviderLoading(false)
+        if (!status.connected) {
+          setSuccess(null)
+          setProviderError(verificationFailure)
+          legacyOwnedNoticeRef.current[provider] = {
+            ownerId: capturedIdentity.ownerId,
+            success: null,
+            error: verificationFailure,
+          }
+          clearQueryAfterVerification()
+          return
+        }
+        const successMessage = `${providerName} connected successfully!`
+        setSuccess(successMessage)
+        legacyOwnedNoticeRef.current[provider] = {
+          ownerId: capturedIdentity.ownerId,
+          success: successMessage,
+          error: null,
+        }
+        scheduleTimer(() => {
+          if (!isCurrentNotice()) return
+          setSuccess(null)
+          const notice = legacyOwnedNoticeRef.current[provider]
+          if (notice.ownerId === capturedIdentity.ownerId && notice.success === successMessage) {
+            notice.success = null
+          }
+        }, 5000)
+        if (onVerified && isCurrentResult()) onVerified(isCurrentResult)
+        clearQueryAfterVerification()
       } catch {
+        if (!isCurrentResult()) return
+        if (!attempt.dispatched) {
+          if (legacyCallbackStartedRef.current.get(provider) === attempt) {
+            legacyCallbackStartedRef.current.delete(provider)
+          }
+          return
+        }
+        attempt.settled = true
         console.error(`Failed to verify ${providerName} connection`)
         setSuccess(null)
-        setProviderError(`${providerName} authorization completed, but the connection could not be verified. Refresh or try connecting again.`)
-        return false
+        setProviderLoading(false)
+        setProviderError(verificationFailure)
+        legacyOwnedNoticeRef.current[provider] = {
+          ownerId: capturedIdentity.ownerId,
+          success: null,
+          error: verificationFailure,
+        }
+        clearQueryAfterVerification()
       }
     }
 
-    if (searchParams.get('github') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('GitHub account', () => apiClient.getGitHubStatus(), setGhStatus, setGhSuccess, setGhError)
+    if (activeProviders.includes('github')) {
+      void verifyLegacyConnection<GitHubStatusResponse>('github', 'GitHub account', (context) => apiClient.getGitHubStatus(context), setGhStatus, setGhLoading, setGhSuccess, setGhError)
     }
-    if (searchParams.get('zotero') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Zotero', () => apiClient.getZoteroStatus(), setZotStatus, setZotSuccess, setZotError)
-        .then((verified) => {
-          if (verified && window.opener) {
+    if (activeProviders.includes('zotero')) {
+      void verifyLegacyConnection<ZoteroStatusResponse>('zotero', 'Zotero', (context) => apiClient.getZoteroStatus(context), setZotStatus, setZotLoading, setZotSuccess, setZotError, (isCurrent) => {
+          if (isCurrent() && window.opener) {
             window.opener.postMessage({ type: 'zotero:connected' }, window.location.origin)
             window.close()
           }
         })
     }
-    if (searchParams.get('mendeley') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Mendeley', () => apiClient.getMendeleyStatus(), setMenStatus, setMenSuccess, setMenError)
-        .then((verified) => {
-          if (verified && window.opener) {
+    if (activeProviders.includes('mendeley')) {
+      void verifyLegacyConnection<MendeleyStatusResponse>('mendeley', 'Mendeley', (context) => apiClient.getMendeleyStatus(context), setMenStatus, setMenLoading, setMenSuccess, setMenError, (isCurrent) => {
+          if (isCurrent() && window.opener) {
             window.opener.postMessage({ type: 'mendeley:connected' }, window.location.origin)
             window.close()
           }
         })
     }
-    if (searchParams.get('dropbox') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Dropbox account', () => apiClient.getDropboxStatus(), setDbxStatus, setDbxSuccess, setDbxError)
-    }
-
-    // Strip the OAuth success query params from the URL so a refresh or
-    // shared link doesn't replay the "connected successfully" state.
-    if (sawConnectedParam) {
-      router.replace(pathname, { scroll: false })
+    if (activeProviders.includes('dropbox')) {
+      void verifyLegacyConnection<DropboxStatusResponse>('dropbox', 'Dropbox account', (context) => apiClient.getDropboxStatus(context), setDbxStatus, setDbxLoading, setDbxSuccess, setDbxError)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [pathname, router, searchParams, providerActionIdentity.generation, providerActionAuthReady])
 
   // Notification prefs autosave on toggle (optimistic). The switches look like
   // instant toggles, so persist immediately and reconcile with the server. On
