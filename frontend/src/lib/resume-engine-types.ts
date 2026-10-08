@@ -26,6 +26,11 @@ export interface ArtifactGeometry {
 }
 
 export type OptimizationEffort = 'quick' | 'standard' | 'deep'
+export type EngineProvider = 'openai' | 'anthropic' | 'openrouter'
+export interface EngineProviderOptions {
+  default: { provider: string | null; model: string | null; source: 'byok' | 'platform'; ready: boolean }
+  providers: Array<{ provider: EngineProvider; key_available: boolean; models: string[] }>
+}
 export interface SemanticPatch {
   patch_id: string; node_id: string; expected_node_revision: string; original_text: string; text: string
   reason: string; review_reason?: string; validation?: Record<string, unknown>

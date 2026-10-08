@@ -1944,13 +1944,19 @@ class ApiClient {
     })
   }
 
+  async getEngineProviders(accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/resume-engine-types').EngineProviderOptions>('/resumes/engine/providers', { signal }, accountContext)
+  }
+
   async optimizeEngineDocument(resumeId: string, body: {
     expected_content_revision: number; expected_source_sha256: string; job_description: string
     effort: import('@/lib/resume-engine-types').OptimizationEffort
-  }) {
+    provider?: import('@/lib/resume-engine-types').EngineProvider
+    provider_model?: string
+  }, accountContext?: AccountPreferenceRequestContext) {
     return this.request<JobSubmitResponse>(`/resumes/${encodeURIComponent(resumeId)}/engine/optimize`, {
       method: 'POST', body: JSON.stringify(body),
-    })
+    }, accountContext)
   }
 
   async getEngineRun(resumeId: string, runId: string) {

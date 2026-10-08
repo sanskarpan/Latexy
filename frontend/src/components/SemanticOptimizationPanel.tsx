@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { previewErrorMessage } from '@/lib/preview-errors'
+import { useEngineProviderChoice } from '@/hooks/useEngineProviderChoice'
 import type { ResumeEngineDocument, OptimizationEffort, SemanticOptimizationRun } from '@/lib/resume-engine-types'
 
 export default function SemanticOptimizationPanel({ resumeId, identity, document, currentSourceHash, disabled,
@@ -17,10 +18,15 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
   const [run, setRun] = useState<SemanticOptimizationRun | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const providerChoice = useEngineProviderChoice(identity)
+  const accountToken = apiClient.getAuthToken()
   const currentIdentity = useRef(identity); currentIdentity.current = identity
   const currentSource = useRef(currentSourceHash); currentSource.current = currentSourceHash
   const currentRevision = useRef(document?.content_revision); currentRevision.current = document?.content_revision
   useEffect(() => { setRun(null); setError(null); setBusy(false) }, [identity, runId])
+  // A token refresh can invalidate an in-flight admission without changing the
+  // user's identity. Its fenced finally block must not leave this panel busy.
+  useEffect(() => { setError(null); setBusy(false) }, [accountToken])
   useEffect(() => {
     if (!runId) return
     let stale = false; let timer: ReturnType<typeof setTimeout> | undefined
@@ -42,20 +48,20 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
   }, [identity, resumeId, runId])
   const eligible = document && document.source_mode === 'managed' && document.source_sha256 === currentSourceHash && !disabled && !busy
   const start = async () => {
-    if (!eligible || !document || !jobDescription.trim()) return
+    if (!eligible || !document || !jobDescription.trim() || !providerChoice.request || !providerChoice.accountContext?.isCurrent()) return
     const source = currentSourceHash
     setBusy(true); setError(null)
     try {
       const response = await apiClient.optimizeEngineDocument(resumeId, {
         expected_content_revision: document.content_revision, expected_source_sha256: document.source_sha256,
-        job_description: jobDescription.trim(), effort,
-      })
-      if (currentIdentity.current !== identity) return
+        job_description: jobDescription.trim(), effort, ...providerChoice.request,
+      }, providerChoice.accountContext)
+      if (currentIdentity.current !== identity || !providerChoice.accountContext.isCurrent()) return
       if (!response.success || !response.job_id) throw new Error('Admission failed')
       if (source !== currentSource.current) setError('Your resume changed while the review started. Suggestions will require a fresh revision check.')
       onStarted(response.job_id)
-    } catch (error) { if (currentIdentity.current === identity) setError(previewErrorMessage(error, true, 'Review could not start. Save your current resume and try again. No suggestions were applied.')) }
-    finally { if (currentIdentity.current === identity) setBusy(false) }
+    } catch (error) { if (currentIdentity.current === identity && providerChoice.accountContext.isCurrent()) setError(previewErrorMessage(error, true, 'Review could not start. Save your current resume and try again. No suggestions were applied.')) }
+    finally { if (currentIdentity.current === identity && providerChoice.accountContext.isCurrent()) setBusy(false) }
   }
   const decide = async (accept: string[], reject: string[]) => {
     if (!eligible || !document || !runId || !run?.acceptance_ready) return
@@ -88,12 +94,39 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
     <label className="block text-xs font-semibold">Target job
       <textarea value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} rows={5} maxLength={20000}
         className="mt-2 w-full rounded-lg border border-line bg-surface p-3 text-sm font-normal" placeholder="Paste the job description" /></label>
+    <div className="space-y-2">
+      <label htmlFor={`${resumeId}-review-provider`} className="block text-xs font-semibold">Review provider</label>
+        <select id={`${resumeId}-review-provider`} value={providerChoice.choice.provider} disabled={busy || !providerChoice.options} onChange={(event) => {
+          const provider = event.target.value as typeof providerChoice.choice.provider
+          const models = providerChoice.options?.providers.find((entry) => entry.provider === provider)?.models ?? []
+          providerChoice.choose({ provider, model: models.length === 1 ? models[0] : '' })
+        }} className="mt-2 w-full rounded-lg border border-line bg-surface p-2 text-sm font-normal">
+          <option value="automatic">Automatic</option>
+          {providerChoice.options?.providers.map((entry) => <option key={entry.provider} value={entry.provider} disabled={!entry.key_available || !entry.models.length}>
+            {{ openai: 'OpenAI', anthropic: 'Anthropic', openrouter: 'OpenRouter' }[entry.provider]}{!entry.key_available ? ' · connect a key' : !entry.models.length ? ' · unavailable' : ' · your key'}
+          </option>)}
+        </select>
+      {providerChoice.choice.provider !== 'automatic' && <>
+        <label htmlFor={`${resumeId}-review-model`} className="block text-xs font-semibold">Review model</label>
+        <select id={`${resumeId}-review-model`} value={providerChoice.choice.model} disabled={busy} onChange={(event) => providerChoice.choose({ ...providerChoice.choice, model: event.target.value })}
+          className="mt-2 w-full rounded-lg border border-line bg-surface p-2 text-sm font-normal">
+          <option value="" disabled>Choose a model</option>
+          {providerChoice.options?.providers.find((entry) => entry.provider === providerChoice.choice.provider)?.models.map((model) => <option key={model} value={model}>{model}</option>)}
+        </select>
+      </>}
+      <p className="text-xs text-fg-3">{providerChoice.choice.provider === 'automatic'
+        ? 'Automatic uses your connected OpenAI key when available, or the default provider.'
+        : 'This review uses your selected provider and key. It will stop if that choice becomes unavailable.'} <a href="/byok" className="text-accent-strong hover:underline">Manage API keys</a></p>
+      {!providerChoice.options && !providerChoice.error && <p role="status" className="text-xs text-fg-3">Loading review options…</p>}
+      {providerChoice.options && providerChoice.choice.provider === 'automatic' && !providerChoice.options.default.ready && <p className="text-xs text-warn">Automatic review is unavailable. Connect an OpenAI key or choose an available provider.</p>}
+      {providerChoice.error && <p role="alert" className="text-xs text-err">{providerChoice.error} <button type="button" onClick={providerChoice.retry} className="underline">Retry</button></p>}
+    </div>
     <div role="group" aria-label="Review effort" className="grid grid-cols-3 gap-2">
       {(['quick', 'standard', 'deep'] as const).map((level) => <button key={level} type="button" aria-pressed={level === effort}
         onClick={() => setEffort(level)} className={`rounded-lg border p-2 text-xs capitalize ${level === effort ? 'border-accent bg-accent-soft' : 'border-line'}`}>{level}</button>)}
     </div>
     <p className="text-xs text-fg-3">{effort === 'quick' ? 'A focused pass on the most useful changes.' : effort === 'deep' ? 'A more thorough review with a larger time and usage budget.' : 'A balanced review of supported resume sections.'}</p>
-    <button disabled={!eligible || !jobDescription.trim() || run?.status === 'running'} onClick={() => void start()}
+    <button disabled={!eligible || !providerChoice.request || !jobDescription.trim() || run?.status === 'running'} onClick={() => void start()}
       className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50">{busy ? 'Saving…' : 'Find suggestions'}</button>
     {!document && <p className="text-xs text-fg-3">Loading supported fields…</p>}
     {document && document.source_sha256 !== currentSourceHash && <p className="text-xs text-warn">Save your current resume before starting a review.</p>}

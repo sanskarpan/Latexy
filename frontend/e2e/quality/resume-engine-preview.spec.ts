@@ -138,6 +138,10 @@ test('managed review keeps provisional candidates separate and applies authorita
   await page.route(/http:\/\/(localhost:8030|127\.0\.0\.1:8530)\//, route => route.fulfill({ json: {} }))
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'engine-owner', email: 'engine-owner@example.com', name: 'Engine Owner' } } }))
   await page.route('**/macros', route => route.fulfill({ json: [] }))
+  await page.route('**/resumes/engine/providers', route => route.fulfill({ json: {
+    default: { provider: 'openai', model: 'contract-model', source: 'platform', ready: true },
+    providers: [{ provider: 'anthropic', key_available: true, models: ['contract-exact-model-a', 'contract-exact-model-b'] }],
+  } }))
   await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'engine-owner', title: 'Managed contract resume', latex_content: authority,
     document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
   await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ status: 404, json: { detail: 'No original upload' } }))
@@ -199,9 +203,12 @@ test('managed review keeps provisional candidates separate and applies authorita
   await page.getByRole('button', { name: 'AI', exact: true }).click()
   await page.getByLabel('Target job').fill('Software engineering with design systems and mentoring')
   await page.getByRole('button', { name: 'deep', exact: true }).click()
+  await page.getByLabel('Review provider', { exact: true }).selectOption('anthropic')
+  await expect(page.getByRole('button', { name: 'Find suggestions', exact: true })).toBeDisabled()
+  await page.getByLabel('Review model', { exact: true }).selectOption('contract-exact-model-b')
   await page.getByRole('button', { name: 'Find suggestions', exact: true }).click()
   await expect.poll(() => admissions.length).toBe(1)
-  expect(admissions[0]).toMatchObject({ effort: 'deep', expected_content_revision: 1, expected_source_sha256: digest(baseSource) })
+  expect(admissions[0]).toMatchObject({ effort: 'deep', expected_content_revision: 1, expected_source_sha256: digest(baseSource), provider: 'anthropic', provider_model: 'contract-exact-model-b' })
   await expect(page.getByText('Early suggestions · final checks are still running.', { exact: false })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0)
   expect(authority).toBe(baseSource)
