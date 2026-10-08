@@ -2,16 +2,25 @@ import { chromium } from '@playwright/test'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-const frontendUrl = 'http://localhost:5361'
-const backendUrl = 'http://127.0.0.1:8530'
+const frontendUrl = process.env.ENGINE_QA_FRONTEND_URL ?? 'http://localhost:5361'
+const backendUrl = process.env.ENGINE_QA_BACKEND_URL ?? 'http://127.0.0.1:8530'
+for (const value of [frontendUrl, backendUrl]) {
+  const url = new URL(value)
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:' || url.origin !== value) {
+    throw new Error('This normal-guest benchmark requires an explicit local HTTP origin')
+  }
+}
 const fieldFirst = process.env.ENGINE_QA_FIELD_FIRST === '1'
-const folder = resolve(process.cwd(), '../docs/audits/resume-engine')
+const buildKind = process.env.ENGINE_QA_BUILD_KIND ?? 'development'
+if (!['development', 'production'].includes(buildKind)) throw new Error('Unknown benchmark build kind')
+const folder = resolve(process.env.ENGINE_QA_EVIDENCE_DIR ?? resolve(process.cwd(), '../docs/audits/resume-engine'))
 await mkdir(folder, { recursive: true })
 const report = {
   measured_at_utc: new Date().toISOString(), frontend_url: frontendUrl, backend_url: backendUrl,
-  compiler: 'pdflatex', environment: 'isolated local CPU Celery, warm seed image, fresh browser context',
+  compiler: null, build_kind: buildKind, source_commit: process.env.ENGINE_QA_SOURCE_COMMIT ?? null,
+  environment: 'isolated local CPU Celery, warm seed image, fresh browser context',
   scenario: fieldFirst ? 'fresh guest saves a field before first PDF' : 'one guest renders, repeats source, then saves a field',
-  limitations: ['Development Next and local backend, not production or Modal latency', 'Three functional samples do not support percentile claims'],
+  limitations: [`${buildKind} Next and local backend; excludes production deployment/Modal latency`, 'Three functional samples do not support percentile claims', 'Host resource contention is uncontrolled'],
   samples: [], failures: [], console_errors: [], quota_cooldown_waits: [],
 }
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -35,7 +44,11 @@ try {
   page.on('request', request => {
     requestStarts.set(request, Date.now())
     const url = new URL(request.url()); if (['127.0.0.1', 'localhost'].includes(url.hostname) && request.resourceType() === 'fetch') requests.push({ origin: url.origin, path: url.pathname, method: request.method() })
-    if (url.origin === backendUrl && url.pathname === '/jobs/submit') submittedFingerprint = request.postDataJSON().device_fingerprint ?? null
+    if (url.origin === backendUrl && url.pathname === '/jobs/submit') {
+      const body = request.postDataJSON()
+      submittedFingerprint = body.device_fingerprint ?? null
+      report.compiler = body.payload?.compiler ?? body.compiler ?? 'server default'
+    }
     if (url.origin === backendUrl && url.pathname.includes('/preview/')) {
       const fingerprint = request.headers()['x-device-fingerprint'] ?? null
       if (!url.pathname.endsWith('/geometry') && !url.pathname.endsWith('/synctex')) previewFingerprint = fingerprint

@@ -41,7 +41,7 @@ def summary(values):
             "min_seconds": values[0], "max_seconds": values[-1]}
 
 
-async def benchmark(samples, host_load, profile, guest):
+async def benchmark(samples, host_load, profile, guest, compiler="pdflatex"):
     if not settings.DATABASE_URL.rsplit("/", 1)[-1].split("?", 1)[0].endswith("_test"):
         raise RuntimeError("Benchmark requires an explicitly isolated *_test database")
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
@@ -49,6 +49,11 @@ async def benchmark(samples, host_load, profile, guest):
     user_id, resume_id = (None, None) if guest else (str(uuid4()), str(uuid4()))
     fingerprint = "bench_guest_" + uuid4().hex if guest else None
     base_source = SOURCE
+    if profile == "managed_english":
+        from benchmark_trusted_format import FIXTURE
+        from app.services.resume_builder_service import resume_builder_service
+
+        base_source = resume_builder_service.render(FIXTURE, "ats_safe").latex_content
     if profile == "one_pass_no_hyperref":
         base_source = base_source.replace(r"\usepackage{hyperref}", "").replace(
             r"\href{mailto:avery@example.test}{avery@example.test}", "avery@example.test")
@@ -96,7 +101,7 @@ async def benchmark(samples, host_load, profile, guest):
                     "text": "Avery Example", "editable": True,
                     "source_span": {"start": source.index("Avery Example"), "end": source.index("Avery Example") + 13}}]}
             kwargs = {"latex_content": source, "job_id": job, "user_id": user_id, "resume_id": resume_id,
-                "compiler": "pdflatex", "timeout_seconds": 15, "metadata": {"skip_auto_save": True},
+                "compiler": compiler, "timeout_seconds": 30, "metadata": {"skip_auto_save": True},
                 "render_request": {"document_id": resume_id or "guest", "content_revision": 1, "source_document": document},
                 "device_fingerprint": fingerprint, "watermark": "Latexy" if guest else None}
             phases.clear()
@@ -129,9 +134,10 @@ async def benchmark(samples, host_load, profile, guest):
             aggregates[condition] = {"wall": summary([row["elapsed_seconds"] for row in selected]),
                 "phase_totals_per_job": {phase: summary(values) for phase, values in aggregated_phases.items()}}
         return {"schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(),
-            "host_load": host_load, "profile": profile, "guest": guest, "watermark": "Latexy" if guest else None,
+            "host_load": host_load, "profile": profile, "compiler": compiler,
+            "fixture_source_sha256": sha256(base_source), "guest": guest, "watermark": "Latexy" if guest else None,
             "renderer_fingerprint": renderer_fingerprint(),
-            "benchmark_container_cpu_limit": "none", "scope": "warm eager direct-worker task; actual pdflatex+Redis Lua+PostgreSQL+S3; geometry enabled",
+            "benchmark_container_cpu_limit": "none", "scope": f"warm eager direct-worker task; actual {compiler}+Redis Lua+PostgreSQL+S3; geometry enabled",
             "exclusions": ["public HTTP admission/quota", "Celery transport", "AI", "browser paint", "cold image startup"],
             "method": "3 fresh warmups +1 exact seed excluded; 30 or more deterministic alternating fresh/cache pairs; distinct fresh source",
             "phase_warning": "phase intervals overlap; sums are not total wall latency", "samples": rows, "aggregates": aggregates,
@@ -154,13 +160,18 @@ def main():
     parser.add_argument("--samples", type=int, default=30)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--host-load", choices=["contended", "quiet", "unspecified"], default="unspecified")
-    parser.add_argument("--profile", choices=["hyperref", "one_pass_no_hyperref"], default="hyperref")
+    parser.add_argument("--profile", choices=["hyperref", "one_pass_no_hyperref", "managed_english"], default="hyperref")
+    parser.add_argument("--compiler", choices=["pdflatex", "lualatex", "xelatex"], default="pdflatex")
+    parser.add_argument("--source-commit", help="Immutable source commit used for this run")
+    parser.add_argument("--image-id", help="Actual Docker image ID used for this run")
     parser.add_argument("--guest", action="store_true")
     args = parser.parse_args()
     if args.samples < 30:
         parser.error("At least 30 measured pairs required")
     logging.disable(logging.CRITICAL)
-    result = asyncio.run(benchmark(args.samples, args.host_load, args.profile, args.guest))
+    result = asyncio.run(benchmark(args.samples, args.host_load, args.profile, args.guest, args.compiler))
+    result["source_commit"] = args.source_commit
+    result["image_id"] = args.image_id
     args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
