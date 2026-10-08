@@ -129,6 +129,7 @@ def admitted(request):
     context = build_context(doc, "Python required")
     context["approved_scope"] = []
     context["direction"] = {"custom_instructions": ""}
+    context["provider_endpoint_identity"] = "openai_chat_completions:https://api.openai.com/v1"
     args = dict(
         user_id=user_id,
         resume_id=resume_id,

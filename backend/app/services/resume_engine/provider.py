@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import threading
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
+import httpx
 import openai
 
 from ...core.config import settings
@@ -49,12 +52,43 @@ class ProviderSpec:
     cancellation: str = "transport_close_best_effort"
     usage_accounting: bool = True
     reasoning_controls: bool = False
+    protocol: str = "openai_chat_completions"
+
+    @property
+    def endpoint_identity(self) -> str:
+        return self.protocol + ":" + (self.base_url or "https://api.openai.com/v1")
 
     def cost(self, input_tokens: int, output_tokens: int) -> float:
         return (input_tokens * self.input_per_million + output_tokens * self.output_per_million) / 1_000_000
 
 
-def resolve_provider(api_key: str, model: str | None) -> ProviderSpec:
+BYOK_ENDPOINTS = {"openai": None, "anthropic": "https://api.anthropic.com/v1/messages",
+                  "openrouter": "https://openrouter.ai/api/v1"}
+
+
+def configured_models(provider: str) -> list[str]:
+    prefix = provider + ":"
+    return sorted(key[len(prefix):] for key in settings.RESUME_ENGINE_MODEL_PRICING
+                  if key.startswith(prefix) and 0 < len(key[len(prefix):]) <= 200
+                  and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]*", key[len(prefix):]))
+
+
+def resolve_provider(api_key: str, model: str | None, *, selected_provider: str | None = None) -> ProviderSpec:
+    if selected_provider is not None:
+        if selected_provider not in BYOK_ENDPOINTS:
+            raise BudgetExceeded("Unsupported optimization provider")
+        models = configured_models(selected_provider)
+        if model is None:
+            if len(models) != 1:
+                raise BudgetExceeded("Choose an exactly priced model for this provider")
+            model = models[0]
+        provider, base_url, effective_model = selected_provider, BYOK_ENDPOINTS[selected_provider], model
+    else:
+        return _resolve_implicit_provider(api_key, model)
+    return _priced_spec(provider, effective_model, base_url)
+
+
+def _resolve_implicit_provider(api_key: str, model: str | None) -> ProviderSpec:
     platform = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
     base_url = settings.OPENAI_BASE_URL if platform else None
     host = urlparse(base_url or "https://api.openai.com").hostname
@@ -64,6 +98,10 @@ def resolve_provider(api_key: str, model: str | None) -> ProviderSpec:
         else ("gemini" if host == "generativelanguage.googleapis.com" else "openai_compatible")
     )
     effective_model = model or (settings.OPENAI_MODEL if platform or not settings.OPENAI_BASE_URL else "gpt-4o-mini")
+    return _priced_spec(provider, effective_model, base_url)
+
+
+def _priced_spec(provider: str, effective_model: str, base_url: str | None) -> ProviderSpec:
     price = settings.RESUME_ENGINE_MODEL_PRICING.get(provider + ":" + effective_model)
     if not price:
         raise BudgetExceeded("This provider/model needs an operator-configured price before bounded optimization")
@@ -79,7 +117,8 @@ def resolve_provider(api_key: str, model: str | None) -> ProviderSpec:
         "gpt-4o",
         "gpt-4o-2024-08-06",
     }
-    return ProviderSpec(provider, effective_model, base_url, input_price, output_price, strict)
+    return ProviderSpec(provider, effective_model, base_url, input_price, output_price, strict,
+                        protocol="anthropic_messages_v1" if provider == "anthropic" else "openai_chat_completions")
 
 
 def _close(resource):
@@ -99,6 +138,156 @@ def _unique_object(pairs):
     return result
 
 
+def _token_count(value) -> int:
+    if type(value) is not int or value < 0:
+        raise CompactOptimizationError("Provider usage is invalid")
+    return value
+
+
+def _validate_native_usage(usage: dict) -> None:
+    # Cache writes use a different unit price. This adapter deliberately sends
+    # no cache_control and has only exact ordinary input/output pricing; never
+    # silently treat a positive cache category as ordinary input cost.
+    for key in ("cache_creation_input_tokens", "cache_read_input_tokens"):
+        if key in usage and _token_count(usage[key]) != 0:
+            raise CompactOptimizationError("Provider cache usage needs a priced cache policy")
+    if usage.get("cache_creation") is not None:
+        nested = usage["cache_creation"]
+        if not isinstance(nested, dict) or any(_token_count(value) != 0 for value in nested.values()):
+            raise CompactOptimizationError("Provider cache usage needs a priced cache policy")
+
+
+class AnthropicStageStream:
+    """Bounded native SSE normalized for the existing durable provider loop.
+
+    The wrapper is closeable before headers arrive, so the shared deadline and
+    cancellation watchdog can close its client during a blocked request too.
+    Fixed URL, disabled redirects and no automatic retries retain credential and
+    paid-intent isolation. All framing bytes count toward the response ceiling.
+    """
+
+    def __init__(self, client, spec, system, prompt, max_tokens, timeout):
+        self.client, self.spec, self.response = client, spec, None
+        self.params = {"model": spec.model, "system": system,
+                       "messages": [{"role": "user", "content": prompt}],
+                       "max_tokens": max_tokens, "stream": True}
+        self.timeout = timeout
+        self.closed = threading.Event()
+
+    def close(self):
+        self.closed.set()
+        _close(self.response)
+        _close(self.client)
+
+    @staticmethod
+    def _chunk(text=None, *, usage=None, finish=None):
+        return SimpleNamespace(usage=usage, choices=[SimpleNamespace(
+            delta=SimpleNamespace(content=text, refusal=None), finish_reason=finish)])
+
+    def __iter__(self):
+        if self.spec.base_url != BYOK_ENDPOINTS["anthropic"]:
+            raise CompactOptimizationError("Invalid Anthropic endpoint")
+        started, stopped, block, next_index = False, False, None, 0
+        reported_input, reported_output, finish = None, None, None
+        raw, total = b"", 0
+        with self.client.stream("POST", self.spec.base_url, json=self.params, timeout=self.timeout) as response:
+            self.response = response
+            if self.closed.is_set():
+                raise CompactOptimizationCancelled("Optimization transport closed")
+            response.raise_for_status()
+            if "text/event-stream" not in response.headers.get("content-type", "").lower():
+                raise CompactOptimizationError("Provider returned an invalid stream type")
+            for content in response.iter_bytes():
+                if self.closed.is_set():
+                    raise CompactOptimizationCancelled("Optimization transport closed")
+                total += len(content)
+                if total > 128_000:
+                    raise CompactOptimizationError("Provider stream exceeded the response limit")
+                raw = (raw + content).replace(b"\r\n", b"\n")
+                while b"\n\n" in raw:
+                    frame, raw = raw.split(b"\n\n", 1)
+                    event, lines = None, []
+                    for line in frame.decode("utf-8", errors="strict").split("\n"):
+                        if not line or line.startswith(":"):
+                            continue
+                        field, separator, value = line.partition(":")
+                        if not separator:
+                            raise CompactOptimizationError("Provider stream framing is invalid")
+                        value = value.removeprefix(" ")
+                        if field == "event" and event is None:
+                            event = value
+                        elif field == "data":
+                            lines.append(value)
+                        else:
+                            raise CompactOptimizationError("Provider stream framing is invalid")
+                    if not lines and event is None:
+                        continue
+                    value = json.loads("\n".join(lines), object_pairs_hook=_unique_object,
+                        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+                    if not isinstance(value, dict) or value.get("type") != event:
+                        raise CompactOptimizationError("Provider stream event is invalid")
+                    if event == "ping":
+                        continue
+                    if stopped:
+                        raise CompactOptimizationError("Provider emitted data after completion")
+                    if event == "message_start" and not started:
+                        message = value.get("message")
+                        if not isinstance(message, dict) or message.get("type") != "message" or message.get("role") != "assistant":
+                            raise CompactOptimizationError("Provider message is invalid")
+                        usage = message.get("usage")
+                        if not isinstance(usage, dict):
+                            raise CompactOptimizationError("Provider usage is unavailable")
+                        _validate_native_usage(usage)
+                        if "input_tokens" not in usage:
+                            raise CompactOptimizationError("Provider input usage is unavailable")
+                        reported_input = _token_count(usage["input_tokens"])
+                        reported_output = _token_count(usage.get("output_tokens"))
+                        started = True
+                    elif not started:
+                        raise CompactOptimizationError("Provider message did not start")
+                    elif event == "content_block_start" and block is None and finish is None:
+                        item = value.get("content_block")
+                        if type(value.get("index")) is not int or value["index"] != next_index or not isinstance(item, dict) or item.get("type") != "text" or not isinstance(item.get("text"), str):
+                            raise CompactOptimizationError("Provider text block is invalid")
+                        block, next_index = next_index, next_index + 1
+                        if item["text"]:
+                            yield self._chunk(item["text"])
+                    elif event == "content_block_delta" and block is not None:
+                        delta = value.get("delta")
+                        if type(value.get("index")) is not int or value["index"] != block or not isinstance(delta, dict) or delta.get("type") != "text_delta" or not isinstance(delta.get("text"), str):
+                            raise CompactOptimizationError("Provider text delta is invalid")
+                        yield self._chunk(delta["text"])
+                    elif event == "content_block_stop" and block is not None:
+                        if type(value.get("index")) is not int or value["index"] != block:
+                            raise CompactOptimizationError("Provider block completion is invalid")
+                        block = None
+                    elif event == "message_delta" and block is None:
+                        delta, usage = value.get("delta"), value.get("usage")
+                        if not isinstance(delta, dict) or (delta.get("stop_reason") is not None and not isinstance(delta["stop_reason"], str)) or not isinstance(usage, dict):
+                            raise CompactOptimizationError("Provider completion is invalid")
+                        _validate_native_usage(usage)
+                        if "input_tokens" in usage and _token_count(usage["input_tokens"]) != reported_input:
+                            raise CompactOptimizationError("Provider input usage changed")
+                        output = _token_count(usage.get("output_tokens"))
+                        if output < reported_output:
+                            raise CompactOptimizationError("Provider output usage decreased")
+                        reported_output = output
+                        reason = delta.get("stop_reason")
+                        if reason is not None:
+                            next_finish = "stop" if reason in {"end_turn", "stop_sequence"} else reason
+                            if finish is not None and next_finish != finish:
+                                raise CompactOptimizationError("Provider stop reason changed")
+                            finish = next_finish
+                    elif event == "message_stop" and block is None and finish is not None:
+                        stopped = True
+                    else:
+                        raise CompactOptimizationError("Provider stream event sequence is invalid")
+            if raw.strip() or not stopped:
+                raise CompactOptimizationError("Provider response was incomplete")
+            yield self._chunk(usage=SimpleNamespace(prompt_tokens=reported_input,
+                                                   completion_tokens=reported_output), finish=finish)
+
+
 class SemanticProvider:
     """One adapter per run; connections reused only inside its credential scope."""
 
@@ -111,7 +300,7 @@ class SemanticProvider:
         deadline: float,
         cancelled,
         owner_scope: str,
-        client_factory=openai.OpenAI,
+        client_factory=None,
     ):
         self.spec, self.api_key, self.ledger, self.deadline = spec, api_key, ledger, deadline
         self.cancelled, self.owner_scope, self.client_factory = cancelled, owner_scope, client_factory
@@ -134,10 +323,14 @@ class SemanticProvider:
             if self._stopped.is_set():
                 raise CompactOptimizationCancelled("Optimization run stopped")
             if key not in self._clients:
-                kwargs = {"api_key": self.api_key, "max_retries": 0, "timeout": timeout}
-                if self.spec.base_url:
-                    kwargs["base_url"] = self.spec.base_url
-                self._clients[key] = self.client_factory(**kwargs)
+                if self.spec.protocol == "anthropic_messages_v1":
+                    self._clients[key] = (self.client_factory or httpx.Client)(timeout=timeout, follow_redirects=False,
+                        headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"})
+                else:
+                    kwargs = {"api_key": self.api_key, "max_retries": 0, "timeout": timeout}
+                    if self.spec.base_url:
+                        kwargs["base_url"] = self.spec.base_url
+                    self._clients[key] = (self.client_factory or openai.OpenAI)(**kwargs)
             return self._clients[key]
 
     def generate(
@@ -155,6 +348,7 @@ class SemanticProvider:
             "provider": self.spec.provider,
             "max_output_tokens": max_output_tokens,
             "version": "semantic-provider-v1",
+            "endpoint_identity": self.spec.endpoint_identity,
         }
         # Byte upper bound works even when the app tokenizer uses a fallback or
         # when this compatible provider uses another vocabulary/tokenizer.
@@ -178,6 +372,8 @@ class SemanticProvider:
             raise BudgetExceeded("Optimization deadline reached")
         rate_key = (
             "latexy:resume-engine:rate:"
+            + self.spec.provider + ":"
+            + hashlib.sha256(self.spec.endpoint_identity.encode()).hexdigest()[:16] + ":"
             + self.credential_scope
             + ":"
             + hashlib.sha256(self.spec.model.encode()).hexdigest()[:16]
@@ -260,7 +456,8 @@ class SemanticProvider:
             raw_parts, byte_count, finish = [], 0, None
             poll_cancel = CancellationPoll(self.cancelled)
             with engine_span("model_call"):
-                stream = client.chat.completions.create(**kwargs)
+                stream = (AnthropicStageStream(client, self.spec, system, prompt, max_output_tokens, remaining)
+                          if self.spec.protocol == "anthropic_messages_v1" else client.chat.completions.create(**kwargs))
                 active_stream[0] = stream
                 if cancelled_transport.is_set():
                     raise CompactOptimizationCancelled("Optimization cancelled")

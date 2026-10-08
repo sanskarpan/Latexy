@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..database.connection import get_db
-from ..database.models import Compilation, JobFinalization, Resume, ResumeOptimizationRun, ResumeTemplate
+from ..database.models import Compilation, JobFinalization, Resume, ResumeOptimizationRun, ResumeTemplate, UserAPIKey
 from ..middleware.auth_middleware import get_current_user_required
 from ..services.resume_engine.acceptance import valid_run_result, validate_factual_dependencies
 from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
@@ -54,6 +54,9 @@ class OptimizeDocument(BaseModel):
     effort: Literal["quick", "standard", "deep"] = "standard"
     max_cost_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     model: Literal["gpt-4o-mini", "gpt-4o"] | None = None
+    provider: Literal["openai", "anthropic", "openrouter"] | None = None
+    provider_model: str | None = Field(default=None, min_length=1, max_length=200,
+                                      pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
     target_sections: list[str] | None = Field(default=None, max_length=20)
     custom_instructions: str | None = Field(default=None, max_length=4000)
 
@@ -126,6 +129,34 @@ async def _access(db, resume_id, user_id, *, write=False, owner=False):
     return resume
 
 
+@router.get("/engine/providers")
+async def engine_providers(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)):
+    """Only this owner's configured keys and operator-priced models; no provider call."""
+    from ..services.api_key_service import api_key_service
+    from ..services.resume_engine.provider import BYOK_ENDPOINTS, configured_models, resolve_provider
+
+    available = set((await db.scalars(select(UserAPIKey.provider).where(
+        UserAPIKey.user_id == user_id, UserAPIKey.is_active.is_(True)))).all())
+    providers = []
+    for provider in BYOK_ENDPOINTS:
+        models = []
+        for model in configured_models(provider):
+            try:
+                resolve_provider("configured", model, selected_provider=provider)
+                models.append(model)
+            except (BudgetExceeded, TypeError, ValueError):
+                pass
+        providers.append({"provider": provider, "key_available": provider in available, "models": models})
+    user_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    default = {"provider": None, "model": None, "source": "byok" if user_key else "platform", "ready": False}
+    try:
+        spec = resolve_provider(user_key or settings.OPENAI_API_KEY or "", None)
+        default.update(provider=spec.provider, model=spec.model, ready=bool(user_key or settings.OPENAI_API_KEY))
+    except (BudgetExceeded, TypeError, ValueError):
+        pass
+    return {"default": default, "providers": providers}
+
+
 @router.get("/{resume_id}/engine/document")
 async def get_document(
     resume_id: str, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)
@@ -176,6 +207,10 @@ async def optimize_document(
 ):
     if settings.RESUME_SEMANTIC_ENGINE_ENABLED is not True:
         raise HTTPException(503, "Semantic optimization is disabled")
+    if body.provider is None and body.provider_model is not None:
+        raise HTTPException(422, "Choose a provider for this model")
+    if body.provider is not None and body.model is not None:
+        raise HTTPException(422, "Use the selected provider model only")
     resume = await _access(db, resume_id, user_id, owner=True)
     document = await _document(db, resume)
     if document["source_mode"] != "managed":
@@ -207,6 +242,8 @@ async def optimize_document(
     }
     if body.max_cost_usd is not None:
         metadata["max_cost_usd"] = body.max_cost_usd
+    if body.provider is not None:
+        metadata.update(semantic_provider=body.provider, semantic_provider_model=body.provider_model)
     return await submit_job(
         JobSubmissionRequest(
             job_type="combined",

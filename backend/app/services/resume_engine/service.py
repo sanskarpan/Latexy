@@ -7,8 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 
-import openai
-
 from ...core.config import settings
 from ...core.engine_observability import engine_span
 from ...database.models import Resume, ResumeOptimizationRun, ResumeRequirementContext, ResumeTemplate
@@ -133,7 +131,8 @@ def run_semantic_optimization(
     expected_revision = metadata.get("expected_content_revision")
     expected_source = metadata.get("expected_source_sha256")
     ledger = DurableOptimizationLedger(redis, job_id)
-    spec = resolve_provider(api_key, model)
+    spec = resolve_provider(api_key, metadata.get("semantic_provider_model", model),
+                            selected_provider=metadata.get("semantic_provider"))
     credential_scope = credential_scope_for_api_key(api_key)
     extracted_requirements = extract_requirements(job_description)
     decision_memory = None
@@ -210,6 +209,7 @@ def run_semantic_optimization(
     context = build_context(document, job_description, requirements=requirements)
     context["approved_scope"] = target_sections or []
     context["direction"] = {"custom_instructions": custom_instructions or "", **(direction_fields or {})}
+    context["provider_endpoint_identity"] = spec.endpoint_identity
     if decision_memory is not None:
         context["decision_memory"] = decision_memory
     if requirement_plan is not None:
@@ -284,7 +284,7 @@ def run_semantic_optimization(
         deadline=deadline,
         cancelled=cancelled,
         owner_scope=user_id,
-        client_factory=client_factory or openai.OpenAI,
+        client_factory=client_factory,
     )
     pool = None
     try:

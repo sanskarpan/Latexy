@@ -594,11 +594,24 @@ async def submit_job(
             document = project_document(owned_resume, template.category if template else None)
             if document.get("source_mode") != "managed":
                 raise HTTPException(422, "This document needs a managed template for bounded optimization")
+            selected_provider = (request.metadata or {}).get("semantic_provider")
+            selected_model = (request.metadata or {}).get("semantic_provider_model")
+            if selected_provider is not None:
+                if not isinstance(selected_provider, str) or selected_provider not in {"openai", "anthropic", "openrouter"}:
+                    raise HTTPException(422, "Unsupported optimization provider")
+                if selected_model is not None and (not isinstance(selected_model, str) or not 1 <= len(selected_model) <= 200):
+                    raise HTTPException(422, "Invalid selected provider model")
+                user_api_key = await api_key_service.get_user_provider(db, user_id, selected_provider)
+                if not user_api_key:
+                    raise HTTPException(422, "Connect a readable key for the selected provider before optimizing")
+            elif selected_model is not None:
+                raise HTTPException(422, "Choose a provider for this model")
             if not (user_api_key or settings.OPENAI_API_KEY):
                 raise HTTPException(503, "Configure an AI provider before optimizing")
             try:
                 initial_budget(safe_meta.get("optimization_effort", "standard"), safe_meta.get("max_cost_usd"))
-                resolve_provider(user_api_key or settings.OPENAI_API_KEY or "", safe_model)
+                provider_spec = resolve_provider(user_api_key or settings.OPENAI_API_KEY or "",
+                    selected_model if selected_provider is not None else safe_model, selected_provider=selected_provider)
             except (BudgetExceeded, TypeError, ValueError) as exc:
                 raise HTTPException(422, str(exc)) from exc
             # Generic metadata cannot turn a reviewed candidate into an autosave.
@@ -607,6 +620,10 @@ async def submit_job(
                 safe_meta.pop(key, None)
             safe_meta.update({"skip_auto_save": True, "branch": "candidate"})
             extra_meta.update({"optimization_engine": "semantic_v1", "skip_auto_save": True, "branch": "candidate"})
+            if selected_provider is not None:
+                # Only canonical server-resolved selection crosses dispatch.
+                safe_meta.update(semantic_provider=provider_spec.provider, semantic_provider_model=provider_spec.model)
+                extra_meta.update(semantic_provider=provider_spec.provider, semantic_provider_model=provider_spec.model)
 
         if request.job_type == "auto_fit":
             if not user_id:

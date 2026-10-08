@@ -251,7 +251,9 @@ def optimize_and_compile_task(
             },
         )
 
-    api_key = user_api_key or settings.OPENAI_API_KEY
+    explicit_semantic_provider = ((metadata or {}).get("optimization_engine") == "semantic_v1"
+                                 and (metadata or {}).get("semantic_provider") is not None)
+    api_key = user_api_key if explicit_semantic_provider else user_api_key or settings.OPENAI_API_KEY
 
     # Resolve per-plan compile timeout
     compile_timeout = timeout_seconds or get_compile_timeout(user_plan)
