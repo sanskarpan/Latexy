@@ -15,6 +15,7 @@ from ..core.config import settings
 from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, capture_process_output_bounded
 from .latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
+    ENGINE_UNVERIFIED_OUTPUT_ERROR,
     LATEX_SANDBOX_FLAGS,
     assert_local_engine_allowed,
     cleanup_docker_container_async,
@@ -181,7 +182,7 @@ class LaTeXCompiler:
                 "-output-directory", str(work_dir),
                 "document.tex",
                 cwd=str(work_dir),
-                env=engine_env(),
+                env=engine_env(self.latex_command or "pdflatex"),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -195,7 +196,7 @@ class LaTeXCompiler:
                     raise
 
                 if self._read_escape(output, work_dir, str(work_dir), process.returncode == 0):
-                    return False, ENGINE_READ_ESCAPE_ERROR
+                    return False, ENGINE_READ_ESCAPE_ERROR if (work_dir / "document.fls").is_file() else ENGINE_UNVERIFIED_OUTPUT_ERROR
                 if process.returncode == 0:
                     return True, None
                 else:
@@ -222,7 +223,7 @@ class LaTeXCompiler:
             # Run Docker command
             docker_cmd = [
                 "docker", "run", "--rm", "--name", container_name,
-                *docker_sandbox_args(),
+                *docker_sandbox_args("pdflatex"),
                 "-v", f"{work_dir}:/work",
                 "-w", "/work",
                 self.docker_image,
@@ -235,7 +236,7 @@ class LaTeXCompiler:
 
             process = await asyncio.create_subprocess_exec(
                 *docker_cmd,
-                env=engine_env(),
+                env=engine_env("pdflatex"),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -250,7 +251,7 @@ class LaTeXCompiler:
 
                 if self._read_escape(output, work_dir, "/work", process.returncode == 0):
                     await cleanup_docker_container_async(container_name)
-                    return False, ENGINE_READ_ESCAPE_ERROR
+                    return False, ENGINE_READ_ESCAPE_ERROR if (work_dir / "document.fls").is_file() else ENGINE_UNVERIFIED_OUTPUT_ERROR
                 if process.returncode == 0:
                     await cleanup_docker_container_async(container_name)
                     return True, None
@@ -335,7 +336,7 @@ class LaTeXCompiler:
         if any(find_engine_read_escape(line, workspace) for line in output.splitlines()):
             return True
         return bool(find_recorder_read_escape(
-            work_dir / "document.fls", workspace, require_recorder=success,
+            work_dir / "document.fls", workspace, require_recorder=True,
         ))
 
     def is_available(self) -> bool:

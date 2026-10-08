@@ -45,6 +45,13 @@ RUN mkdir -p /app/temp /var/lib/celery /pycache && \
     mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config && \
     chown appuser:appgroup /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config
 
+# Keep fontconfig cache mtimes valid after OCI layers round directory timestamps.
+RUN set -eu; \
+    engine_fonts="$(kpsewhich -var-value=TEXMFDIST)/fonts"; \
+    find "$engine_fonts" /usr/share/fonts /usr/local/share/fonts \
+      -type d -exec touch -m -d '@1704067200' {} +; \
+    fc-cache --force --system-only
+
 # Switch to non-root user
 USER appuser
 
@@ -58,6 +65,9 @@ ENV PORT=8030
 # System users have no home directory; LuaLaTeX still needs a writable font cache.
 ENV TEXMFVAR=/var/lib/texmf/latexy-cache \
     TEXMFCONFIG=/var/lib/texmf/latexy-config
+
+# Initialize system font data as the runtime UID before document deadlines apply.
+RUN python scripts/warm_lualatex_cache.py
 
 # Health check — longer start period to allow uvicorn to start + DB connections
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

@@ -390,13 +390,14 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert "needs.classify-changes.outputs.frontend == 'true'" in job["if"]
     step = next(
         step for step in job["steps"]
-        if step.get("name") == "Verify desktop compile cadence and source-PDF synchronization"
+        if step.get("name") == "Verify guided builder, compile cadence and source-PDF synchronization"
     )
     assert step["env"] == {
         "PLAYWRIGHT_PORT": "5183",
         "PLAYWRIGHT_SERVER_MODE": "production",
     }
     assert "e2e/editor-compile-sync.spec.ts" in step["run"]
+    assert "e2e/resume-builder.spec.ts" in step["run"]
     assert "--retries=0" in step["run"]
     assert "--trace=on" in step["run"]
     assert "--workers=1" in step["run"]

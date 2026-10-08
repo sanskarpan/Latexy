@@ -10,7 +10,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import HTTPException
 
@@ -22,7 +22,7 @@ from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     MAX_RECORDER_BYTES,
     BoundedReadError,
-    bound_log_line,
+    BoundedTranscript,
     capture_process_output_bounded,
     iter_bounded_lines,
     read_file_bounded,
@@ -161,19 +161,46 @@ def docker_engine_available() -> bool:
         return False
 
 
-def docker_sandbox_args() -> list[str]:
+def _engine_kpse_vars(compiler: Optional[str] = None) -> dict[str, str]:
+    variables = dict(_LATEX_SANDBOX_KPSE_VARS)
+    if compiler == "lualatex":
+        # LuaTeX's Lua io.open honors paranoid input mode even for trusted
+        # Unicode/font data resolved by kpathsea, breaking luaotfload startup.
+        # Restrict this compatibility policy to the exact allowed compiler;
+        # transcript and recorder confinement still gate every published output.
+        variables["openin_any"] = "r"
+    return variables
+
+
+def docker_sandbox_args(compiler: Optional[str] = None) -> list[str]:
     """``docker run`` arguments that confine the LaTeX engine."""
     args = list(_DOCKER_SANDBOX_FLAGS)
-    for name, value in _LATEX_SANDBOX_KPSE_VARS.items():
+    for name, value in _engine_kpse_vars(compiler).items():
         args += ["-e", f"{name}={value}"]
     return args
 
 
-def engine_env() -> dict[str, str]:
+def engine_env(compiler: Optional[str] = None) -> dict[str, str]:
     """Minimal environment for the engine subprocess (no app credentials)."""
     env = {name: os.environ[name] for name in _ENGINE_ENV_PASSTHROUGH if name in os.environ}
-    env.update(_LATEX_SANDBOX_KPSE_VARS)
+    env.update(_engine_kpse_vars(compiler))
     return env
+
+
+def publish_verified_engine_log(
+    job_id: str,
+    transcript: BoundedTranscript,
+    compiler: str,
+    publish: Callable[..., object],
+) -> None:
+    """Release bounded diagnostics only after all engine read checks passed."""
+    for line in transcript.text().splitlines():
+        lowered = line.lower()
+        publish(job_id, "log.line", {
+            "line": line,
+            "source": compiler,
+            "is_error": line.startswith("!") or any(word in lowered for word in ("error", "fatal", "undefined control")),
+        })
 
 
 ENGINE_UNAVAILABLE_ERROR = "LaTeX compilation is temporarily unavailable."
@@ -395,6 +422,13 @@ def find_recorder_read_escape(
 
 
 ENGINE_READ_ESCAPE_ERROR = "Compilation blocked: the document tried to read a file outside its own directory."
+ENGINE_UNVERIFIED_OUTPUT_ERROR = "Compilation failed before engine output could be validated."
+
+
+def engine_output_error(violation: str) -> str:
+    if violation.startswith("<no recorder file"):
+        return ENGINE_UNVERIFIED_OUTPUT_ERROR
+    return ENGINE_READ_ESCAPE_ERROR
 
 
 # ── LaTeX injection guards (defence in depth) ───────────────────────────────
@@ -643,7 +677,7 @@ class LaTeXService:
             recorder_escape = find_recorder_read_escape(
                 job_dir / f"resume{RECORDER_SUFFIX}",
                 workspace,
-                require_recorder=process.returncode == 0,
+                require_recorder=True,
             )
             if recorder_escape:
                 logger.warning(
@@ -657,7 +691,7 @@ class LaTeXService:
                 return CompilationResponse(
                     success=False,
                     job_id=job_id,
-                    message=ENGINE_READ_ESCAPE_ERROR,
+                    message=engine_output_error(recorder_escape),
                     compilation_time=compilation_time,
                 )
 
@@ -841,6 +875,7 @@ def run_latex_subprocess(
         timeout=timeout,
         is_cancelled=lambda: is_cancelled(job_id),
     ).start()
+    transcript = BoundedTranscript()
     try:
         for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
             if not line:
@@ -854,17 +889,7 @@ def run_latex_subprocess(
                 logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
                 return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
 
-            line_lower = line.lower()
-            is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
-            publish_event(
-                job_id,
-                "log.line",
-                {
-                    "source": "pdflatex",
-                    "line": bound_log_line(line)[0],
-                    "is_error": is_error,
-                },
-            )
+            transcript.append(line)
 
             if timeout is not None and time.time() - start_time > timeout:
                 proc.kill()
@@ -900,12 +925,14 @@ def run_latex_subprocess(
     recorder_escape = find_recorder_read_escape(
         job_dir / f"resume{RECORDER_SUFFIX}",
         workspace,
-        require_recorder=proc.returncode == 0,
+        require_recorder=True,
     )
     if recorder_escape:
         logger.warning("[%s] engine read outside the job directory (recorder): %s", job_id, recorder_escape)
         cleanup_docker_container(container_name)
-        return False, compilation_time, ENGINE_READ_ESCAPE_ERROR
+        return False, compilation_time, engine_output_error(recorder_escape)
+
+    publish_verified_engine_log(job_id, transcript, "pdflatex", publish_event)
 
     if proc.returncode == 0 and pdf_file.exists():
         cleanup_docker_container(container_name)
