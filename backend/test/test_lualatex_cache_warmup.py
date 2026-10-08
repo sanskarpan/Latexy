@@ -27,7 +27,7 @@ def test_warmup_uses_fixed_input_and_no_application_environment(tmp_path, monkey
     def run(command, **kwargs):
         calls.append((command, kwargs))
         workspace = kwargs["cwd"]
-        assert (workspace / "warmup.tex").read_text(encoding="utf-8") == warmup.TRUSTED_PROBES[len(calls) - 1]
+        assert (workspace / "warmup.tex").read_text(encoding="utf-8") == warmup.FONT_CACHE_PROBES[len(calls) - 1]
         (workspace / "warmup.pdf").write_bytes(b"%PDF synthetic")
         return SimpleNamespace(returncode=0)
 
@@ -43,7 +43,7 @@ def test_warmup_uses_fixed_input_and_no_application_environment(tmp_path, monkey
     assert len(calls) == 5
     assert len({options["cwd"] for _command, options in calls}) == 5
     assert all(0 < options["timeout"] <= 600 for _command, options in calls)
-    for region, source in zip(("SC", "TC", "JP", "KR"), warmup.TRUSTED_PROBES[1:]):
+    for region, source in zip(("SC", "TC", "JP", "KR"), warmup.FONT_CACHE_PROBES[1:]):
         assert f"Noto Sans CJK {region}" in source
 
 
@@ -137,6 +137,6 @@ def test_fresh_runtime_owned_cache_warms_before_30_second_document(monkeypatch):
             monkeypatch.setattr(orch, "cache_compile_log", lambda *_args: None)
             monkeypatch.setattr(orch, "record_compile", lambda *_args, **_kwargs: None)
             monkeypatch.setattr(orch, "cache_compile_output", lambda _job, path: (path / "resume.pdf").read_bytes())
-            result = orch._run_latex_stage(str(uuid4()), warmup.TRUSTED_SOURCE, compiler="lualatex", timeout_seconds=30)
+            result = orch._run_latex_stage(str(uuid4()), warmup.FONT_CACHE_SOURCE, compiler="lualatex", timeout_seconds=30)
             assert result[0] is True, result[2]
             assert result[4].startswith(b"%PDF")

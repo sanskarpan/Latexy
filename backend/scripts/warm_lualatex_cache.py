@@ -8,7 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
-TRUSTED_SOURCE = (
+FONT_CACHE_SOURCE = (
     r"\documentclass{article}\usepackage{fontspec}"
     r"\setmainfont{Latin Modern Roman}"
     r"\begin{document}Trusted LuaTeX font cache warmup\end{document}"
@@ -19,8 +19,8 @@ _CJK_FACE_PROBES = (
     ("Noto Sans CJK JP", "日本語"),
     ("Noto Sans CJK KR", "한국어"),
 )
-TRUSTED_PROBES = (
-    TRUSTED_SOURCE,
+FONT_CACHE_PROBES = (
+    FONT_CACHE_SOURCE,
     *(
         r"\documentclass{article}\usepackage{fontspec}"
         r"\newfontfamily\WarmCjk{" + font + r"}"
@@ -55,7 +55,7 @@ def warm_cache(cache_dir: Path, config_dir: Path) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     # Release each large Noto face's memory before preparing the next face.
     # All probes share one setup deadline and the same runtime-owned cache.
-    for source in TRUSTED_PROBES:
+    for source in FONT_CACHE_PROBES:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Trusted LuaTeX font-cache initialization timed out")
