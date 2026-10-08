@@ -33,6 +33,8 @@ LIVE_SUBSCRIPTION_STATUSES = ("cancel_scheduled", "active", "past_due", "on_hold
 PAID_SUBSCRIPTION_STATUSES = ("cancel_scheduled", "active", "past_due", "on_hold", "paused")
 LEGACY_BILLING_STATUSES = ("active", "created", "authenticated", "pending", "halted", "paused", "cancel_scheduled")
 WEBHOOK_TOLERANCE_SECONDS = 300
+RECONCILE_LOCK_TTL_SECONDS = 75
+RECONCILE_COOLDOWN_SECONDS = 20
 _LOCK_RELEASE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end"
 
 
@@ -94,6 +96,25 @@ class PaymentService:
     async def _release_checkout_lock(self, user_id: str, token: str) -> None:
         redis = await get_redis_cache_client()
         await redis.eval(_LOCK_RELEASE_SCRIPT, 1, f"latexy:billing:checkout:{user_id}", token)
+
+    async def _acquire_reconcile_lock(self, user_id: str) -> str | None:
+        """Bound provider reads and serialize recovery attempts per account."""
+        redis = await get_redis_cache_client()
+        token = secrets.token_urlsafe(24)
+        return token if await redis.set(
+            f"latexy:billing:reconcile:{user_id}", token, nx=True, ex=RECONCILE_LOCK_TTL_SECONDS,
+        ) else None
+
+    async def _acquire_reconcile_cooldown(self, user_id: str) -> bool:
+        """Rate limit provider reads even after the in-flight lock is released."""
+        redis = await get_redis_cache_client()
+        return bool(await redis.set(
+            f"latexy:billing:reconcile-cooldown:{user_id}", "1", nx=True, ex=RECONCILE_COOLDOWN_SECONDS,
+        ))
+
+    async def _release_reconcile_lock(self, user_id: str, token: str) -> None:
+        redis = await get_redis_cache_client()
+        await redis.eval(_LOCK_RELEASE_SCRIPT, 1, f"latexy:billing:reconcile:{user_id}", token)
 
     async def _request_student_verification(
         self, db: AsyncSession, user_id: str, customer_email: str, customer_name: str, student_email: str,
@@ -514,6 +535,394 @@ class PaymentService:
         return {"success": True, "message": "Cancellation scheduled for the end of the billing cycle."}
 
     @staticmethod
+    def _provider_resource(response: Any) -> dict[str, Any] | None:
+        if not isinstance(response, dict):
+            return None
+        nested = response.get("data")
+        return nested if isinstance(nested, dict) else response
+
+    @staticmethod
+    def _provider_metadata_matches(metadata: Any, intent: Subscription) -> bool:
+        if not isinstance(metadata, dict):
+            return False
+        expected_tax = intent.quoted_tax_inclusive
+        return (
+            metadata.get("latexy_intent_id") == intent.id
+            and metadata.get("latexy_user_id") == intent.user_id
+            and metadata.get("latexy_plan_id") == intent.plan_id
+            and metadata.get("latexy_tax_inclusive") == str(expected_tax).lower()
+        )
+
+    async def reconcile_checkout(self, db: AsyncSession, user_id: str) -> dict[str, Any]:
+        """Recover one current, owner-scoped checkout using authenticated provider reads.
+
+        This deliberately accepts no provider identifiers from the caller. The
+        checkout session ID comes only from the user's locked local intent.
+        """
+        if not self.is_available():
+            return {"success": False, "status": "unavailable", "message": "Billing is unavailable."}
+        try:
+            lock_token = await self._acquire_reconcile_lock(user_id)
+        except Exception as exc:
+            logger.error("Dodo checkout recovery lock unavailable", extra={"error_type": type(exc).__name__})
+            await db.rollback()
+            return {"success": False, "status": "unavailable", "message": "Payment status could not be checked yet."}
+        if not lock_token:
+            return {"success": False, "status": "pending", "message": "Checkout recovery is already in progress."}
+        try:
+            # Read the owner pointer first without locking the user row. Payment
+            # and subscription webhooks lock the intent before touching users;
+            # using the same row-lock order here avoids a user->intent deadlock.
+            user = await db.scalar(select(User).where(User.id == user_id).execution_options(populate_existing=True))
+            if not user:
+                await db.rollback()
+                return {"success": False, "status": "closed", "message": "No pending checkout was found."}
+
+            current_id = user.subscription_id
+            intent = None
+            if current_id:
+                intent = await db.scalar(select(Subscription).where(
+                    Subscription.id == current_id,
+                    Subscription.user_id == user_id,
+                    Subscription.provider == "dodo",
+                ).with_for_update().execution_options(populate_existing=True))
+            if intent is None:
+                await db.rollback()
+                return {"success": False, "status": "closed", "message": "No pending checkout was found."}
+            user = await db.scalar(
+                select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
+            )
+            if user is None or user.subscription_id != intent.id:
+                await db.rollback()
+                return {"success": False, "status": "closed", "message": "Checkout is no longer current."}
+            if intent.status in {"failed", "cancelled", "expired", "refunded"}:
+                await db.rollback()
+                return {"success": False, "status": "closed", "message": "This checkout is closed."}
+            if intent.status in {"active", "cancel_scheduled", "past_due", "on_hold", "paused"}:
+                has_paid_ledger = await db.scalar(select(Payment.id).where(
+                    Payment.provider == "dodo",
+                    Payment.subscription_id == intent.id,
+                    Payment.status.in_(("paid", "partially_refunded")),
+                ).limit(1))
+                entitlement_matches = (
+                    user.subscription_id == intent.id
+                    and user.subscription_plan == intent.plan_id
+                    and user.subscription_status in PAID_SUBSCRIPTION_STATUSES
+                )
+                if has_paid_ledger and entitlement_matches:
+                    response = {
+                        "success": True, "status": "reconciled", "subscriptionId": intent.provider_subscription_id,
+                        "planId": intent.plan_id,
+                        "currentPeriodEnd": intent.current_period_end.isoformat() if intent.current_period_end else None,
+                        "message": "Subscription is already active.",
+                    }
+                    await db.rollback()
+                    return response
+            elif intent.status not in {"checkout_pending", "checkout_unknown"}:
+                await db.rollback()
+                return {"success": False, "status": "pending", "message": "Checkout is still being prepared."}
+            if not intent.provider_checkout_session_id:
+                await db.rollback()
+                return {"success": False, "status": "pending", "message": "Checkout is still being prepared."}
+            if intent.quoted_tax_inclusive is None or type(intent.quoted_amount) is not int:
+                await db.rollback()
+                return {"success": False, "status": "unavailable", "message": "Checkout quote could not be verified."}
+
+            owner_email = (user.email or "").strip().casefold()
+            checkout_id = intent.provider_checkout_session_id
+            expected_product_id = get_dodo_product_id(intent.plan_id)
+            if not expected_product_id or expected_product_id != intent.provider_product_id or not owner_email:
+                await db.rollback()
+                return {"success": False, "status": "unavailable", "message": "Checkout details could not be verified."}
+
+            try:
+                cooldown_acquired = await self._acquire_reconcile_cooldown(user_id)
+            except Exception as exc:
+                await db.rollback()
+                logger.error("Dodo checkout recovery cooldown unavailable", extra={"error_type": type(exc).__name__})
+                return {"success": False, "status": "unavailable", "message": "Payment status could not be checked yet."}
+            if not cooldown_acquired:
+                await db.rollback()
+                return {"success": False, "status": "pending", "message": "Please wait before checking payment status again."}
+
+            try:
+                checkout = self._provider_resource(await self.provider.get_checkout_session(checkout_id))
+                if not isinstance(checkout, dict):
+                    raise DodoAPIError(502, "invalid_provider_response")
+                if str(checkout.get("id") or checkout.get("session_id") or "") != checkout_id:
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Checkout details did not match this account."}
+                if str(checkout.get("customer_email") or "").strip().casefold() != owner_email:
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Checkout customer did not match this account."}
+
+                provider_payment_id = str(checkout.get("payment_id") or "")
+                checkout_payment_status = str(checkout.get("payment_status") or "").lower()
+                if not provider_payment_id:
+                    await db.rollback()
+                    return {"success": False, "status": "pending", "message": "Payment is not confirmed yet."}
+                payment = self._provider_resource(await self.provider.get_payment(provider_payment_id))
+                if not isinstance(payment, dict):
+                    raise DodoAPIError(502, "invalid_provider_response")
+                if (
+                    str(payment.get("payment_id") or payment.get("id") or "") != provider_payment_id
+                    or str(payment.get("checkout_session_id") or "") != checkout_id
+                    or not self._provider_metadata_matches(payment.get("metadata"), intent)
+                ):
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Payment details did not match this checkout."}
+
+                payment_status = str(payment.get("status") or "").lower()
+                if checkout_payment_status == "failed" and payment_status == "failed":
+                    failed_subscription_ids = payment.get("subscription_ids")
+                    failed_subscription_id = str(payment.get("subscription_id") or "")
+                    if isinstance(failed_subscription_ids, list):
+                        if len(failed_subscription_ids) != 1:
+                            await db.rollback()
+                            return {"success": False, "status": "pending", "message": "Subscription is not confirmed yet."}
+                        listed_id = str(failed_subscription_ids[0] or "")
+                        if failed_subscription_id and failed_subscription_id != listed_id:
+                            await db.rollback()
+                            return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                        failed_subscription_id = listed_id
+                    if not failed_subscription_id:
+                        await db.rollback()
+                        return {"success": False, "status": "pending", "message": "Subscription is not confirmed yet."}
+                    failed_subscription = self._provider_resource(
+                        await self.provider.get_subscription(failed_subscription_id)
+                    )
+                    if not isinstance(failed_subscription, dict):
+                        raise DodoAPIError(502, "invalid_provider_response")
+                    failed_customer = failed_subscription.get("customer")
+                    failed_customer = failed_customer if isinstance(failed_customer, dict) else {}
+                    failed_payment_customer = payment.get("customer")
+                    failed_payment_customer = failed_payment_customer if isinstance(failed_payment_customer, dict) else {}
+                    failed_customer_id = str(
+                        failed_customer.get("customer_id") or failed_subscription.get("customer_id") or ""
+                    )
+                    failed_customer_email = str(failed_customer.get("email") or "").strip().casefold()
+                    if (
+                        str(failed_subscription.get("subscription_id") or failed_subscription.get("id") or "")
+                        != failed_subscription_id
+                        or str(failed_subscription.get("status") or "").lower() != "failed"
+                        or str(failed_subscription.get("product_id") or "") != expected_product_id
+                        or type(failed_subscription.get("quantity")) is not int
+                        or failed_subscription.get("quantity") != 1
+                        or failed_customer_id != str(failed_payment_customer.get("customer_id") or "")
+                        or str(failed_payment_customer.get("email") or "").strip().casefold() != owner_email
+                        or failed_customer_email != owner_email
+                        or not self._provider_metadata_matches(failed_subscription.get("metadata"), intent)
+                    ):
+                        await db.rollback()
+                        return {"success": False, "status": "pending", "message": "Checkout is not confirmed as closed."}
+                    await db.refresh(intent)
+                    await db.refresh(user)
+                    if (
+                        intent.status not in {"checkout_pending", "checkout_unknown"}
+                        or user.subscription_id != intent.id
+                        or intent.provider_checkout_session_id != checkout_id
+                    ):
+                        await db.rollback()
+                        return {"success": False, "status": "closed", "message": "Checkout changed while recovery was running."}
+                    intent.provider_subscription_id = failed_subscription_id
+                    intent.provider_customer_id = failed_customer_id
+                    await self._end_subscription(db, intent, "failed")
+                    await db.commit()
+                    return {"success": False, "status": "closed", "message": "The provider confirmed this checkout failed."}
+
+                if checkout_payment_status != "succeeded" or payment_status != "succeeded":
+                    await db.rollback()
+                    return {"success": False, "status": "pending", "message": "Payment is not confirmed yet."}
+
+                payment_customer = payment.get("customer")
+                payment_customer = payment_customer if isinstance(payment_customer, dict) else {}
+                customer_id = str(payment_customer.get("customer_id") or "")
+                payment_email = str(payment_customer.get("email") or "").strip().casefold()
+                if not customer_id or payment_email != owner_email:
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Payment customer did not match this account."}
+
+                # Dodo may omit product_cart for recurring payments. An explicit
+                # cart must still match exactly; when it is null, defer product
+                # proof to the independently retrieved subscription below.
+                product_cart = payment.get("product_cart")
+                if product_cart is not None and (
+                    not isinstance(product_cart, list) or len(product_cart) != 1
+                    or not isinstance(product_cart[0], dict)
+                    or str(product_cart[0].get("product_id") or "") != expected_product_id
+                    or type(product_cart[0].get("quantity")) is not int
+                    or product_cart[0]["quantity"] != 1
+                ):
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Paid product did not match this plan."}
+
+                subscription_ids = payment.get("subscription_ids")
+                provider_subscription_id = str(payment.get("subscription_id") or "")
+                if isinstance(subscription_ids, list):
+                    if len(subscription_ids) != 1:
+                        await db.rollback()
+                        return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                    listed_id = str(subscription_ids[0] or "")
+                    if provider_subscription_id and provider_subscription_id != listed_id:
+                        await db.rollback()
+                        return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                    provider_subscription_id = listed_id
+                if not provider_subscription_id:
+                    await db.rollback()
+                    return {"success": False, "status": "pending", "message": "Subscription is not confirmed yet."}
+
+                provider_subscription = self._provider_resource(
+                    await self.provider.get_subscription(provider_subscription_id)
+                )
+                if not isinstance(provider_subscription, dict):
+                    raise DodoAPIError(502, "invalid_provider_response")
+                provider_sub_id = str(provider_subscription.get("subscription_id") or provider_subscription.get("id") or "")
+                sub_customer = provider_subscription.get("customer")
+                sub_customer = sub_customer if isinstance(sub_customer, dict) else {}
+                sub_customer_id = str(sub_customer.get("customer_id") or provider_subscription.get("customer_id") or "")
+                sub_email = str(sub_customer.get("email") or "").strip().casefold()
+                if (
+                    provider_sub_id != provider_subscription_id
+                    or str(provider_subscription.get("status") or "").lower() != "active"
+                    or str(provider_subscription.get("product_id") or "") != expected_product_id
+                    or type(provider_subscription.get("quantity")) is not int
+                    or provider_subscription.get("quantity") != 1
+                    or type(provider_subscription.get("tax_inclusive")) is not bool
+                    or provider_subscription.get("tax_inclusive") is not intent.quoted_tax_inclusive
+                    or sub_customer_id != customer_id
+                    or sub_email != owner_email
+                    or not self._provider_metadata_matches(provider_subscription.get("metadata"), intent)
+                ):
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+
+                if product_cart is None:
+                    # The validated subscription is authoritative for this
+                    # nullable recurring-payment field; the common payment
+                    # handler requires a canonical cart for its normal checks.
+                    product_cart = [{
+                        "product_id": str(provider_subscription["product_id"]),
+                        "quantity": provider_subscription["quantity"],
+                    }]
+
+                plan = get_plan_config(intent.plan_id)
+                expected_currency = str(plan.get("currency") or settings.BILLING_CURRENCY).upper()
+                currency = str(payment.get("currency") or "").upper()
+                amount, tax = payment.get("total_amount"), payment.get("tax", 0)
+                if (
+                    currency != expected_currency
+                    or type(amount) is not int or type(tax) is not int
+                    or amount <= 0 or tax < 0 or tax > amount
+                ):
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Payment amount could not be verified."}
+                quoted_amount = amount if intent.quoted_tax_inclusive else amount - tax
+                expected_amount = intent.quoted_amount * (100 - int(intent.discount_percent or 0)) // 100
+                if quoted_amount != expected_amount:
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Payment amount did not match the checkout quote."}
+
+                period_start = self._parse_time(provider_subscription.get("current_period_start"))
+                period_end = self._parse_time(
+                    provider_subscription.get("current_period_end")
+                    or provider_subscription.get("next_billing_date")
+                )
+                if period_end is None or period_end <= datetime.now(timezone.utc):
+                    await db.rollback()
+                    return {"success": False, "status": "pending", "message": "Current billing period is not confirmed yet."}
+
+                # Recheck local lifecycle and ownership after provider I/O while
+                # this intent row is still locked. The common payment handler
+                # locks the same row before recording a payment.
+                await db.refresh(intent)
+                await db.refresh(user)
+                if (
+                    intent.status not in {"checkout_pending", "checkout_unknown", "active", "cancel_scheduled", "past_due", "on_hold", "paused"}
+                    or user.subscription_id != intent.id
+                    or intent.provider_checkout_session_id != checkout_id
+                ):
+                    await db.rollback()
+                    return {"success": False, "status": "closed", "message": "Checkout changed while recovery was running."}
+
+                event_data = {
+                    "payload_type": "Payment", "payment_id": provider_payment_id, "status": "succeeded",
+                    "currency": currency, "total_amount": amount, "tax": tax,
+                    "customer": {"customer_id": customer_id, "email": owner_email},
+                    "metadata": payment["metadata"], "checkout_session_id": checkout_id,
+                    "subscription_id": provider_subscription_id, "product_cart": product_cart,
+                    "payment_method": payment.get("payment_method"),
+                }
+                recovery_time = datetime.now(timezone.utc)
+                payment_result = await self._handle_payment_succeeded(
+                    db, event_data, {"timestamp": recovery_time.isoformat()}, current_state_verified=True,
+                )
+                if not payment_result.get("success"):
+                    await db.rollback()
+                    return {"success": False, "status": "unavailable", "message": "Payment could not be reconciled."}
+
+                # The common handler commits the payment and entitlement. Re-lock
+                # before copying provider-authoritative lifecycle dates so a
+                # concurrent terminal webhook cannot be overwritten.
+                refreshed_intent = await db.scalar(select(Subscription).where(
+                    Subscription.id == intent.id, Subscription.user_id == user_id,
+                ).with_for_update().execution_options(populate_existing=True))
+                refreshed_user = await db.scalar(
+                    select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
+                )
+                if refreshed_intent is None or refreshed_user is None:
+                    await db.rollback()
+                    return {"success": False, "status": "closed", "message": "Checkout changed during recovery."}
+                if refreshed_intent.status in {"cancelled", "expired", "failed", "refunded"}:
+                    await db.rollback()
+                    return {"success": False, "status": "closed", "message": "Checkout is closed."}
+                if refreshed_user.subscription_id != refreshed_intent.id:
+                    await db.rollback()
+                    return {"success": False, "status": "closed", "message": "Checkout is no longer current."}
+                refreshed_intent.provider_subscription_id = provider_subscription_id
+                refreshed_intent.provider_customer_id = customer_id
+                newer_lifecycle_event = bool(
+                    refreshed_intent.provider_event_at and refreshed_intent.provider_event_at > recovery_time
+                )
+                if (
+                    not newer_lifecycle_event
+                    and refreshed_intent.status in {"active", "cancel_scheduled"}
+                ):
+                    refreshed_intent.provider_product_id = expected_product_id
+                    if period_start:
+                        refreshed_intent.current_period_start = period_start
+                    refreshed_intent.current_period_end = period_end
+                    if (
+                        refreshed_intent.status == "cancel_scheduled"
+                        or provider_subscription.get("cancel_at_next_billing_date") is True
+                    ):
+                        refreshed_intent.status = "cancel_scheduled"
+                        refreshed_user.subscription_status = "cancel_scheduled"
+                    else:
+                        refreshed_intent.status = "active"
+                        refreshed_user.subscription_status = "active"
+                await db.commit()
+                return {
+                    "success": True, "status": "reconciled", "subscriptionId": provider_subscription_id,
+                    "planId": refreshed_intent.plan_id,
+                    "currentPeriodEnd": refreshed_intent.current_period_end.isoformat()
+                    if refreshed_intent.current_period_end else None,
+                    "message": "Subscription restored from the provider's current payment state.",
+                }
+            except DodoAPIError as exc:
+                await db.rollback()
+                logger.warning("Dodo checkout recovery unavailable", extra={"status": exc.status_code, "code": exc.code})
+                return {"success": False, "status": "unavailable", "message": "Payment status could not be checked yet."}
+            except Exception as exc:
+                await db.rollback()
+                logger.error("Dodo checkout recovery failed", extra={"error_type": type(exc).__name__})
+                return {"success": False, "status": "unavailable", "message": "Payment status could not be checked yet."}
+        finally:
+            try:
+                await self._release_reconcile_lock(user_id, lock_token)
+            except Exception as exc:
+                logger.warning("Checkout recovery lock release failed", extra={"error_type": type(exc).__name__})
+
+    @staticmethod
     def _verify_webhook_signature(payload: bytes, headers: dict[str, str], secret: str | None = None) -> bool:
         secret = secret or settings.dodo_webhook_key
         webhook_id = headers.get("webhook-id", "")
@@ -666,13 +1075,23 @@ class PaymentService:
         )
         return candidates[0] if len(candidates) == 1 else None
 
-    async def _handle_payment_succeeded(self, db: AsyncSession, data: dict[str, Any], envelope: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_payment_succeeded(
+        self,
+        db: AsyncSession,
+        data: dict[str, Any],
+        envelope: dict[str, Any],
+        *,
+        current_state_verified: bool = False,
+    ) -> dict[str, Any]:
         if str(data.get("status") or "").lower() != "succeeded":
             return {"success": False, "error": "Payment event is not in succeeded state"}
         intent = await self._resolve_intent(db, data)
         if not intent:
             return {"success": False, "error": "Payment did not match a local checkout intent"}
-        intent = await db.scalar(select(Subscription).where(Subscription.id == intent.id).with_for_update())
+        intent = await db.scalar(
+            select(Subscription).where(Subscription.id == intent.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if intent is None:
             return {"success": False, "error": "Local checkout intent disappeared"}
         terminal_intent = intent.status in {"cancelled", "expired", "failed", "refunded"}
@@ -680,7 +1099,11 @@ class PaymentService:
         # is closed. Verify and ledger a genuine late capture for reconciliation,
         # while keeping the terminal intent and its user's access closed.
         now = self._parse_time(envelope.get("timestamp")) or datetime.now(timezone.utc)
-        stale_event = intent.provider_event_at is not None and intent.provider_event_at > now
+        stale_event = (
+            not current_state_verified
+            and intent.provider_event_at is not None
+            and intent.provider_event_at > now
+        )
         plan = get_plan_config(intent.plan_id)
         product_cart = data.get("product_cart")
         if product_cart is None and data.get("subscription_id"):
@@ -860,6 +1283,12 @@ class PaymentService:
         intent = await self._resolve_intent(db, data)
         if not intent:
             return {"success": False, "error": "Subscription did not match a local checkout intent"}
+        intent = await db.scalar(
+            select(Subscription).where(Subscription.id == intent.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if intent is None:
+            return {"success": False, "error": "Subscription did not match a local checkout intent"}
         sub_id = str(data.get("subscription_id") or "")
         if not sub_id or (intent.provider_subscription_id and sub_id != intent.provider_subscription_id):
             return {"success": False, "error": "Subscription identifier does not match the local intent"}
@@ -898,6 +1327,22 @@ class PaymentService:
         customer_id = str(customer.get("customer_id") or "")
         if intent.provider_customer_id and customer_id and customer_id != intent.provider_customer_id:
             return {"success": False, "error": "Subscription customer does not match the local intent"}
+        if intent.status in {"cancelled", "expired", "failed", "refunded"}:
+            metadata = data.get("metadata") or {}
+            if (
+                (intent.provider_customer_id and customer_id != intent.provider_customer_id)
+                or (
+                    not intent.provider_customer_id
+                    and (
+                        not isinstance(metadata, dict)
+                        or metadata.get("latexy_intent_id") != intent.id
+                        or metadata.get("latexy_user_id") != intent.user_id
+                    )
+                )
+            ):
+                return {"success": False, "error": "Subscription ownership does not match the local intent"}
+            await db.rollback()
+            return {"success": True}
         intent.provider_subscription_id = sub_id
         intent.provider_customer_id = customer_id or intent.provider_customer_id or None
         if plan_change and next_plan_id:
@@ -991,7 +1436,7 @@ class PaymentService:
             return {"success": False, "error": "Refund event is missing identifiers"}
         payment = await db.scalar(select(Payment).where(
             Payment.provider == "dodo", Payment.provider_payment_id == payment_id,
-        ).with_for_update())
+        ).with_for_update().execution_options(populate_existing=True))
         if not payment:
             return {"success": False, "error": "Refund does not match a local payment"}
         status = str(data.get("status") or ("succeeded" if event_type == "refund.succeeded" else "failed")).lower()
@@ -1013,6 +1458,13 @@ class PaymentService:
         if refund is not None and refund.status == "succeeded" and status != "succeeded":
             # A later delivery/replay cannot roll a settled refund back to a
             # nonterminal or failed ledger state.
+            return {"success": True}
+        if refund is not None and refund.status == "succeeded" and status == "succeeded":
+            # A provider refund ID is immutable once settled. Treat an exact
+            # duplicate as idempotent, but never rewrite its settled amount or
+            # re-run payment/referral side effects from a conflicting payload.
+            if refund.amount != raw_amount or str(refund.currency or "").upper() != currency:
+                return {"success": False, "error": "Settled refund details do not match the existing refund"}
             return {"success": True}
         if status == "succeeded":
             succeeded = await db.scalars(select(PaymentRefund.amount).where(

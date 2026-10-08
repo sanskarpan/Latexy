@@ -77,6 +77,32 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    has_provider_data = bind.execute(sa.text("""
+        SELECT EXISTS (
+            SELECT 1 FROM subscriptions
+             WHERE provider <> 'razorpay'
+                OR provider_subscription_id IS DISTINCT FROM razorpay_subscription_id
+                OR provider_checkout_session_id IS NOT NULL
+                OR provider_customer_id IS NOT NULL
+                OR provider_product_id IS NOT NULL
+                OR provider_event_at IS NOT NULL
+                OR quoted_amount IS NOT NULL
+                OR discount_percent <> 0
+            UNION ALL
+            SELECT 1 FROM payments
+             WHERE provider <> 'razorpay'
+                OR provider_payment_id IS DISTINCT FROM razorpay_payment_id
+                OR provider_event_at IS NOT NULL
+            UNION ALL SELECT 1 FROM billing_webhook_events
+            UNION ALL SELECT 1 FROM payment_refunds
+        )
+    """)).scalar_one()
+    if has_provider_data:
+        raise RuntimeError(
+            "cannot downgrade billing revision 0065: provider-neutral payment, subscription, webhook, or refund data exists"
+        )
+
     op.drop_index("ix_payment_refunds_payment_id", table_name="payment_refunds")
     op.drop_table("payment_refunds")
     op.drop_index("ix_billing_webhook_events_status_received", table_name="billing_webhook_events")

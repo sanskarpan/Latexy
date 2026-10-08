@@ -75,8 +75,49 @@ in `billing_webhook_events` and replay after correcting the cause.
 Alembic revision `0065` adds provider-neutral identifiers and webhook/refund
 tables. It copies existing Razorpay IDs into the new columns and labels those
 rows `provider='razorpay'`; the legacy database columns remain for historical
-records and rollback. New checkouts and webhooks use `provider='dodo'`. Run the
-normal backend migration command before deploying the new application code.
+records and rollback. New checkouts and webhooks use `provider='dodo'`.
+
+**Revision 0061 has two historical meanings.** The pre-renumbering Dodo branch
+used `0059`–`0061` for billing, while the coordinated mainline uses `0059` for
+OAuth verification and `0060`–`0064` for the resume engine. A database whose
+`alembic_version` is the old Dodo `0061` must not run ordinary `alembic upgrade
+head`: Alembic would interpret that marker as the engine's render-manifest
+migration and could try to re-add billing columns and tables later. Back up the
+database and use `backend/scripts/bridge_legacy_dodo_0061.py` only after the
+schema review. It requires the selected database name explicitly, accepts only
+development/test with `DODO_MODE=test`, verifies the complete legacy billing
+schema and financial identifiers, applies OAuth and engine migrations
+`0059`–`0064` in one transaction, preserves financial and user-entitlement
+fingerprints, and advances to exact head `0067`. It refuses partial/unknown
+schemas and repeat runs. Example for a disposable clone:
+
+```powershell
+python backend/scripts/bridge_legacy_dodo_0061.py `
+  --expected-database latexy_dodo_bridge_20261008 --dry-run
+```
+
+Only after the disposable clone passes the dry run and review, apply with:
+
+```powershell
+python backend/scripts/bridge_legacy_dodo_0061.py `
+  --expected-database latexy_dodo_bridge_20261008 --apply
+```
+
+For the exact local database named `latexy`, the additional
+`--allow-primary-local-database` flag is required. Stop the API, workers, and
+beat before applying to that local database. The bridge does not perform a
+provider API call. A mismatch must be investigated with a database copy; do not
+stamp `0067`, drop columns, or rerun billing migrations to work around it.
+Production/staging cutover still needs a separately reviewed backup, stop-write,
+and migration plan.
+
+Billing revisions `0065`–`0067` fail closed on downgrade when provider-neutral
+payment/subscription/webhook/refund records, saved tax quotes, or linked/reserved
+coupon redemptions would be lost. Treat a billing release rollback as an
+application-code rollback that leaves the database at `0067`; restoring a
+pre-billing database requires a verified backup and reconciliation of every
+payment accepted after that backup. Do not use `alembic downgrade` as the normal
+release rollback procedure.
 
 Do not delete historical Razorpay payment or subscription records. Revenue
 analytics includes paid Dodo payments and historical paid/captured payment

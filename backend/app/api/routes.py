@@ -1345,6 +1345,15 @@ class CancelSubscriptionResponse(BaseModel):
     error: Optional[str] = None
 
 
+class CheckoutReconcileResponse(BaseModel):
+    success: bool
+    status: str
+    subscriptionId: Optional[str] = None
+    planId: Optional[str] = None
+    currentPeriodEnd: Optional[str] = None
+    message: Optional[str] = None
+
+
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
 async def get_subscription_plans(
     db: AsyncSession = Depends(get_db),
@@ -1418,6 +1427,29 @@ async def create_subscription(
     except Exception as e:
         logger.error("Error creating subscription (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/subscription/reconcile", response_model=CheckoutReconcileResponse)
+async def reconcile_subscription(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(_require_user),
+):
+    """Reconcile the authenticated user's current checkout from Dodo API reads."""
+    if not await feature_flag_service.get_flag("billing", db):
+        raise HTTPException(status_code=503, detail="Billing is currently disabled")
+    result = await payment_service.reconcile_checkout(db, user_id)
+    if result.get("status") == "pending" and result.get("message") == "Checkout recovery is already in progress.":
+        raise HTTPException(status_code=429, detail=result["message"])
+    if result.get("status") == "unavailable":
+        raise HTTPException(status_code=503, detail=result.get("message") or "Payment status could not be checked yet.")
+    return CheckoutReconcileResponse(
+        success=bool(result.get("success")),
+        status=str(result.get("status") or "pending"),
+        subscriptionId=result.get("subscriptionId"),
+        planId=result.get("planId"),
+        currentPeriodEnd=result.get("currentPeriodEnd"),
+        message=result.get("message"),
+    )
 
 
 @router.get("/subscription/student/verify/{token}")

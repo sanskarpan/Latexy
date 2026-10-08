@@ -2,12 +2,54 @@
 
 from __future__ import annotations
 
+import asyncio
 import httpx
 import pytest
 import respx
 
 from app.core.config import settings
 from app.services.dodo_provider import DodoAPIError, DodoProvider
+
+
+@pytest.mark.asyncio
+async def test_provider_enforces_total_deadline_for_slow_response(monkeypatch) -> None:
+    started = False
+
+    class SlowClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, url, **_kwargs):
+            nonlocal started
+            assert method == "GET"
+            assert str(url) == "https://test.dodopayments.com/payments/pay_123"
+            started = True
+            await asyncio.sleep(0.1)
+            return httpx.Response(200, json={"payment_id": "pay_123"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", SlowClient)
+    provider = DodoProvider(api_key="test-adapter-key", timeout=0.01)
+    with pytest.raises(DodoAPIError) as caught:
+        await provider.get_payment("pay_123")
+    assert started
+    assert caught.value.status_code == 503
+    assert caught.value.code == "provider_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_provider_retrieves_refund_from_official_resource() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://test.dodopayments.com/refunds/ref_123").mock(
+            return_value=httpx.Response(200, json={"refund_id": "ref_123", "status": "succeeded"}),
+        )
+        provider = DodoProvider(api_key="test-adapter-key")
+        assert (await provider.get_refund("ref_123"))["refund_id"] == "ref_123"
 
 
 @pytest.mark.parametrize(
@@ -50,7 +92,7 @@ async def test_provider_uses_mode_host_bearer_auth_and_documented_wire_payloads(
 
         await provider.create_checkout_session(checkout_payload)
         await provider.update_subscription("sub_123", cancel_payload)
-        await provider.create_refund("pay_123", amount=1200, reason="customer_request")
+        await provider.create_refund("pay_123", amount=1200, reason="customer_request", item_id="pdt_plan")
         await provider.create_customer_portal_session("cus_123")
 
     expected_key = "live-adapter-key" if mode == "live" else "test-adapter-key"
@@ -74,7 +116,8 @@ async def test_provider_uses_mode_host_bearer_auth_and_documented_wire_payloads(
     assert refund.calls.last.request.content == httpx.Request(
         "POST",
         f"{host}/refunds",
-        json={"payment_id": "pay_123", "amount": 1200, "reason": "customer_request"},
+        json={"payment_id": "pay_123", "items": [{"item_id": "pdt_plan", "amount": 1200, "tax_inclusive": True}],
+              "reason": "customer_request"},
     ).content
     assert portal.calls.last.request.content == b"{}"
 
@@ -252,9 +295,93 @@ async def test_top_level_provider_error_code_is_preserved_without_message() -> N
         provider = DodoProvider(api_key="test-adapter-key", base_url=host)
 
         with pytest.raises(DodoAPIError) as error:
-            await provider.create_refund("pay_123", amount=1200)
+            await provider.create_refund("pay_123", amount=1200, item_id="pdt_plan")
 
     assert error.value.status_code == 409
     assert error.value.code == "INSUFFICIENT_WALLET_FUNDS"
     assert "Insufficient funds in wallet" not in str(error.value)
     assert "wallet" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "https://attacker.invalid/payments/pay_123", "//attacker.invalid/payments/pay_123",
+        "/payments/../customers", "/payments/pay_123?target=attacker.invalid",
+        "/payments/pay_123#fragment", "/payments/pay_123/other",
+        "/subscriptions/%2e%2e", "/subscriptions/sub_123\\other",
+        "/payments/pay_123\r\nHost: attacker.invalid", "/payments/" + "x" * 129,
+        "/webhooks", "/discounts/code/..",
+    ],
+)
+@pytest.mark.asyncio
+async def test_request_rejects_untrusted_resource_paths_before_http(path: str) -> None:
+    with respx.mock(assert_all_called=False) as router:
+        provider = DodoProvider(api_key="test-adapter-key")
+        with pytest.raises(ValueError, match="Unsupported Dodo request"):
+            await provider.request("GET", path)
+        assert not router.calls
+
+
+@pytest.mark.parametrize("method", ["DELETE", "PUT", "CONNECT", "get", "GET\r\nPOST"])
+@pytest.mark.asyncio
+async def test_request_rejects_unsupported_methods_before_http(method: str) -> None:
+    with respx.mock(assert_all_called=False) as router:
+        provider = DodoProvider(api_key="test-adapter-key")
+        with pytest.raises(ValueError, match="Unsupported Dodo request"):
+            await provider.request(method, "/payments/pay_123")
+        assert not router.calls
+
+
+@pytest.mark.asyncio
+async def test_provider_redirect_never_forwards_credentials_to_another_origin() -> None:
+    with respx.mock(assert_all_called=False) as router:
+        original = router.get("https://test.dodopayments.com/payments/pay_123").mock(
+            return_value=httpx.Response(302, headers={"Location": "https://attacker.invalid/collect"})
+        )
+        attacker = router.get("https://attacker.invalid/collect").mock(return_value=httpx.Response(200, json={}))
+        with pytest.raises(DodoAPIError) as error:
+            await DodoProvider(api_key="test-adapter-key").get_payment("pay_123")
+        assert error.value.code == "unexpected_provider_redirect"
+        assert original.call_count == 1
+        assert attacker.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_checkout_status_uses_fixed_origin_and_documented_get_path() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        route = router.get("https://test.dodopayments.com/checkouts/cks_123").mock(
+            return_value=httpx.Response(200, json={"payment_id": "pay_123", "payment_status": "succeeded"})
+        )
+        result = await DodoProvider(api_key="test-adapter-key").get_checkout_session("cks_123")
+        assert result["payment_status"] == "succeeded"
+        assert route.calls.last.request.url.host == "test.dodopayments.com"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"amount": 100}, {"amount": 100, "item_id": "../pdt_plan"},
+        {"amount": 0, "item_id": "pdt_plan"}, {"amount": -1, "item_id": "pdt_plan"},
+        {"amount": True, "item_id": "pdt_plan"}, {"amount": 1.5, "item_id": "pdt_plan"},
+        {"amount": 100, "item_id": "pdt_plan", "tax_inclusive": "true"},
+        {"item_id": "pdt_plan"}, {"reason": "x" * 3001},
+    ],
+)
+@pytest.mark.asyncio
+async def test_invalid_partial_refund_cannot_fall_back_to_full_refund(kwargs: dict) -> None:
+    with respx.mock(assert_all_called=False) as router:
+        with pytest.raises(ValueError):
+            await DodoProvider(api_key="test-adapter-key").create_refund("pay_123", **kwargs)
+        assert not router.calls
+
+
+@pytest.mark.asyncio
+async def test_line_items_use_documented_fixed_origin_endpoint() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        route = router.get("https://test.dodopayments.com/payments/pay_123/line-items").mock(
+            return_value=httpx.Response(200, json={"currency": "INR", "items": []})
+        )
+        result = await DodoProvider(api_key="test-adapter-key").get_payment_line_items("pay_123")
+        assert result["currency"] == "INR"
+        assert route.call_count == 1

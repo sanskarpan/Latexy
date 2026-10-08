@@ -89,16 +89,10 @@ async def test_webhook_rejects_non_object_customer_shape(
 
 @pytest.mark.asyncio
 async def test_dodo_checkout_adapter_posts_to_configured_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
     import app.services.dodo_provider as provider_module
 
     requests: list[tuple[str, str, dict]] = []
-
-    class Response:
-        content = b'{"session_id":"sess_1","checkout_url":"https://checkout.example/sess_1"}'
-        is_error = False
-
-        def json(self):
-            return json.loads(self.content)
 
     class Client:
         def __init__(self, **kwargs):
@@ -111,8 +105,8 @@ async def test_dodo_checkout_adapter_posts_to_configured_api(monkeypatch: pytest
             return None
 
         async def request(self, method, url, *, headers, json):
-            requests.append((method, url, {"headers": headers, "json": json}))
-            return Response()
+            requests.append((method, str(url), {"headers": headers, "json": json}))
+            return httpx.Response(200, json={"session_id": "sess_1", "checkout_url": "https://checkout.example/sess_1"})
 
     monkeypatch.setattr(provider_module.httpx, "AsyncClient", Client)
     adapter = DodoProvider(api_key="test_api_key", base_url="https://test.dodopayments.com/")

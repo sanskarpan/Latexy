@@ -24,4 +24,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    has_saved_quotes = op.get_bind().execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM subscriptions WHERE quoted_tax_inclusive IS NOT NULL)"
+    )).scalar_one()
+    if has_saved_quotes:
+        raise RuntimeError(
+            "cannot downgrade billing revision 0066: immutable subscription tax-quote evidence exists"
+        )
     op.drop_column("subscriptions", "quoted_tax_inclusive")

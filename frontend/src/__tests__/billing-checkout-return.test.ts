@@ -23,6 +23,10 @@ describe('billing checkout return confirmation', () => {
       .mockResolvedValueOnce({ success: true, data: pending })
       .mockResolvedValueOnce({ success: true, data: pastDue })
       .mockResolvedValueOnce({ success: true, data: active })
+    const reconcileSubscription = vi.fn().mockResolvedValue({
+      success: true,
+      data: { success: false, status: 'pending' },
+    })
     const effects: Array<() => void | (() => void)> = []
     let hookIndex = 0
     const states: unknown[] = []
@@ -39,20 +43,27 @@ describe('billing checkout return confirmation', () => {
             : value
         }]
       },
+      useRef: (initial: unknown) => ({ current: initial }),
     }))
     vi.doMock('react/jsx-runtime', () => ({
       jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
       jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
     }))
     vi.doMock('@/lib/api-client', () => ({
-      apiClient: { getCurrentSubscription },
+      apiClient: { getCurrentSubscription, reconcileSubscription },
     }))
 
     const SubscriptionManager = (await import('../components/billing/SubscriptionManager')).default
     const onLoaded = vi.fn()
     SubscriptionManager({
       authToken: 'session-token',
-      billingStatus: null,
+      billingStatus: {
+        featureEnabled: true,
+        mode: 'enabled',
+        available: true,
+        reason: null,
+        message: 'Available',
+      },
       checkoutReturned: true,
       onUpgrade: vi.fn(),
       onLoaded,
@@ -61,6 +72,7 @@ describe('billing checkout return confirmation', () => {
 
     await Promise.resolve()
     await Promise.resolve()
+    expect(reconcileSubscription).toHaveBeenCalledTimes(1)
     expect(getCurrentSubscription).toHaveBeenCalledTimes(1)
     expect(onLoaded).toHaveBeenLastCalledWith(pending)
 
@@ -71,6 +83,7 @@ describe('billing checkout return confirmation', () => {
 
     await vi.advanceTimersByTimeAsync(2_500)
     expect(getCurrentSubscription).toHaveBeenCalledTimes(3)
+    expect(reconcileSubscription).toHaveBeenCalledTimes(1)
     expect(onLoaded).toHaveBeenLastCalledWith(active)
     expect(vi.getTimerCount()).toBe(0)
     cleanup?.()

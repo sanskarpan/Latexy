@@ -42,6 +42,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    has_linked_or_unrepresentable_redemptions = op.get_bind().execute(sa.text("""
+        SELECT EXISTS (
+            SELECT 1 FROM coupon_redemptions
+             WHERE subscription_id IS NOT NULL
+                OR status <> 'redeemed'
+                OR redeemed_at IS NULL
+        )
+    """)).scalar_one()
+    if has_linked_or_unrepresentable_redemptions:
+        raise RuntimeError(
+            "cannot downgrade billing revision 0067: linked or reserved coupon redemption evidence exists"
+        )
     op.execute("UPDATE coupon_redemptions SET redeemed_at = NOW() WHERE redeemed_at IS NULL")
     op.alter_column("coupon_redemptions", "redeemed_at", nullable=False)
     op.drop_column("coupon_redemptions", "status")

@@ -245,6 +245,15 @@ export interface CurrentSubscriptionResponse {
   currentPeriodEnd?: string
 }
 
+export interface SubscriptionReconciliationResponse {
+  success: boolean
+  status: 'reconciled' | 'pending' | 'closed' | 'unavailable'
+  subscriptionId?: string
+  planId?: string
+  currentPeriodEnd?: string
+  message?: string
+}
+
 export interface CouponValidationResponse {
   valid: boolean
   message: string
@@ -2158,6 +2167,22 @@ class ApiClient {
   }> {
     try {
       const data = await this.request<CurrentSubscriptionResponse>('/subscription/current')
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async reconcileSubscription(): Promise<{
+    success: boolean
+    data?: SubscriptionReconciliationResponse
+    error?: string
+  }> {
+    try {
+      const data = await this.request<SubscriptionReconciliationResponse>(
+        '/subscription/reconcile',
+        { method: 'POST' },
+      )
       return { success: true, data }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
