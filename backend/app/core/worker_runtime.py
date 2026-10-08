@@ -22,3 +22,10 @@ def prepare_worker_runtime(semantic_enabled: bool = False) -> None:
         import_module(module)
     if semantic_enabled:
         import_module("app.services.resume_engine.service")
+    # Mapper relationship configuration is otherwise deferred to the first
+    # ownership query. All models are loaded by retention above. Configure in
+    # the parent so prefork children inherit the completed CPU-only metadata;
+    # this opens no engine, session or socket and fails readiness on bad mappings.
+    from ..database.connection import Base
+
+    Base.registry.configure()
