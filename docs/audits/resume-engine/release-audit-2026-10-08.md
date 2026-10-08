@@ -221,3 +221,24 @@ branch commits. No concurrent remote commits were overwritten.
 
 First-task acceptance is tracked by [#1862](https://github.com/sanskarpan/Latexy/issues/1862).
 The epic and its individual acceptance issues remain open.
+
+## Subsequent latency priority pass
+
+The user prioritized compilation latency again. Source `36de1a51` removes the
+redundant HEAD from bounded downloads and runs the mandatory, GC-locked storage
+size checks with at most four concurrent requests. The new regression fails on
+the prior implementation and passes on the repair. 75 focused tests and three
+real private-S3 integration cases pass; one Windows-only focused case is skipped.
+
+[Latency follow-up](latency-priority-2026-10-08.md) retains exact source, tests,
+paired real-S3/injected-RTT data, both new 30-pair Lua reports and both production
+guest browser probes. Warm baseline guest save-to-paint was 1.834 s; the restarted
+candidate worker's first task took 5.667 s. Host/startup conditions differ, so
+these are functional results, not a source speedup comparison. The paired
+40-ms injected-RTT experiment verifies median download 89.83→45.05 ms and storage
+size checks 179.68→57.65 ms. Full action-to-paint targets remain uncertified.
+
+The live isolated API and worker now use backend tree
+`e2e997bfe6475c847bf52934b5aface464099f3c` (source `36de1a51`) on port 8530.
+The production frontend was unchanged. Main was refetched and remains an
+ancestor. No release gates or issues were closed.
