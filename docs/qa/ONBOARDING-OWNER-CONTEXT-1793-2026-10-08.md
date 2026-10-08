@@ -17,7 +17,40 @@ Account API contexts additionally check confirmation immediately before dispatch
 - Focused final onboarding runtime suite: 16 passed in `/private/tmp/latexy-onboarding-owner-anon-focused-20261008.log`.
 - `tsc --noEmit --incremental false`, ESLint over the changed TS/TSX files, and `git diff --check` passed.
 
-The baseline browser run is `/private/tmp/latexy-onboarding-baseline-browser-20261008.log`: 3 selected, 1 passed and 2 failed. The held-server-true case showed a premature tour. The ABA case failed before releasing the held old-A response body, so it does **not** establish behavior after that stale body is released. The candidate browser suite/build has not been run; no candidate production behavior is claimed.
+The baseline browser run is `/private/tmp/latexy-onboarding-baseline-browser-20261008.log`: 3 selected, 1 passed and 2 failed. The held-server-true case showed a premature tour. The ABA case failed before releasing the held old-A response body, so it does **not** establish behavior after that stale body is released.
+
+Root subsequently built the candidate in a disposable production copy (Next
+15.5.24, application source checkpoint `662c7644`) and ran the seven onboarding
+cases together with the five editor regressions: **12 passed**, one Chromium
+worker, zero retries, strict page-error assertions and traces. The ABA candidate
+test consumed the held old-A body before asserting that the fresh owner's tour
+remained suppressed. The new onboarding file is added to the existing shared
+production browser CI step, not a new globally triggered workflow. Deployment
+manifest contracts (92) and changed-component classifier tests (21) also pass.
+
+The first local production-build attempt failed because the new worktree had
+only the frontend dependency symlink, not the root pnpm dependency-store path.
+Adding the root symlink to the same frozen dependencies resolved that setup
+failure without changing application code or installing into shared symlinks.
+It is not recorded as an application defect. Generated caches and both local
+dependency symlinks are excluded from commits.
+
+| Browser evidence | SHA-256 |
+| --- | --- |
+| baseline log | `51e0f590a6fda46ef6877f6f5b5c3418514ecd7a0f8340d210a2e79760fb4f16` |
+| integrated candidate log | `45c5997bd3d710c39a985cf8ff32021a67138c22099fbf73f2f572e2e096196c` |
+
+Candidate log: `/private/tmp/latexy-onboarding-integrated-browser-20261008.log`;
+traces in the sibling output directory. Build log:
+`/private/tmp/latexy-onboarding-owner-production-server-corrected-20261008.log`.
+
+This is synthetic local-browser acceptance, not deployed acceptance. No real
+account mutations or provider/payment operations occurred. The Workbox test
+shim is not native service-worker/PWA certification. Historical hydration issue
+#1772 remains open; this passing suite does not establish its cause or fix.
+The Next security patch #1857 / issue #1856 is a release prerequisite: refresh
+from patched main and obtain fresh exact-head CI before protected merge and
+production verification. Do not use an older green audit as acceptance.
 
 ## Changed source and tests
 
@@ -27,6 +60,11 @@ The baseline browser run is `/private/tmp/latexy-onboarding-baseline-browser-202
 - `frontend/src/__tests__/onboarding-runtime.test.ts`
 - `frontend/src/__tests__/gap-fixes.test.ts`
 - `frontend/src/__tests__/settings-oauth-ownership.test.ts`
-- `frontend/e2e/onboarding-owner-isolation.spec.ts` (restored synthetic acceptance artifact; unrun)
+- `frontend/e2e/onboarding-owner-isolation.spec.ts` (restored synthetic acceptance artifact; seven cases pass)
 
-No build, candidate browser/E2E run, commit, or push was performed for this QA report. `frontend/tsconfig.tsbuildinfo` was updated by typechecking and is an excluded generated side effect, not a source target.
+The report's initial agent-authored checkpoint preceded root's build/browser
+validation and one-file commits; the follow-up above records those later checks.
+`frontend/tsconfig.tsbuildinfo` was updated by typechecking and is an excluded
+generated side effect, not a source target. Server writes are best-effort and
+these tests do not establish atomic ordering across independent hook instances
+or across multiple tabs/devices.
