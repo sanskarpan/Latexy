@@ -102,6 +102,48 @@ real OAuth-provider credential acceptance, or hydration closure is claimed.
 
 ## Remaining acceptance
 
+### Corrected baseline and patched static follow-up
+
+The popup fixture defect was an early init-script exception: the synthetic
+Workbox scope called `new URL('/', 'about:blank')` before response wrappers were
+installed. A safe scope for the popup's initial blank document fixes that
+instrumentation without weakening body barriers, unexpected-request checks,
+or actual popup-close/message assertions. The post-owner-switch notice checks
+now require absence within one second, rather than allowing the old five-second
+expiry timer to pass them incidentally.
+
+The corrected frozen fixture
+`e8c2961e5481899832607a34875ed7bbb21691067c0ac21ec3a1f2e74072d31c`
+ran all 16 baseline cases again: **7 failed / 9 passed**, one Chromium worker,
+zero retries, 1.4 minutes. Ordinary GitHub, same-owner token refresh, and
+Zotero/Mendeley popup success/failure controls pass. Six substantive stale
+owner/notice cases fail after their required body barriers; the seventh is the
+previously documented held-initial/loading phase. In particular, releasing
+A's Zotero verification closes the popup after B's status has been consumed.
+
+Corrected baseline log:
+`/private/tmp/latexy-legacy-callback-corrected-baseline-browser-20261008.log`,
+SHA-256 `23202f2a38cdadcdaedb57167032f710178a857b7c304c799f25417a2bb6bcd4`.
+The old 11/5 result is retained above solely as diagnostic history, not accepted
+regression evidence for the six broken popup setups.
+
+Next.js **15.5.27** patched-dependency integrated units also pass: **174 files /
+1,167 tests**. The earlier 15.5.24 dependency trees were moved intact to
+`/private/tmp/latexy-legacy-deps-preserved.b3a520/`; this checkout now borrows the
+root-owned frozen patched installation read-only. No installation is performed
+through those symlinks. Patched unit log:
+`/private/tmp/latexy-legacy-notification-patched-units-20261008.log`, SHA-256
+`f819c50f90cf6829c9524ffd4ae63f6371a5a8c4e774b6c58774df1900ade01a`.
+
+The new E2E helper initially caused a TypeScript error by passing a void promise
+resolver directly to `requestAnimationFrame`. It now explicitly discards the
+timestamp, with no assertion change. Final no-incremental TypeScript and full
+frontend lint passed. Final browser fixture SHA-256:
+`7e1821b9ac20957256133d48e8ca5a824b14c642e958ba763a5ff68016a2ef81`.
+The isolated patched production candidate is building on localhost 5531; its
+browser result is not yet claimed. The shared scoped CI browser command now
+includes this legacy spec rather than adding an always-running workflow.
+
 - Repair popup body instrumentation and rerun unchanged-baseline positives
   and stale-owner controls with exact failure phases recorded.
 - Run the rebased candidate with patched dependencies in an isolated production
