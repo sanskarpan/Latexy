@@ -325,7 +325,7 @@ test.describe('Guided Resume Builder', () => {
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
     await expect(page.getByRole('heading', { name: 'Builder Resume' })).toBeVisible()
     await expect(page.getByText('Résumé completeness')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Certifications' })).toBeVisible()
+    await expect(page.getByRole('complementary').getByRole('button', { name: /^Certifications\b/ })).toBeVisible()
     await expect(page.getByText('All changes saved')).toBeVisible()
 
     await page.getByLabel('Full Name').fill('Taylor Builder Updated')
