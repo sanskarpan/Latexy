@@ -105,10 +105,44 @@ files changed in that refresh; `git diff` confirms no frontend or CI change
 from the locally verified candidate. Exact published-head CI and deployed
 acceptance remain required.
 
+## Clean publication history after parent acceptance
+
+Settings #1854 and the Next.js security leaf #1857 are now merged. Canonical
+main `26e802ca3e83b11b565365f817407911080c5ff3` has successful main CI,
+Vercel production certification, and Modal deployment. The live deployment
+identity returned that exact main revision during this follow-up.
+
+The integrated #1855 head `16c0db703b1d3fc8c31eda475df447ab10042713`
+passed its required checks, but GitHub rejected the normal protected rebase
+with "This branch can't be rebased." No force push, admin merge, or protection
+bypass was performed. A clean replacement starts directly from accepted main
+and selectively carries the eight notification-only leaf files. Before new
+one-file commits, all eight files were verified byte-for-byte identical by
+Git blob hash to the integrated #1855 head. The Settings and API implementations
+are unchanged by that history repair; no stale whole-worktree merge is used.
+
+Fresh full units in the replacement's dedicated frozen Next.js **15.5.27**
+dependency installation: **172 files, 1,122 tests passed**. TypeScript
+`--noEmit --incremental false` and targeted ESLint passed with empty diagnostic
+logs. This is distinct from the earlier production browser run using 15.5.24;
+the replacement's patched-dependency browser result is recorded separately.
+
+Source checkpoint `bbc8722352231bcb282bee2441a77db2879bc500` was built
+in the isolated production launcher on localhost 5530 with Node 22.23.2 and
+Next.js 15.5.27. The exact three-spec command passed **23/23** in 2.3 minutes
+(editor 5, provider actions 6, notification ownership 12), one Chromium worker,
+zero retries, strict page errors, and consumed-response barriers. No real
+account/provider writes or native service-worker lifecycle proof is claimed.
+
+Fresh browser log: `/private/tmp/latexy-notification-clean-history-browser-20261008.log`,
+SHA-256 `7868884c5120f396a7ce717b3d0dddd4f8e4d2c06573d40f39aa0abf27766d38`.
+Fresh full-unit log: `/private/tmp/latexy-notification-clean-history-units-20261008.log`,
+SHA-256 `2bea155ec961550ccb1079f144c986ed2d6c81c1e9de5eef6337b89e0f549566`.
+
 ## Acceptance remaining
 
-- Publish a focused dependent PR linked to #1786, refresh against its final
-  parent/main, and retain green required checks before a normal merge.
+- Publish the clean replacement linked to #1786, identify #1855 as superseded,
+  and retain green required checks before a normal protected merge.
 - Verify the resulting production revision and synthetic browser behavior
   before claiming deployed acceptance or closing the issue.
 
