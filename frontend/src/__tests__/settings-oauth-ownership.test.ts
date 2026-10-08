@@ -119,7 +119,10 @@ async function loadSettingsHarness(): Promise<Harness> {
   return {
     render,
     runLifecycleEffect: () => run('googleDriveStatusGenerationRef.current += 1') as () => void,
-    runInitialEffect: () => run('apiClient.getNotificationPrefs()') as () => void,
+    // Locate the initial integration effect independently of optional
+    // notification request-context arguments. The status assertions below
+    // still exercise its real cancellation and account-generation guards.
+    runInitialEffect: () => run('apiClient.getNotificationPrefs(') as () => void,
     runNormalDriveEffect: () => run('hasDriveTicket') as () => void,
     runCompletionEffect: () => run('const providers') as () => void,
     cleanups: () => { while (activeCleanups.length) activeCleanups.pop()?.() },

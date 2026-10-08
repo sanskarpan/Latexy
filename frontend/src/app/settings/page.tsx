@@ -20,6 +20,72 @@ function SettingsContent() {
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const { resetOnboarding } = useOnboarding()
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  type ProviderActionKey =
+    | 'google_drive'
+    | 'github_disconnect'
+    | 'zotero_disconnect'
+    | 'dropbox_disconnect'
+    | 'mendeley_disconnect'
+  type ProviderActionIdentity = { ownerId: string | null; authToken: string; generation: number }
+  const providerActionIdentityRef = useRef<ProviderActionIdentity>({ ownerId: null, authToken: '', generation: 0 })
+  const providerActionAuthReadyRef = useRef(false)
+  const providerActionMountedRef = useRef(false)
+  const providerActionLifecycleRef = useRef(0)
+  const providerActionActiveRef = useRef<Record<ProviderActionKey, boolean>>({
+    google_drive: false,
+    github_disconnect: false,
+    zotero_disconnect: false,
+    dropbox_disconnect: false,
+    mendeley_disconnect: false,
+  })
+  const providerActionRevisionRef = useRef<Record<ProviderActionKey, number>>({
+    google_drive: 0,
+    github_disconnect: 0,
+    zotero_disconnect: 0,
+    dropbox_disconnect: 0,
+    mendeley_disconnect: 0,
+  })
+  const providerActionOwnerId = sessionData?.user?.id ?? null
+  const providerActionAuthToken = sessionData?.session?.token ?? ''
+  const providerActionAuthReady = Boolean(sessionData && !sessionLoading && !sessionError)
+  providerActionAuthReadyRef.current = providerActionAuthReady
+  if (
+    providerActionIdentityRef.current.ownerId !== providerActionOwnerId
+    || providerActionIdentityRef.current.authToken !== providerActionAuthToken
+  ) {
+    providerActionIdentityRef.current = {
+      ownerId: providerActionOwnerId,
+      authToken: providerActionAuthToken,
+      generation: providerActionIdentityRef.current.generation + 1,
+    }
+    for (const key of Object.keys(providerActionActiveRef.current) as ProviderActionKey[]) {
+      providerActionActiveRef.current[key] = false
+    }
+  }
+  const providerActionIdentity = providerActionIdentityRef.current
+  type NotificationOwnerIdentity = { ownerId: string | null; generation: number }
+  const notificationOwnerIdentityRef = useRef<NotificationOwnerIdentity>({ ownerId: null, generation: 0 })
+  const notificationMountedRef = useRef(false)
+  const notificationLoadedIdentityRef = useRef<NotificationOwnerIdentity | null>(null)
+  const notificationRequestRef = useRef(0)
+  const notificationEditRevisionRef = useRef(0)
+  const notificationPutInFlightRef = useRef<number | null>(null)
+  const notificationOwnerId = sessionData?.user?.id ?? null
+  const notificationAuthReady = Boolean(
+    notificationOwnerId
+    && sessionData?.session?.token
+    && !sessionLoading
+    && !sessionError,
+  )
+  const notificationAuthReadyRef = useRef(notificationAuthReady)
+  notificationAuthReadyRef.current = notificationAuthReady
+  if (notificationOwnerIdentityRef.current.ownerId !== notificationOwnerId) {
+    notificationOwnerIdentityRef.current = {
+      ownerId: notificationOwnerId,
+      generation: notificationOwnerIdentityRef.current.generation + 1,
+    }
+  }
+  const notificationOwnerIdentity = notificationOwnerIdentityRef.current
 
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
@@ -28,10 +94,19 @@ function SettingsContent() {
     router.push('/workspace')
   }
 
-  // Clear all pending timers on unmount
-  useEffect(() => () => {
-    settingsTimersRef.current.forEach((t) => clearTimeout(t))
-    settingsTimersRef.current.clear()
+  // Deferred notification results and timers belong to this Settings page
+  // lifetime. Invalidate them on unmount and keep Strict Mode replay safe.
+  useEffect(() => {
+    notificationMountedRef.current = true
+    const timers = settingsTimersRef.current
+    return () => {
+      notificationMountedRef.current = false
+      notificationRequestRef.current += 1
+      notificationEditRevisionRef.current += 1
+      notificationPutInFlightRef.current = null
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+    }
   }, [])
 
   function scheduleTimer(fn: () => void, delay: number) {
@@ -40,6 +115,38 @@ function SettingsContent() {
       fn()
     }, delay)
     settingsTimersRef.current.add(t)
+  }
+
+  function beginProviderAction(key: ProviderActionKey) {
+    if (
+      !providerActionMountedRef.current
+      || !providerActionAuthReadyRef.current
+      || !providerActionIdentity.ownerId
+      || !providerActionIdentity.authToken
+      || providerActionActiveRef.current[key]
+    ) return null
+    const capturedIdentity = providerActionIdentity
+    if (
+      providerActionIdentityRef.current.ownerId !== capturedIdentity.ownerId
+      || providerActionIdentityRef.current.authToken !== capturedIdentity.authToken
+      || providerActionIdentityRef.current.generation !== capturedIdentity.generation
+    ) return null
+    const lifecycle = providerActionLifecycleRef.current
+    const revision = ++providerActionRevisionRef.current[key]
+    providerActionActiveRef.current[key] = true
+    const isCurrent = () => (
+      providerActionMountedRef.current
+      && providerActionLifecycleRef.current === lifecycle
+      && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+      && providerActionIdentityRef.current.authToken === capturedIdentity.authToken
+      && providerActionIdentityRef.current.generation === capturedIdentity.generation
+      && providerActionRevisionRef.current[key] === revision
+      && providerActionActiveRef.current[key]
+    )
+    return {
+      isCurrent,
+      accountContext: { authToken: capturedIdentity.authToken, isCurrent },
+    }
   }
 
   // Notification prefs
@@ -55,8 +162,29 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notificationRetryNonce, setNotificationRetryNonce] = useState(0)
   const [desktopNotifs, setDesktopNotifs] = useState(true)
   const [desktopBusy, setDesktopBusy] = useState(false)
+
+  const notificationDataReady = notificationMountedRef.current
+    && notificationAuthReady
+    && notificationLoadedIdentityRef.current?.ownerId === notificationOwnerIdentity.ownerId
+    && notificationLoadedIdentityRef.current?.generation === notificationOwnerIdentity.generation
+
+  // Do not briefly expose the previous user's preferences or save indicators
+  // while the new account's authoritative GET is pending. Same-owner token
+  // refreshes retain local drafts because the owner epoch has not changed.
+  useEffect(() => {
+    notificationLoadedIdentityRef.current = null
+    notificationRequestRef.current += 1
+    notificationEditRevisionRef.current += 1
+    notificationPutInFlightRef.current = null
+    setLoading(Boolean(sessionData))
+    setSaving(false)
+    setSaved(false)
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notificationOwnerIdentity.generation])
 
   // Track the browser's current Notification permission so we can (a) drive the
   // request flow when the toggle is turned on and (b) surface the blocked hint.
@@ -140,6 +268,65 @@ function SettingsContent() {
     active: boolean
   }
   const oauthCompletionOwnerRef = useRef<OAuthCompletionOwner | null>(null)
+  const githubOAuthMountedRef = useRef(false)
+  const githubOAuthLifecycleRef = useRef(0)
+
+  useEffect(() => {
+    githubOAuthMountedRef.current = true
+    const lifecycle = ++githubOAuthLifecycleRef.current
+    return () => {
+      githubOAuthMountedRef.current = false
+      // Strict Mode replays cleanup/setup in one turn. Preserve the one-use
+      // ticket for that replay, but invalidate it after an actual unmount.
+      queueMicrotask(() => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (githubOAuthLifecycleRef.current !== lifecycle) return
+        githubOAuthMountedRef.current = false
+        githubOAuthLifecycleRef.current += 1
+        if (oauthCompletionOwnerRef.current?.provider === 'github') {
+          oauthCompletionOwnerRef.current = null
+        }
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    providerActionMountedRef.current = true
+    const lifecycle = ++providerActionLifecycleRef.current
+    const revisions = providerActionRevisionRef.current
+    const active = providerActionActiveRef.current
+    return () => {
+      if (providerActionLifecycleRef.current !== lifecycle) return
+      providerActionMountedRef.current = false
+      providerActionLifecycleRef.current += 1
+      for (const key of Object.keys(active) as ProviderActionKey[]) {
+        active[key] = false
+      }
+      for (const key of Object.keys(revisions) as ProviderActionKey[]) {
+        revisions[key] += 1
+      }
+    }
+  }, [])
+
+  // An account/token transition invalidates in-flight provider actions. Clear
+  // transient busy indicators, but keep confirmed state until the owner-scoped
+  // reads below provide the replacement values.
+  useEffect(() => {
+    setGhDisconnecting(false)
+    setZotDisconnecting(false)
+    setDbxDisconnecting(false)
+    setMenDisconnecting(false)
+    setGdriveLoading(false)
+    setGdriveDisconnecting(false)
+  }, [providerActionIdentity.generation])
+
+  useEffect(() => {
+    setGhConnecting(false)
+    if (!providerActionAuthReady && oauthCompletionOwnerRef.current?.provider === 'github') {
+      oauthCompletionOwnerRef.current.active = false
+      oauthCompletionOwnerRef.current = null
+    }
+  }, [providerActionIdentity.generation, providerActionAuthReady])
 
   // Any deferred Google Drive response must lose ownership when this page is
   // removed. The owner also gets replaced when the authenticated account
@@ -185,15 +372,54 @@ function SettingsContent() {
     const generation = ++integrationStatusGenerationRef.current
     let cancelled = false
     const current = () => !cancelled && integrationStatusGenerationRef.current === generation
+    const ownerIdentity = notificationOwnerIdentity
+    if (!notificationAuthReady) {
+      setLoading(false)
+    } else {
+      if (
+        notificationLoadedIdentityRef.current?.ownerId !== ownerIdentity.ownerId
+        || notificationLoadedIdentityRef.current?.generation !== ownerIdentity.generation
+      ) {
+        setLoading(true)
+      }
+      const notificationRequest = ++notificationRequestRef.current
+      const notificationEditAtStart = notificationEditRevisionRef.current
+      const notificationPutAtStart = notificationPutInFlightRef.current
+      const notificationCurrent = () => (
+        current()
+        && notificationMountedRef.current
+        && notificationOwnerIdentityRef.current.ownerId === ownerIdentity.ownerId
+        && notificationOwnerIdentityRef.current.generation === ownerIdentity.generation
+        && notificationRequestRef.current === notificationRequest
+      )
+      const accountContext = {
+        authToken: sessionData.session?.token ?? '',
+        isCurrent: () => notificationAuthReadyRef.current && notificationCurrent(),
+      }
 
-    apiClient.getNotificationPrefs()
-      .then((nextPrefs) => { if (current()) setPrefs(nextPrefs) })
-      .catch(() => {
-        if (!current()) return
-        console.error('Failed to load notification preferences')
-        setError('Failed to load preferences')
-      })
-      .finally(() => { if (current()) setLoading(false) })
+      apiClient.getNotificationPrefs(accountContext)
+        .then((nextPrefs) => {
+          if (!notificationCurrent()) return
+          notificationLoadedIdentityRef.current = ownerIdentity
+          // A refresh that began before an optimistic edit must not replace
+          // the draft with an older snapshot or supersede an active PUT.
+          if (
+            notificationEditRevisionRef.current === notificationEditAtStart
+            && notificationPutInFlightRef.current === notificationPutAtStart
+            && notificationPutAtStart === null
+          ) {
+            setPrefs(nextPrefs)
+            setError(null)
+          }
+        })
+        .catch(() => {
+          if (!notificationCurrent()) return
+          if (notificationEditRevisionRef.current !== notificationEditAtStart || notificationPutAtStart !== null) return
+          console.error('Failed to load notification preferences')
+          setError('Failed to load preferences')
+        })
+        .finally(() => { if (notificationCurrent()) setLoading(false) })
+    }
 
     apiClient.getGitHubStatus()
       .then((status) => { if (current()) setGhStatus(status) })
@@ -236,7 +462,7 @@ function SettingsContent() {
       if (integrationStatusGenerationRef.current === generation) integrationStatusGenerationRef.current += 1
     }
 
-  }, [sessionData, sessionLoading])
+  }, [sessionData, sessionLoading, sessionError, notificationOwnerIdentity, notificationRetryNonce, notificationAuthReady])
 
   // Do not race an OAuth ticket exchange with the normal status read. A slow
   // pre-redirect `connected: false` response must not overwrite the connected
@@ -327,7 +553,7 @@ function SettingsContent() {
       return
     }
 
-    if (sessionLoading) return
+    if (sessionLoading || (provider === 'github' && sessionError)) return
 
     const ticket = searchParams.get('ticket')
     if (!ticket) {
@@ -341,7 +567,11 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    const completionKey = `${accountKey}:${provider}:${ticket}`
+    // A callback ticket is one intent, not a new intent after account/token
+    // rotation. Never replay a started GitHub ticket as the replacement user.
+    const completionKey = provider === 'github'
+      ? `${provider}:${ticket}`
+      : `${accountKey}:${provider}:${ticket}`
     if (oauthCompletionStartedRef.current === completionKey) return
 
     oauthCompletionStartedRef.current = completionKey
@@ -351,6 +581,21 @@ function SettingsContent() {
     const providerOwner = provider === 'google_drive'
       ? null
       : { accountKey, provider, ticket, active: true }
+    const githubAction = provider === 'github'
+      ? (() => {
+        const capturedIdentity = providerActionIdentity
+        const isCurrent = () => (
+          githubOAuthMountedRef.current
+          && providerActionAuthReadyRef.current
+          && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+          && providerActionIdentityRef.current.authToken === capturedIdentity.authToken
+          && providerActionIdentityRef.current.generation === capturedIdentity.generation
+          && oauthCompletionOwnerRef.current === providerOwner
+          && Boolean(providerOwner?.active)
+        )
+        return { isCurrent, accountContext: { authToken: capturedIdentity.authToken, isCurrent } }
+      })()
+      : null
     if (googleDriveOwner) {
       googleDriveStatusGenerationRef.current += 1
       googleDriveCompletionOwnerRef.current = googleDriveOwner
@@ -362,10 +607,11 @@ function SettingsContent() {
 
     const complete = async (name: Provider) => {
       if (name === 'github') {
-        await apiClient.completeGitHubOAuth(ticket)
-        if (providerOwner !== oauthCompletionOwnerRef.current) return
-        const status = await apiClient.getGitHubStatus()
-        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        if (!githubAction) return
+        await apiClient.completeGitHubOAuth(ticket, githubAction.accountContext)
+        if (!githubAction.isCurrent()) return
+        const status = await apiClient.getGitHubStatus(githubAction.accountContext)
+        if (!githubAction.isCurrent()) return
         setGhStatus(status)
         setGhSuccess('GitHub account connected successfully!')
         scheduleTimer(() => {
@@ -426,11 +672,13 @@ function SettingsContent() {
 
     complete(provider)
       .catch((e: unknown) => {
+        if (githubAction && !githubAction.isCurrent()) return
         if (googleDriveOwner && googleDriveOwner !== googleDriveCompletionOwnerRef.current) return
         if (providerOwner && providerOwner !== oauthCompletionOwnerRef.current) return
         setProviderError(e instanceof Error ? e.message : `Failed to complete ${providerName} connection`)
       })
       .finally(() => {
+        if (githubAction && !githubAction.isCurrent()) return
         if (googleDriveOwner && googleDriveOwner !== googleDriveCompletionOwnerRef.current) return
         if (providerOwner && providerOwner !== oauthCompletionOwnerRef.current) return
         setProviderConnecting(false)
@@ -441,7 +689,7 @@ function SettingsContent() {
         if (providerOwner) providerOwner.active = false
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, router, searchParams, sessionData, sessionLoading])
+  }, [pathname, router, searchParams, sessionData, sessionLoading, sessionError])
 
   // Show success message after OAuth redirect
   useEffect(() => {
@@ -509,22 +757,61 @@ function SettingsContent() {
   // instant toggles, so persist immediately and reconcile with the server. On
   // failure we revert to the previous value and surface an error.
   async function persistPrefs(next: NotificationPrefs) {
+    if (
+      !notificationDataReady
+      || !notificationAuthReadyRef.current
+      || !notificationOwnerIdentity.ownerId
+      || !notificationMountedRef.current
+      || notificationPutInFlightRef.current !== null
+      || notificationOwnerIdentityRef.current.ownerId !== notificationOwnerIdentity.ownerId
+      || notificationOwnerIdentityRef.current.generation !== notificationOwnerIdentity.generation
+    ) return
+    const ownerIdentity = notificationOwnerIdentity
+    const revision = ++notificationEditRevisionRef.current
+    notificationPutInFlightRef.current = revision
+    const current = () => (
+      notificationMountedRef.current
+      && notificationOwnerIdentityRef.current.ownerId === ownerIdentity.ownerId
+      && notificationOwnerIdentityRef.current.generation === ownerIdentity.generation
+      && notificationEditRevisionRef.current === revision
+    )
+    const accountContext = {
+      authToken: sessionData?.session?.token ?? '',
+      isCurrent: () => notificationAuthReadyRef.current && current(),
+    }
     const prev = prefs
     setPrefs(next) // optimistic
     setSaving(true)
     setSaved(false)
     setError(null)
     try {
-      const updated = await apiClient.updateNotificationPrefs(next)
+      const updated = await apiClient.updateNotificationPrefs(next, accountContext)
+      if (!current()) return
       setPrefs(updated)
       setSaved(true)
-      scheduleTimer(() => setSaved(false), 2000)
+      scheduleTimer(() => {
+        if (current()) setSaved(false)
+      }, 2000)
     } catch (e: unknown) {
+      if (!current()) return
       setPrefs(prev) // revert optimistic change
       setError(e instanceof Error ? e.message : 'Failed to save preferences')
     } finally {
+      if (!current()) return
+      notificationPutInFlightRef.current = null
       setSaving(false)
     }
+  }
+
+  function retryNotificationPrefs() {
+    if (
+      !notificationOwnerIdentity.ownerId
+      || !notificationAuthReadyRef.current
+      || !notificationMountedRef.current
+    ) return
+    setError(null)
+    setLoading(true)
+    setNotificationRetryNonce((nonce) => nonce + 1)
   }
 
   // Desktop notifications toggle. Turning ON must actually obtain browser
@@ -580,15 +867,22 @@ function SettingsContent() {
 
   async function handleDisconnectGitHub() {
     if (!confirm('Disconnect GitHub? Latexy will revoke its GitHub authorization and disable sync on all your resumes. Imported resume text will remain.')) return
+    const action = beginProviderAction('github_disconnect')
+    if (!action) return
     setGhDisconnecting(true)
     setGhError(null)
     try {
-      await apiClient.disconnectGitHub()
+      await apiClient.disconnectGitHub(action.accountContext)
+      if (!action.isCurrent()) return
       setGhStatus({ connected: false, username: null, public_import: false, private_sync: false })
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setGhError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
-      setGhDisconnecting(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.github_disconnect = false
+        setGhDisconnecting(false)
+      }
     }
   }
 
@@ -628,15 +922,22 @@ function SettingsContent() {
 
   async function handleDisconnectZotero() {
     if (!confirm('Disconnect Zotero? You will need to reconnect to import references.')) return
+    const action = beginProviderAction('zotero_disconnect')
+    if (!action) return
     setZotDisconnecting(true)
     setZotError(null)
     try {
-      await apiClient.disconnectZotero()
+      await apiClient.disconnectZotero(action.accountContext)
+      if (!action.isCurrent()) return
       setZotStatus({ connected: false, username: null, user_id: null })
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setZotError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
-      setZotDisconnecting(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.zotero_disconnect = false
+        setZotDisconnecting(false)
+      }
     }
   }
 
@@ -659,15 +960,22 @@ function SettingsContent() {
 
   async function handleDisconnectDropbox() {
     if (!confirm('Disconnect Dropbox? Sync will be disabled on all your resumes. Files already in Dropbox are not deleted.')) return
+    const action = beginProviderAction('dropbox_disconnect')
+    if (!action) return
     setDbxDisconnecting(true)
     setDbxError(null)
     try {
-      await apiClient.disconnectDropbox()
+      await apiClient.disconnectDropbox(action.accountContext)
+      if (!action.isCurrent()) return
       setDbxStatus({ connected: false, display_name: null, account_id: null })
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setDbxError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
-      setDbxDisconnecting(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.dropbox_disconnect = false
+        setDbxDisconnecting(false)
+      }
     }
   }
 
@@ -693,29 +1001,44 @@ function SettingsContent() {
 
   async function retryGoogleDriveStatus() {
     if (gdriveLoading || gdriveConnecting || gdriveDisconnecting) return
+    const action = beginProviderAction('google_drive')
+    if (!action) return
     setGdriveLoading(true)
     setGdriveError(null)
     try {
-      setGdriveStatus(await apiClient.getGoogleDriveStatus())
+      const status = await apiClient.getGoogleDriveStatus(action.accountContext)
+      if (!action.isCurrent()) return
+      setGdriveStatus(status)
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setGdriveError(e instanceof Error ? e.message : 'Failed to load Google Drive status. Please retry.')
     } finally {
-      setGdriveLoading(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.google_drive = false
+        setGdriveLoading(false)
+      }
     }
   }
 
   async function handleDisconnectGoogleDrive() {
-    if (gdriveConnecting || gdriveDisconnecting) return
+    if (gdriveLoading || gdriveConnecting || gdriveDisconnecting) return
     if (!confirm('Disconnect Google Drive? Files already exported there will not be deleted.')) return
+    const action = beginProviderAction('google_drive')
+    if (!action) return
     setGdriveDisconnecting(true)
     setGdriveError(null)
     try {
-      await apiClient.disconnectGoogleDrive()
+      await apiClient.disconnectGoogleDrive(action.accountContext)
+      if (!action.isCurrent()) return
       setGdriveStatus({ connected: false, scope: null })
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setGdriveError(e instanceof Error ? e.message : 'Failed to disconnect Google Drive')
     } finally {
-      setGdriveDisconnecting(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.google_drive = false
+        setGdriveDisconnecting(false)
+      }
     }
   }
 
@@ -738,15 +1061,22 @@ function SettingsContent() {
 
   async function handleDisconnectMendeley() {
     if (!confirm('Disconnect Mendeley? You will need to reconnect to import references.')) return
+    const action = beginProviderAction('mendeley_disconnect')
+    if (!action) return
     setMenDisconnecting(true)
     setMenError(null)
     try {
-      await apiClient.disconnectMendeley()
+      await apiClient.disconnectMendeley(action.accountContext)
+      if (!action.isCurrent()) return
       setMenStatus({ connected: false, name: null })
     } catch (e: unknown) {
+      if (!action.isCurrent()) return
       setMenError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
-      setMenDisconnecting(false)
+      if (action.isCurrent()) {
+        providerActionActiveRef.current.mendeley_disconnect = false
+        setMenDisconnecting(false)
+      }
     }
   }
 
@@ -1218,10 +1548,17 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Email Notifications</h2>
           </div>
 
-          {loading ? (
+          {!notificationDataReady && (loading || sessionLoading) ? (
             <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Loading preferences…
+            </div>
+          ) : !notificationDataReady ? (
+            <div role="alert" className="space-y-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
+              <p>Failed to load preferences.</p>
+              <button type="button" onClick={retryNotificationPrefs} disabled={!notificationAuthReady} className="font-semibold underline disabled:opacity-60">
+                Retry notification preferences
+              </button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1243,7 +1580,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Job completion emails"
                   aria-checked={prefs.job_completed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, job_completed: !prefs.job_completed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1283,7 +1620,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Job failure emails"
                   aria-checked={prefs.job_failed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, job_failed: !prefs.job_failed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1323,7 +1660,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Shared resume view emails"
                   aria-checked={prefs.share_viewed}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, share_viewed: !prefs.share_viewed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1363,7 +1700,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Application tracker updates"
                   aria-checked={prefs.tracker_updates}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, tracker_updates: !prefs.tracker_updates })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1397,7 +1734,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Comment mention emails"
                   aria-checked={prefs.comment_mentions}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, comment_mentions: !prefs.comment_mentions })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1431,7 +1768,7 @@ function SettingsContent() {
                   role="switch"
                   aria-label="Weekly digest emails"
                   aria-checked={prefs.weekly_digest}
-                  disabled={saving}
+                  disabled={saving || !notificationDataReady}
                   onClick={() => persistPrefs({ ...prefs, weekly_digest: !prefs.weekly_digest })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
@@ -1453,21 +1790,26 @@ function SettingsContent() {
             </div>
           )}
 
-          {error && (
-            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
-              {error}
-            </p>
+          {notificationDataReady && error && (
+            <div role="alert" className="space-y-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
+              <p>{error}</p>
+              {error === 'Failed to load preferences' && (
+                <button type="button" onClick={retryNotificationPrefs} disabled={!notificationAuthReady || saving || loading} className="font-semibold underline disabled:opacity-60">
+                  Retry notification preferences
+                </button>
+              )}
+            </div>
           )}
 
           {/* Autosave status — changes persist on toggle, so there is no manual
               Save button and no unsaved state to lose. */}
           <div className="flex items-center gap-1.5 pt-1 text-[11px] text-fg-3" aria-live="polite">
-            {saving ? (
+            {notificationDataReady && saving ? (
               <>
                 <Loader2 size={12} className="animate-spin" />
                 Saving…
               </>
-            ) : saved ? (
+            ) : notificationDataReady && saved ? (
               <>
                 <CheckCircle size={12} className="text-ok" />
                 <span className="text-ok">Saved</span>
