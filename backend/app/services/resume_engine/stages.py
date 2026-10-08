@@ -6,7 +6,11 @@ import json
 import math
 
 from ...workers.job_lifecycle import write_owned_artifacts
-from .credential_scope import _private_stage_context_fingerprint
+from .credential_scope import (
+    _durable_run_context_fingerprint,
+    _paid_stage_input_fingerprint,
+    _private_stage_context_fingerprint,
+)
 
 
 class StageCheckpointError(RuntimeError):
@@ -26,6 +30,18 @@ def private_stage_context_fingerprint(context: dict) -> str:
     """
     serialized = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return _private_stage_context_fingerprint(serialized)
+
+
+def durable_run_context_fingerprint(context: dict) -> str:
+    """Key private durable admission snapshots; legacy unkeyed rows fail closed."""
+    serialized = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return _durable_run_context_fingerprint(serialized)
+
+
+def paid_stage_input_fingerprint(request: dict) -> str:
+    """Key private paid input used for replay, without changing output checksums."""
+    serialized = json.dumps(request, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return _paid_stage_input_fingerprint(serialized)
 
 
 def _validate_output(output) -> tuple:

@@ -1,4 +1,6 @@
 """Real original bytes, owned database receipts, and explicit adaptation."""
+import asyncio
+import hashlib
 import io
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -238,3 +240,69 @@ async def test_expired_unbound_original_cannot_be_read_or_adapted(import_scope, 
             with pytest.raises(HTTPException) as error:
                 await operation()
             assert error.value.status_code == 404
+
+
+async def test_expired_cleanup_backlog_does_not_block_live_owner_admission(import_scope, db_session_factory):
+    owner, other, _ = import_scope
+    content = actual_pdf()
+    now = datetime.now(timezone.utc)
+    async with db_session_factory() as db:
+        # The bounded global sweep consumes its entire 200-row batch on another
+        # account. This owner's ten expired rows must not count as live imports.
+        for identity, count, expiry in ((other, 201, now - timedelta(days=2)),
+                                        (owner, 10, now - timedelta(hours=1))):
+            db.add_all([ResumePdfImport(id=str(uuid4()), user_id=identity, filename="original.pdf",
+                source_sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content), original_pdf=content,
+                structured_seed={"basics": {"name": "Expired"}}, extraction_status="partial", expires_at=expiry)
+                for _ in range(count)])
+        await db.commit()
+        receipt = await uploaded(db, owner)
+        assert receipt["expires_at"] is not None
+        assert (await original_pdf(receipt["import_id"], db, owner)).body == content
+        # Prove this passed without deleting an unbounded cleanup backlog.
+        assert await db.scalar(select(func.count()).select_from(ResumePdfImport).where(
+            ResumePdfImport.user_id == owner, ResumePdfImport.expires_at <= now)) == 10
+
+
+async def test_live_staged_imports_still_enforce_owner_cap(import_scope, db_session_factory):
+    owner, _, _ = import_scope
+    content = actual_pdf()
+    async with db_session_factory() as db:
+        db.add_all([ResumePdfImport(id=str(uuid4()), user_id=owner, filename="original.pdf",
+            source_sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content), original_pdf=content,
+            structured_seed={"basics": {"name": "Pending"}}, extraction_status="partial",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1)) for _ in range(10)])
+        await db.commit()
+        with pytest.raises(HTTPException) as limit:
+            await uploaded(db, owner)
+        assert limit.value.status_code == 429
+        await db.rollback()
+        assert await db.scalar(select(func.count()).select_from(ResumePdfImport).where(
+            ResumePdfImport.user_id == owner)) == 10
+
+
+async def test_concurrent_identical_adaptation_creates_one_resume(import_scope, db_session_factory):
+    owner, _, template = import_scope
+    async with db_session_factory() as db:
+        receipt = await uploaded(db, owner)
+    body = AdaptImport(template_id=template, title="Concurrent adaptation",
+                       expected_original_sha256=receipt["original"]["sha256"])
+    ready = asyncio.Event()
+    loaded = 0
+    async def adapt():
+        nonlocal loaded
+        async with db_session_factory() as db:
+            # Load the unbound row into both identity maps before either writer
+            # locks it. The second writer must observe the first binding.
+            row = await db.get(ResumePdfImport, receipt["import_id"])
+            assert row.resume_id is None
+            loaded += 1
+            if loaded == 2:
+                ready.set()
+            await ready.wait()
+            return await adapt_import(receipt["import_id"], body, db, owner)
+    first, second = await asyncio.gather(adapt(), adapt())
+    assert first["resume_id"] == second["resume_id"]
+    async with db_session_factory() as db:
+        assert await db.scalar(select(func.count()).select_from(Resume).where(Resume.user_id == owner)) == 1
+        assert (await original_pdf(receipt["import_id"], db, owner)).body == actual_pdf()

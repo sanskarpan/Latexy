@@ -17,7 +17,12 @@ from ...database.models import JobFinalization, ResumeOptimizationRun, ResumeOpt
 from ...utils.db_url import normalize_database_url
 from ...workers.job_lifecycle import current_owner, current_owner_epoch, lifecycle_key
 from .budgets import BudgetExceeded, reconcile, reserve
-from .stages import StageCheckpointError, stage_fingerprint
+from .stages import (
+    StageCheckpointError,
+    durable_run_context_fingerprint,
+    paid_stage_input_fingerprint,
+    stage_fingerprint,
+)
 
 _CHECK_OWNER = """
 local t=redis.call('TIME'); local now=tonumber(t[1])+tonumber(t[2])/1000000
@@ -96,7 +101,7 @@ class DurableOptimizationLedger:
         credential_scope: str,
         budget: dict,
     ) -> dict:
-        fingerprint = stage_fingerprint(
+        fingerprint = durable_run_context_fingerprint(
             {
                 "document": document,
                 "context": context,
@@ -171,7 +176,7 @@ class DurableOptimizationLedger:
         return self._transaction(operation)
 
     def begin(self, stage_key: str, request: dict, reservation: dict) -> dict | None:
-        input_hash = stage_fingerprint(request)
+        input_hash = paid_stage_input_fingerprint(request)
 
         async def operation(session, _):
             run = (

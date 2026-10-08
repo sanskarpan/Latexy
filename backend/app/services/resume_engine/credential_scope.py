@@ -20,6 +20,10 @@ _INFO = b"latexy/resume-engine/credential-scope/hmac-key/v1"
 _MESSAGE_DOMAIN = b"latexy/resume-engine/credential-scope/v1\x00"
 _PRIVATE_STAGE_INFO = b"latexy/resume-engine/private-stage-context/hmac-key/v1"
 _PRIVATE_STAGE_DOMAIN = b"latexy/resume-engine/private-stage-context/v1\x00"
+_DURABLE_RUN_INFO = b"latexy/resume-engine/durable-run-context/hmac-key/v1"
+_DURABLE_RUN_DOMAIN = b"latexy/resume-engine/durable-run-context/v1\x00"
+_PAID_INPUT_INFO = b"latexy/resume-engine/paid-stage-input/hmac-key/v1"
+_PAID_INPUT_DOMAIN = b"latexy/resume-engine/paid-stage-input/v1\x00"
 
 
 def _derive_key(info: bytes) -> bytes:
@@ -73,3 +77,13 @@ def _private_stage_context_fingerprint(serialized_context: bytes) -> str:
         info=_PRIVATE_STAGE_INFO,
         domain=_PRIVATE_STAGE_DOMAIN,
     )
+
+
+def _durable_run_context_fingerprint(serialized_context: bytes) -> str:
+    """Scope private frozen run snapshots separately from legacy checkpoints."""
+    return _keyed_fingerprint(serialized_context, info=_DURABLE_RUN_INFO, domain=_DURABLE_RUN_DOMAIN)
+
+
+def _paid_stage_input_fingerprint(serialized_request: bytes) -> str:
+    """Scope paid request replay separately from run and output identity."""
+    return _keyed_fingerprint(serialized_request, info=_PAID_INPUT_INFO, domain=_PAID_INPUT_DOMAIN)

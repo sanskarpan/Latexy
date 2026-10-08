@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 import json
 
 import pytest
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.core.config import settings
 from app.services.resume_engine.credential_scope import credential_scope
 from app.services.resume_engine.stages import (
     OptimizationCheckpoint,
     StageCheckpointError,
+    durable_run_context_fingerprint,
+    paid_stage_input_fingerprint,
     private_stage_context_fingerprint,
     stage_fingerprint,
 )
@@ -28,23 +27,12 @@ _CONTEXT = {
 }
 
 
-def test_credential_scope_matches_previous_stdlib_hmac_bytes(monkeypatch):
+def test_credential_scope_matches_frozen_previous_implementation_vector(monkeypatch):
     monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", _FIXED_KEY)
     api_key = "synthetic-provider-key"
-    material = base64.urlsafe_b64decode(_FIXED_KEY)
-    derived = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b"latexy/resume-engine/credential-scope/hkdf-salt/v1",
-        info=b"latexy/resume-engine/credential-scope/hmac-key/v1",
-    ).derive(material)
-    previous_stdlib_result = hmac.new(
-        derived,
-        b"latexy/resume-engine/credential-scope/v1\x00" + api_key.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-    assert credential_scope(api_key) == previous_stdlib_result
+    # Frozen from the previous stdlib HMAC implementation, with only synthetic
+    # inputs. Preserve byte compatibility without recomputing a second oracle.
+    assert credential_scope(api_key) == "99f0d009214de620e1697c2eb1454805d721c420890f56752232ad037165b19e"
     assert credential_scope(api_key) == credential_scope(api_key)
 
 
@@ -116,3 +104,23 @@ def test_generic_output_checksum_remains_unkeyed_and_unchanged(monkeypatch):
     ).hexdigest()
 
     assert stage_fingerprint(output) == expected
+
+
+@pytest.mark.parametrize("fingerprint", [durable_run_context_fingerprint, paid_stage_input_fingerprint])
+def test_private_durable_identities_are_canonical_keyed_and_fail_closed(monkeypatch, fingerprint):
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", _FIXED_KEY)
+    original = fingerprint(_CONTEXT)
+    assert original == fingerprint(dict(reversed(list(_CONTEXT.items()))))
+    assert original != stage_fingerprint(_CONTEXT)
+    assert original != fingerprint({**_CONTEXT, "instructions": "different"})
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    assert fingerprint(_CONTEXT) != original
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", "")
+    with pytest.raises(ValueError, match="Credential scope key"):
+        fingerprint(_CONTEXT)
+
+
+def test_durable_run_and_paid_input_use_separate_purpose_domains(monkeypatch):
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", _FIXED_KEY)
+    assert len({private_stage_context_fingerprint(_CONTEXT), durable_run_context_fingerprint(_CONTEXT),
+                paid_stage_input_fingerprint(_CONTEXT), credential_scope(json.dumps(_CONTEXT))}) == 4

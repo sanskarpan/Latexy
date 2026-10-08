@@ -156,6 +156,55 @@ def admitted(request):
     clear_current_owner(job_id)
 
 
+def test_private_run_context_rotated_server_key_cannot_restore_paid_run(admitted, monkeypatch):
+    ledger, args, _, _, _, _ = admitted
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    # Hold the admitted credential scope fixed to exercise protection of the
+    # private snapshot itself, separately from provider-key scoping.
+    with pytest.raises(StageCheckpointError, match="context changed"):
+        ledger.create_or_restore(**args)
+
+
+def test_rotated_server_key_cannot_replay_completed_private_stage_input(admitted, monkeypatch):
+    ledger, _, _, _, _, _ = admitted
+    request = {"messages": [{"role": "user", "content": "Private synthetic resume direction"}]}
+    reservation = {"input_tokens": 20, "output_tokens": 10, "cost_usd": 0.0001}
+    assert ledger.begin("synthetic-private-stage", request, reservation) is None
+    ledger.complete("synthetic-private-stage", output={"wording": "Completed synthetic output"}, usage=None)
+    assert ledger.begin("synthetic-private-stage", request, reservation)["output"]["wording"] == "Completed synthetic output"
+    monkeypatch.setattr(settings, "API_KEY_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    with pytest.raises(StageCheckpointError, match="input changed"):
+        ledger.begin("synthetic-private-stage", request, reservation)
+
+
+def test_legacy_unkeyed_private_run_identity_is_not_replayed(admitted):
+    ledger, args, _, _, job_id, _ = admitted
+    legacy = stage_fingerprint({"document": args["document"], "context": args["context"],
+        "effort": args["effort"], "provider": args["provider"], "model": args["model"],
+        "credential_scope": args["credential_scope"], "budget_policy": args["budget"]["policy"], "engine": "semantic-v1"})
+    async def restore_legacy(db):
+        run = await db.get(ResumeOptimizationRun, job_id)
+        run.context_hash = legacy
+    database(restore_legacy)
+    with pytest.raises(StageCheckpointError, match="context changed"):
+        ledger.create_or_restore(**args)
+
+
+def test_legacy_unkeyed_paid_input_cannot_replay_completed_output(admitted):
+    ledger, _, _, _, job_id, _ = admitted
+    request = {"messages": [{"role": "user", "content": "Private synthetic resume direction"}]}
+    reservation = {"input_tokens": 20, "output_tokens": 10, "cost_usd": 0.0001}
+    assert ledger.begin("legacy-private-stage", request, reservation) is None
+    ledger.complete("legacy-private-stage", output={"wording": "Completed synthetic output"}, usage=None)
+    async def restore_legacy(db):
+        stage = await db.scalar(select(ResumeOptimizationStage).where(
+            ResumeOptimizationStage.run_id == job_id, ResumeOptimizationStage.stage_key == "legacy-private-stage"))
+        stage.input_hash = stage_fingerprint(request)
+    database(restore_legacy)
+    with pytest.raises(StageCheckpointError, match="input changed"):
+        ledger.begin("legacy-private-stage", request, reservation)
+
+
 def optimize(admitted, observed_calls=None):
     ledger, args, user_id, resume_id, job_id, client = admitted
     calls = []

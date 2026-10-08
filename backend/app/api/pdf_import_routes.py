@@ -121,7 +121,8 @@ async def import_pdf(file: UploadFile = File(...), db: AsyncSession = Depends(ge
         raise HTTPException(401, "Account not found")
     await purge_expired_imports(db)
     count = await db.scalar(select(func.count()).select_from(ResumePdfImport).where(
-        ResumePdfImport.user_id == user_id, ResumePdfImport.resume_id.is_(None)))
+        ResumePdfImport.user_id == user_id, ResumePdfImport.resume_id.is_(None),
+        or_(ResumePdfImport.expires_at.is_(None), ResumePdfImport.expires_at > func.clock_timestamp())))
     if count >= MAX_STAGED_IMPORTS:
         raise HTTPException(429, "Finish or remove a pending PDF import before adding another")
     filename = (file.filename or "original.pdf").replace("\\", "/").rsplit("/", 1)[-1]

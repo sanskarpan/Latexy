@@ -118,7 +118,8 @@ async def _access(db, resume_id, user_id, *, write=False, owner=False):
     # Lock source authority before access checks; collaborators are re-evaluated
     # after locking so revoked editors cannot race a stale preflight permission.
     if write:
-        await db.execute(select(Resume.id).where(Resume.id == resume_id).with_for_update())
+        await db.execute(select(Resume).where(Resume.id == resume_id).with_for_update()
+                         .execution_options(populate_existing=True))
     resume, role = await _get_resume_document_access(db, resume_id, user_id)
     if owner and role != "owner" or write and role not in {"owner", "editor"}:
         raise HTTPException(403, "Editing permission required")

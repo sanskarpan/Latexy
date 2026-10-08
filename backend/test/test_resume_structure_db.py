@@ -108,3 +108,26 @@ def test_revoked_editor_rechecked_after_stale_preflight(managed_rows):
             row = await db.get(Resume, resume_id)
             assert row.content_revision == 1 and row.latex_content == before["_source"]
     run(operation)
+
+
+def test_stale_loaded_resume_cannot_overwrite_newer_field(managed_rows):
+    owner, _, resume_id, _ = managed_rows
+    async def operation(sessions):
+        async with sessions() as stale, sessions() as writer:
+            old = await stale.get(Resume, resume_id)
+            before = project_document(old, "ats_safe")
+            heading = next(node for node in before["nodes"] if node["node_id"] == "section.experience.heading")
+            def edit(text):
+                return DocumentPatch(expected_content_revision=before["content_revision"],
+                    expected_source_sha256=before["source_sha256"], patches=[{
+                        "node_id": heading["node_id"], "expected_node_revision": heading["node_revision"], "text": text}])
+            await patch_document(resume_id, edit("Work History"), writer, owner)
+            with pytest.raises(HTTPException) as conflict:
+                await patch_document(resume_id, edit("Stale Work"), stale, owner)
+            assert conflict.value.status_code == 409
+            await stale.rollback()
+        async with sessions() as db:
+            row = await db.get(Resume, resume_id)
+            assert row.structured_content["section_titles"]["experience"] == "Work History"
+            assert row.content_revision == 2
+    run(operation)
