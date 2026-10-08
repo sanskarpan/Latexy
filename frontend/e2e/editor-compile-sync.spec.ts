@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -52,6 +53,16 @@ function fixturePageDimensions() {
 
 async function installFixture(page: Page) {
   await installMockWorkboxRegistration(page)
+  const diagnosticStartedAt = Date.now()
+  const authDelayValue = Number(process.env.EDITOR_AUTH_RESPONSE_DELAY_MS ?? '0')
+  if (!Number.isInteger(authDelayValue) || authDelayValue < 0 || authDelayValue > 10_000) {
+    throw new Error('EDITOR_AUTH_RESPONSE_DELAY_MS must be an integer between 0 and 10000')
+  }
+  const observations: Array<{ atMs: number; event: string; details?: Record<string, unknown> }> = []
+  const pendingObservationReads: Promise<void>[] = []
+  const observe = (event: string, details?: Record<string, unknown>) => {
+    observations.push({ atMs: Date.now() - diagnosticStartedAt, event, ...(details ? { details } : {}) })
+  }
   const submitted: Array<{ latex_content: string; job_type: string }> = []
   const unknown: string[] = []
   const errors: string[] = []
@@ -61,7 +72,33 @@ async function installFixture(page: Page) {
   const pdfDownloadGates = new Map<string, Promise<void>>()
   const subscribers = new Map<string, () => void>()
   let sequence = 0
-  page.on('pageerror', error => errors.push(error.message))
+  let initialDocumentObserved = false
+  page.on('domcontentloaded', () => observe('dom-content-loaded'))
+  page.on('response', response => {
+    if (initialDocumentObserved || response.request().resourceType() !== 'document') return
+    initialDocumentObserved = true
+    observe('initial-document-response', { status: response.status() })
+    pendingObservationReads.push((async () => {
+      try {
+        const html = await response.text()
+        observe('initial-server-html', {
+          characters: html.length,
+          sha256: createHash('sha256').update(html).digest('hex'),
+          hasNextRoot: /id=["']__next["']/.test(html),
+          hasMain: /<main(?:\s|>)/i.test(html),
+          flightScriptCount: (html.match(/self\.__next_f\.push/g) ?? []).length,
+        })
+      } catch (error) {
+        observe('initial-server-html-read-failed', {
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    })())
+  })
+  page.on('pageerror', error => {
+    errors.push(error.message)
+    observe('page-error', { message: error.message })
+  })
   await page.addInitScript(() => {
     localStorage.setItem('latexy_auto_compile', 'false')
     localStorage.setItem('latexy_high_contrast', 'false')
@@ -71,7 +108,11 @@ async function installFixture(page: Page) {
     const url = new URL(route.request().url())
     const path = url.pathname
     if (path === '/api/auth/get-session') {
-      return route.fulfill({ json: { session: { token: 'editor-fixture-token' }, user: { id: 'editor-fixture-owner', email: 'editor-fixture@example.test', name: 'Editor fixture' } } })
+      observe('auth-session-request', { method: route.request().method(), delayMs: authDelayValue })
+      if (authDelayValue > 0) await new Promise(resolve => setTimeout(resolve, authDelayValue))
+      await route.fulfill({ json: { session: { token: 'editor-fixture-token' }, user: { id: 'editor-fixture-owner', email: 'editor-fixture@example.test', name: 'Editor fixture' } } })
+      observe('auth-session-response-fulfilled', { delayMs: authDelayValue })
+      return
     }
     if (url.origin === new URL(page.url() === 'about:blank' ? test.info().project.use.baseURL! : page.url()).origin) return route.continue()
     if (path === `/resumes/${RESUME_ID}`) {
@@ -117,8 +158,16 @@ async function installFixture(page: Page) {
   })
   await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
+  observe('editor-ready')
   return {
     submitted, submittedAt, synctexOverrides, requestedSynctexJobs, unknown, errors,
+    async attachDiagnostics() {
+      await Promise.all(pendingObservationReads)
+      await test.info().attach('editor-hydration-timeline', {
+        body: Buffer.from(JSON.stringify({ authDelayMs: authDelayValue, observations }, null, 2)),
+        contentType: 'application/json',
+      })
+    },
     holdPdf(index: number) {
       let release!: () => void
       pdfDownloadGates.set(`editor-fixture-job-${index}`, new Promise<void>(resolve => { release = resolve }))
@@ -186,35 +235,39 @@ test('coalesces typing, retains busy edits, and does not repeat a matching manua
 
 test('keeps the visible PDF and its SyncTeX paired during a delayed replacement download', async ({ page }) => {
   const fixture = await installFixture(page)
-  await page.getByRole('button', { name: 'Compile', exact: true }).click()
-  await fixture.complete(1)
-  await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 3, column: 1 }))
-  const forward = page.getByRole('button', { name: 'Show source line 3 in PDF', exact: true })
-  await expect(forward).toBeEnabled()
-  const releasePdf = fixture.holdPdf(2)
-  fixture.synctexOverrides.set('editor-fixture-job-2', '')
   try {
-    await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
-    await appendText(page, ' replacement')
-    await expect.poll(() => fixture.submitted.length).toBe(2)
-    await fixture.complete(2)
-    // A normal caret move triggers a parent rerender while the second PDF's
-    // download is still pending. The old PDF must retain job one's mapping.
-    await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 1, column: 1 }))
+    await page.getByRole('button', { name: 'Compile', exact: true }).click()
+    await fixture.complete(1)
     await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 3, column: 1 }))
-    await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
+    const forward = page.getByRole('button', { name: 'Show source line 3 in PDF', exact: true })
     await expect(forward).toBeEnabled()
-    expect(fixture.requestedSynctexJobs).not.toContain('editor-fixture-job-2')
-    await forward.click()
-    await expect(page.locator('[data-synctex-highlight]')).toBeVisible()
+    const releasePdf = fixture.holdPdf(2)
+    fixture.synctexOverrides.set('editor-fixture-job-2', '')
+    try {
+      await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
+      await appendText(page, ' replacement')
+      await expect.poll(() => fixture.submitted.length).toBe(2)
+      await fixture.complete(2)
+      // A normal caret move triggers a parent rerender while the second PDF's
+      // download is still pending. The old PDF must retain job one's mapping.
+      await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 1, column: 1 }))
+      await page.evaluate(() => (window as any).__latexyMonacoEditor.setPosition({ lineNumber: 3, column: 1 }))
+      await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
+      await expect(forward).toBeEnabled()
+      expect(fixture.requestedSynctexJobs).not.toContain('editor-fixture-job-2')
+      await forward.click()
+      await expect(page.locator('[data-synctex-highlight]')).toBeVisible()
+    } finally {
+      releasePdf()
+    }
+    await expect.poll(() => fixture.requestedSynctexJobs).toContain('editor-fixture-job-2')
+    await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()
+    expect(fixture.unknown).toEqual([])
+    expect(fixture.errors).toEqual([])
   } finally {
-    releasePdf()
+    await fixture.attachDiagnostics()
   }
-  await expect.poll(() => fixture.requestedSynctexJobs).toContain('editor-fixture-job-2')
-  await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()
-  expect(fixture.unknown).toEqual([])
-  expect(fixture.errors).toEqual([])
 })
 
 test('divider actions, modifier clicks, and repeat highlights synchronize the actual PDF without navigation', async ({ page }) => {

@@ -202,7 +202,9 @@ describe('LinkedIn import on-ramp', () => {
 describe('GitHub OAuth client', () => {
   test('settings uses the authenticated two-step handshake', () => {
     expect(SETTINGS_SOURCE).toContain("apiClient.startGitHubOAuth('sync')")
-    expect(SETTINGS_SOURCE).toContain('apiClient.completeGitHubOAuth(ticket)')
+    expect(SETTINGS_SOURCE).toContain('apiClient.completeGitHubOAuth(ticket, githubAction.accountContext)')
+    expect(SETTINGS_SOURCE).toContain('apiClient.getGitHubStatus(githubAction.accountContext)')
+    expect(SETTINGS_SOURCE).toContain('if (!githubAction.isCurrent()) return')
     expect(SETTINGS_SOURCE).toContain('if (!sessionData)')
     expect(SETTINGS_SOURCE).toContain('window.location.assign(authorizationUrl)')
     expect(SETTINGS_SOURCE).not.toContain('`${API_BASE}/github/connect`')
