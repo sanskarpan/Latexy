@@ -68,3 +68,28 @@ validation and one-file commits; the follow-up above records those later checks.
 generated side effect, not a source target. Server writes are best-effort and
 these tests do not establish atomic ordering across independent hook instances
 or across multiple tabs/devices.
+
+## Fixture isolation follow-up
+
+Independent review found that later path-only Playwright routes could fulfill
+external lookalike URLs before the fail-closed catch-all saw them. This was a
+test-coverage flaw, not evidence of an application leak. Mocks now bind exact
+app/API origins and explicit methods, distinguish template navigation from
+backend JSON, and record/close unexpected WebSockets. A deliberate eighth
+case proves external lookalikes, wrong-method requests and an external socket
+are rejected and recorded instead of fulfilled by synthetic endpoints.
+
+All eight onboarding cases pass against the same sealed Next 15.5.24 candidate
+on port 5526, one worker, zero retries, strict page errors; ESLint and diff checks
+pass. Log: `/private/tmp/latexy-onboarding-origin-guard-20261008.log`, SHA-256
+`dcc8499ebecf0429a67c5fb21baaba09d15ce9802ed473840d158057dd501775`.
+Test source SHA-256:
+`36b10cfb595b2c1801763d684eda104d15c5ec653cd60f80d915779a5cac918c`.
+This follow-up changes only fixtures, not application code. The earlier
+production run remains a seven-onboarding-plus-five-editor checkpoint; it is
+not relabeled as a 13-case integrated run.
+
+Published checkpoint: draft PR #1858. Security PR #1857 has since merged and
+passed production certification; Settings PR #1854 has also merged. Refresh
+this branch from their canonical main state and obtain new exact-head CI before
+release. Earlier local checks are not a claim of that future combined acceptance.
