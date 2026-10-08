@@ -1,0 +1,92 @@
+{
+  "scope": "Chromium functional contracts on separate localhost:5362 Next development server; mocked API/auth/provider events. No production performance certification.",
+  "report_sha256": "dc5eef76f43c974b32d6efa40f1865acd935124990bcfcead5a5dfedd40be39f",
+  "stats": {
+    "startTime": "2026-10-08T18:48:50.406Z",
+    "duration": 52215.819,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "cases": [
+    {
+      "file": "new-resume-latency.spec.ts",
+      "title": "resume title and import controls remain usable while template requests are pending",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 3860
+        }
+      ]
+    },
+    {
+      "file": "resume-engine-preview.spec.ts",
+      "title": "guest Resume mode edits plain fields and submits exactly one quota-governed preview",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 9567
+        }
+      ]
+    },
+    {
+      "file": "resume-engine-preview.spec.ts",
+      "title": "managed review keeps provisional candidates separate and applies authoritative decisions",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 23134
+        }
+      ]
+    },
+    {
+      "file": "resume-engine-preview.spec.ts",
+      "title": "verified PDF field supports keyboard selection and mobile field pane",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 4629
+        }
+      ]
+    },
+    {
+      "file": "resume-preview-recovery.spec.ts",
+      "title": "acknowledged guest cancellation allows the next saved field to preview without a terminal socket event",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 3102
+        }
+      ]
+    },
+    {
+      "file": "resume-preview-recovery.spec.ts",
+      "title": "a delayed guest field patch cannot apply after the account changes with the same source buffer",
+      "status": "expected",
+      "attempts": [
+        {
+          "status": "passed",
+          "retry": 0,
+          "duration_ms": 3364
+        }
+      ]
+    }
+  ],
+  "source_sha256": {
+    "frontend/e2e/quality/new-resume-latency.spec.ts": "51ebad7aa89fa638ea19ba17609db3a760a91fcd2bd59aecaf66e0b5c2a912ea",
+    "frontend/e2e/quality/resume-engine-preview.spec.ts": "d38f58330e7ef2e9dbe1b2f7d4bc8729f7d0a273816f10f184453e413a6b8a40",
+    "frontend/e2e/quality/resume-preview-recovery.spec.ts": "1d50f2a964e50653e389581223f3e898fdb57cfd1df3d8157265e8f6cb5c4a72"
+  },
+  "earlier_failure": "First six-case run passed five and failed managed early suggestions: fixture omitted localhost:8530 and WS ticket. Fixed single case and fresh six-case run passed. Initial aggregate JSON was overwritten and final runner cleared the failure directory; no retained raw initial report/screenshot is claimed."
+}

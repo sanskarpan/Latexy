@@ -1,0 +1,675 @@
+{
+  "measured_at_utc": "2026-10-08T18:05:54.128Z",
+  "scope": "One synthetic TXT to LaTeX conversion using the authorized account and ordinary quota; no BYOK key, role changes or payment",
+  "requests": [
+    {
+      "path": "/formats/upload",
+      "status": 200,
+      "elapsed_ms": 3651
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 997
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 971
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 964
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 958
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 946
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 984
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1700
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 989
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 991
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 977
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 929
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 911
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 975
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 902
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 910
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 935
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 978
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 942
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 930
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 921
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 919
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 908
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 899
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 908
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 905
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1110
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 931
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1364
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 996
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 920
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 936
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 908
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 938
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 904
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 897
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 932
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1151
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 995
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 938
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 920
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 923
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 900
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1973
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 906
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 898
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1027
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 936
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 935
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 948
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 915
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 931
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 910
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 948
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1343
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1246
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1317
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1054
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1313
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1269
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1309
+    }
+  ],
+  "states": [
+    {
+      "elapsed_ms": 4650,
+      "status": "queued",
+      "stage": "",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 7633,
+      "status": "queued",
+      "stage": "",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 10614,
+      "status": "queued",
+      "stage": "",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 13589,
+      "status": "queued",
+      "stage": "",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 16541,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 19529,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 23248,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 26251,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 29255,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 32237,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 35173,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 38095,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 41085,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 44004,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 46922,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 49863,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 52859,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 55809,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 58750,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 61684,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 64616,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 67537,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 70440,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 73358,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 76266,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 79383,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 82324,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 85699,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 88701,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 91636,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 94580,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 97499,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 100440,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 103349,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 106249,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 109197,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 112356,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 115359,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 118314,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 121248,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 124176,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 127093,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 131074,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 133985,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 136899,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 139940,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 142893,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 145840,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 148800,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 151724,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 154661,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 157579,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 160538,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 163890,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 167139,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 170473,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 173536,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 176867,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 180153,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 183480,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    }
+  ],
+  "job_id": "72ddf354-ce48-4830-8211-ad66e5fb095c",
+  "error": "Bounded polling ended without a terminal result"
+}

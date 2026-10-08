@@ -1,0 +1,98 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+
+OPTIMIZATION
+
+Targeted Optimization
+
+Optimize "Latency QA 2026-10-08" — add a job description to tailor it to a specific role, or leave blank for general improvements.
+
+Variant
+Back to Editor
+Cover Letter
+PRO PIPELINE
+OPTIMIZATION STYLE
+optional
+
+Choose a persona to bias the AI toward a specific context.
+
+🚀
+
+Startup / Scale-up
+
+Lean, impact-driven language — metrics, growth, and ownership.
+
+🏢
+
+Enterprise / Corporate
+
+Formal, structured — collaboration, process, and scale.
+
+🎓
+
+Academic / Research
+
+Publications, grants, teaching, and scholarly contributions.
+
+🔄
+
+Career Change / Pivot
+
+Surfaces transferable skills and bridges to the new field.
+
+💼
+
+Executive / C-Suite
+
+P&L, vision, and board-level leadership impact.
+
+JOB DESCRIPTION
+optional
+Import
+Fine-tune the AI (optional)
+Optimize Resume
+PIPELINE STATUS
+0ec811bc
+
+Initializing
+
+Connecting to workers...
+
+LIVE LOGS
+No log output yet
+VERSION HISTORY
+Show
+
+LATEX SOURCE
+
+Auto
+LuaLaTeX
+Restore Original
+LaTeX Presets
+Loading...
+LATEX EDITOR
+Editor keybindings
+Standard
+Vim
+Emacs
+AUTO
+~1 PAGE
+ATS —
+927 CHARS
+⌘↵ COMPILE · ⌘⇧H PRESETS
+
+OUTPUT PREVIEW
+
+Your PDF will appear here
+
+Compile to render a live preview
+
+ATS SIMULATOR
+KEYWORDS
+PUBLICATIONS
+
+Compare Latexy's heuristic checks grouped by common platform constraints. These are not the vendors' parsers and do not predict screening decisions. Inspect the extracted plain text and address concrete document issues.
+
+SELECT CHECK PROFILE
+Run checks

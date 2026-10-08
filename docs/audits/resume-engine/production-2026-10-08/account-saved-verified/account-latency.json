@@ -1,0 +1,2317 @@
+{
+  "measured_at_utc": "2026-10-08T17:49:32.825Z",
+  "origin": "https://latexy.xyz",
+  "scope": "Authorized newly created minimal-role test account; no customer records, role changes, payment or paid model requests",
+  "http": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/login",
+      "status": 200,
+      "method": "GET",
+      "type": "document",
+      "response_headers_ms": 615,
+      "request_header_names": [
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "upgrade-insecure-requests",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "status": 200,
+      "method": "GET",
+      "type": "stylesheet",
+      "response_headers_ms": 21,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 49,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 67,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 561,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 555,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 626,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/3738-b710f4ebd7bd9fc5.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 627,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/login/page-acf031c068f7ec5c.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 631,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 637,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 638,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 646,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 646,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/459-e27a76dfdcfc4c1c.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 646,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 647,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 682,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 683,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 684,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/page-f736d689b3fdf01b.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 692,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 700,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 701,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 701,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 702,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 704,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/providers",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 222,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 482,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 291,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 313,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 377,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 377,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 407,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 284,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/updates",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 262,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/terms",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 271,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/sign-in/email",
+      "status": 200,
+      "method": "POST",
+      "type": "fetch",
+      "response_headers_ms": 370,
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/accessibility",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 293,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/forgot-password",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 265,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/signup",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 292,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/try",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 675,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/privacy",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 620,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 270,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace",
+      "status": 200,
+      "method": "GET",
+      "type": "document",
+      "response_headers_ms": 401,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "upgrade-insecure-requests",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "status": 200,
+      "method": "GET",
+      "type": "font",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "origin",
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "status": 200,
+      "method": "GET",
+      "type": "stylesheet",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 3,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 4,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 0,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 11,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/page-f736d689b3fdf01b.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/2150-c92985a691e37e68.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 259,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/5910-a2394082fd5d30bf.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 265,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9980-c98ed2ccbcb12382.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 257,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7490-ca6284005c287c20.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 258,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/6960-a540d08fa235296e.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 258,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/workspace/page-eaff88cd6ab4718b.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 334,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/6671-bcd0f6b76f307215.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 335,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 136,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 364,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 365,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 366,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 369,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 370,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 675,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 546,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/login",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 327,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 436,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/try",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 428,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/dashboard",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 428,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/tracker",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 468,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/history",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 288,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/merge",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 335,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/new",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 608,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 1430,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 1586,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 1833,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 946,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 977,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 1932,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/subscription/plans",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 1892,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 1912,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 2184,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 2433,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me/preferences",
+      "status": 200,
+      "method": "PATCH",
+      "type": "fetch",
+      "response_headers_ms": 1779,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/stats",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 2520,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/entitlements",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 2529,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 3068,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/new",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 271,
+      "request_header_names": [
+        "next-router-state-tree",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4066-12f2bbde927641b7.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 1,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/5190-c989ad7a522e3dce.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 8,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/8334-7a4993108fd7bb95.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 10,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/workspace/new/page-af0e674bab5f46e7.js",
+      "status": 200,
+      "method": "GET",
+      "type": "script",
+      "response_headers_ms": 31,
+      "allow_origin": "*",
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 520,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 542,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 552,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "status": 202,
+      "method": "POST",
+      "type": "ping",
+      "response_headers_ms": 556,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "content-type",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/categories",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 1158,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 1320,
+      "allow_origin": "https://latexy.xyz",
+      "request_header_names": [
+        "authorization",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "traceparent",
+        "user-agent",
+        "x-request-id"
+      ]
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/builder/new",
+      "status": 200,
+      "method": "GET",
+      "type": "fetch",
+      "response_headers_ms": 298,
+      "request_header_names": [
+        "next-router-prefetch",
+        "next-router-state-tree",
+        "next-url",
+        "referer",
+        "rsc",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/df11fc7d-decc-4bdf-a1bb-9de9f49cf00f/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1033,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/9e0cb00f-4a3d-4605-92e3-a075b85658d1/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1205,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/2d1535c9-0294-459d-97a5-5bcc0171a05a/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1234,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/a20be69a-fe4b-424a-b31d-4686d7c73647/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1236,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/649ffd1e-896f-4ebf-aa92-2fe31c8e53b6/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1238,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/cfaa2d93-c3b5-4899-b347-f44cc1c4714c/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1240,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/2e816395-c0e4-4747-8d00-0f40b2b88dd9/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1252,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/6ecace13-e794-4ee2-84da-65d85bf8a995/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1252,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/8a184ad0-fcef-43d8-96f0-dde01ecd7099/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1259,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/180d87f3-4654-4a76-9085-54cdfebf04de/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1276,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/376048b9-5865-4425-8079-02474d47d16a/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1284,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/406a6eeb-8899-4ac4-8fb7-2e0c08112572/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1290,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/014c59e9-caf6-4005-b491-1cf8f19ad4d8/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1327,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/a4e2cf0f-602b-4b19-9da9-7a22d6a6cda9/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1332,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/3bdf8d79-d98b-440a-8468-a6e03707012f/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1452,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/templates/5d0506e4-4cd4-4fca-921b-ea324322eacc/thumbnail",
+      "status": 307,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1578,
+      "request_header_names": [
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/df11fc7d-decc-4bdf-a1bb-9de9f49cf00f.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 950,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/cfaa2d93-c3b5-4899-b347-f44cc1c4714c.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 919,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/9e0cb00f-4a3d-4605-92e3-a075b85658d1.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 975,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/a20be69a-fe4b-424a-b31d-4686d7c73647.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 990,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/649ffd1e-896f-4ebf-aa92-2fe31c8e53b6.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 996,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/2d1535c9-0294-459d-97a5-5bcc0171a05a.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1215,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/2e816395-c0e4-4747-8d00-0f40b2b88dd9.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1199,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/8a184ad0-fcef-43d8-96f0-dde01ecd7099.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1488,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/180d87f3-4654-4a76-9085-54cdfebf04de.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1473,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/6ecace13-e794-4ee2-84da-65d85bf8a995.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1508,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/376048b9-5865-4425-8079-02474d47d16a.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1578,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/014c59e9-caf6-4005-b491-1cf8f19ad4d8.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1931,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/406a6eeb-8899-4ac4-8fb7-2e0c08112572.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 2004,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/a4e2cf0f-602b-4b19-9da9-7a22d6a6cda9.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 2136,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/3bdf8d79-d98b-440a-8468-a6e03707012f.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 2017,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    },
+    {
+      "origin": "https://2ca2c91ccfc580f701601bba9934a568.r2.cloudflarestorage.com",
+      "path": "/latexy/templates/5d0506e4-4cd4-4fca-921b-ea324322eacc.png",
+      "status": 200,
+      "method": "GET",
+      "type": "image",
+      "response_headers_ms": 1893,
+      "request_header_names": [
+        "referer",
+        "user-agent"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/login",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/try",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/dashboard",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/tracker",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/new",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "probe": "locator.fill: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#new-resume-title')\u001b[22m\n"
+    }
+  ],
+  "console_errors": [],
+  "operations": [
+    {
+      "name": "login-navigation",
+      "elapsed_ms": 1611
+    },
+    {
+      "name": "new-resume-form-ready",
+      "elapsed_ms": 1997
+    }
+  ],
+  "events": []
+}

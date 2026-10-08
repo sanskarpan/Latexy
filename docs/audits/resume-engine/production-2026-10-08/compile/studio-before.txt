@@ -1,0 +1,39 @@
+Skip to content
+Résumé Studio
+Résumé Studio
+resume.tex
+Saving…
+Recompile
+Auto
+ATS
+—
+Export
+trials 3
+Log in
+PROJECT
+resume.tex
+
+Source
+
+Reset
+Clear
+Import file (PDF · DOCX · TEX)
+resume.tex
+Copy
+⌘F to find
+LaTeX Presets
+Loading...
+LATEX EDITOR
+Editor keybindings
+Standard
+Vim
+Emacs
+AUTO
+~1 PAGE
+ATS —
+856 CHARS
+⌘S SAVE · ⌘↵ COMPILE · ⌘⇧H PRESETS
+
+Your PDF will appear here
+
+Compile to render a live preview

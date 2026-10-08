@@ -1,0 +1,65 @@
+{
+  "scope": "Windows isolated unit/static checks; no live provider or database acceptance. Overlapping selections are not a unique aggregate.",
+  "results": [
+    {
+      "file": "provider-runtime-final-unit-windows.xml",
+      "sha256": "5d1bb1d59ac7b6d870af75bcd4562e88def013f376394493fa33100619fa3286",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 12.211,
+      "nonpassing": []
+    },
+    {
+      "file": "production-fixes-final-unit-windows.xml",
+      "sha256": "093911e26163f3860dcde475eed95f6dd4842bb2c214342295afdf0cc72d052b",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 25.748,
+      "nonpassing": []
+    },
+    {
+      "file": "deploy-manifests-final.xml",
+      "sha256": "d7bec9766bc931fc33de6a4ba29a7372fbc2df7bb2cae54d37a0362cdd855283",
+      "tests": 92,
+      "failures": 10,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 9.9,
+      "nonpassing": [
+        "test.test_deploy_manifests::test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency",
+        "test.test_deploy_manifests::test_modal_compiler_image_installs_pinned_atkinson_font_support",
+        "test.test_deploy_manifests::test_ci_enforces_the_pdf_extraction_contract_for_every_seeded_template",
+        "test.test_deploy_manifests::test_devanagari_runtime_and_template_use_explicit_harfbuzz_shaping",
+        "test.test_deploy_manifests::test_make_builds_the_shipped_images_and_uses_the_canonical_infra",
+        "test.test_deploy_manifests::test_worktree_app_slots_do_not_recreate_shared_infra",
+        "test.test_deploy_manifests::test_hybrid_dev_uses_its_docker_redis_not_a_host_daemon",
+        "test.test_deploy_manifests::test_self_host_startup_validates_migrates_and_starts_the_stack",
+        "test.test_deploy_manifests::test_k8s_image_validation_rejects_rendering_injection_and_mutable_refs",
+        "test.test_deploy_manifests::test_legacy_deploy_version_resolution_rejects_dirty_and_normalizes_git_refs"
+      ]
+    },
+    {
+      "file": "deploy-manifests-utf8-gitbash.xml",
+      "sha256": "aa1a8f10dbe0be729d5f83e4be148ab1058bffe7f6e8a21618cbcaf18f7a0725",
+      "tests": 92,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 7.673,
+      "nonpassing": [
+        "test.test_deploy_manifests::test_k8s_image_validation_rejects_rendering_injection_and_mutable_refs",
+        "test.test_deploy_manifests::test_legacy_deploy_version_resolution_rejects_dirty_and_normalizes_git_refs"
+      ]
+    }
+  ],
+  "limits": [
+    "Initial deployment-manifest run: eight UTF-8 decoding failures and two shell assertions.",
+    "UTF-8 and explicit Git Bash removed decoding failures; two shell assertions still fail on Windows.",
+    "Native Next compile/type/static generation completed; standalone packaging failed with symlink EPERM.",
+    "Linux CI required at final source head; prior 30079e81 frontend build/backend tests/lint passed."
+  ]
+}

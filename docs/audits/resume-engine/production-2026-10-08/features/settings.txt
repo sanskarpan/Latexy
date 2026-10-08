@@ -1,0 +1,82 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Latexy
+Dashboard
+Workspace
+Tracker
+Templates
+Studio
+Language
+English
+हिन्दी
+मराठी
+తెలుగు
+ਪੰਜਾਬੀ
+বাংলা
+L
+Latency
+Settings
+
+Manage your account preferences
+
+Personal Dictionary
+
+Add names and specialist terms that should not be marked as spelling mistakes. Your dictionary follows your account across devices.
+
+Word to add
+Add
+Loading dictionary…
+
+0/500 words
+
+Account security
+
+Protect sign-in with an authenticator app or passkey.
+
+Authenticator app
+
+Use a time-based one-time password (TOTP) after your password.
+
+Not enabled
+Set up authenticator
+Passkeys
+
+Sign in with Face ID, Touch ID, Windows Hello, or a security key. Registration requires a recent authenticated session.
+
+Add passkey
+
+Loading passkeys…
+
+Security credentials are handled by Better Auth and WebAuthn; secrets are never included in URLs or logs.
+
+User referrals
+
+This is a personal referral link for people you know, not an affiliate or cash-commission programme.
+
+Checking referral availability…
+
+GitHub Integration
+Checking GitHub status…
+Zotero Integration
+Checking Zotero status…
+Mendeley Integration
+Checking Mendeley status…
+Dropbox Integration
+Checking Dropbox status…
+Google Drive export
+Checking Google Drive status…
+Email Notifications
+Loading preferences…
+Changes are saved automatically
+Desktop Notifications
+
+Browser notifications
+
+Get notified when compilation or optimization finishes while the tab is in the background
+
+Getting Started
+
+Want a refresher? Replay the product tour that runs the first time you sign in.
+
+Replay product tour

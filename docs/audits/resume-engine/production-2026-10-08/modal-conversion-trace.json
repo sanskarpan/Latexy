@@ -1,0 +1,35 @@
+{
+  "scope": "Read-only Modal logs and call graph for the authorized synthetic conversion; raw function logs remain private outside the repository",
+  "app": "latexy-backend",
+  "job_id": "72ddf354-ce48-4830-8211-ad66e5fb095c",
+  "api_call_id": "fc-01M4EB32AGKB1CFKS91BH09628",
+  "conversion_call_id": "fc-01M4EB34WRD5FHXFGW8T9GK5TA",
+  "conversion_function_id": "fu-rPtLM4I73qjdGHlwO0S4Ow",
+  "api_dispatched_at_utc": "2026-10-08T18:06:02.210588Z",
+  "api_queued_at_utc": "2026-10-08T18:06:02.289287Z",
+  "worker_error_at_utc": "2026-10-08T18:06:15Z",
+  "provider_error_type": "openai.NotFoundError",
+  "provider_status": 404,
+  "requested_model": "gpt-4o-mini",
+  "provider_error": "models/gpt-4o-mini is not found for API version v1main, or is not supported for generateContent",
+  "escaping_exception": "celery.exceptions.Retry",
+  "stack_path": [
+    "modal runtime run_input_sync",
+    "run_document_conversion_task",
+    "Celery Task.apply -> retval.sig.apply(retries=retries + 1)",
+    "converter_worker.convert_document_task -> self.retry(countdown=30, exc=exc)"
+  ],
+  "call_graph": [{
+    "function_call_id": "fc-01M4EB32AGKB1CFKS91BH09628",
+    "function_name": "fastapi_app",
+    "status_code": 1,
+    "children": [{
+      "function_call_id": "fc-01M4EB34WRD5FHXFGW8T9GK5TA",
+      "function_name": "run_document_conversion_task",
+      "status_code": 2,
+      "children": []
+    }]
+  }],
+  "correlation": "Modal call graph links the API call that logged this exact job's admission to the conversion call whose bounded function logs contain the 404 and escaping Retry; this is not merely a timestamp match",
+  "limits": ["Call graph capture is best-effort per the SDK documentation", "No credentials, provider response content, customer inputs or raw exception traceback is stored here", "No production deployment or retry of the charged job occurred"]
+}
