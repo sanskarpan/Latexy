@@ -1,6 +1,7 @@
 # Legacy provider callback ownership: #1794
 
-Status: committed local candidate; browser verification is still in progress.
+Status: locally verified production-mode candidate; fresh published-head CI and
+deployed acceptance remain pending.
 Not merged or production-accepted. Hydration #1772 remains unresolved.
 
 ## Scope and base
@@ -36,7 +37,7 @@ are excluded from publication. No whole stale-primary checkout was merged.
   loss retains retry intent; false→true readiness cannot revive an old auth
   wait or let its eventual rejection delete a newer retry.
 - Only verified connected results produce success or popup messages/closure.
-  Timers cannot clear a replacement owner's or newer callback's notices.
+  Timers cannot clear a replacement owner's or newer legacy callback's notices.
 - Callback-owned success/error notices clear on owner transition without
   erasing unrelated messages. Per-provider initial status remains available
   while verification is held, but cannot overwrite a later verified result.
@@ -100,9 +101,7 @@ external traffic/writes/WebSockets fail closed. The explicit service-worker
 shim excludes native PWA lifecycle proof. No live account/provider writes,
 real OAuth-provider credential acceptance, or hydration closure is claimed.
 
-## Remaining acceptance
-
-### Corrected baseline and patched static follow-up
+## Corrected baseline and patched static follow-up
 
 The popup fixture defect was an early init-script exception: the synthetic
 Workbox scope called `new URL('/', 'about:blank')` before response wrappers were
@@ -140,15 +139,49 @@ resolver directly to `requestAnimationFrame`. It now explicitly discards the
 timestamp, with no assertion change. Final no-incremental TypeScript and full
 frontend lint passed. Final browser fixture SHA-256:
 `7e1821b9ac20957256133d48e8ca5a824b14c642e958ba763a5ff68016a2ef81`.
-The isolated patched production candidate is building on localhost 5531; its
-browser result is not yet claimed. The shared scoped CI browser command now
-includes this legacy spec rather than adding an always-running workflow.
+The shared scoped CI browser command includes this legacy spec rather than
+adding an always-running workflow. Deployment-manifest checks and the
+21-case dependency-free CI classifier pass.
 
-- Repair popup body instrumentation and rerun unchanged-baseline positives
-  and stale-owner controls with exact failure phases recorded.
-- Run the rebased candidate with patched dependencies in an isolated production
-  bundle, including notification/provider/editor regressions; keep zero retries.
-- Add the final legacy browser suite to scoped shared CI; publish a focused
-  draft linked only to #1794 until exact-head checks and review complete.
+## Integrated patched production browser acceptance
+
+The isolated candidate on localhost 5531 built successfully with Node 22.23.2
+and Next.js 15.5.27. Its Settings and API copies were verified byte-identical to
+the committed application, and the browser fixture copy matched the final
+fixture above. Application source hashes:
+
+- Settings: `71a8e790f22acaa1ff6c0f4a250b4a410b6251d21d87d207c22a7079ff96a66f`.
+- API client: `ddd0b7709133f36fcbaaf1f22ff3826fb72e68c8967a269966005b3046c5b10f`.
+
+One Chromium worker, zero retries, strict page errors and response-body barriers:
+**39/39 passed in 3.9 minutes** (editor 5, existing provider actions 6,
+notification ownership 12, legacy callbacks 16). All seven corrected-baseline
+failures now pass alongside ordinary positive controls, same-owner token
+refresh, and actual Zotero/Mendeley popup notification/close behavior.
+
+Log: `/private/tmp/latexy-legacy-callback-patched-candidate-browser-20261008.log`,
+SHA-256 `468e1f99a6c3eb7ce265f7060322c8b737665130586359eb59af0de71238a07e`.
+Traces: `/private/tmp/latexy-legacy-callback-patched-candidate-artifacts-20261008/`.
+This is synthetic production-bundle acceptance, not live-provider or native
+service-worker proof and not an editor hydration root-cause determination.
+
+Independent review of published checkpoint `36b6963d` against exact main
+`bdee4892` found no substantive source/integration blocker. Its CI/security,
+build, full-stack and preview checks were passing; Cross-Browser Quality was
+still pending at the last snapshot. CodeRabbit's review was skipped because
+the PR was draft; its success status is not an independent review.
+
+## Remaining acceptance
+
+- Keep focused draft #1861 linked only to #1794 until fresh final-head CI and
+  review complete; the last evidence-document commit does not change application
+  or test sources but does require its own exact-head checks.
 - Normal protected merge, exact Vercel production identity and Modal/main CI
   certification, then bounded deployed QA before claiming production acceptance.
+
+Notification parent #1860 is merged, but its frontend release is quota-blocked:
+main CI and Modal certification pass for `bdee4892`; Vercel production
+certification failed its bounded exact-SHA wait, and the live identity remains
+`26e802ca`. Issue #1786 was reopened pending deployed acceptance. Preview
+failures being operationally acceptable does not establish that the newer main
+release is on production. Branch protection remains unchanged.
