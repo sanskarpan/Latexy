@@ -125,19 +125,10 @@ def download_bytes(key: str, max_bytes: int | None = None) -> bytes | None:
         raise ValueError("max_bytes must be non-negative")
     client = _get_client()
     try:
-        if max_bytes is not None:
-            try:
-                metadata = client.head_object(Bucket=settings.MINIO_BUCKET, Key=key)
-            except ClientError as exc:
-                if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
-                    return None
-                # Some S3-compatible policies permit GET but not HEAD. The GET
-                # response is checked below in that case.
-                metadata = {}
-            declared_size = _declared_size(metadata)
-            if declared_size is not None and declared_size > max_bytes:
-                raise StorageObjectTooLarge("storage object exceeds byte limit")
-
+        # GET carries size metadata for the bytes actually being read. A HEAD
+        # preflight adds a network round trip and cannot protect against an
+        # object changing between requests. Check GET headers before reading,
+        # then retain the bounded stream guard even for missing/false lengths.
         response = client.get_object(Bucket=settings.MINIO_BUCKET, Key=key)
         body = response["Body"]
         try:
@@ -164,7 +155,7 @@ def download_bytes(key: str, max_bytes: int | None = None) -> bytes | None:
             if close is not None:
                 close()
     except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchKey":
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
             return None
         raise
 

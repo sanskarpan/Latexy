@@ -399,15 +399,45 @@ class _Body:
         self.closed = True
 
 
-def test_storage_declared_oversize_is_rejected_before_get():
+def test_storage_declared_oversize_is_rejected_before_read():
+    body = _Body([b"unused"])
     client = MagicMock()
-    client.head_object.return_value = {"ContentLength": 11}
+    client.get_object.return_value = {"Body": body, "ContentLength": 11}
 
     with patch.object(storage_service, "_get_client", return_value=client):
         with pytest.raises(storage_service.StorageObjectTooLarge):
             storage_service.download_bytes("object", max_bytes=10)
 
-    client.get_object.assert_not_called()
+    client.head_object.assert_not_called()
+    assert body.closed is True
+    assert body.read_sizes == []
+
+
+def test_storage_bounded_download_uses_one_request_and_checks_actual_bytes():
+    body = _Body([b"PDF bytes"])
+    client = MagicMock()
+    client.head_object.side_effect = AssertionError("redundant storage round trip")
+    # Incorrect length metadata must not truncate the actual payload or allow
+    # a caller's cap to be exceeded; the stream, not the header, is authoritative.
+    client.get_object.return_value = {"Body": body, "ContentLength": 1}
+
+    with patch.object(storage_service, "_get_client", return_value=client):
+        assert storage_service.download_bytes("object", max_bytes=9) == b"PDF bytes"
+
+    client.get_object.assert_called_once()
+    assert body.closed is True
+    assert all(0 < size <= 10 for size in body.read_sizes)
+
+
+@pytest.mark.parametrize("code", ["404", "NoSuchKey"])
+def test_storage_missing_object_uses_get_and_returns_none(code):
+    from botocore.exceptions import ClientError
+
+    client = MagicMock()
+    client.get_object.side_effect = ClientError({"Error": {"Code": code}}, "GetObject")
+    with patch.object(storage_service, "_get_client", return_value=client):
+        assert storage_service.download_bytes("missing", max_bytes=10) is None
+    client.head_object.assert_not_called()
 
 
 def test_storage_missing_length_is_bounded_and_closes_body():
@@ -424,7 +454,7 @@ def test_storage_missing_length_is_bounded_and_closes_body():
     assert body.read_sizes[-1] <= 3  # remaining budget + one byte
 
 
-def test_storage_get_content_length_is_checked_even_when_head_is_empty():
+def test_storage_get_content_length_is_checked_and_body_is_closed():
     body = _Body([b"unused"])
     client = MagicMock()
     client.head_object.return_value = {}

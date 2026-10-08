@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -44,6 +45,20 @@ def _factory():
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 
+def _storage_objects_present(expected: list[tuple[str, int]]) -> bool:
+    """Check at most four independent objects within the caller's GC locks.
+
+    Wait for every request, including after failure, before releasing the DB
+    locks. Workers never publish a manifest from a partial set of responses.
+    No credentials, clients, executors or sockets are inherited across forks.
+    """
+    if not 1 <= len(expected) <= 4:
+        raise ValueError("Invalid render storage check count")
+    with ThreadPoolExecutor(max_workers=len(expected), thread_name_prefix="render-storage-check") as pool:
+        actual = list(pool.map(storage_service.head_size, [key for key, _ in expected]))
+    return all(size == required for size, (_, required) in zip(actual, expected, strict=True))
+
+
 async def _lock(session: Any, key: str) -> None:
     value = int(sha256(key)[:16], 16)
     if value >= 2 ** 63:
@@ -76,10 +91,9 @@ async def register_manifest(manifest: RenderManifest, factory=None) -> bool:
             # GC may have removed an old unreferenced binary after cache lookup
             # but before registration. Holding the same per-object advisory lock
             # ensures that this check and reference commit precede deletion.
-            for ref in references:
-                if ref and storage_service.head_size(ref.key) != ref.size:
-                    return False
-            if storage_service.head_size(key) != len(canonical_json(manifest.model_dump())):
+            expected = [(ref.key, ref.size) for ref in references if ref]
+            expected.append((key, len(canonical_json(manifest.model_dump()))))
+            if not _storage_objects_present(expected):
                 return False
             ensure_storage_database()
             values = {"artifact_id": manifest.artifact_id, "job_id": manifest.job_id,
