@@ -31,8 +31,10 @@ logger = get_logger(__name__)
 @celery_app.task(
     bind=True,
     name="app.workers.converter_worker.convert_document_task",
-    max_retries=2,
-    default_retry_delay=30,
+    # Provider requests have no paid-stage replay ledger on this legacy path.
+    # Retrying an accepted/ambiguous call can bill twice, and an eager Modal
+    # Retry can leave the client processing without a terminal result.
+    max_retries=0,
     time_limit=120,
     soft_time_limit=100,
 )
@@ -49,7 +51,7 @@ def convert_document_task(
     quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Convert parsed resume data to LaTeX using LLM (gpt-4o-mini).
+    Convert parsed resume data using the configured platform model or OpenAI BYOK.
 
     Publishes:
       job.started    — when worker picks up the task
@@ -149,9 +151,14 @@ def convert_document_task(
         })
 
         start_time = time.time()
-        client = openai.OpenAI(api_key=api_key, timeout=60.0)
+        platform_key = not user_api_key
+        # Explicit origins keep an OpenAI BYOK key away from a platform proxy,
+        # including when OPENAI_BASE_URL is also set in the process environment.
+        base_url = (settings.OPENAI_BASE_URL or "https://api.openai.com/v1") if platform_key else "https://api.openai.com/v1"
+        model = settings.OPENAI_MODEL if platform_key else "gpt-4o-mini"
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=60.0, max_retries=0)
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=messages,
             temperature=0.2,
             max_tokens=4096,
@@ -165,18 +172,6 @@ def convert_document_task(
         is_valid, validation_error = document_converter_service.validate_latex_output(latex_content)
         if not is_valid:
             logger.warning(f"LLM returned invalid LaTeX for job {job_id}: {validation_error}")
-            retryable = self.request.retries < self.max_retries
-            if retryable:
-                try:
-                    publish_event(job_id, "job.retrying", {
-                        "stage": "document_conversion",
-                        "worker_id": worker_id,
-                        "attempt": self.request.retries + 2,
-                        "error_message": "Document conversion is retrying",
-                    })
-                finally:
-                    _release_owner()
-                raise self.retry(countdown=15)
             return _terminal(
                 {"success": False, "job_id": job_id, "error": validation_error},
                 "job.failed",
@@ -232,18 +227,6 @@ def convert_document_task(
 
     except openai.OpenAIError as exc:
         logger.error("OpenAI error in converter task %s", task_id, extra={"error_type": type(exc).__name__})
-        retryable = self.request.retries < self.max_retries
-        if retryable:
-            try:
-                publish_event(job_id, "job.retrying", {
-                    "stage": "document_conversion",
-                    "worker_id": worker_id,
-                    "attempt": self.request.retries + 2,
-                    "error_message": "Document conversion is retrying",
-                })
-            finally:
-                _release_owner()
-            raise self.retry(countdown=30, exc=exc)
         return _terminal(
             {"success": False, "job_id": job_id, "error": "Conversion failed"},
             "job.failed",
@@ -262,18 +245,6 @@ def convert_document_task(
             _release_owner()
             raise
         logger.error("Converter task %s raised", task_id, extra={"error_type": type(exc).__name__})
-        retryable = self.request.retries < self.max_retries
-        if retryable:
-            try:
-                publish_event(job_id, "job.retrying", {
-                    "stage": "document_conversion",
-                    "worker_id": worker_id,
-                    "attempt": self.request.retries + 2,
-                    "error_message": "Document conversion is retrying",
-                })
-            finally:
-                _release_owner()
-            raise self.retry(countdown=30, exc=exc)
         return _terminal(
             {"success": False, "job_id": job_id, "error": "Conversion failed"},
             "job.failed",
