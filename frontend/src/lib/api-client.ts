@@ -1801,6 +1801,8 @@ class ApiClient {
       template_id?: string
       structured_content?: StructuredResume
       force_reattach?: boolean
+      expected_structured_version?: number
+      expected_latex_content?: string
     }
   ): Promise<BuilderResumeResponse> {
     return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder`, {

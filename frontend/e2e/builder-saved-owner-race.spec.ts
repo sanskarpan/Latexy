@@ -292,6 +292,7 @@ test.describe('saved guided builder ownership boundaries', () => {
     })
     await page.goto(`/workspace/builder/${OWNER_A_RESUME}`, { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Builder detached')).toBeVisible()
+    page.once('dialog', dialog => dialog.accept())
     await page.getByRole('button', { name: /Reattach Builder/ }).click()
     await expect.poll(() => reattachStarted).toBe(true)
 

@@ -29,13 +29,14 @@ const EXPORT_FORMATS = [
   { key: 'google_drive', label: 'Google Drive', icon: Cloud, desc: 'Export the latest compiled PDF to your Google Drive' },
 ] as const
 
-type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
+export type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
 
 interface ExportDropdownProps {
   // One of these must be provided:
   resumeId?: string          // For saved resumes (workspace/edit pages)
   latexContent?: string      // For unsaved content (/try page)
-  onPdfExport?: () => void   // If provided, called instead of apiClient for PDF
+  onPdfExport?: () => void | Promise<void>   // If provided, called instead of apiClient for PDF
+  beforeExport?: (format: ExportFormatKey) => Promise<void>
   className?: string
   /**
    * Visual variant:
@@ -52,6 +53,7 @@ export default function ExportDropdown({
   resumeId,
   latexContent,
   onPdfExport,
+  beforeExport,
   className = '',
   variant = 'inline',
   visualOnly = false,
@@ -109,7 +111,16 @@ export default function ExportDropdown({
     if (format === 'pdf') {
       setIsOpen(false)
       if (onPdfExport) {
-        onPdfExport()
+        setLoading(format)
+        setExportError(null)
+        try {
+          await beforeExport?.(format)
+          await onPdfExport()
+        } catch (error) {
+          setExportError({ format, message: error instanceof Error ? error.message : 'PDF could not be created. Please retry.' })
+        } finally {
+          setLoading(null)
+        }
         return
       }
       toast.info('Use the compile button to generate PDF')
@@ -149,6 +160,7 @@ export default function ExportDropdown({
     setDriveNeedsConnection(false)
     setIsOpen(false)
     try {
+      await beforeExport?.(format)
       if (format === 'canva' && resumeId) {
         const data = await apiClient.exportCanva(resumeId)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })

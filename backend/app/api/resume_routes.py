@@ -359,6 +359,8 @@ class BuilderResumePatchRequest(BaseModel):
     template_id: Optional[str] = None
     structured_content: Optional[Dict[str, Any]] = None
     force_reattach: bool = False
+    expected_structured_version: Optional[int] = Field(default=None, ge=1, strict=True)
+    expected_latex_content: Optional[str] = None
 
 
 class BuilderResumeResponse(BaseModel):
@@ -464,6 +466,16 @@ def _builder_payload(resume: Resume, category: str) -> BuilderResumeResponse:
     )
 
 
+def _invalidate_anonymous_share_pdf(resume: Resume) -> None:
+    meta = dict(resume.resume_settings or {})
+    had_cached_share = "share_anonymous_job_id" in meta or "share_anonymous_pending" in meta
+    meta.pop("share_anonymous_job_id", None)
+    meta.pop("share_anonymous_pending", None)
+    if had_cached_share:
+        resume.resume_settings = meta
+        flag_modified(resume, "resume_settings")
+
+
 async def _sync_linked_variants(parent: Resume, db: AsyncSession) -> None:
     """Regenerate direct linked variants after their master source changes."""
     if not parent.structured_content:
@@ -483,7 +495,10 @@ async def _sync_linked_variants(parent: Resume, db: AsyncSession) -> None:
         visibility = prune_variant_visibility(parent.structured_content, variant.variant_visibility)
         effective = apply_variant_visibility(parent.structured_content, visibility)
         variant.variant_visibility = visibility.model_dump()
-        variant.latex_content = resume_builder_service.render(effective, template.category).latex_content
+        rendered_latex = resume_builder_service.render(effective, template.category).latex_content
+        if rendered_latex != variant.latex_content:
+            _invalidate_anonymous_share_pdf(variant)
+        variant.latex_content = rendered_latex
         variant.structured_version = parent.structured_version
         variant.updated_at = datetime.now(timezone.utc)
 
@@ -894,7 +909,23 @@ async def update_builder_resume(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    ensure_uuid(resume_id, "Resume not found")
+    result = await db.execute(
+        select(Resume)
+        .where(Resume.id == resume_id, Resume.user_id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if body.expected_structured_version is not None and body.expected_structured_version != (resume.structured_version or 1):
+        raise HTTPException(status_code=409, detail="This resume changed in another tab. Reload the saved resume before continuing.")
+    if body.force_reattach:
+        if body.expected_latex_content is None:
+            raise HTTPException(status_code=428, detail="Reload the saved resume before replacing advanced editor changes.")
+        if body.expected_latex_content != resume.latex_content:
+            raise HTTPException(status_code=409, detail="Advanced editor changes have been saved since you opened this resume. Reload before replacing them.")
     if resume.builder_status == "detached" and not body.force_reattach:
         raise HTTPException(
             status_code=409,
@@ -915,15 +946,17 @@ async def update_builder_resume(
         resume.title = body.title.strip()
     if body.structured_content is not None:
         resume.structured_content = _normalize_builder_input(body.structured_content)
-        resume.structured_version = (resume.structured_version or 1) + 1
     elif not resume.structured_content:
         resume.structured_content = resume_builder_service.empty_document()
 
     render = resume_builder_service.render(resume.structured_content, template.category)
+    if render.latex_content != resume.latex_content:
+        _invalidate_anonymous_share_pdf(resume)
     resume.latex_content = render.latex_content
     resume.content_source = "builder"
     resume.builder_status = "active"
     resume.document_type = "resume"
+    resume.structured_version = (resume.structured_version or 1) + 1
     resume.updated_at = datetime.now(timezone.utc)
     await _sync_linked_variants(resume, db)
     await db.commit()
@@ -1050,13 +1083,7 @@ async def update_resume(
     # Content changed → invalidate the cached anonymous (redacted) share PDF so the
     # next create_share_link call regenerates it from the updated content.
     if latex_changed:
-        meta = dict(resume.resume_settings or {})
-        if (
-            meta.pop("share_anonymous_job_id", None) is not None
-            or meta.pop("share_anonymous_pending", None) is not None
-        ):
-            resume.resume_settings = meta
-            flag_modified(resume, "resume_settings")
+        _invalidate_anonymous_share_pdf(resume)
 
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowUp,
@@ -25,10 +25,12 @@ import ExportDropdown from '@/components/ExportDropdown'
 import SessionLoadError from '@/components/SessionLoadError'
 import {
   apiClient,
+  type BuilderResumeResponse,
   type BuilderTemplateResponse,
   type StructuredResume,
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useBuilderPdf } from '@/hooks/useBuilderPdf'
 import {
   cloneStructuredResume,
   createBuilderId,
@@ -165,13 +167,13 @@ function SectionHeader({
         <p className="mt-1 max-w-2xl text-sm text-fg-2">{description}</p>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => onMove(sectionKey, -1)} disabled={idx <= 0} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
+        <button type="button" aria-label={`Move ${title} up`} title={`Move ${title} up`} onClick={() => onMove(sectionKey, -1)} disabled={idx <= 0} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
           <ArrowUp className="h-3.5 w-3.5" />
         </button>
-        <button type="button" onClick={() => onMove(sectionKey, 1)} disabled={idx === -1 || idx >= order.length - 1} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
+        <button type="button" aria-label={`Move ${title} down`} title={`Move ${title} down`} onClick={() => onMove(sectionKey, 1)} disabled={idx === -1 || idx >= order.length - 1} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
           <ArrowDown className="h-3.5 w-3.5" />
         </button>
-        <button type="button" onClick={() => onToggleHidden(sectionKey)} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs">
+        <button type="button" aria-label={`${hidden ? 'Show' : 'Hide'} ${title}`} aria-pressed={hidden} title={`${hidden ? 'Show' : 'Hide'} ${title}`} onClick={() => onToggleHidden(sectionKey)} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs">
           {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
@@ -207,6 +209,31 @@ function splitComma(value: string) {
 
 function splitLines(value: string) {
   return value.split('\n').map(item => item.trim()).filter(Boolean)
+}
+
+/** Keep unfinished separators in the editing buffer while saving clean lists. */
+function ListTextInput({ value, separator, multiline = false, onChange, ...props }: {
+  value: string
+  separator: 'lines' | 'comma'
+  multiline?: boolean
+  onChange: (value: string) => void
+} & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'>) {
+  const [buffer, setBuffer] = useState(value)
+  const emittedValue = useRef(value)
+  useEffect(() => {
+    if (value !== emittedValue.current) {
+      emittedValue.current = value
+      setBuffer(value)
+    }
+  }, [value])
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const raw = event.target.value
+    setBuffer(raw)
+    emittedValue.current = separator === 'lines' ? splitLines(raw).join('\n') : joinComma(splitComma(raw))
+    onChange(raw)
+  }
+  if (multiline) return <TextArea {...props} value={buffer} onChange={handleChange} />
+  return <TextInput {...props as React.InputHTMLAttributes<HTMLInputElement>} type="text" value={buffer} onChange={handleChange} />
 }
 
 function splitLinesWithIds(value: string, existingBullets: string[], existingIds: string[], entryId: string) {
@@ -308,6 +335,8 @@ function BuilderResumeForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveAttempt, setSaveAttempt] = useState(0)
+  const [saveConflict, setSaveConflict] = useState(false)
+  const [conflictDraft, setConflictDraft] = useState<{ title: string; template_id: string; structured_content: StructuredResume } | null>(null)
   const [dirty, setDirty] = useState(false)
   const [templates, setTemplates] = useState<BuilderTemplateResponse[]>([])
   const [title, setTitle] = useState('')
@@ -322,6 +351,16 @@ function BuilderResumeForm({
   const completedLoadAttempt = useRef<number | null>(null)
   const editRevision = useRef(0)
   const saveRequestId = useRef(0)
+  const saveFlightRef = useRef<Promise<BuilderResumeResponse | null> | null>(null)
+  const savedVersionRef = useRef(1)
+  const savedBuilderRef = useRef<BuilderResumeResponse | null>(null)
+  const savedLatexRef = useRef('')
+  const dirtyRef = useRef(false)
+  const conflictRef = useRef(false)
+  const draftRef = useRef({ title, template_id: selectedTemplateId, structured_content: structured })
+  draftRef.current = { title, template_id: selectedTemplateId, structured_content: structured }
+  const builderStatusRef = useRef(builderStatus)
+  builderStatusRef.current = builderStatus
   const sectionRefs = useRef<Partial<Record<SectionKey, HTMLElement | null>>>({})
   const mountedRef = useRef(false)
   const authVerifiedRef = useRef(!authUnverified)
@@ -397,6 +436,12 @@ function BuilderResumeForm({
         setStructured(cloneStructuredResume(builder.resume.structured_content ?? DEFAULT_STRUCTURED_RESUME))
         setTemplateFamily(builder.template_family)
         setBuilderStatus((builder.resume.builder_status ?? 'active') as 'active' | 'detached')
+        savedVersionRef.current = builder.resume.structured_version ?? 1
+        savedBuilderRef.current = builder
+        savedLatexRef.current = builder.resume.latex_content
+        dirtyRef.current = false
+        conflictRef.current = false
+        setSaveConflict(false)
         setDirty(false)
         setSaveError(null)
         completedLoadAttempt.current = loadAttempt
@@ -414,44 +459,73 @@ function BuilderResumeForm({
     }
   }, [loadAttempt, ownerId, resumeId, authUnverified])
 
-  useEffect(() => {
-    if (initialLoad.current) {
-      initialLoad.current = false
-      return
-    }
-    if (authUnverified) return
-    if (!dirty || builderStatus === 'detached') return
-    if (!title.trim() || title.length > 255) {
-      setSaveError(!title.trim() ? 'A resume title is required' : 'Resume titles must be 255 characters or fewer')
-      return
-    }
-    const timeout = window.setTimeout(async () => {
-      if (!isCurrentRequest()) return
-      const revision = editRevision.current
-      const requestId = ++saveRequestId.current
+  // All callers share one queue. A second edit waits for the prior write and
+  // uses its returned version, preventing an older PATCH from arriving last.
+  const flushSave = useCallback(async (): Promise<BuilderResumeResponse | null> => {
+    if (saveFlightRef.current) return saveFlightRef.current
+    const saveLatest = async () => {
+      if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Please wait for your session to be verified.')
+      if (conflictRef.current) throw new Error('Reload the saved copy before saving or exporting.')
+      if (builderStatusRef.current === 'detached' && dirtyRef.current) throw new Error('Reconnect the builder before saving these changes.')
       setSaving(true)
       try {
-        const updated = await apiClient.updateBuilderResume(resumeId, {
-          title,
-          template_id: selectedTemplateId,
-          structured_content: structured,
-        })
-        if (isCurrentRequest() && requestId === saveRequestId.current && revision === editRevision.current) {
+        while (dirtyRef.current) {
+          const snapshot = draftRef.current
+          if (!snapshot.title.trim() || snapshot.title.length > 255) throw new Error(!snapshot.title.trim() ? 'A résumé title is required' : 'Résumé titles must be 255 characters or fewer')
+          const revision = editRevision.current
+          const updated = await apiClient.updateBuilderResume(resumeId, {
+            ...snapshot,
+            title: snapshot.title.trim(),
+            expected_structured_version: savedVersionRef.current,
+          })
+          if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Your session changed. Please try again.')
+          savedVersionRef.current = updated.resume.structured_version ?? savedVersionRef.current + 1
+          savedBuilderRef.current = updated
+          savedLatexRef.current = updated.resume.latex_content
           setTemplateFamily(updated.template_family)
-          setBuilderStatus((updated.resume.builder_status ?? 'active') as 'active' | 'detached')
-          setDirty(false)
-          setSaveError(null)
+          const nextStatus = (updated.resume.builder_status ?? 'active') as 'active' | 'detached'
+          builderStatusRef.current = nextStatus
+          setBuilderStatus(nextStatus)
+          if (revision === editRevision.current) {
+            dirtyRef.current = false
+            setDirty(false)
+            setSaveError(null)
+          }
         }
+        return savedBuilderRef.current
       } catch (error) {
-        if (isCurrentRequest() && requestId === saveRequestId.current && revision === editRevision.current) {
-          setSaveError(error instanceof Error ? error.message : 'Autosave failed')
+        if (mountedRef.current && authVerifiedRef.current) {
+          const message = error instanceof Error ? error.message : 'Could not save your changes'
+          if (message.includes('409')) {
+            conflictRef.current = true
+            setSaveConflict(true)
+            setSaveError('This résumé changed in another tab. Your edits are still here.')
+          } else setSaveError(message)
         }
+        throw error
       } finally {
-        if (mountedRef.current && requestId === saveRequestId.current) setSaving(false)
+        if (mountedRef.current) setSaving(false)
       }
-    }, 600)
+    }
+    const flight = saveLatest()
+    saveFlightRef.current = flight
+    try { return await flight } finally { if (saveFlightRef.current === flight) saveFlightRef.current = null }
+  }, [resumeId])
+
+  const isCurrentPdfRequest = useCallback(() => mountedRef.current && authVerifiedRef.current, [])
+  const { previewPdf, downloadPdf, pdfUrl, isGenerating, error: pdfError, clearPreview } = useBuilderPdf({
+    resumeId,
+    prepareResume: flushSave,
+    isCurrent: isCurrentPdfRequest,
+  })
+  useEffect(() => { clearPreview() }, [structured, title, selectedTemplateId, clearPreview])
+
+  useEffect(() => {
+    if (initialLoad.current) { initialLoad.current = false; return }
+    if (authUnverified || !dirty || builderStatus === 'detached' || saveConflict) return
+    const timeout = window.setTimeout(() => { void flushSave().catch(() => {}) }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
+  }, [authUnverified, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, saveAttempt, flushSave])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
@@ -470,6 +544,7 @@ function BuilderResumeForm({
       return next
     })
     editRevision.current += 1
+    dirtyRef.current = true
     setDirty(true)
     setSaveError(null)
   }
@@ -522,6 +597,7 @@ function BuilderResumeForm({
 
   const forceReattach = async () => {
     if (!isCurrentRequest()) return
+    if (!window.confirm('Replace the advanced editor version with the details shown in this builder?')) return
     const revision = editRevision.current
     const requestId = ++saveRequestId.current
     setSaving(true)
@@ -531,18 +607,28 @@ function BuilderResumeForm({
         template_id: selectedTemplateId,
         structured_content: structured,
         force_reattach: true,
+        expected_structured_version: savedVersionRef.current,
+        expected_latex_content: savedLatexRef.current,
       })
       if (!isCurrentRequest() || requestId !== saveRequestId.current) return
       setTemplateFamily(updated.template_family)
+      savedVersionRef.current = updated.resume.structured_version ?? savedVersionRef.current + 1
+      savedBuilderRef.current = updated
+      savedLatexRef.current = updated.resume.latex_content
       setBuilderStatus('active')
       if (revision === editRevision.current) {
         setDirty(false)
+        dirtyRef.current = false
         setSaveError(null)
       }
       toast.success('Builder reattached and LaTeX overwritten from structured data')
     } catch (error) {
       if (!isCurrentRequest() || requestId !== saveRequestId.current) return
       const message = error instanceof Error ? error.message : 'Failed to reattach builder'
+      if (message.includes('409')) {
+        conflictRef.current = true
+        setSaveConflict(true)
+      }
       setSaveError(message)
       toast.error(message)
     } finally {
@@ -554,11 +640,6 @@ function BuilderResumeForm({
     setActiveSection(section)
     sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
-
-  const visibleSections = useMemo(
-    () => structured.section_order.filter(section => !structured.hidden_sections.includes(section)),
-    [structured.section_order, structured.hidden_sections],
-  )
 
   const healthTone = completenessScore >= 85
     ? 'border-ok/20 bg-ok/10 text-ok'
@@ -597,18 +678,23 @@ function BuilderResumeForm({
           <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Guided Builder</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">{title || 'Untitled Resume'}</h1>
           <p className="mt-2 max-w-3xl text-sm text-fg-2">
-            This builder is now the structured path: guide the narrative, tune density, and keep LaTeX synchronized
-            without treating the resume like a raw text file.
+            Fill in your details, organize your sections, and download a résumé ready to share.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <ExportDropdown resumeId={resumeId} variant="toolbar" />
+          <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating || loading || authUnverified || saveConflict || builderStatus === 'detached'} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">
+            {isGenerating ? 'Preparing PDF…' : 'Preview PDF'}
+          </button>
+          <ExportDropdown resumeId={resumeId} variant="toolbar" onPdfExport={downloadPdf} beforeExport={async format => {
+            await flushSave()
+            if (['svg', 'jpeg', 'email', 'google_drive'].includes(format)) await previewPdf()
+          }} />
           <Link href={`/workspace/${resumeId}/edit`} onClick={event => {
             if (dirty && !window.confirm('Changes have not been saved. Open the advanced editor anyway?')) event.preventDefault()
           }} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Open Advanced Editor
           </Link>
-          {saveError ? (
+          {saveError && !saveConflict ? (
             <button type="button" aria-live="polite" onClick={() => setSaveAttempt(value => value + 1)} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
               Save failed · Retry
             </button>
@@ -619,6 +705,40 @@ function BuilderResumeForm({
           )}
         </div>
       </header>
+
+      {pdfError && <section role="alert" className="rounded-[var(--radius-lg)] border border-err/30 bg-err/10 p-5">
+        <p className="text-sm text-err">{pdfError}</p>
+        <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating} className="mt-3 text-sm font-semibold text-fg underline">Try PDF preview again</button>
+      </section>}
+      {pdfUrl && <section aria-label="Final PDF preview" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div><h2 className="text-lg font-semibold text-fg">Your PDF is ready</h2><p className="mt-1 text-sm text-fg-2">This is the layout that will appear in your downloaded résumé.</p></div>
+          <button type="button" onClick={() => { void downloadPdf().catch(() => {}) }} disabled={isGenerating || dirty} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50">Download PDF</button>
+        </div>
+        <iframe title="PDF print preview" src={pdfUrl} className="h-[680px] w-full rounded-[var(--radius-md)] border border-line bg-white" />
+      </section>}
+
+      {saveConflict && <section role="alert" className="rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-5">
+        <p className="font-semibold text-fg">This résumé changed in another tab</p>
+        <p className="mt-2 text-sm text-fg-2">Your edits are preserved here. Reload the saved copy to review the changes before saving or exporting.</p>
+        <button type="button" disabled={saving} onClick={() => {
+          setConflictDraft({ ...draftRef.current, structured_content: cloneStructuredResume(draftRef.current.structured_content) })
+          setLoadAttempt(value => value + 1)
+        }} className="mt-3 rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg">Reload saved copy</button>
+      </section>}
+      {!saveConflict && conflictDraft && <section role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <p className="text-sm text-fg-2">The latest saved copy is shown. Your previous unsaved draft is still available.</p>
+        <button type="button" onClick={() => {
+          setTitle(conflictDraft.title)
+          setSelectedTemplateId(conflictDraft.template_id)
+          setStructured(cloneStructuredResume(conflictDraft.structured_content))
+          editRevision.current += 1
+          dirtyRef.current = true
+          setDirty(true)
+          setConflictDraft(null)
+        }} className="mt-3 rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg">Use my previous draft</button>
+        <button type="button" onClick={() => setConflictDraft(null)} className="ml-3 text-sm text-fg-2 underline">Keep saved copy</button>
+      </section>}
 
       {builderStatus === 'detached' ? (
         <section className="rounded-[var(--radius-lg)] border border-warn/20 bg-warn/10 p-5">
@@ -640,7 +760,7 @@ function BuilderResumeForm({
 
       <section className="grid gap-4 lg:grid-cols-4">
         <Card className={healthTone}>
-          <p className="text-xs uppercase tracking-[0.14em] opacity-70">Resume Health</p>
+          <p className="text-xs uppercase tracking-[0.14em] opacity-70">Résumé completeness</p>
           <p className="mt-2 text-3xl font-semibold">{completenessScore}%</p>
           <p className="mt-2 text-sm opacity-85">
             {missingSections.length
@@ -649,38 +769,38 @@ function BuilderResumeForm({
           </p>
         </Card>
         <Card>
-          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Page Strategy</p>
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Estimated pages</p>
           <p className="mt-2 text-3xl font-semibold text-fg">{pageEstimate}</p>
           <p className="mt-2 text-sm text-fg-2">
             {pageEstimate > 1 ? 'Trim bullets and optional sections to stay tighter.' : 'Compact enough for the most common one-page target.'}
           </p>
         </Card>
         <Card>
-          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Visible Sections</p>
-          <p className="mt-2 text-3xl font-semibold text-fg">{visibleSections.length}</p>
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Sections included</p>
+          <p className="mt-2 text-3xl font-semibold text-fg">{livePreview.sections.length}</p>
           <p className="mt-2 text-sm text-fg-2">
             {structured.hidden_sections.length
               ? `${structured.hidden_sections.length} section${structured.hidden_sections.length === 1 ? '' : 's'} hidden from the rendered resume.`
-              : 'All configured sections are currently visible.'}
+              : 'Empty sections are left out of your résumé.'}
           </p>
         </Card>
         <Card>
           <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Current Template</p>
           <p className="mt-2 text-lg font-semibold text-fg">{selectedTemplate?.name || 'Template'}</p>
           <p className="mt-2 text-sm text-fg-2">
-            Family: {selectedTemplate?.template_family || templateFamily} · {selectedTemplate?.category_label || 'Builder'}
+            {selectedTemplate?.category_label || 'Résumé template'}
           </p>
         </Card>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)_420px]">
-        <aside className="space-y-4">
-          <Card className="sticky top-24">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[240px_minmax(0,1fr)_420px]">
+        <aside className="space-y-4 xl:col-span-2 2xl:col-span-1">
+          <Card className="2xl:sticky 2xl:top-24">
             <div className="flex items-center gap-2 text-sm font-semibold text-fg">
               <LayoutList className="h-4 w-4 text-accent-strong" />
-              Builder Flow
+              Your sections
             </div>
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 grid gap-2 sm:grid-cols-3 2xl:grid-cols-1">
               {SECTION_CONFIG.map(section => {
                 const count = sectionCount(structured, section.key)
                 const ready = sectionReady(structured, section.key)
@@ -734,8 +854,8 @@ function BuilderResumeForm({
 
         <div className="space-y-6">
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4">
+              <div className="grid gap-4">
                 <div>
                   <FieldLabel htmlFor="builder-resume-title">Resume Title</FieldLabel>
                   <TextInput
@@ -746,6 +866,7 @@ function BuilderResumeForm({
                     onChange={event => {
                       setTitle(event.target.value)
                       editRevision.current += 1
+                      dirtyRef.current = true
                       setDirty(true)
                       setSaveError(null)
                     }}
@@ -759,6 +880,7 @@ function BuilderResumeForm({
                     onChange={event => {
                       setSelectedTemplateId(event.target.value)
                       editRevision.current += 1
+                      dirtyRef.current = true
                       setDirty(true)
                       setSaveError(null)
                     }}
@@ -776,7 +898,7 @@ function BuilderResumeForm({
               <Card className="flex h-full flex-col justify-between">
                 <div className="flex items-center gap-2 text-sm font-semibold text-fg">
                   <Wand2 className="h-4 w-4 text-accent-strong" />
-                  Builder Guidance
+                  Writing tips
                 </div>
                 <div className="mt-3 space-y-2 text-sm text-fg-2">
                   <p>Lead with measurable impact, not responsibility lists.</p>
@@ -875,7 +997,7 @@ function BuilderResumeForm({
             <SectionHeader
               title="Experience"
               sectionKey="experience"
-              description="Each role should read like evidence: scope, outcomes, and technical leverage."
+              description="Describe your work and what you achieved. Use one achievement per line."
               order={structured.section_order}
               hidden={hidden.has('experience')}
               onMove={moveSection}
@@ -893,8 +1015,9 @@ function BuilderResumeForm({
                       ['End Date', 'end_date'],
                     ].map(([label, key]) => (
                       <div key={key}>
-                        <FieldLabel>{label}</FieldLabel>
+                        <FieldLabel htmlFor={`builder-experience-${entry.id}-${key}`}>{label}</FieldLabel>
                         <TextInput
+                          id={`builder-experience-${entry.id}-${key}`}
                           type="text"
                           value={entry[key as keyof typeof entry] as string}
                           onFocus={() => setActiveSection('experience')}
@@ -917,8 +1040,9 @@ function BuilderResumeForm({
                     Current role
                   </label>
                   <div className="mt-4">
-                    <FieldLabel>Role Summary</FieldLabel>
+                    <FieldLabel htmlFor={`builder-experience-${entry.id}-summary`}>Role Summary</FieldLabel>
                     <TextArea
+                      id={`builder-experience-${entry.id}-summary`}
                       rows={3}
                       value={entry.summary}
                       onFocus={() => setActiveSection('experience')}
@@ -928,27 +1052,28 @@ function BuilderResumeForm({
                     />
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Impact Bullets</FieldLabel>
-                    <TextArea
+                    <FieldLabel htmlFor={`builder-experience-${entry.id}-bullets`}>Impact Bullets</FieldLabel>
+                    <ListTextInput multiline separator="lines"
+                      id={`builder-experience-${entry.id}-bullets`}
                       rows={5}
                       value={entry.bullets.join('\n')}
                       onFocus={() => setActiveSection('experience')}
-                      onChange={event => mutateStructured(draft => {
-        const next = splitLinesWithIds(event.target.value, draft.experience[idx].bullets, draft.experience[idx].bullet_ids, draft.experience[idx].id)
-        draft.experience[idx].bullets = next.bullets
-        draft.experience[idx].bullet_ids = next.bullet_ids
+                      onChange={value => mutateStructured(draft => {
+                        const next = splitLinesWithIds(value, draft.experience[idx].bullets, draft.experience[idx].bullet_ids, draft.experience[idx].id)
+                        draft.experience[idx].bullets = next.bullets
+                        draft.experience[idx].bullet_ids = next.bullet_ids
                       })}
                     />
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Technologies</FieldLabel>
-                    <TextInput
-                      type="text"
+                    <FieldLabel htmlFor={`builder-experience-${entry.id}-technologies`}>Technologies</FieldLabel>
+                    <ListTextInput separator="comma"
+                      id={`builder-experience-${entry.id}-technologies`}
                       value={joinComma(entry.technologies)}
                       placeholder="Python, PostgreSQL, Kafka, AWS"
                       onFocus={() => setActiveSection('experience')}
-                      onChange={event => mutateStructured(draft => {
-                        draft.experience[idx].technologies = splitComma(event.target.value)
+                      onChange={value => mutateStructured(draft => {
+                        draft.experience[idx].technologies = splitComma(value)
                       })}
                     />
                   </div>
@@ -1011,8 +1136,9 @@ function BuilderResumeForm({
                       ['GPA', 'gpa'],
                     ].map(([label, key]) => (
                       <div key={key}>
-                        <FieldLabel>{label}</FieldLabel>
+                        <FieldLabel htmlFor={`builder-education-${entry.id}-${key}`}>{label}</FieldLabel>
                         <TextInput
+                          id={`builder-education-${entry.id}-${key}`}
                           type="text"
                           value={entry[key as keyof typeof entry] as string}
                           onFocus={() => setActiveSection('education')}
@@ -1024,14 +1150,15 @@ function BuilderResumeForm({
                     ))}
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Highlights</FieldLabel>
-                    <TextArea
+                    <FieldLabel htmlFor={`builder-education-${entry.id}-highlights`}>Highlights</FieldLabel>
+                    <ListTextInput multiline separator="lines"
+                      id={`builder-education-${entry.id}-highlights`}
                       rows={4}
                       value={entry.highlights.join('\n')}
                       placeholder="Honors, thesis, relevant coursework, leadership"
                       onFocus={() => setActiveSection('education')}
-                      onChange={event => mutateStructured(draft => {
-                        draft.education[idx].highlights = splitLines(event.target.value)
+                      onChange={value => mutateStructured(draft => {
+                        draft.education[idx].highlights = splitLines(value)
                       })}
                     />
                   </div>
@@ -1072,7 +1199,7 @@ function BuilderResumeForm({
             <SectionHeader
               title="Skills"
               sectionKey="skills"
-              description="Structure keywords into groups so both ATS and humans can parse them fast."
+              description="Group related skills and separate each skill with a comma."
               order={structured.section_order}
               hidden={hidden.has('skills')}
               onMove={moveSection}
@@ -1081,8 +1208,9 @@ function BuilderResumeForm({
             <div className="space-y-4">
               {structured.skills.map((group, idx) => (
                 <Card key={group.id}>
-                  <FieldLabel>Group Name</FieldLabel>
+                  <FieldLabel htmlFor={`builder-skills-${group.id}-name`}>Group Name</FieldLabel>
                   <TextInput
+                      id={`builder-skills-${group.id}-name`}
                     type="text"
                     value={group.name}
                     onFocus={() => setActiveSection('skills')}
@@ -1091,13 +1219,14 @@ function BuilderResumeForm({
                     })}
                   />
                   <div className="mt-4">
-                    <FieldLabel>Keywords</FieldLabel>
-                    <TextArea
+                    <FieldLabel htmlFor={`builder-skills-${group.id}-keywords`}>Keywords</FieldLabel>
+                    <ListTextInput multiline separator="comma"
+                      id={`builder-skills-${group.id}-keywords`}
                       rows={3}
                       value={joinComma(group.keywords)}
                       onFocus={() => setActiveSection('skills')}
-                      onChange={event => mutateStructured(draft => {
-                        draft.skills[idx].keywords = splitComma(event.target.value)
+                      onChange={value => mutateStructured(draft => {
+                        draft.skills[idx].keywords = splitComma(value)
                       })}
                     />
                   </div>
@@ -1159,8 +1288,9 @@ function BuilderResumeForm({
                       ['End Date', 'end_date'],
                     ].map(([label, key]) => (
                       <div key={key}>
-                        <FieldLabel>{label}</FieldLabel>
+                        <FieldLabel htmlFor={`builder-projects-${project.id}-${key}`}>{label}</FieldLabel>
                         <TextInput
+                          id={`builder-projects-${project.id}-${key}`}
                           type="text"
                           value={project[key as keyof typeof project] as string}
                           onFocus={() => setActiveSection('projects')}
@@ -1172,8 +1302,9 @@ function BuilderResumeForm({
                     ))}
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Description</FieldLabel>
+                    <FieldLabel htmlFor={`builder-projects-${project.id}-description`}>Description</FieldLabel>
                     <TextArea
+                      id={`builder-projects-${project.id}-description`}
                       rows={3}
                       value={project.description}
                       onFocus={() => setActiveSection('projects')}
@@ -1183,26 +1314,27 @@ function BuilderResumeForm({
                     />
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Impact Bullets</FieldLabel>
-                    <TextArea
+                    <FieldLabel htmlFor={`builder-projects-${project.id}-bullets`}>Impact Bullets</FieldLabel>
+                    <ListTextInput multiline separator="lines"
+                      id={`builder-projects-${project.id}-bullets`}
                       rows={4}
                       value={project.bullets.join('\n')}
                       onFocus={() => setActiveSection('projects')}
-                      onChange={event => mutateStructured(draft => {
-                        const next = splitLinesWithIds(event.target.value, draft.projects[idx].bullets, draft.projects[idx].bullet_ids, draft.projects[idx].id)
+                      onChange={value => mutateStructured(draft => {
+                        const next = splitLinesWithIds(value, draft.projects[idx].bullets, draft.projects[idx].bullet_ids, draft.projects[idx].id)
                         draft.projects[idx].bullets = next.bullets
                         draft.projects[idx].bullet_ids = next.bullet_ids
                       })}
                     />
                   </div>
                   <div className="mt-4">
-                    <FieldLabel>Technologies</FieldLabel>
-                    <TextInput
-                      type="text"
+                    <FieldLabel htmlFor={`builder-projects-${project.id}-technologies`}>Technologies</FieldLabel>
+                    <ListTextInput separator="comma"
+                      id={`builder-projects-${project.id}-technologies`}
                       value={joinComma(project.technologies)}
                       onFocus={() => setActiveSection('projects')}
-                      onChange={event => mutateStructured(draft => {
-                        draft.projects[idx].technologies = splitComma(event.target.value)
+                      onChange={value => mutateStructured(draft => {
+                        draft.projects[idx].technologies = splitComma(value)
                       })}
                     />
                   </div>
@@ -1312,8 +1444,9 @@ function BuilderResumeForm({
                 <Card key={entry.id}>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <FieldLabel>Name</FieldLabel>
+                      <FieldLabel htmlFor={`builder-awards-${entry.id}-name`}>Name</FieldLabel>
                       <TextInput
+                      id={`builder-awards-${entry.id}-name`}
                         type="text"
                         value={entry.name}
                         onFocus={() => setActiveSection('awards')}
@@ -1323,8 +1456,9 @@ function BuilderResumeForm({
                       />
                     </div>
                     <div>
-                      <FieldLabel>Detail</FieldLabel>
+                      <FieldLabel htmlFor={`builder-awards-${entry.id}-detail`}>Detail</FieldLabel>
                       <TextInput
+                      id={`builder-awards-${entry.id}-detail`}
                         type="text"
                         value={entry.detail}
                         onFocus={() => setActiveSection('awards')}
@@ -1372,8 +1506,9 @@ function BuilderResumeForm({
                 <Card key={entry.id}>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <FieldLabel>Language</FieldLabel>
+                      <FieldLabel htmlFor={`builder-languages-${entry.id}-name`}>Language</FieldLabel>
                       <TextInput
+                      id={`builder-languages-${entry.id}-name`}
                         type="text"
                         value={entry.name}
                         onFocus={() => setActiveSection('languages')}
@@ -1383,8 +1518,9 @@ function BuilderResumeForm({
                       />
                     </div>
                     <div>
-                      <FieldLabel>Proficiency</FieldLabel>
+                      <FieldLabel htmlFor={`builder-languages-${entry.id}-detail`}>Proficiency</FieldLabel>
                       <TextInput
+                      id={`builder-languages-${entry.id}-detail`}
                         type="text"
                         value={entry.detail}
                         placeholder="Native, fluent, professional, conversational"
@@ -1433,8 +1569,9 @@ function BuilderResumeForm({
                 <Card key={entry.id}>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <FieldLabel>Interest</FieldLabel>
+                      <FieldLabel htmlFor={`builder-interests-${entry.id}-name`}>Interest</FieldLabel>
                       <TextInput
+                      id={`builder-interests-${entry.id}-name`}
                         type="text"
                         value={entry.name}
                         onFocus={() => setActiveSection('interests')}
@@ -1444,8 +1581,9 @@ function BuilderResumeForm({
                       />
                     </div>
                     <div>
-                      <FieldLabel>Detail</FieldLabel>
+                      <FieldLabel htmlFor={`builder-interests-${entry.id}-detail`}>Detail</FieldLabel>
                       <TextInput
+                      id={`builder-interests-${entry.id}-detail`}
                         type="text"
                         value={entry.detail}
                         placeholder="Context, depth, leadership, or relevance"
@@ -1499,12 +1637,12 @@ function BuilderResumeForm({
             </div>
             <div className="mt-4 space-y-3 text-sm text-fg-2">
               <p>Section order and visibility update both the preview and the generated LaTeX.</p>
-              <p>Template switching stays within builder-native families so the structure remains stable.</p>
-              <p>The advanced editor is still available when you need raw control, but that detaches the builder until you reattach it.</p>
+              <p>Changing the template keeps your content.</p>
+              <p>Editing the code in the advanced editor pauses guided editing. You can return here and choose whether to replace those code changes.</p>
             </div>
             <div className="mt-5 rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-xs text-fg-3">
               <FileText className="mr-2 inline h-3.5 w-3.5" />
-              Current mode: {builderStatus} · {selectedTemplate?.category_label || templateFamily}
+              {builderStatus === 'detached' ? 'Guided editing paused' : 'Guided editing active'} · {selectedTemplate?.category_label || 'Résumé template'}
             </div>
           </section>
         </div>

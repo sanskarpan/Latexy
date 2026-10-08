@@ -68,9 +68,9 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await page.locator('input[placeholder*="Senior Backend Engineer"]').fill('Owner A draft')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect.poll(() => createStarted).toBe(true)
 
     owner = 'owner-b'
@@ -92,7 +92,7 @@ test.describe('guided builder ownership boundaries', () => {
       }))
 
       await expect(page).toHaveURL(/\/workspace\/builder\/new$/)
-      await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     } finally {
       releaseCreate()
     }
@@ -133,9 +133,9 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await page.locator('input[placeholder*="Senior Backend Engineer"]').fill('Owner A draft')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb$/)
   })
 
@@ -184,7 +184,7 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     const title = page.locator('input[placeholder*="Senior Backend Engineer"]')
     await title.fill('Draft survives auth refresh')
 
@@ -197,8 +197,8 @@ test.describe('guided builder ownership boundaries', () => {
     await expect.poll(() => sessionCalls).toBeGreaterThan(1)
     await expect.poll(() => errorResponseFinished).toBe(true)
     await expect(title).toHaveValue('Draft survives auth refresh')
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page.getByText('Session verification is still in progress. Please try again.')).toBeVisible()
     expect(createCalls).toBe(0)
 
@@ -211,7 +211,7 @@ test.describe('guided builder ownership boundaries', () => {
     await expect.poll(() => sessionCalls).toBeGreaterThan(2)
     await expect.poll(() => recoveryResponseFinished).toBe(true)
     await expect(title).toHaveValue('Draft survives auth refresh')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/cccccccc-cccc-cccc-cccc-cccccccccccc$/)
     expect(createCalls).toBe(1)
   })

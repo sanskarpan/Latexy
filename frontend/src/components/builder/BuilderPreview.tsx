@@ -42,7 +42,7 @@ export default function BuilderPreview({
 }: BuilderPreviewProps) {
   const basics = structured.basics
   const sectionCount = preview?.sections.length ?? 0
-  const activeSections = structured.section_order.filter(section => !structured.hidden_sections.includes(section))
+  const activeSections = preview?.sections.map(section => section.key) ?? []
 
   return (
     <div className="rounded-[var(--radius-lg)] border border-line bg-surface sticky top-24 overflow-hidden">
@@ -51,11 +51,11 @@ export default function BuilderPreview({
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-fg-3">Live Preview</p>
             <p className="mt-2 text-sm text-fg-2">
-              Render-safe snapshot of the structured resume that will drive generated LaTeX.
+              Your content as you edit. Choose Preview PDF to check the final layout before downloading.
             </p>
           </div>
           <div className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] ${statTone(completenessScore)}`}>
-            {completenessScore}% ready
+            {completenessScore}% filled
           </div>
         </div>
 
@@ -65,12 +65,12 @@ export default function BuilderPreview({
             <p className="mt-2 text-sm font-semibold text-fg">{templateFamily}</p>
           </div>
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Page Target</p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Estimated length</p>
             <p className="mt-2 text-sm font-semibold text-fg">{pageEstimate} page{pageEstimate === 1 ? '' : 's'}</p>
           </div>
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Visible Sections</p>
-            <p className="mt-2 text-sm font-semibold text-fg">{sectionCount || activeSections.length}</p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Sections included</p>
+            <p className="mt-2 text-sm font-semibold text-fg">{sectionCount}</p>
           </div>
         </div>
 

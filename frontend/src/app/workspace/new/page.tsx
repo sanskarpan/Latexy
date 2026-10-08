@@ -438,8 +438,7 @@ function NewResumePageForm({
               Guided Builder
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-fg-2">
-              Use the new structured builder if you want live preview, section forms, template swapping, and a safer
-              path than starting directly in LaTeX.
+              Fill in your experience with simple forms, choose a layout, and download your résumé. No code required.
             </p>
           </div>
           <Link href="/workspace/builder/new" className="rounded-[var(--radius-md)] bg-accent px-5 py-3 text-sm font-semibold text-accent-fg hover:brightness-110">

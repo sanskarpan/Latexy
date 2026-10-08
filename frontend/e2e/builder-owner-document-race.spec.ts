@@ -147,13 +147,13 @@ test.describe('builder owner/document transition controls', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await page.locator('input[type="file"]').setInputFiles({ name: 'resume.json', mimeType: 'application/json', buffer: Buffer.from('{"resume":"seed"}') })
     await expect.poll(() => seedStarted).toBe(true)
 
     await switchOwner(page, owner, 'owner-b')
     await expect.poll(() => sessionCalls).toBeGreaterThan(1)
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'owner-b template', level: 3, exact: true })).toBeVisible()
     await expect(page.getByText('No name imported yet', { exact: true })).toBeVisible()
 
