@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
@@ -476,58 +476,273 @@ export default function OnboardingFlow({
 // preference on the user), so signing in on a new browser/device does not
 // re-trigger onboarding. localStorage is the fast path; the account is the
 // cross-device source of truth and reconciles on mount.
-export function useOnboarding() {
+export interface OnboardingAccountScope {
+  ownerId: string | null
+  authToken: string
+  confirmed: boolean
+}
+
+const ONBOARDING_KEY = 'latexy_onboarding_completed'
+const ONBOARDING_OWNER_KEY_PREFIX = `${ONBOARDING_KEY}:`
+const ONBOARDING_REPLAY_KEY_PREFIX = 'latexy_onboarding_replay:'
+
+function ownerStorageKey(prefix: string, ownerId: string) {
+  return `${prefix}${encodeURIComponent(ownerId)}`
+}
+
+export function useOnboarding(accountScope?: OnboardingAccountScope) {
+  const legacyAnonymous = accountScope === undefined
+  const ownerId = accountScope?.ownerId ?? null
+  const authToken = accountScope?.authToken ?? ''
+  const confirmed = accountScope?.confirmed ?? legacyAnonymous
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   // Default to true (assume completed) until localStorage check resolves.
   // Prevents a flash where the onboarding modal briefly opens before
   // discovering that it was already completed in a prior session.
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true)
+  const [onboardingReady, setOnboardingReady] = useState(false)
+  const mountedRef = useRef(false)
+  const ownerIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
+  const authTokenRef = useRef(authToken)
+  const confirmedRef = useRef(confirmed)
+  const readyIdentityRef = useRef<{ ownerId: string | null; generation: number } | null>(null)
+  const completedIdentityRef = useRef<{ ownerId: string | null; generation: number } | null>(null)
+  const requestRevisionRef = useRef(0)
+  const actionRevisionRef = useRef(0)
+  const activeActionRef = useRef<number | null>(null)
+  const openIdentityRef = useRef<{ ownerId: string | null; generation: number } | null>(null)
+  confirmedRef.current = confirmed
+
+  // Render-time invalidation closes the gap before passive effects run when an
+  // account changes. Same-owner token refreshes intentionally keep generation.
+  if (ownerIdentityRef.current.ownerId !== ownerId) {
+    authTokenRef.current = authToken
+    ownerIdentityRef.current = {
+      ownerId,
+      generation: ownerIdentityRef.current.generation + 1,
+    }
+    requestRevisionRef.current += 1
+    actionRevisionRef.current += 1
+    activeActionRef.current = null
+    readyIdentityRef.current = null
+    completedIdentityRef.current = null
+  } else if (authTokenRef.current !== authToken) {
+    authTokenRef.current = authToken
+    // Retry an initial reconciliation with the latest token. Once the same
+    // owner is ready, token rotation must preserve the visible tour state.
+    if (
+      readyIdentityRef.current?.ownerId !== ownerId
+      || readyIdentityRef.current.generation !== ownerIdentityRef.current.generation
+    ) requestRevisionRef.current += 1
+  }
+  const ownerGeneration = ownerIdentityRef.current.generation
+  const renderedIdentity = ownerIdentityRef.current
+  const ownerKey = ownerId ? ownerStorageKey(ONBOARDING_OWNER_KEY_PREFIX, ownerId) : ONBOARDING_KEY
+  const replayKey = ownerId ? ownerStorageKey(ONBOARDING_REPLAY_KEY_PREFIX, ownerId) : null
 
   useEffect(() => {
-    const completed = localStorage.getItem('latexy_onboarding_completed')
-    setHasCompletedOnboarding(!!completed)
-    // Reconcile with the account (cross-device). Anonymous/offline → 401/error
-    // is ignored and the local value stands.
-    apiClient.getMe()
-      .then((me) => {
-        if (me.preferences?.has_onboarded) {
-          localStorage.setItem('latexy_onboarding_completed', 'true')
-          setHasCompletedOnboarding(true)
-        }
-      })
-      .catch(() => { /* not signed in / offline — keep local state */ })
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRevisionRef.current += 1
+      actionRevisionRef.current += 1
+      activeActionRef.current = null
+    }
   }, [])
 
-  const startOnboarding = () => {
+  useEffect(() => {
+    const identity = ownerIdentityRef.current
+    const replayRequested = replayKey !== null && localStorage.getItem(replayKey) === 'true'
+    const alreadyReady = readyIdentityRef.current?.ownerId === identity.ownerId
+      && readyIdentityRef.current.generation === identity.generation
+    if (alreadyReady) return
+
+    const requestRevision = ++requestRevisionRef.current
+    const isCurrent = () => mountedRef.current
+      && ownerIdentityRef.current.ownerId === identity.ownerId
+      && ownerIdentityRef.current.generation === identity.generation
+      && requestRevisionRef.current === requestRevision
+    const isDispatchCurrent = () => isCurrent() && confirmedRef.current
+
+    setOnboardingReady(false)
+    setIsOnboardingOpen(false)
+    setHasCompletedOnboarding(true)
+
+    if (!confirmed) return
+    if (!ownerId) {
+      setHasCompletedOnboarding(localStorage.getItem(ONBOARDING_KEY) === 'true')
+      completedIdentityRef.current = identity
+      readyIdentityRef.current = identity
+      setOnboardingReady(true)
+      return
+    }
+
+    apiClient.getMe({ authToken, isCurrent: isDispatchCurrent })
+      .then((me) => {
+        if (!isCurrent()) return
+        const serverCompleted = me.preferences?.has_onboarded === true
+        const stillReplaying = replayKey !== null && localStorage.getItem(replayKey) === 'true'
+        if (stillReplaying) {
+          setHasCompletedOnboarding(false)
+          completedIdentityRef.current = identity
+          setIsOnboardingOpen(true)
+          openIdentityRef.current = identity
+        } else if (serverCompleted) {
+          localStorage.setItem(ownerKey, 'true')
+          setHasCompletedOnboarding(true)
+          completedIdentityRef.current = identity
+        } else {
+          localStorage.removeItem(ownerKey)
+          setHasCompletedOnboarding(false)
+          completedIdentityRef.current = identity
+        }
+        readyIdentityRef.current = identity
+        setOnboardingReady(true)
+      })
+      .catch(() => {
+        if (!isCurrent()) return
+        // A scoped completion is safe to retain offline. With no scoped value,
+        // retain the initial completed latch and avoid opening on an auth error.
+        if (localStorage.getItem(ownerKey) === 'true') {
+          setHasCompletedOnboarding(true)
+          completedIdentityRef.current = identity
+        }
+        if (replayRequested) {
+          setHasCompletedOnboarding(false)
+          completedIdentityRef.current = identity
+          setIsOnboardingOpen(true)
+          openIdentityRef.current = identity
+        }
+        readyIdentityRef.current = identity
+        setOnboardingReady(true)
+      })
+    // Same-owner token refreshes update the dispatch context without reloading
+    // or resetting the current tour state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken, confirmed, ownerId])
+
+  const isCurrentOwner = useCallback((identity: { ownerId: string | null; generation: number }) => (
+    mountedRef.current
+    && ownerIdentityRef.current.ownerId === identity.ownerId
+    && ownerIdentityRef.current.generation === identity.generation
+  ), [])
+
+  const startOnboarding = useCallback(() => {
+    const identity = renderedIdentity
+    if (!onboardingReady || !confirmed || !confirmedRef.current || (ownerId !== null && !authToken)
+      || authTokenRef.current !== authToken || !isCurrentOwner(identity)) return
+    openIdentityRef.current = identity
     setIsOnboardingOpen(true)
-  }
+  }, [authToken, confirmed, isCurrentOwner, onboardingReady, ownerId, renderedIdentity])
 
-  const persistCompleted = () => {
-    localStorage.setItem('latexy_onboarding_completed', 'true')
-    apiClient.updateMePreferences({ has_onboarded: true }).catch(() => { /* best-effort */ })
-  }
+  const persistCompletion = useCallback((completed: boolean) => {
+    const identity = renderedIdentity
+    if (!confirmed || !confirmedRef.current || (ownerId !== null && !authToken)
+      || authTokenRef.current !== authToken || !isCurrentOwner(identity)) return
+    if (ownerId === null) {
+      if (completed) localStorage.setItem(ONBOARDING_KEY, 'true')
+      else localStorage.removeItem(ONBOARDING_KEY)
+      completedIdentityRef.current = identity
+      readyIdentityRef.current = identity
+      setHasCompletedOnboarding(completed)
+      setOnboardingReady(true)
+      setIsOnboardingOpen(false)
+      return
+    }
+    if (activeActionRef.current !== null) return
+    const actionRevision = ++actionRevisionRef.current
+    const requestRevision = ++requestRevisionRef.current
+    activeActionRef.current = actionRevision
+    const isCurrent = () => isCurrentOwner(identity)
+      && actionRevisionRef.current === actionRevision
+      && requestRevisionRef.current === requestRevision
+    const context = { authToken, isCurrent: () => isCurrent() && confirmedRef.current }
+    const completedKey = ownerStorageKey(ONBOARDING_OWNER_KEY_PREFIX, ownerId)
+    if (completed) {
+      localStorage.setItem(completedKey, 'true')
+      localStorage.removeItem(ownerStorageKey(ONBOARDING_REPLAY_KEY_PREFIX, ownerId))
+    } else {
+      localStorage.removeItem(completedKey)
+      localStorage.setItem(ownerStorageKey(ONBOARDING_REPLAY_KEY_PREFIX, ownerId), 'true')
+    }
+    completedIdentityRef.current = identity
+    readyIdentityRef.current = identity
+    setHasCompletedOnboarding(completed)
+    setOnboardingReady(true)
+    setIsOnboardingOpen(!completed)
+    if (!completed) openIdentityRef.current = identity
+    void apiClient.updateMePreferences({ has_onboarded: completed }, context)
+      .catch(() => { /* best-effort; scoped UI state remains authoritative */ })
+      .finally(() => {
+        if (activeActionRef.current === actionRevision && isCurrentOwner(identity)) {
+          activeActionRef.current = null
+        }
+      })
+  }, [authToken, confirmed, isCurrentOwner, ownerId, renderedIdentity])
 
-  const completeOnboarding = () => {
-    setIsOnboardingOpen(false)
-    setHasCompletedOnboarding(true)
-    persistCompleted()
-  }
+  const completeOnboarding = useCallback(() => {
+    persistCompletion(true)
+  }, [persistCompletion])
 
-  const skipOnboarding = () => {
-    setIsOnboardingOpen(false)
-    setHasCompletedOnboarding(true)
-    persistCompleted()
-  }
+  const skipOnboarding = useCallback(() => {
+    persistCompletion(true)
+  }, [persistCompletion])
 
-  const resetOnboarding = () => {
+  const resetOnboarding = useCallback(() => {
+    const identity = renderedIdentity
+    if (!confirmed || !confirmedRef.current || (ownerId !== null && !authToken)
+      || authTokenRef.current !== authToken || !isCurrentOwner(identity)) return
+    if (ownerId === null) {
+      localStorage.removeItem(ONBOARDING_KEY)
+      completedIdentityRef.current = identity
+      readyIdentityRef.current = identity
+      setHasCompletedOnboarding(false)
+      setOnboardingReady(true)
+      setIsOnboardingOpen(false)
+      return
+    }
+    if (activeActionRef.current !== null) return
+    const actionRevision = ++actionRevisionRef.current
+    const requestRevision = ++requestRevisionRef.current
+    activeActionRef.current = actionRevision
+    const isCurrent = () => isCurrentOwner(identity)
+      && actionRevisionRef.current === actionRevision
+      && requestRevisionRef.current === requestRevision
+    const context = { authToken, isCurrent: () => isCurrent() && confirmedRef.current }
+    const completedKey = ownerStorageKey(ONBOARDING_OWNER_KEY_PREFIX, ownerId)
+    const currentReplayKey = ownerStorageKey(ONBOARDING_REPLAY_KEY_PREFIX, ownerId)
+    localStorage.removeItem(completedKey)
+    localStorage.setItem(currentReplayKey, 'true')
+    completedIdentityRef.current = identity
+    readyIdentityRef.current = identity
     setHasCompletedOnboarding(false)
-    localStorage.removeItem('latexy_onboarding_completed')
-    apiClient.updateMePreferences({ has_onboarded: false }).catch(() => { /* best-effort */ })
-  }
+    setOnboardingReady(true)
+    setIsOnboardingOpen(true)
+    openIdentityRef.current = identity
+    void apiClient.updateMePreferences({ has_onboarded: false }, context)
+      .catch(() => { /* best-effort; replay intent remains scoped locally */ })
+      .finally(() => {
+        if (activeActionRef.current === actionRevision && isCurrentOwner(identity)) {
+          activeActionRef.current = null
+        }
+      })
+  }, [authToken, confirmed, isCurrentOwner, ownerId, renderedIdentity])
+
+  const visibleOnboardingOpen = isOnboardingOpen
+    && openIdentityRef.current?.ownerId === ownerId
+    && openIdentityRef.current?.generation === ownerGeneration
+  const visibleOnboardingReady = onboardingReady
+    && readyIdentityRef.current?.ownerId === ownerId
+    && readyIdentityRef.current?.generation === ownerGeneration
+  const visibleHasCompletedOnboarding = completedIdentityRef.current?.ownerId === ownerId
+    && completedIdentityRef.current?.generation === ownerGeneration
+    ? hasCompletedOnboarding
+    : true
 
   return {
-    isOnboardingOpen,
-    hasCompletedOnboarding,
+    isOnboardingOpen: visibleOnboardingOpen,
+    hasCompletedOnboarding: visibleHasCompletedOnboarding,
+    onboardingReady: visibleOnboardingReady,
     startOnboarding,
     completeOnboarding,
     skipOnboarding,
