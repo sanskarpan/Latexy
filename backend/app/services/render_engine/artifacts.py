@@ -14,6 +14,7 @@ import os
 import re
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Literal
 
@@ -157,6 +158,21 @@ def _put(scope: str, kind: str, data: bytes, media_type: str) -> ObjectRef:
     return ObjectRef(key=key, sha256=digest, size=len(data), media_type=media_type)
 
 
+def _put_render_binaries(scope: str, pdf_bytes: bytes, synctex_bytes: bytes | None) -> tuple[ObjectRef, ObjectRef | None]:
+    """Join both immutable writes before a manifest can refer to either binary.
+
+    These object keys are independent. Keep concurrency fixed at two, and join
+    even on error so no upload continues after the caller starts cleanup.
+    Geometry remains optional and is handled by its existing fallback.
+    """
+    if synctex_bytes is None:
+        return _put(scope, "pdf", pdf_bytes, "application/pdf"), None
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="render-upload") as pool:
+        pdf = pool.submit(_put, scope, "pdf", pdf_bytes, "application/pdf")
+        synctex = pool.submit(_put, scope, "synctex", synctex_bytes, "application/gzip")
+        return pdf.result(), synctex.result()
+
+
 def bind_manifest(
     redis_client: Any, job_id: str, request: dict[str, Any], pdf: ObjectRef,
     synctex: ObjectRef | None = None, geometry: ObjectRef | None = None,
@@ -230,21 +246,20 @@ def persist_render(
     if not write_owned_artifacts(redis_client, job_id, {}, MANIFEST_TTL):
         return None
     scope = sha256(request["owner_scope"])
+    synctex_bytes = None
+    compressed = job_dir / "resume.synctex.gz"
+    plain = job_dir / "resume.synctex"
+    if compressed.exists():
+        # Validate every binary before starting either storage request.
+        read_gzip_file_bounded(compressed, max_compressed_bytes=MAX_SYNCTEX_COMPRESSED_BYTES, max_decompressed_bytes=MAX_SYNCTEX_DECOMPRESSED_BYTES)
+        synctex_bytes = read_file_bounded(compressed, MAX_SYNCTEX_COMPRESSED_BYTES)
+    elif plain.exists():
+        data = read_file_bounded(plain, MAX_SYNCTEX_DECOMPRESSED_BYTES)
+        synctex_bytes = gzip.compress(data, mtime=0)
+        if len(synctex_bytes) > MAX_SYNCTEX_COMPRESSED_BYTES:
+            raise BoundedReadError("SyncTeX compressed artifact exceeds limit")
     with engine_span("artifact_storage"):
-        pdf = _put(scope, "pdf", pdf_bytes, "application/pdf")
-        synctex = None
-        compressed = job_dir / "resume.synctex.gz"
-        plain = job_dir / "resume.synctex"
-        if compressed.exists():
-            # Enforce decompression limits before publishing even compressed bytes.
-            read_gzip_file_bounded(compressed, max_compressed_bytes=MAX_SYNCTEX_COMPRESSED_BYTES, max_decompressed_bytes=MAX_SYNCTEX_DECOMPRESSED_BYTES)
-            synctex = _put(scope, "synctex", read_file_bounded(compressed, MAX_SYNCTEX_COMPRESSED_BYTES), "application/gzip")
-        elif plain.exists():
-            data = read_file_bounded(plain, MAX_SYNCTEX_DECOMPRESSED_BYTES)
-            compressed_data = gzip.compress(data, mtime=0)
-            if len(compressed_data) > MAX_SYNCTEX_COMPRESSED_BYTES:
-                raise BoundedReadError("SyncTeX compressed artifact exceeds limit")
-            synctex = _put(scope, "synctex", compressed_data, "application/gzip")
+        pdf, synctex = _put_render_binaries(scope, pdf_bytes, synctex_bytes)
     geometry = None
     document = request.get("source_document")
     if (isinstance(document, dict) and document.get("source_sha256") == sha256(request["source"])
