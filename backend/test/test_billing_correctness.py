@@ -90,6 +90,7 @@ async def test_webhook_rejects_non_object_customer_shape(
 @pytest.mark.asyncio
 async def test_dodo_checkout_adapter_posts_to_configured_api(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
+
     import app.services.dodo_provider as provider_module
 
     requests: list[tuple[str, str, dict]] = []
