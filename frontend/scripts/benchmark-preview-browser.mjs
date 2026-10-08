@@ -20,11 +20,15 @@ const report = {
   compiler: null, build_kind: buildKind, source_commit: process.env.ENGINE_QA_SOURCE_COMMIT ?? null,
   environment: 'isolated local CPU Celery, warm seed image, fresh browser context',
   scenario: fieldFirst ? 'fresh guest saves a field before first PDF' : 'one guest renders, repeats source, then saves a field',
-  limitations: [`${buildKind} Next and local backend; excludes production deployment/Modal latency`, 'Three functional samples do not support percentile claims', 'Host resource contention is uncontrolled'],
+  limitations: [`${buildKind} Next and local backend; excludes production deployment/Modal latency`, `${fieldFirst ? 'One' : 'Three'} functional samples do not support percentile claims`, 'Host resource contention is uncontrolled'],
   samples: [], failures: [], console_errors: [], quota_cooldown_waits: [],
 }
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 try {
+  // Fail explicitly before admission when the isolated API has not finished
+  // starting; readiness is outside the measured user-action interval.
+  const health = await fetch(backendUrl + '/health', { signal: AbortSignal.timeout(10000) })
+  if (!health.ok) throw new Error(`Backend readiness failed: HTTP ${health.status}`)
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   const page = await context.newPage()
   globalThis.qaPage = page
