@@ -31,6 +31,7 @@ async function loadSettingsHarness(): Promise<Harness> {
   let hookIndex = 0
   let states: unknown[] = []
   let refs: Array<{ current: unknown }> = []
+  let memos: Array<{ deps: unknown[]; value: unknown }> = []
   let effects: Array<() => void | (() => void)> = []
   const activeCleanups: Array<() => void> = []
   const stateUpdates: unknown[] = []
@@ -58,6 +59,14 @@ async function loadSettingsHarness(): Promise<Harness> {
           : value
         stateUpdates.push(states[index])
       }]
+    },
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const index = hookIndex++
+      const previous = memos[index]
+      const changed = !previous || deps.length !== previous.deps.length ||
+        deps.some((value, depIndex) => !Object.is(value, previous.deps[depIndex]))
+      if (changed) memos[index] = { deps: [...deps], value: factory() }
+      return memos[index].value
     },
   }))
   vi.doMock('react/jsx-runtime', () => ({
