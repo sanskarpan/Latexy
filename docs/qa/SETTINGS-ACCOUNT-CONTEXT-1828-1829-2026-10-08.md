@@ -117,3 +117,42 @@ Next: diagnose #1772 from the fresh editor trace with an immutable matched
 baseline; repair #1786 notification action ownership separately; complete
 all-provider client dispatch survey and wider authenticated QA. Engine #1833
 and Dodo #1834 remain separate pushed draft handoffs, not release claims.
+
+## 2026-10-08 controlled follow-up and current release boundary
+
+The parent was normally refreshed onto main at `e6f82436`. Its exact-head CI,
+security and Vercel checks passed, and the scoped repair was marked ready for
+review. The separate notification leaf is now draft PR #1855, with root-verified
+1,122 frontend units and a 23-case production-browser run (editor/provider/
+notification), one worker, zero retries and strict page errors. That evidence
+does not close the broader hydration issue.
+
+The new opt-in route-chunk diagnostic held exactly one Settings page script
+while controlling whether the synthetic auth response resolves first. Four
+matched Chromium arms (auth-first/route-first × matching/different localStorage
+locale) pass, zero retries. Auth-first observes the actual fixture owner in
+the root account menu before releasing the route script. Route-first observes
+a React-owned Settings loading node while auth is still held; this is a DOM
+ownership observation, not a proof of every React scheduling phase. Captured
+server HTML is identical across arms (31,336 characters, SHA-256
+`13f808909cd08544cc570d9afebc93ffde0b63bdd22b1cc037679564ed713bc1`).
+
+The first diagnostic fixtures aborted an omitted tenant GET and then produced
+Workbox `waiting` errors because blocked service-worker registration returned
+undefined. Those are fixture failures, not new application defects. The final
+fixture uses the existing registration shim and exact synthetic read endpoints;
+all unknown API requests/writes are recorded and aborted. It does not certify
+native service-worker/PWA behavior. Page errors and unexpected requests are
+strictly empty in the final run. Log:
+`/private/tmp/latexy-hydration-route-barrier-final-strict-20261008.log`, SHA-256
+`c5f4dbe17689a35c9cc5e6b30428a465a7a9371616586bdc776fa051332cb687`.
+Neither these passing controls nor the earlier auth-delay controls reproduce
+the retained editor React418; #1772 remains open, without a guessed fix.
+
+A fresh registry audit subsequently reports two unmitigated Next15.5.24
+advisories. Notification CI `37702624922` fails at that gate, before lint/unit
+CI steps; prior green audit results cannot clear it. Issue #1856 tracks the
+focused Next15.5.27 patch, retaining existing PostCSS/braces/sharp mitigations.
+Do not merge this scoped repair on its older audit result or bypass the failure.
+Refresh onto the security repair, rerun exact-head gates, review and verify
+production before claiming release acceptance. Branch protection is unchanged.
