@@ -8,6 +8,12 @@ This proposal covers the technical editor, the future PDF-based editing surface,
 
 ## Evidence and measurement scope
 
+October 8 continuation: current review, explicit review-provider integration,
+cold-worker preparation, the managed-English one-pass change and dated validation
+are recorded in the [continuation audit](audits/resume-engine/release-audit-2026-10-08.md).
+The one-second fresh and 500-ms cached-paint numbers remain acceptance targets;
+they are not established by the current contended local measurements.
+
 October 7 follow-up: the engine draft now uses a five-second typing quiet period and a ten-second minimum automatic admission interval, with one running preview and a replaceable pending revision. Explicit saves and review actions remain prompt but share the running-preview fence and backend quotas. The two-second debounce shown in the historical October 6 audit below is not the current draft policy. Measure renderer latency from admission separately from this intentional typing delay; do not shorten it to meet a compiler target or restore per-keystroke requests. See [release follow-up](audits/resume-engine/RELEASE-FOLLOWUP-2026-10-07.md) for current checks and unresolved release gates.
 
 The local checkout was read at commit `317b9b3d0b1cf05cb4a007dbf179129993d67ba5` on October 6, 2026, including concurrent working-copy changes to the visual editor. Source hashes for the principal audited files are recorded in [local measurements](local-measurements.json). GitHub reads initially used snapshot `275a9d28332fc284d803efe51a5139876ffbad02`; conclusions below were checked against the relevant local files. Other project tasks are changing this checkout, so hashes provide the precise scope when line numbers move.

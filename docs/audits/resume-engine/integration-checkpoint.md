@@ -1,6 +1,9 @@
 # Resume engine migration checkpoint — October 7, 2026
 
-Work is isolated on `codex/resume-engine`. At the user's request, this snapshot is being committed and published as a draft PR. Further implementation, validation, deployment and merge are paused pending their approval.
+Historical checkpoint: the user subsequently approved continuation. Work remains
+isolated on `codex/resume-engine`; see the [October 8 continuation audit](release-audit-2026-10-08.md)
+for current implementation, checks, failures and release gates. The status lists
+below describe this earlier snapshot and do not represent the latest PR head.
 
 Draft PR: [#1833](https://github.com/sanskarpan/Latexy/pull/1833). Portable reproduction commands, regression fixtures, benchmark interpretation and next acceptance gates are recorded in [HANDOFF.md](HANDOFF.md). All 49 earlier full-suite failed node IDs are preserved in [backend-full-suite-post-rebase-summary.json](backend-full-suite-post-rebase-summary.json); final frozen-suite status remains pending.
 

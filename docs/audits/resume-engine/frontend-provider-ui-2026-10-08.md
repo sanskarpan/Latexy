@@ -32,3 +32,10 @@ warnings passed. ESLint initially rejected a lowercase hook-test harness functio
 renaming it as a component harness fixed the naming violation without suppressions.
 Final production build/browser verification remains pending here; consult the
 parent release audit rather than claiming the previous runtime includes the chooser.
+
+Completed afterward: the **full 1,170-test/185-file unit suite**, complete
+40-page production build and artifact validator, and **all nine production
+Chromium contracts with zero retries** passed. The changed provider/model contract
+was exercised against the new standalone bundle. See the dated parent audit and
+its hashed frontend summaries for source/environment provenance and the separate
+real guest first-task result. No live paid-provider request is claimed.

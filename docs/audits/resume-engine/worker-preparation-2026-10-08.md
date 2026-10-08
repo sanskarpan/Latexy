@@ -34,3 +34,11 @@ The isolated fresh worker using frozen backend tree
 in the release audit. Startup readiness alone is not proof of first-job latency,
 cloud cold-start behavior or a percentile target. Task/compiler limits were not
 increased.
+
+The first real job subsequently succeeded: ordinary guest field save, job
+`3375626e-1444-48be-b57b-4206e97da162`, pdfLaTeX, finalized private artifacts
+and verified browser preview. Seven field overlays, keyboard/mobile selection
+and on-demand Source mode passed with no browser errors. Save-to-paint was
+22.367 seconds and blob-to-paint 647.7 ms on the contended host. This confirms
+the first-task import fix's functional behavior while leaving latency and cloud
+acceptance open. Source/probe evidence is linked from the continuation audit.

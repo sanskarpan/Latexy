@@ -1,5 +1,10 @@
 # Resume engine handoff — October 7, 2026
 
+**Historical snapshot:** the owner later explicitly approved continuation.
+The [October 8 audit](release-audit-2026-10-08.md) supersedes authorization/status
+below and records newer source, checks, preserved failures and remaining gates.
+Read it first. This document retains the earlier checkpoint for provenance.
+
 ## Current authorization and branch
 
 Draft PR: [#1833](https://github.com/sanskarpan/Latexy/pull/1833), branch `codex/resume-engine`, base `main`. The user requested a complete checkpoint and **no further implementation until they approve continuing**. This includes pausing new validation, cloud/paid-provider calls, deployment and merge. Do not infer approval from this document, the architecture proposal, an open issue or a green CI job.

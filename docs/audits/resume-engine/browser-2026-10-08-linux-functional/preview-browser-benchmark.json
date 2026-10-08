@@ -1,0 +1,449 @@
+{
+  "measured_at_utc": "2026-10-08T13:47:51.067Z",
+  "frontend_url": "http://localhost:5361",
+  "backend_url": "http://127.0.0.1:8530",
+  "compiler": "server default",
+  "build_kind": "production",
+  "source_commit": "3d556b8771ffcb48d0fbe3e547dd29a5df7b989e",
+  "environment": "isolated local CPU Celery, warm seed image, fresh browser context",
+  "scenario": "fresh guest saves a field before first PDF",
+  "limitations": [
+    "production Next and local backend; excludes production deployment/Modal latency",
+    "One functional samples do not support percentile claims",
+    "Host resource contention is uncontrolled"
+  ],
+  "samples": [],
+  "failures": [
+    {
+      "type": "probe",
+      "message": "Preview did not reach first paint"
+    }
+  ],
+  "console_errors": [],
+  "quota_cooldown_waits": [],
+  "diagnostics": {
+    "jobs": [
+      {
+        "status": 200,
+        "body": {
+          "success": true,
+          "job_id": "b288670a-8c33-4570-9eee-8d9909afd3f8",
+          "message": "Job queued: latex_compilation",
+          "estimated_time": 30
+        }
+      }
+    ],
+    "states": [
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      }
+    ],
+    "errors": [],
+    "geometry": [],
+    "requests": [
+      {
+        "origin": "http://localhost:5361",
+        "path": "/api/auth/get-session",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/config/feature-flags",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/tenants/resolve-host",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "method": "GET"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/",
+        "method": "GET"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/login",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document/patch",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/submit",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "method": "GET"
+      }
+    ],
+    "failedRequests": [
+      {
+        "origin": "http://localhost:5361",
+        "path": "/",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/login",
+        "error": "net::ERR_ABORTED"
+      }
+    ],
+    "httpTimings": [
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 5174
+      },
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 5179
+      },
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 5232
+      },
+      {
+        "path": "/public/engine/document",
+        "status": 200,
+        "duration_ms": 8190
+      },
+      {
+        "path": "/config/feature-flags",
+        "status": 200,
+        "duration_ms": 10094
+      },
+      {
+        "path": "/tenants/resolve-host",
+        "status": 200,
+        "duration_ms": 10839
+      },
+      {
+        "path": "/public/engine/document/patch",
+        "status": 200,
+        "duration_ms": 6667
+      },
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 6828
+      },
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 6860
+      },
+      {
+        "path": "/public/trial-status",
+        "status": 200,
+        "duration_ms": 18050
+      },
+      {
+        "path": "/ats/quick-score",
+        "status": 200,
+        "duration_ms": 12295
+      },
+      {
+        "path": "/public/engine/document",
+        "status": 200,
+        "duration_ms": 5342
+      },
+      {
+        "path": "/ats/quick-score",
+        "status": 200,
+        "duration_ms": 669
+      },
+      {
+        "path": "/jobs/submit",
+        "status": 200,
+        "duration_ms": 38022
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 675
+      },
+      {
+        "path": "/telemetry/frontend",
+        "status": 202,
+        "duration_ms": 750
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 161
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 141
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 147
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 94
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 182
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 510
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 123
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 160
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 170
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 185
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 213
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 432
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 172
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 217
+      },
+      {
+        "path": "/jobs/b288670a-8c33-4570-9eee-8d9909afd3f8/state",
+        "status": 200,
+        "duration_ms": 992
+      }
+    ],
+    "eventTimings": []
+  }
+}

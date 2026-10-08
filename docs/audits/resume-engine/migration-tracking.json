@@ -42,6 +42,12 @@
       "title": "Resume engine: end-to-end telemetry, fixture certification and release gates",
       "url": "https://github.com/sanskarpan/Latexy/issues/1820",
       "ok": true
+    },
+    {
+      "slug": "cold_worker",
+      "title": "Resume engine: certify first-task rendering after cold native-import preparation",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1862",
+      "ok": true
     }
   ],
   "existing_dependencies": [

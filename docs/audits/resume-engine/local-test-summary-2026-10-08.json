@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "scope": "Overlapping isolated local suites; source and exclusions in release-audit-2026-10-08.md",
+  "reports": [
+    {
+      "file": "full.xml",
+      "sha256": "b9acc27c016fcd74e1eaae1419d644c8850bc59af97b4ba77bebede5d03fbdc6",
+      "tests": 4858,
+      "passed": 4848,
+      "failed": [
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[authors]",
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[bibtex]"
+      ],
+      "errors": [],
+      "skipped": [
+        "test.test_bounded_io::test_windows_same_handle_read_survives_post_open_path_replacement",
+        "test.test_cjk_latex::test_each_cjk_script_compiles_with_mixed_latin_and_extractable_source[zh-CN-Noto Sans CJK SC-Heiti SC-\\u4e2d\\u6587\\u7b80\\u5386\\uff0c\\u5e73\\u53f0\\u5de5\\u7a0b\\u5e08\\u3002]",
+        "test.test_cjk_latex::test_each_cjk_script_compiles_with_mixed_latin_and_extractable_source[zh-TW-Noto Sans CJK TC-Heiti TC-\\u4e2d\\u6587\\u5c65\\u6b77\\uff0c\\u5e73\\u53f0\\u5de5\\u7a0b\\u5e2b\\u3002]",
+        "test.test_cjk_latex::test_each_cjk_script_compiles_with_mixed_latin_and_extractable_source[ja-Noto Sans CJK JP-Hiragino Sans-\\u65e5\\u672c\\u8a9e\\u306e\\u5c65\\u6b74\\u66f8\\u3002]",
+        "test.test_cjk_latex::test_each_cjk_script_compiles_with_mixed_latin_and_extractable_source[ko-Noto Sans CJK KR-Apple SD Gothic Neo-\\ud55c\\uad6d\\uc5b4 \\uc774\\ub825\\uc11c\\uc785\\ub2c8\\ub2e4.]",
+        "test.test_render_storage_integration::test_real_conditional_immutable_writes",
+        "test.test_render_storage_integration::test_real_admitted_render_cache_preview_export_sync_geometry",
+        "test.test_render_storage_integration::test_real_guest_completed_artifact_binding_and_exact_cache"
+      ],
+      "suite_seconds": 1562.069
+    },
+    {
+      "file": "publication-regex-recheck.xml",
+      "sha256": "ad1e7811d038eef3f7c55d404a3b93aa8d37291bb08dc6cefbbb86abe8213df8",
+      "tests": 3,
+      "passed": 1,
+      "failed": [
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[authors]",
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[bibtex]"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 200.187
+    },
+    {
+      "file": "publication-regex-final.xml",
+      "sha256": "01823937d4cf82765bddf8c6bc7fe294f21f29ab463b0c2c22424168caf8c5d4",
+      "tests": 3,
+      "passed": 1,
+      "failed": [
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[authors]",
+        "test.test_publication_regex_regressions::test_large_failed_matches_finish_without_quadratic_backtracking[bibtex]"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 55.241
+    },
+    {
+      "file": "real-storage.xml",
+      "sha256": "7d9350aa16ce5f3525757b1ce9f1c83748a2dc54f72fc059c44704bf495a5352",
+      "tests": 3,
+      "passed": 0,
+      "failed": [],
+      "errors": [
+        "test.test_render_storage_integration::test_real_conditional_immutable_writes",
+        "test.test_render_storage_integration::test_real_admitted_render_cache_preview_export_sync_geometry",
+        "test.test_render_storage_integration::test_real_guest_completed_artifact_binding_and_exact_cache"
+      ],
+      "skipped": [],
+      "suite_seconds": 41.297
+    },
+    {
+      "file": "real-storage-corrected.xml",
+      "sha256": "6e72b1ef966e1c0e455724260fa09ae237083e1286a598c4a0912571c641cf45",
+      "tests": 3,
+      "passed": 3,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 150.268
+    },
+    {
+      "file": "managed-bookmarks-focused.xml",
+      "sha256": "18213f85d6a077b101a143c6b5b3ac65857cdd4faa36013655ab6ec79968178c",
+      "tests": 24,
+      "passed": 23,
+      "failed": [
+        "test.test_render_passes::test_real_tex_reference_and_classic_bibliography_converge[True]"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 97.715
+    },
+    {
+      "file": "managed-bookmarks-bibliography-rerun.xml",
+      "sha256": "392247b4f1be4cbc1fea20ffb6473b2ec7d03aee700ef71278b9da0d7b99fd0e",
+      "tests": 2,
+      "passed": 2,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 35.533
+    },
+    {
+      "file": "providers-final.xml",
+      "sha256": "9f03674857d94220f1c5c87f160c499842110a9178aa68342b4e7e1a42f6b327",
+      "tests": 138,
+      "passed": 137,
+      "failed": [
+        "test.test_resume_byok_integration::test_provider_options_are_owner_scoped_nonsecret_and_exactly_priced"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 315.99
+    },
+    {
+      "file": "providers-recheck.xml",
+      "sha256": "17771cc1bf07fc73e5b0bb249dce008081f19fb7d6b19990a58f18ed6fb695c8",
+      "tests": 138,
+      "passed": 138,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 341.269
+    }
+  ]
+}
