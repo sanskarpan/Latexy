@@ -234,8 +234,8 @@
     },
     {
       "path": "final-validation-summary.json",
-      "bytes": 3001,
-      "sha256": "ec6dd6fc254f033ab378cda82a18728b247ce766dfcf29015dacc7f5720e1b85"
+      "bytes": 3686,
+      "sha256": "900688f3329ac80f827b06c9f5b4876d114772ae0eff5b6c233f2b3bab12a3c0"
     },
     {
       "path": "frontend-browser-test-summary.json",

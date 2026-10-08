@@ -22,6 +22,28 @@
       "nonpassing": []
     },
     {
+      "file": "conversion-event-transport-red.xml",
+      "sha256": "3f4a1377c128de791388c61647b273d19cdf590f1f218e1a8e551fd74b093122",
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 3.528,
+      "nonpassing": [
+        "test.test_converter_provider_runtime::test_accepted_failure_refunds_when_terminal_event_transport_raises"
+      ]
+    },
+    {
+      "file": "production-recovery-final-unit-windows.xml",
+      "sha256": "b8920b1d1e7bb980356181cbbd0d318d46d365b27bec09dd6a80aa5841fb12be",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 8.909,
+      "nonpassing": []
+    },
+    {
       "file": "deploy-manifests-final.xml",
       "sha256": "d7bec9766bc931fc33de6a4ba29a7372fbc2df7bb2cae54d37a0362cdd855283",
       "tests": 92,

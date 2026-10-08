@@ -10,7 +10,7 @@ import pytest
 from app.workers import converter_worker as worker
 
 
-def run_conversion(*, byok=None, error=None, content=None, result_stored=True, terminal_event="1-0"):
+def run_conversion(*, byok=None, error=None, content=None, result_stored=True, terminal_event="1-0", event_error=False):
     client = MagicMock()
     client.chat.completions.create.side_effect = error
     client.chat.completions.create.return_value = SimpleNamespace(
@@ -19,9 +19,19 @@ def run_conversion(*, byok=None, error=None, content=None, result_stored=True, t
         usage=SimpleNamespace(total_tokens=100),
     )
     events = MagicMock(return_value=terminal_event)
+    if event_error:
+        def deliver_event(_job_id, event_type, _payload):
+            if event_type == "job.failed":
+                raise ConnectionError("Synthetic event transport failure")
+            return terminal_event
+        events.side_effect = deliver_event
     refund = MagicMock()
     constructor = MagicMock(return_value=client)
     stored = MagicMock(return_value=result_stored)
+    if event_error:
+        # The first accepted result closes the owner fence. A second terminal
+        # write after event transport failure must not regain that capability.
+        stored.side_effect = [True, False]
     with ExitStack() as stack:
         for name, value in {
             "get_worker_redis": MagicMock(), "admit_worker": MagicMock(return_value=True),
@@ -87,3 +97,12 @@ def test_accepted_failure_refunds_even_if_terminal_event_is_lost():
     run, _, _, _, refund, _ = run_conversion(content="invalid", terminal_event="")
     assert run["success"] is False
     refund.assert_called_once()
+
+
+def test_accepted_failure_refunds_when_terminal_event_transport_raises():
+    result, _, create, events, refund, stored = run_conversion(content="invalid", event_error=True)
+    assert result["success"] is False
+    create.assert_called_once()
+    refund.assert_called_once()
+    stored.assert_called_once()
+    assert [call.args[1] for call in events.call_args_list].count("job.failed") == 1

@@ -105,13 +105,19 @@ def convert_document_task(
             if result.get("success") is True:
                 if entry_id and quota_refund:
                     clear_quota_refund_receipt(job_id)
-            else:
-                # The accepted failed/cancelled result is the immutable
-                # terminal decision. A missing/rejected event does not make it
-                # safe to defer or skip the refund; a rejected result does.
-                _refund()
+        except Exception as exc:
+            if result.get("success") is True:
+                raise
+            # The canonical terminal result is already accepted. A stream
+            # transport failure cannot authorize a second result/provider
+            # attempt or suppress the failed job's refund.
+            logger.warning("Converter terminal event delivery failed", extra={"error_type": type(exc).__name__})
         finally:
-            _release_owner()
+            try:
+                if result.get("success") is not True:
+                    _refund()
+            finally:
+                _release_owner()
         return result
 
     api_key = user_api_key or settings.OPENAI_API_KEY
