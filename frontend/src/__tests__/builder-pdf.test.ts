@@ -36,11 +36,28 @@ function setup(prepare = vi.fn().mockResolvedValue(saved), isCurrent = () => tru
 
 afterEach(() => {
   fixture.cleanups.splice(0).forEach(cleanup => cleanup())
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
 
 describe('guided builder PDF completion', () => {
+  it('keeps polling through the paid worker budget and allows output delivery', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+    const hook = setup()
+    fixture.api.getJobState
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(240_000)
+        return { job_id: 'job-owned', status: 'processing' }
+      })
+      .mockResolvedValue({ job_id: 'job-owned', status: 'completed' })
+    const generating = hook.previewPdf()
+    await vi.runAllTimersAsync()
+    await generating
+    expect(fixture.api.getJobState).toHaveBeenCalledTimes(2)
+    expect(fixture.api.downloadPdf).toHaveBeenCalledWith('job-owned', expect.any(AbortSignal))
+  })
   it('saves first, compiles the exact revision, and downloads its owned output', async () => {
     const prepare = vi.fn().mockResolvedValue(saved)
     const hook = setup(prepare)

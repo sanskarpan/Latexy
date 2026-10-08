@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -41,6 +42,11 @@ import {
   reconcileBulletIds,
   safeBuilderIdentity,
 } from '@/lib/resume-builder'
+
+const PDFPreview = dynamic(() => import('@/components/PDFPreview'), {
+  ssr: false,
+  loading: () => <div role="status" className="flex h-full items-center justify-center text-sm text-fg-2">Loading your PDF preview…</div>,
+})
 
 type SectionKey = StructuredResume['section_order'][number]
 
@@ -712,10 +718,12 @@ function BuilderResumeForm({
       </section>}
       {pdfUrl && <section aria-label="Final PDF preview" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <div><h2 className="text-lg font-semibold text-fg">Your PDF is ready</h2><p className="mt-1 text-sm text-fg-2">This is the layout that will appear in your downloaded résumé.</p></div>
+          <div><h2 className="text-lg font-semibold text-fg">Your PDF is ready</h2><p className="mt-1 text-sm text-fg-2">This is the layout that will appear in your downloaded résumé.</p><p className="mt-1 break-words text-xs text-fg-3">{title || 'resume'}.pdf</p></div>
           <button type="button" onClick={() => { void downloadPdf().catch(() => {}) }} disabled={isGenerating || dirty} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50">Download PDF</button>
         </div>
-        <iframe title="PDF print preview" src={pdfUrl} className="h-[680px] w-full rounded-[var(--radius-md)] border border-line bg-white" />
+        <div data-testid="builder-pdf-preview" className="h-[min(72vh,800px)] min-h-[360px] w-full min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-line">
+          <PDFPreview pdfUrl={pdfUrl} isLoading={isGenerating} onDownload={() => { void downloadPdf().catch(() => {}) }} />
+        </div>
       </section>}
 
       {saveConflict && <section role="alert" className="rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-5">

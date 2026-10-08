@@ -147,6 +147,28 @@ function builderResponse(overrides?: Partial<BuilderResumeResponse>): BuilderRes
   }
 }
 
+function onePagePdf() {
+  const content = 'BT /F1 12 Tf 60 750 Td (Guided resume preview) Tj ET'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  pdf += offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
 async function mockBuilderPdf(page: Page, expectedSource: () => string) {
   const jobId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
   const requests = { compiled: 0, downloaded: 0 }
@@ -166,7 +188,7 @@ async function mockBuilderPdf(page: Page, expectedSource: () => string) {
   }))
   await page.route(`**/download/${jobId}`, async route => {
     requests.downloaded += 1
-    await route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.7\n%%EOF' })
+    await route.fulfill({ status: 200, contentType: 'application/pdf', body: onePagePdf() })
   })
   return requests
 }
@@ -406,6 +428,8 @@ test.describe('Guided Resume Builder', () => {
     await page.getByRole('button', { name: /^SVG / }).click()
     const exportError = page.getByRole('alert').filter({ hasText: 'renderer unavailable' })
     await expect(exportError).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__canvas')).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__textContent')).toContainText('Guided resume preview')
     const downloadPromise = page.waitForEvent('download')
     await exportError.getByRole('button', { name: 'Retry' }).click()
     const download = await downloadPromise
@@ -460,6 +484,7 @@ test.describe('Guided Resume Builder', () => {
     await page.getByRole('button', { name: /^Email me / }).click()
     const exportError = page.getByRole('alert').filter({ hasText: 'Email provider did not accept the PDF' })
     await expect(exportError).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__canvas')).toBeVisible()
     await exportError.getByRole('button', { name: 'Retry' }).click()
     await expect(page.getByText('PDF email accepted for your verified account email.')).toBeVisible()
     expect(attempts).toBe(2)

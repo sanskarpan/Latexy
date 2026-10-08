@@ -383,7 +383,7 @@ test('retains the prior PDF while busy and disables stale selections if the new 
   await appendText(page, ' edited content')
   await expect.poll(() => fixture.submitted.length).toBe(2)
   await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Compiling…', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Preparing…', exact: true })).toBeDisabled()
   await fixture.complete(2)
   await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()

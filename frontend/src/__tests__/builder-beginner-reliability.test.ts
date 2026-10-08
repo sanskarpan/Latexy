@@ -87,6 +87,13 @@ describe('beginner builder controls', () => {
     expect(CREATE).toContain('id="new-builder-resume-title"')
     expect(CREATE).toContain('creating || uploading || loading || authUnverified')
   })
+  it('renders the owned PDF with the existing browser canvas viewer instead of a native embed', () => {
+    expect(EDITOR).toContain("dynamic(() => import('@/components/PDFPreview')")
+    expect(EDITOR).toContain('ssr: false')
+    expect(EDITOR).toContain('<PDFPreview pdfUrl={pdfUrl}')
+    expect(EDITOR).toContain('data-testid="builder-pdf-preview"')
+    expect(EDITOR).not.toContain('<iframe')
+  })
 })
 
 describe('serialized builder persistence', () => {

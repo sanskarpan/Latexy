@@ -65,7 +65,9 @@ export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
       })
       assertCurrent()
       if (!submission.success || !submission.job_id) throw new Error('PDF generation could not be started. Please retry.')
-      const deadline = Date.now() + 180_000
+      // Paid compilation can use a four-minute server budget. Allow delivery
+      // time as well so the UI does not abandon a valid job before the worker.
+      const deadline = Date.now() + 300_000
       while (Date.now() < deadline) {
         assertCurrent()
         const state = await apiClient.getJobState(submission.job_id)
