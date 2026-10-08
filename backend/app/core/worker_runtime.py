@@ -9,6 +9,14 @@ from functools import lru_cache
 from importlib import import_module
 
 
+@lru_cache(maxsize=1)
+def prepare_worker_logging() -> None:
+    """Modal inputs do not pass through the API's logging startup."""
+    from .logging import setup_logging
+
+    setup_logging()
+
+
 @lru_cache(maxsize=2)
 def prepare_worker_runtime(semantic_enabled: bool = False) -> None:
     for module in (

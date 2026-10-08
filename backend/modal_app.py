@@ -294,9 +294,10 @@ _secrets = [
 # ---------------------------------------------------------------------------
 def _init_worker_redis() -> None:
     from app.core.config import settings
-    from app.core.worker_runtime import prepare_worker_runtime
+    from app.core.worker_runtime import prepare_worker_logging, prepare_worker_runtime
     from app.workers.event_publisher import initialize_worker_redis
 
+    prepare_worker_logging()
     # Run before .apply installs the task lifecycle/budget. Imports are memoized;
     # scoped clients and durable owner/epoch checks remain per invocation.
     prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)

@@ -143,7 +143,8 @@ test('managed review keeps provisional candidates separate and applies authorita
       branch: compiled ? 'draft' : 'candidate', owner_epoch: 1, compiler: 'pdflatex', settings_sha256: digest('settings'), pdf_sha256: createHash('sha256').update(pdf).digest('hex'),
       pdf_size: pdf.length, page_count: 1, preview_url: `/download/${jobId}/preview/${digest(jobId + source)}`, geometry_url: `/download/${jobId}/preview/${digest(jobId + source)}/geometry` }
   }
-  await page.route(/http:\/\/(localhost:8030|127\.0\.0\.1:8530)\//, route => route.fulfill({ json: {} }))
+  await page.route(/http:\/\/(localhost|127\.0\.0\.1):(8030|8530)\//, route => route.fulfill({ json: {} }))
+  await page.route('**/ws/ticket', route => route.fulfill({ json: { ticket: 'contract-ticket' } }))
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'engine-owner', email: 'engine-owner@example.com', name: 'Engine Owner' } } }))
   await page.route('**/macros', route => route.fulfill({ json: [] }))
   await page.route('**/resumes/engine/providers', route => route.fulfill({ json: {
