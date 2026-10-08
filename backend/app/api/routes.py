@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
 from ..core.telemetry_metadata import validate_metadata
@@ -1691,7 +1692,8 @@ async def _record_resume_view(
         try:
             from ..workers.email_worker import submit_share_viewed_email
 
-            submit_share_viewed_email(
+            await submit_async(
+                submit_share_viewed_email,
                 owner_user_id,
                 resume_id,
                 resume_title,

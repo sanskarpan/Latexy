@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -116,3 +118,48 @@ async def test_ambiguous_broker_failure_preserves_job_for_recovery():
     refund.assert_not_awaited()
     cleanup.assert_not_awaited()
     db.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_slow_cover_letter_broker_keeps_other_api_work_runnable():
+    db = AsyncMock()
+    db.add = MagicMock()
+    plan_result = MagicMock()
+    plan_result.scalar_one_or_none.return_value = "free"
+    db.execute.return_value = plan_result
+    resume = SimpleNamespace(latex_content="resume")
+    started = threading.Event()
+    released = threading.Event()
+    serviced_before_return = []
+
+    def slow_broker(**payload):
+        assert payload["resume_latex"] == "resume"
+        started.set()
+        serviced_before_return.append(released.wait(timeout=1))
+
+    async def other_request():
+        await asyncio.to_thread(started.wait, 2)
+        released.set()
+
+    with (
+        patch("app.api.cover_letter_routes._verify_resume_ownership", AsyncMock(return_value=resume)),
+        patch("app.api.cover_letter_routes.api_key_service.get_user_provider", AsyncMock(return_value=None)),
+        patch("app.api.cover_letter_routes.entitlement_service.enforce_quota", AsyncMock(return_value=MagicMock())),
+        patch("app.api.cover_letter_routes._write_initial_redis_state", AsyncMock()),
+        patch("app.api.cover_letter_routes._mark_dispatch_started", AsyncMock()),
+        patch("app.api.cover_letter_routes._mark_dispatch_accepted", AsyncMock()),
+        patch("app.api.cover_letter_routes.submit_cover_letter_generation", slow_broker),
+    ):
+        response, _ = await asyncio.gather(
+            generate_cover_letter(
+                GenerateCoverLetterRequest(
+                    resume_id="00000000-0000-0000-0000-000000000001",
+                    job_description="A sufficiently detailed job description",
+                ),
+                db=db,
+                user_id="00000000-0000-0000-0000-000000000002",
+            ),
+            other_request(),
+        )
+    assert response.success is True
+    assert serviced_before_return == [True]

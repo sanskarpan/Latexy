@@ -679,7 +679,7 @@ async def create_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for resume %s",
@@ -1086,7 +1086,7 @@ async def update_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for resume %s",
@@ -1441,7 +1441,7 @@ async def fork_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(variant.id), variant.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(variant.id), variant.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for variant %s",
