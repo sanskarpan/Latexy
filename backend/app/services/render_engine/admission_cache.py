@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from ...core.config import settings
@@ -82,7 +83,8 @@ async def has_exact_render_cache(redis_client: Any, kwargs: dict[str, Any]) -> b
         return False
     try:
         manifest = parse_manifest(raw)
-        return (manifest.owner_scope_sha256 == sha256(request["owner_scope"])
+        return (manifest.expires_at > int(time.time())
+                and manifest.owner_scope_sha256 == sha256(request["owner_scope"])
                 and manifest.render_source_sha256 == sha256(request["render_source"])
                 and manifest.settings_sha256 == sha256(canonical_json(request["settings"]))
                 and manifest.compiler == request["compiler"]

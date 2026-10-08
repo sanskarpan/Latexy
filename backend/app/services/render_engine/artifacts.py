@@ -252,7 +252,8 @@ def persist_render(
         try:
             from .geometry import extract_geometry
 
-            projected = extract_geometry(job_dir / "resume.pdf", document, pdf_sha256=pdf.sha256, branch=request.get("branch", "draft"))
+            with engine_span("geometry_inspection"):
+                projected = extract_geometry(job_dir / "resume.pdf", document, pdf_sha256=pdf.sha256, branch=request.get("branch", "draft"))
             if projected is not None:
                 data = canonical_json(projected)
                 if len(data) <= MAX_GEOMETRY_BYTES:
@@ -270,7 +271,8 @@ def persist_render(
 def restore_render(redis_client: Any, job_id: str, request: dict[str, Any], raw: str | bytes) -> tuple[RenderManifest, bytes] | None:
     """Reuse checked bytes, bind a fresh capability, and discard stale geometry."""
     old = parse_manifest(raw)
-    if (old.owner_scope_sha256 != sha256(request["owner_scope"])
+    if (old.expires_at <= int(time.time())
+            or old.owner_scope_sha256 != sha256(request["owner_scope"])
             or old.render_source_sha256 != sha256(request["render_source"])
             or old.settings_sha256 != sha256(canonical_json(request["settings"]))
             or old.compiler != request["compiler"]
@@ -299,8 +301,9 @@ def restore_render(redis_client: Any, job_id: str, request: dict[str, Any], raw:
             with tempfile.TemporaryDirectory(prefix="latexy-cache-geometry-") as directory:
                 pdf_file = Path(directory) / "resume.pdf"
                 pdf_file.write_bytes(data)
-                projected = extract_geometry(pdf_file, document, pdf_sha256=old.pdf.sha256,
-                    branch=request.get("branch", "draft"))
+                with engine_span("geometry_inspection"):
+                    projected = extract_geometry(pdf_file, document, pdf_sha256=old.pdf.sha256,
+                        branch=request.get("branch", "draft"))
                 if projected is not None:
                     encoded = canonical_json(projected)
                     if len(encoded) <= MAX_GEOMETRY_BYTES:

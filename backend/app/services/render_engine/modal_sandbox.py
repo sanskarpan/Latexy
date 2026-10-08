@@ -314,7 +314,10 @@ class ModalEngineProcess:
                 # and every local target have passed validation.
                 for target, data in artifacts:
                     target.write_bytes(data)
-                self._stdout_data = records["engine.stdout"]
+                # Retaining a view of this small log would retain the entire
+                # (up to 32.75 MiB) PDF/SyncTeX frame until process collection.
+                stdout = records["engine.stdout"]
+                self._stdout_data = bytes(stdout) if stdout is not None else None
                 self._copied = True
         return code
 
@@ -391,16 +394,31 @@ def create_modal_engine(
                 or session.image_id != image_id or session.assets != expected_assets
                 or time.monotonic() >= session.deadline):
             raise ModalEngineUnavailable("Renderer session identity or deadline changed")
-        for name, data in inputs:
-            session.sandbox.filesystem.write_bytes(data, _REMOTE + "/" + name)
-        remote_arguments = [(_REMOTE if arg == str(root) else _REMOTE + "/" + Path(arg).name
-                             if Path(arg).is_absolute() and Path(arg).parent == root else arg)
-                            for arg in arguments]
-        process = session.sandbox.exec(
-            "python3", _BOOTSTRAP + "/sandbox_io_bridge.py", _REMOTE, compiler,
-            *(["--credential-free-vm"] if policy == "credential_free_vm" else []), *remote_arguments,
-            timeout=max(1, math.ceil(min(timeout, session.deadline - time.monotonic()))),
-            workdir=_REMOTE, text=False, secrets=[])
+        def remaining_budget():
+            remaining = session.deadline - time.monotonic()
+            if session.closed or remaining <= 0:
+                raise ModalEngineUnavailable("Renderer session upload deadline exceeded")
+            return remaining
+
+        try:
+            for name, data in inputs:
+                remaining_budget()
+                # Restore every input: untrusted TeX may have changed the remote
+                # workspace, even when its local bytes have not changed.
+                session.sandbox.filesystem.write_bytes(data, _REMOTE + "/" + name)
+            remote_arguments = [(_REMOTE if arg == str(root) else _REMOTE + "/" + Path(arg).name
+                                 if Path(arg).is_absolute() and Path(arg).parent == root else arg)
+                                for arg in arguments]
+            remaining = remaining_budget()
+            process = session.sandbox.exec(
+                "python3", _BOOTSTRAP + "/sandbox_io_bridge.py", _REMOTE, compiler,
+                *(["--credential-free-vm"] if policy == "credential_free_vm" else []), *remote_arguments,
+                timeout=max(1, math.ceil(min(timeout, remaining))),
+                workdir=_REMOTE, text=False, secrets=[])
+            remaining_budget()
+        except BaseException:
+            session.close()
+            raise
         result = ModalEngineProcess(session.sandbox, process, root, basename)
         result.renderer_session = session
         result._deadline_timer = session.timer

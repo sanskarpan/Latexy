@@ -169,12 +169,15 @@ def extract_geometry(pdf_file: Path, document: dict[str, Any], *, pdf_sha256: st
         pdf_file = Path(directory) / "document.pdf"
         pdf_file.write_bytes(pdf)
         deadline = time.monotonic() + 6
-        information = _capture(["pdfinfo", str(pdf_file)], 64 * 1024, deadline).decode("utf-8", errors="replace")
+        # Poppler clamps a last-page request beyond the end of the document.
+        # One bounded probe supplies both total count and every allowed page's
+        # rotation; documents over the page cap still fail before text parsing.
+        information = _capture(["pdfinfo", "-f", "1", "-l", "1000", str(pdf_file)],
+                               256 * 1024, deadline).decode("utf-8", errors="replace")
         count_match = re.search(r"^Pages:\s*(\d+)", information, re.MULTILINE)
         if not count_match or not 0 < int(count_match[1]) <= 1000:
             return None
         page_count = int(count_match[1])
-        information = _capture(["pdfinfo", "-f", "1", "-l", str(page_count), str(pdf_file)], 256 * 1024, deadline).decode("utf-8", errors="replace")
         rotations = re.findall(r"(?:Page(?:\s+\d+)?\s+rot|Page rot):\s*(-?\d+)", information)
         # Rotated documents require an engine-specific verified coordinate adapter.
         if len(rotations) != page_count or any(int(rotation) % 360 for rotation in rotations):

@@ -242,6 +242,17 @@ def test_batch_missing_pdf_is_not_an_export_error(tmp_path):
     assert not (tmp_path / "resume.pdf").exists()
 
 
+def test_batch_export_keeps_only_small_stdout_after_materializing_large_artifacts(tmp_path):
+    sandbox = _ExportSandbox(_batch_payload({".pdf": b"p" * (1024 * 1024), "engine.stdout": b"log"}))
+    process = _adapter_process(tmp_path, sandbox)
+    assert process.wait() == 0
+    # Keeping this as a memoryview would retain the entire aggregate frame,
+    # including the PDF/SyncTeX, throughout subsequent worker bookkeeping.
+    assert type(process._stdout_data) is bytes
+    assert process._stdout_data == b"log"
+    assert process.stdout.read(32) == b"log"
+
+
 @pytest.mark.parametrize(
     "corruption",
     ["magic", "truncated-header", "wrong-count", "wrong-index", "invalid-status",
@@ -491,5 +502,53 @@ def test_one_session_reuses_vm_for_bibliography_and_preserves_deadline(tmp_path)
         with pytest.raises(ModalEngineUnavailable, match="identity"):
             create_modal_engine(workspace=tmp_path, compiler="bibtex", arguments=["resume"], timeout=1,
                                 sdk=sdk, enabled=True, image_id="im-different", session=first.renderer_session)
+    finally:
+        first.close()
+
+
+@pytest.mark.parametrize("expire", ["deadline", "closed"])
+def test_session_upload_expiry_never_starts_another_engine(tmp_path, expire):
+    sandbox = FakeSandbox()
+    sdk, _ = fake_sdk(sandbox)
+    first = request(tmp_path, sdk)
+    session = first.renderer_session
+    calls_before = len(sandbox.calls)
+
+    def upload_and_expire(data, path):
+        sandbox.upload(data, path)
+        if expire == "deadline":
+            session.deadline = time.monotonic() - 1
+        else:
+            session.close()
+
+    sandbox.filesystem.write_bytes = upload_and_expire
+    try:
+        with pytest.raises(ModalEngineUnavailable, match="deadline"):
+            create_modal_engine(workspace=tmp_path, compiler="lualatex", arguments=["resume.tex"],
+                                timeout=1, sdk=sdk, enabled=True, image_id="im-cachedPureTeX",
+                                session=session)
+        assert len(sandbox.calls) == calls_before
+        assert session.closed and sandbox.terminated
+    finally:
+        first.close()
+
+
+def test_session_upload_failure_closes_vm(tmp_path):
+    sandbox = FakeSandbox()
+    sdk, _ = fake_sdk(sandbox)
+    first = request(tmp_path, sdk)
+    calls_before = len(sandbox.calls)
+
+    def failed_upload(data, path):
+        raise OSError("synthetic upload failure")
+
+    sandbox.filesystem.write_bytes = failed_upload
+    try:
+        with pytest.raises(OSError, match="synthetic upload"):
+            create_modal_engine(workspace=tmp_path, compiler="lualatex", arguments=["resume.tex"],
+                                timeout=1, sdk=sdk, enabled=True, image_id="im-cachedPureTeX",
+                                session=first.renderer_session)
+        assert len(sandbox.calls) == calls_before
+        assert first.renderer_session.closed and sandbox.terminated
     finally:
         first.close()

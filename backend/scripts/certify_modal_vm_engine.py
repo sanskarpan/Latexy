@@ -4,6 +4,7 @@ One VM, 300-second hard TTL, 2 CPU/2 GiB ceiling. No image build, secrets,
 volumes, networking or OIDC. Only booleans and fabricated probe text printed.
 """
 
+import argparse
 import json
 import os
 import re
@@ -100,14 +101,26 @@ def verify_fixture(
     return unicodedata.normalize("NFKC", expected_text) in extracted
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image-id", help="Intended immutable Modal image; requires --expected-assets")
+    parser.add_argument("--expected-assets", help="Independently configured 64-character renderer asset SHA-256")
+    options = parser.parse_args(argv or [])
+    if bool(options.image_id) != bool(options.expected_assets):
+        parser.error("--image-id and --expected-assets must be supplied together")
+    if options.image_id and not re.fullmatch(r"im-[A-Za-z0-9]{1,128}", options.image_id):
+        parser.error("--image-id must be an immutable Modal image ID")
+    if options.expected_assets and not re.fullmatch(r"[0-9a-f]{64}", options.expected_assets):
+        parser.error("--expected-assets must be a lowercase SHA-256 fingerprint")
     pdftotext_bin = shutil.which("pdftotext")
     if not pdftotext_bin:
         raise RuntimeError("pdftotext (Poppler) is required in the operator environment before VM certification")
 
     import modal
 
-    image_id = "im-1fho7eMXjj9Z60ziS7Kf6J"
+    # Without operator pins this remains the historical diagnostic image probe.
+    # Finding a marker is not comparison against the intended production assets.
+    image_id = options.image_id or "im-1fho7eMXjj9Z60ziS7Kf6J"
     sandbox = None
     with tempfile.TemporaryDirectory(prefix="latexy-vm-proof-") as directory:
         workspace = Path(directory)
@@ -128,7 +141,7 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
             with app.run():
                 process = create_modal_engine(workspace=workspace, compiler="lualatex", arguments=arguments,
                                               timeout=300, sdk=modal, app=app, enabled=True, image_id=image_id,
-                                              policy="credential_free_vm")
+                                              policy="credential_free_vm", expected_assets=options.expected_assets)
                 sandbox = process.sandbox
                 marker = sandbox.exec(
                     "python3", "-c",
@@ -141,7 +154,11 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                 print(json.dumps({"image_id": image_id,
                                   "assets_fingerprint": assets if asset_fingerprint_discovered else None,
                                   "asset_fingerprint_discovered": asset_fingerprint_discovered,
-                                  "asset_identity_comparison": "not_configured"}))
+                                  "asset_identity_comparison": (
+                                      "matched" if options.expected_assets and assets == options.expected_assets
+                                      else "mismatched" if options.expected_assets else "not_configured")}))
+                if options.expected_assets and (not asset_fingerprint_discovered or assets != options.expected_assets):
+                    raise RuntimeError("VM immutable renderer asset identity differs from the configured pin")
                 code = process.wait(timeout=90)
                 output = b""
                 while chunk := process.stdout.read(8192):
@@ -194,10 +211,13 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                         raise RuntimeError("VM multilingual proof failed")
                 if not asset_fingerprint_discovered:
                     raise RuntimeError("VM fixtures passed but immutable renderer asset identity is unavailable")
+                print(json.dumps({"fixtures_passed": True,
+                                  "intended_image_and_assets_verified": bool(options.expected_assets),
+                                  "default_resume_flow_certified": False}))
         finally:
             if sandbox is not None:
                 sandbox.terminate(wait=False)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

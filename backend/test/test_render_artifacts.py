@@ -1,7 +1,7 @@
 """Manifest tenant/capability/integrity and conservative geometry boundaries."""
 import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -85,6 +85,50 @@ def test_restore_binds_current_job_and_drops_other_revision_geometry(storage, ow
     assert artifacts.restore_render(owned[0], "job", request(owner_scope="user:other"), artifacts.canonical_json(old.model_dump())) is None
 
 
+def _expired_manifest_payload(value):
+    fields = value.model_dump()
+    # A guest object capability expires after one day, even if its Redis cache
+    # pointer remains present for the longer cache TTL.
+    now = int(artifacts.time.time())
+    fields.update(created_at=now - 86401, expires_at=now - 1)
+    fields["artifact_id"] = artifacts.sha256(artifacts.canonical_json({
+        key: item for key, item in fields.items() if key != "artifact_id"
+    }))
+    return artifacts.canonical_json(fields)
+
+
+@pytest.fixture
+def guest_cache_manifest(storage, owned):
+    guest_request = request(owner_scope="device:guest")
+    pdf = artifacts._put(artifacts.sha256(guest_request["owner_scope"]), "pdf", b"%PDF-checked", "application/pdf")
+    value = artifacts.bind_manifest(owned[0], "job", guest_request, pdf, page_count=1)
+    assert value.owner_scope_kind == "device"
+    return value, guest_request
+
+
+async def test_expired_cache_pointer_cannot_select_cache_only_dispatch(guest_cache_manifest, monkeypatch):
+    from app.services.render_engine import admission_cache
+
+    value, guest_request = guest_cache_manifest
+    raw = _expired_manifest_payload(value)
+    # Exercise the real closed manifest decoder, not a mocked expiry result.
+    assert artifacts.parse_manifest(raw).expires_at < int(artifacts.time.time())
+    monkeypatch.setattr(admission_cache, "prepare_direct_request", lambda _kwargs: ("cache", guest_request))
+    redis = AsyncMock()
+    redis.get.return_value = raw
+    assert not await admission_cache.has_exact_render_cache(redis, {})
+
+
+def test_expired_restore_refuses_storage_access_after_retention_cleanup(storage, owned, guest_cache_manifest, monkeypatch):
+    value, guest_request = guest_cache_manifest
+    raw = _expired_manifest_payload(value)
+    storage.clear()  # GC already removed the unreferenced PDF.
+    downloader = MagicMock(side_effect=AssertionError("Expired object must not be requested"))
+    monkeypatch.setattr(artifacts, "download_object", downloader)
+    assert artifacts.restore_render(owned[0], "job", guest_request, raw) is None
+    downloader.assert_not_called()
+
+
 def test_cancelled_fence_publishes_no_artifact(storage, owned, monkeypatch):
     monkeypatch.setattr(job_lifecycle, "write_owned_artifacts", lambda *args: False)
     assert manifest(storage, owned) is None
@@ -157,10 +201,60 @@ def test_all_page_rotations_are_checked(monkeypatch, tmp_path):
     calls = []
     def capture(args, limit, deadline):
         calls.append(args)
-        return b"Pages: 2\nPage rot: 0\n" if len(calls) == 1 else b"Page 1 rot: 0\nPage 2 rot: 90\n"
+        return b"Pages: 2\nPage 1 rot: 0\nPage 2 rot: 90\n"
     monkeypatch.setattr(geometry, "_capture", capture)
     assert geometry.extract_geometry(pdf, doc("Hello"), pdf_sha256=hashlib.sha256(pdf.read_bytes()).hexdigest(), branch="draft") is None
-    assert calls[1][1:5] == ["-f", "1", "-l", "2"]
+    assert len(calls) == 1
+    assert calls[0][1:5] == ["-f", "1", "-l", "1000"]
+
+
+def _blank_geometry_pdf(page_count, rotated_page):
+    """Fabricated valid PDF; test actual Poppler page-range clamping."""
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               ("<< /Type /Pages /Count " + str(page_count) + " /Kids [" +
+                " ".join(f"{page + 3} 0 R" for page in range(1, page_count + 1)) + "] >>").encode(),
+               b"<< /Length 0 >>\nstream\n\nendstream"]
+    for page in range(1, page_count + 1):
+        objects.append(("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 600] /Contents 3 0 R /Rotate " +
+                        ("90" if page == rotated_page else "0") + " >>").encode())
+    data = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for number, content in enumerate(objects, start=1):
+        offsets.append(len(data))
+        data.extend(f"{number} 0 obj\n".encode() + content + b"\nendobj\n")
+    xref = len(data)
+    data.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode())
+    for offset in offsets[1:]:
+        data.extend(f"{offset:010d} 00000 n \n".encode())
+    data.extend(f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    return bytes(data)
+
+
+@pytest.mark.parametrize("page_count,rotated_page,accepted", [
+    (1, None, True), (2, None, True), (2, 2, False), (1000, None, True), (1001, None, False),
+])
+def test_actual_poppler_geometry_range_and_rotation_guard(tmp_path, monkeypatch, page_count, rotated_page, accepted):
+    if not all(geometry.shutil.which(tool) for tool in ("pdfinfo", "pdftotext")):
+        pytest.skip("Actual Poppler is required")
+    pdf = _blank_geometry_pdf(page_count, rotated_page)
+    path = tmp_path / "range.pdf"
+    path.write_bytes(pdf)
+    calls = []
+    original_capture = geometry._capture
+
+    def capture(arguments, limit, deadline):
+        calls.append(arguments)
+        return original_capture(arguments, limit, deadline)
+
+    monkeypatch.setattr(geometry, "_capture", capture)
+    document = {"nodes": [], "source_sha256": "0" * 64}
+    result = geometry.extract_geometry(path, document, pdf_sha256=artifacts.sha256(pdf), branch="draft")
+    assert (result is not None) is accepted
+    assert calls[0][1:5] == ["-f", "1", "-l", "1000"]
+    assert len(calls) == (2 if accepted else 1)
+    if accepted:
+        assert len(result["pages"]) == page_count
+        assert all(page["rotation"] == 0 for page in result["pages"])
 
 
 @pytest.mark.parametrize("script,limit,budget", [

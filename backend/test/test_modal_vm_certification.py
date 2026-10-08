@@ -162,6 +162,7 @@ def _install_fake_operator_environment(monkeypatch, tmp_path, *, missing_pdf=Non
     monkeypatch.setattr(certification, "ModalEngineProcess", RecordingModalEngineProcess)
 
     def create_engine(*, workspace, **_kwargs):
+        sandbox.creation_options = _kwargs
         sandbox.files.update(
             {
                 "/workspace/resume.pdf": b"%PDF-synthetic-resume",
@@ -268,6 +269,40 @@ def test_main_requires_pdftotext_before_constructing_modal_app(monkeypatch):
 
     with pytest.raises(RuntimeError, match=r"pdftotext \(Poppler\) is required"):
         certification.main()
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--image-id", "im-intended"],
+    ["--expected-assets", "a" * 64],
+    ["--image-id", "mutable-image-tag", "--expected-assets", "a" * 64],
+    ["--image-id", "im-intended", "--expected-assets", "not-a-fingerprint"],
+])
+def test_invalid_operator_pins_fail_before_cloud_setup(monkeypatch, arguments):
+    monkeypatch.setattr(certification.shutil, "which", lambda _name: pytest.fail("Tool discovery must follow pin validation"))
+    with pytest.raises(SystemExit) as error:
+        certification.main(arguments)
+    assert error.value.code == 2
+
+
+def test_configured_pin_reaches_preupload_adapter_check(monkeypatch, tmp_path, capsys):
+    sandbox, _, _ = _install_fake_operator_environment(monkeypatch, tmp_path)
+    certification.main(["--image-id", "im-intended", "--expected-assets", "a" * 64])
+    assert sandbox.creation_options["image_id"] == "im-intended"
+    assert sandbox.creation_options["expected_assets"] == "a" * 64
+    output = capsys.readouterr().out
+    assert '"asset_identity_comparison": "matched"' in output
+    assert '"intended_image_and_assets_verified": true' in output
+    assert '"default_resume_flow_certified": false' in output
+    assert sandbox.terminated
+
+
+def test_configured_pin_mismatch_never_certifies_fixture_results(monkeypatch, tmp_path):
+    sandbox, _, poppler_calls = _install_fake_operator_environment(monkeypatch, tmp_path)
+    with pytest.raises(RuntimeError, match="differs from the configured pin"):
+        certification.main(["--image-id", "im-intended", "--expected-assets", "b" * 64])
+    assert poppler_calls == []
+    assert sandbox.compile_calls == []
+    assert sandbox.terminated
 
 
 def test_verify_fixture_rejects_nonzero_pdftotext_exit(monkeypatch, tmp_path):

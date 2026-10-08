@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 PHASES = frozenset({
     "admission", "dispatch_wait", "dispatch_call", "worker_initialization",
     "queue_wait", "source_prepare", "cache_lookup", "tex_process", "output_drain",
-    "event_publication", "artifact_storage", "artifact_download", "finalization",
+    "event_publication", "artifact_storage", "artifact_download", "geometry_inspection", "finalization",
     "model_planning", "model_call", "patch_validation", "quality_review",
 })
 OUTCOMES = frozenset({"success", "error", "cancelled", "cache_hit", "cache_miss"})
