@@ -542,6 +542,26 @@ def test_production_compose_requires_an_immutable_image_revision():
     assert env_example["LATEXY_VERSION"] == ""
 
 
+def test_frontend_development_image_uses_the_root_frozen_workspace_lockfile():
+    dockerfile = _read("frontend/Dockerfile.dev")
+    dockerignore = _read("frontend/Dockerfile.dev.dockerignore")
+    compose = _read("docker-compose.yml")
+
+    assert "pnpm@10.10.0" in dockerfile
+    assert "COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./" in dockerfile
+    assert "COPY patches ./patches" in dockerfile
+    assert "pnpm install --frozen-lockfile" in dockerfile
+    assert "--no-frozen-lockfile" not in dockerfile
+    assert "pnpm --filter ./frontend deploy --legacy /dev-runtime" in dockerfile
+    assert "COPY --from=dependencies /dev-runtime/node_modules ./node_modules" in dockerfile
+    assert "  frontend:\n    build:\n      context: .\n      dockerfile: frontend/Dockerfile.dev" in compose
+    # The root context is an allowlist; local env and source fixtures never enter it.
+    assert dockerignore.splitlines()[1] == "**"
+    assert "!pnpm-lock.yaml" in dockerignore
+    assert "!frontend/package.json" in dockerignore
+    assert not any(line.startswith("!") and ".env" in line for line in dockerignore.splitlines())
+
+
 def test_frontend_production_image_uses_the_root_frozen_workspace_lockfile():
     """The image must resolve the same monorepo dependency graph as CI."""
     dockerfile = _read("frontend/Dockerfile.prod")

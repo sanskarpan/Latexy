@@ -231,8 +231,8 @@ services:
   # ── Next.js Frontend ─────────────────────────────────────────────────────────
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: frontend/Dockerfile.dev
     container_name: latexy-frontend-${SLOT:-1}
     restart: unless-stopped
     ports:

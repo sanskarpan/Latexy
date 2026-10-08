@@ -18,8 +18,8 @@ state remain in ignored local files.
 - The adapter now constructs its network origin from official test/live URL
   literals, permits only supported methods and resource paths, and refuses
   redirects. It has a total request deadline in addition to HTTPX I/O timeouts.
-  Fresh CodeQL results are required before declaring the previous SSRF finding
-  cleared.
+  CodeQL at `64f0017863130ccf50fe9cc4638f7dfa33ebfde4` passed with zero annotations;
+  Python, JavaScript/TypeScript, Actions analysis and GitGuardian also passed.
 - Authenticated, bodyless `POST /subscription/reconcile` resolves only the
   owner's stored current checkout. Provider checkout, payment, and subscription
   IDs, customer, metadata, product, quantity, tax basis, currency, quote and paid
@@ -117,12 +117,47 @@ current full-refund outcome.
 - Current frozen-lock frontend validation passed: **178 files / 1105 tests**,
   TypeScript, and full ESLint. Host `node_modules` was stale and lacked the
   newly locked test-only selector parser; that host run is not the final result.
-- Recovery/refund/correctness checks passed, including later real-shape null
-  cart regressions. A final combined payment suite, broader backend run and
-  current-source production build are still being recorded.
-- The dev frontend returned HTTP 500 after the Team checkout redirect and its
-  login route was slow to compile. Runtime diagnosis is in progress; this is not
-  yet a completed local UI acceptance result.
+- The final isolated payment suite passed **152 checks**: provider adapter,
+  recovery, refund ledger, billing correctness, downgrade guards and legacy
+  migration bridge. This includes the real recurring null-cart regression and
+  corrected deterministic total-deadline fixture.
+- The current-source optimized production build passed, including **44 pages**,
+  types/lint and the build artifact validator.
+- The broad backend run recorded **4395 passed, 13 failed, 4 skipped**. It began
+  before the final provider timeout fixture was corrected. Remaining failures
+  include missing QA `jq`, cold font caches/subprocess deadlines, a bare-host
+  topology fixture inheriting Docker's real marker, and a PDF label wrapping
+  across lines. Corrected fixtures and a Linux source snapshot are being checked;
+  the initial broad result is not a clean whole-suite acceptance.
+- A paid Team account submitted a real `pdflatex` worker job, retrieved the
+  completed result and downloaded its stored **15106-byte PDF**. Job:
+  `3b764ab0-bd64-491b-8be5-e27907948b41`.
+- The dev frontend returned HTTP 500 after checkout. Clearing its backed-up
+  Next cache exposed dependency drift: the standalone dev image installed
+  Better Auth 1.7.7, while the root lock pins 1.6.25 and the source requires its
+  OAuth client export. The dev Dockerfile now installs from the frozen root
+  lock and deploys portable dependencies. The rebuilt `latexy-local-frontend`
+  image reports Better Auth **1.6.25**. `/login` returns HTTP 200, normal login
+  succeeds for the owned Team QA account, and hydrated `/billing` shows Team,
+  unlimited quotas, 365-day history and cancellation scheduled through
+  8 November 2026. Returning to `?checkout=return` retains that verified state.
+- Final fixture/manifest/RTL/regex validation passed **128 checks**; the two
+  isolated startup checks passed separately. Import profiling measured about
+  10.7 seconds before the reference parser became available, exceeding the old
+  regex test's eight-second whole-process timer. The test now has a bounded
+  60-second import phase and retains an independent eight-second regex deadline.
+  Startup isolation probes have a bounded 60-second allowance with unchanged
+  assertions. PDF label whitespace and Unicode-equivalent Arabic presentation
+  forms are normalized for content comparisons; no content assertion is removed.
+- The CJK matrix now tries deployment Noto fonts before macOS fallbacks, exposing
+  the four cases previously skipped in Linux. A Japanese cold compile completed
+  in **79.9 seconds**. After warming Japanese, CJK/multilingual validation recorded
+  **30 passed, 3 failed**: Simplified Chinese, Traditional Chinese and Korean
+  exceeded the unchanged 45-second compile limit in this development QA image.
+  This remains a language cache/performance gate; it is not a clean full-backend
+  pass and has not been hidden with skipped cases or longer compile deadlines.
+
+![Authenticated Team sandbox billing](billing-team-verified-20261008.jpg)
 
 ## Remaining release conditions
 
@@ -132,8 +167,10 @@ current full-refund outcome.
    relaxation was introduced.
 2. Observe the accepted full refund reach terminal state and its genuine signed
    delivery, then verify ledger/access and duplicate delivery behavior.
-3. Complete current-source runtime/build/backend acceptance and fresh GitHub
-   security checks.
+3. Complete cold/warm language cache and performance acceptance for Chinese and
+   Korean, then repeat the whole backend suite. The normal local payment UI,
+   worker PDF smoke and production build are verified. Security checks must
+   remain green for the final PR head.
 4. Keep Student pending until the user provides an authorized academic mailbox.
    Reconcile legacy live Razorpay mandates before any production cutover.
 
