@@ -1,5 +1,9 @@
 'use client'
 
+import CapabilityGate from '@/components/CapabilityGate'
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -300,6 +304,7 @@ function BuilderResumeForm({
   session: BuilderSession
   authUnverified: boolean
 }) {
+  const { can } = useEntitlements()
   const ownerId = session.user.id
 
   const [loading, setLoading] = useState(true)
@@ -316,6 +321,9 @@ function BuilderResumeForm({
   const structuredRef = useRef(structured)
   structuredRef.current = structured
   const [templateFamily, setTemplateFamily] = useState('minimal')
+  useCapabilityDraftRecovery(ownerId, `latexy-builder-${resumeId}-draft.json`, dirty, {
+    format: 'latexy-builder-draft', version: 1, resume_id: resumeId, title, template_id: selectedTemplateId, template_family: templateFamily, structured_content: structured,
+  })
   const [builderStatus, setBuilderStatus] = useState<'active' | 'detached'>('active')
   const [activeSection, setActiveSection] = useState<SectionKey>('summary')
   const initialLoad = useRef(true)
@@ -325,7 +333,7 @@ function BuilderResumeForm({
   const sectionRefs = useRef<Partial<Record<SectionKey, HTMLElement | null>>>({})
   const mountedRef = useRef(false)
   const authVerifiedRef = useRef(!authUnverified)
-  authVerifiedRef.current = !authUnverified
+  authVerifiedRef.current = !authUnverified && can('b08')
 
   useEffect(() => {
     mountedRef.current = true
@@ -419,7 +427,7 @@ function BuilderResumeForm({
       initialLoad.current = false
       return
     }
-    if (authUnverified) return
+    if (authUnverified || !can('b08')) return
     if (!dirty || builderStatus === 'detached') return
     if (!title.trim() || title.length > 255) {
       setSaveError(!title.trim() ? 'A resume title is required' : 'Resume titles must be 255 characters or fewer')
@@ -451,7 +459,7 @@ function BuilderResumeForm({
       }
     }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
+  }, [can, authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
@@ -603,11 +611,11 @@ function BuilderResumeForm({
         </div>
         <div className="flex items-center gap-3">
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
-          <Link href={`/workspace/${resumeId}/edit`} onClick={event => {
+          <CapabilityGate feature="b09"><Link href={`/workspace/${resumeId}/edit`} onClick={event => {
             if (dirty && !window.confirm('Changes have not been saved. Open the advanced editor anyway?')) event.preventDefault()
           }} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Open Advanced Editor
-          </Link>
+          </Link></CapabilityGate>
           {saveError ? (
             <button type="button" aria-live="polite" onClick={() => setSaveAttempt(value => value + 1)} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
               Save failed · Retry

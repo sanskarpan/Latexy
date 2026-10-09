@@ -1,0 +1,1947 @@
+[
+  {
+    "key": "a01",
+    "inventory_id": "A01",
+    "label": "Public site and help",
+    "category": "core",
+    "description": "Landing, platform, pricing, FAQ, resources, updates, privacy, terms, accessibility statement.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Public information, legal documents and accessibility help remain reachable.",
+    "source_paths": [
+      "frontend/src/app/page.tsx",
+      "frontend/src/app/platform/page.tsx",
+      "frontend/src/app/faq/page.tsx",
+      "frontend/src/app/resources/page.tsx",
+      "frontend/src/app/updates/page.tsx",
+      "frontend/src/app/accessibility/page.tsx"
+    ]
+  },
+  {
+    "key": "a02",
+    "inventory_id": "A02",
+    "label": "Email/password accounts",
+    "category": "core",
+    "description": "Sign up, sign in, sign out, session recovery, verification/resend, forgot/reset password.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Authentication, account verification and recovery are security baselines.",
+    "source_paths": [
+      "frontend/src/lib/auth.ts",
+      "frontend/src/app/signup/page.tsx",
+      "frontend/src/app/login/page.tsx",
+      "frontend/src/app/verify-email/page.tsx",
+      "frontend/src/app/forgot-password/page.tsx",
+      "frontend/src/app/reset-password/page.tsx"
+    ]
+  },
+  {
+    "key": "a03",
+    "inventory_id": "A03",
+    "label": "OAuth and institutional SSO",
+    "category": "core",
+    "description": "Configured social providers plus optional generic institutional OIDC; runtime provider discovery.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Existing authentication and institutional access must remain recoverable.",
+    "source_paths": [
+      "frontend/src/lib/auth.ts",
+      "frontend/src/lib/social-provider-config.ts",
+      "frontend/src/lib/oidc-config.ts",
+      "frontend/src/app/login/page.tsx"
+    ]
+  },
+  {
+    "key": "a04",
+    "inventory_id": "A04",
+    "label": "Two-factor authentication",
+    "category": "core",
+    "description": "TOTP setup and verify, one-time backup-code display/download, authenticator/backup challenge, disable.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Multi-factor protection and recovery must never become optional entitlements.",
+    "source_paths": [
+      "frontend/src/components/auth/SecuritySettings.tsx",
+      "frontend/src/app/two-factor/page.tsx",
+      "frontend/src/lib/passkey-two-factor.ts"
+    ]
+  },
+  {
+    "key": "a05",
+    "inventory_id": "A05",
+    "label": "Passkeys",
+    "category": "core",
+    "description": "Browser-supported passkey sign-in; register/name/list/remove passkeys with recent-session restrictions.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Passkey authentication and recovery must remain available.",
+    "source_paths": [
+      "frontend/src/components/auth/SecuritySettings.tsx",
+      "frontend/src/lib/auth.ts"
+    ]
+  },
+  {
+    "key": "a06",
+    "inventory_id": "A06",
+    "label": "Onboarding tour and replay",
+    "category": "core",
+    "description": "Workspace first-use tour, skip/replay/completion preferences.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/onboarding/OnboardingFlow.tsx",
+      "frontend/src/app/workspace/page.tsx",
+      "frontend/src/app/settings/page.tsx"
+    ]
+  },
+  {
+    "key": "a07",
+    "inventory_id": "A07",
+    "label": "Theme, contrast and UI localisation",
+    "category": "core",
+    "description": "Light/dark theme; high contrast; UI locale choices en/hi/mr/te/pa/bn, persisted preferences.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Accessibility, contrast, language and user preferences remain available.",
+    "source_paths": [
+      "frontend/src/lib/i18n.ts",
+      "frontend/src/components/LocaleSwitcher.tsx",
+      "frontend/src/components/theme/ModeToggle.tsx",
+      "frontend/src/components/theme/ContrastToggle.tsx",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "a08",
+    "inventory_id": "A08",
+    "label": "Notification preferences",
+    "category": "core",
+    "description": "Per-trigger email preferences; browser permission request and in-app push preference.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Users must retain notification consent and opt-out controls.",
+    "source_paths": [
+      "frontend/src/app/settings/page.tsx",
+      "backend/app/api/settings_routes.py",
+      "frontend/src/hooks/usePushNotifications.ts"
+    ]
+  },
+  {
+    "key": "a09",
+    "inventory_id": "A09",
+    "label": "Anonymous Resume Studio",
+    "category": "core",
+    "description": "Try editor without signup; sample/source input, compile/optimize/ATS and export paths; trial status/usage and sign-in handoff.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/try/page.tsx",
+      "backend/app/api/routes.py",
+      "backend/app/api/job_routes.py"
+    ]
+  },
+  {
+    "key": "b01",
+    "inventory_id": "B01",
+    "label": "Resume library and CRUD",
+    "category": "editor",
+    "description": "Create/read/update/delete owned resumes; grid/table, pagination, search, sort, count/stats, recent job details.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Users retain access to their source, core editing, deletion and data ownership.",
+    "source_paths": [
+      "frontend/src/app/workspace/page.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "b02",
+    "inventory_id": "B02",
+    "label": "Organisation",
+    "category": "editor",
+    "description": "Tags, pin/unpin, archive/unarchive, freshness indicators and freshness sorting.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/page.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "b03",
+    "inventory_id": "B03",
+    "label": "Cross-document search",
+    "category": "editor",
+    "description": "Project-wide resume text search and navigation to matching document/line.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ProjectSearchModal.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "b04",
+    "inventory_id": "B04",
+    "label": "Template gallery",
+    "category": "editor",
+    "description": "Browse/search/category filter, thumbnails, PDF preview, LaTeX detail and authenticated use.",
+    "gateable": true,
+    "parent_key": "templates",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/templates/page.tsx",
+      "frontend/src/components/TemplatePreviewModal.tsx",
+      "backend/app/api/template_routes.py"
+    ]
+  },
+  {
+    "key": "b05",
+    "inventory_id": "B05",
+    "label": "Regional, academic and presentation templates",
+    "category": "editor",
+    "description": "61 .tex source files at this SHA in 14 directories; 5 are presentation sources. Runtime seeded catalog count not read.",
+    "gateable": true,
+    "parent_key": "templates",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/data/templates",
+      "backend/app/scripts/seed_templates.py",
+      "backend/app/api/template_routes.py"
+    ]
+  },
+  {
+    "key": "b06",
+    "inventory_id": "B06",
+    "label": "File import and conversion",
+    "category": "editor",
+    "description": "Detect/validate/parse/upload supported resume files, parse preview and asynchronous conversion to LaTeX.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/MultiFormatUpload.tsx",
+      "backend/app/api/format_routes.py",
+      "backend/app/workers/converter_worker.py"
+    ]
+  },
+  {
+    "key": "b07",
+    "inventory_id": "B07",
+    "label": "Structured resume interchange",
+    "category": "editor",
+    "description": "Reactive Resume/JSON Resume import wizard and JSON Resume export; structured field projection.",
+    "gateable": true,
+    "parent_key": "resume_builder",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ImportFromBuilderWizard.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/services/json_resume_interchange_service.py"
+    ]
+  },
+  {
+    "key": "b08",
+    "inventory_id": "B08",
+    "label": "Guided no-code builder",
+    "category": "editor",
+    "description": "New and saved builder, upload seed, identity/contact/work/education/skills and other sections, template swap, autosave, ATS-profile projection.",
+    "gateable": true,
+    "parent_key": "resume_builder",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/builder/new/page.tsx",
+      "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/services/resume_builder_service.py"
+    ]
+  },
+  {
+    "key": "b09",
+    "inventory_id": "B09",
+    "label": "Builder/source detachment",
+    "category": "editor",
+    "description": "Manual LaTeX editing versus structured source authority; explicit reattach recovery.",
+    "gateable": true,
+    "parent_key": "resume_builder",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "b10",
+    "inventory_id": "B10",
+    "label": "Rich-text WYSIWYG mode",
+    "category": "editor",
+    "description": "Parser/serializer based visual mode inside saved LaTeX editor; LaTeX/visual switching.",
+    "gateable": true,
+    "parent_key": "resume_builder",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/WYSIWYGEditor.tsx",
+      "frontend/src/lib/wysiwyg/latex-parser.ts",
+      "frontend/src/lib/wysiwyg/latex-serializer.ts",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "b11",
+    "inventory_id": "B11",
+    "label": "Resume variants/forks",
+    "category": "editor",
+    "description": "Fork new variant, parent-child listing, compare/restore parent differences.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/resume_routes.py",
+      "frontend/src/app/workspace/page.tsx",
+      "frontend/src/components/DiffViewerModal.tsx"
+    ]
+  },
+  {
+    "key": "b12",
+    "inventory_id": "B12",
+    "label": "Linked builder variant visibility",
+    "category": "editor",
+    "description": "Linked variant route and field/section visibility overlay.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/variant/[resumeId]/page.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/services/variant_visibility_service.py"
+    ]
+  },
+  {
+    "key": "b13",
+    "inventory_id": "B13",
+    "label": "Resume compare and merge",
+    "category": "editor",
+    "description": "Select multiple resumes, select/merge sections into a new document.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/merge/page.tsx",
+      "frontend/src/components/CompareModal.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "b14",
+    "inventory_id": "B14",
+    "label": "Academic CV to industry resume",
+    "category": "editor",
+    "description": "Academic detection/report, conversion review and generated resume variant.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/resume_routes.py",
+      "backend/app/services/academic_cv_service.py",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "c01",
+    "inventory_id": "C01",
+    "label": "LaTeX source editor",
+    "category": "editor",
+    "description": "Monaco editing, syntax highlighting, read-only role, cursor/line selection, undo-related actions and save.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Basic source editing and recovery remain available for every plan.",
+    "source_paths": [
+      "frontend/src/components/LaTeXEditor.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "c02",
+    "inventory_id": "C02",
+    "label": "Completions and navigation",
+    "category": "editor",
+    "description": "LaTeX command/environment/snippet completions, citation/ref completion, outline, folding and rich hover previews.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LaTeXEditor.tsx",
+      "frontend/src/lib/latex-completions.ts",
+      "frontend/src/lib/latex-outline.ts",
+      "frontend/src/lib/latex-folding.ts",
+      "frontend/src/lib/latex-hover-previews.ts"
+    ]
+  },
+  {
+    "key": "c03",
+    "inventory_id": "C03",
+    "label": "Find and replace",
+    "category": "editor",
+    "description": "LaTeX-aware search panel, regex presets and Monaco find/replace affordances.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LaTeXSearchPanel.tsx",
+      "frontend/src/data/latex-search-presets.ts",
+      "frontend/src/components/LaTeXEditor.tsx"
+    ]
+  },
+  {
+    "key": "c04",
+    "inventory_id": "C04",
+    "label": "Keyboard modes and shortcuts",
+    "category": "editor",
+    "description": "Vim/Emacs adapters, shortcut reference panel and standard editor accelerators.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LaTeXEditor.tsx",
+      "frontend/src/components/KeyboardShortcutsPanel.tsx",
+      "frontend/src/lib/editor-keybindings.ts"
+    ]
+  },
+  {
+    "key": "c05",
+    "inventory_id": "C05",
+    "label": "Core LaTeX compilation",
+    "category": "editor",
+    "description": "Manual compile and compiler selection pdflatex/xelatex/lualatex; logs, PDF, error results.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Core PDF compilation remains available subject to fixed security and usage limits.",
+    "source_paths": [
+      "backend/app/api/job_routes.py",
+      "backend/app/api/routes.py",
+      "backend/app/workers/latex_worker.py",
+      "frontend/src/components/CompilerSelector.tsx"
+    ]
+  },
+  {
+    "key": "c06",
+    "inventory_id": "C06",
+    "label": "Automatic compilation",
+    "category": "editor",
+    "description": "Compile-on-save/typing scheduler, busy handling and source revision synchronization.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/hooks/useAutoCompile.ts",
+      "frontend/src/lib/auto-compile-scheduler.ts",
+      "frontend/src/components/LaTeXEditor.tsx"
+    ]
+  },
+  {
+    "key": "c07",
+    "inventory_id": "C07",
+    "label": "Per-document compiler settings",
+    "category": "editor",
+    "description": "Allowed compiler options/settings persisted per resume; timeout and queue priority vary operationally by plan.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/CompileSettingsModal.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/workers/latex_worker.py"
+    ]
+  },
+  {
+    "key": "c08",
+    "inventory_id": "C08",
+    "label": "Asynchronous job lifecycle",
+    "category": "editor",
+    "description": "Queued/started/progress/token/log/completed/failed/cancelled, WebSocket replay, REST state/result/polling fallback, recent job queue.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Job progress, cancellation and retrieval are required for safe completion and recovery.",
+    "source_paths": [
+      "backend/app/api/job_routes.py",
+      "backend/app/api/ws_routes.py",
+      "frontend/src/components/JobQueue.tsx",
+      "frontend/src/lib/ws-client.ts"
+    ]
+  },
+  {
+    "key": "c09",
+    "inventory_id": "C09",
+    "label": "PDF preview and navigation",
+    "category": "editor",
+    "description": "Browser PDF renderer, zoom/fit, keyboard zoom, page display/download, native share fallback.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Users retain viewing and retrieval of their existing PDF artifacts.",
+    "source_paths": [
+      "frontend/src/components/PDFPreview.tsx",
+      "frontend/src/components/SourcePdfDivider.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "c10",
+    "inventory_id": "C10",
+    "label": "SyncTeX source\u2194PDF",
+    "category": "editor",
+    "description": "Current compile map for source-to-page and Ctrl-click PDF-to-source navigation.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/PDFPreview.tsx",
+      "frontend/src/lib/synctex-parser.ts",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "c11",
+    "inventory_id": "C11",
+    "label": "PDF visual inspection tools",
+    "category": "editor",
+    "description": "Heuristic attention heatmap, dark preview, black-and-white print preview and colour-dependency warnings.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/PDFPreview.tsx",
+      "frontend/src/lib/heatmap-generator.ts",
+      "frontend/src/lib/print-preview.ts"
+    ]
+  },
+  {
+    "key": "c12",
+    "inventory_id": "C12",
+    "label": "Page-count warning and one-page auto-fit",
+    "category": "editor",
+    "description": "Resume-only multipage warning; asynchronous formatting compression/intensity and guarded result acceptance.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+      "backend/app/api/job_routes.py",
+      "backend/app/services/auto_fit_service.py"
+    ]
+  },
+  {
+    "key": "c13",
+    "inventory_id": "C13",
+    "label": "Optional watermark output",
+    "category": "editor",
+    "description": "User-requested watermark text and dedicated watermarked compile/download.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/WatermarkDownloadPopover.tsx",
+      "backend/app/api/job_routes.py"
+    ]
+  },
+  {
+    "key": "c14",
+    "inventory_id": "C14",
+    "label": "Presentation mode",
+    "category": "editor",
+    "description": "Presentation document type, Beamer templates and SlideViewer; resume ATS/page warnings bypassed.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/SlideViewer.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+      "backend/app/data/templates/presentation"
+    ]
+  },
+  {
+    "key": "c15",
+    "inventory_id": "C15",
+    "label": "LaTeX lint and quick fixes",
+    "category": "editor",
+    "description": "Client-side best-practice/extraction-risk lint, markers, problem panel and fix application.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LinterPanel.tsx",
+      "frontend/src/lib/latex-linter.ts",
+      "frontend/src/components/LaTeXEditor.tsx"
+    ]
+  },
+  {
+    "key": "c16",
+    "inventory_id": "C16",
+    "label": "Spelling, grammar and dictionary",
+    "category": "editor",
+    "description": "LanguageTool-style endpoint/markers, enable toggle, suggestions and owner-scoped personal dictionary.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/ai_routes.py",
+      "frontend/src/components/PersonalDictionarySettings.tsx",
+      "frontend/src/components/LaTeXEditor.tsx"
+    ]
+  },
+  {
+    "key": "c17",
+    "inventory_id": "C17",
+    "label": "Package management and documentation",
+    "category": "editor",
+    "description": "Inspect/add/remove preamble packages; command documentation lookup.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/PackageManagerPanel.tsx",
+      "frontend/src/components/LaTeXDocPanel.tsx",
+      "frontend/src/lib/latex-preamble.ts",
+      "frontend/src/lib/latex-docs.ts"
+    ]
+  },
+  {
+    "key": "c18",
+    "inventory_id": "C18",
+    "label": "Symbols, QR and TikZ",
+    "category": "editor",
+    "description": "Search/insert LaTeX symbols, QR insertion and visual TikZ diagram generation.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/SymbolPalette.tsx",
+      "frontend/src/components/QrCodeInserter.tsx",
+      "frontend/src/components/TikZEditor.tsx"
+    ]
+  },
+  {
+    "key": "c19",
+    "inventory_id": "C19",
+    "label": "Design and template customisation",
+    "category": "editor",
+    "description": "Font/colour/layout controls and template customizer applied to source.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/DesignPanel.tsx",
+      "frontend/src/components/TemplateCustomizerPanel.tsx"
+    ]
+  },
+  {
+    "key": "c20",
+    "inventory_id": "C20",
+    "label": "Snippets marketplace",
+    "category": "editor",
+    "description": "Browse/search/category/sort; preview/insert/install/uninstall/upvote; user create/edit/delete and admin official entries.",
+    "gateable": true,
+    "parent_key": "snippets",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/SnippetMarketplace.tsx",
+      "frontend/src/components/SnippetPreviewModal.tsx",
+      "backend/app/api/snippet_routes.py"
+    ]
+  },
+  {
+    "key": "c21",
+    "inventory_id": "C21",
+    "label": "Macros",
+    "category": "editor",
+    "description": "Record/play actions, shortcut bindings; deterministic macro script create/update/execute and preview/apply.",
+    "gateable": true,
+    "parent_key": "macros",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/MacroLibraryPanel.tsx",
+      "backend/app/api/macro_routes.py",
+      "backend/app/services/macro_scripting.py"
+    ]
+  },
+  {
+    "key": "c22",
+    "inventory_id": "C22",
+    "label": "Document history/checkpoints",
+    "category": "editor",
+    "description": "Named checkpoints, optimization/autosave history, source diff, restore and delete manual checkpoint.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/VersionHistoryPanel.tsx",
+      "frontend/src/components/SaveCheckpointPopover.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "c23",
+    "inventory_id": "C23",
+    "label": "Rendered and element-level history",
+    "category": "editor",
+    "description": "Rendered PDF diff; bullet/element version snapshots with restore/fork and linked tracker evidence.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/RenderedPdfDiff.tsx",
+      "frontend/src/components/ElementVersionHistoryPanel.tsx",
+      "backend/app/api/element_version_routes.py"
+    ]
+  },
+  {
+    "key": "c24",
+    "inventory_id": "C24",
+    "label": "Compile error history",
+    "category": "editor",
+    "description": "Persisted historical compiler errors and on-demand history viewer.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/CompileErrorHistory.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/services/error_history_service.py"
+    ]
+  },
+  {
+    "key": "c25",
+    "inventory_id": "C25",
+    "label": "Offline drafts and reconnect queue",
+    "category": "editor",
+    "description": "Owner-scoped local drafts, queued compiles, reconnect reservations and conflict acknowledgement.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Offline drafts and reconnect recovery must not strand user-authored work.",
+    "source_paths": [
+      "frontend/src/lib/offline-drafts.ts",
+      "frontend/src/lib/compile-queue.ts",
+      "frontend/src/lib/reconnect-reservations.ts",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "c26",
+    "inventory_id": "C26",
+    "label": "Offline PDF and mobile/PWA",
+    "category": "editor",
+    "description": "Remembered compiled PDF, cache isolation, installable PWA, dedicated mobile editor and responsive toolbars.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Offline saved-document access and accessibility remain available.",
+    "source_paths": [
+      "frontend/src/lib/offline-pdfs.ts",
+      "frontend/src/components/MobileEditor.tsx",
+      "frontend/public/offline.html",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "d01",
+    "inventory_id": "D01",
+    "label": "Resume optimization",
+    "category": "core",
+    "description": "Job-targeted LLM rewrite, conservative/balanced/aggressive levels, selected sections, custom instructions/personas, model controls, token stream and combined compile.",
+    "gateable": true,
+    "parent_key": "llm_optimize",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+      "backend/app/api/job_routes.py",
+      "backend/app/api/routes.py",
+      "backend/app/workers/llm_worker.py"
+    ]
+  },
+  {
+    "key": "d02",
+    "inventory_id": "D02",
+    "label": "Guided optimization intent",
+    "category": "core",
+    "description": "Industry, seniority, tone, emphasize and downplay controls; optional progressive disclosure.",
+    "gateable": true,
+    "parent_key": "llm_optimize",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/GuidedIntakePanel.tsx",
+      "frontend/src/lib/guided-intake.ts"
+    ]
+  },
+  {
+    "key": "d03",
+    "inventory_id": "D03",
+    "label": "Per-change review",
+    "category": "core",
+    "description": "Segment optimized-versus-original source into change hunks, accept/reject subset, recompile accepted output.",
+    "gateable": true,
+    "parent_key": "llm_optimize",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ChangeReviewModal.tsx",
+      "backend/app/api/optimize_routes.py"
+    ]
+  },
+  {
+    "key": "d04",
+    "inventory_id": "D04",
+    "label": "Quick tailoring",
+    "category": "core",
+    "description": "Single-job/JD tailor from library; creates/updates appropriate variant rather than accidental source overwrite.",
+    "gateable": true,
+    "parent_key": "llm_optimize",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/QuickTailorModal.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "d05",
+    "inventory_id": "D05",
+    "label": "Batch tailoring",
+    "category": "core",
+    "description": "Submit multiple target JDs and track batch progress/results.",
+    "gateable": true,
+    "parent_key": "batch_tailor",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/[resumeId]/batch-tailor/page.tsx",
+      "backend/app/api/job_routes.py"
+    ]
+  },
+  {
+    "key": "d06",
+    "inventory_id": "D06",
+    "label": "Inline writing assistant",
+    "category": "core",
+    "description": "Improve, shorten, quantify, power verbs, tone, expand, steer, paraphrase, concise, scientific, split/join selected text.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/WritingAssistantWidget.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d07",
+    "inventory_id": "D07",
+    "label": "Contextual synonyms",
+    "category": "core",
+    "description": "Generate contextual alternatives; replace only chosen word/phrase.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/WritingAssistantWidget.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d08",
+    "inventory_id": "D08",
+    "label": "Document assistant",
+    "category": "core",
+    "description": "Document-aware conversation, bounded history and proposed exact-text replacement for explicit acceptance.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/DocumentAssistantPanel.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d09",
+    "inventory_id": "D09",
+    "label": "Bullet generator and phrase library",
+    "category": "core",
+    "description": "Generate job-title/responsibility bullets; role/seniority/industry/skill phrase suggestions; numeric placeholders when evidence missing.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/BulletGeneratorWidget.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d10",
+    "inventory_id": "D10",
+    "label": "Reusable bullet variants",
+    "category": "core",
+    "description": "Generate/store/list/delete target-labelled alternative bullet sets and reuse in writing tools.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/WritingAssistantWidget.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d11",
+    "inventory_id": "D11",
+    "label": "Summary generation",
+    "category": "core",
+    "description": "Multiple technical/leadership/unique professional summaries with role/JD context.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/SummaryGeneratorWidget.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d12",
+    "inventory_id": "D12",
+    "label": "Proofreading",
+    "category": "core",
+    "description": "Rule-based resume writing-quality checks and individual fix application; not inherently an LLM.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ProofreadPanel.tsx",
+      "backend/app/api/ai_routes.py",
+      "backend/app/services/proofreader_service.py"
+    ]
+  },
+  {
+    "key": "d13",
+    "inventory_id": "D13",
+    "label": "LaTeX error explanation",
+    "category": "core",
+    "description": "Known-pattern or AI fallback explanation, suggested fix and optional corrected code.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ErrorExplainerPanel.tsx",
+      "backend/app/api/ai_routes.py",
+      "backend/app/services/error_explainer_service.py"
+    ]
+  },
+  {
+    "key": "d14",
+    "inventory_id": "D14",
+    "label": "LaTeX structure/table/math generation",
+    "category": "core",
+    "description": "Natural language\u2192LaTeX; tabular text or image\u2192table; math text or image\u2192inline/display/equation.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LatexGeneratorPanel.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d15",
+    "inventory_id": "D15",
+    "label": "Translation and multilingual documents",
+    "category": "core",
+    "description": "Translation creates new variant; script-specific CJK, Hindi/Indic and RTL preamble/compiler adaptation.",
+    "gateable": true,
+    "parent_key": "ai_writing",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/ai_routes.py",
+      "frontend/src/app/workspace/page.tsx",
+      "backend/app/services/multilingual_latex.py",
+      "backend/app/services/rtl_latex.py"
+    ]
+  },
+  {
+    "key": "d16",
+    "inventory_id": "D16",
+    "label": "Content utility tools",
+    "category": "core",
+    "description": "Standardize dates, normalize contact info, section ordering and age analysis.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/DateStandardizerPanel.tsx",
+      "frontend/src/components/ContactFormatterPanel.tsx",
+      "frontend/src/components/SectionReorderPanel.tsx",
+      "frontend/src/components/AgeAnalysisPanel.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "d17",
+    "inventory_id": "D17",
+    "label": "Confidence score",
+    "category": "core",
+    "description": "Rule-based five-dimensional quality indicator and panel.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ConfidenceScorePanel.tsx",
+      "backend/app/api/ai_routes.py",
+      "backend/app/services/confidence_score_service.py"
+    ]
+  },
+  {
+    "key": "d18",
+    "inventory_id": "D18",
+    "label": "Rule-based ATS score",
+    "category": "core",
+    "description": "Quick/debounced score, full score, category/radar breakdown, section detection, keywords and recommendations.",
+    "gateable": true,
+    "parent_key": "ats_score",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/ats_routes.py",
+      "frontend/src/components/ATSScoreBadge.tsx",
+      "frontend/src/components/ATSScoreCard.tsx",
+      "frontend/src/components/ats/ATSCategoryScoreCard.tsx"
+    ]
+  },
+  {
+    "key": "d19",
+    "inventory_id": "D19",
+    "label": "ATS industry/locale profiles",
+    "category": "core",
+    "description": "Supported industry lists, industry keywords and calibrated industry/locale scoring.",
+    "gateable": true,
+    "parent_key": "ats_score",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/ats_routes.py",
+      "backend/app/services/industry_ats_profiles.py",
+      "backend/app/services/ats_locale_profiles.py"
+    ]
+  },
+  {
+    "key": "d20",
+    "inventory_id": "D20",
+    "label": "Deep AI analysis",
+    "category": "core",
+    "description": "Queue section-by-section LLM analysis and detailed strengths/improvements.",
+    "gateable": true,
+    "parent_key": "ats_deep",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ats/DeepAnalysisPanel.tsx",
+      "backend/app/api/ats_routes.py",
+      "backend/app/workers/ats_worker.py"
+    ]
+  },
+  {
+    "key": "d21",
+    "inventory_id": "D21",
+    "label": "Semantic resume matching",
+    "category": "core",
+    "description": "Embeddings/cosine similarity rank owned resumes against a JD.",
+    "gateable": true,
+    "parent_key": "ats_deep",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ats/SemanticMatchModal.tsx",
+      "backend/app/api/ats_routes.py",
+      "backend/app/services/embedding_service.py"
+    ]
+  },
+  {
+    "key": "d22",
+    "inventory_id": "D22",
+    "label": "ATS parser simulator/pre-flight",
+    "category": "core",
+    "description": "Profile-specific heuristic parsing-risk analysis; rendered PDF text view, extraction warnings and reading-order checks.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ats/AtsSimulatorPanel.tsx",
+      "frontend/src/components/ATSTextView.tsx",
+      "backend/app/api/ats_routes.py",
+      "backend/app/services/ats_simulator_service.py"
+    ]
+  },
+  {
+    "key": "d23",
+    "inventory_id": "D23",
+    "label": "Keyword density and score evolution",
+    "category": "core",
+    "description": "JD keyword density map, suggested placement; resume score-history chart.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/KeywordDensityMap.tsx",
+      "frontend/src/components/ScoreHistoryChart.tsx",
+      "backend/app/api/ats_routes.py",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "d24",
+    "inventory_id": "D24",
+    "label": "Benchmarking",
+    "category": "core",
+    "description": "Global anonymous percentile-style comparison of distinct-resume cohort with method disclosure.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/ats_routes.py",
+      "backend/app/services/benchmarking_service.py"
+    ]
+  },
+  {
+    "key": "d25",
+    "inventory_id": "D25",
+    "label": "BYOK provider management",
+    "category": "core",
+    "description": "Add/validate/list/update/delete own provider keys; capabilities/models/usage; supported provider families include OpenAI/Anthropic/Gemini/OpenRouter.",
+    "gateable": true,
+    "parent_key": "byok",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/byok/page.tsx",
+      "frontend/src/components/byok/APIKeyManager.tsx",
+      "frontend/src/components/byok/ProviderSelector.tsx",
+      "backend/app/api/byok_routes.py"
+    ]
+  },
+  {
+    "key": "d26",
+    "inventory_id": "D26",
+    "label": "Salary estimate",
+    "category": "core",
+    "description": "Resume/target-role/location based salary estimate panel.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/SalaryEstimatorPanel.tsx",
+      "backend/app/api/ai_routes.py"
+    ]
+  },
+  {
+    "key": "e01",
+    "inventory_id": "E01",
+    "label": "Cover letters",
+    "category": "career",
+    "description": "Generate from resume/JD/company/role/tone, stream/compile, library with search/grid/list/pagination, edit/delete; signature support.",
+    "gateable": true,
+    "parent_key": "cover_letters",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx",
+      "frontend/src/app/workspace/cover-letters/page.tsx",
+      "frontend/src/components/CoverLetterSignaturePanel.tsx",
+      "backend/app/api/cover_letter_routes.py",
+      "backend/app/workers/cover_letter_worker.py"
+    ]
+  },
+  {
+    "key": "e02",
+    "inventory_id": "E02",
+    "label": "Interview prep",
+    "category": "career",
+    "description": "Generate role-specific questions and saved prep sessions linked to resume.",
+    "gateable": true,
+    "parent_key": "interview_prep",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/InterviewPrepPanel.tsx",
+      "backend/app/api/interview_routes.py",
+      "backend/app/workers/interview_prep_worker.py"
+    ]
+  },
+  {
+    "key": "e03",
+    "inventory_id": "E03",
+    "label": "Text interview simulation",
+    "category": "career",
+    "description": "Coach/Mock mode evaluation of transient text answers.",
+    "gateable": true,
+    "parent_key": "interview_prep",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/InterviewSimulation.tsx",
+      "backend/app/api/interview_routes.py"
+    ]
+  },
+  {
+    "key": "e04",
+    "inventory_id": "E04",
+    "label": "Career paths and skills gaps",
+    "category": "career",
+    "description": "Target-role career analysis, progression visualization, role/skill catalogs and saved analyses.",
+    "gateable": true,
+    "parent_key": "career_paths",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspace/[resumeId]/career/page.tsx",
+      "frontend/src/components/CareerPathChart.tsx",
+      "frontend/src/components/SkillsGapPanel.tsx",
+      "backend/app/api/career_routes.py"
+    ]
+  },
+  {
+    "key": "e05",
+    "inventory_id": "E05",
+    "label": "Application board",
+    "category": "career",
+    "description": "Create/edit/delete applications; status transitions and kanban; resume/JD/ATS linkage and stats.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/tracker/page.tsx",
+      "frontend/src/components/AddApplicationModal.tsx",
+      "backend/app/api/tracker_routes.py"
+    ]
+  },
+  {
+    "key": "e06",
+    "inventory_id": "E06",
+    "label": "Saved jobs and alerts",
+    "category": "career",
+    "description": "Saved-job CRUD/bulk delete, conversion to tracked application; alert CRUD/pause with explicit source guidance.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/tracker/page.tsx",
+      "backend/app/api/tracker_workflow_routes.py"
+    ]
+  },
+  {
+    "key": "e07",
+    "inventory_id": "E07",
+    "label": "Follow-up reminders and interviews",
+    "category": "career",
+    "description": "Per-application reminders, interviews with timezone handling and ICS export; stale-application prompts/digest.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/tracker/page.tsx",
+      "backend/app/api/tracker_workflow_routes.py",
+      "backend/app/workers/tracker_notification_worker.py"
+    ]
+  },
+  {
+    "key": "e08",
+    "inventory_id": "E08",
+    "label": "Companies and contacts",
+    "category": "career",
+    "description": "Tracker-linked company/contact CRUD and assignments.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/tracker/page.tsx",
+      "backend/app/api/tracker_workflow_routes.py"
+    ]
+  },
+  {
+    "key": "e09",
+    "inventory_id": "E09",
+    "label": "Outreach draft generation",
+    "category": "career",
+    "description": "Editable unsent email/LinkedIn networking/follow-up draft from application/contact facts.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/outreach_routes.py",
+      "backend/app/services/outreach_service.py",
+      "frontend/src/app/tracker/page.tsx"
+    ]
+  },
+  {
+    "key": "e10",
+    "inventory_id": "E10",
+    "label": "Application email status parser",
+    "category": "career",
+    "description": "Review one supplied/forwarded email and infer status/company/role with confidence/evidence; review-only.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/email_status_routes.py",
+      "backend/app/services/email_status_parser_service.py",
+      "frontend/src/app/tracker/page.tsx"
+    ]
+  },
+  {
+    "key": "e11",
+    "inventory_id": "E11",
+    "label": "Job description scraping",
+    "category": "career",
+    "description": "Fetch supported job URL and extract description with manual paste fallback.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/JobDescriptionInput.tsx",
+      "backend/app/api/scraper_routes.py",
+      "backend/app/services/job_scraper_service.py"
+    ]
+  },
+  {
+    "key": "e12",
+    "inventory_id": "E12",
+    "label": "Direct application submission",
+    "category": "career",
+    "description": "Detect platform and preview Greenhouse/Lever job; explicit apply with compiled resume; track submission record/result.",
+    "gateable": true,
+    "parent_key": "one_click_apply",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ApplyModal.tsx",
+      "backend/app/api/application_routes.py",
+      "backend/app/services/greenhouse_service.py",
+      "backend/app/services/lever_service.py"
+    ]
+  },
+  {
+    "key": "e13",
+    "inventory_id": "E13",
+    "label": "Browser Job Companion extension",
+    "category": "career",
+    "description": "Explicit job-page capture into authenticated tracker review; click-only fill of empty supported identity/contact fields.",
+    "gateable": true,
+    "parent_key": "application_tracker",
+    "always_on_reason": null,
+    "source_paths": [
+      "packages/browser-extension/README.md",
+      "packages/browser-extension/popup.js",
+      "packages/browser-extension/autofill.js",
+      "frontend/src/lib/extension-capture.ts"
+    ]
+  },
+  {
+    "key": "f01",
+    "inventory_id": "F01",
+    "label": "Public share links",
+    "category": "advanced",
+    "description": "Owner-created/revoked token links, public PDF/text view and accessible-text fallback.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ShareResumeModal.tsx",
+      "frontend/src/app/r/[token]/page.tsx",
+      "backend/app/api/resume_routes.py",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "f02",
+    "inventory_id": "F02",
+    "label": "Anonymous/blind sharing",
+    "category": "advanced",
+    "description": "Redacted anonymous resume artifact with regeneration and separate share mode.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/resume_routes.py",
+      "backend/app/api/routes.py",
+      "backend/app/services/latex_pii_redactor.py"
+    ]
+  },
+  {
+    "key": "f03",
+    "inventory_id": "F03",
+    "label": "Public PDF peer review",
+    "category": "advanced",
+    "description": "Owner separately enables review comments on share link; reviewer comment and authenticated resolve paths.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ReviewCommentsPanel.tsx",
+      "frontend/src/components/ReviewablePdfSurface.tsx",
+      "backend/app/api/review_routes.py",
+      "frontend/src/app/r/[token]/page.tsx"
+    ]
+  },
+  {
+    "key": "f04",
+    "inventory_id": "F04",
+    "label": "Collaborator permissions",
+    "category": "advanced",
+    "description": "Invite/list/change/remove per-resume collaborators and viewer/editor permissions.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/CollaboratorPanel.tsx",
+      "backend/app/api/resume_routes.py",
+      "frontend/src/lib/resume-access.ts"
+    ]
+  },
+  {
+    "key": "f05",
+    "inventory_id": "F05",
+    "label": "Real-time multi-user editing",
+    "category": "advanced",
+    "description": "Yjs/CRDT synchronization, multi-cursor presence and collaborative chat.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/LaTeXEditor.tsx",
+      "frontend/src/components/CollaboratorChat.tsx",
+      "backend/app/api/ws_routes.py",
+      "backend/app/services/collab_manager.py"
+    ]
+  },
+  {
+    "key": "f06",
+    "inventory_id": "F06",
+    "label": "Document comments and mentions",
+    "category": "advanced",
+    "description": "Comments/replies, resolve, participants and mention notification plumbing; personal and workspace context.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/CommentsPanel.tsx",
+      "backend/app/api/comment_routes.py"
+    ]
+  },
+  {
+    "key": "f07",
+    "inventory_id": "F07",
+    "label": "Tracked changes and suggestions",
+    "category": "advanced",
+    "description": "Observe edits, accept/reject, collaborative suggestion presence and persistent decision endpoint.",
+    "gateable": true,
+    "parent_key": "collaboration",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ChangesPanel.tsx",
+      "frontend/src/components/SuggestionsPanel.tsx",
+      "frontend/src/lib/yjs-track-changes.ts",
+      "frontend/src/lib/suggestions.ts",
+      "backend/app/api/suggestion_routes.py"
+    ]
+  },
+  {
+    "key": "f08",
+    "inventory_id": "F08",
+    "label": "Team workspaces",
+    "category": "advanced",
+    "description": "Create/list/update/delete workspace; member invite/role/remove; add/remove/list/download shared resumes.",
+    "gateable": true,
+    "parent_key": "team_workspaces",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspaces/page.tsx",
+      "frontend/src/app/workspaces/[workspaceId]/page.tsx",
+      "backend/app/api/workspace_routes.py"
+    ]
+  },
+  {
+    "key": "f09",
+    "inventory_id": "F09",
+    "label": "Recruiter workspace",
+    "category": "advanced",
+    "description": "Recruiter dashboard and per-resume recruiter notes CRUD.",
+    "gateable": true,
+    "parent_key": "team_workspaces",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/workspaces/[workspaceId]/recruiter/page.tsx",
+      "backend/app/api/workspace_routes.py"
+    ]
+  },
+  {
+    "key": "f10",
+    "inventory_id": "F10",
+    "label": "Institutional tenancy/cohorts",
+    "category": "advanced",
+    "description": "Tenant admin/member context, branding/settings, invite acceptance/leave/remove, cohorts and submissions/stats.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Tenant isolation, institutional administration and existing membership remain enforced.",
+    "source_paths": [
+      "frontend/src/app/admin/tenant/page.tsx",
+      "frontend/src/app/tenant-invite/page.tsx",
+      "backend/app/api/tenant_routes.py"
+    ]
+  },
+  {
+    "key": "f11",
+    "inventory_id": "F11",
+    "label": "Tenant custom domains and white-label",
+    "category": "advanced",
+    "description": "Verified host resolution, tenant branding/theme context and institutional auth origin constraints.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Tenant routing, domain validation and isolation are security configuration, not optional entitlements.",
+    "source_paths": [
+      "backend/app/api/tenant_routes.py",
+      "frontend/src/components/TenantThemeSync.tsx",
+      "frontend/src/lib/tenant-theme.ts",
+      "frontend/src/lib/oidc-config.ts"
+    ]
+  },
+  {
+    "key": "g01",
+    "inventory_id": "G01",
+    "label": "GitHub account connection and source sync",
+    "category": "integrations",
+    "description": "OAuth connect/complete/status/disconnect; per-resume enable/disable/push/pull/status; private sync versus import-only scope.",
+    "gateable": true,
+    "parent_key": "integration_github",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/github_routes.py",
+      "frontend/src/app/settings/page.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "g02",
+    "inventory_id": "G02",
+    "label": "GitHub project evidence import",
+    "category": "integrations",
+    "description": "Select public repositories and AI-summarize projects; asynchronous job result review before insertion.",
+    "gateable": true,
+    "parent_key": "ai_import_github",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ImportProjectsModal.tsx",
+      "backend/app/api/github_routes.py",
+      "backend/app/workers/github_import_worker.py"
+    ]
+  },
+  {
+    "key": "g03",
+    "inventory_id": "G03",
+    "label": "Portfolio URL evidence import",
+    "category": "integrations",
+    "description": "Fetch public portfolio/personal-site URL and AI-summarize project evidence.",
+    "gateable": true,
+    "parent_key": "ai_import_url",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ImportProjectsModal.tsx",
+      "backend/app/api/sources_routes.py",
+      "backend/app/services/url_projects_service.py"
+    ]
+  },
+  {
+    "key": "g04",
+    "inventory_id": "G04",
+    "label": "LinkedIn export import",
+    "category": "integrations",
+    "description": "User-supplied LinkedIn export/archive or resume file; parse project/experience evidence.",
+    "gateable": true,
+    "parent_key": "ai_import_linkedin",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ImportProjectsModal.tsx",
+      "backend/app/api/sources_routes.py",
+      "backend/app/services/linkedin_import_service.py"
+    ]
+  },
+  {
+    "key": "g05",
+    "inventory_id": "G05",
+    "label": "Dropbox sync",
+    "category": "integrations",
+    "description": "OAuth connect/disconnect; per-resume sync enable/disable/push/pull/status.",
+    "gateable": true,
+    "parent_key": "integration_dropbox",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/dropbox_routes.py",
+      "frontend/src/app/settings/page.tsx",
+      "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+    ]
+  },
+  {
+    "key": "g06",
+    "inventory_id": "G06",
+    "label": "Google Drive PDF export",
+    "category": "integrations",
+    "description": "OAuth connection with status/disconnect; create/update latest compiled PDF in Drive, reusing existing file.",
+    "gateable": true,
+    "parent_key": "integration_google_drive",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/google_drive_routes.py",
+      "frontend/src/components/ExportDropdown.tsx",
+      "frontend/src/app/settings/page.tsx"
+    ]
+  },
+  {
+    "key": "g07",
+    "inventory_id": "G07",
+    "label": "Zotero reference import",
+    "category": "integrations",
+    "description": "OAuth connection, collection listing, selected import and removal of stored BibTeX.",
+    "gateable": true,
+    "parent_key": "integration_zotero",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/zotero_routes.py",
+      "frontend/src/app/settings/page.tsx",
+      "frontend/src/components/ReferencesPanel.tsx"
+    ]
+  },
+  {
+    "key": "g08",
+    "inventory_id": "G08",
+    "label": "Mendeley reference import",
+    "category": "integrations",
+    "description": "OAuth connect/status/disconnect and paginated bibliography import.",
+    "gateable": true,
+    "parent_key": "integration_mendeley",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/mendeley_routes.py",
+      "frontend/src/app/settings/page.tsx",
+      "frontend/src/components/ReferencesPanel.tsx"
+    ]
+  },
+  {
+    "key": "g09",
+    "inventory_id": "G09",
+    "label": "Bibliography lookup and verification",
+    "category": "integrations",
+    "description": "DOI/arXiv smart fetch/detect, citation verification, ORCID publication retrieval and bibliography insertion.",
+    "gateable": true,
+    "parent_key": "references",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/reference_routes.py",
+      "frontend/src/components/ReferencesPanel.tsx",
+      "frontend/src/components/PublicationsPanel.tsx"
+    ]
+  },
+  {
+    "key": "g10",
+    "inventory_id": "G10",
+    "label": "Publication list generation",
+    "category": "integrations",
+    "description": "Academic publication entry parsing/formatting and generated LaTeX publication sections.",
+    "gateable": true,
+    "parent_key": "references",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/PublicationsPanel.tsx",
+      "backend/app/api/ai_routes.py",
+      "backend/app/services/publications_service.py"
+    ]
+  },
+  {
+    "key": "g11",
+    "inventory_id": "G11",
+    "label": "Professional references page",
+    "category": "integrations",
+    "description": "Generate separate references document from contact/reference entries.",
+    "gateable": true,
+    "parent_key": "references",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/GenerateReferencesModal.tsx",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "g12",
+    "inventory_id": "G12",
+    "label": "Public portfolio",
+    "category": "integrations",
+    "description": "API supports username/theme/bio setup, resume visibility and generation; public profile/contact UI and library visibility actions. Dedicated owner setup UI reachability still needs verification.",
+    "gateable": true,
+    "parent_key": "portfolio",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/u/[username]/page.tsx",
+      "frontend/src/app/workspace/page.tsx",
+      "backend/app/api/portfolio_routes.py",
+      "backend/app/api/resume_routes.py"
+    ]
+  },
+  {
+    "key": "g13",
+    "inventory_id": "G13",
+    "label": "Portfolio custom domain",
+    "category": "integrations",
+    "description": "Username availability, DNS domain verification and custom-host resolution.",
+    "gateable": true,
+    "parent_key": "portfolio",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/portfolio_routes.py",
+      "frontend/src/middleware.ts"
+    ]
+  },
+  {
+    "key": "h01",
+    "inventory_id": "H01",
+    "label": "PDF/source and multi-format export",
+    "category": "advanced",
+    "description": "PDF download; tex/docx/md/html/txt/json/yaml/xml/epub/odf/docbook conversion; raw Studio and saved-resume paths.",
+    "gateable": true,
+    "parent_key": "exports",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ExportDropdown.tsx",
+      "backend/app/api/export_routes.py",
+      "backend/app/services/document_export_service.py",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "h02",
+    "inventory_id": "H02",
+    "label": "SVG/JPEG export",
+    "category": "advanced",
+    "description": "Render first page of latest compiled owned PDF as genuine SVG/JPEG.",
+    "gateable": true,
+    "parent_key": "exports",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/export_routes.py",
+      "frontend/src/components/ExportDropdown.tsx"
+    ]
+  },
+  {
+    "key": "h03",
+    "inventory_id": "H03",
+    "label": "Canva/Figma structured exports",
+    "category": "advanced",
+    "description": "Download JSON shaped for Canva elements and Figma sections; no direct live editor write proven.",
+    "gateable": true,
+    "parent_key": "exports",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/export_routes.py",
+      "frontend/src/components/ExportDropdown.tsx"
+    ]
+  },
+  {
+    "key": "h04",
+    "inventory_id": "H04",
+    "label": "Bulk/filtered ZIP export",
+    "category": "advanced",
+    "description": "Export all or filtered owned resumes in tex/pdf/docx bundles.",
+    "gateable": true,
+    "parent_key": "exports",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/resume_routes.py",
+      "frontend/src/app/workspace/page.tsx"
+    ]
+  },
+  {
+    "key": "h05",
+    "inventory_id": "H05",
+    "label": "Email compiled PDF to self",
+    "category": "advanced",
+    "description": "Send current compiled PDF to verified account email; delivery status and explicit retry.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/document_delivery_routes.py",
+      "frontend/src/components/ExportDropdown.tsx",
+      "backend/app/services/document_delivery_service.py"
+    ]
+  },
+  {
+    "key": "h06",
+    "inventory_id": "H06",
+    "label": "Usage and activity analytics",
+    "category": "advanced",
+    "description": "Personal KPI dashboard/timeseries, compile/optimization activity, job history and cover-letter stats.",
+    "gateable": true,
+    "parent_key": "analytics",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/dashboard/page.tsx",
+      "frontend/src/app/workspace/history/page.tsx",
+      "backend/app/api/analytics_routes.py"
+    ]
+  },
+  {
+    "key": "h07",
+    "inventory_id": "H07",
+    "label": "Shared-resume view analytics",
+    "category": "advanced",
+    "description": "View counts/referrer normalization and debounced link-view tracking.",
+    "gateable": true,
+    "parent_key": "analytics",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/resume_routes.py",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "h08",
+    "inventory_id": "H08",
+    "label": "Developer key portal",
+    "category": "advanced",
+    "description": "Create named scoped API keys, list/rename/revoke and usage display.",
+    "gateable": true,
+    "parent_key": "developer_api",
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/app/developer/page.tsx",
+      "backend/app/api/developer_routes.py",
+      "backend/app/services/developer_key_service.py"
+    ]
+  },
+  {
+    "key": "h09",
+    "inventory_id": "H09",
+    "label": "Public developer API",
+    "category": "advanced",
+    "description": "v1 compile/optimize/ATS score, job status and PDF download.",
+    "gateable": true,
+    "parent_key": "developer_api",
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/public_api_routes.py"
+    ]
+  },
+  {
+    "key": "h10",
+    "inventory_id": "H10",
+    "label": "Terminal UI and headless CLI",
+    "category": "advanced",
+    "description": "34 registered interactive commands; workbench/picker, external editor, compile/optimize/ATS, resume/history/export/share/macros and account tools. Headless mode is narrower: compile, optimize, ats, status and list, with JSON output.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "CLI is a client channel; each server operation inherits its own capability and security checks.",
+    "source_paths": [
+      "packages/tui/src/commands/registry.ts",
+      "packages/tui/src/headless.ts",
+      "packages/tui/src/commands/dispatch.ts"
+    ]
+  },
+  {
+    "key": "h11",
+    "inventory_id": "H11",
+    "label": "First-party MCP server",
+    "category": "advanced",
+    "description": "Eight typed tools: list/read/create/update/archive resume, compile, ATS score, job status; LaTeX resources over stdio.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "MCP is a client channel; each server operation inherits its own capability and security checks.",
+    "source_paths": [
+      "packages/tui/src/mcp/server.ts",
+      "packages/tui/src/mcp/operations.ts",
+      "docs/mcp.md"
+    ]
+  },
+  {
+    "key": "h12",
+    "inventory_id": "H12",
+    "label": "GitHub Actions CV render action",
+    "category": "advanced",
+    "description": "Checked-in .tex\u2192developer API compile\u2192PDF output with bounded end-to-end timeout.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "The action is a client channel; developer API and operation-specific server checks still apply.",
+    "source_paths": [
+      "action.yml",
+      "actions/render-cv/index.js",
+      "actions/render-cv/README.md"
+    ]
+  },
+  {
+    "key": "h13",
+    "inventory_id": "H13",
+    "label": "Self-hosted deployment",
+    "category": "advanced",
+    "description": "Docker/hybrid local runtime, Compose/Kubernetes manifests, storage/workers and backup/restore guidance.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Self-hosted deployment and security settings are operator configuration.",
+    "source_paths": [
+      "README.md",
+      "docs/local-dev.md",
+      "docs/self-hosting.md"
+    ]
+  },
+  {
+    "key": "i01",
+    "inventory_id": "I01",
+    "label": "Plan discovery and subscription management",
+    "category": "core",
+    "description": "Public/pricing and billing views, monthly/annual/optional configured SKUs, coupon validation, subscription create/current/cancel; main uses Razorpay flow.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Plan discovery, billing history, cancellation and subscription recovery remain reachable.",
+    "source_paths": [
+      "frontend/src/app/pricing/page.tsx",
+      "frontend/src/app/billing/page.tsx",
+      "frontend/src/components/billing/SubscriptionManager.tsx",
+      "backend/app/api/routes.py"
+    ]
+  },
+  {
+    "key": "i02",
+    "inventory_id": "I02",
+    "label": "Student and team commercial flows",
+    "category": "core",
+    "description": "Student verification token; team-seat list/invite/preview/explicit accept/remove.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "backend/app/api/routes.py",
+      "backend/app/api/team_routes.py",
+      "frontend/src/app/billing/page.tsx"
+    ]
+  },
+  {
+    "key": "i03",
+    "inventory_id": "I03",
+    "label": "Referral program",
+    "category": "core",
+    "description": "Capture referral, status/code and claim tracking/reward logic.",
+    "gateable": true,
+    "parent_key": null,
+    "always_on_reason": null,
+    "source_paths": [
+      "frontend/src/components/ReferralPanel.tsx",
+      "frontend/src/components/ReferralCapture.tsx",
+      "backend/app/api/referral_routes.py",
+      "backend/app/services/referral_service.py"
+    ]
+  },
+  {
+    "key": "i04",
+    "inventory_id": "I04",
+    "label": "Admin controls",
+    "category": "core",
+    "description": "Operational flags, product kill switches and 5-family entitlement matrix; user listing and role mutation; template/snippet/catalog and tenant admin surfaces.",
+    "gateable": false,
+    "parent_key": null,
+    "always_on_reason": "Administrative recovery and access controls must remain available to authorized administrators.",
+    "source_paths": [
+      "frontend/src/app/admin/page.tsx",
+      "backend/app/api/admin_routes.py",
+      "backend/app/api/template_routes.py",
+      "backend/app/api/snippet_routes.py",
+      "backend/app/api/career_routes.py"
+    ]
+  }
+]

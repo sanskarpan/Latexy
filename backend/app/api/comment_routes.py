@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from typing import Iterable, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from ..database.models import (
     WorkspaceResume,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..utils.uuid_guard import ensure_uuid
 

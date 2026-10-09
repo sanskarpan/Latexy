@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -23,7 +23,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_required
-from ..middleware.entitlements import require_feature
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.document_export_service import document_export_service
 from ..services.json_resume_interchange_service import json_resume_interchange_service
 from ..utils.bounded_io import BoundedReadError, read_file_bounded
@@ -355,7 +355,6 @@ async def export_figma(
 
 @router.get(
     "/{resume_id}/{fmt}",
-    dependencies=[Depends(require_feature("exports"))],
 )
 async def export_resume(
     resume_id: str,

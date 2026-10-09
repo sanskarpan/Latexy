@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..database.models import TeamSeat, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.email_service import email_service
 from ..utils.uuid_guard import ensure_uuid
 

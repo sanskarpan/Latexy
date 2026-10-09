@@ -1,5 +1,6 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
@@ -69,6 +70,8 @@ export default function OnboardingFlow({
   userType = 'new',
 }: OnboardingFlowProps) {
   const { t } = useI18n()
+  const { can } = useEntitlements()
+  isOpen = isOpen && can('a06')
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   const [freePlanCopy, setFreePlanCopy] = useState(

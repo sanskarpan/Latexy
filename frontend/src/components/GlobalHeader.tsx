@@ -33,9 +33,9 @@ const guestNav = [
 const appNav: Array<{ label: UiMessageKey; href: string; feature?: string }> = [
   { label: 'nav.dashboard', href: '/dashboard' },
   { label: 'nav.workspace', href: '/workspace' },
-  { label: 'nav.tracker', href: '/tracker', feature: 'application_tracker' },
-  { label: 'nav.templates', href: '/templates', feature: 'templates' },
-  { label: 'nav.studio', href: '/try' },
+  { label: 'nav.tracker', href: '/tracker', feature: 'e05' },
+  { label: 'nav.templates', href: '/templates', feature: 'b04' },
+  { label: 'nav.studio', href: '/try', feature: 'a09' },
 ]
 
 const fullscreenPatterns = [/^\/try$/, /^\/workspace\/[^/]+\/edit$/, /^\/workspace\/[^/]+\/optimize$/, /^\/workspace\/[^/]+\/cover-letter$/]
@@ -232,11 +232,10 @@ export default function GlobalHeader() {
   const resolvedSession = hydrated ? effectiveSession : null
   const resolvedUser = resolvedSession?.user ?? null
   const isAuthenticated = Boolean(resolvedUser)
-  const effectiveGuestNav = flags.billing
-    ? guestNav
-    : guestNav.filter((item) => item.href !== '/pricing')
-  // Gate feature-specific app nav items behind entitlements (fail-open via
-  // can()). Core items without a `feature` key always show.
+  const effectiveGuestNav = guestNav.filter((item) =>
+    (item.href !== '/pricing' || flags.billing) && (item.href !== '/templates' || can('b04')),
+  )
+  // Optional navigation waits for confirmed effective entitlements.
   const effectiveAppNav = appNav.filter((item) => !item.feature || can(item.feature))
   const activeNav = isAuthenticated ? effectiveAppNav : effectiveGuestNav
   const firstName = resolvedUser?.name?.trim().split(' ')[0] || 'Account'

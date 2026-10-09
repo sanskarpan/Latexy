@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -23,6 +25,7 @@ interface APIKeyManagerProps {
 }
 
 const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
+  const { can } = useEntitlements()
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providers, setProviders] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
@@ -158,6 +161,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   }
 
   const addAPIKey = async () => {
+    if (!can('d25')) return
     if (saving) return
     if (!newKey.provider || !newKey.api_key) {
       toast.error('Provider and API key are required')
@@ -215,12 +219,12 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          disabled={Boolean(providersError) || Object.keys(providers).length === 0}
+          disabled={!can('d25') || (Boolean(providersError) || Object.keys(providers).length === 0)}
           title={providersError ?? (Object.keys(providers).length === 0 ? 'No providers are currently available' : undefined)}
           className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+         aria-description={!can('d25') ? 'Unavailable for your current plan or feature settings' : undefined}>
           Add Key
-        </button>
+        {!can('d25') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
       </div>
 
       {providersError ? (
@@ -350,9 +354,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
               </button>
               <button
                 onClick={addAPIKey}
-                disabled={saving}
+                disabled={!can('d25') || (saving)}
                 className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
-              >
+               aria-description={!can('d25') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {saving && (
                   <span
                     aria-hidden="true"
@@ -360,7 +364,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                   />
                 )}
                 {saving ? 'Saving…' : 'Validate and Save'}
-              </button>
+              {!can('d25') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
             </div>
           </div>
         </div>

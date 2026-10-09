@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeCollaborator, ResumeSuggestionDecision
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix="/resumes", tags=["suggestions"])

@@ -20,7 +20,7 @@ from _entitlement_reset import reset_entitlements_baseline
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.feature_registry import FEATURE_REGISTRY, PLAN_FAMILIES, gateable_keys
+from app.core.feature_registry import FEATURE_REGISTRY, PLAN_FAMILIES, PLAN_MATRIX_KEYS, gateable_keys
 from app.services.entitlement_service import (
     REDIS_BLOB_KEY,
     entitlement_service,
@@ -51,18 +51,18 @@ class TestHasFeatureTrivial:
     async def test_non_gateable_key_always_true(self):
         assert await entitlement_service.has_feature("compile", user=_user(plan="free")) is True
 
-    async def test_unknown_key_always_true(self):
-        assert await entitlement_service.has_feature("no_such_feature", user=_user()) is True
+    async def test_unknown_key_denied(self):
+        assert await entitlement_service.has_feature("no_such_feature", user=_user()) is False
 
-    async def test_admin_role_true_even_when_disabled(self, db_session: AsyncSession):
+    async def test_admin_role_does_not_bypass_disabled_product(self, db_session: AsyncSession):
         await entitlement_service.set_kill_switch("cover_letters", False, db_session)
         admin = _user(role="admin", plan="free")
-        assert await entitlement_service.has_feature("cover_letters", user=admin) is True
+        assert await entitlement_service.has_feature("cover_letters", user=admin) is False
 
-    async def test_support_role_true_even_when_disabled(self, db_session: AsyncSession):
+    async def test_support_role_does_not_bypass_disabled_product(self, db_session: AsyncSession):
         await entitlement_service.set_kill_switch("cover_letters", False, db_session)
         support = _user(role="support", plan="free")
-        assert await entitlement_service.has_feature("cover_letters", user=support) is True
+        assert await entitlement_service.has_feature("cover_letters", user=support) is False
 
     async def test_anonymous_uses_free_family(self, db_session: AsyncSession):
         # Disable cover_letters only for the free family → anonymous (None) blocked.
@@ -120,7 +120,7 @@ class TestEffectiveFeaturesAndState:
 
     async def test_get_state_shape(self, db_session: AsyncSession):
         state = await entitlement_service.get_state(db_session)
-        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families"}
+        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families", "plan_keys", "plan_family_by_key"}
         assert state["plan_families"] == list(PLAN_FAMILIES)
 
         gateable = set(gateable_keys())
@@ -129,14 +129,14 @@ class TestEffectiveFeaturesAndState:
         assert all(v is True for v in state["kill_switches"].values())
 
         # matrix: family → gateable-key → bool.
-        assert set(state["matrix"].keys()) == set(PLAN_FAMILIES)
+        assert set(state["matrix"].keys()) == set(PLAN_MATRIX_KEYS)
         for family in PLAN_FAMILIES:
             assert set(state["matrix"][family].keys()) == gateable
 
         # registry entries carry the expected fields.
         assert len(state["registry"]) == len(FEATURE_REGISTRY)
         sample = state["registry"][0]
-        assert set(sample.keys()) == {"key", "label", "category", "gateable"}
+        assert set(sample.keys()) == {"key", "label", "category", "gateable", "description", "parent_key", "inventory_id", "always_on_reason"}
 
 
 # ── sync_has_feature (worker path via Redis blob) ────────────────────────────
@@ -161,8 +161,8 @@ class TestSyncHasFeature:
     async def test_sync_non_gateable_always_true(self):
         assert entitlement_service.sync_has_feature("compile", "free") is True
 
-    async def test_sync_fail_open_when_blob_missing(self):
-        # Delete the Redis blob so there is nothing to read → fail open (True).
+    async def test_sync_ignores_missing_redis_and_reads_database(self):
+        # Redis cannot grant or deny access; authoritative DB grants remain available.
         import redis as _redis
 
         from app.core.config import settings

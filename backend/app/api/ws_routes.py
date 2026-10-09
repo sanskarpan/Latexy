@@ -27,7 +27,7 @@ import time
 import uuid
 from typing import Awaitable, Callable, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -35,6 +35,7 @@ from ..core.event_bus import event_bus
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.collab_manager import (
     MAX_CHAT_FRAME_BYTES,
     _safe_chat_label,
@@ -44,6 +45,7 @@ from ..services.collab_manager import (
     notify_if_read_only,
     reset_chat_rate_limit,
 )
+from ..services.entitlement_service import entitlement_service
 from .job_metadata import parse_ownership_metadata
 
 logger = get_logger(__name__)
@@ -545,6 +547,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
             return
 
         is_owner = resume.user_id == user_id
+        owner_id = resume.user_id
 
         if not is_owner:
             collab_result = await db.execute(
@@ -562,6 +565,10 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 )
                 return
             role = collab.role
+
+        if not await entitlement_service.users_have_feature("f05", (user_id, owner_id)):
+            await _close_expected_collab_rejection(websocket, code=4003, reason="Collaboration is unavailable")
+            return
 
         # The query-string `name` is only legacy cursor metadata and is
         # client-controlled. Chat labels must come from the authenticated
@@ -611,6 +618,11 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 )
                 break
 
+            # An established room is not a permanent entitlement. Recheck
+            # before processing any update/chat frame after a plan change.
+            if not await entitlement_service.users_have_feature("f05", (user_id, owner_id)):
+                await websocket.close(code=4003, reason="Collaboration is unavailable")
+                break
             chat_access_check = None
             if is_chat_frame(data) and len(data) <= MAX_CHAT_FRAME_BYTES:
                 chat_access_check = _collab_chat_access_callback(resume_id, user_id)

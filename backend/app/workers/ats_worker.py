@@ -473,6 +473,12 @@ def submit_ats_scoring(
     metadata: Optional[Dict] = None,
 ) -> str:
     """Enqueue score_resume_ats_task on the ats queue."""
+    from ..services.entitlement_service import entitlement_service
+
+    # An omitted profile normally triggers auto-detection from the JD. A
+    # disabled profiles capability must use generic scoring on that path too.
+    if not entitlement_service.sync_has_feature("d19", user_plan):
+        industry, industry_profile_key, locale_key = "generic", "generic", "global"
     if priority is None:
         priority = get_task_priority(user_plan)
 

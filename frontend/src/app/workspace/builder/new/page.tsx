@@ -1,5 +1,8 @@
 'use client'
 
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -49,15 +52,19 @@ export default function NewBuilderPage() {
   return <NewBuilderForm key={session.user.id} session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
 }
 
-function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
+function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
+  const { can } = useEntitlements()
   const router = useRouter()
   const mountedRef = useRef(true)
   const authVerifiedRef = useRef(!authUnverified)
-  authVerifiedRef.current = !authUnverified
+  authVerifiedRef.current = !authUnverified && can('b08')
   const [title, setTitle] = useState('')
   const [templates, setTemplates] = useState<BuilderTemplateResponse[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [structured, setStructured] = useState(cloneStructuredResume(DEFAULT_STRUCTURED_RESUME))
+  useCapabilityDraftRecovery(session.user.id, 'latexy-new-builder-draft.json', Boolean(title.trim()) || JSON.stringify(structured) !== JSON.stringify(DEFAULT_STRUCTURED_RESUME), {
+    format: 'latexy-builder-draft', version: 1, title, template_id: selectedTemplateId, structured_content: structured,
+  })
   const [seedMetrics, setSeedMetrics] = useState<BuilderMetricsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)

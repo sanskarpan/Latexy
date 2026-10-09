@@ -6,6 +6,7 @@
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
 import type { ATSDeepAnalysis } from './event-types'
+import type { AdminPlanCatalogResponse, CatalogPlanUpdate, CatalogQuotaUpdate } from './plan-catalog'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -239,6 +240,8 @@ export interface CurrentSubscriptionResponse {
     historyRetention: number
     prioritySupport: boolean
     apiAccess: boolean
+    apiDailyLimit?: number
+    availabilityUnknown?: boolean
     customModels?: boolean
   }
   subscriptionId?: string
@@ -730,6 +733,9 @@ export interface EntitlementFeatureDef {
   category: string
   gateable: boolean
   description?: string | null
+  parent_key?: string | null
+  inventory_id?: string | null
+  always_on_reason?: string | null
 }
 
 /** Full admin entitlements state from GET /admin/entitlements. */
@@ -738,6 +744,8 @@ export interface AdminEntitlementsState {
   kill_switches: Record<string, boolean>
   matrix: Record<string, Record<string, boolean>>
   plan_families: string[]
+  plan_keys?: string[]
+  plan_family_by_key?: Record<string, string>
 }
 
 export type UserRole = 'user' | 'support' | 'admin'
@@ -2166,6 +2174,24 @@ class ApiClient {
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
+  }
+
+  async getAdminPlanCatalog(): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>('/admin/plan-catalog')
+  }
+
+  async updateAdminPlanQuota(sku: string, dimension: string, update: CatalogQuotaUpdate): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>(`/admin/plan-catalog/${encodeURIComponent(sku)}/quotas/${encodeURIComponent(dimension)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
+  }
+
+  async updateAdminPlanCatalog(sku: string, update: CatalogPlanUpdate): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>(`/admin/plan-catalog/${encodeURIComponent(sku)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
   }
 
   async getSubscriptionPlans(): Promise<{

@@ -105,6 +105,9 @@ async function loadHarness(): Promise<Harness> {
   })
   vi.stubGlobal('confirm', () => true)
   vi.stubGlobal('Notification', undefined)
+  // These lifecycle fixtures assume the optional tour is available.
+  // Entitlement failures and identity isolation are exercised separately.
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
@@ -211,6 +214,7 @@ async function loadHarness(): Promise<Harness> {
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
+  vi.doUnmock('@/contexts/EntitlementsContext')
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.resetModules()

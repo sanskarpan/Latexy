@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
@@ -25,6 +25,7 @@ from ..database.models import (
     WorkspaceResume,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, BoundedReadError, decode_base64_bounded
 from ..utils.file_utils import get_job_files

@@ -16,7 +16,7 @@ import secrets
 import unicodedata
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,9 @@ from ..database.models import (
     WorkspaceResume,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.rate_limiting import client_ip_id
+from ..services.entitlement_service import entitlement_service
 from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
@@ -165,6 +167,9 @@ async def _review_resume(token: str, db: AsyncSession) -> tuple[Resume, str]:
     resume = result.scalar_one_or_none()
     if not resume or not bool((resume.resume_settings or {}).get("share_review_comments", False)):
         raise _not_found()
+    for key in ("f01", "f03"):
+        if not await entitlement_service.has_feature(key, user=resume.user_id):
+            raise _not_found()
     return resume, _token_hash(token)
 
 

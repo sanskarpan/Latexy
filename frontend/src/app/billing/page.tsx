@@ -16,6 +16,8 @@ import {
   type TeamSeat,
 } from '@/lib/api-client'
 
+import { apiAllowance, catalogPlansForPeriod, type CatalogPlan as PricingPlan } from '@/lib/plan-catalog'
+
 type BillingPeriod = 'monthly' | 'annual'
 
 declare global {
@@ -56,32 +58,6 @@ function openInTab(tab: Window | null, url: string): void {
   }
 }
 
-interface PricingPlan {
-  id: string
-  name: string
-  price: number
-  currency: string
-  interval: string
-  purchase_type?: 'one_time' | 'subscription'
-  billing_period?: BillingPeriod
-  discount_percent?: number
-  monthly_equivalent_price?: number
-  max_seats?: number
-  requires_student_verification?: boolean
-  features: {
-    compilations: number | string
-    optimizations: number | string
-    historyRetention: number
-    prioritySupport: boolean
-    apiAccess: boolean
-    customModels?: boolean
-    teamSeats?: number
-  }
-}
-
-const MONTHLY_PLAN_IDS = ['free', 'basic', 'pro', 'byok', 'student', 'team', 'weekly', 'lifetime']
-const ANNUAL_PLAN_IDS = ['free', 'basic_annual', 'pro_annual', 'byok_annual', 'student', 'team']
-
 const formatFeature = (value: string | number) => {
   if (value === 'unlimited') return 'Unlimited'
   if (value === 0) return 'None'
@@ -96,7 +72,7 @@ const COMPARISON_ROWS: { label: string; value: (plan: PricingPlan) => string | n
     value: (p) => (p.features.historyRetention === 0 ? 'None' : `${p.features.historyRetention} days`),
   },
   { label: 'Priority support', value: (p) => (p.features.prioritySupport ? 'Yes' : 'No') },
-  { label: 'API access', value: (p) => (p.features.apiAccess ? 'Yes' : 'No') },
+  { label: 'API requests', value: apiAllowance },
   {
     label: 'Custom models',
     value: (p) => (typeof p.features.customModels === 'boolean' ? (p.features.customModels ? 'Yes' : 'No') : '—'),
@@ -361,10 +337,7 @@ function BillingPageContent() {
   }
 
   const visiblePlans = useMemo(() => {
-    const order = billingPeriod === 'annual' ? ANNUAL_PLAN_IDS : MONTHLY_PLAN_IDS
-    return order
-      .map((id) => plans[id])
-      .filter((plan): plan is PricingPlan => Boolean(plan))
+    return catalogPlansForPeriod(plans, billingPeriod)
   }, [billingPeriod, plans])
 
   // Mirrors SubscriptionManager's own "no active paid subscription" check so the
@@ -865,7 +838,7 @@ function BillingPageContent() {
                     />
                     {plan.id === 'free' && !isFreeTier && (
                       <p className="mt-2 text-xs text-fg-3">
-                        Selecting this cancels your current subscription and reverts your account to Free.
+                        Cancel your paid subscription first. Your current access remains until the paid period ends.
                       </p>
                     )}
                   </div>

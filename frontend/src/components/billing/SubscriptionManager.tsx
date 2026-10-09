@@ -121,6 +121,10 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           : 'No renewal date'}
       </div>
 
+      {subscription.features.availabilityUnknown && (
+        <p role="status" className="mt-4 text-sm text-fg-2">Current feature availability is temporarily unavailable. Your subscription details and cancellation controls remain available.</p>
+      )}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <Metric label="Compilations" value={String(subscription.features.compilations)} />
         <Metric label="Optimizations" value={String(subscription.features.optimizations)} />
@@ -132,7 +136,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           <p className="text-xs uppercase tracking-wider text-fg-3">Enabled Features</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-fg">
             {subscription.features.prioritySupport && <Tag text="Priority" />}
-            {subscription.features.apiAccess && <Tag text="API" />}
+            {subscription.features.apiAccess && <Tag text={subscription.features.apiDailyLimit === undefined ? "API" : `API: ${subscription.features.apiDailyLimit} / day`} />}
             {subscription.features.customModels && <Tag text="Custom Models" />}
             {!subscription.features.prioritySupport && !subscription.features.apiAccess && !subscription.features.customModels && (
               <span className="text-fg-3">None</span>
@@ -152,7 +156,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
             onClick={handleCancel}
-            disabled={isCancelling || !billingStatus?.available}
+            disabled={isCancelling}
             className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel,
@@ -36,6 +36,8 @@ from ..database.models import (
     User,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
@@ -443,12 +445,15 @@ def _template_to_builder_response(template: ResumeTemplate, base_url: str) -> Bu
     )
 
 
-async def _get_builder_template(db: AsyncSession, template_id: str) -> ResumeTemplate:
+async def _get_builder_template(db: AsyncSession, template_id: str, user_id: str) -> ResumeTemplate:
+    await enforce_capabilities(("b04",), user_id)
     template = await db.get(ResumeTemplate, template_id)
     if not template or not template.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
     if not resume_builder_service.is_supported_category(template.category, template.document_type):
         raise HTTPException(status_code=400, detail="Template is not supported by the guided builder")
+    if template.category in {"academic", "regional", "presentation"}:
+        await enforce_capabilities(("b05",), user_id)
     return template
 
 
@@ -513,7 +518,7 @@ async def seed_builder_from_upload(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    del db, user_id
+    del db
     validate_file_upload(file)
     content = await read_upload_capped(file)
     filename = file.filename or "upload"
@@ -528,6 +533,7 @@ async def seed_builder_from_upload(
     structured: dict[str, Any] | None = None
     response_format = detected_format.value
     if detected_format == ResumeFormat.JSON:
+        await enforce_capabilities(("b07",), user_id)
         try:
             json_source = content.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
@@ -591,7 +597,7 @@ async def create_builder_resume(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    template = await _get_builder_template(db, body.template_id)
+    template = await _get_builder_template(db, body.template_id, user_id)
     structured = _normalize_builder_input(body.structured_content)
     render = resume_builder_service.render(structured, template.category)
 
@@ -672,7 +678,7 @@ async def create_resume(
     await db.commit()
     await db.refresh(resume)
 
-    if settings.OPENAI_API_KEY:
+    if settings.OPENAI_API_KEY and await entitlement_service.has_feature("d21", user=user_id):
         try:
             from ..workers.ats_worker import submit_embed_resume
 
@@ -903,7 +909,7 @@ async def update_builder_resume(
 
     template: Optional[ResumeTemplate] = None
     if body.template_id:
-        template = await _get_builder_template(db, body.template_id)
+        template = await _get_builder_template(db, body.template_id, user_id)
         resume.selected_template_id = template.id
     elif resume.selected_template_id:
         template = await db.get(ResumeTemplate, resume.selected_template_id)
@@ -989,6 +995,9 @@ async def update_resume(
     resume, access_role = await _get_resume_document_access(db, resume_id, user_id)
     if access_role not in {"owner", "editor"}:
         raise HTTPException(status_code=403, detail="This collaborator has read-only access")
+    if access_role != "owner":
+        await enforce_capabilities(("f04",), user_id)
+        await enforce_capabilities(("f04",), resume.user_id)
 
     update_data = resume_in.model_dump(exclude_unset=True)
     expected_latex_content = update_data.pop("expected_latex_content", None)
@@ -1062,7 +1071,8 @@ async def update_resume(
     await db.commit()
     await db.refresh(resume)
 
-    if settings.OPENAI_API_KEY and update_data.get("latex_content"):
+    if (settings.OPENAI_API_KEY and update_data.get("latex_content")
+            and await entitlement_service.has_feature("d21", user=user_id)):
         try:
             from ..workers.ats_worker import submit_embed_resume
 
@@ -1385,6 +1395,8 @@ async def fork_resume(
         and parent.builder_status == "active"
         and parent.content_source == "builder"
     )
+    if is_linked_builder_variant:
+        await enforce_capabilities(("b12",), user_id)
     variant = Resume(
         id=str(uuid4()),
         user_id=user_id,
@@ -1417,7 +1429,7 @@ async def fork_resume(
     await db.refresh(variant)
 
     # Fire-and-forget embedding task
-    if settings.OPENAI_API_KEY:
+    if settings.OPENAI_API_KEY and await entitlement_service.has_feature("d21", user=user_id):
         try:
             from ..workers.ats_worker import submit_embed_resume
 

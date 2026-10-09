@@ -14,7 +14,7 @@ import urllib.parse
 from typing import Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -26,6 +26,7 @@ from ..core.redis import cache_manager, get_redis_cache_client
 from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
 from ..services.google_drive_service import (

@@ -17,6 +17,7 @@ function hasConnectingButton(node: unknown): boolean {
 }
 
 afterEach(() => {
+  vi.doUnmock('@/contexts/EntitlementsContext')
   vi.unstubAllGlobals()
   vi.doUnmock('react')
   vi.doUnmock('react/jsx-runtime')
@@ -80,7 +81,10 @@ describe('GitHub OAuth completion captured account context', () => {
     }))
     vi.stubGlobal('document', { cookie: '' })
 
-    vi.doMock('react', () => ({
+    // These lifecycle fixtures assume the optional tour is available.
+  // Entitlement failures and identity isolation are exercised separately.
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))
+  vi.doMock('react', () => ({
       Suspense: 'Suspense',
       useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
       useRef: (initial: unknown) => {

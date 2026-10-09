@@ -71,7 +71,9 @@ def _isolated_app(fake_db: _FakeDB, *, authenticated: bool = True) -> FastAPI:
         # The feature dependency is a generated closure, so override the
         # concrete dependency attached to this isolated route.
         route = next(item for item in router.routes if item.path == "/outreach/drafts")
-        app.dependency_overrides[route.dependant.dependencies[0].call] = lambda: "user-a"
+        for dependency in route.dependant.dependencies:
+            if dependency.call.__module__ in {"app.middleware.entitlements", "app.middleware.capability_router"}:
+                app.dependency_overrides[dependency.call] = lambda: "user-a"
     return app
 
 

@@ -13,6 +13,19 @@ window.addEventListener('message', async (event) => {
   }
   if (message.type !== 'LXY_CAPTURE_REQUEST') return
 
+  let allowed = false
+  try {
+    const response = await fetch('/api/extension/entitlements', {
+      credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000),
+    })
+    allowed = response.ok && (await response.json())?.available === true
+  } catch { /* Availability failures deny new handoffs; acknowledgements still clear data. */ }
+  if (!allowed) {
+    window.postMessage({ source: 'latexy-extension', type: 'LXY_CAPTURE_RESPONSE', captureId: message.captureId,
+      capture: null, error: 'Job Companion is unavailable or your session could not be verified.' }, window.location.origin)
+    return
+  }
+
   const stored = (await chrome.storage.local.get(key))[key]
   const valid = stored && Number(stored.expiresAt) > Date.now()
   if (stored && !valid) await chrome.storage.local.remove(key)

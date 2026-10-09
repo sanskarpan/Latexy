@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from ..database.connection import get_db
 from ..database.models import CareerAnalysis, CareerRole, Resume
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
 from ..middleware.auth_middleware import require_admin
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.career_path_service import career_path_service
@@ -176,6 +177,8 @@ async def analyze_career_path(
     user_api_key = None
     try:
         user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except HTTPException:
+        raise
     except Exception:
         user_api_key = None
 

@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import Link from 'next/link'
@@ -45,6 +48,9 @@ const PERSONA_OPTIONS = [
 ] as const
 
 export default function OptimizationSuitePage() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const params = useParams()
   const router = useRouter()
   const resumeId = params.resumeId as string
@@ -403,11 +409,11 @@ export default function OptimizationSuitePage() {
         optimization_level: 'balanced',
         compiler,
         persona: persona ?? undefined,
-        industry: intake.industry || undefined,
-        seniority: intake.seniority || undefined,
-        tone: intake.tone || undefined,
-        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
-        downplay: intake.downplay.length ? intake.downplay : undefined,
+        industry: canRef.current('d02') ? intake.industry || undefined : undefined,
+        seniority: canRef.current('d02') ? intake.seniority || undefined : undefined,
+        tone: canRef.current('d02') ? intake.tone || undefined : undefined,
+        emphasize: canRef.current('d02') && intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: canRef.current('d02') && intake.downplay.length ? intake.downplay : undefined,
         custom_instructions: scoreInstructions,
       })
 
@@ -612,11 +618,11 @@ export default function OptimizationSuitePage() {
         job_description: jobDescription,
         optimization_level: 'aggressive',
         custom_instructions: TRIM_INSTRUCTION,
-        industry: intake.industry || undefined,
-        seniority: intake.seniority || undefined,
-        tone: intake.tone || undefined,
-        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
-        downplay: intake.downplay.length ? intake.downplay : undefined,
+        industry: canRef.current('d02') ? intake.industry || undefined : undefined,
+        seniority: canRef.current('d02') ? intake.seniority || undefined : undefined,
+        tone: canRef.current('d02') ? intake.tone || undefined : undefined,
+        emphasize: canRef.current('d02') && intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: canRef.current('d02') && intake.downplay.length ? intake.downplay : undefined,
       })
       if (!response.success || !response.job_id) {
         throw new Error(response.message || 'Failed to start trim')
@@ -863,7 +869,7 @@ export default function OptimizationSuitePage() {
               className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 text-sm text-fg outline-none transition focus:border-accent"
             />
             <div className="mt-3">
-              <GuidedIntakePanel value={intake} onChange={setIntake} />
+              <CapabilityGate feature="d02"><GuidedIntakePanel value={intake} onChange={setIntake} /></CapabilityGate>
             </div>
             <button
               onClick={() => void runOptimization()}
@@ -872,7 +878,7 @@ export default function OptimizationSuitePage() {
             >
               {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
             </button>
-            {!intakeIsEmpty(intake) && (
+            {can('d02') && !intakeIsEmpty(intake) && (
               <p className="mt-2 text-[10px] leading-relaxed text-fg-3">
                 The AI will follow your direction —
                 {[
@@ -946,7 +952,7 @@ export default function OptimizationSuitePage() {
               <div className="flex h-11 items-center justify-between gap-2 border-b border-line bg-surface-2 px-4">
                 <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
                   <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">LaTeX Source</p>
-                  <button
+                  <CapabilityGate feature="c06"><button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (5s quiet period; 10s minimum interval)"
                     aria-label="Auto-compile on change"
@@ -959,7 +965,7 @@ export default function OptimizationSuitePage() {
                   >
                     <Zap size={10} />
                     Auto
-                  </button>
+                  </button></CapabilityGate>
                   <span className="h-4 w-px bg-line" />
                   <CompilerSelector
                     resumeId={resumeId}
@@ -996,7 +1002,7 @@ export default function OptimizationSuitePage() {
                   logLines={stream.logLines}
                   onCompile={handleEditorCompile}
                   onAutoCompile={handleAutoCompile}
-                  autoCompileEnabled={autoCompile}
+                  autoCompileEnabled={can('c06') && autoCompile}
                   autoCompileBusy={isProcessing || isSubmitting}
                   autoCompileDocumentKey={personaIdentityKey}
                   atsScore={quickATSScore}
@@ -1076,7 +1082,7 @@ export default function OptimizationSuitePage() {
                     These are not the vendors&apos; parsers and do not predict screening decisions.
                     Inspect the extracted plain text and address concrete document issues.
                   </p>
-                  <AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <CapabilityGate feature="d22"><AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} /></CapabilityGate>
                 </>
               ) : activeToolTab === 'Keywords' ? (
                 <>
@@ -1084,7 +1090,7 @@ export default function OptimizationSuitePage() {
                     Paste a job description to see which keywords your resume covers. Green = present,
                     amber = partial match, red = missing. Click a missing keyword for insertion advice.
                   </p>
-                  <KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <CapabilityGate feature="d23"><KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} /></CapabilityGate>
                 </>
               ) : (
                 <>
@@ -1092,7 +1098,7 @@ export default function OptimizationSuitePage() {
                     Fetch your publications from ORCID and insert a formatted bibliography section
                     directly into your resume. Choose a citation style, year range, and publication type.
                   </p>
-                  <PublicationsPanel insertAtCursor={(text) => {
+                  <CapabilityGate feature="g10"><PublicationsPanel insertAtCursor={(text) => {
                     // The side panel can become interactive while the dynamic
                     // Monaco bundle is still mounting. Never drop a user's
                     // insertion during that window; with no caret yet, prepend
@@ -1101,7 +1107,7 @@ export default function OptimizationSuitePage() {
                     if (!editorRef.current?.insertAtCursor(text)) {
                       setEditorContent((current) => text + current)
                     }
-                  }} />
+                  }} /></CapabilityGate>
                 </>
               )}
             </div>
@@ -1240,12 +1246,12 @@ export default function OptimizationSuitePage() {
 
       {/* Per-change accept/reject review (F2-P0) */}
       {showReviewModal && compareOriginalLatex !== null && compareAfterLatex !== null && (
-        <ChangeReviewModal
+        <CapabilityGate feature="d03"><ChangeReviewModal
           originalLatex={compareOriginalLatex}
           optimizedLatex={compareAfterLatex}
           onApply={handleApplyReviewedChanges}
           onClose={() => setShowReviewModal(false)}
-        />
+        /></CapabilityGate>
       )}
     </div>
   )

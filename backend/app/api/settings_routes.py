@@ -5,7 +5,7 @@ GET  /settings/notifications  — return current prefs
 PUT  /settings/notifications  — update prefs
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 
 logger = get_logger(__name__)
 

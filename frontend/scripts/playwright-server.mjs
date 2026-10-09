@@ -320,7 +320,7 @@ async function main() {
       // the traced server and fail explicitly if its layout changes.
       const nextArgs = mode === 'production'
         ? [standalone]
-        : [nextCli, 'dev', '--port', String(port)]
+        : [nextCli, 'dev', '--hostname', '127.0.0.1', '--port', String(port)]
       child = spawn(process.execPath, nextArgs, {
         cwd: runtimeRoot,
         env: serverEnvironment(port, mode),

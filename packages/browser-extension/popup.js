@@ -1,3 +1,4 @@
+import { assertCompanionAvailable } from './capabilities.js'
 import { autofillApplication } from './autofill.js'
 import { extractJobPosting } from './extraction.js'
 
@@ -8,6 +9,12 @@ const status = document.getElementById('status')
 const source = document.getElementById('source')
 const save = document.getElementById('save')
 let captureSource = 'visible_page'
+
+async function requireCompanion() {
+  const { appOrigin = 'https://latexy.xyz' } = await chrome.storage.local.get('appOrigin')
+  await assertCompanionAvailable(appOrigin)
+  return appOrigin
+}
 
 async function activeWebTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -24,6 +31,8 @@ function setStatus(message, isError = false) {
 
 async function inspectTab() {
   try {
+    save.disabled = true
+    await requireCompanion()
     const tab = await activeWebTab()
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -51,6 +60,8 @@ for (const input of Object.values(fields)) {
 }
 
 save.addEventListener('click', async () => {
+  try {
+  const appOrigin = await requireCompanion()
   const captureId = crypto.randomUUID()
   const capture = Object.fromEntries(
     Object.entries(fields).map(([key, input]) => [key, input.value.trim()]),
@@ -60,13 +71,16 @@ save.addEventListener('click', async () => {
   await chrome.storage.local.set({
     [key]: { capture, expiresAt: Date.now() + 15 * 60 * 1000 },
   })
-  const { appOrigin = 'https://latexy.xyz' } = await chrome.storage.local.get('appOrigin')
   await chrome.tabs.create({ url: `${appOrigin}/tracker?capture_id=${encodeURIComponent(captureId)}` })
   window.close()
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'Could not verify Job Companion access.', true)
+  }
 })
 
 document.getElementById('autofill').addEventListener('click', async () => {
   try {
+    await requireCompanion()
     const { autofillProfile } = await chrome.storage.local.get('autofillProfile')
     if (!autofillProfile?.email && !autofillProfile?.firstName) {
       await chrome.runtime.openOptionsPage()

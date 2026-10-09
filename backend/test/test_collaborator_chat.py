@@ -162,6 +162,7 @@ async def test_two_real_websocket_clients_exchange_ephemeral_chat() -> None:
 
     with (
         patch("app.api.ws_routes._consume_ws_ticket", new=consume_ticket),
+        patch("app.api.ws_routes.entitlement_service.users_have_feature", AsyncMock(return_value=True)),
         patch.object(collab, "_subscribe", new_callable=AsyncMock, return_value=None),
         patch.object(collab, "_publish", new_callable=AsyncMock),
         patch.object(collab, "_chat_user_rate_allowed", new_callable=AsyncMock, return_value=True),

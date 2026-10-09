@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -24,6 +24,7 @@ from ..middleware.auth_middleware import (
 from ..middleware.auth_middleware import (
     get_current_user_required as get_current_user,
 )
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..utils.uuid_guard import ensure_uuid
 

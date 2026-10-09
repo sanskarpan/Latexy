@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
@@ -21,6 +21,7 @@ from ..core.redis import cache_manager, get_redis_client
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services import github_projects_service as gh_projects
 from ..services.encryption_service import encryption_service
@@ -767,7 +768,7 @@ async def import_github_projects(
 async def get_github_import_result(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(require_feature("ai_import_github")),
+    user_id: str = Depends(get_current_user_required),
 ):
     """Return the candidate ProjectEvidence for an import job.
 

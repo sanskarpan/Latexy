@@ -1,5 +1,7 @@
 'use client'
 
+import CapabilityGate from '@/components/CapabilityGate'
+
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -280,7 +282,7 @@ export default function LinkedVariantPage() {
         </div>
         <div className="flex gap-2">
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
-          <Link href={`/workspace/${resumeId}/edit`} className="rounded border border-line px-3 py-2 text-xs text-fg-2">Advanced editor</Link>
+          <CapabilityGate feature="b09"><Link href={`/workspace/${resumeId}/edit`} className="rounded border border-line px-3 py-2 text-xs text-fg-2">Advanced editor</Link></CapabilityGate>
           {dirty && <span role="status" className="self-center text-xs text-warn">Unsaved changes</span>}
           <button type="button" onClick={() => void save()} disabled={saving || !title.trim()} className="inline-flex items-center gap-2 rounded bg-accent px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

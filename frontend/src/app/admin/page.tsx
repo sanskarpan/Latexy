@@ -9,6 +9,8 @@ import {
   type UserRole,
 } from '@/lib/api-client'
 import { JobQueue } from '@/components/JobQueue'
+import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
+import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
   key: string
@@ -18,11 +20,14 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'flags' | 'matrix' | 'users'
+type TabId = 'flags' | 'matrix' | 'plans' | 'users'
+
+const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans' },
+  { id: 'plans', label: 'Plan Catalog' },
   { id: 'users', label: 'Users & Roles' },
 ]
 
@@ -75,7 +80,7 @@ function FeatureFlagsTab() {
   useEffect(() => {
     apiClient
       .getAdminFeatureFlags()
-      .then((data) => setFlags(data))
+      .then((data) => setFlags(data.filter((flag) => OPERATIONAL_FLAGS.has(flag.key))))
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
         setError(msg || 'Failed to load feature flags')
@@ -138,6 +143,11 @@ function categoryLabel(cat: string): string {
 }
 
 function MatrixTab() {
+  const [query, setQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [kindFilter, setKindFilter] = useState('all')
+  const [planView, setPlanView] = useState<'families' | 'skus'>('families')
+  const pendingRef = useRef(createEntitlementWriteLock())
   const [state, setState] = useState<AdminEntitlementsState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -186,6 +196,11 @@ function MatrixTab() {
     if (!state) return []
     const byCat = new Map<string, AdminEntitlementsState['registry']>()
     for (const feat of state.registry) {
+      if (!matchesFeatureSearch(feat, query)) continue
+      if (categoryFilter !== 'all' && feat.category !== categoryFilter) continue
+      if (kindFilter === 'controlled' && !feat.gateable) continue
+      if (kindFilter === 'always-on' && feat.gateable) continue
+      if (kindFilter === 'groups' && feat.inventory_id) continue
       const list = byCat.get(feat.category) ?? []
       list.push(feat)
       byCat.set(feat.category, list)
@@ -196,41 +211,20 @@ function MatrixTab() {
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
     })
     return cats.map((cat) => ({ category: cat, features: byCat.get(cat)! }))
-  }, [state])
+  }, [state, query, categoryFilter, kindFilter])
 
   // Functional patch helpers so every write builds off the *latest* state,
   // never a value captured in the handler's closure. This is what prevents
   // concurrent toggles from clobbering each other.
-  const patchKillSwitch = useCallback(
-    (cur: AdminEntitlementsState | null, featureKey: string, value: boolean) =>
-      cur
-        ? { ...cur, kill_switches: { ...cur.kill_switches, [featureKey]: value } }
-        : cur,
-    [],
-  )
-
-  const patchMatrixCell = useCallback(
-    (
-      cur: AdminEntitlementsState | null,
-      family: string,
-      featureKey: string,
-      value: boolean,
-    ) =>
-      cur
-        ? {
-            ...cur,
-            matrix: {
-              ...cur.matrix,
-              [family]: { ...(cur.matrix[family] ?? {}), [featureKey]: value },
-            },
-          }
-        : cur,
-    [],
-  )
+  const patchKillSwitch = useCallback((cur: AdminEntitlementsState | null, featureKey: string, value: boolean) =>
+    patchEntitlementCell(cur, 'global', featureKey, value), [])
+  const patchMatrixCell = useCallback((cur: AdminEntitlementsState | null, family: string, featureKey: string, value: boolean) =>
+    patchEntitlementCell(cur, family, featureKey, value), [])
 
   const toggleGlobal = useCallback(
     async (featureKey: string, next: boolean) => {
       const cellId = `global:${featureKey}`
+      if (!pendingRef.current.acquire(cellId)) return
       // optimistic — functional so it merges with any other in-flight change
       setState((cur) => patchKillSwitch(cur, featureKey, next))
       markBusy(cellId)
@@ -247,7 +241,9 @@ function MatrixTab() {
         setState((cur) => patchKillSwitch(cur, featureKey, !next))
         toast.error('Failed to update kill-switch')
       } finally {
+        pendingRef.current.release(cellId)
         clearBusy(cellId)
+        window.dispatchEvent(new Event('latexy:entitlements-updated'))
       }
     },
     [patchKillSwitch, markBusy, clearBusy],
@@ -256,6 +252,7 @@ function MatrixTab() {
   const toggleCell = useCallback(
     async (family: string, featureKey: string, next: boolean) => {
       const cellId = `${family}:${featureKey}`
+      if (!pendingRef.current.acquire(cellId)) return
       setState((cur) => patchMatrixCell(cur, family, featureKey, next))
       markBusy(cellId)
       try {
@@ -269,7 +266,9 @@ function MatrixTab() {
         setState((cur) => patchMatrixCell(cur, family, featureKey, !next))
         toast.error('Failed to update plan access')
       } finally {
+        pendingRef.current.release(cellId)
         clearBusy(cellId)
+        window.dispatchEvent(new Event('latexy:entitlements-updated'))
       }
     },
     [patchMatrixCell, markBusy, clearBusy],
@@ -279,15 +278,41 @@ function MatrixTab() {
   if (error) return <InlineError message={error} />
   if (!state) return null
 
-  const families = state.plan_families
+  const families = planView === 'skus' ? (state.plan_keys ?? state.plan_families) : state.plan_families
+  const categories = [...new Set(state.registry.map((feature) => feature.category))]
+  const visibleCount = grouped.reduce((total, group) => total + group.features.length, 0)
 
   return (
     <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
+      <div className="space-y-4 border-b border-line p-4">
+        <div>
+          <h2 className="font-semibold text-fg">Capability inventory</h2>
+          <p className="mt-1 text-xs text-fg-3">Control individual capabilities and parent feature groups. Parent restrictions always apply to their children.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <input type="search" aria-label="Search capabilities" placeholder="Search features, IDs, or descriptions…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-48 flex-1 rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg" />
+          <select aria-label="Capability category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg">
+            <option value="all">All categories</option>
+            {categories.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}
+          </select>
+          <select aria-label="Capability control type" value={kindFilter} onChange={(event) => setKindFilter(event.target.value)} className="rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg">
+            <option value="all">All capabilities</option><option value="controlled">Controllable</option><option value="always-on">Always on</option><option value="groups">Parent groups</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="status" className="text-xs text-fg-3">{visibleCount} of {state.registry.length} capabilities · {state.registry.filter((feature) => feature.inventory_id).length} audited features</p>
+          <div className="flex gap-2" role="group" aria-label="Plan control scope">
+            <button type="button" aria-pressed={planView === 'families'} onClick={() => setPlanView('families')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'families' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Family defaults</button>
+            <button type="button" aria-pressed={planView === 'skus'} onClick={() => setPlanView('skus')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'skus' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Individual plans</button>
+          </div>
+        </div>
+        {planView === 'skus' && <p className="text-xs text-fg-3">Individual plan switches add restrictions to family defaults. Turning a plan on cannot override a disabled family, parent, or global switch.</p>}
+      </div>
+      <div className="max-h-[70vh] overflow-auto">
+        <table className="w-full min-w-[800px] border-collapse text-sm">
           <thead>
             <tr className="sticky top-0 z-20 bg-bg/95 backdrop-blur">
-              <th className="sticky left-0 z-30 w-[160px] min-w-[160px] bg-bg/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-2">
+              <th className="sticky left-0 z-30 w-[280px] min-w-[280px] bg-bg/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-2">
                 Feature
               </th>
               <th className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-accent-strong">
@@ -298,12 +323,13 @@ function MatrixTab() {
                   key={fam}
                   className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-fg-2"
                 >
-                  {fam}
+                  {fam.replace(/_/g, ' ')}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {visibleCount === 0 && <tr><td colSpan={families.length + 2} className="p-8 text-center text-fg-3">No capabilities match these filters.</td></tr>}
             {grouped.map(({ category, features }) => (
               <FragmentGroup
                 key={category}
@@ -321,8 +347,8 @@ function MatrixTab() {
         </table>
       </div>
       <p className="border-t border-line px-4 py-3 text-[11px] text-fg-3">
-        Launch default is everything on. A <span className="text-accent-strong">Global</span>{' '}
-        kill-switch off disables the feature for every plan. Non-gateable core features are always on.
+        Switches show stored permissions; effective access also depends on parent and family permissions.
+        A global switch off disables a capability for every plan. Security, recovery and baseline data access stay available.
       </p>
     </div>
   )
@@ -359,8 +385,9 @@ function FragmentGroup({
         </th>
       </tr>
       {features.map((feat, idx) => {
-        const globalOn = state.kill_switches[feat.key] ?? true
-        const rowDisabled = feat.gateable && !globalOn
+        const globalOn = state.kill_switches[feat.key] === true
+        const globalBlocker = entitlementBlocker(state, feat)
+        const rowDisabled = feat.gateable && Boolean(globalBlocker)
         return (
           <tr
             key={feat.key}
@@ -368,7 +395,7 @@ function FragmentGroup({
               idx % 2 === 1 ? 'bg-surface-2/40' : ''
             } ${rowDisabled ? 'opacity-50' : ''}`}
           >
-            <td className="sticky left-0 z-10 w-[160px] min-w-[160px] bg-surface px-4 py-3 group-hover:bg-surface-2">
+            <td className="sticky left-0 z-10 w-[280px] min-w-[280px] bg-surface px-4 py-3 group-hover:bg-surface-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-fg">{feat.label}</span>
                 {!feat.gateable && (
@@ -377,7 +404,11 @@ function FragmentGroup({
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-fg-3">{feat.key}</span>
+              <p className="mt-1 text-[10px] text-fg-3">{feat.inventory_id ? `${feat.inventory_id} · ` : ''}{feat.key}</p>
+              {feat.description && <p className="mt-1 max-w-md text-[11px] font-normal leading-relaxed text-fg-3">{feat.description}</p>}
+              {feat.parent_key && <p className="mt-1 text-[10px] text-fg-3">Requires: {state.registry.find((item) => item.key === feat.parent_key)?.label ?? feat.parent_key}</p>}
+              {feat.always_on_reason && <p className="mt-1 text-[11px] text-ok">{feat.always_on_reason}</p>}
+              {globalBlocker && <p className="mt-1 text-[10px] text-warn">{globalBlocker}</p>}
             </td>
 
             {/* Global kill-switch */}
@@ -392,30 +423,31 @@ function FragmentGroup({
                   />
                 </div>
               ) : (
-                <AlwaysOnDot />
+                <AlwaysOnDot reason={feat.always_on_reason} />
               )}
             </td>
 
             {/* Per-plan cells */}
             {families.map((fam) => {
-              const cellOn = state.matrix[fam]?.[feat.key] ?? true
+              const cellOn = state.matrix[fam]?.[feat.key] === true
+              const blocker = entitlementBlocker(state, feat, fam)
               if (!feat.gateable) {
                 return (
                   <td key={fam} className="px-3 py-3 text-center">
-                    <AlwaysOnDot />
+                    <AlwaysOnDot reason={feat.always_on_reason} />
                   </td>
                 )
               }
               return (
                 <td key={fam} className="px-3 py-3 text-center">
-                  <div className="inline-flex min-h-[40px] items-center justify-center px-1">
+                  <div title={blocker ?? 'Effective access: enabled'} className="inline-flex min-h-[40px] flex-col items-center justify-center gap-1 px-1">
                     <Switch
                       enabled={cellOn}
-                      disabled={rowDisabled}
                       busy={busyCells.has(`${fam}:${feat.key}`)}
                       onClick={() => onToggleCell(fam, feat.key, !cellOn)}
                       label={`${feat.label} for ${fam}`}
                     />
+                    {blocker && cellOn && <span className="text-[9px] text-warn">Inherited off</span>}
                   </div>
                 </td>
               )
@@ -427,10 +459,10 @@ function FragmentGroup({
   )
 }
 
-function AlwaysOnDot() {
+function AlwaysOnDot({ reason }: { reason?: string | null }) {
   return (
     <span
-      title="Always on"
+      title={reason ?? 'Always on'}
       className="inline-block h-2.5 w-2.5 rounded-full bg-ok/70 align-middle"
       aria-label="Always on"
     />
@@ -644,7 +676,7 @@ function InlineError({ message }: { message: string }) {
 // ── Page shell ────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<TabId>('flags')
+  const [tab, setTab] = useState<TabId>('matrix')
   const [forbidden, setForbidden] = useState(false)
   const [probeError, setProbeError] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
@@ -723,7 +755,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12">
+    <div className="mx-auto max-w-7xl px-4 py-12">
       <div className="mb-6">
         <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Admin</p>
         <h1 className="mt-1 text-xl font-semibold text-fg">Control Plane</h1>
@@ -733,7 +765,7 @@ export default function AdminPage() {
       <div
         role="tablist"
         aria-label="Admin sections"
-        className="mb-8 inline-flex gap-1 rounded-[var(--radius-lg)] border border-line bg-surface p-1"
+        className="mb-8 inline-flex max-w-full flex-wrap gap-1 rounded-[var(--radius-lg)] border border-line bg-surface p-1"
       >
         {TABS.map((t, i) => {
           const active = tab === t.id
@@ -771,6 +803,7 @@ export default function AdminPage() {
       >
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
+        {tab === 'plans' && <AdminPlanCatalog />}
         {tab === 'users' && <UsersTab />}
       </div>
 

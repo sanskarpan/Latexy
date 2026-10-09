@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, ExternalLink, FileUp, Globe, Loader2, Star, X } from 'lucide-react'
@@ -31,6 +33,7 @@ const POLL_INTERVAL_MS = 2500
 const POLL_TIMEOUT_MS = 120_000
 
 type Source = 'github' | 'url' | 'linkedin'
+const SOURCE_CAPABILITIES = { github: 'g02', url: 'g03', linkedin: 'g04' } as const
 type Phase = 'input' | 'checking' | 'disconnected' | 'importing' | 'ready' | 'error'
 type Selection = { included: boolean; bullets: Set<number> }
 
@@ -49,6 +52,9 @@ export default function ImportProjectsModal({
   onClose: () => void
   onInsert: (latex: string) => void
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const [source, setSource] = useState<Source>('github')
   const [phase, setPhase] = useState<Phase>('input')
   const [projects, setProjects] = useState<ProjectEvidence[]>([])
@@ -88,6 +94,7 @@ export default function ImportProjectsModal({
 
   // ── GitHub: connection check → async import job → poll ──────────────────────
   const startGithubImport = useCallback(async () => {
+    if (!canRef.current('g02')) return
     setPhase('importing')
     setError(null)
     try {
@@ -126,6 +133,7 @@ export default function ImportProjectsModal({
   }, [loadProjects])
 
   const beginGithub = useCallback(async () => {
+    if (!canRef.current('g02')) return
     setPhase('checking')
     try {
       const status = await apiClient.getGitHubStatus()
@@ -150,6 +158,7 @@ export default function ImportProjectsModal({
   }, [beginGithub, source])
 
   const connectGithubForImport = useCallback(async () => {
+    if (!canRef.current('g02')) return
     setPhase('checking')
     setError(null)
     try {
@@ -171,6 +180,7 @@ export default function ImportProjectsModal({
 
   // ── URL: synchronous fetch + summarize ──────────────────────────────────────
   const runUrlImport = useCallback(async () => {
+    if (!canRef.current('g03')) return
     const url = urlInput.trim()
     if (!url) return
     setPhase('importing')
@@ -192,6 +202,7 @@ export default function ImportProjectsModal({
   // ── LinkedIn / resume file: synchronous upload + parse ──────────────────────
   const runLinkedInImport = useCallback(
     async (file: File) => {
+      if (!canRef.current('g04')) return
       setPhase('importing')
       setError(null)
       try {
@@ -221,6 +232,12 @@ export default function ImportProjectsModal({
   // Reset on open + when the source changes; auto-start GitHub (its input is implicit).
   useEffect(() => {
     if (!isOpen) return
+    if (!can(SOURCE_CAPABILITIES[source])) {
+      const available = SOURCES.find((item) => can(SOURCE_CAPABILITIES[item.key]))
+      if (available) setSource(available.key)
+      else { setPhase('error'); setError('No import sources are available for your plan.') }
+      return
+    }
     cancelledRef.current = false
     reset()
     if (source === 'linkedin') {
@@ -232,9 +249,10 @@ export default function ImportProjectsModal({
       clearTimer()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, source])
+  }, [can, isOpen, source])
 
   const switchSource = (s: Source) => {
+    if (!can(SOURCE_CAPABILITIES[s])) return
     cancelledRef.current = true
     clearTimer()
     cancelledRef.current = false
@@ -268,6 +286,7 @@ export default function ImportProjectsModal({
   const selectedCount = Object.values(selection).filter((s) => s.included).length
 
   const handleInsert = () => {
+    if (!can(SOURCE_CAPABILITIES[source])) return
     const selections: ProjectSelection[] = projects
       .map((p, i) => ({ p, i }))
       .filter(({ i }) => selection[i]?.included)
@@ -321,7 +340,7 @@ export default function ImportProjectsModal({
 
           {/* Source tabs */}
           <div className="flex gap-1 border-b border-line px-4 py-2">
-            {SOURCES.map((s) => (
+            {SOURCES.filter((item) => can(SOURCE_CAPABILITIES[item.key])).map((s) => (
               <button
                 key={s.key}
                 onClick={() => switchSource(s.key)}

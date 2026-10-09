@@ -1082,6 +1082,14 @@ class TestCollaboratorDocumentAccess:
 class TestCollabWebSocket:
     """End-to-end tests for the /ws/collab/{resume_id} handshake and framing."""
 
+    @pytest.fixture(autouse=True)
+    def _allow_capability_for_fake_accounts(self):
+        # These protocol tests use fake accounts/document sessions. Paid access
+        # is tested with real owners in the capability suite, independently of
+        # document ACLs and per-frame viewer/editor restrictions below.
+        with patch("app.api.ws_routes.entitlement_service.users_have_feature", AsyncMock(return_value=True)):
+            yield
+
     @staticmethod
     def _fake_db_session(db):
         """Replacement for get_async_db_session() yielding *db*."""
@@ -1227,6 +1235,35 @@ class TestCollabWebSocket:
         assert json.loads(payload)["code"] == "read_only"
         # Nothing was written to the shared document.
         mock_redis.rpush.assert_not_called()
+
+    def test_active_editor_is_closed_when_capability_changes(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
+        resume = MagicMock(user_id="owner")
+        collaborator = MagicMock(role="editor")
+        db = self._db_returning(resume, collaborator, "Editor")
+        check = AsyncMock(side_effect=[True, False])
+        with (
+            patch("app.api.ws_routes._consume_ws_ticket", AsyncMock(return_value="editor")),
+            patch("app.database.connection.get_async_db_session", self._fake_db_session(db)),
+            patch("app.api.ws_routes.entitlement_service.users_have_feature", check),
+            patch("app.services.collab_manager._subscribe", AsyncMock(return_value=None)),
+            patch("app.api.ws_routes.handle_collab_message", AsyncMock()) as handle,
+        ):
+            client = self._client()
+            try:
+                with pytest.raises(WebSocketDisconnect) as exc:
+                    with client.websocket_connect(
+                        "/ws/collab/00000000-0000-0000-0000-000000000077?ticket=editor"
+                    ) as socket:
+                        socket.send_bytes(_make_sync_update(b"document change"))
+                        socket.receive_bytes()
+            finally:
+                client.close()
+        assert exc.value.code == 4003
+        handle.assert_not_awaited()
+        assert check.await_count == 2
+        assert check.await_args.args == ("f05", ("editor", "owner"))
 
     def test_editor_document_update_is_accepted(self) -> None:
         """The same frame from an editor is persisted and fanned out."""

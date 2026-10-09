@@ -23,9 +23,10 @@ async def _empty_db():
     yield object()
 
 
-def _feature_dependency():
+def _feature_dependencies():
     route = next(item for item in router.routes if item.path == "/tracker/email-status/parse")
-    return route.dependant.dependencies[0].call
+    return [dependency.call for dependency in route.dependant.dependencies
+            if dependency.call.__module__ in {"app.middleware.entitlements", "app.middleware.capability_router"}]
 
 
 def _isolated_app(*, authenticated: bool = False, feature_enabled: bool | None = True) -> FastAPI:
@@ -35,12 +36,20 @@ def _isolated_app(*, authenticated: bool = False, feature_enabled: bool | None =
     if authenticated:
         app.dependency_overrides[get_current_user_required] = lambda: "user-a"
     if feature_enabled is True:
-        app.dependency_overrides[_feature_dependency()] = lambda: "user-a"
+        for dependency in _feature_dependencies():
+            app.dependency_overrides[dependency] = lambda: "user-a"
     elif feature_enabled is False:
         async def _deny():
             raise HTTPException(status_code=403, detail="feature disabled")
 
-        app.dependency_overrides[_feature_dependency()] = _deny
+        for dependency in _feature_dependencies():
+            app.dependency_overrides[dependency] = _deny
+    else:
+        # Authentication tests exercise the real required-auth dependency;
+        # availability is independent and covered by the explicit deny test.
+        for dependency in _feature_dependencies():
+            if dependency.__module__ == "app.middleware.capability_router":
+                app.dependency_overrides[dependency] = lambda: None
     return app
 
 

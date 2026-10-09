@@ -173,9 +173,9 @@ async def update_matrix_cell(
 
     400 on an unknown plan family, 404 on an unknown/non-gateable feature key.
     """
-    from ..core.feature_registry import PLAN_FAMILIES, is_gateable
+    from ..core.feature_registry import PLAN_MATRIX_KEYS, is_gateable
 
-    if body.plan_family not in PLAN_FAMILIES:
+    if body.plan_family not in PLAN_MATRIX_KEYS:
         raise HTTPException(
             status_code=400,
             detail=error_body(

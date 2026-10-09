@@ -1,6 +1,8 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
 import katex from 'katex'
 import { toast } from 'sonner'
@@ -44,6 +46,7 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react').then((module) 
 
 type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor
 type MonacoNamespace = typeof import('monaco-editor')
+const capabilitiesByModel = new WeakMap<import('monaco-editor').editor.ITextModel, (key: string) => boolean>()
 const completionBibliographyByModel = new WeakMap<
   import('monaco-editor').editor.ITextModel,
   () => string
@@ -675,6 +678,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
+    const { can } = useEntitlements()
+    const canRef = useRef(can)
+    canRef.current = can
     const editorRef = useRef<any>(null)
     const parentValueGuardRef = useRef(createEditorParentValueGuard(value))
     parentValueGuardRef.current.observeParentValue(value)
@@ -682,7 +688,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const onEditorReadyRef = useRef(onEditorReady)
     onEditorReadyRef.current = onEditorReady
     const onSyncToPdfRef = useRef(onSyncToPdf)
-    onSyncToPdfRef.current = onSyncToPdf
+    onSyncToPdfRef.current = can('c10') ? onSyncToPdf : undefined
     const onCursorChangeRef = useRef(onCursorChange)
     onCursorChangeRef.current = onCursorChange
     const readOnlyRef = useRef(readOnly)
@@ -715,15 +721,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       autoCompileSchedulerRef.current?.setDocument(autoCompileDocumentKey)
     }, [autoCompileDocumentKey])
     const onExplainErrorRef = useRef(onExplainError)
-    onExplainErrorRef.current = onExplainError
+    onExplainErrorRef.current = can('d13') ? onExplainError : undefined
     const onCursorLineChangeRef = useRef(onCursorLineChange)
     onCursorLineChangeRef.current = onCursorLineChange
     const onCursorInSummarySectionRef = useRef(onCursorInSummarySection)
     onCursorInSummarySectionRef.current = onCursorInSummarySection
     const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
-    onWritingAssistantActionRef.current = onWritingAssistantAction
+    onWritingAssistantActionRef.current = can('d06') ? onWritingAssistantAction : undefined
     const onShowDocsRef = useRef(onShowDocs)
-    onShowDocsRef.current = onShowDocs
+    onShowDocsRef.current = can('c17') ? onShowDocs : undefined
     const spellCheckIssuesRef = useRef(spellCheckIssues)
     spellCheckIssuesRef.current = spellCheckIssues
     const getPersonalDictionaryRef = useRef(getPersonalDictionary)
@@ -756,8 +762,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     collabReadOnlyRef.current = collabReadOnly
 
     useEffect(() => {
-      autoCompileSchedulerRef.current?.setEnabled(autoCompileEnabled && !readOnly && !collabReadOnly)
-    }, [autoCompileEnabled, collabReadOnly, readOnly])
+      autoCompileSchedulerRef.current?.setEnabled(can('c06') && autoCompileEnabled && !readOnly && !collabReadOnly)
+    }, [can, autoCompileEnabled, collabReadOnly, readOnly])
 
     useEffect(() => {
       parentValueGuardRef.current.clear()
@@ -846,12 +852,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     useEffect(() => {
       localStorage.setItem('latexy_editor_keybindings', keybindingMode)
       const editor = editorRef.current as MonacoEditorInstance | null
-      if (editor) void applyKeybindingMode(editor, keybindingMode)
+      if (editor) void applyKeybindingMode(editor, canRef.current('c04') ? keybindingMode : 'standard')
     // The active editor is intentionally read from its ref; mode is the user-controlled trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [keybindingMode])
+    }, [keybindingMode, can])
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
+    useEffect(() => {
+      if (!can('c03')) {
+        setSearchPanelOpen(false)
+        editorRef.current?.trigger('capability-change', 'closeFindWidget', null)
+      }
+      if (!can('c02')) setRichHover(null)
+    }, [can])
+
 
     // Follow the app's light/dark mode so the editor matches the page instead
     // of being permanently dark. Reads the `data-mode` attribute the
@@ -869,6 +883,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     }, [])
 
     function handlePresetSelect(preset: LatexSearchPreset) {
+      if (!canRef.current('c03')) return
       const editor = editorRef.current
       if (!editor) return
 
@@ -1305,10 +1320,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       setEditorReadyVersion(version => version + 1)
       onEditorReadyRef.current?.(editor)
       exposeMonacoTestHook(editor, monaco)
-      void applyKeybindingMode(editor, keybindingMode)
+      void applyKeybindingMode(editor, canRef.current('c04') ? keybindingMode : 'standard')
       disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
       const mountedModel = editor.getModel()
       if (mountedModel) {
+        capabilitiesByModel.set(mountedModel, (key) => canRef.current(key))
+        disposablesRef.current.push({ dispose: () => capabilitiesByModel.delete(mountedModel) })
         completionBibliographyByModel.set(mountedModel, () => bibliographyBibTeXRef.current)
         disposablesRef.current.push({
           dispose: () => completionBibliographyByModel.delete(mountedModel),
@@ -1316,9 +1333,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       }
 
       const autoCompileScheduler = createAutoCompileScheduler({
-        enabled: autoCompileEnabled && !readOnly && !collabReadOnly,
+        enabled: can('c06') && autoCompileEnabled && !readOnly && !collabReadOnly,
         busy: autoCompileBusy,
-        onDispatch: (content) => autoCompileRef.current?.(content),
+        onDispatch: (content) => { if (canRef.current('c06')) autoCompileRef.current?.(content) },
       })
       autoCompileSchedulerRef.current?.dispose()
       autoCompileSchedulerRef.current = autoCompileScheduler
@@ -1335,12 +1352,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         if (richHoverTimer) clearTimeout(richHoverTimer)
         const model = editor.getModel()
         const position = event.target.position
-        if (!model || !position) {
+        if (!canRef.current('c02') || !model || !position) {
           setRichHover(null)
           return
         }
         richHoverTimer = setTimeout(() => {
-          if (editor.getModel() !== model) return
+          if (!canRef.current('c02') || editor.getModel() !== model) return
           const preview = buildLatexHoverPreview(
             model.getValue(),
             completionBibliographyByModel.get(model)?.() ?? '',
@@ -1441,6 +1458,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const completionDisposable = monaco.languages.registerCompletionItemProvider('latex', {
         triggerCharacters: ['\\', '{'],
         provideCompletionItems(model: import('monaco-editor').editor.ITextModel, position: import('monaco-editor').Position) {
+          if (!capabilitiesByModel.get(model)?.('c02')) return { suggestions: [] }
           const text = model.getValueInRange({
             startLineNumber: position.lineNumber,
             startColumn: 1,
@@ -1583,6 +1601,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // ── Folding range provider ─────────────────────────────────────
       const foldingDisposable = monaco.languages.registerFoldingRangeProvider('latex', {
         provideFoldingRanges(model: import('monaco-editor').editor.ITextModel) {
+          if (!capabilitiesByModel.get(model)?.('c02')) return []
           return buildLatexFoldingRanges(model.getValue()).map((range) => ({
             ...range,
             kind: monaco.languages.FoldingRangeKind.Region,
@@ -1594,6 +1613,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // ── Hover provider (show command description) ──────────────────
       const hoverDisposable = monaco.languages.registerHoverProvider('latex', {
         provideHover(model: import('monaco-editor').editor.ITextModel, position: import('monaco-editor').Position) {
+          if (!capabilitiesByModel.get(model)?.('c02')) return null
           const preview = buildLatexHoverPreview(
             model.getValue(),
             completionBibliographyByModel.get(model)?.() ?? '',
@@ -1709,6 +1729,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       const codeLensDisposable = monaco.languages.registerCodeLensProvider('latex', {
         provideCodeLenses(model: import('monaco-editor').editor.ITextModel) {
+          if (!capabilitiesByModel.get(model)?.('d13')) return { lenses: [], dispose() {} }
           const markers = monaco.editor.getModelMarkers({ owner: 'latex-log' })
           const lenses: any[] = []
           const seenLines = new Set<number>()
@@ -1742,11 +1763,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompile())
         if (d) disposablesRef.current.push(d)
       }
+      // Override optional find/replace shortcuts with live capability checks.
+      for (const [key, action] of [
+        [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, 'actions.find'],
+        [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH, 'editor.action.startFindReplaceAction'],
+        [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, 'editor.action.startFindReplaceAction'],
+      ] as const) {
+        const command = editor.addCommand(key, () => {
+          if (canRef.current('c03')) void editor.getAction(action)?.run()
+        })
+        if (command) disposablesRef.current.push(command)
+      }
       // ⌘⇧H — open LaTeX Presets panel
       {
         const d = editor.addCommand(
           monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
-          () => setSearchPanelOpen(true),
+          () => { if (canRef.current('c03')) setSearchPanelOpen(true) },
         )
         if (d) disposablesRef.current.push(d)
       }
@@ -2182,13 +2214,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     return (
       <div className="flex h-full flex-col">
         <div className="relative min-h-0 flex-1">
-          <LaTeXSearchPanel
+          <CapabilityGate feature="c03"><LaTeXSearchPanel
             presets={LATEX_SEARCH_PRESETS}
             isOpen={searchPanelOpen}
             onToggle={() => setSearchPanelOpen((v) => !v)}
             onClose={() => setSearchPanelOpen(false)}
             onPresetSelect={handlePresetSelect}
-          />
+          /></CapabilityGate>
           <MonacoEditor
               height="100%"
               defaultLanguage="latex"
@@ -2227,13 +2259,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 smoothScrolling: true,
                 contextmenu: true,
                 readOnly: readOnly || collabReadOnly,
-                suggestOnTriggerCharacters: true,
+                suggestOnTriggerCharacters: can('c02'),
                 quickSuggestions: {
-                  other: true,
+                  other: can('c02'),
                   comments: false,
                   strings: false,
                 },
-                folding: true,
+                folding: can('c02'),
+                hover: { enabled: can('c02') },
+                wordBasedSuggestions: can('c02') ? 'currentDocument' : 'off',
                 foldingHighlight: true,
                 showFoldingControls: 'mouseover',
                 bracketPairColorization: { enabled: false },
@@ -2251,7 +2285,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 glyphMargin: true,
               }}
           />
-          {richHover && <LatexRichHoverCard {...richHover} />}
+          {can('c02') && richHover && <LatexRichHoverCard {...richHover} />}
           {!value && (
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
               <p className="text-sm uppercase tracking-[0.14em] text-fg-3">Empty document</p>
@@ -2280,7 +2314,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 : 'LaTeX editor'}
           </span>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-fg-3">
-            <label className="flex items-center gap-1 normal-case tracking-normal" title="Editor keybinding mode">
+            <CapabilityGate feature="c04"><label className="flex items-center gap-1 normal-case tracking-normal" title="Editor keybinding mode">
               <span className="sr-only">Editor keybindings</span>
               <select
                 aria-label="Editor keybindings"
@@ -2293,8 +2327,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 <option value="emacs">Emacs</option>
               </select>
               <span ref={keybindingStatusRef} aria-live="polite" className="min-w-0 max-w-32 truncate text-[9px] text-fg-3" />
-            </label>
-            {onAutoCompile && (
+            </label></CapabilityGate>
+            {can('c06') && onAutoCompile && (
               <span className="flex items-center gap-1 text-[12px] text-accent-strong">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Auto
@@ -2332,7 +2366,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 {renderedWordCount.toLocaleString()} rendered {renderedWordCount === 1 ? 'word' : 'words'}
               </span>
             )}
-            {onSpellCheckToggle && (
+            {can('c16') && onSpellCheckToggle && (
               <button
                 onClick={onSpellCheckToggle}
                 title={spellCheckEnabled ? 'Spell check on — click to disable' : 'Spell check off — click to enable'}
@@ -2348,14 +2382,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 )}
               </button>
             )}
-            {(atsScore !== undefined || atsScoreLoading) && (
+            {can('d18') && (atsScore !== undefined || atsScoreLoading) && (
               <ATSScoreBadge
                 score={atsScore ?? null}
                 loading={atsScoreLoading ?? false}
                 onClick={onATSBadgeClick}
               />
             )}
-            {(confidenceScore !== undefined || confidenceScoreLoading) && (
+            {can('d17') && (confidenceScore !== undefined || confidenceScoreLoading) && (
               confidenceScoreLoading ? (
                 <span className="flex items-center gap-1 text-[12px] text-fg-3">
                   <span className="h-1.5 w-1.5 animate-spin rounded-full border border-line-2 border-t-transparent" />
@@ -2395,7 +2429,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             )}
             <span>{value.length.toLocaleString()} chars</span>
             <span className="hidden text-fg-3 sm:inline">
-              {[onSave && '⌘S save', onCompile && '⌘↵ compile', '⌘⇧H presets'].filter(Boolean).join(' · ')}
+              {[onSave && '⌘S save', onCompile && '⌘↵ compile', can('c03') && '⌘⇧H presets'].filter(Boolean).join(' · ')}
             </span>
           </div>
         </div>

@@ -20,7 +20,7 @@ import re
 import uuid as _uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -30,9 +30,12 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeTemplate
-from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..services import storage_service
+from ..services.entitlement_service import entitlement_service
 from ..services.europecv import configure_europecv_latex, is_europecv_source
 
 logger = get_logger(__name__)
@@ -208,7 +211,7 @@ def _to_detail(t: ResumeTemplate, request: Request) -> TemplateDetailResponse:
 # ------------------------------------------------------------------ #
 
 @router.get("/categories", response_model=List[TemplateCategoryCount])
-async def list_categories(db: AsyncSession = Depends(get_db)):
+async def list_categories(db: AsyncSession = Depends(get_db), user_id=Depends(get_current_user_optional)):
     """List template categories with per-category counts."""
     rows = (await db.execute(
         select(ResumeTemplate.category, func.count().label("cnt"))
@@ -216,13 +219,14 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
         .group_by(ResumeTemplate.category)
         .order_by(ResumeTemplate.category)
     )).all()
+    specialized = await entitlement_service.has_feature("b05", user=user_id)
     return [
         TemplateCategoryCount(
             category=row.category,
             label=_category_label(row.category),
             count=row.cnt,
         )
-        for row in rows
+        for row in rows if specialized or row.category not in {"academic", "regional", "presentation"}
     ]
 
 
@@ -232,6 +236,7 @@ async def list_templates(
     category: Optional[str] = Query(None, description="Filter by category slug"),
     search: Optional[str] = Query(None, description="Search by name (case-insensitive)"),
     db: AsyncSession = Depends(get_db),
+    user_id=Depends(get_current_user_optional),
 ):
     """List all active templates. Optionally filter by category or search by name."""
     stmt = (
@@ -249,12 +254,26 @@ async def list_templates(
             func.lower(ResumeTemplate.name).contains(search.strip().lower())
         )
 
+    if not await entitlement_service.has_feature("b05", user=user_id):
+        stmt = stmt.where(ResumeTemplate.category.notin_(["academic", "regional", "presentation"]))
+
     stmt = stmt.order_by(ResumeTemplate.category, ResumeTemplate.sort_order, ResumeTemplate.name)
     templates = (await db.execute(stmt)).scalars().all()
     return [_to_response(t, request) for t in templates]
 
 
-@router.head("/{template_id}/thumbnail")
+async def _template_asset_access(
+    template_id: str, db: AsyncSession = Depends(get_db), user_id=Depends(get_current_user_optional),
+):
+    _validate_uuid(template_id)
+    template = await db.get(ResumeTemplate, template_id)
+    if not template or not template.is_active:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if template.category in {"academic", "regional", "presentation"}:
+        await enforce_capabilities(("b05",), user_id)
+
+
+@router.head("/{template_id}/thumbnail", dependencies=[Depends(_template_asset_access)])
 async def head_template_thumbnail(template_id: str):
     """Check if a thumbnail exists in MinIO (lightweight — no body download)."""
     _validate_uuid(template_id)
@@ -268,11 +287,11 @@ async def head_template_thumbnail(template_id: str):
         raise HTTPException(status_code=502, detail="Storage unavailable")
     return Response(
         media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
-@router.get("/{template_id}/thumbnail")
+@router.get("/{template_id}/thumbnail", dependencies=[Depends(_template_asset_access)])
 async def get_template_thumbnail(template_id: str):
     """Redirect to the PNG thumbnail on object storage (R2).
 
@@ -289,7 +308,7 @@ async def get_template_thumbnail(template_id: str):
         return RedirectResponse(
             url,
             status_code=307,
-            headers={"Cache-Control": "public, max-age=600"},
+            headers={"Cache-Control": "private, no-store"},
         )
     except Exception:
         logger.warning("Presign failed for thumbnail %s; streaming instead", template_id)
@@ -303,11 +322,11 @@ async def get_template_thumbnail(template_id: str):
     return Response(
         content=data,
         media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
-@router.head("/{template_id}/pdf")
+@router.head("/{template_id}/pdf", dependencies=[Depends(_template_asset_access)])
 async def head_template_pdf(template_id: str):
     """Check if a PDF exists in MinIO (lightweight — no body download)."""
     _validate_uuid(template_id)
@@ -321,11 +340,11 @@ async def head_template_pdf(template_id: str):
         raise HTTPException(status_code=502, detail="Storage unavailable")
     return Response(
         media_type="application/pdf",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
-@router.get("/{template_id}/pdf")
+@router.get("/{template_id}/pdf", dependencies=[Depends(_template_asset_access)])
 async def get_template_pdf(template_id: str):
     """Redirect to the pre-compiled PDF on object storage (R2).
 
@@ -341,7 +360,7 @@ async def get_template_pdf(template_id: str):
         return RedirectResponse(
             url,
             status_code=307,
-            headers={"Cache-Control": "public, max-age=600"},
+            headers={"Cache-Control": "private, no-store"},
         )
     except Exception:
         logger.warning("Presign failed for PDF %s; streaming instead", template_id)
@@ -355,17 +374,22 @@ async def get_template_pdf(template_id: str):
     return Response(
         content=data,
         media_type="application/pdf",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
 @router.get("/{template_id}", response_model=TemplateDetailResponse)
-async def get_template(template_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def get_template(
+    template_id: str, request: Request, db: AsyncSession = Depends(get_db),
+    user_id=Depends(get_current_user_optional),
+):
     """Get full template details including latex_content."""
     _validate_uuid(template_id)
     t = await db.get(ResumeTemplate, template_id)
     if not t or not t.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
+    if t.category in {"academic", "regional", "presentation"}:
+        await enforce_capabilities(("b05",), user_id)
     return _to_detail(t, request)
 
 
@@ -384,6 +408,11 @@ async def use_template(
     t = await db.get(ResumeTemplate, template_id)
     if not t or not t.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
+
+    if t.category in {"academic", "regional", "presentation"}:
+        await enforce_capabilities(("b05",), user_id)
+    if t.document_type == "presentation":
+        await enforce_capabilities(("c14",), user_id)
 
     title = (body.title or "").strip() or t.name
     latex_content = t.latex_content
