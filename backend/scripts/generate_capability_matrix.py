@@ -65,6 +65,19 @@ FOCUSED_TESTS = {
 }
 
 
+# Historical passing browser evidence is attached only to the interactions
+# actually exercised. It is not a substitute for latest-head CI or provider QA.
+BROWSER_RUN = "https://github.com/sanskarpan/Latexy/actions/runs/38004341871/job/114069613888"
+BROWSER_EVIDENCE = {
+    "a02": "Admin inventory displays the immutable authentication baseline and no switch; authentication itself was not exercised.",
+    "b03": "Admin inventory displays the search switch and exact-SKU columns; cross-document search itself was not exercised.",
+    "c01": "Source remains intact and manual compile stays enabled while optional grants are revoked or unavailable; no compiler provider was invoked.",
+    "c03": "Find controls and keyboard search deny/enable according to refreshed grants.",
+    "c04": "Editor keybinding selector denies/enables according to refreshed grants.",
+    "c06": "Auto-compile control denies/enables with grants, then disappears on policy outage while source and manual compile survive.",
+}
+
+
 def generate() -> dict:
     catalog = json.loads((ROOT / "backend/app/core/capability_catalog.json").read_text())
     policy_ast = ast.parse(POLICY.read_text())
@@ -114,6 +127,13 @@ def generate() -> dict:
                 "status": status,
                 "automatedBackendEvidence": ["backend/test/" + test for test in tests],
                 "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+                "automatedBrowserEvidence": ([{
+                    "status": "passed_api_mocked_chromium",
+                    "commit": "328acae82a918e5145e716db324679fe34673ab3",
+                    "run": BROWSER_RUN,
+                    "testFile": "frontend/e2e/capability-controls.spec.ts",
+                    "scope": BROWSER_EVIDENCE[key],
+                }] if key in BROWSER_EVIDENCE else []),
                 "liveProviderOrManualEndToEnd": "not verified by this change",
                 "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows.",
             },

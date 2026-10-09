@@ -136,7 +136,9 @@ async function installFixture(page: Page) {
     if (path === '/ws/ticket') return route.fulfill({ status: 201, json: { ticket: 'editor-fixture-ticket', expires_in: 30 } })
     if (path.includes('/checkpoints') || path.includes('/comments') || path.includes('/collaborators') || path.includes('/suggestions') || path === '/resumes/stats') return route.fulfill({ json: [] })
     if (path === '/ats/quick-score') return route.fulfill({ json: { score: 70, grade: 'C', sections_found: [], missing_sections: [] } })
-    if (path === '/config/entitlements' && route.request().method() === 'GET') return route.fulfill({ json: { features: {} } })
+    // These success fixtures exercise auto-compile and SyncTeX explicitly.
+    // Other optional capabilities remain denied by the effective-map contract.
+    if (path === '/config/entitlements' && route.request().method() === 'GET') return route.fulfill({ json: { features: { c06: true, c10: true } } })
     if (path === '/tenants/resolve-host' && route.request().method() === 'GET') return route.fulfill({ json: { tenant: null } })
     if (path === '/macros' && route.request().method() === 'GET') return route.fulfill({ json: [] })
     if (path === '/subscription/current' && route.request().method() === 'GET') return route.fulfill({ json: { userId: 'editor-fixture-owner', planId: 'free', planName: 'Free', status: 'active', features: { compilations: 10, optimizations: 3, historyRetention: 7, prioritySupport: false, apiAccess: false } } })
