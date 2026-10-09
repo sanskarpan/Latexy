@@ -18,17 +18,17 @@ Node 22.23.2, pinned dependency installation:
 
 - Full TypeScript check (`tsc --noEmit`): passed
 - Full frontend ESLint (`eslint . --max-warnings=0`): passed
-- Full frontend Vitest: 179 files, 1,242 tests passed
+- Full frontend Vitest: 180 files, 1,249 tests passed
 - Focused policy/context tests: 19 passed
 - Draft recovery/action-button tests: 7 passed; OAuth/sync control tests: 15 passed; focused tracker suite: 70 passed
-- Browser-extension Node tests: 8 passed
+- Browser-extension Node tests: 9 passed, including packaged popup dependencies
 - Extension JavaScript syntax and package/host-scope validation: passed
 
 The frontend totals include the final capability-control edits and the independent plan-catalog quota tests.
 
 A redundant full-suite rerun during concurrent build/backend work encountered worker-start timeouts and 5-second test timeouts, followed by mock-cleanup cascades (177 files completed instead of 179). The preceding full run passed all 1,242 tests; the only intervening code change replaced the confirmation dialog's accessibility-description attribute with `aria-describedby`. Final TypeScript and full ESLint checks passed after that correction. The final two-worker rerun (`vitest run --maxWorkers=2`) passed all 179 files / 1,242 tests after the accessibility correction, with unchanged test limits. The final serial production build also passed, including standalone artifacts. An earlier concurrent build exited 137 under memory pressure; the serial retry resolved it.
 
-## Browser acceptance status
+## Local browser acceptance status
 
 `frontend/e2e/capability-controls.spec.ts` defines API-mocked inventory and editor acceptance checks. These checks did **not** execute: system Chromium terminated during process startup with `process_singleton_posix.cc: socket() failed: Operation not permitted`. The permitted escalation retry had the same infrastructure failure. No screenshots were produced and no visual pass is claimed. Next.js did start with the test runner's explicit loopback hostname; network-restricted Google Fonts used fallback fonts during startup.
 
@@ -44,3 +44,9 @@ Optionally set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chromium. A
 ## Deliberate boundaries
 
 Existing-data views, source recovery, manual compilation, PDF/source downloads, security settings, revocation/deletion and existing billing management remain reachable. Disabling review access alone still follows the backend sharing-update policy; when updates are unavailable, the modal explains that revoking the existing link removes all public access. UI restrictions supplement authoritative server admission; client code alone is not a security boundary.
+
+## CI browser execution
+
+`playwright.capabilities.config.ts` now selects both capability and plan-catalog files (six scenarios). The existing read-only Cross-Browser Quality job runs them with synthetic API fixtures and retains screenshots/traces in its artifact. Follow the exact-head PR checks for actual execution results; local discovery/types/lint alone do not establish a browser pass. The extension ZIP includes its capability module and is covered by an import-to-archive regression.
+
+The CI follow-up adds enabled and denied public-fixture coverage, explicit credential-compatible CORS/preflight and failures for unknown backend requests. The real unavailable-feature route has an h1 and public pricing has an h2 before card h3 headings. The final full unit run passed 180 files / 1,249 tests; the free-plan fixture also preserves its intentional 10/day Developer API allowance.

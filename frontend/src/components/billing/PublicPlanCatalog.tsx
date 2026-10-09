@@ -31,6 +31,7 @@ export default function PublicPlanCatalog() {
   )
   return (
     <div className="mt-10">
+      <h2 className="mb-4 text-xl font-semibold text-fg">Available plans</h2>
       <div aria-label="Billing period" className="mb-6 flex gap-2">
         {(['monthly', 'annual'] as const).map((value) => (
           <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}

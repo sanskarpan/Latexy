@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
+
+const backendOrigin = new URL(process.env.PLAYWRIGHT_API_URL ?? process.env.PLAYWRIGHT_BACKEND_URL ?? `http://127.0.0.1:${Number(process.env.PLAYWRIGHT_PORT ?? '5181') + 2000}`).origin
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { AdminEntitlementsState, EntitlementFeatureDef } from '../src/lib/api-client'
@@ -8,13 +10,13 @@ const catalog = JSON.parse(readFileSync(resolve(__dirname, '../../backend/app/co
 const parents = [...new Set(catalog.map((item) => item.parent_key).filter(Boolean))].map((key) => ({ key: key!, label: key!, category: 'Parents', gateable: true }))
 const registry = [...parents, ...catalog]
 const families = ['free', 'basic', 'pro', 'byok', 'team']
-const keys = [...families, 'pro_annual', 'basic_annual', 'byok_annual', 'pro_student', 'pro_weekly', 'pro_lifetime']
+const keys = [...families, 'pro_annual', 'basic_annual', 'byok_annual', 'student', 'weekly', 'lifetime']
 test.use({ serviceWorkers: 'block' })
 async function fixture(page: Page) {
   let features = Object.fromEntries(registry.map((item) => [item.key, true]))
   let failed = false
   const state: AdminEntitlementsState = { registry, plan_families: families, plan_keys: keys,
-    plan_family_by_key: Object.fromEntries(keys.map((key) => [key, key.split('_')[0]])),
+    plan_family_by_key: Object.fromEntries(keys.map((key) => [key, ['student', 'weekly', 'lifetime'].includes(key) ? 'pro' : key.split('_')[0]])),
     kill_switches: Object.fromEntries(registry.map((item) => [item.key, true])),
     matrix: Object.fromEntries(keys.map((key) => [key, Object.fromEntries(registry.map((item) => [item.key, true]))])),
   }
@@ -23,7 +25,7 @@ async function fixture(page: Page) {
     const url = new URL(route.request().url()); const path = url.pathname
     if (path === '/api/auth/get-session') return route.fulfill({ json: { session: { token: 'fixture-session' }, user: { id: 'owner', email: 'owner@example.test', name: 'Owner' } } })
     if (path.startsWith('/api/')) return route.fulfill({ json: {} })
-    if (url.port !== '8030') return route.continue()
+    if (url.origin !== backendOrigin) return route.continue()
     if (path === '/config/entitlements') return route.fulfill({ status: failed ? 503 : 200, json: failed ? { detail: 'Synthetic failure' } : { features } })
     if (path === '/config/feature-flags') return route.fulfill({ json: { billing: false } })
     if (path === '/admin/feature-flags') return route.fulfill({ json: [{ key: 'billing', label: 'Billing', enabled: false }] })
@@ -43,7 +45,7 @@ async function fixture(page: Page) {
   return { state, setFeatures: (next: Record<string, boolean>) => { features = next }, fail: () => { failed = true }, refresh: () => page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated'))) }
 }
 
-test('admin searches all audited features and explains immutable and individual-plan controls', async ({ page }) => {
+test('admin searches all audited features and explains immutable and individual-plan controls', async ({ page }, testInfo) => {
   await fixture(page)
   await page.goto('/admin')
   await expect(page.getByRole('heading', { name: 'Capability inventory' })).toBeVisible()
@@ -55,10 +57,10 @@ test('admin searches all audited features and explains immutable and individual-
   await expect(page.getByRole('switch', { name: 'Cross-document search global kill-switch' })).toBeVisible()
   await page.getByRole('button', { name: 'Individual plans' }).click()
   await expect(page.getByRole('columnheader', { name: 'pro annual', exact: true })).toBeVisible()
-  await page.screenshot({ path: '/tmp/latexy-capability-admin.png', fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('capability-admin.png'), fullPage: true })
 })
 
-test('editor gates optional keyboard and toolbar features while preserving source and manual compile', async ({ page }) => {
+test('editor gates optional keyboard and toolbar features while preserving source and manual compile', async ({ page }, testInfo) => {
   const f = await fixture(page); f.setFeatures({})
   await page.goto(`/workspace/${ID}/edit`)
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue()), { timeout: 60_000 }).toBe(SOURCE)
@@ -78,5 +80,5 @@ test('editor gates optional keyboard and toolbar features while preserving sourc
   await expect(page.getByRole('button', { name: 'Auto-compile on change', exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => (window as any).__latexyMonacoEditor.getValue())).toBe(SOURCE)
   await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
-  await page.screenshot({ path: '/tmp/latexy-capability-editor.png', fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('capability-editor.png'), fullPage: true })
 })

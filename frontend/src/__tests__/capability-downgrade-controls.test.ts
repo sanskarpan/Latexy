@@ -64,6 +64,7 @@ describe('safe capability downgrade', () => {
     ;(first.props.value as (value: unknown) => void)(draft)
     h.setAllowed(false)
     const denied = h.render()
+    expect(elements(denied).filter((node) => node.type === 'h1').map((node) => node.props.children)).toEqual(['Feature unavailable'])
     const retained = elements(denied).find((node) => node.props.children === h.children)!
     expect(retained.type).toBe(content.type)
     expect(retained.props.hidden).toBe(true)

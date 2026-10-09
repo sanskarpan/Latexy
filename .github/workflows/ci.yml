@@ -385,7 +385,7 @@ jobs:
         working-directory: packages/browser-extension
         run: >-
           zip -r ../../latexy-browser-extension.zip
-          manifest.json extraction.js autofill.js bridge.js popup.html popup.js
+          manifest.json capabilities.js extraction.js autofill.js bridge.js popup.html popup.js
           options.html options.js extension.css icons README.md
       - name: Upload extension archive
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -441,6 +441,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Verify admin capabilities and plan catalog
+        env:
+          PLAYWRIGHT_PORT: "5184"
+          PLAYWRIGHT_SERVER_MODE: production
+        # Synthetic API fixtures only: no model, payment, email or OAuth provider.
+        run: >-
+          pnpm exec playwright test --config=playwright.capabilities.config.ts
+          --workers=1 --retries=0 --trace=on --reporter=line
+          --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality
       - name: Verify desktop compile cadence and source-PDF synchronization
@@ -473,6 +482,7 @@ jobs:
           path: |
             frontend/playwright-quality-report
             frontend/test-results/quality
+            frontend/test-results/admin-capabilities
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
           if-no-files-found: warn

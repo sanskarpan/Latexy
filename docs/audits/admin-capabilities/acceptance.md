@@ -20,7 +20,7 @@ The [generated inventory matrix](feature-matrix.json) records source paths and a
 Final commands were rerun after the code freeze on 2026-10-09. Supplemental focused evidence is in [backend verification](backend-verification.md), [catalog verification](catalog-verification.md), and [frontend verification](../../admin/frontend-capability-validation.md). These focused counts overlap; do not add them to aggregate totals.
 
 - Final full backend regression: **4,649 passed, 12 failed, 4 skipped** out of 4,665. All 12 failures are the unchanged host TeX cases listed in [environment comparison](environment-comparison.json). The complete capability, migration, quota, accounting and matrix tests passed.
-- Final frontend: **179 files / 1,242 tests passed**, using `pnpm exec vitest run --maxWorkers=2` with unchanged test timeouts. TypeScript and full ESLint passed; extension tests: **8 passed**, with syntax and least-privilege package checks.
+- Final frontend: **180 files / 1,249 tests passed**, using `pnpm exec vitest run --maxWorkers=2` with unchanged test timeouts. TypeScript and full ESLint passed; extension tests: **9 passed**, including the archive dependency regression, with syntax and least-privilege package checks.
 - Final production Next.js build: **passed**, including static generation and standalone artifact output. An earlier concurrent attempt was killed with exit 137 under shared memory pressure; the final rerun serialized tests and build.
 - Prior full backend regression (before final fixture/matrix refresh): **4,641 passed, 16 failed, 4 skipped** out of 4,661. The 15 non-matrix failures reproduce with exactly the same test IDs on clean main: 12 host TeX format/font-map failures and three mocked scraper success fixtures that unexpectedly depended on live DNS. Matrix drift came from concurrent UI wiring additions, then was regenerated. The scraper fixtures are made deterministic without changing SSRF protection.
 - Main comparison: **268 passed, 15 failed, 4 skipped** across the eight affected existing test files. The set of failures equals the aggregate failures minus matrix freshness.
@@ -30,7 +30,16 @@ Final commands were rerun after the code freeze on 2026-10-09. Supplemental focu
 - Additional quota-outage unit coverage verifies that both limited and formerly unlimited plans deny before Redis mutation when the current policy is unavailable; read snapshots explicitly report unavailability rather than unlimited access.
 - No real model, email, OAuth or payment-provider action was used. PostgreSQL, Redis and synthetic S3 were isolated local test services.
 
-## Browser acceptance blocker
+## CI follow-up
+
+The first completed full CI run on `6f95ae0c` passed frontend build and lint/unit, backend lint, template PDF extraction, TUI, extension checks, deployment parity, privacy, observability and the Vercel preview check. It exposed four strict backend unraisable-warning failures and nine browser-quality failures (plus one flaky case); full-stack smoke was skipped because of the failed backend job. The failure is not presented as green CI.
+
+- The backend failures were leaked asyncpg sockets from a synchronous TestClient fixture ending its event loop before pool disposal. The compile-settings fixture now uses the shared async ASGI client; **296 regression tests passed with all three CI warning-as-error flags**, with one unrelated host-TeX case deselected. No warning filter or production database behavior was relaxed.
+- The extension archive now includes `capabilities.js`, with a regression checking every popup import against the ZIP list and an actual local ZIP-content check.
+- The capability browser config discovers both test files (six scenarios), writes screenshots to retained test artifacts and uses the normal browser sandbox settings. The existing read-only CI browser job now runs these API-mocked cases before its broader cross-browser checks. Test discovery is not a browser pass.
+- Browser-quality fixes add credential-compatible CORS/preflight and explicit entitlement/pricing fixtures, preserve failure on unknown API requests, and add enabled/disabled cases. The actual denied route now has an h1 and pricing cards have a preceding h2. Types/lint and 28 focused unit tests passed; discovery found 50 cross-browser cases. Actual browser execution must be verified by subsequent CI. The exact latest-head check suite is authoritative: [PR checks](https://github.com/sanskarpan/Latexy/pull/1864/checks).
+
+## Local browser acceptance blocker
 
 The local Next server starts on loopback. Chromium terminates before page creation because the execution environment prohibits its required local IPC socket (`process_singleton_posix.cc: socket() failed: Operation not permitted`). A permitted retry produced the same restriction. No sandbox/security setting was changed and no bypass was attempted. No browser assertions or screenshots passed.
 

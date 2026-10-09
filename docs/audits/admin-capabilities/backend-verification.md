@@ -70,3 +70,7 @@ The remaining 12 host-TeX failures are environmental: missing LuaLaTeX format fi
 ```sh
 .venv/bin/pytest backend/test/test_scraper.py backend/test/test_url_import.py backend/test/test_url_log_redaction.py -q
 ```
+
+## Strict CI fixture cleanup
+
+CI at `6f95ae0c` exposed asyncpg sockets stranded by the synchronous compile-settings TestClient closing its portal loop before shared async disposal. The six endpoint tests now use the shared async ASGI client. The ordered compile-settings/cover-letter reproduction passes all 57 tests after correction, and the expanded seven-file bundle passes 296 tests under ResourceWarning, RuntimeWarning and PytestUnraisableExceptionWarning errors. One unrelated host real-TeX case was deselected; warnings were not suppressed and production connection behavior was not changed.

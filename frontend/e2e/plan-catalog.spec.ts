@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const backendOrigin = new URL(process.env.PLAYWRIGHT_API_URL ?? process.env.PLAYWRIGHT_BACKEND_URL ?? `http://127.0.0.1:${Number(process.env.PLAYWRIGHT_PORT ?? '5181') + 2000}`).origin
+
 const makeCatalog = () => ({
   plans: {
     free: {
@@ -21,16 +23,21 @@ const makeCatalog = () => ({
   },
   editable_fields: ['name', 'description', 'display_order', 'visible', 'purchase_enabled'],
   pricing_policy: 'Provider prices are immutable. Existing subscriptions are unchanged.',
-  quota_policy: 'Numeric quotas are read-only. Boolean capability access uses the matrix.',
+  quota_policy: 'Quota edits apply to all subscribers, including existing subscribers. Reset windows remain fixed.',
 })
 
 async function setup(page: Page) {
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url())
+    if (url.origin === backendOrigin) return route.fulfill({ status: 403, json: { detail: `Unmocked fixture endpoint: ${url.pathname}` } })
+    return route.continue()
+  })
   await page.route('**/api/auth/get-session', (route) => route.fulfill({ json: {
     session: { id: 'catalog-session', userId: 'catalog-admin', token: 'catalog-token' },
     user: { id: 'catalog-admin', email: 'admin@example.com', name: 'Catalog Admin' },
   } }))
   await page.route('**/config/feature-flags', (route) => route.fulfill({ json: { billing: true, upgrade_ctas: true } }))
-  await page.route('**/me/entitlements', (route) => route.fulfill({ json: { features: {}, plan_family: 'free' } }))
+  await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: {}, plan_family: 'free' } }))
   await page.route('**/admin/feature-flags', (route) => route.fulfill({ json: [] }))
 }
 

@@ -16,7 +16,7 @@ import { downloadBlob } from '@/lib/download'
 export default function CapabilityRouteBoundary({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { data: session } = useSession()
-  const { can } = useEntitlements()
+  const { can, loading } = useEntitlements()
   const identity = session?.user?.id ?? 'anonymous'
   const [recovery, setRecovery] = useState<CapabilityDraftRecovery | null>(null)
   const retained = useRef<{ identity: string; pathname: string } | null>(null)
@@ -43,6 +43,7 @@ export default function CapabilityRouteBoundary({ children }: { children: ReactN
           A different identity never receives the retained subtree. */}
       {retained.current && <div hidden={!allowed} ref={(node) => { if (node) node.inert = !allowed }}>{children}</div>}
       {!allowed && <div className="mx-auto max-w-xl space-y-4 px-4 py-12">
+        <h1 className="text-2xl font-semibold text-fg">{loading ? 'Checking feature availability' : 'Feature unavailable'}</h1>
         <CapabilityGate feature={feature} fallback>{null}</CapabilityGate>
         {ownedRecovery && <div className="space-y-2 rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-fg-2">
           <p>{ownedRecovery.dirty ? 'Your unsaved builder fields are still held in this page.' : 'Your current builder fields are still held in this page.'} Download them before navigating away. The source editor contains the last saved version.</p>

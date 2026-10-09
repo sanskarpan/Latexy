@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
+import { fulfillQualityJson, qualityOrigins, QUALITY_PLANS } from './mock-api'
 
 const authenticatedSession = {
   user: { id: 'mobile-account-owner', email: 'mobile@example.com', name: 'Mobile Owner' },
@@ -26,12 +27,7 @@ async function mockHeaderDependencies(
   let authenticated = options.authenticated
   let sessionReads = 0
   let guestSessionReads = 0
-  const qualityPort = Number.parseInt(process.env.PLAYWRIGHT_QUALITY_PORT ?? '5182', 10)
-  const backendUrl = process.env.PLAYWRIGHT_API_URL
-    ?? process.env.PLAYWRIGHT_BACKEND_URL
-    ?? `http://127.0.0.1:${qualityPort + 2000}`
-  const backendOrigin = new URL(backendUrl).origin
-  const appOrigin = new URL(`http://localhost:${qualityPort}`).origin
+  const { appOrigin, backendOrigin } = qualityOrigins()
   const startedAt = Date.now()
   const timeline = (event: string, method: string, path: string, status?: number) => {
     const elapsedMs = Date.now() - startedAt
@@ -77,47 +73,38 @@ async function mockHeaderDependencies(
   // intentionally mock. The app must not silently depend on a live service.
   await page.route(url => url.origin === backendOrigin, route => {
     unmockedApiRequests.push(`${route.request().method()} ${route.request().url()}`)
-    return route.fulfill({ status: 501, contentType: 'application/json', body: '{}' })
+    return fulfillQualityJson(route, {}, 501)
   })
   await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/get-session', async route => {
     mockedAuthRequests.add(route.request())
     const isGuest = !authenticated
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(isGuest ? { user: null, session: null } : authenticatedSession),
-    })
+    await fulfillQualityJson(route, isGuest ? { user: null, session: null } : authenticatedSession)
     sessionReads += 1
     if (isGuest) guestSessionReads += 1
   })
   await page.route(url => url.origin === backendOrigin && url.pathname === '/telemetry/frontend', route =>
-    route.fulfill({ status: 204, body: '' }),
+    fulfillQualityJson(route, null, 204),
   )
-  await page.route(url => url.origin === backendOrigin && url.pathname === '/tenants/resolve-host', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ tenant: null }),
-  }))
-  await page.route(url => url.origin === backendOrigin && url.pathname === '/portfolio/resolve-domain', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ profile: null }),
-  }))
-  await page.route(url => url.pathname === '/me', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ id: 'mobile-account-owner', email: 'mobile@example.com', role: options.role ?? 'user' }),
-  }))
-  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ features: {} }),
-  }))
-  await page.route(url => url.pathname === '/config/feature-flags', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ billing: options.billing ?? true }),
-  }))
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/tenants/resolve-host', route =>
+    fulfillQualityJson(route, { tenant: null }),
+  )
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/portfolio/resolve-domain', route =>
+    fulfillQualityJson(route, { profile: null }),
+  )
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/me', route =>
+    fulfillQualityJson(route, { id: 'mobile-account-owner', email: 'mobile@example.com', role: options.role ?? 'user' }),
+  )
+  // Denied capabilities still leave account recovery and sign-out reachable.
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
+    fulfillQualityJson(route, { features: {} }),
+  )
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/config/feature-flags', route =>
+    fulfillQualityJson(route, { billing: options.billing ?? true }),
+  )
+  // Sign-out lands on the homepage, which loads its public pricing catalog.
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/subscription/plans', route =>
+    fulfillQualityJson(route, QUALITY_PLANS),
+  )
 
   const diagnostics = {
     pageErrors,
@@ -152,6 +139,9 @@ async function waitForHeaderSession(page: Page, fixture: Awaited<ReturnType<type
 
 test.describe('mobile account navigation', () => {
   test.afterEach(async ({ page }, testInfo) => {
+    // Finish in-flight mock responses before Playwright closes the page. Do not
+    // ignore handler errors: they belong in the test result and diagnostics.
+    await page.unrouteAll({ behavior: 'wait' })
     const diagnostics = diagnosticsByPage.get(page)
     if (!diagnostics) return
 
@@ -176,15 +166,14 @@ test.describe('mobile account navigation', () => {
     await page.setViewportSize({ width: 627, height: 780 })
     const fixture = await mockHeaderDependencies(page, { authenticated: true })
     let signOutCalls = 0
-    const qualityPort = Number.parseInt(process.env.PLAYWRIGHT_QUALITY_PORT ?? '5182', 10)
-    const appOrigin = new URL(`http://localhost:${qualityPort}`).origin
+    const { appOrigin } = qualityOrigins()
     const signOutMethods: string[] = []
     await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/sign-out', route => {
       fixture.markMockedAuthRequest(route.request())
       signOutCalls += 1
       signOutMethods.push(route.request().method())
       fixture.setAuthenticated(false)
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+      return fulfillQualityJson(route, {})
     })
 
     await page.goto('/platform', { waitUntil: 'domcontentloaded' })
