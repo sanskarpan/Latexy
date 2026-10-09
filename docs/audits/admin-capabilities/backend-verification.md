@@ -10,6 +10,8 @@ Final full regression: **4,649 passed, 12 failed, 4 skipped**. All remaining fai
 - Earlier overlapping bundles: 299 core policy/admission/collaboration tests passed; 287 policy/template/builder/import/variant tests passed; 161 apply/collaboration/chat/email-status/outreach/analytics tests passed. These counts overlap and must not be summed.
 - Python lint and `git diff --check` passed for the changed backend implementation, tests and generator.
 
+A follow-up 56-test policy bundle passed after publication, adding explicit real-database `0060` seed preservation and round-trip coverage. This is additional test-only evidence; application code is unchanged.
+
 ## What the tests establish
 
 - Real registered ASGI routes deny each declared static capability before handler database work, including existing builder updates, provider sync, snippet install/upvote and developer API dispatch.

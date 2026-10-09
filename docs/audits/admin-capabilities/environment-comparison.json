@@ -153,5 +153,12 @@
     "test.test_multilingual_latex::test_luahbtex_mixed_cjk_rtl_compile_and_text_extraction",
     "test.test_rtl_latex::test_lualatex_rtl_compile_and_pdf_text_layer[ar-Noto Naskh Arabic-\\u0627\\u0644\\u0633\\u064a\\u0631\\u0629 \\u0627\\u0644\\u0630\\u0627\\u062a\\u064a\\u0629-\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea]",
     "test.test_rtl_latex::test_lualatex_rtl_compile_and_pdf_text_layer[he-Noto Sans Hebrew-\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629-\\u05e7\\u05d5\\u05e8\\u05d5\\u05ea \\u05d7\\u05d9\\u05d9\\u05dd]"
-  ]
+  ],
+  "supplementalPolicyRegression": {
+    "tests": 56,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "additionalTest": "backend/test/test_capability_migration.py"
+  }
 }

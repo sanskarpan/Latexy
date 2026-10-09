@@ -26,6 +26,7 @@ Final commands were rerun after the code freeze on 2026-10-09. Supplemental focu
 - Main comparison: **268 passed, 15 failed, 4 skipped** across the eight affected existing test files. The set of failures equals the aggregate failures minus matrix freshness.
 - Earlier main-baseline orchestration failures were caused by unit helpers that mocked Popen/Path without producing the PDF required by durable persistence. Those two helpers now explicitly mock the persistence boundary. **80 orchestration/finalization/refund tests passed** afterward; production engine behavior is unchanged by that fixture repair.
 - Real PostgreSQL/Redis tests verify migration preservation, optimistic edit conflicts, new admission denial without charging, already-admitted completion/failure handling, and exactly-once refund/redelivery behavior.
+- Follow-up policy regression: **56 passed**, including an additional real `0060` seed migration test proving complete SKU coverage, preservation of existing global/family/SKU denials and labels, mandatory baselines, and non-destructive downgrade/re-upgrade. This test was added after the aggregate run; application code is unchanged.
 - Additional quota-outage unit coverage verifies that both limited and formerly unlimited plans deny before Redis mutation when the current policy is unavailable; read snapshots explicitly report unavailability rather than unlimited access.
 - No real model, email, OAuth or payment-provider action was used. PostgreSQL, Redis and synthetic S3 were isolated local test services.
 
