@@ -13,6 +13,7 @@ import {
   type BuilderTemplateResponse,
   type ResumeValidationIssue,
 } from '@/lib/api-client'
+import BuilderCapabilityGate, { useBuilderCapability } from '@/components/builder/BuilderCapabilityGate'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import {
   cloneStructuredResume,
@@ -46,11 +47,14 @@ export default function NewBuilderPage() {
   // The form owns all mutable draft state. Remounting it on an authenticated
   // identity change prevents an in-flight create/upload from crossing owners,
   // including an A → B → A account switch.
-  return <NewBuilderForm key={session.user.id} session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
+  return <BuilderCapabilityGate key={session.user.id}>
+    <NewBuilderForm session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
+  </BuilderCapabilityGate>
 }
 
 function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
   const router = useRouter()
+  const { ensureCompatible, isCompatible } = useBuilderCapability()
   const mountedRef = useRef(true)
   const authVerifiedRef = useRef(!authUnverified)
   authVerifiedRef.current = !authUnverified
@@ -96,7 +100,7 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
     }
   }, [])
 
-  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current
+  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current && isCompatible()
 
   const selectedTemplate = useMemo(
     () => templates.find(template => template.id === selectedTemplateId) ?? null,
@@ -113,6 +117,8 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
     setUploading(true)
     setUploadIssues([])
     try {
+      await ensureCompatible()
+      if (!isCurrentRequest()) return
       const seeded = await apiClient.seedBuilderFromUpload(file)
       if (!isCurrentRequest()) return
       setStructured(cloneStructuredResume(seeded.structured_content))
@@ -153,6 +159,8 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
     }
     setCreating(true)
     try {
+      await ensureCompatible()
+      if (!isCurrentRequest()) return
       const created = await apiClient.createBuilderResume({
         title: title.trim(),
         template_id: selectedTemplateId,

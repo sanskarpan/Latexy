@@ -21,6 +21,26 @@ from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_HEAD = "0068"
+# Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
+# SIX (the ISO maintenance agency). This does not alter runtime sale settings.
+# https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
+ISO4217_CURRENT_CODES = (
+    'AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT',
+    'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD',
+    'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP',
+    'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP',
+    'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF',
+    'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR',
+    'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD',
+    'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN',
+    'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN',
+    'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD',
+    'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP',
+    'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX',
+    'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAD',
+    'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XCG', 'XDR', 'XOF', 'XPD',
+    'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG',
+)
 PRODUCT_KEYS = {
     "basic": "BASIC_MONTHLY", "basic_annual": "BASIC_ANNUAL",
     "pro": "PRO_MONTHLY", "pro_annual": "PRO_ANNUAL",
@@ -79,23 +99,58 @@ def known_revisions(backend_root: Path = BACKEND_ROOT) -> set[str]:
     return revisions
 
 
-def configuration_report(env: Mapping[str, str], backend_root: Path = BACKEND_ROOT) -> tuple[dict, list[str]]:
-    billing = (env.get("BILLING_MODE") or "auto").strip().lower()
+PUBLIC_ENV_KEYS = {
+    "BILLING_MODE", "DODO_MODE", "ENVIRONMENT", "DEPLOY_TARGET", "SKIP_ENV_VALIDATION",
+    "SUBSCRIPTION_PLANS", "WEEKLY_AMOUNT_MINOR", "LIFETIME_AMOUNT_MINOR", "BILLING_CURRENCY",
+}
+
+
+def canonical_choice(value: Any, choices: tuple[str, ...], fallback: str = "invalid") -> str:
+    """Return a public constant, never the caller's original input string."""
+    if type(value) is str:
+        for choice in choices:
+            if value == choice:
+                return choice
+    return fallback
+
+
+def configuration_inputs(env: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Any]]:
+    """Separate public settings from credentials before report construction.
+
+    Raw credentials, product identifiers and the database URL never enter the
+    public settings mapping. Only explicit presence booleans cross this boundary.
+    """
     mode = (env.get("DODO_MODE") or "test").strip().lower()
-    environment = (env.get("ENVIRONMENT") or "development").strip().lower()
-    deploy_target = (env.get("DEPLOY_TARGET") or "local").strip().lower()
+    prefix = "DODO_LIVE" if mode == "live" else "DODO_TEST"
+    valid_mode = mode in {"test", "live"}
+    presence = {
+        "api": bool(valid_mode and env.get(prefix + "_API_KEY")),
+        "webhook": bool(valid_mode and env.get(prefix + "_WEBHOOK_KEY")),
+        "business": bool(valid_mode and env.get(prefix + "_BUSINESS_ID")),
+        "products": {sku: bool(valid_mode and env.get(prefix + "_PRODUCT_" + key))
+                     for sku, key in PRODUCT_KEYS.items()},
+    }
+    return {name: env[name] for name in PUBLIC_ENV_KEYS if name in env}, presence
+
+
+def configuration_report(env: Mapping[str, str], presence: Mapping[str, Any],
+                         backend_root: Path = BACKEND_ROOT) -> tuple[dict, list[str]]:
+    sales_mode = canonical_choice((env.get("BILLING_MODE") or "auto").strip().lower(), ("auto", "required", "disabled"))
+    mode = canonical_choice((env.get("DODO_MODE") or "test").strip().lower(), ("test", "live"))
+    environment = canonical_choice((env.get("ENVIRONMENT") or "development").strip().lower(),
+                                   ("development", "dev", "test", "testing", "staging", "production"))
+    deploy_target = canonical_choice((env.get("DEPLOY_TARGET") or "local").strip().lower(), ("local", "modal"))
     production = environment in {"production", "staging"}
     valid_mode = mode in {"test", "live"}
-    prefix = "DODO_LIVE" if mode == "live" else "DODO_TEST"
     report = {
-        "billing_mode": billing if billing in {"auto", "required", "disabled"} else "invalid",
-        "dodo_mode": mode if valid_mode else "invalid", "production_like": production,
-        "environment": environment if environment in {"development", "dev", "test", "testing", "staging", "production"} else "invalid",
-        "deploy_target": deploy_target if deploy_target in {"local", "modal"} else "invalid",
+        "billing_mode": sales_mode,
+        "dodo_mode": mode, "production_like": production,
+        "environment": environment,
+        "deploy_target": deploy_target,
         "skip_env_validation": env.get("SKIP_ENV_VALIDATION") == "true",
-        "active_business_id_present": bool(valid_mode and env.get(prefix + "_BUSINESS_ID")),
-        "active_api_key_present": bool(valid_mode and env.get(prefix + "_API_KEY")),
-        "active_webhook_key_present": bool(valid_mode and env.get(prefix + "_WEBHOOK_KEY")),
+        "active_business_id_present": presence["business"] is True,
+        "active_api_key_present": presence["api"] is True,
+        "active_webhook_key_present": presence["webhook"] is True,
         "catalog_verification": "local_expectations_only_not_provider_verified", "skus": {},
     }
     startup_reasons = []
@@ -110,11 +165,11 @@ def configuration_report(env: Mapping[str, str], backend_root: Path = BACKEND_RO
         startup_reasons.append("invalid_billing_mode")
     any_key = report["active_api_key_present"] or report["active_webhook_key_present"]
     both_keys = report["active_api_key_present"] and report["active_webhook_key_present"]
-    if billing != "disabled" and production and any_key and mode != "live":
+    if sales_mode != "disabled" and production and any_key and mode != "live":
         startup_reasons.append("production_test_credentials_not_allowed")
-    if billing == "required" and not both_keys:
+    if sales_mode == "required" and not both_keys:
         startup_reasons.append("required_credentials_missing")
-    if billing != "disabled" and any_key and not both_keys:
+    if sales_mode != "disabled" and any_key and not both_keys:
         startup_reasons.append("partial_active_credentials")
     report.update(startup_configuration_valid=not startup_reasons,
                   startup_configuration_reasons=startup_reasons,
@@ -122,7 +177,7 @@ def configuration_report(env: Mapping[str, str], backend_root: Path = BACKEND_RO
     blockers = list(startup_reasons)
     if report["environment"] == "invalid" or report["deploy_target"] == "invalid":
         blockers.append("unrecognized_environment_context")
-    if billing == "disabled":
+    if sales_mode == "disabled":
         blockers.append("billing_disabled")
     if production and mode != "live":
         blockers.append("production_requires_live_mode")
@@ -138,7 +193,7 @@ def configuration_report(env: Mapping[str, str], backend_root: Path = BACKEND_RO
         catalog = {}
         startup_reasons.append("invalid_local_catalog")
         blockers.append("invalid_local_catalog")
-    for sku, key in PRODUCT_KEYS.items():
+    for sku in PRODUCT_KEYS:
         plan = catalog.get(sku, {})
         if not isinstance(plan, dict):
             plan = {}
@@ -147,11 +202,15 @@ def configuration_report(env: Mapping[str, str], backend_root: Path = BACKEND_RO
             price = optional_amounts[sku]
             currency = env.get("BILLING_CURRENCY", "INR").upper()
         price = price if type(price) is int and 0 <= price < 10**12 else None
-        currency = currency if isinstance(currency, str) and re.fullmatch(r"[A-Z]{3}", currency) else None
+        if currency is not None:
+            currency = canonical_choice(currency, ISO4217_CURRENT_CODES, fallback="invalid")
+            if currency == "invalid":
+                currency = None
+                blockers.append("invalid_local_currency_expectation")
         interval = interval if isinstance(interval, str) and interval in {"day", "week", "month", "year", "lifetime"} else None
         tax = plan.get("tax_inclusive", True)
         tax = tax if type(tax) is bool else None
-        mapped = bool(valid_mode and env.get(prefix + "_PRODUCT_" + key))
+        mapped = bool(valid_mode and presence["products"].get(sku) is True)
         valid = price is not None and price > 0 and currency is not None and interval is not None and tax is not None
         report["skus"][sku] = {"product_id_configured": mapped, "configured": bool(mapped and valid),
                                "price_minor": price, "currency": currency, "interval": interval, "tax_inclusive": tax}
@@ -184,11 +243,16 @@ def classify_schema(revisions: list[str], columns: dict[str, set[str]], known: s
     if revision in {"0065", "0066", "0067", "0068"}:
         if not dodo or not engine:
             return "schema_revision_mismatch_requires_review"
-        if revision == EXPECTED_HEAD:
-            return ("current_dodo_head" if all(required <= columns.get(table, set())
-                                              for table, required in CURRENT_BILLING_COLUMNS.items())
-                    else "schema_revision_mismatch_requires_review")
-        return "known_mainline_dodo_upgrade_required"
+        required_columns = {table: set(names) for table, names in CURRENT_BILLING_COLUMNS.items()}
+        if revision < "0068":
+            required_columns["billing_webhook_events"].discard("event_resource_id")
+        if revision < "0067":
+            required_columns["coupon_redemptions"] -= {"subscription_id", "status"}
+        if revision < "0066":
+            required_columns["subscriptions"].discard("quoted_tax_inclusive")
+        if not all(required <= columns.get(table, set()) for table, required in required_columns.items()):
+            return "schema_revision_mismatch_requires_review"
+        return "current_dodo_head" if revision == EXPECTED_HEAD else "known_mainline_dodo_upgrade_required"
     engine_expected = revision in {"0060", "0062", "0063", "0064"}
     engine_present = "resume_optimization_runs" in columns if revision == "0060" else engine
     if any_dodo_schema or (engine_expected and not engine_present):
@@ -242,6 +306,14 @@ def aggregate_counts(connection, columns: dict[str, set[str]]) -> dict[str, int]
         ), {"live_statuses": ["active", "created", "authenticated", "pending", "halted", "paused", "cancel_scheduled"]}))
     else:
         raise ValueError("unsupported_schema")
+    if "provider" in subscription_columns:
+        counts["existing_dodo_live_intent_users"] = int(connection.scalar(text(
+            "SELECT COUNT(DISTINCT s.user_id) FROM public.subscriptions s "
+            "WHERE s.provider='dodo' AND s.status = ANY(:live_statuses)"
+        ), {"live_statuses": ["cancel_scheduled", "active", "past_due", "on_hold", "paused", "created", "pending",
+                              "checkout_pending", "checkout_unknown"]}))
+    else:
+        counts["existing_dodo_live_intent_users"] = 0
     return counts
 
 
@@ -283,7 +355,8 @@ def collect_report(environ: Mapping[str, str] | None = None, *, backend_root: Pa
     report: dict[str, Any] = {}
     try:
         env = read_environment(environ, backend_root)
-        report, blockers = configuration_report(env, backend_root)
+        public_env, presence = configuration_inputs(env)
+        report, blockers = configuration_report(public_env, presence, backend_root)
         report["database"] = database_report(env.get("DATABASE_URL", ""), backend_root=backend_root,
                                              engine_factory=engine_factory)
         database = report["database"]
@@ -303,9 +376,217 @@ def collect_report(environ: Mapping[str, str] | None = None, *, backend_root: Pa
         return report, 2
 
 
+PUBLIC_ENUM_FIELDS = {
+    "status": ("ready", "blocked", "diagnostic_error"),
+    "billing_mode": ("auto", "required", "disabled", "invalid"),
+    "dodo_mode": ("test", "live", "invalid"),
+    "environment": ("development", "dev", "test", "testing", "staging", "production", "invalid"),
+    "deploy_target": ("local", "modal", "invalid"),
+    "catalog_verification": ("local_expectations_only_not_provider_verified",),
+    "startup_validation_scope": ("strict_billing_rules_only_without_skip_bypass",),
+}
+PUBLIC_BOOL_FIELDS = (
+    "production_like", "skip_env_validation", "active_business_id_present",
+    "active_api_key_present", "active_webhook_key_present", "startup_configuration_valid",
+    "checkout_configuration_available",
+)
+PUBLIC_REASON_FIELDS = ("blockers", "startup_configuration_reasons", "checkout_configuration_reasons")
+PUBLIC_REASON_CODES = (
+    "invalid_optional_sku_amount", "invalid_billing_mode", "production_test_credentials_not_allowed",
+    "required_credentials_missing", "partial_active_credentials", "unrecognized_environment_context",
+    "billing_disabled", "production_requires_live_mode", "active_credentials_incomplete", "invalid_local_catalog",
+    "invalid_configured_sku_expectations", "no_paid_sku_configured", "database_migration_or_review_required",
+    "historical_paid_accounts_require_cutover_review", "historical_live_mandates_require_cutover_review",
+    "diagnostics_incomplete", "main_environment_not_production_like", "invalid_local_currency_expectation",
+)
+PUBLIC_COUNT_FIELDS = (
+    "paid_pointer_users", "historical_paid_pointer_users", "historical_team_owners",
+    "active_seats_inheriting_historical_owners", "historical_live_mandate_users", "existing_dodo_live_intent_users",
+)
+PUBLIC_SCHEMA_STATES = (
+    "unknown_requires_review", "legacy_dodo_0061_requires_bridge_validation", "known_mainline_pre_dodo",
+    "ambiguous_0061_requires_review", "schema_revision_mismatch_requires_review", "current_dodo_head",
+    "known_mainline_dodo_upgrade_required",
+)
+
+
+def _public_object(value: Any, allowed: set[str], required: set[str]) -> dict:
+    if type(value) is not dict or not required <= value.keys() or value.keys() - allowed:
+        raise ValueError("Invalid public diagnostic report")
+    return value
+
+
+def _public_bool(value: Any) -> bool:
+    if value is True:
+        return True
+    if value is False:
+        return False
+    raise ValueError("Invalid public diagnostic report")
+
+
+def _public_enum(value: Any, choices: tuple[str, ...]) -> str:
+    # The selected literal is emitted, not the input object that was compared.
+    for choice in choices:
+        if type(value) is str and value == choice:
+            return choice
+    raise ValueError("Invalid public diagnostic report")
+
+
+def _public_number(value: Any, *, maximum: int = 10**15) -> int:
+    if type(value) is int and 0 <= value <= maximum:
+        return value
+    raise ValueError("Invalid public diagnostic report")
+
+
+def public_report(raw: Any) -> dict[str, Any]:
+    """Rebuild the complete public wire schema before either stdout boundary.
+
+    Unknown keys, nested objects, arbitrary reason strings and string-valued
+    booleans are rejected rather than echoed. Currency is intentionally public
+    catalog metadata, emitted only as a canonical current ISO 4217 constant.
+    This validator never accepts credentials, identifiers, URLs or row records.
+    """
+    allowed = set(PUBLIC_ENUM_FIELDS) | set(PUBLIC_BOOL_FIELDS) | set(PUBLIC_REASON_FIELDS) | {"skus", "database"}
+    raw = _public_object(raw, allowed, {"status", "blockers", "database"})
+    state = _public_enum(raw["status"], PUBLIC_ENUM_FIELDS["status"])
+    if state != "diagnostic_error" and raw.keys() != allowed:
+        raise ValueError("Invalid public diagnostic report")
+    result: dict[str, Any] = {}
+    for name, choices in PUBLIC_ENUM_FIELDS.items():
+        if name in raw:
+            result[name] = _public_enum(raw[name], choices)
+    for name in PUBLIC_BOOL_FIELDS:
+        if name in raw:
+            result[name] = _public_bool(raw[name])
+    for name in PUBLIC_REASON_FIELDS:
+        if name in raw:
+            values = raw[name]
+            if type(values) is not list or len(values) > len(PUBLIC_REASON_CODES):
+                raise ValueError("Invalid public diagnostic report")
+            result[name] = [_public_enum(value, PUBLIC_REASON_CODES) for value in values]
+    if "skus" in raw:
+        rows = _public_object(raw["skus"], set(PRODUCT_KEYS), set(PRODUCT_KEYS))
+        result["skus"] = {}
+        sku_fields = {"product_id_configured", "configured", "price_minor", "currency", "interval", "tax_inclusive"}
+        for sku in PRODUCT_KEYS:
+            row = _public_object(rows[sku], sku_fields, sku_fields)
+            currency = row["currency"]
+            if currency is not None:
+                currency = _public_enum(currency, ISO4217_CURRENT_CODES)
+            result["skus"][sku] = {
+                "product_id_configured": _public_bool(row["product_id_configured"]),
+                "configured": _public_bool(row["configured"]),
+                "price_minor": None if row["price_minor"] is None else _public_number(row["price_minor"], maximum=10**12 - 1),
+                "currency": currency,
+                "interval": None if row["interval"] is None else _public_enum(row["interval"], ("day", "week", "month", "year", "lifetime")),
+                "tax_inclusive": None if row["tax_inclusive"] is None else _public_bool(row["tax_inclusive"]),
+            }
+    database = _public_object(raw["database"], {"status", "alembic_revisions", "schema_classification", "counts"}, {"status"})
+    database_state = _public_enum(database["status"], ("read_only_complete", "unavailable_or_unsupported"))
+    result["database"] = {"status": database_state}
+    if database_state == "read_only_complete":
+        if database.keys() != {"status", "alembic_revisions", "schema_classification", "counts"}:
+            raise ValueError("Invalid public diagnostic report")
+        revisions = database["alembic_revisions"]
+        if type(revisions) is not list or len(revisions) > 100:
+            raise ValueError("Invalid public diagnostic report")
+        result["database"].update(
+            alembic_revisions=[_public_enum(value, (*sorted(known_revisions()), "unrecognized")) for value in revisions],
+            schema_classification=_public_enum(database["schema_classification"], PUBLIC_SCHEMA_STATES),
+        )
+        counts = _public_object(database["counts"], set(PUBLIC_COUNT_FIELDS), set(PUBLIC_COUNT_FIELDS))
+        result["database"]["counts"] = {name: _public_number(counts[name]) for name in PUBLIC_COUNT_FIELDS}
+    elif database.keys() != {"status"} or state != "diagnostic_error":
+        raise ValueError("Invalid public diagnostic report")
+    return result
+
+
+
+def rollout_assessment(report: Mapping[str, Any], *, allow_configured_live: bool = False) -> dict[str, Any]:
+    """Pure source-rollout policy for an already validated public report.
+
+    Safe-disabled sales may migrate from an identified mainline revision even
+    though live checkout is unavailable. An explicit operator-approved flag only
+    releases the configured-live acceptance hold; it cannot bypass other guards.
+    This function reads no files, environment, database or provider endpoints.
+    """
+    reasons: list[str] = []
+    sales_state = "unsafe"
+    acceptance = "unverified"
+    try:
+        _public_bool(allow_configured_live)
+        state = _public_enum(report["status"], PUBLIC_ENUM_FIELDS["status"])
+        if state == "diagnostic_error":
+            reasons.append("rollout_diagnostics_incomplete")
+        environment = _public_enum(report["environment"], PUBLIC_ENUM_FIELDS["environment"])
+        target = _public_enum(report["deploy_target"], PUBLIC_ENUM_FIELDS["deploy_target"])
+        if environment not in {"production", "staging"} or report["production_like"] is not True:
+            reasons.append("rollout_requires_production_environment")
+        if target != "modal":
+            reasons.append("rollout_requires_modal_target")
+        if report["startup_configuration_valid"] is not True or report["startup_configuration_reasons"] != []:
+            reasons.append("rollout_billing_startup_invalid")
+        if report["startup_validation_scope"] != "strict_billing_rules_only_without_skip_bypass":
+            reasons.append("rollout_startup_assessment_unrecognized")
+        database = report["database"]
+        if database["status"] != "read_only_complete":
+            reasons.append("rollout_database_diagnostics_incomplete")
+        schema = _public_enum(database["schema_classification"], PUBLIC_SCHEMA_STATES)
+        revisions = database["alembic_revisions"]
+        if type(revisions) is not list or len(revisions) != 1 or revisions[0] == "unrecognized":
+            reasons.append("rollout_database_revision_unverified")
+        elif (
+            (schema == "current_dodo_head" and revisions[0] != EXPECTED_HEAD)
+            or (schema == "known_mainline_dodo_upgrade_required" and revisions[0] not in {"0065", "0066", "0067"})
+            or (schema == "known_mainline_pre_dodo" and revisions[0] in {"0065", "0066", "0067", "0068"})
+        ):
+            reasons.append("rollout_database_revision_unverified")
+        if schema not in {"known_mainline_pre_dodo", "known_mainline_dodo_upgrade_required", "current_dodo_head"}:
+            reasons.append("rollout_database_schema_requires_review")
+        counts = _public_object(database["counts"], set(PUBLIC_COUNT_FIELDS), set(PUBLIC_COUNT_FIELDS))
+        for name in PUBLIC_COUNT_FIELDS:
+            _public_number(counts[name])
+        if counts["historical_paid_pointer_users"]:
+            reasons.append("rollout_historical_paid_accounts_present")
+        if counts["historical_live_mandate_users"]:
+            reasons.append("rollout_historical_live_mandates_present")
+        if counts["historical_team_owners"] or counts["active_seats_inheriting_historical_owners"]:
+            reasons.append("rollout_historical_team_access_present")
+        sales_mode = _public_enum(report["billing_mode"], PUBLIC_ENUM_FIELDS["billing_mode"])
+        mode = _public_enum(report["dodo_mode"], PUBLIC_ENUM_FIELDS["dodo_mode"])
+        api_present = _public_bool(report["active_api_key_present"])
+        hook_present = _public_bool(report["active_webhook_key_present"])
+        if counts["existing_dodo_live_intent_users"] and not (mode == "live" and api_present and hook_present):
+            reasons.append("existing_dodo_servicing_unavailable")
+        if sales_mode == "disabled" or (sales_mode == "auto" and not api_present and not hook_present):
+            sales_state = "safe_disabled"
+        elif sales_mode in {"auto", "required"} and mode == "live" and api_present and hook_present:
+            sales_state = "configured_live"
+            if not allow_configured_live:
+                reasons.append("configured_live_requires_operator_acceptance")
+            else:
+                acceptance = "operator_accepted"
+                if report["checkout_configuration_available"] is not True:
+                    reasons.append("rollout_configured_live_settings_incomplete")
+        else:
+            reasons.append("rollout_billing_configuration_unsafe")
+        if mode == "invalid" or sales_mode == "invalid":
+            reasons.append("rollout_billing_configuration_unsafe")
+    except (KeyError, TypeError, ValueError):
+        reasons.append("rollout_public_report_invalid")
+    return {"safe_to_rollout": not reasons, "sales_state": sales_state,
+            "reasons": list(dict.fromkeys(reasons)), "live_sales_acceptance": acceptance}
+
+
 def main() -> int:
     report, exit_code = collect_report()
-    print(json.dumps(report, sort_keys=True))
+    try:
+        output = public_report(report)
+    except Exception:
+        output = {"status": "diagnostic_error", "blockers": ["diagnostics_incomplete"],
+                  "database": {"status": "unavailable_or_unsupported"}}
+        exit_code = 2
+    print(json.dumps(output, sort_keys=True))
     return exit_code
 
 

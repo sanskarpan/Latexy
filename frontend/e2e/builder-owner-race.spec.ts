@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
 const TEMPLATES = [{
   id: '11111111-1111-1111-1111-111111111111',
   name: 'ATS Guided',
@@ -45,7 +49,7 @@ test.describe('guided builder ownership boundaries', () => {
       })
     })
     let createResponseFinished = false
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       createStarted = true
       await createGate
@@ -113,7 +117,7 @@ test.describe('guided builder ownership boundaries', () => {
       contentType: 'application/json',
       body: JSON.stringify(TEMPLATES),
     }))
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       return route.fulfill({
         status: 201,
@@ -169,7 +173,7 @@ test.describe('guided builder ownership boundaries', () => {
       contentType: 'application/json',
       body: JSON.stringify(TEMPLATES),
     }))
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       createCalls += 1
       return route.fulfill({

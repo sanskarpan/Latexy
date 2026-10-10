@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 type VNode = { type: unknown; props: Record<string, unknown> }
 
 const availableBillingStatus = {
-  featureEnabled: true,
+  provider: 'dodo' as const, featureEnabled: true,
   mode: 'enabled' as const,
   available: true,
   reason: null,

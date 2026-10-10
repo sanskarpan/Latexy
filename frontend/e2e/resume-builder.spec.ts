@@ -7,6 +7,11 @@ import type {
   StructuredResume,
 } from '../src/lib/api-client'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
+
 const BUILDER_TEMPLATES: BuilderTemplateResponse[] = [
   {
     id: '11111111-1111-1111-1111-111111111111',
@@ -236,17 +241,17 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(builderResponse()),
       }),
     )
-    await page.route('**/resumes/builder/seed-upload', route =>
+    await page.route('**/resumes/builder/v1/seed-upload', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(seededResponse) }),
     )
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = await route.request().postDataJSON()
       expect(body.title).toBe('Taylor Core Resume')
@@ -284,7 +289,7 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({
           status: 200,
@@ -348,7 +353,7 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
     )
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
@@ -372,10 +377,10 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
     )
-    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/json', route =>
+    await page.route('**/export/builder/v1/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/json', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -403,7 +408,7 @@ test.describe('Guided Resume Builder', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
     let current = builderResponse()
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'PATCH') {
         const body = route.request().postDataJSON()
         expect(body.expected_structured_version).toBe(current.resume.structured_version)
@@ -414,7 +419,7 @@ test.describe('Guided Resume Builder', () => {
     })
     const pdfRequests = await mockBuilderPdf(page, () => current.resume.latex_content)
     let attempts = 0
-    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/svg', async route => {
+    await page.route('**/export/builder/v1/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/svg', async route => {
       expect(current.resume.latex_content).toContain('Taylor Latest SVG')
       expect(pdfRequests.downloaded).toBe(1)
       attempts += 1
@@ -443,7 +448,7 @@ test.describe('Guided Resume Builder', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
     let current = builderResponse()
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'PATCH') {
         const body = route.request().postDataJSON()
         expect(body.expected_structured_version).toBe(current.resume.structured_version)
@@ -495,7 +500,7 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({
           status: 200,

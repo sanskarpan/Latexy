@@ -14,6 +14,7 @@ interface SubscriptionManagerProps {
 }
 
 export default function SubscriptionManager({ authToken, billingStatus, checkoutReturned = false, checkoutStatus = null, refreshKey = 0, onUpgrade, onLoaded }: SubscriptionManagerProps) {
+  const dodoBackendReady = billingStatus?.provider === 'dodo'
   const [subscription, setSubscription] = useState<CurrentSubscriptionResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isCheckingCheckout, setIsCheckingCheckout] = useState(false)
@@ -99,10 +100,10 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
     setReconcileError(null)
     setReconcileNotice(null)
     if (!checkoutReturned) autoReconcileRef.current = null
-    setIsCheckingCheckout(checkoutReturned && !checkoutStatus)
+    setIsCheckingCheckout(checkoutReturned && !checkoutStatus && dodoBackendReady)
 
     const load = async () => {
-      const shouldReconcile = attempts === 0 && checkoutReturned && Boolean(authToken)
+      const shouldReconcile = attempts === 0 && checkoutReturned && Boolean(authToken) && dodoBackendReady
       if (shouldReconcile && authToken) {
         const request = Symbol('automatic reconciliation')
         reconcileRequestRef.current = request
@@ -135,7 +136,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
       if (!context.isCurrent()) return
       const paymentConfirmed = Boolean(current && current.planId !== 'free' &&
         ['active', 'cancel_scheduled'].includes(current.status))
-      if (!checkoutReturned || checkoutStatus || paymentConfirmed || attempts >= 11) {
+      if (!checkoutReturned || checkoutStatus || paymentConfirmed || !dodoBackendReady || attempts >= 11) {
         setIsCheckingCheckout(false)
         return
       }
@@ -147,12 +148,12 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
       generationRef.current += 1
       if (timer) clearTimeout(timer)
     }
-  }, [authToken, checkoutReturned, checkoutStatus, refreshKey, captureRequestContext, fetchSubscription])
+  }, [authToken, checkoutReturned, checkoutStatus, dodoBackendReady, refreshKey, captureRequestContext, fetchSubscription])
 
   const pendingCheckout = Boolean(subscription && ['checkout_pending', 'checkout_unknown'].includes(subscription.status))
 
   const handleCheckPaymentStatus = async () => {
-    if (!(checkoutReturned || pendingCheckout) || !authToken || reconcileRequestRef.current) return
+    if (!dodoBackendReady || !(checkoutReturned || pendingCheckout) || !authToken || reconcileRequestRef.current) return
     const context = captureRequestContext()
     const request = Symbol('manual reconciliation')
     reconcileRequestRef.current = request
@@ -180,7 +181,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
   }
 
   const handleCancel = async () => {
-    if (!subscription || !authToken || cancelRequestRef.current ||
+    if (!dodoBackendReady || !subscription || !authToken || cancelRequestRef.current ||
       !confirm('Cancel renewal? Your paid access will continue through the current billing cycle.')) return
     const context = captureRequestContext()
     const request = Symbol('cancellation')
@@ -213,7 +214,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
         </p>
       )}
       {reconcileError && <p role="alert" className="text-xs text-err">{reconcileError}</p>}
-      {authToken && (
+      {authToken && dodoBackendReady && (
         <button
           type="button"
           onClick={() => { void handleCheckPaymentStatus() }}
@@ -319,7 +320,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
             onClick={handleCancel}
-            disabled={isCancelling}
+            disabled={isCancelling || !dodoBackendReady}
             className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}

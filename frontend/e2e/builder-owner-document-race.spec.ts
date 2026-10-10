@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
 const RESUME_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 const TEMPLATE_A = '11111111-1111-1111-1111-111111111111'
 const TEMPLATE_B = '22222222-2222-2222-2222-222222222222'
@@ -71,12 +75,12 @@ test.describe('builder owner/document transition controls', () => {
     await installDynamicSession(page, owner, () => { sessionCalls += 1 })
     await page.route('**/ws/**', route => route.abort())
     page.on('response', response => {
-      if (response.url().includes(`/resumes/${RESUME_A}/builder`) && response.request().method() === 'PATCH' && response.status() === 200) {
+      if (response.url().includes(`/resumes/${RESUME_A}/builder/v1`) && response.request().method() === 'PATCH' && response.status() === 200) {
         saveResponseFinished = true
       }
     })
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templates(owner.value)) }))
-    await page.route(`**/resumes/${RESUME_A}/builder`, async route => {
+    await page.route(`**/resumes/${RESUME_A}/builder/v1`, async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse(owner.value, RESUME_A)) })
       }
@@ -128,7 +132,7 @@ test.describe('builder owner/document transition controls', () => {
     await installDynamicSession(page, owner, () => { sessionCalls += 1 })
     await page.route('**/ws/**', route => route.abort())
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templates(owner.value)) }))
-    await page.route('**/resumes/builder/seed-upload', async route => {
+    await page.route('**/resumes/builder/v1/seed-upload', async route => {
       seedStarted = true
       await seedGate
       await route.fulfill({
@@ -158,7 +162,7 @@ test.describe('builder owner/document transition controls', () => {
     await expect(page.getByText('No name imported yet', { exact: true })).toBeVisible()
 
     const seedResponse = page.waitForResponse(response =>
-      response.url().includes('/resumes/builder/seed-upload')
+      response.url().includes('/resumes/builder/v1/seed-upload')
       && response.request().method() === 'POST'
       && response.status() === 200)
     try {
@@ -185,7 +189,7 @@ test.describe('builder owner/document transition controls', () => {
     }))
     await page.route('**/ws/**', route => route.abort())
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templates('owner-a')) }))
-    await page.route('**/resumes/builder/seed-upload', route => {
+    await page.route('**/resumes/builder/v1/seed-upload', route => {
       seedCalls += 1
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         success: true, filename: 'resume.json', format: 'json_resume_v1',

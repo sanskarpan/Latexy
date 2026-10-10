@@ -47,6 +47,9 @@ interface ExportDropdownProps {
   variant?: 'toolbar' | 'card' | 'inline'
   /** Keep the beginner export menu focused on human-readable documents. */
   visualOnly?: boolean
+  /** Use versioned export routes for the guided builder rollout contract. */
+  guidedBuilder?: boolean
+  disabled?: boolean
 }
 
 export default function ExportDropdown({
@@ -57,6 +60,8 @@ export default function ExportDropdown({
   className = '',
   variant = 'inline',
   visualOnly = false,
+  guidedBuilder = false,
+  disabled = false,
 }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
@@ -73,11 +78,13 @@ export default function ExportDropdown({
 
   useEffect(() => { setMounted(true) }, [])
 
+  useEffect(() => { if (disabled) setIsOpen(false) }, [disabled])
+
   const isExporting = loading !== null
   const visibleFormats = visualOnly ? EXPORT_FORMATS.filter(format => ['pdf', 'docx', 'txt'].includes(format.key)) : EXPORT_FORMATS
 
   function openDropdown() {
-    if (isExporting) return
+    if (isExporting || disabled) return
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
       const margin = 12
@@ -106,7 +113,7 @@ export default function ExportDropdown({
 
   async function handleExport(format: ExportFormatKey) {
     // Prevent concurrent exports
-    if (isExporting) return
+    if (isExporting || disabled) return
 
     if (format === 'pdf') {
       setIsOpen(false)
@@ -162,7 +169,7 @@ export default function ExportDropdown({
     try {
       await beforeExport?.(format)
       if (format === 'canva' && resumeId) {
-        const data = await apiClient.exportCanva(resumeId)
+        const data = await apiClient.exportCanva(resumeId, guidedBuilder)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         downloadBlob(blob, 'resume-canva.json')
         toast.success("Canva JSON downloaded — import it via Canva's Content Import feature", {
@@ -172,7 +179,7 @@ export default function ExportDropdown({
       }
 
       if (format === 'figma' && resumeId) {
-        const data = await apiClient.exportFigma(resumeId)
+        const data = await apiClient.exportFigma(resumeId, guidedBuilder)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         downloadBlob(blob, 'resume-figma.json')
         toast.success('Figma JSON downloaded — open it with the Latexy Figma plugin', {
@@ -215,11 +222,11 @@ export default function ExportDropdown({
         // Raster/vector formats are rendered from the latest owned compiled
         // PDF. Never send the live LaTeX buffer to /export/content for these
         // formats, even when an editor supplies both props.
-        blob = await apiClient.exportResume(resumeId, format)
+        blob = await apiClient.exportResume(resumeId, format, guidedBuilder)
       } else if (latexContent !== undefined) {
         blob = await apiClient.exportContent(latexContent, format)
       } else if (resumeId) {
-        blob = await apiClient.exportResume(resumeId, format)
+        blob = await apiClient.exportResume(resumeId, format, guidedBuilder)
       } else {
         throw new Error('No resume content to export')
       }
@@ -263,7 +270,7 @@ export default function ExportDropdown({
       <button
         ref={triggerRef}
         onClick={openDropdown}
-        disabled={isExporting}
+        disabled={isExporting || disabled}
         className={triggerCls}
       >
         {isExporting ? (
@@ -286,7 +293,7 @@ export default function ExportDropdown({
               <> <a href="/settings" className="font-semibold underline">Open Settings</a></>
             )}
           </span>
-          <button type="button" onClick={() => void handleExport(exportError.format)} disabled={isExporting} className="shrink-0 font-semibold underline disabled:opacity-50">Retry</button>
+          <button type="button" onClick={() => void handleExport(exportError.format)} disabled={isExporting || disabled} className="shrink-0 font-semibold underline disabled:opacity-50">Retry</button>
         </div>
       )}
 
@@ -332,7 +339,7 @@ export default function ExportDropdown({
                     )}
                     <button
                       onClick={() => handleExport(fmt.key)}
-                      disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma' || fmt.key === 'svg' || fmt.key === 'jpeg' || fmt.key === 'google_drive') && !resumeId)}
+                      disabled={isExporting || disabled || ((fmt.key === 'canva' || fmt.key === 'figma' || fmt.key === 'svg' || fmt.key === 'jpeg' || fmt.key === 'google_drive') && !resumeId)}
                       title={fmt.desc}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >

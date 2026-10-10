@@ -11,6 +11,35 @@ from starlette.requests import Request
 from app.api import routes
 
 
+@pytest.mark.parametrize("available", [True, False])
+async def test_plans_identify_dodo_even_when_new_sales_are_unavailable(monkeypatch, available):
+    monkeypatch.setattr(routes.feature_flag_service, "get_flag", AsyncMock(return_value=available))
+    monkeypatch.setattr(routes.payment_service, "get_subscription_plans", AsyncMock(return_value={}))
+    monkeypatch.setattr(routes.payment_service, "get_status", Mock(return_value={
+        "feature_enabled": available, "available": available,
+        "mode": "enabled" if available else "disabled", "message": "Billing status",
+    }))
+    result = await routes.get_subscription_plans(db=object())
+    assert result.model_dump()["billing"]["provider"] == "dodo"
+    assert result.billing.available is available
+
+
+@pytest.mark.parametrize(("legacy", "explicit"), [
+    ("/subscription/create", "/billing/dodo/subscription/create"),
+    ("/subscription/cancel", "/billing/dodo/subscription/cancel"),
+    ("/subscription/reconcile", "/billing/dodo/subscription/reconcile"),
+    ("/subscription/student/verify/{token}", "/billing/dodo/subscription/student/verify/{token}"),
+])
+def test_dodo_only_rollout_routes_preserve_the_same_handler_and_auth_dependencies(legacy, explicit):
+    endpoints = {route.path: route for route in routes.router.routes if hasattr(route, "path")}
+    original, dodo = endpoints[legacy], endpoints[explicit]
+    assert dodo.endpoint is original.endpoint
+    assert dodo.methods == original.methods
+    assert [dependency.call for dependency in dodo.dependant.dependencies] == [
+        dependency.call for dependency in original.dependant.dependencies
+    ]
+
+
 def _request(payload: bytes, headers: dict[str, str]) -> Request:
     request = Request({
         "type": "http", "method": "POST", "path": "/billing/webhook",

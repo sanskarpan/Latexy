@@ -24,10 +24,10 @@ async def _template(db: AsyncSession, category: str = "minimal") -> ResumeTempla
     return template
 
 
-async def _create(client: AsyncClient, headers: dict, db: AsyncSession) -> dict:
+async def _create(client: AsyncClient, headers: dict, db: AsyncSession, builder_suffix: str = "builder") -> dict:
     template = await _template(db)
     response = await client.post(
-        "/resumes/builder", headers=headers,
+        f"/resumes/{builder_suffix}", headers=headers,
         json={"title": "test_builder_conflict_resume", "template_id": template.id,
               "structured_content": {"basics": {"name": "Original Candidate"}}},
     )
@@ -127,10 +127,11 @@ async def test_master_change_invalidates_linked_variant_anonymous_share_cache(cl
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("builder_suffix", ["builder", "builder/v1"])
 async def test_builder_concurrent_saves_accept_only_one_matching_version(
-    client, auth_headers, db_session, db_session_factory, monkeypatch,
+    client, auth_headers, db_session, db_session_factory, monkeypatch, builder_suffix,
 ):
-    original = await _create(client, auth_headers, db_session)
+    original = await _create(client, auth_headers, db_session, builder_suffix)
 
     async def independent_request_session():
         async with db_session_factory() as session:
@@ -140,7 +141,7 @@ async def test_builder_concurrent_saves_accept_only_one_matching_version(
     # default fixture session cannot prove concurrent-save serialization.
     monkeypatch.setitem(app.dependency_overrides, get_db, independent_request_session)
     responses = await asyncio.gather(*[
-        client.patch(f"/resumes/{original['id']}/builder", headers=auth_headers, json={
+        client.patch(f"/resumes/{original['id']}/{builder_suffix}", headers=auth_headers, json={
             "expected_structured_version": 1,
             "structured_content": {"basics": {"name": candidate}},
         })
@@ -211,11 +212,12 @@ async def test_builder_does_not_overwrite_advanced_editor_content(client, auth_h
 
 
 @pytest.mark.asyncio
-async def test_builder_reattach_requires_current_manual_document_baseline(client, auth_headers, db_session):
-    original = await _create(client, auth_headers, db_session)
+@pytest.mark.parametrize("builder_suffix", ["builder", "builder/v1"])
+async def test_builder_reattach_requires_current_manual_document_baseline(client, auth_headers, db_session, builder_suffix):
+    original = await _create(client, auth_headers, db_session, builder_suffix)
     manual = r"\documentclass{article}\begin{document}Keep this edit\end{document}"
     await _detach(client, auth_headers, original, manual)
-    endpoint = f"/resumes/{original['id']}/builder"
+    endpoint = f"/resumes/{original['id']}/{builder_suffix}"
     body = {"expected_structured_version": 1, "force_reattach": True,
             "structured_content": {"basics": {"name": "Reattached Candidate"}}}
     missing = await client.patch(endpoint, headers=auth_headers, json=body)
@@ -235,3 +237,17 @@ async def test_builder_reattach_requires_current_manual_document_baseline(client
     assert saved.builder_status == "active"
     assert saved.content_source == "builder"
     assert "Reattached Candidate" in saved.latex_content
+
+
+@pytest.mark.asyncio
+async def test_versioned_builder_read_and_missing_save_baseline(client, auth_headers, db_session):
+    original = await _create(client, auth_headers, db_session, "builder/v1")
+    endpoint = f"/resumes/{original['id']}/builder/v1"
+    loaded = await client.get(endpoint, headers=auth_headers)
+    assert loaded.status_code == 200, loaded.text
+    assert loaded.json()["resume"]["structured_version"] == 1
+    response = await client.patch(endpoint, headers=auth_headers, json={"title": "Without a baseline"})
+    assert response.status_code == 422, response.text
+    saved = await _saved(db_session, original["id"])
+    assert saved.title == original["title"]
+    assert saved.structured_version == 1

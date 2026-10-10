@@ -47,6 +47,7 @@ function saveHarness() {
   const context = {
     Error,
     useCallback: (callback: unknown) => callback,
+    ensureCompatible: vi.fn().mockResolvedValue(undefined),
     mountedRef: { current: true }, authVerifiedRef: { current: true },
     saveFlightRef: { current: null }, conflictRef: { current: false },
     builderStatusRef: { current: 'active' }, dirtyRef: { current: true },
@@ -97,6 +98,23 @@ describe('beginner builder controls', () => {
 })
 
 describe('serialized builder persistence', () => {
+  it('waits for compatibility and preserves edits if the check fails', async () => {
+    const { context, flush, updateBuilderResume } = saveHarness()
+    context.ensureCompatible.mockRejectedValue(new Error('Builder unavailable'))
+    await expect(flush()).rejects.toThrow('Builder unavailable')
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+    expect(context.dirtyRef.current).toBe(true)
+    expect(context.draftRef.current.structured_content.basics.name).toBe('First')
+  })
+
+  it('rechecks compatibility even for a clean draft before export', async () => {
+    const { context, flush, updateBuilderResume } = saveHarness()
+    context.dirtyRef.current = false
+    context.ensureCompatible.mockRejectedValue(new Error('Builder unavailable'))
+    await expect(flush()).rejects.toThrow('Builder unavailable')
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+  })
+
   it('waits for the first save, then flushes the newest edit using its returned version', async () => {
     const { context, flush, updateBuilderResume } = saveHarness()
     let completeFirst!: (value: unknown) => void
@@ -105,7 +123,7 @@ describe('serialized builder persistence', () => {
       .mockImplementationOnce(() => new Promise(resolve => { completeSecond = resolve }))
     const saving = flush()
     const exporting = flush()
-    expect(updateBuilderResume).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(updateBuilderResume).toHaveBeenCalledTimes(1))
     context.editRevision.current += 1
     context.draftRef.current = { ...context.draftRef.current, structured_content: { basics: { name: 'Latest' } } }
     completeFirst({ resume: { structured_version: 2, builder_status: 'active' }, template_family: 'minimal' })

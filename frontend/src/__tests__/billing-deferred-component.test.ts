@@ -31,7 +31,7 @@ function findButton(node: unknown, label: string): VNode | null {
   return null
 }
 
-async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
+async function loadBillingHarness(kind: 'student' | 'team', provider: 'dodo' | null = 'dodo'): Promise<Harness> {
   vi.resetModules()
   let studentToken: string | null = kind === 'student' ? 'student-token-a' : null
   let teamToken: string | null = kind === 'team' ? 'team-token-a' : null
@@ -86,7 +86,7 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: session, isPending: false, error: null }) }))
   vi.doMock('@/lib/api-client', () => ({
     apiClient: {
-      getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans: {}, billing: { available: true } } }),
+      getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans: {}, billing: { provider, available: true } } }),
       verifyStudentSubscription: verify,
       previewTeamSeat: preview,
       joinTeamSeat: join,
@@ -104,6 +104,12 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
     effects = []
     return (content.type as () => VNode)()
   }
+  // Resolve the read-only capability request before exercising deferred actions.
+  render()
+  effects.find(entry => entry.dependencies?.length === 1 && typeof entry.dependencies[0] === 'function')?.effect()
+  for (let i = 0; i < 6; i += 1) await Promise.resolve()
+  render()
+
   const runStudentEffect = () => {
     const effect = effects.find((entry) => entry.dependencies?.includes(studentToken))?.effect
     if (!effect) throw new Error('student verification effect was not registered')
@@ -150,6 +156,16 @@ afterEach(() => {
 })
 
 describe('billing deferred verification responses', () => {
+  it('does not automatically verify Student on an available backend without Dodo identity', async () => {
+    const harness = await loadBillingHarness('student', null)
+    harness.render()
+    harness.runStudentEffect()
+    await Promise.resolve()
+    expect(harness.verify).not.toHaveBeenCalled()
+    expect(harness.assign).not.toHaveBeenCalled()
+    harness.cleanupEffects()
+  })
+
   it('sends one automatic student verification request through Strict Mode replay', async () => {
     const harness = await loadBillingHarness('student')
     let resolveVerification!: (value: unknown) => void

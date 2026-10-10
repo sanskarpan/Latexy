@@ -12,7 +12,7 @@ function visit(node: ts.Node) {
 }
 visit(ast)
 
-function harness(beforeExport: (format: string) => Promise<void>) {
+function harness(beforeExport: (format: string) => Promise<void>, options: { guidedBuilder?: boolean; disabled?: boolean } = {}) {
   const api = {
     exportResume: vi.fn().mockResolvedValue(new Blob(['document'])),
     emailResumePdf: vi.fn().mockResolvedValue({ retry_behavior: 'provider_idempotent' }),
@@ -23,6 +23,7 @@ function harness(beforeExport: (format: string) => Promise<void>) {
   const errors = vi.fn()
   const loading = vi.fn()
   const handle = runInNewContext(`${ts.transpileModule(handler, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}\nhandleExport`, {
+    disabled: options.disabled ?? false, guidedBuilder: options.guidedBuilder ?? false,
     isExporting: false, resumeId: 'owned', latexContent: undefined, visualOnly: false,
     beforeExport, onPdfExport: pdf, apiClient: api, Error,
     setIsOpen: vi.fn(), setLoading: loading, setExportError: errors, setDriveNeedsConnection: vi.fn(),
@@ -48,6 +49,19 @@ function builderBeforeExport(flushSave: () => Promise<unknown>, previewPdf: () =
 }
 
 describe('exports flush builder saves', () => {
+  it('uses the versioned export contract only for guided builder exports', async () => {
+    const h = harness(vi.fn().mockResolvedValue(undefined), { guidedBuilder: true })
+    await h.handle('json')
+    expect(h.api.exportResume).toHaveBeenCalledWith('owned', 'json', true)
+  })
+  it('blocks an already-open menu when builder capabilities become unavailable', async () => {
+    const before = vi.fn().mockResolvedValue(undefined)
+    const h = harness(before, { guidedBuilder: true, disabled: true })
+    await h.handle('json')
+    expect(before).not.toHaveBeenCalled()
+    expect(h.api.exportResume).not.toHaveBeenCalled()
+  })
+
   it('waits before reading saved document formats', async () => {
     let complete!: () => void
     const h = harness(() => new Promise<void>(resolve => { complete = resolve }))
@@ -55,7 +69,7 @@ describe('exports flush builder saves', () => {
     expect(h.api.exportResume).not.toHaveBeenCalled()
     complete()
     await pending
-    expect(h.api.exportResume).toHaveBeenCalledWith('owned', 'docx')
+    expect(h.api.exportResume).toHaveBeenCalledWith('owned', 'docx', false)
   })
   it('does not export when the save conflicts', async () => {
     const h = harness(() => Promise.reject(new Error('HTTP 409: another tab changed')))
@@ -89,7 +103,7 @@ describe('exports flush builder saves', () => {
     await pending
     if (format === 'email') expect(h.api.emailResumePdf).toHaveBeenCalledWith('owned')
     else if (format === 'google_drive') expect(h.api.exportResumeToGoogleDrive).toHaveBeenCalledWith('owned')
-    else expect(h.api.exportResume).toHaveBeenCalledWith('owned', format)
+    else expect(h.api.exportResume).toHaveBeenCalledWith('owned', format, false)
   })
   it('does not send an old compiled document if PDF refresh fails', async () => {
     const h = harness(builderBeforeExport(vi.fn().mockResolvedValue(undefined), vi.fn().mockRejectedValue(new Error('PDF generation failed'))))

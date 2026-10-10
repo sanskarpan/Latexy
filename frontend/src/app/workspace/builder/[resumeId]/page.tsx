@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import BuilderCapabilityGate, { useBuilderCapability } from '@/components/builder/BuilderCapabilityGate'
 import BuilderPreview from '@/components/builder/BuilderPreview'
 import ElementVersionHistoryPanel, { type VersionableResumeElement } from '@/components/ElementVersionHistoryPanel'
 import ExportDropdown from '@/components/ExportDropdown'
@@ -313,12 +314,13 @@ export default function BuilderResumePage() {
   // document. A late callback from an old owner/document then has no mounted
   // state to mutate, including an A → B → A transition.
   return (
-    <BuilderResumeForm
-      key={`${session.user.id}:${resumeId}`}
-      resumeId={resumeId}
-      session={session}
-      authUnverified={Boolean(sessionLoading || sessionError)}
-    />
+    <BuilderCapabilityGate key={`${session.user.id}:${resumeId}`} resumeId={resumeId}>
+      <BuilderResumeForm
+        resumeId={resumeId}
+        session={session}
+        authUnverified={Boolean(sessionLoading || sessionError)}
+      />
+    </BuilderCapabilityGate>
   )
 }
 
@@ -334,6 +336,7 @@ function BuilderResumeForm({
   authUnverified: boolean
 }) {
   const ownerId = session.user.id
+  const { ensureCompatible, isCompatible, available } = useBuilderCapability()
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -379,7 +382,7 @@ function BuilderResumeForm({
     }
   }, [])
 
-  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current
+  const isCurrentRequest = useCallback(() => mountedRef.current && authVerifiedRef.current && isCompatible(), [isCompatible])
 
   const liveMetrics = useMemo(() => deriveBuilderMetrics(structured), [structured])
   const livePreview = useMemo(
@@ -463,7 +466,7 @@ function BuilderResumeForm({
     return () => {
       cancelled = true
     }
-  }, [loadAttempt, ownerId, resumeId, authUnverified])
+  }, [loadAttempt, ownerId, resumeId, authUnverified, isCurrentRequest])
 
   // All callers share one queue. A second edit waits for the prior write and
   // uses its returned version, preventing an older PATCH from arriving last.
@@ -475,6 +478,9 @@ function BuilderResumeForm({
       if (builderStatusRef.current === 'detached' && dirtyRef.current) throw new Error('Reconnect the builder before saving these changes.')
       setSaving(true)
       try {
+        // Even a clean draft must recheck before previewing or exporting.
+        await ensureCompatible()
+        if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Your session changed. Please try again.')
         while (dirtyRef.current) {
           const snapshot = draftRef.current
           if (!snapshot.title.trim() || snapshot.title.length > 255) throw new Error(!snapshot.title.trim() ? 'A résumé title is required' : 'Résumé titles must be 255 characters or fewer')
@@ -497,6 +503,10 @@ function BuilderResumeForm({
             setDirty(false)
             setSaveError(null)
           }
+          if (dirtyRef.current) {
+            await ensureCompatible()
+            if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Your session changed. Please try again.')
+          }
         }
         return savedBuilderRef.current
       } catch (error) {
@@ -516,9 +526,9 @@ function BuilderResumeForm({
     const flight = saveLatest()
     saveFlightRef.current = flight
     try { return await flight } finally { if (saveFlightRef.current === flight) saveFlightRef.current = null }
-  }, [resumeId])
+  }, [resumeId, ensureCompatible])
 
-  const isCurrentPdfRequest = useCallback(() => mountedRef.current && authVerifiedRef.current, [])
+  const isCurrentPdfRequest = useCallback(() => mountedRef.current && authVerifiedRef.current && isCompatible(), [isCompatible])
   const { previewPdf, downloadPdf, pdfUrl, isGenerating, error: pdfError, clearPreview } = useBuilderPdf({
     resumeId,
     prepareResume: flushSave,
@@ -608,6 +618,8 @@ function BuilderResumeForm({
     const requestId = ++saveRequestId.current
     setSaving(true)
     try {
+      await ensureCompatible()
+      if (!isCurrentRequest()) return
       const updated = await apiClient.updateBuilderResume(resumeId, {
         title,
         template_id: selectedTemplateId,
@@ -691,7 +703,7 @@ function BuilderResumeForm({
           <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating || loading || authUnverified || saveConflict || builderStatus === 'detached'} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">
             {isGenerating ? 'Preparing PDF…' : 'Preview PDF'}
           </button>
-          <ExportDropdown resumeId={resumeId} variant="toolbar" onPdfExport={downloadPdf} beforeExport={async format => {
+          <ExportDropdown resumeId={resumeId} guidedBuilder disabled={!available} variant="toolbar" onPdfExport={downloadPdf} beforeExport={async format => {
             await flushSave()
             if (['svg', 'jpeg', 'email', 'google_drive'].includes(format)) await previewPdf()
           }} />

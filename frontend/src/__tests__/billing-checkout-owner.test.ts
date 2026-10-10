@@ -12,7 +12,7 @@ const paid = {
   userId: 'account-a', planId: 'pro', planName: 'Pro', status: 'active', subscriptionId: 'sub-a',
   features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
 }
-async function harness(billingEnabled = true) {
+async function harness(billingEnabled = true, provider: 'dodo' | null = 'dodo') {
   let session = { user: { id: 'account-a', email: 'a@example.com', name: 'A' }, session: { token: 'token-a' } }
   let index = 0
   const states: unknown[] = [], refs: Array<{ current: unknown }> = []
@@ -22,7 +22,7 @@ async function harness(billingEnabled = true) {
   vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
   const plans = Object.fromEntries(['free', 'basic', 'pro'].map(id => [id, { id, name: id, price: id === 'free' ? 0 : 100, currency: 'INR', interval: 'month', features: paid.features }]))
   const api = {
-    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { available: billingEnabled } } }),
+    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { provider, available: billingEnabled } } }),
     createSubscription: vi.fn(),
     cancelSubscription: vi.fn().mockResolvedValue({ success: true }),
     getCurrentSubscription: vi.fn().mockResolvedValue({ success: true, data: { ...paid, status: 'cancel_scheduled' } }),
@@ -62,6 +62,22 @@ afterEach(() => {
 })
 
 describe('billing page checkout and cancellation ownership', () => {
+  it('shows current access but blocks checkout and Free cancellation without Dodo identity', async () => {
+    const h = await harness(true, null)
+    h.render(); h.runEffects(); await flush()
+    const manager = nodes(h.render()).find(n => n.type === 'SubscriptionManager')!
+    expect(manager).toBeDefined()
+    ;(manager.props.onLoaded as (subscription: unknown) => void)(paid)
+    const cards = nodes(h.render()).filter(n => n.type === 'PricingCard')
+    expect(cards.every(card => card.props.disabled)).toBe(true)
+    for (const card of cards) {
+      await (card.props.onSelectPlan as (id: string) => Promise<void>)((card.props.plan as { id: string }).id)
+    }
+    expect(h.api.createSubscription).not.toHaveBeenCalled()
+    expect(h.api.cancelSubscription).not.toHaveBeenCalled()
+    expect(window.open).not.toHaveBeenCalled()
+  })
+
   it('refreshes the subscription card and prevents competing plan changes after selecting Free', async () => {
     const h = await harness()
     h.render(); h.runEffects(); await flush()

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 type VNode = { type: unknown; props: Record<string, unknown> }
-const billingStatus = { featureEnabled: true, mode: 'enabled' as const, available: true, reason: null, message: 'Available' }
+const billingStatus = { provider: 'dodo' as const, featureEnabled: true, mode: 'enabled' as const, available: true, reason: null, message: 'Available' }
 const free = {
   userId: 'account-b', planId: 'free', planName: 'Free', status: 'checkout_pending',
   subscriptionId: null,
@@ -69,6 +69,25 @@ afterEach(() => {
 })
 
 describe('billing owner and checkout recovery interactions', () => {
+  it('reads the old backend subscription but never reconciles or cancels without Dodo identity', async () => {
+    const h = await harness()
+    h.getCurrentSubscription.mockResolvedValue({ success: true, data: paid })
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    const props = { billingStatus: { ...billingStatus, provider: null, available: true } }
+    h.render(props); const cleanup = h.effect(); await flush()
+    const view = h.render(props)
+    expect(h.getCurrentSubscription).toHaveBeenCalledTimes(1)
+    expect(h.onLoaded).toHaveBeenLastCalledWith(paid)
+    expect(h.reconcileSubscription).not.toHaveBeenCalled()
+    expect(button(view, 'Check payment status')).toBeUndefined()
+    const cancel = button(view, 'Cancel')!
+    expect(cancel.props.disabled).toBe(true)
+    await (cancel.props.onClick as () => Promise<void>)()
+    expect(h.cancelSubscription).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    cleanup()
+  })
+
   it('keeps recovery visible when lifecycle supplies a subscription ID before payment', async () => {
     vi.useFakeTimers()
     const h = await harness()

@@ -221,6 +221,7 @@ export interface HealthResponse {
 }
 
 export interface BillingAvailability {
+  provider?: 'dodo' | null
   featureEnabled: boolean
   mode: 'enabled' | 'disabled' | 'unconfigured'
   available: boolean
@@ -561,6 +562,10 @@ export interface VariantVisibilityResponse {
   metrics: BuilderMetricsResponse
   preview: BuilderPreviewResponse
   template_family: string
+}
+
+export interface BuilderCapabilitiesResponse {
+  guided_builder_version: number
 }
 
 export interface BuilderTemplateResponse {
@@ -1746,6 +1751,10 @@ class ApiClient {
     })
   }
 
+  async getBuilderCapabilities(): Promise<BuilderCapabilitiesResponse> {
+    return this.request<BuilderCapabilitiesResponse>('/resumes/builder/capabilities', { cache: 'no-store' })
+  }
+
   async getBuilderTemplates(): Promise<BuilderTemplateResponse[]> {
     return this.request<BuilderTemplateResponse[]>('/resumes/builder/templates')
   }
@@ -1753,7 +1762,7 @@ class ApiClient {
   async seedBuilderFromUpload(file: File): Promise<BuilderSeedUploadResponse> {
     const form = new FormData()
     form.append('file', file)
-    const res = await this.authedFetch(`${API_BASE}/resumes/builder/seed-upload`, {
+    const res = await this.authedFetch(`${API_BASE}/resumes/builder/v1/seed-upload`, {
       method: 'POST',
       body: form,
       credentials: 'include',
@@ -1784,14 +1793,14 @@ class ApiClient {
     template_id: string
     structured_content?: StructuredResume
   }): Promise<BuilderResumeResponse> {
-    return this.request<BuilderResumeResponse>('/resumes/builder', {
+    return this.request<BuilderResumeResponse>('/resumes/builder/v1', {
       method: 'POST',
       body: JSON.stringify(body),
     })
   }
 
   async getBuilderResume(resumeId: string): Promise<BuilderResumeResponse> {
-    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder`)
+    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder/v1`)
   }
 
   async updateBuilderResume(
@@ -1805,7 +1814,7 @@ class ApiClient {
       expected_latex_content?: string
     }
   ): Promise<BuilderResumeResponse> {
-    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder`, {
+    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder/v1`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     })
@@ -2175,14 +2184,26 @@ class ApiClient {
     }
   }
 
+  private async requireDodoBillingBackend(accountContext?: AccountPreferenceRequestContext): Promise<void> {
+    // The frontend can deploy before the API rollout. Never dispatch a billing
+    // mutation to an older backend merely because its billing is available.
+    const capabilities = await this.request<{ billing?: { provider?: string } }>(
+      '/subscription/plans', { cache: 'no-store' }, accountContext,
+    )
+    if (capabilities.billing?.provider !== 'dodo') {
+      throw new Error('Dodo billing is not available on this server yet. Please try again after the update.')
+    }
+  }
+
   async reconcileSubscription(accountContext?: AccountPreferenceRequestContext): Promise<{
     success: boolean
     data?: SubscriptionReconciliationResponse
     error?: string
   }> {
     try {
+      await this.requireDodoBillingBackend(accountContext)
       const data = await this.request<SubscriptionReconciliationResponse>(
-        '/subscription/reconcile',
+        '/billing/dodo/subscription/reconcile',
         { method: 'POST' },
         accountContext,
       )
@@ -2201,23 +2222,26 @@ class ApiClient {
       const data = await this.request<{
         plans: Record<string, unknown>
         billing: {
+          provider?: string
           feature_enabled: boolean
           mode: 'enabled' | 'disabled' | 'unconfigured'
           available: boolean
           reason?: string | null
           message: string
         }
-      }>('/subscription/plans')
+      }>('/subscription/plans', { cache: 'no-store' })
+      const dodoCompatible = data.billing.provider === 'dodo'
       return {
         success: true,
         data: {
           plans: data.plans,
           billing: {
+            provider: dodoCompatible ? 'dodo' : null,
             featureEnabled: data.billing.feature_enabled,
             mode: data.billing.mode,
-            available: data.billing.available,
-            reason: data.billing.reason ?? null,
-            message: data.billing.message,
+            available: dodoCompatible && data.billing.available,
+            reason: dodoCompatible ? data.billing.reason ?? null : 'billing_backend_update_required',
+            message: dodoCompatible ? data.billing.message : 'Dodo billing is not available on this server yet. Please try again after the update.',
           },
         },
       }
@@ -2242,8 +2266,9 @@ class ApiClient {
     error?: string
   }> {
     try {
+      await this.requireDodoBillingBackend(accountContext)
       const data = await this.request<SubscriptionCreateResponse>(
-        '/subscription/create',
+        '/billing/dodo/subscription/create',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -2269,8 +2294,9 @@ class ApiClient {
     error?: string
   }> {
     try {
+      await this.requireDodoBillingBackend(accountContext)
       const data = await this.request<{ success: boolean; message?: string; error?: string }>(
-        '/subscription/cancel',
+        '/billing/dodo/subscription/cancel',
         { method: 'POST' },
         accountContext,
       )
@@ -2301,17 +2327,18 @@ class ApiClient {
     }
   }
 
-  async verifyStudentSubscription(token: string): Promise<{
+  async verifyStudentSubscription(token: string, accountContext?: AccountPreferenceRequestContext): Promise<{
     success: boolean
     data?: { success: boolean; message: string; shortUrl?: string }
     error?: string
   }> {
     try {
+      await this.requireDodoBillingBackend(accountContext)
       const data = await this.request<{
         success: boolean
         message: string
         short_url?: string
-      }>(`/subscription/student/verify/${encodeURIComponent(token)}`)
+      }>(`/billing/dodo/subscription/student/verify/${encodeURIComponent(token)}`, {}, accountContext)
       return { success: true, data: { ...data, shortUrl: data.short_url } }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
@@ -2708,8 +2735,9 @@ class ApiClient {
   }
 
   // Export a saved resume in a specific format (returns Blob for download)
-  async exportResume(resumeId: string, format: string): Promise<Blob> {
-    const response = await this.authedFetch(`${this.baseUrl}/export/${resumeId}/${format}`)
+  async exportResume(resumeId: string, format: string, guidedBuilder = false): Promise<Blob> {
+    const prefix = guidedBuilder ? '/export/builder/v1' : '/export'
+    const response = await this.authedFetch(`${this.baseUrl}${prefix}/${encodeURIComponent(resumeId)}/${encodeURIComponent(format)}`)
     if (!response.ok) {
       const bodyText = await response.text().catch(() => '')
       throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Export failed (${response.status})`))
@@ -4673,12 +4701,14 @@ class ApiClient {
 
   // ── Feature 90 — Canva / Figma Export ────────────────────────────────────
 
-  async exportCanva(resumeId: string): Promise<CanvaResumeExport> {
-    return this.request<CanvaResumeExport>(`/export/${encodeURIComponent(resumeId)}/canva`)
+  async exportCanva(resumeId: string, guidedBuilder = false): Promise<CanvaResumeExport> {
+    const prefix = guidedBuilder ? '/export/builder/v1' : '/export'
+    return this.request<CanvaResumeExport>(`${prefix}/${encodeURIComponent(resumeId)}/canva`)
   }
 
-  async exportFigma(resumeId: string): Promise<FigmaResumeExport> {
-    return this.request<FigmaResumeExport>(`/export/${encodeURIComponent(resumeId)}/figma`)
+  async exportFigma(resumeId: string, guidedBuilder = false): Promise<FigmaResumeExport> {
+    const prefix = guidedBuilder ? '/export/builder/v1' : '/export'
+    return this.request<FigmaResumeExport>(`${prefix}/${encodeURIComponent(resumeId)}/figma`)
   }
 }
 

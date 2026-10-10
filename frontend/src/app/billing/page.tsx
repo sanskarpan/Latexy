@@ -127,6 +127,7 @@ function BillingPageContent() {
 
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
   const [billingStatus, setBillingStatus] = useState<BillingAvailability | null>(null)
+  const dodoBackendReady = billingStatus?.provider === 'dodo'
   const [loading, setLoading] = useState(true)
   const [plansError, setPlansError] = useState<string | null>(null)
   const [activePlan, setActivePlan] = useState<string | null>(null)
@@ -219,6 +220,7 @@ function BillingPageContent() {
     const generation = ++studentVerifyGenerationRef.current
     const previousAttempt = studentVerifyAttemptRef.current
     if (
+      dodoBackendReady && billingStatus?.available &&
       previousAttempt &&
       studentVerifyToken &&
       studentVerifyAccountKey &&
@@ -234,7 +236,7 @@ function BillingPageContent() {
         }
       }
     }
-    if (!studentVerifyToken || handledStudentToken === studentVerifyToken || !studentVerifyAccountKey) {
+    if (!dodoBackendReady || !billingStatus?.available || !studentVerifyToken || handledStudentToken === studentVerifyToken || !studentVerifyAccountKey) {
       studentVerifyAttemptRef.current = null
       return () => {
         if (studentVerifyGenerationRef.current === generation) {
@@ -245,7 +247,10 @@ function BillingPageContent() {
     const owner = { token: studentVerifyToken, accountKey: studentVerifyAccountKey, generation }
     studentVerifyAttemptRef.current = owner
     const verify = async () => {
-      const result = await apiClient.verifyStudentSubscription(studentVerifyToken)
+      const result = await apiClient.verifyStudentSubscription(studentVerifyToken, {
+        authToken: sessionToken ?? '',
+        isCurrent: () => studentVerifyGenerationRef.current === owner.generation && studentVerifyAttemptRef.current === owner,
+      })
       const stillCurrent =
         studentVerifyGenerationRef.current === owner.generation &&
         studentVerifyAttemptRef.current === owner &&
@@ -273,7 +278,7 @@ function BillingPageContent() {
         studentVerifyGenerationRef.current += 1
       }
     }
-  }, [handledStudentToken, studentVerifyAccountKey, studentVerifyToken])
+  }, [billingStatus?.available, dodoBackendReady, handledStudentToken, sessionToken, studentVerifyAccountKey, studentVerifyToken])
 
   useEffect(() => {
     const generation = ++teamInviteGenerationRef.current
@@ -474,6 +479,7 @@ function BillingPageContent() {
   // Selecting Free schedules a paid subscription to end with its current
   // billing cycle, so the UI must not claim that access ends immediately.
   const handleDowngradeToFree = async () => {
+    if (!dodoBackendReady) return
     if (
       !confirm(
         'Cancel renewal and switch to Free after this billing cycle? Your paid access continues until then.',
@@ -500,6 +506,10 @@ function BillingPageContent() {
   }
 
   const handleSelectPlan = async (planId: string) => {
+    if (!dodoBackendReady) {
+      toast.error(billingStatus?.message || 'Billing is still being checked. Please try again.')
+      return
+    }
     if (planId !== 'free' && billingStatus && !billingStatus.available) {
       toast.error(billingStatus.message)
       return
@@ -588,7 +598,7 @@ function BillingPageContent() {
   }
 
   const handleStudentCheckout = async () => {
-    if (!studentCheckoutPlan || !sessionUser?.email) return
+    if (!dodoBackendReady || !billingStatus?.available || !studentCheckoutPlan || !sessionUser?.email) return
     const context = captureBillingContext()
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
@@ -872,7 +882,7 @@ function BillingPageContent() {
                       onSelectPlan={handleSelectPlan}
                       isLoading={activePlan === plan.id}
                       disabled={
-                        activePlan !== null || (plan.id === 'free'
+                        !dodoBackendReady || activePlan !== null || (plan.id === 'free'
                           ? isFreeTier || cancellationScheduled
                           : cancellationScheduled || plan.id === currentPaidPlanId || (!!billingStatus && !billingStatus.available))
                       }

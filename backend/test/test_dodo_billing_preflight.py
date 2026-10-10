@@ -15,6 +15,10 @@ from sqlalchemy import create_engine, event, text
 from scripts import dodo_billing_preflight as preflight
 
 
+def configuration_report(env):
+    return preflight.configuration_report(*preflight.configuration_inputs(env))
+
+
 def live_environment():
     return {"ENVIRONMENT": "production", "BILLING_MODE": "required", "DODO_MODE": "live",
             "DODO_LIVE_API_KEY": "private-api-sentinel", "DODO_LIVE_WEBHOOK_KEY": "private-webhook-sentinel",
@@ -28,7 +32,7 @@ def current_columns():
 
 def test_public_catalog_matches_current_runtime_defaults():
     from app.core.config import get_plan_config
-    report, blockers = preflight.configuration_report(live_environment())
+    report, blockers = configuration_report(live_environment())
     assert blockers == []
     assert set(report["skus"]) == set(preflight.PRODUCT_KEYS)
     for key, sku in report["skus"].items():
@@ -46,7 +50,7 @@ def test_public_catalog_matches_current_runtime_defaults():
 @pytest.mark.parametrize("mode", ["test", "live", "secret-invalid-mode"])
 def test_only_active_mode_credential_presence_is_reported(mode):
     env = live_environment() | {"DODO_MODE": mode}
-    report, blockers = preflight.configuration_report(env)
+    report, blockers = configuration_report(env)
     assert report["active_api_key_present"] is (mode == "live")
     assert report["active_webhook_key_present"] is (mode == "live")
     assert "secret-invalid-mode" not in json.dumps(report)
@@ -57,7 +61,7 @@ def test_only_active_mode_credential_presence_is_reported(mode):
 def test_optional_sku_public_override_never_emits_product_ids():
     env = live_environment() | {"DODO_LIVE_PRODUCT_LIFETIME": "secret-lifetime-id",
                                "LIFETIME_AMOUNT_MINOR": "12500", "BILLING_CURRENCY": "usd"}
-    report, _ = preflight.configuration_report(env)
+    report, _ = configuration_report(env)
     assert report["skus"]["lifetime"] == {"product_id_configured": True, "configured": True,
                                           "price_minor": 12500, "currency": "USD", "interval": "lifetime", "tax_inclusive": True}
     assert "secret-lifetime-id" not in json.dumps(report)
@@ -65,7 +69,7 @@ def test_optional_sku_public_override_never_emits_product_ids():
 
 @pytest.mark.parametrize("override", ["invalid-secret-json", '[]', '{"pro":{"price":"secret","currency":"secret","interval":"secret"}}'])
 def test_invalid_catalog_is_redacted_and_blocks_readiness(override):
-    report, blockers = preflight.configuration_report(live_environment() | {"SUBSCRIPTION_PLANS": override})
+    report, blockers = configuration_report(live_environment() | {"SUBSCRIPTION_PLANS": override})
     assert blockers
     assert "secret" not in json.dumps(report)
     assert not report["skus"]["pro"]["configured"]
@@ -240,7 +244,7 @@ def test_billing_startup_and_sales_availability_are_distinct(billing, mode, api,
         env[f"DODO_{mode.upper()}_API_KEY"] = "private-api"
     if webhook:
         env[f"DODO_{mode.upper()}_WEBHOOK_KEY"] = "private-webhook"
-    report, _ = preflight.configuration_report(env)
+    report, _ = configuration_report(env)
     assert report["startup_configuration_valid"] is startup_valid
     assert report["checkout_configuration_available"] is checkout_available
     assert report["skip_env_validation"] is True
@@ -252,7 +256,7 @@ def test_unknown_environment_and_tax_expectations_are_redacted():
                                "SUBSCRIPTION_PLANS": json.dumps({"pro": {
                                    "price": 100, "currency": "INR", "interval": "month", "tax_inclusive": "private-tax-sentinel",
                                }})}
-    report, blockers = preflight.configuration_report(env)
+    report, blockers = configuration_report(env)
     assert report["environment"] == "invalid" and report["deploy_target"] == "invalid"
     assert report["skus"]["pro"]["tax_inclusive"] is None
     assert "invalid_configured_sku_expectations" in blockers
@@ -298,7 +302,7 @@ def test_disposable_pre_dodo_database_reports_history_without_changing_it():
         assert report["alembic_revisions"] == ["0064"]
         assert report["counts"] == {"paid_pointer_users": 3, "historical_paid_pointer_users": 3,
                                     "historical_team_owners": 1, "active_seats_inheriting_historical_owners": 1,
-                                    "historical_live_mandate_users": 2}
+                                    "historical_live_mandate_users": 2, "existing_dodo_live_intent_users": 0}
         with fixture.connect() as connection:
             after = {table: connection.exec_driver_sql(f"SELECT * FROM {table}").all()
                      for table in before}
@@ -358,7 +362,7 @@ def test_unpointed_historical_mandates_block_readiness(monkeypatch):
 @pytest.mark.parametrize("value", ["secret-invalid-amount", "-1"])
 @pytest.mark.parametrize("billing", ["required", "disabled"])
 def test_optional_amounts_must_pass_startup_validation_even_when_unmapped(key, value, billing):
-    report, blockers = preflight.configuration_report(live_environment() | {key: value, "BILLING_MODE": billing})
+    report, blockers = configuration_report(live_environment() | {key: value, "BILLING_MODE": billing})
     assert not report["startup_configuration_valid"]
     assert not report["checkout_configuration_available"]
     assert "invalid_optional_sku_amount" in report["startup_configuration_reasons"]
@@ -368,13 +372,282 @@ def test_optional_amounts_must_pass_startup_validation_even_when_unmapped(key, v
 
 @pytest.mark.parametrize("catalog", ["bad-secret-json", "[]", '"secret-string"'])
 def test_invalid_catalog_shape_is_a_startup_blocker_even_when_sales_disabled(catalog):
-    report, _ = preflight.configuration_report(live_environment() | {"SUBSCRIPTION_PLANS": catalog, "BILLING_MODE": "disabled"})
+    report, _ = configuration_report(live_environment() | {"SUBSCRIPTION_PLANS": catalog, "BILLING_MODE": "disabled"})
     assert not report["startup_configuration_valid"]
     assert "invalid_local_catalog" in report["startup_configuration_reasons"]
     assert "secret" not in json.dumps(report)
 
 
 def test_optional_integer_parsing_matches_pydantic_runtime():
-    report, _ = preflight.configuration_report(live_environment() | {"WEEKLY_AMOUNT_MINOR": "123.0"})
+    report, _ = configuration_report(live_environment() | {"WEEKLY_AMOUNT_MINOR": "123.0"})
     assert report["startup_configuration_valid"]
     assert report["skus"]["weekly"]["price_minor"] == 123
+
+
+def complete_public_report():
+    report, blockers = configuration_report(live_environment())
+    report.update(status="ready", blockers=blockers, database={
+        "status": "read_only_complete", "alembic_revisions": ["0068"],
+        "schema_classification": "current_dodo_head", "counts": dict.fromkeys(preflight.PUBLIC_COUNT_FIELDS, 0),
+    })
+    return report
+
+
+def test_public_configuration_inputs_exclude_all_raw_credentials_and_identifiers():
+    public_values, presence = preflight.configuration_inputs(live_environment())
+    assert set(public_values) <= preflight.PUBLIC_ENV_KEYS
+    assert "DATABASE_URL" not in public_values
+    assert "sentinel" not in json.dumps(public_values)
+    assert presence["api"] is True and presence["webhook"] is True
+    assert presence["products"]["pro"] is True
+    assert "sentinel" not in json.dumps(presence)
+
+
+def test_public_enums_return_canonical_constants_instead_of_input_objects():
+    literal = "required"
+    original = "".join(("re", "quired"))
+    assert original is not literal
+    assert preflight.canonical_choice(original, ("auto", literal, "disabled")) is literal
+    assert preflight.canonical_choice("sensitive-mode-sentinel", ("auto", literal, "disabled")) == "invalid"
+
+
+def test_public_report_rebuilds_an_independent_known_schema():
+    source = complete_public_report()
+    result = preflight.public_report(source)
+    assert result == source
+    assert result is not source
+    assert result["skus"] is not source["skus"]
+    assert result["database"] is not source["database"]
+    source["skus"]["pro"]["currency"] = "modified-after-validation"
+    assert result["skus"]["pro"]["currency"] == "INR"
+
+
+@pytest.mark.parametrize("malformed", [
+    "unexpected_field", "nested_identifier", "key_presence_string", "mode_string", "reason_string",
+    "count_string", "count_bool", "price_string", "currency_long", "interval_string", "tax_string", "sku_unknown",
+    "revision_unknown", "status_unknown", "missing_field",
+])
+def test_public_stdout_boundary_rejects_invalid_report_without_echoing_any_value(monkeypatch, capsys, malformed):
+    report = complete_public_report()
+    sentinel = "do-not-log-this-private-sentinel"
+    if malformed == "unexpected_field":
+        report["unexpected"] = sentinel
+    elif malformed == "nested_identifier":
+        report["skus"]["pro"]["customer_id"] = sentinel
+    elif malformed == "key_presence_string":
+        report["active_api_key_present"] = sentinel
+    elif malformed == "mode_string":
+        report["billing_mode"] = sentinel
+    elif malformed == "reason_string":
+        report["blockers"] = [sentinel]
+    elif malformed in {"count_string", "count_bool"}:
+        report["database"]["counts"]["paid_pointer_users"] = sentinel if malformed == "count_string" else True
+    elif malformed == "price_string":
+        report["skus"]["pro"]["price_minor"] = sentinel
+    elif malformed == "currency_long":
+        report["skus"]["pro"]["currency"] = sentinel
+    elif malformed == "interval_string":
+        report["skus"]["pro"]["interval"] = sentinel
+    elif malformed == "tax_string":
+        report["skus"]["pro"]["tax_inclusive"] = sentinel
+    elif malformed == "sku_unknown":
+        report["skus"][sentinel] = {}
+    elif malformed == "revision_unknown":
+        report["database"]["alembic_revisions"] = [sentinel]
+    elif malformed == "status_unknown":
+        report["status"] = sentinel
+    else:
+        del report["production_like"]
+    monkeypatch.setattr(preflight, "collect_report", lambda: (report, 0))
+    assert preflight.main() == 2
+    output = capsys.readouterr()
+    assert sentinel not in output.out + output.err
+    assert not output.err
+    assert json.loads(output.out) == {"status": "diagnostic_error", "blockers": ["diagnostics_incomplete"],
+                                     "database": {"status": "unavailable_or_unsupported"}}
+
+
+def test_unknown_public_currency_requires_review_without_altering_runtime_settings():
+    report = complete_public_report()
+    report["skus"]["pro"]["currency"] = "XYZ"
+    with pytest.raises(ValueError, match="Invalid public diagnostic report"):
+        preflight.public_report(report)
+    env = live_environment() | {"BILLING_CURRENCY": "XYZ"}
+    result, blockers = configuration_report(env)
+    assert "invalid_local_currency_expectation" in blockers
+    assert not result["checkout_configuration_available"]
+    assert result["startup_configuration_valid"]  # Runtime Settings still accepts a string.
+    assert env["BILLING_CURRENCY"] == "XYZ"
+
+
+@pytest.mark.parametrize("code", preflight.ISO4217_CURRENT_CODES)
+def test_complete_iso_currency_snapshot_emits_canonical_public_values(code):
+    env = live_environment() | {"BILLING_CURRENCY": code, "LIFETIME_AMOUNT_MINOR": "100",
+                               "DODO_LIVE_PRODUCT_LIFETIME": "private-product"}
+    report, blockers = configuration_report(env)
+    assert not blockers
+    assert report["skus"]["lifetime"]["currency"] == code
+    complete = complete_public_report()
+    complete["skus"]["lifetime"] = report["skus"]["lifetime"]
+    assert preflight.public_report(complete)["skus"]["lifetime"]["currency"] == code
+
+
+def test_iso_snapshot_has_178_unique_current_codes_and_source_provenance():
+    assert len(preflight.ISO4217_CURRENT_CODES) == len(set(preflight.ISO4217_CURRENT_CODES)) == 178
+    assert {"INR", "USD", "EUR", "XAD", "XCG", "ZWG"} <= set(preflight.ISO4217_CURRENT_CODES)
+    assert "2026-09-17" in (preflight.BACKEND_ROOT / "scripts/dodo_billing_preflight.py").read_text()
+
+
+def rollout_report(*, sales_mode="disabled", mode="test", api=False, webhook=False, revision="0064",
+                   schema="known_mainline_pre_dodo"):
+    env = {"ENVIRONMENT": "production", "DEPLOY_TARGET": "modal", "BILLING_MODE": sales_mode, "DODO_MODE": mode}
+    if api:
+        env[f"DODO_{mode.upper()}_API_KEY"] = "synthetic-api"
+    if webhook:
+        env[f"DODO_{mode.upper()}_WEBHOOK_KEY"] = "synthetic-webhook"
+    if api and webhook:
+        env[f"DODO_{mode.upper()}_PRODUCT_PRO_MONTHLY"] = "synthetic-product"
+    report, blockers = configuration_report(env)
+    report.update(status="blocked" if blockers else "ready", blockers=blockers, database={
+        "status": "read_only_complete", "alembic_revisions": [revision], "schema_classification": schema,
+        "counts": dict.fromkeys(preflight.PUBLIC_COUNT_FIELDS, 0),
+    })
+    return report
+
+
+@pytest.mark.parametrize("sales_mode,mode,api,hook", [
+    ("disabled", "test", False, False), ("disabled", "test", True, True),
+    ("disabled", "test", True, False), ("disabled", "live", True, True),
+    ("auto", "test", False, False), ("auto", "live", False, False),
+])
+def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, hook):
+    report = rollout_report(sales_mode=sales_mode, mode=mode, api=api, webhook=hook)
+    assert not report["checkout_configuration_available"]
+    result = preflight.rollout_assessment(report)
+    assert result == {"safe_to_rollout": True, "sales_state": "safe_disabled", "reasons": [],
+                      "live_sales_acceptance": "unverified"}
+
+
+@pytest.mark.parametrize("revision,schema", [
+    ("0059", "known_mainline_pre_dodo"), ("0061", "known_mainline_pre_dodo"),
+    ("0064", "known_mainline_pre_dodo"), ("0065", "known_mainline_dodo_upgrade_required"),
+    ("0066", "known_mainline_dodo_upgrade_required"), ("0067", "known_mainline_dodo_upgrade_required"),
+    ("0068", "current_dodo_head"),
+])
+def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
+    assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
+
+
+@pytest.mark.parametrize("schema", [
+    "ambiguous_0061_requires_review", "legacy_dodo_0061_requires_bridge_validation",
+    "unknown_requires_review", "schema_revision_mismatch_requires_review",
+])
+def test_rollout_never_bypasses_ambiguous_or_legacy_schema(schema):
+    result = preflight.rollout_assessment(rollout_report(revision="0061", schema=schema), allow_configured_live=True)
+    assert not result["safe_to_rollout"]
+    assert "rollout_database_schema_requires_review" in result["reasons"]
+
+
+@pytest.mark.parametrize("revisions", [[], ["0064", "0065"], ["unrecognized"]])
+def test_rollout_rejects_missing_multihead_and_unrecognized_revision(revisions):
+    report = rollout_report()
+    report["database"]["alembic_revisions"] = revisions
+    assert not preflight.rollout_assessment(report)["safe_to_rollout"]
+
+
+@pytest.mark.parametrize("field", [
+    "historical_paid_pointer_users", "historical_live_mandate_users", "historical_team_owners",
+    "active_seats_inheriting_historical_owners",
+])
+def test_rollout_blocks_each_historical_access_risk_even_with_operator_acceptance(field):
+    report = rollout_report(sales_mode="required", mode="live", api=True, webhook=True)
+    report["database"]["counts"][field] = 1
+    assert not preflight.rollout_assessment(report, allow_configured_live=True)["safe_to_rollout"]
+
+
+def test_current_dodo_paid_owners_are_not_misclassified_as_historical_risk():
+    report = rollout_report(revision="0068", schema="current_dodo_head")
+    report["database"]["counts"]["paid_pointer_users"] = 10
+    assert preflight.rollout_assessment(report)["safe_to_rollout"]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("environment", "development"), ("environment", "invalid"), ("production_like", False),
+    ("deploy_target", "local"), ("deploy_target", "invalid"), ("startup_configuration_valid", False),
+    ("startup_configuration_reasons", ["invalid_optional_sku_amount"]),
+])
+def test_rollout_requires_strict_startup_and_main_environment_context(field, value):
+    report = rollout_report()
+    report[field] = value
+    assert not preflight.rollout_assessment(report, allow_configured_live=True)["safe_to_rollout"]
+
+
+@pytest.mark.parametrize("sales_mode,mode,api,hook", [
+    ("required", "live", False, False), ("auto", "live", True, False),
+    ("required", "test", True, True), ("auto", "test", True, True),
+])
+def test_rollout_rejects_actual_startup_failure_modes(sales_mode, mode, api, hook):
+    report = rollout_report(sales_mode=sales_mode, mode=mode, api=api, webhook=hook)
+    assert not preflight.rollout_assessment(report, allow_configured_live=True)["safe_to_rollout"]
+
+
+def test_configured_live_requires_explicit_operator_acceptance_not_sales_readiness_alone():
+    report = rollout_report(sales_mode="required", mode="live", api=True, webhook=True)
+    assert report["checkout_configuration_available"]
+    held = preflight.rollout_assessment(report)
+    assert not held["safe_to_rollout"]
+    assert held["reasons"] == ["configured_live_requires_operator_acceptance"]
+    assert held["live_sales_acceptance"] == "unverified"
+    accepted = preflight.rollout_assessment(report, allow_configured_live=True)
+    assert accepted == {"safe_to_rollout": True, "sales_state": "configured_live", "reasons": [],
+                        "live_sales_acceptance": "operator_accepted"}
+    report["checkout_configuration_available"] = False
+    assert not preflight.rollout_assessment(report, allow_configured_live=True)["safe_to_rollout"]
+
+
+def test_rollout_assessment_is_pure_and_does_not_mutate_public_report(monkeypatch):
+    report = rollout_report()
+    before = json.dumps(report, sort_keys=True)
+    monkeypatch.setattr(preflight, "read_environment", lambda *_a, **_k: pytest.fail("environment read"))
+    monkeypatch.setattr(preflight, "database_report", lambda *_a, **_k: pytest.fail("database read"))
+    monkeypatch.setattr(preflight, "known_revisions", lambda *_a, **_k: pytest.fail("filesystem read"))
+    assert preflight.rollout_assessment(report)["safe_to_rollout"]
+    assert json.dumps(report, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("revision", ["0065", "0066", "0067"])
+def test_upgrade_schema_must_contain_its_versioned_billing_columns(revision):
+    columns = current_columns()
+    columns["billing_webhook_events"].discard("event_resource_id")
+    if revision < "0067":
+        columns["coupon_redemptions"] -= {"subscription_id", "status"}
+    if revision < "0066":
+        columns["subscriptions"].discard("quoted_tax_inclusive")
+    assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "known_mainline_dodo_upgrade_required"
+    columns["payments"].remove("provider_payment_id")
+    assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+
+
+@pytest.mark.parametrize("sales_mode,mode,api,hook,allowed", [
+    ("disabled", "test", False, False, False), ("disabled", "test", True, True, False),
+    ("auto", "live", False, False, False), ("disabled", "live", True, False, False),
+    ("disabled", "live", True, True, True),
+])
+def test_existing_dodo_intents_keep_servicing_requirements_when_sales_disabled(sales_mode, mode, api, hook, allowed):
+    report = rollout_report(sales_mode=sales_mode, mode=mode, api=api, webhook=hook,
+                            revision="0068", schema="current_dodo_head")
+    report["database"]["counts"]["existing_dodo_live_intent_users"] = 1
+    result = preflight.rollout_assessment(report)
+    assert result["safe_to_rollout"] is allowed
+    if not allowed:
+        assert "existing_dodo_servicing_unavailable" in result["reasons"]
+
+
+def test_pending_dodo_count_does_not_require_a_provider_subscription_id():
+    engine, connection, _, _ = fake_engine()
+    report = preflight.database_report("postgresql://fixture", engine_factory=lambda *_a, **_k: engine)
+    call = next(call for call in connection.scalar.call_args_list if "s.provider='dodo'" in str(call.args[0]))
+    query = str(call.args[0])
+    assert "provider_subscription_id" not in query
+    assert {"checkout_pending", "checkout_unknown", "active", "cancel_scheduled"} <= set(call.args[1]["live_statuses"])
+    assert report["counts"]["existing_dodo_live_intent_users"] == 0

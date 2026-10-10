@@ -39,6 +39,29 @@ def wrapper():
     return namespace["billing_preflight"]
 
 
+def diagnostic_payload(*, production=True, status="ready", blockers=None, change=None, env_override=None):
+    from scripts.dodo_billing_preflight import configuration_inputs, configuration_report
+
+    environment = {
+        "ENVIRONMENT": "production" if production else "development", "DODO_MODE": "live",
+        "DODO_LIVE_API_KEY": "synthetic-api", "DODO_LIVE_WEBHOOK_KEY": "synthetic-hook",
+        "DODO_LIVE_PRODUCT_PRO_MONTHLY": "synthetic-product",
+    }
+    environment.update(env_override or {})
+    report, _ = configuration_report(*configuration_inputs(environment))
+    report.update(status=status, blockers=blockers or [], database={
+        "status": "read_only_complete", "alembic_revisions": ["0068"],
+        "schema_classification": "current_dodo_head", "counts": {
+            "paid_pointer_users": 0, "historical_paid_pointer_users": 0, "historical_team_owners": 0,
+            "active_seats_inheriting_historical_owners": 0, "historical_live_mandate_users": 0,
+            "existing_dodo_live_intent_users": 0,
+        },
+    })
+    if change:
+        change(report)
+    return json.dumps(report)
+
+
 @pytest.fixture(autouse=True)
 def modal_context(monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
@@ -50,7 +73,7 @@ def test_preflight_wrapper_reports_context_without_deploy_or_mutation(monkeypatc
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
-        return SimpleNamespace(returncode=0, stdout='{"status":"ready","production_like":true}', stderr="secret must stay hidden")
+        return SimpleNamespace(returncode=0, stdout=diagnostic_payload(), stderr="secret must stay hidden")
 
     monkeypatch.setattr(subprocess, "run", run)
     wrapper()("a" * 40)
@@ -67,6 +90,7 @@ def test_preflight_wrapper_reports_context_without_deploy_or_mutation(monkeypatc
         "image_role": "candidate_migration_preflight",
         "source_revision_reported": "a" * 40,
         "expected_repository_head": "0068",
+        "purpose": "report",
         "source_files_sha256": report["execution_context"]["source_files_sha256"],
     }
     assert len(report["execution_context"]["source_files_sha256"]) == 64
@@ -77,7 +101,7 @@ def test_preflight_wrapper_reports_context_without_deploy_or_mutation(monkeypatc
 
 def test_preflight_wrapper_does_not_bless_development_settings_in_main(monkeypatch, capsys):
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
-        returncode=0, stdout='{"status":"ready","production_like":false}', stderr="",
+        returncode=0, stdout=diagnostic_payload(production=False), stderr="",
     ))
     with pytest.raises(RuntimeError, match="requires review"):
         wrapper()("a" * 40)
@@ -99,14 +123,73 @@ def test_preflight_wrapper_refuses_wrong_context_before_subprocess(monkeypatch, 
 @pytest.mark.parametrize("code", [1, 2])
 def test_preflight_wrapper_preserves_redacted_blocking_report(monkeypatch, capsys, code):
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
-        returncode=code, stdout='{"status":"blocked","production_like":true,"blockers":["database_unavailable"]}',
+        returncode=code, stdout=diagnostic_payload(status="blocked", blockers=["billing_disabled"]),
         stderr="private database URL",
     ))
     with pytest.raises(RuntimeError, match="requires review"):
         wrapper()("a" * 40)
     out = capsys.readouterr()
     assert "private" not in out.out + out.err
-    assert json.loads(out.out)["blockers"] == ["database_unavailable"]
+    assert json.loads(out.out)["blockers"] == ["billing_disabled"]
+
+
+@pytest.mark.parametrize("change", [
+    lambda r: r.update(unexpected_secret="private-child-sentinel"),
+    lambda r: r["skus"]["pro"].update(customer_id="private-child-sentinel"),
+    lambda r: r.update(active_api_key_present="private-child-sentinel"),
+    lambda r: r["database"]["counts"].update(paid_pointer_users="private-child-sentinel"),
+])
+def test_preflight_wrapper_rejects_unallowlisted_child_output(monkeypatch, capsys, change):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout=diagnostic_payload(change=change), stderr="private-child-sentinel",
+    ))
+    with pytest.raises(RuntimeError, match="no diagnostic details were logged"):
+        wrapper()("a" * 40)
+    out = capsys.readouterr()
+    assert "private-child-sentinel" not in out.out + out.err
+    assert json.loads(out.out)["error"] == "preflight_execution_failed"
+
+
+def test_rollout_wrapper_accepts_safe_disabled_before_migration(monkeypatch, capsys):
+    def before_migration(report):
+        report["database"].update(alembic_revisions=["0059"], schema_classification="known_mainline_pre_dodo")
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=1, stdout=diagnostic_payload(status="blocked", blockers=["billing_disabled"],
+            env_override={"BILLING_MODE": "disabled", "DEPLOY_TARGET": "modal"}, change=before_migration), stderr="",
+    ))
+    wrapper()("a" * 40, purpose="rollout")
+    report = json.loads(capsys.readouterr().out)
+    assert report["rollout_safety"]["safe_to_rollout"] is True
+    assert report["rollout_safety"]["sales_state"] == "safe_disabled"
+    assert report["rollout_safety"]["live_sales_acceptance"] == "unverified"
+    assert set(report) == {"execution_context", "rollout_safety"}
+    assert "database" not in report and "active_api_key_present" not in report
+
+
+@pytest.mark.parametrize("accepted,passes", [(False, False), (True, True)])
+def test_rollout_wrapper_configured_live_requires_explicit_acceptance(monkeypatch, capsys, accepted, passes):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout=diagnostic_payload(env_override={"DEPLOY_TARGET": "modal"}), stderr="",
+    ))
+    if passes:
+        wrapper()("a" * 40, purpose="rollout", allow_configured_live=accepted)
+    else:
+        with pytest.raises(RuntimeError, match="requires review"):
+            wrapper()("a" * 40, purpose="rollout", allow_configured_live=accepted)
+    report = json.loads(capsys.readouterr().out)
+    assert report["rollout_safety"]["safe_to_rollout"] is passes
+
+
+def test_rollout_wrapper_never_overrides_incomplete_diagnostic_exit(monkeypatch, capsys):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=2, stdout=diagnostic_payload(env_override={"BILLING_MODE": "disabled", "DEPLOY_TARGET": "modal"}), stderr="",
+    ))
+    with pytest.raises(RuntimeError, match="requires review"):
+        wrapper()("a" * 40, purpose="rollout", allow_configured_live=True)
+    report = json.loads(capsys.readouterr().out)
+    assert report["rollout_safety"]["safe_to_rollout"] is False
+    assert "rollout_diagnostics_incomplete" in report["rollout_safety"]["reasons"]
 
 
 @pytest.mark.parametrize("failure", ["bad_json", "timeout", "unexpected_exit"])

@@ -92,6 +92,14 @@ individual users and exception details are never included. Catalog checks concer
 local configuration only; the live merchant catalog still needs separate acceptance.
 Billing-only startup validity and checkout availability are reported separately;
 the diagnostic does not revalidate unrelated authentication/storage credentials.
+Both output boundaries rebuild an exact public schema: unexpected keys, nested
+identifiers, invalid types and arbitrary messages are rejected without echoing
+them. Credentials and product IDs are reduced to presence booleans before public
+configuration handling. Public modes and currency codes are emitted as canonical
+constants. Currency validation uses the complete 178-code current ISO 4217 snapshot
+published by [SIX on 17 September 2026](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml).
+An unknown/new currency needs diagnostic review or a reviewed registry update;
+this does not change the application's supported currencies or verify Dodo's catalog.
 
 Exit 0 means the script's static readiness checks pass. Exit 1 is a readable
 report requiring review, including ordinary pre-migration or disabled/unconfigured
@@ -104,6 +112,54 @@ test-mode billing in production fails startup deliberately. The deployment
 workflow validates settings during its migration step before replacing the API.
 Unresolved historical paid-account counts require a deliberate access cutover
 decision; financial-row preservation alone does not establish ongoing access.
+
+### Automatic rollout guard and later live activation
+
+The existing main-only, `Production`-environment deployment workflow now runs
+the same diagnostic with `--purpose rollout` **before** `migrate` and rolling
+deployment. It uses the existing credential bindings; PR CI does not gain
+production credentials. A failed check stops later deployment steps.
+Public workflow logs contain only execution identity and fixed rollout decisions;
+the detailed configuration and aggregate counts remain in the operator-only
+default report rather than being copied into deployment logs.
+
+The rollout policy is deliberately separate from live-sales readiness:
+
+- Strict billing startup rules, production/staging classification and Modal
+  targeting must pass, even when startup validation is otherwise bypassed.
+- The schema must be a recognized mainline upgrade path or the current head.
+  Conflicting legacy 0061, partial/mismatched schemas, unknown revisions and
+  incomplete diagnostics stop the rollout. A known pre-migration revision may
+  proceed to the following ordinary migration step.
+- Historical paid-user, live-mandate and inherited-team access counts must be
+  zero. The guard cannot authorize removal or migration of those entitlements.
+- Existing live/pending Dodo intents require live API and webhook configuration
+  for servicing, even when new sales are disabled.
+- `BILLING_MODE=disabled`, or `auto` with no active-mode keys, can pass as
+  `safe_disabled`. This allows staged source rollout without opening purchases.
+- Configured live sales remain on hold by default. The repository Actions variable
+  `DODO_LIVE_BILLING_ACCEPTED` must be exactly `true` to release only that hold.
+  Absent, empty or other values mean false. No variable is created or set by this
+  change. The override cannot bypass startup, environment, schema, historical
+  access, existing-Dodo servicing or local catalog checks.
+
+The acceptance variable is an operator assertion, **not evidence by itself**.
+Before an authorized operator sets it, record acceptance of the live merchant,
+mode-separated credentials and webhook destination; every offered product's
+amount/currency/tax/recurrence contract; verified payment and lifecycle delivery;
+and the documented refund, currency and supported-plan-change boundaries. Use
+only separately authorized transactions and mailboxes. Keep unaccepted optional
+SKUs unavailable. Record the reviewed schema/backup and account-cutover plan.
+Revisit this acceptance when the merchant, modes or catalog contract changes.
+The diagnostic never performs these actions or declares live payments verified.
+
+If this guard blocks backend rollout while a newer frontend is published, the
+frontend refuses payment mutations unless the server advertises Dodo explicitly.
+Its mutation URLs are Dodo-specific, so a request routed to an old instance fails
+without falling back to old provider behavior. Guided-builder editing likewise
+requires a versioned capability and new-only request paths; existing history and
+manual source access remain available. These protections do not claim a blocked
+backend release was successfully deployed.
 
 ## Webhook setup
 

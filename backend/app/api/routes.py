@@ -5,7 +5,7 @@ API routes for the application.
 import asyncio
 import hashlib
 import json
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -1282,6 +1282,7 @@ async def compile_latex_anonymous(
 
 
 class BillingStatusResponse(BaseModel):
+    provider: Literal["dodo"] = "dodo"
     feature_enabled: bool
     mode: str
     available: bool
@@ -1372,6 +1373,7 @@ async def get_subscription_plans(
 
 
 @router.post("/subscription/create", response_model=CreateSubscriptionResponse)
+@router.post("/billing/dodo/subscription/create", response_model=CreateSubscriptionResponse)
 async def create_subscription(
     request_data: CreateSubscriptionRequest,
     db: AsyncSession = Depends(get_db),
@@ -1430,6 +1432,7 @@ async def create_subscription(
 
 
 @router.post("/subscription/reconcile", response_model=CheckoutReconcileResponse)
+@router.post("/billing/dodo/subscription/reconcile", response_model=CheckoutReconcileResponse)
 async def reconcile_subscription(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(_require_user),
@@ -1452,6 +1455,7 @@ async def reconcile_subscription(
 
 
 @router.get("/subscription/student/verify/{token}")
+@router.get("/billing/dodo/subscription/student/verify/{token}")
 async def verify_student_subscription(
     token: str,
     db: AsyncSession = Depends(get_db),
@@ -1520,6 +1524,7 @@ async def get_current_subscription(
 
 
 @router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
+@router.post("/billing/dodo/subscription/cancel", response_model=CancelSubscriptionResponse)
 async def cancel_subscription(
     db: AsyncSession = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):

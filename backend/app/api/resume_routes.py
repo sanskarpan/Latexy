@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel,
@@ -348,6 +348,12 @@ class BuilderPreviewResponse(BaseModel):
     sections: List[BuilderPreviewSectionResponse]
 
 
+class BuilderCapabilitiesResponse(BaseModel):
+    # Version 1 promises full guided-field rendering and enforcement of supplied
+    # structured-version / reattachment-source optimistic concurrency tokens.
+    guided_builder_version: Literal[1] = 1
+
+
 class BuilderResumeCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     template_id: str
@@ -361,6 +367,10 @@ class BuilderResumePatchRequest(BaseModel):
     force_reattach: bool = False
     expected_structured_version: Optional[int] = Field(default=None, ge=1, strict=True)
     expected_latex_content: Optional[str] = None
+
+
+class BuilderResumeV1PatchRequest(BuilderResumePatchRequest):
+    expected_structured_version: int = Field(..., ge=1, strict=True)
 
 
 class BuilderResumeResponse(BaseModel):
@@ -503,6 +513,14 @@ async def _sync_linked_variants(parent: Resume, db: AsyncSession) -> None:
         variant.updated_at = datetime.now(timezone.utc)
 
 
+@router.get("/builder/capabilities", response_model=BuilderCapabilitiesResponse)
+async def get_builder_capabilities(response: Response):
+    # Do not let a cached positive response outlive a backend rollout/rollback.
+    # This read-only contract deliberately needs neither billing nor a DB call.
+    response.headers["Cache-Control"] = "no-store"
+    return BuilderCapabilitiesResponse()
+
+
 @router.get("/builder/templates", response_model=List[BuilderTemplateResponse])
 async def list_builder_templates(
     request: Request,
@@ -522,6 +540,7 @@ async def list_builder_templates(
     return [_template_to_builder_response(template, base_url) for template in templates]
 
 
+@router.post("/builder/v1/seed-upload", response_model=BuilderSeedUploadResponse)
 @router.post("/builder/seed-upload", response_model=BuilderSeedUploadResponse)
 async def seed_builder_from_upload(
     file: UploadFile = File(...),
@@ -595,6 +614,12 @@ async def seed_builder_from_upload(
     )
 
 
+@router.post(
+    "/builder/v1",
+    response_model=BuilderResumeResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("resume_builder"))],
+)
 @router.post(
     "/builder",
     response_model=BuilderResumeResponse,
@@ -887,6 +912,7 @@ async def get_error_history(
     ]
 
 
+@router.get("/{resume_id}/builder/v1", response_model=BuilderResumeResponse)
 @router.get("/{resume_id}/builder", response_model=BuilderResumeResponse)
 async def get_builder_resume(
     resume_id: str,
@@ -900,6 +926,18 @@ async def get_builder_resume(
     if not template:
         raise HTTPException(status_code=404, detail="Selected template not found")
     return _builder_payload(resume, template.category)
+
+
+@router.patch("/{resume_id}/builder/v1", response_model=BuilderResumeResponse)
+async def update_builder_resume_v1(
+    resume_id: str,
+    body: BuilderResumeV1PatchRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    # The separate path fails safely on old instances during rolling deploys;
+    # the legacy route remains available to older clients.
+    return await update_builder_resume(resume_id, body, db, user_id)
 
 
 @router.patch("/{resume_id}/builder", response_model=BuilderResumeResponse)

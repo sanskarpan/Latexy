@@ -58,7 +58,7 @@ describe('billing checkout return confirmation', () => {
     SubscriptionManager({
       authToken: 'session-token',
       billingStatus: {
-        featureEnabled: true,
+        provider: 'dodo' as const, featureEnabled: true,
         mode: 'enabled',
         available: true,
         reason: null,

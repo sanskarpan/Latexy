@@ -84,6 +84,7 @@ const plansPayload = {
     },
   },
   billing: {
+    provider: 'dodo',
     feature_enabled: true,
     mode: 'enabled',
     available: true,
@@ -93,6 +94,35 @@ const plansPayload = {
 }
 
 test.describe('Billing page', () => {
+  test('an available old backend stays read-only without explicit Dodo capability', async ({ page }) => {
+    let mutationRequests = 0
+    await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
+      user: { id: 'old-owner', email: 'owner@example.com', name: 'Owner' },
+      session: { id: 'old-session', userId: 'old-owner', token: 'old-owner-token' },
+    } }))
+    await page.route('**/subscription/plans', route => route.fulfill({ json: {
+      ...plansPayload, billing: { ...plansPayload.billing, provider: undefined, available: true },
+    } }))
+    await page.route('**/subscription/current', route => route.fulfill({ json: {
+      userId: 'old-owner', planId: 'basic', planName: 'Basic', status: 'active',
+      features: plansPayload.plans.basic.features,
+      subscriptionId: 'old-subscription', currentPeriodEnd: '2099-01-01T00:00:00Z',
+    } }))
+    await page.route(/\/subscription\/(create|cancel|reconcile|student\/verify)(?:\/|$)/, route => {
+      mutationRequests += 1
+      return route.fulfill({ status: 400, json: { detail: 'Unexpected billing mutation' } })
+    })
+
+    await page.goto('/billing?checkout=return&student_verify=old-token')
+    await expect(page.getByText('Dodo billing is not available on this server yet. Please try again after the update.').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeHidden()
+    const cards = page.locator('article')
+    await expect(cards).not.toHaveCount(0)
+    for (const button of await cards.getByRole('button').all()) await expect(button).toBeDisabled()
+    expect(mutationRequests).toBe(0)
+  })
+
   test('guest can view pricing and annual toggle updates plan set', async ({ page }) => {
     await page.route('**/api/auth/get-session', (route) =>
       route.fulfill({ json: { user: null, session: null } }),

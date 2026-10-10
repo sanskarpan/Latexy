@@ -117,12 +117,50 @@ remaining diagnostic blocker. Existing Modal deployment/CI-visibility tests also
 pass. These tests do not certify deployed source, live credentials/catalog, or
 complete database constraint equivalence.
 
+CodeQL alert 377 on the initial diagnostic head `6b73de05` identified private-data
+flows into its JSON logging boundary. The follow-up separates credential presence
+from public settings and validates/rebuilds an exact public output schema at both
+the standalone and Modal child-output boundaries. It emits canonical public modes
+and current ISO currency constants, rejecting unexpected fields and types without
+echoing values. The currency registry is the complete SIX snapshot dated
+17 September 2026; no payment runtime currency rules are changed. Tests include
+unexpected/nested-field and malformed-type sentinel rejection. No alert
+suppression or dismissal is used; the replacement head needs its own successful
+CodeQL result before operator handoff.
+
+The follow-up also adds a read-only rollout-safety step before the existing
+main/Production migration and deployment boundary, without widening secret/ref
+access. It accepts known safe-disabled staging while requiring startup, schema,
+historical-access and existing-Dodo-servicing checks. Configured live sales are
+held unless an operator separately records acceptance and explicitly sets the
+documented Actions variable; this review does not set it. The pure policy cannot
+turn that assertion into live provider proof or bypass its other checks.
+The final preflight/policy/wrapper suite passed 384 cases, including the two real
+isolated database proofs. Additional workflow shell-contract tests verify exact
+opt-in and failure propagation. New frontend provider and builder capabilities,
+together with new-only mutation URLs, prevent mixed old/new backend instances
+from accepting unsafe payment actions or ignoring builder save preconditions.
+
 The production report remains pending. A clean disabled/unconfigured default
 can safely leave purchases unavailable, but unknown `required`, partial-key, or
 production-test configuration can block the release. No new engine/model
 production variables are required by this branch relative to current main.
-The PR remains draft until the configuration/schema/access cutover review is
-complete; the script is not a substitute for live Dodo acceptance.
+The candidate remains draft pending exact-head CI and release review. A source
+merge can use the conservative automatic guard without declaring a production
+rollout successful: unknown configuration/schema/access conditions still stop
+the backend deployment before migration. The script is not a substitute for
+live Dodo acceptance.
+
+The frozen combined follow-up passed 475 backend tests covering the diagnostic,
+rollout policy, Modal wrapper/workflow boundaries, Dodo routes/runtime and builder
+capability/concurrent saves. All 1,373 frontend unit tests across 198 files passed,
+with TypeScript, full ESLint, focused Ruff and diff checks. The production build
+and artifact validator passed with a bounded 2 GB Node heap after an unbounded
+attempt compiled successfully but was killed during its type-check phase.
+Thirteen new builder
+rollout browser cases are included in the production-browser CI gate. Local
+browser execution remains blocked by this executor's known Node host-network
+interface limitation; those cases require the authoritative CI result.
 
 ## Still requires provider or deployment acceptance
 
