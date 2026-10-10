@@ -54,6 +54,15 @@ admin writes without `expected_enabled` retain last-writer-wins compatibility.
   ATS/optimization, cover letters, workspace/recruiter actions, references,
   developer/BYOK integrations, sharing and extension actions. New optional
   controls hide when OFF; relevant old data/removal/disconnect controls remain.
+- Removed remaining links to unavailable optional destinations (grid/list/variant
+  Optimize, Merge, Career, visibility management, builder source and onboarding).
+  Baseline source-editor links remain usable when structured reattachment is OFF;
+  an in-flight fork falls back to its saved source if linked-variant UI is revoked.
+- Real browser execution exposed bootstrap reads exhausting the expensive-action
+  rate bucket during navigation. `/me` and `/config/entitlements` now use the
+  existing bounded lightweight bucket (300/minute, 6,000/hour); no global limit,
+  authorization check or expensive endpoint budget was changed. Ten dedicated
+  regressions and actual local TCP/Redis exhaustion checks verify the separation.
 - Normalized payload booleans before gate selection, matching Pydantic's accepted
   JSON values. Values such as `"true"` and `1` cannot bypass publication, public
   review or builder reattachment restrictions. False-value revocation remains
@@ -104,13 +113,13 @@ called. GitHub retains screenshots/traces for 14 days.
 
 ## Local verification checkpoint
 
-- Frontend: 188 files / 1,312 tests passed; TypeScript, strict ESLint, Node 22
+- Frontend: 189 files / 1,334 tests passed; TypeScript, strict ESLint, Node 22
   production build and artifact validation passed. Extension: 13 tests plus
   syntax/package validation passed.
 - Actual local HTTP also verified Next/Better Auth signup, its cookie session,
   the same session's FastAPI identity, admin page HTTP delivery and role-based
   API denial. This does not execute or visually validate client-side React.
-- Final full backend run: 5,400 passed, 15 failed and four skipped. All fifteen
+- Final full backend run: 5,414 passed, 15 failed and four skipped. All fifteen
   failures are host TeX format/font failures reproduced with the exact same test
   IDs on the unchanged prior head; see [the comparison](role-environment-comparison.json).
   The reused synthetic provider-ID fixture was fixed; 40 related tests and a
@@ -124,6 +133,22 @@ called. GitHub retains screenshots/traces for 14 days.
   local tracing tests needed deterministic sampling instead of the inherited 1%
   sampler. These are local test environment adjustments, not application or
   lockfile changes. No network or browser security policy was weakened.
+
+### Browser-driven follow-through
+
+The initial real browser run exposed a test launcher configured as staging,
+which correctly strips credentialed loopback CORS. The isolated launcher now
+forces test mode; production/staging CORS rules remain unchanged. 107 local
+security/isolation/deployment tests and actual allowed/denied-origin HTTP
+preflights pass. A subsequent browser run exercised user OFF/ON and support OFF
+with matching API decisions, then found the bootstrap rate-budget issue above.
+The final exact-head run must verify the complete scenario after that correction.
+The user case now also checks cross-tab refresh without navigating or reloading.
+
+The mobile API-mocked fixture now explicitly enables Studio/Templates in ON
+cases, rather than expecting those links while returning an empty grant map.
+Separate OFF assertions still require those links to disappear while account
+recovery, login and sign-out remain available.
 
 ## Deliberate exceptions and merge gates
 

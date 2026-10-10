@@ -17,7 +17,7 @@ const diagnosticsByPage = new WeakMap<Page, {
 
 async function mockHeaderDependencies(
   page: Page,
-  options: { authenticated: boolean; role?: string; billing?: boolean },
+  options: { authenticated: boolean; role?: string; billing?: boolean; features?: Record<string, boolean> },
 ) {
   const pageErrors: string[] = []
   const authTimeline: string[] = []
@@ -94,9 +94,10 @@ async function mockHeaderDependencies(
   await page.route(url => url.origin === backendOrigin && url.pathname === '/me', route =>
     fulfillQualityJson(route, { id: 'mobile-account-owner', email: 'mobile@example.com', role: options.role ?? 'user' }),
   )
-  // Denied capabilities still leave account recovery and sign-out reachable.
+  // Tests must explicitly grant optional entry points. Missing capabilities
+  // stay denied while account recovery and sign-out remain reachable.
   await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
-    fulfillQualityJson(route, { features: {} }),
+    fulfillQualityJson(route, { features: options.features ?? {} }),
   )
   await page.route(url => url.origin === backendOrigin && url.pathname === '/config/feature-flags', route =>
     fulfillQualityJson(route, { billing: options.billing ?? true }),
@@ -164,7 +165,7 @@ test.describe('mobile account navigation', () => {
   test('authenticated users can reach account controls, use the keyboard trap, and sign out', async ({ page }) => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 627, height: 780 })
-    const fixture = await mockHeaderDependencies(page, { authenticated: true })
+    const fixture = await mockHeaderDependencies(page, { authenticated: true, features: { a09: true } })
     let signOutCalls = 0
     const { appOrigin } = qualityOrigins()
     const signOutMethods: string[] = []
@@ -221,15 +222,31 @@ test.describe('mobile account navigation', () => {
 
   test('guests see login actions without authenticated account controls', async ({ page }) => {
     await page.setViewportSize({ width: 627, height: 780 })
-    const fixture = await mockHeaderDependencies(page, { authenticated: false })
+    const fixture = await mockHeaderDependencies(page, { authenticated: false, features: { a09: true, b04: true } })
     await page.goto('/platform', { waitUntil: 'domcontentloaded' })
     await waitForHeaderSession(page, fixture)
     await page.getByRole('button', { name: 'Open navigation menu' }).click()
 
     await expect(page.getByRole('link', { name: 'Log In', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Try Free', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Templates', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'AI Providers', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toHaveCount(0)
+  })
+
+  test('guests with Studio disabled retain login but no optional Studio or template entry points', async ({ page }) => {
+    await page.setViewportSize({ width: 627, height: 780 })
+    const fixture = await mockHeaderDependencies(page, { authenticated: false })
+    await page.goto('/platform', { waitUntil: 'domcontentloaded' })
+    await waitForHeaderSession(page, fixture)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+
+    await expect(page.getByRole('link', { name: 'Log In', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Try Free', exact: true })).toHaveCount(0)
+    await expect(page.locator('a[href="/try"]')).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Templates', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toHaveCount(0)
   })
 
@@ -240,6 +257,10 @@ test.describe('mobile account navigation', () => {
     await waitForHeaderSession(page, fixture)
     await page.getByRole('button', { name: 'Open navigation menu' }).click()
 
+    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'AI Providers', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Studio', exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Billing', exact: true })).toHaveCount(0)
   })

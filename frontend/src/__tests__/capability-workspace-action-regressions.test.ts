@@ -96,6 +96,25 @@ describe('workspace optional-action regressions', () => {
     expect(compileContent).toHaveBeenCalledWith('source')
   })
 
+  it.each([false, true])('routes a newly created linked variant using the current b12 grant (%s)', async (linkedModeAllowed) => {
+    let allowed = true
+    const push = vi.fn()
+    const forkResume = vi.fn(async () => {
+      // Model a refresh completing while the create request is in flight.
+      allowed = linkedModeAllowed
+      return { id: 'new-variant', content_source: 'builder_variant' }
+    })
+    await action(editorPage, 'handleCreateVariant', {
+      canRef: { current: (key: string) => key === 'b12' ? allowed : true },
+      isForkingResume: false, setIsForkingResume: vi.fn(), isDirtyRef: { current: false },
+      resumeId: 'resume', forkTitleInput: '', apiClient: { forkResume },
+      setForkPopoverOpen: vi.fn(), setForkTitleInput: vi.fn(), router: { push },
+      toast: { error: vi.fn() },
+    })()
+    expect(forkResume).toHaveBeenCalledOnce()
+    expect(push).toHaveBeenCalledWith(linkedModeAllowed ? '/workspace/variant/new-variant' : '/workspace/new-variant/edit')
+  })
+
   it('rechecks fork permission after awaiting a source save and keeps Cancel reachable', async () => {
     let allowed = true
     const forkResume = vi.fn()

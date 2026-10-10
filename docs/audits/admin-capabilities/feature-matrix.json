@@ -446,7 +446,8 @@
         "frontend/src/app/resources/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx"
+        "frontend/src/components/marketing/MarketingFooter.tsx",
+        "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -686,7 +687,8 @@
       "clientControls": [
         "frontend/src/app/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
-        "frontend/src/components/GlobalHeader.tsx"
+        "frontend/src/components/GlobalHeader.tsx",
+        "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -925,6 +927,7 @@
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
         "frontend/src/app/workspace/builder/new/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
+        "frontend/src/app/workspace/variant/[resumeId]/page.tsx",
         "frontend/src/components/CapabilityRouteBoundary.tsx"
       ],
       "verification": {
@@ -981,8 +984,7 @@
         "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach; ordinary source edits/detachment remain recovery)"
       ],
       "clientControls": [
-        "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
-        "frontend/src/app/workspace/variant/[resumeId]/page.tsx"
+        "frontend/src/app/workspace/builder/[resumeId]/page.tsx"
       ],
       "verification": {
         "status": "client_control_wiring; per-capability behavior not exhaustively tested",
@@ -1150,6 +1152,7 @@
         "backend/app/api/resume_routes.py:_sync_linked_variants (new automatic refresh admission)"
       ],
       "clientControls": [
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/components/CapabilityRouteBoundary.tsx"
       ],
       "verification": {
@@ -1206,6 +1209,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/CapabilityRouteBoundary.tsx"
       ],
       "verification": {
@@ -2755,7 +2759,8 @@
       ],
       "clientControls": [
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
-        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx"
+        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
+        "frontend/src/app/workspace/page.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -4424,7 +4429,9 @@
         "backend/app/api/career_routes.py:analyze_career_path"
       ],
       "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [

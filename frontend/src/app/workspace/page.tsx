@@ -892,12 +892,12 @@ export default function WorkspacePage() {
         >
           <Pencil size={12} /> Edit
         </Link>
-        <Link
+        <CapabilityGate feature="d01"><Link
           href={`/workspace/${resume.id}/optimize`}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110"
         >
           <Sparkles size={12} /> Optimize
-        </Link>
+        </Link></CapabilityGate>
         {renderActionMenu(resume, isVariant)}
       </div>
     </article>
@@ -1020,7 +1020,7 @@ export default function WorkspacePage() {
             )}
           </div>
 
-          <Link
+          <CapabilityGate feature="b13"><Link
             href="/workspace/merge"
             aria-label="Merge resumes"
             title="Merge resumes"
@@ -1028,7 +1028,7 @@ export default function WorkspacePage() {
           >
             <GitMerge size={12} aria-hidden="true" />
             <span className="hidden sm:inline">Merge</span>
-          </Link>
+          </Link></CapabilityGate>
 
           <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
             {t('workspace.newResume')}
@@ -1220,12 +1220,12 @@ export default function WorkspacePage() {
                             >
                               Edit
                             </Link>
-                            <Link
+                            <CapabilityGate feature="d01"><Link
                               href={`/workspace/${resume.id}/optimize`}
                               className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                             >
                               Optimize
-                            </Link>
+                            </Link></CapabilityGate>
                             {renderActionMenu(resume, false)}
                           </div>
                         </td>
@@ -1262,12 +1262,12 @@ export default function WorkspacePage() {
                               >
                                 Edit
                               </Link>
-                              <Link
+                              <CapabilityGate feature="d01"><Link
                                 href={`/workspace/${variant.id}/optimize`}
                                 className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                               >
                                 Optimize
-                              </Link>
+                              </Link></CapabilityGate>
                               {renderActionMenu(variant, true)}
                             </div>
                           </td>

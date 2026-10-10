@@ -127,6 +127,8 @@ def _warn_fail_open(context: str) -> None:
 # own, more generous budget — not full exemption — fixes the false-eviction
 # trigger without losing rate limiting on these routes altogether.
 _LIGHTWEIGHT_PATHS = {
+    "/me",
+    "/config/entitlements",
     "/config/feature-flags",
     "/tenants/current-context",
     "/telemetry/frontend",

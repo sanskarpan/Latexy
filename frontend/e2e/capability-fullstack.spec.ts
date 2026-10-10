@@ -76,8 +76,15 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
       const denied = await actorContext.request.get(`${backend}/resumes/search?q=existing`, { headers: actor.headers })
       expect(denied.status()).toBe(403)
       expect(await denied.text()).toContain('feature_disabled')
-      const disabledMap = actorPage.waitForResponse((response) => response.url().endsWith('/config/entitlements') && response.status() === 200)
-      await actorPage.reload()
+      const disabledMap = actorPage.waitForResponse(
+        (response) => response.url().endsWith('/config/entitlements') && response.status() === 200,
+        { timeout: 45_000 },
+      )
+      // The user case proves another tab's admin edit reaches an already-open
+      // browser through bounded visibility/polling refresh, without navigating
+      // or reloading. Bring it forward as a real user returning to the tab would.
+      if (role === 'user') await actorPage.bringToFront()
+      else await actorPage.reload()
       expect((await (await disabledMap).json()).features.b03).toBe(false)
       await expect(actorPage.getByRole('heading', { name: /Resume library/i })).toBeVisible({ timeout: 45_000 })
       await expect(actorPage.getByRole('button', { name: 'Search resume content', exact: true })).toHaveCount(0)

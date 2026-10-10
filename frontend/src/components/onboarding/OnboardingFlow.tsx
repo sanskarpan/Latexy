@@ -291,10 +291,10 @@ export default function OnboardingFlow({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 50+ curated designs.', href: '/templates' },
+              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 50+ curated designs.', href: '/templates', feature: 'b04' },
               { icon: <Upload className="w-5 h-5" />, label: 'Import a resume', desc: 'Bring a PDF, DOCX, or .tex file.', href: '/workspace/new' },
-              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.', href: '/try' },
-            ].map((o) => (
+              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.', href: '/try', feature: 'a09' },
+            ].filter((o) => !o.feature || can(o.feature)).map((o) => (
               <Link
                 key={o.label}
                 href={o.href}

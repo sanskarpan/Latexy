@@ -2734,8 +2734,10 @@ export default function ResumeEditPage() {
       const newResume = await apiClient.forkResume(resumeId, forkTitleInput || undefined)
       setForkPopoverOpen(false)
       setForkTitleInput('')
+      // Forking and linked-visibility editing are independent grants. Keep the
+      // saved result reachable if that optional destination was revoked in flight.
       router.push(
-        newResume.content_source === 'builder_variant'
+        newResume.content_source === 'builder_variant' && canRef.current('b12')
           ? `/workspace/variant/${newResume.id}`
           : `/workspace/${newResume.id}/edit`
       )
@@ -3241,14 +3243,14 @@ export default function ResumeEditPage() {
             Cover Letter
           </Link>
 
-          <Link
+          <CapabilityGate feature="e04"><Link
             href={`/workspace/${resumeId}/career`}
             onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-ok transition hover:bg-ok/10 hover:text-ok"
           >
             <TrendingUp size={12} />
             Career Path
-          </Link>
+          </Link></CapabilityGate>
 
           {/* Create Variant button */}
           <div className="relative">
@@ -3506,9 +3508,9 @@ export default function ResumeEditPage() {
           </span>
           <div className="flex items-center gap-3">
             {isLinkedVariant && (
-              <Link href={`/workspace/variant/${resumeId}`} className="text-xs font-semibold text-accent-strong hover:underline">
+              <CapabilityGate feature="b12"><Link href={`/workspace/variant/${resumeId}`} className="text-xs font-semibold text-accent-strong hover:underline">
                 Manage visibility
-              </Link>
+              </Link></CapabilityGate>
             )}
             {isLinkedVariant && !linkedEditEnabled && (
               <button

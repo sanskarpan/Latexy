@@ -3,10 +3,12 @@
  */
 export const CLIENT_CAPABILITY_CONTROLS = {
   a06: ['app/workspace/page.tsx', 'components/onboarding/OnboardingFlow.tsx'],
+  a09: ['app/try/page.tsx', 'components/onboarding/OnboardingFlow.tsx'],
+  b04: ['components/onboarding/OnboardingFlow.tsx'],
   b03: ['app/workspace/page.tsx'],
   b07: ['app/workspace/new/page.tsx', 'components/ExportDropdown.tsx'],
   b08: ['components/CapabilityRouteBoundary.tsx'],
-  b09: ['app/workspace/builder/[resumeId]/page.tsx', 'app/workspace/variant/[resumeId]/page.tsx'],
+  b09: ['app/workspace/builder/[resumeId]/page.tsx'],
   b10: ['app/workspace/[resumeId]/edit/page.tsx'],
   b12: ['components/CapabilityRouteBoundary.tsx'],
   b13: ['components/CapabilityRouteBoundary.tsx'],

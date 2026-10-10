@@ -614,11 +614,11 @@ function BuilderResumeForm({
         </div>
         <div className="flex items-center gap-3">
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
-          <CapabilityGate feature="b09"><Link href={`/workspace/${resumeId}/edit`} onClick={event => {
+          <Link href={`/workspace/${resumeId}/edit`} onClick={event => {
             if (dirty && !window.confirm('Changes have not been saved. Open the advanced editor anyway?')) event.preventDefault()
           }} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Open Advanced Editor
-          </Link></CapabilityGate>
+          </Link>
           {saveError ? (
             <button type="button" aria-live="polite" onClick={() => setSaveAttempt(value => value + 1)} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
               Save failed · Retry
