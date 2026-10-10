@@ -20,6 +20,54 @@ head must still pass the repository gates.
 - The 21 initial conflicts were resolved locally; the later source-identity and
   final UI corrections from PR #1834 were reconciled as well.
 
+## First combined-head CI and bounded follow-up
+
+[CI run 38085346897](https://github.com/sanskarpan/Latexy/actions/runs/38085346897)
+on published head `5f4b0284d0f3d9b4f3ea5b40ef69c6419df213e1` completed with
+11 successful jobs, two failures and one skipped dependent full-stack job.
+The canonical Linux frontend production build **and artifact validation passed**,
+as did frontend units/lint, backend lint, template extraction, deployment parity,
+CodeQL (zero new alerts) and Vercel. This closes the local exit-137 build evidence
+limit for that integrated implementation; it does not make the complete run green.
+
+The backend found seven test-double failures: six stream doubles lacked the
+standard `close()` method, and the cancellation test passed a nonexistent job
+workspace and failed before its mocked cancellation. The follow-up uses a normal
+`BytesIO` stream and an actual temporary workspace, retaining the original
+assertions. The adjacent timeout test is tightened to raise from the real mocked
+capture boundary and prove capture, kill/reap and named-container cleanup rather
+than accepting any early failure. Three benign isolated fixture/lifecycle checks
+pass; runtime compiler/output policies are unchanged. The complete existing
+scenarios remain an exact-head CI requirement.
+
+Browser quality completed **131 passed, ten failed, one flaky and three skipped**
+in ten minutes. The ten failures are two guest cases across five browser projects
+whose fixtures still assumed the old first-use demo text. They fabricated
+negative spans or returned a successful unchanged source. The corrected shared
+fixture projects the actual source bullet, validates source/node hashes and
+splices only its exact span. Eleven new tests execute the read/patch callbacks
+against the current seed, repeated edits and stale identity. Whole-source browser
+assertions were strengthened. The flaky first Firefox review attempt was blocked
+by the expected export-denial toast, paused while hovered, and passed on retry.
+The fixture still asserts the denial, then uses that toast's normal accessible
+close button and waits for removal before Reject; no forced clicks or filtered
+errors are used. Later explicit
+builder/editor/Settings and hydration stages were skipped. Retained artifact:
+`11681982252`, 56,810,649 bytes, SHA-256
+`21b9e7a5030f4331b711f787310f05591a93e43b1907b87bbffe6fe38add72f8`.
+The frozen frontend correction passed all **1,572 tests across 225 files**,
+nonincremental TypeScript, full lint and independent review. It changes no
+runtime source. The next published correction must rerun every gate.
+
+The bounded billing diagnostic follow-up from reviewed commit `6b4500b9` is also
+included in this follow-up after the automatic rollout's read-only database diagnostic
+failed. It reports only fixed allowlisted failure stages/categories and avoids a
+secondary malformed-report error for a valid unavailable-database result. It
+changes no connection options, timeout, read-only transaction, guard authority or
+rollout decision. All **546** combined billing script/wrapper, workflow ordering,
+renderer preflight and Modal parity tests passed with warnings as errors; full
+affected Ruff and whitespace checks passed. No production retry was performed.
+
 ## Scope reviewed
 
 The remaining engine delta is a broad release, not a telemetry-only patch. It

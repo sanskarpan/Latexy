@@ -1,18 +1,9 @@
 import { expect, test, type Page } from './quality-test'
-import { createHash } from 'node:crypto'
 import { mockEngineAncillaryApi } from './engine-fixtures'
+import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from './guest-engine-fixture'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
-const digest = (text: string) => createHash('sha256').update(text).digest('hex')
-const original = 'Built internal design system used across 6 product surfaces'
-
-function projection(source: string) {
-  const text = source.match(/Built internal design system used across \d+ product surfaces/)?.[0] ?? original
-  return { document_id: 'guest', source_mode: 'imported', content_revision: 1, source_sha256: digest(source),
-    structured_version: null, template_id: null, opaque_blocks: [], nodes: [{ node_id: 'guest-bullet',
-      node_revision: digest(text), section: 'Experience', kind: 'bullet', text, editable: true, ai_editable: false,
-      source_span: { start: source.indexOf(text), end: source.indexOf(text) + text.length } }] }
-}
+const editedBullet = (count: number) => `Built internal design system used across ${count} product surfaces`
 
 async function mockGuest(page: Page) {
   await mockEngineAncillaryApi(page, 'changed-account')
@@ -25,7 +16,7 @@ async function mockGuest(page: Page) {
   await page.route('**/ats/quick-score', route => route.fulfill({ json: { score: 80 } }))
   await page.route('**/public/engine/document', route => {
     const { latex_content } = route.request().postDataJSON()
-    return route.fulfill({ json: { document: projection(latex_content), latex_content } })
+    return route.fulfill({ json: { document: projectGuestBullet(latex_content), latex_content } })
   })
   return errors
 }
@@ -37,8 +28,7 @@ test('acknowledged guest cancellation allows the next saved field to preview wit
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
   await page.route('**/public/engine/document/patch', route => {
     const body = route.request().postDataJSON()
-    const source = body.latex_content.replace(projection(body.latex_content).nodes[0].text, body.patches[0].text)
-    return route.fulfill({ json: { document: projection(source), latex_content: source } })
+    return route.fulfill({ json: applyGuestBulletPatch(body) })
   })
   await page.route('**/jobs/submit', route => {
     submissions.push(route.request().postDataJSON())
@@ -51,19 +41,21 @@ test('acknowledged guest cancellation allows the next saved field to preview wit
     return route.fulfill({ json: { success: true } })
   })
   await page.goto('/try')
-  await page.getByRole('button', { name: new RegExp(original) }).click()
-  await page.getByLabel('Experience · bullet').fill(original.replace('6 product', '8 product'))
+  await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
+  await page.getByLabel('Experience · bullet').fill(editedBullet(8))
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(1)
+  expect(submissions[0].latex_content).toContain(editedBullet(8))
   if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'PDF', exact: true }).click()
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
   await expect.poll(() => cancellations).toBe(1)
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0)
   if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Editor', exact: true }).click()
-  await page.getByLabel('Experience · bullet').fill(original.replace('6 product', '9 product'))
+  await page.getByLabel('Experience · bullet').fill(editedBullet(9))
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(2)
   expect(submissions[1].latex_content).toContain('9 product surfaces')
+  expect(submissions[1].latex_content).toBe(submissions[0].latex_content.replace(editedBullet(8), editedBullet(9)))
   expect(errors).toEqual([])
 })
 
@@ -84,13 +76,12 @@ test('a delayed guest field patch cannot apply after the account changes with th
     const body = route.request().postDataJSON()
     patchReceived = true
     await heldPatch
-    const source = body.latex_content.replace(original, body.patches[0].text)
-    await route.fulfill({ json: { document: projection(source), latex_content: source } })
+    await route.fulfill({ json: applyGuestBulletPatch(body) })
   })
   await page.route('**/jobs/submit', route => { submissions++; return route.fulfill({ json: { success: true, job_id: 'unexpected', message: 'Queued' } }) })
   await page.goto('/try')
-  await page.getByRole('button', { name: new RegExp(original) }).click()
-  await page.getByLabel('Experience · bullet').fill(original.replace('6 product', '8 product'))
+  await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
+  await page.getByLabel('Experience · bullet').fill(editedBullet(8))
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => patchReceived).toBe(true)
   const previousReads = sessionReads
@@ -104,7 +95,7 @@ test('a delayed guest field patch cannot apply after the account changes with th
   await expect(page.locator('a[title="Dashboard"]')).toBeVisible()
   releasePatch()
   await expect(page.getByRole('alert').filter({ hasText: 'This field could not be saved' })).toBeVisible()
-  await expect(page.getByRole('button', { name: new RegExp(original) })).toBeVisible()
+  await expect(page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true })).toBeVisible()
   expect(submissions).toBe(0)
   expect(errors).toEqual([])
 })
@@ -132,8 +123,7 @@ for (const { trigger, roundTrip } of [
     })
     await page.route('**/public/engine/document/patch', route => {
       const body = route.request().postDataJSON()
-      const source = body.latex_content.replace(projection(body.latex_content).nodes[0].text, body.patches[0].text)
-      return route.fulfill({ json: { document: projection(source), latex_content: source } })
+      return route.fulfill({ json: applyGuestBulletPatch(body) })
     })
     await page.route('**/jobs/submit', async route => {
       const index = submissions.push(route.request().postDataJSON())
@@ -146,8 +136,8 @@ for (const { trigger, roundTrip } of [
     })
     const saveField = async (count: number) => {
       if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Editor', exact: true }).click()
-      await page.getByRole('button', { name: /Built internal design system used across \d+ product surfaces/ }).click()
-      await page.getByLabel('Experience · bullet').fill(original.replace('6 product', `${count} product`))
+      await page.getByRole('button', { name: /^Experience · bullet / }).click()
+      await page.getByLabel('Experience · bullet').fill(editedBullet(count))
       await page.getByRole('button', { name: 'Save field', exact: true }).click()
     }
     try {

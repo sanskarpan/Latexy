@@ -945,7 +945,11 @@ def billing_preflight(
     if expected_environment == "main" and report.get("production_like") is not True:
         # Billing mode guards depend on the application's ENVIRONMENT setting.
         # A diagnostic against main must not bless a development classification.
-        report["status"] = "blocked"
+        # A valid incomplete diagnostic may not include environment fields.
+        # Keep its failure state so rollout cannot mistake absent DB metadata
+        # for a malformed report; complete non-production reports still block.
+        if report.get("status") != "diagnostic_error":
+            report["status"] = "blocked"
         report["blockers"] = list(dict.fromkeys([
             *report.get("blockers", []), "main_environment_not_production_like",
         ]))

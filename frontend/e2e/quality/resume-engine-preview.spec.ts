@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { captureClipboardText, mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
+import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from './guest-engine-fixture'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 
@@ -19,13 +20,6 @@ function samplePdf(text = original) {
   pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
   return Buffer.from(pdf)
 }
-function project(source: string, text = original) {
-  return { document_id: 'guest', source_mode: 'imported', content_revision: 1, source_sha256: digest(source),
-    structured_version: null, template_id: null, opaque_blocks: [],
-    nodes: [{ node_id: 'guest-bullet', node_revision: digest(text), section: 'Experience', kind: 'bullet', text,
-      source_span: { start: source.indexOf(text), end: source.indexOf(text) + text.length }, editable: true, ai_editable: true }] }
-}
-
 test('guest Resume mode edits plain fields and submits exactly one quota-governed preview', async ({ page }) => {
   test.setTimeout(240000)
   const errors: string[] = []; const submissions: Record<string, unknown>[] = []
@@ -59,15 +53,13 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
   await page.route('**/public/engine/document', async route => {
     const { latex_content } = route.request().postDataJSON()
-    const text = latex_content.includes(original) ? original : 'Built internal design system used across 8 product surfaces'
-    await route.fulfill({ json: { document: project(latex_content, text), latex_content } })
+    await route.fulfill({ json: { document: projectGuestBullet(latex_content), latex_content } })
   })
   await page.route('**/public/engine/document/patch', async route => {
     const body = route.request().postDataJSON()
     expect(body.expected_source_sha256).toBe(digest(body.latex_content))
-    expect(body.patches[0].expected_node_revision).toBe(digest(original))
-    const source = body.latex_content.replace(original, body.patches[0].text)
-    await route.fulfill({ json: { document: project(source, body.patches[0].text), latex_content: source } })
+    expect(body.patches[0].expected_node_revision).toBe(digest(GUEST_ORIGINAL_BULLET))
+    await route.fulfill({ json: applyGuestBulletPatch(body) })
   })
   await page.route('**/jobs/submit', async route => {
     submissions.push(route.request().postDataJSON())
@@ -82,7 +74,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await expect(page.getByRole('button', { name: 'Copy LaTeX source' })).toHaveCount(0)
   await expect.poll(() => pdfRendererChunks.length, { timeout: 30000 }).toBeGreaterThan(0)
   rendererReadyAt = Date.now()
-  await page.getByRole('button', { name: new RegExp(original) }).click()
+  await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
   await page.getByLabel('Experience · bullet').fill('Built internal design system used across 8 product surfaces')
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(1)
@@ -91,6 +83,8 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   expect(firstAdmissionAt).toBeGreaterThanOrEqual(rendererReadyAt)
   expect(submissions[0].job_type).toBe('latex_compilation')
   expect(submissions[0].latex_content).toContain('across 8 product surfaces')
+  expect(submissions[0].latex_content).toBe(scoreSources[0].replace(GUEST_ORIGINAL_BULLET, 'Built internal design system used across 8 product surfaces'))
+  expect(scoreSources[1]).toBe(submissions[0].latex_content)
   expect(submissions[0].device_fingerprint).toBeTruthy()
   await expect(page.getByRole('button', { name: 'Save field', exact: true })).toBeDisabled()
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
@@ -245,7 +239,13 @@ test('managed review keeps provisional candidates separate and applies authorita
   await expect(page.getByRole('button', { name: /^Edit resume field:/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Export', exact: true }).click()
   await page.getByRole('button', { name: /^PDF/ }).last().click()
-  await expect(page.getByText('Compile your current resume before downloading. Review AI suggestions before accepting them.', { exact: true })).toBeVisible()
+  const exportWarning = page.getByText('Compile your current resume before downloading. Review AI suggestions before accepting them.', { exact: true })
+  const exportToast = page.locator('[data-sonner-toast]').filter({ has: exportWarning })
+  await expect(exportWarning).toBeVisible()
+  // The expected denial toast can cover Reject; hovering it pauses auto-dismiss.
+  // Close that specific warning through the real UI before the next interaction.
+  await exportToast.getByRole('button', { name: 'Close toast', exact: true }).click()
+  await expect(exportToast).toHaveCount(0)
   await page.getByRole('button', { name: 'AI', exact: true }).click()
   const rejectedSuggestion = page.getByRole('article').filter({ has: page.getByText(secondSuggestion, { exact: true }) })
   const acceptedSuggestion = page.getByRole('article').filter({ has: page.getByText(firstSuggestion, { exact: true }) })
@@ -316,7 +316,7 @@ test('verified PDF field supports keyboard selection and mobile field pane', asy
   test.setTimeout(240000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close({ code: 1000, reason: 'Contract test uses state recovery' }))
-  const pdf = samplePdf(); const pdfSha = createHash('sha256').update(pdf).digest('hex')
+  const pdf = samplePdf(GUEST_ORIGINAL_BULLET); const pdfSha = createHash('sha256').update(pdf).digest('hex')
   let source = ''; let fingerprint = ''
   const traffic = { admissions: 0, states: 0, pdf: 0 }
   const artifactId = digest('immutable-test-artifact')
@@ -327,7 +327,7 @@ test('verified PDF field supports keyboard selection and mobile field pane', asy
   await mockEngineAncillaryApi(page)
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
   await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
-  await page.route('**/public/engine/document', async route => { source = route.request().postDataJSON().latex_content; await route.fulfill({ json: { document: project(source), latex_content: source } }) })
+  await page.route('**/public/engine/document', async route => { source = route.request().postDataJSON().latex_content; await route.fulfill({ json: { document: projectGuestBullet(source), latex_content: source } }) })
   await page.route('**/jobs/submit', async route => { traffic.admissions++; const body = route.request().postDataJSON(); source = body.latex_content; fingerprint = body.device_fingerprint; await route.fulfill({ json: { success: true, job_id: 'mapped-preview' } }) })
   await page.route('**/jobs/mapped-preview/state', route => { traffic.states++; return route.fulfill({ json: { status: 'completed', stage: '', percent: 100, artifact: artifact(), last_updated: Date.now() / 1000 } }) })
   await page.route('**/jobs/mapped-preview/result', route => route.fulfill({ json: { success: true, job_id: 'mapped-preview', result: { success: true, job_id: 'mapped-preview', pdf_job_id: 'mapped-preview', compilation_time: .01 } } }))
@@ -338,23 +338,23 @@ test('verified PDF field supports keyboard selection and mobile field pane', asy
   })
   await page.route(`**/download/mapped-preview/preview/${artifactId}/geometry`, async route => {
     expect(route.request().headers()['x-device-fingerprint']).toBe(fingerprint)
-    const node = project(source).nodes[0]
+    const node = projectGuestBullet(source).nodes[0]
     await route.fulfill({ json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: artifactId,
       source_sha256: digest(source), pdf_sha256: pdfSha, document_id: 'guest', content_revision: 1, branch: 'draft',
       pages: [{ page: 1, width: 612, height: 792, rotation: 0 }],
       boxes: [{ ...node, page: 1, x: 40, y: 42, width: 300, height: 12 }], omissions: [] } })
   })
   await page.goto('/try', { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: new RegExp(original) }).waitFor()
+  await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).waitFor()
   await page.getByRole('button', { name: 'Update PDF', exact: true }).click()
   await expect.poll(() => traffic.admissions, { message: 'Manual update must admit a job' }).toBe(1)
   await expect.poll(() => traffic.states, { message: 'Closed socket must recover via state' }).toBeGreaterThan(0)
   await expect.poll(() => traffic.pdf, { message: 'Recovered immutable artifact must fetch bytes' }).toBeGreaterThan(0)
   await expect(page.locator('.react-pdf__Page__canvas')).toBeVisible({ timeout: 60000 })
-  const overlay = page.getByRole('button', { name: `Edit resume field: ${original}`, exact: true })
+  const overlay = page.getByRole('button', { name: `Edit resume field: ${GUEST_ORIGINAL_BULLET}`, exact: true })
   await expect(overlay).toBeVisible()
   await overlay.focus(); await page.keyboard.press('Enter')
-  await expect(page.getByLabel('Experience · bullet')).toHaveValue(original)
+  await expect(page.getByLabel('Experience · bullet')).toHaveValue(GUEST_ORIGINAL_BULLET)
   await expect(page.getByRole('heading', { name: 'Edit your resume' })).toBeVisible()
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
 })

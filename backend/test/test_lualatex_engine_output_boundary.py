@@ -1,5 +1,6 @@
 """LuaTeX compatibility keeps credentials and unvalidated engine output confined."""
 
+import io
 import shutil
 import subprocess
 import tempfile
@@ -55,13 +56,19 @@ def test_compiler_specific_read_policy_preserves_minimal_environment(tmp_path, m
     assert docker_args[docker_args.index("--network") + 1] == "none"
 
 
-class _Stream:
+class _Stream(io.BytesIO):
     def __init__(self, output):
-        self.output = output.encode()
+        super().__init__(output.encode())
 
-    def read(self, size=-1):
-        chunk, self.output = self.output[:size], self.output[size:]
-        return chunk
+
+def test_stream_fixture_supports_bounded_reads_and_close():
+    stream = _Stream("ordinary diagnostic\n")
+    assert stream.read(8) == b"ordinary"
+    assert stream.read() == b" diagnostic\n"
+    assert stream.read(8) == b""
+    stream.close()
+    stream.close()
+    assert stream.closed
 
 
 @pytest.mark.asyncio

@@ -209,3 +209,79 @@ def test_preflight_wrapper_suppresses_unexpected_failure_details(monkeypatch, ca
     out = capsys.readouterr()
     assert "private" not in out.out + out.err + str(exc.value)
     assert json.loads(out.out)["error"] == "preflight_execution_failed"
+
+
+@pytest.mark.parametrize("stage", [
+    "configuration", "engine", "connect", "read_only_setup", "schema_metadata", "schema_revision", "aggregate_counts", "cleanup",
+])
+@pytest.mark.parametrize("purpose", ["report", "rollout"])
+def test_wrapper_preserves_only_fixed_database_failure_stages(monkeypatch, capsys, stage, purpose):
+    from scripts.dodo_billing_preflight import DATABASE_FAILURE_REASONS
+
+    def incomplete(report):
+        report["database"] = {"status": "unavailable_or_unsupported", "failure_stage": stage}
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=2, stdout=diagnostic_payload(status="diagnostic_error", blockers=["diagnostics_incomplete"],
+            env_override={"BILLING_MODE": "disabled", "DEPLOY_TARGET": "modal"}, change=incomplete),
+        stderr="private-database-driver-sentinel",
+    ))
+    with pytest.raises(RuntimeError, match="requires review"):
+        wrapper()("a" * 40, purpose=purpose, allow_configured_live=True)
+    output = capsys.readouterr()
+    assert "sentinel" not in output.out + output.err
+    report = json.loads(output.out)
+    if purpose == "report":
+        assert report["database"] == {"status": "unavailable_or_unsupported", "failure_stage": stage}
+    else:
+        assert set(report) == {"rollout_safety", "execution_context"}
+        assessment = report["rollout_safety"]
+        assert assessment["safe_to_rollout"] is False
+        assert assessment["reasons"] == ["rollout_diagnostics_incomplete", "rollout_database_diagnostics_incomplete",
+                                          DATABASE_FAILURE_REASONS[stage]]
+        assert "active_api_key_present" not in output.out and "counts" not in report
+
+
+@pytest.mark.parametrize("stage", ["private-stage-sentinel", "", None, False, 1, [], {"value": "private-stage-sentinel"}])
+@pytest.mark.parametrize("purpose", ["report", "rollout"])
+def test_wrapper_rejects_unknown_database_failure_stage_without_logging_it(monkeypatch, capsys, stage, purpose):
+    def incomplete(report):
+        report["database"] = {"status": "unavailable_or_unsupported", "failure_stage": stage}
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=2, stdout=diagnostic_payload(status="diagnostic_error", blockers=["diagnostics_incomplete"],
+            env_override={"BILLING_MODE": "disabled", "DEPLOY_TARGET": "modal"}, change=incomplete),
+        stderr="private-stage-sentinel",
+    ))
+    with pytest.raises(RuntimeError, match="no diagnostic details were logged"):
+        wrapper()("a" * 40, purpose=purpose)
+    output = capsys.readouterr()
+    assert "sentinel" not in output.out + output.err
+    assert json.loads(output.out)["error"] == "preflight_execution_failed"
+
+
+@pytest.mark.parametrize("stage", [None, "connect", "aggregate_counts"])
+@pytest.mark.parametrize("production", [None, False])
+@pytest.mark.parametrize("purpose", ["report", "rollout"])
+def test_wrapper_incomplete_reports_without_production_context_do_not_cascade(monkeypatch, capsys, stage, production, purpose):
+    payload = {"status": "diagnostic_error", "blockers": ["diagnostics_incomplete"],
+               "database": {"status": "unavailable_or_unsupported"}}
+    if stage is not None:
+        payload["database"]["failure_stage"] = stage
+    if production is not None:
+        payload["production_like"] = production
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=2, stdout=json.dumps(payload), stderr="private-database-sentinel",
+    ))
+    with pytest.raises(RuntimeError, match="requires review"):
+        wrapper()("a" * 40, purpose=purpose, allow_configured_live=True)
+    output = capsys.readouterr()
+    assert "sentinel" not in output.out + output.err
+    report = json.loads(output.out)
+    if purpose == "report":
+        assert report["status"] == "diagnostic_error"
+        assert "main_environment_not_production_like" in report["blockers"]
+    else:
+        assert report["rollout_safety"]["safe_to_rollout"] is False
+        assert "rollout_diagnostics_incomplete" in report["rollout_safety"]["reasons"]
+        assert "rollout_public_report_invalid" not in report["rollout_safety"]["reasons"]
