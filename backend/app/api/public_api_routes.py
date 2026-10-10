@@ -7,7 +7,7 @@ import json
 import uuid
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -19,6 +19,8 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeveloperAPIKey, User
 from ..middleware.auth_middleware import get_developer_api_key_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.developer_key_service import developer_key_service
 from ..services.entitlement_service import QuotaTicket, entitlement_service
@@ -35,6 +37,14 @@ from .job_routes import (
 
 router = APIRouter(prefix="/api/v1", tags=["public-api"])
 logger = get_logger(__name__)
+
+
+def require_developer_operation(scope: str):
+    """Check existing credentials before creating even a pending job record."""
+    async def gate(api_key: DeveloperAPIKey = Depends(get_developer_api_key_required)):
+        keys = ("h09",) + {"optimize": ("d01",), "ats": ("d18",)}.get(scope, ())
+        await enforce_capabilities(keys, api_key.user_id)
+    return gate
 
 
 async def _commit_db_changes(db: AsyncSession) -> None:
@@ -126,6 +136,11 @@ async def _authorize(
     if scope not in scopes:
         raise HTTPException(status_code=403, detail=f"API key lacks '{scope}' scope")
 
+    # Existing credentials never grandfather access after a downgrade. Status
+    # and PDF retrieval intentionally do not call this spend/dispatch gate.
+    keys = ("h09",) + {"optimize": ("d01",), "ats": ("d18",)}.get(scope, ())
+    await enforce_capabilities(keys, api_key.user_id)
+
     plan_id = await _get_plan_id(db, api_key.user_id)
     meter = await developer_key_service.consume_rate_limit(api_key.user_id, plan_id)
     if not meter["allowed"]:
@@ -178,7 +193,7 @@ async def _assert_job_owner(job_id: str, api_key: DeveloperAPIKey, db: AsyncSess
     raise HTTPException(status_code=404, detail="Job not found")
 
 
-@router.post("/compile", response_model=V1QueuedResponse)
+@router.post("/compile", response_model=V1QueuedResponse, dependencies=[Depends(require_developer_operation("compile"))])
 async def compile_v1(
     body: V1CompileRequest,
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
@@ -244,7 +259,7 @@ async def compile_v1(
     )
 
 
-@router.post("/optimize", response_model=V1QueuedResponse)
+@router.post("/optimize", response_model=V1QueuedResponse, dependencies=[Depends(require_developer_operation("optimize"))])
 async def optimize_v1(
     body: V1OptimizeRequest,
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
@@ -301,7 +316,7 @@ async def optimize_v1(
     )
 
 
-@router.post("/ats/score", response_model=V1ATSResponse)
+@router.post("/ats/score", response_model=V1ATSResponse, dependencies=[Depends(require_developer_operation("ats"))])
 async def ats_score_v1(
     body: V1ATSRequest,
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
@@ -309,11 +324,14 @@ async def ats_score_v1(
 ):
     # ATS scoring is deterministic and spends no LLM budget, so it has no quota
     # dimension — the developer daily meter inside _authorize is the only limit.
+    if body.industry:
+        await enforce_capabilities(("d19",), api_key.user_id)
     await _authorize("ats", api_key, db)
+    industry = body.industry if await entitlement_service.has_feature("d19", user=api_key.user_id) else "generic"
     result = await ats_scoring_service.score_resume(
         latex_content=body.latex_content,
         job_description=body.job_description,
-        industry=body.industry,
+        industry=industry,
     )
     return V1ATSResponse(
         score=result.overall_score,

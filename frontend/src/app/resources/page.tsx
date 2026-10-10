@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 
 /**
  * Resources — "Typeset" re-skin. Server-rendered, token-driven, CSS-only motion.
@@ -86,12 +87,12 @@ export default function ResourcesPage() {
           <h2 className="mx-auto max-w-[20ch] text-balance font-display text-[clamp(1.8rem,4.5vw,3rem)] font-semibold leading-[1.04] tracking-[-0.02em] text-fg">
             Stop reading. Start <span className="text-accent">compiling.</span>
           </h2>
-          <Link
+          <CapabilityGate feature="a09"><Link
             href="/try"
             className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
           >
             Open the studio →
-          </Link>
+          </Link></CapabilityGate>
         </div>
       </section>
     </div>

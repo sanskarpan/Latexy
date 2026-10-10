@@ -925,6 +925,22 @@ class PlanFeature(Base):
     )
 
 
+class RoleFeature(Base):
+    """Optional product restrictions by authenticated account role/context."""
+
+    __tablename__ = "role_features"
+
+    role: Mapped[str] = mapped_column(String(20), primary_key=True)
+    feature_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint("role IN ('anonymous', 'user', 'support', 'admin')", name="ck_capability_role"),
+    )
+
+
 class JobApplication(Base):
     """Job application tracker entry."""
 
@@ -1699,3 +1715,63 @@ Index("idx_usage_analytics_user_id", UsageAnalytics.user_id)
 Index("idx_usage_analytics_device", UsageAnalytics.device_fingerprint)
 Index("idx_subscriptions_user_id", Subscription.user_id)
 Index("idx_rjm_resume_jd", ResumeJobMatch.resume_id, ResumeJobMatch.jd_hash)
+
+
+class PlanCatalog(Base):
+    """Mutable merchandising for a stable SKU; no price or subscription state."""
+
+    __tablename__ = "plan_catalog"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_plan_catalog_version"),
+        CheckConstraint("display_order >= 0", name="ck_plan_catalog_order"),
+    )
+
+    sku: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    purchase_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class PlanCatalogRevision(Base):
+    """Append-only snapshots of admin merchandising changes for review."""
+
+    __tablename__ = "plan_catalog_revisions"
+    sku: Mapped[str] = mapped_column(String(50), ForeignKey("plan_catalog.sku"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class PlanQuotaOverride(Base):
+    """Exact-SKU allowance overrides. Windows and counter identities are fixed."""
+
+    __tablename__ = "plan_quota_overrides"
+    __table_args__ = (
+        CheckConstraint("dimension IN ('compilations', 'optimizations', 'ai_assists')", name="ck_plan_quota_dimension"),
+        CheckConstraint("limit_value IS NULL OR (limit_value >= 0 AND limit_value <= 1000000000)", name="ck_plan_quota_limit"),
+        CheckConstraint("version >= 1", name="ck_plan_quota_version"),
+    )
+    sku: Mapped[str] = mapped_column(String(50), primary_key=True)
+    dimension: Mapped[str] = mapped_column(String(30), primary_key=True)
+    limit_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class PlanQuotaRevision(Base):
+    """Append-only audit of limit edits; never stores or resets usage counters."""
+
+    __tablename__ = "plan_quota_revisions"
+    sku: Mapped[str] = mapped_column(String(50), primary_key=True)
+    dimension: Mapped[str] = mapped_column(String(30), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    limit_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    changed_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

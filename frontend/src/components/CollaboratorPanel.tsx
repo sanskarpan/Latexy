@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, UserPlus, Users, Crown, Eye, MessageSquare, Trash2, Loader2, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -44,6 +46,7 @@ export default function CollaboratorPanel({
   presenceUsers,
   onClose,
 }: CollaboratorPanelProps) {
+  const { can } = useEntitlements()
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -88,6 +91,7 @@ export default function CollaboratorPanel({
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
+    if (!can('f04')) return
     if (!inviteEmail.trim()) return
     setInviting(true)
     try {
@@ -103,6 +107,7 @@ export default function CollaboratorPanel({
   }
 
   async function handleRoleChange(collab: CollaboratorInfo, newRole: CollabRole) {
+    if (!can('f04') && newRole !== 'viewer') return
     setRoleChangeId(collab.user_id)
     try {
       const updated = await apiClient.updateCollaboratorRole(resumeId, collab.user_id, newRole)
@@ -176,7 +181,7 @@ export default function CollaboratorPanel({
           )}
 
           {/* Invite form (owner only) */}
-          {isOwner && (
+          {isOwner && can('f04') && (
             <form onSubmit={handleInvite} className="space-y-2">
               <p className="text-[10px] font-medium uppercase tracking-wider text-fg-3">
                 Invite by email
@@ -273,6 +278,7 @@ export default function CollaboratorPanel({
                           ) : (
                             <select
                               value={collab.role}
+                              disabled={!can('f04')}
                               onChange={(e) => handleRoleChange(collab, e.target.value as CollabRole)}
                               className="appearance-none rounded border border-line bg-transparent py-0.5 pl-2 pr-5 text-[10px] text-fg-2 outline-none"
                             >

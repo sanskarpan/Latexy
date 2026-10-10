@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.email_status_parser_service import (
     MAX_RAW_EMAIL_BYTES,

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services import linkedin_import_service
 from ..services import url_projects_service as url_import
@@ -105,6 +106,8 @@ async def import_from_url(
     api_key: Optional[str] = None
     try:
         api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except HTTPException:
+        raise
     except Exception:
         api_key = None
 

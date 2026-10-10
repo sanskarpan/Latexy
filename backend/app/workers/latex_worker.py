@@ -2619,6 +2619,12 @@ def submit_latex_compilation(
     """Enqueue compile_latex_task on the latex queue (Celery) or Modal."""
     import os
 
+    from ..services.entitlement_service import entitlement_service
+
+    # Stored settings do not grandfather optional compiler customization.
+    # Snapshot before queueing; already-admitted tasks retain their settings.
+    if compile_settings and not entitlement_service.sync_has_feature("c07", user_plan, user_id=user_id):
+        compile_settings = None
     if priority is None:
         priority = get_task_priority(user_plan)
     compiler = compiler or settings.DEFAULT_LATEX_COMPILER

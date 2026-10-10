@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import type { Metadata } from 'next'
 
 // Public ownership proof supplied by the approved Google Search Console setup.
@@ -54,18 +55,18 @@ export default function LandingPage() {
             Output that looks like it came off a press — because it did.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
+            <CapabilityGate feature="a09"><Link
               href="/try"
               className="inline-flex items-center rounded-[var(--radius-md)] bg-accent px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
             >
               Start compiling →
-            </Link>
-            <Link
+            </Link></CapabilityGate>
+            <CapabilityGate feature="b04"><Link
               href="/templates"
               className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
             >
               See an example
-            </Link>
+            </Link></CapabilityGate>
             <span className="font-ui text-xs text-fg-3">3 free compiles · no card</span>
           </div>
         </div>
@@ -168,12 +169,12 @@ Go, Rust, Kubernetes, Postgres`}</pre>
           <p className="mx-auto mt-5 max-w-[40ch] font-body text-fg-2">
             Three free compiles. Bring your own key or use ours. Your résumé, finally set right.
           </p>
-          <Link
+          <CapabilityGate feature="a09"><Link
             href="/try"
             className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
           >
             Open the studio →
-          </Link>
+          </Link></CapabilityGate>
         </div>
       </section>
     </div>

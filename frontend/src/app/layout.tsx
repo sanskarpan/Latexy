@@ -14,6 +14,9 @@ import AestheticController from '@/components/theme/AestheticController'
 import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 import { EntitlementsProvider } from '@/contexts/EntitlementsContext'
+import CapabilityRouteBoundary from '@/components/CapabilityRouteBoundary'
+import AccountContentBoundary from '@/components/AccountContentBoundary'
+import CapabilityStatusNotice from '@/components/CapabilityStatusNotice'
 import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
@@ -95,8 +98,9 @@ export default async function RootLayout({
             <div className="min-h-screen flex flex-col">
               <EmailVerifyBanner />
               <GlobalHeader />
+              <CapabilityStatusNotice />
               <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
-                {children}
+                <AccountContentBoundary><CapabilityRouteBoundary>{children}</CapabilityRouteBoundary></AccountContentBoundary>
               </main>
               <MarketingFooter />
             </div>

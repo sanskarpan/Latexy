@@ -5,7 +5,7 @@ Format Detection and Multi-Format Support API Routes
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..parsers.parser_factory import parser_factory
 from ..services.api_key_service import api_key_service
 from ..services.document_converter_service import ALLOWED_SOURCE_PLATFORMS
@@ -403,6 +404,8 @@ async def upload_for_conversion(
         user_api_key = None
         try:
             user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except HTTPException:
+            raise
         except Exception:
             user_api_key = None
 

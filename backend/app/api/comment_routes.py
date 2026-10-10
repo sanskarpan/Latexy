@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from typing import Iterable, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,8 @@ from ..database.models import (
     WorkspaceResume,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..utils.uuid_guard import ensure_uuid
 
@@ -175,6 +177,22 @@ async def _assert_can_view_personal_comments(
         "viewer",
     }:
         raise HTTPException(status_code=403, detail="You do not have access to this resume")
+    await enforce_capabilities(("f04", "f06"), user_id)
+    await enforce_capabilities(("f04", "f06"), resume.user_id)
+
+
+async def _assert_comment_capabilities(resume: Resume, workspace_id: Optional[str], user_id: str, db: AsyncSession) -> None:
+    """Check new comment/mention use without restricting owner deletion/recovery."""
+    await enforce_capabilities(("f06",), resume.user_id)
+    if workspace_id:
+        workspace = (await db.execute(select(Workspace).where(Workspace.id == workspace_id))).scalar_one_or_none()
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        await enforce_capabilities(("f08",), user_id)
+        await enforce_capabilities(("f08", "f06"), workspace.owner_id)
+    elif resume.user_id != user_id:
+        await enforce_capabilities(("f04",), user_id)
+        await enforce_capabilities(("f04",), resume.user_id)
 
 
 async def _assert_current_comment_access(
@@ -341,6 +359,7 @@ async def add_comment(
     """Add a comment to a resume. Must own the resume (personal) or be workspace member."""
     resume = await _get_resume_or_404(resume_id, db)
     await _assert_can_comment(resume, body.workspace_id, user_id, db)
+    await _assert_comment_capabilities(resume, body.workspace_id, user_id, db)
     mention_ids = await _resolve_mention_ids(
         resume, body.workspace_id, body.mentioned_user_ids, user_id, db
     )
@@ -386,6 +405,9 @@ async def list_comments(
     # Access check
     if workspace_id:
         await _assert_workspace_access(resume_id, workspace_id, user_id, db)
+        if resume.user_id != user_id:
+            await enforce_capabilities(("f06",), user_id)
+            await _assert_comment_capabilities(resume, workspace_id, user_id, db)
     else:
         await _assert_can_view_personal_comments(resume, user_id, db)
 
@@ -418,6 +440,7 @@ async def list_comment_participants(
     # capability rather than a read capability. In particular, workspace
     # viewers may read the thread but must not enumerate participants.
     await _assert_can_comment(resume, workspace_id, user_id, db)
+    await _assert_comment_capabilities(resume, workspace_id, user_id, db)
     users = await _allowed_mention_users(resume, workspace_id, db)
     return [
         CommentMentionParticipant(user_id=user.id, display_name=user.name or user.email, email=user.email)
@@ -448,6 +471,9 @@ async def update_comment(
     await _assert_current_comment_access(comment, user_id, db)
     if comment.author_id != user_id:
         raise HTTPException(status_code=403, detail="You can only edit your own comments")
+
+    resume = await _get_resume_or_404(resume_id, db)
+    await _assert_comment_capabilities(resume, comment.workspace_id, user_id, db)
 
     comment.content = body.content
     new_mentions: list[ResumeCommentMention] = []
@@ -539,6 +565,10 @@ async def resolve_comment(
     # Only the resume owner or the comment author may resolve
     if user_id != resume.user_id and user_id != comment.author_id:
         raise HTTPException(status_code=403, detail="You cannot resolve this comment")
+
+    if user_id != resume.user_id:
+        await enforce_capabilities(("f06",), user_id)
+        await _assert_comment_capabilities(resume, comment.workspace_id, user_id, db)
 
     comment.resolved = not comment.resolved
     await db.commit()

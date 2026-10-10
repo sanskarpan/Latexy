@@ -94,7 +94,7 @@ class TestGetEntitlements:
         resp = await client.get("/admin/entitlements", headers=headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body.keys()) == {"registry", "kill_switches", "matrix", "plan_families"}
+        assert set(body.keys()) == {"registry", "kill_switches", "matrix", "plan_families", "plan_keys", "plan_family_by_key", "roles", "role_matrix"}
         assert body["plan_families"] == ["free", "basic", "pro", "byok", "team"]
         assert len(body["registry"]) == len(FEATURE_REGISTRY)
 

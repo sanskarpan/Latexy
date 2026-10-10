@@ -7,6 +7,7 @@ import type { ReferenceLibrarySource } from '@/lib/api-client'
 import { downloadBlob } from '@/lib/download'
 import { detectReferenceIdentifierType } from '@/lib/reference-identifiers'
 import { isOrcidId, normalizeOrcidId } from '@/lib/orcid'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
@@ -15,6 +16,15 @@ interface ReferencesPanelProps {
   onInsertBibTeX: (bibtex: string) => void
   onInsertCiteKey: (citeKey: string) => void
   onLibraryChange?: (bibtex: string) => void
+}
+
+// Retained callbacks must see live grants after a role, plan or flag change.
+function useReferenceCapability(feature: string) {
+  const { can } = useEntitlements()
+  const allowed = can(feature)
+  const allowedRef = useRef(allowed)
+  allowedRef.current = allowed
+  return { allowed, allowedRef }
 }
 
 // Detect type of a single line of text
@@ -56,6 +66,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function CitationCheckSection({ savedBibtex }: { savedBibtex: string }) {
+  const { allowed, allowedRef } = useReferenceCapability('g09')
   const [expanded, setExpanded] = useState(false)
   const [bibtex, setBibtex] = useState('')
   const [results, setResults] = useState<CitationVerification[]>([])
@@ -63,7 +74,7 @@ function CitationCheckSection({ savedBibtex }: { savedBibtex: string }) {
   const [error, setError] = useState<string | null>(null)
 
   const check = async () => {
-    if (!bibtex.trim() || loading) return
+    if (!allowedRef.current || !bibtex.trim() || loading) return
     setLoading(true)
     setError(null)
     setResults([])
@@ -122,7 +133,7 @@ function CitationCheckSection({ savedBibtex }: { savedBibtex: string }) {
           <button
             type="button"
             onClick={() => { void check() }}
-            disabled={!bibtex.trim() || loading}
+            disabled={!allowed || !bibtex.trim() || loading}
             className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
@@ -155,8 +166,10 @@ function EntryCard({
   entry,
   onInsertBibTeX,
   onInsertCiteKey,
+  canInsert,
 }: {
   entry: BibTeXEntry
+  canInsert: boolean
   onInsertBibTeX: (bibtex: string) => void
   onInsertCiteKey: (key: string) => void
 }) {
@@ -207,6 +220,7 @@ function EntryCard({
           <CopyButton text={`\\cite{${entry.cite_key}}`} />
           <button
             onClick={() => onInsertCiteKey(`\\cite{${entry.cite_key}}`)}
+            disabled={!canInsert}
             className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             title="Insert \cite{} at cursor"
           >
@@ -235,6 +249,7 @@ function EntryCard({
               <CopyButton text={entry.bibtex} />
               <button
                 onClick={() => onInsertBibTeX(entry.bibtex!)}
+                disabled={!canInsert}
                 className="flex items-center gap-1 rounded-[var(--radius-md)] bg-ok/15 px-2.5 py-1 text-[10px] font-medium text-ok ring-1 ring-ok/25 transition hover:bg-ok/25"
               >
                 <PlusCircle className="h-3 w-3" />
@@ -259,6 +274,7 @@ function ZoteroSection({
   importedSource: ReferenceLibrarySource | null
   onBibTeXImported: (bibtex: string, count: number, source: ReferenceLibrarySource) => void
 }) {
+  const { allowed, allowedRef } = useReferenceCapability('g07')
   const [status, setStatus] = useState<ZoteroStatusResponse | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [collections, setCollections] = useState<ZoteroCollection[]>([])
@@ -303,6 +319,7 @@ function ZoteroSection({
   }, [])
 
   const handleConnect = () => {
+    if (!allowedRef.current) return
     setError(null)
     oauthPopup.current = window.open(`${API_BASE}/zotero/connect`, '_blank', 'width=600,height=700,popup=1')
     if (!oauthPopup.current) {
@@ -323,6 +340,7 @@ function ZoteroSection({
   }
 
   const loadCollections = async () => {
+    if (!allowedRef.current) return
     setCollectionsLoading(true)
     setError(null)
     try {
@@ -336,6 +354,7 @@ function ZoteroSection({
   }
 
   const handleImport = async () => {
+    if (!allowedRef.current) return
     if (!resumeId) {
       setError('Open a resume first to import references into it.')
       return
@@ -399,6 +418,7 @@ function ZoteroSection({
           ) : !status.connected ? (
             <button
               onClick={handleConnect}
+              disabled={!allowed}
               className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
             >
               <ExternalLink className="h-3 w-3" />
@@ -425,6 +445,7 @@ function ZoteroSection({
               <div className="flex items-center gap-1">
                 <select
                   value={selectedCollection}
+                  disabled={!allowed}
                   onChange={e => setSelectedCollection(e.target.value)}
                   className="flex-1 rounded-[var(--radius-md)] bg-bg px-2 py-1 text-[11px] text-fg-2 ring-1 ring-line outline-none"
                 >
@@ -435,7 +456,7 @@ function ZoteroSection({
                 </select>
                 <button
                   onClick={loadCollections}
-                  disabled={collectionsLoading}
+                  disabled={!allowed || collectionsLoading}
                   className="rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
                   title="Refresh collections"
                 >
@@ -445,7 +466,7 @@ function ZoteroSection({
 
               <button
                 onClick={handleImport}
-                disabled={importing || !resumeId}
+                disabled={!allowed || importing || !resumeId}
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
@@ -478,6 +499,7 @@ function MendeleySection({
   importedSource: ReferenceLibrarySource | null
   onBibTeXImported: (bibtex: string, count: number, source: ReferenceLibrarySource) => void
 }) {
+  const { allowed, allowedRef } = useReferenceCapability('g08')
   const [status, setStatus] = useState<MendeleyStatusResponse | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [importing, setImporting] = useState(false)
@@ -518,6 +540,7 @@ function MendeleySection({
   }, [])
 
   const handleConnect = () => {
+    if (!allowedRef.current) return
     setError(null)
     oauthPopup.current = window.open(`${API_BASE}/mendeley/connect`, '_blank', 'width=600,height=700,popup=1')
     if (!oauthPopup.current) {
@@ -537,6 +560,7 @@ function MendeleySection({
   }
 
   const handleImport = async () => {
+    if (!allowedRef.current) return
     if (!resumeId) {
       setError('Open a resume first to import references into it.')
       return
@@ -600,6 +624,7 @@ function MendeleySection({
           ) : !status.connected ? (
             <button
               onClick={handleConnect}
+              disabled={!allowed}
               className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
             >
               <ExternalLink className="h-3 w-3" />
@@ -624,7 +649,7 @@ function MendeleySection({
 
               <button
                 onClick={handleImport}
-                disabled={importing || !resumeId}
+                disabled={!allowed || importing || !resumeId}
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
@@ -654,6 +679,7 @@ function OrcidSection({
   onInsertBibTeX: (bibtex: string) => void
   onInsertCiteKey: (key: string) => void
 }) {
+  const { allowed, allowedRef } = useReferenceCapability('g09')
   const [expanded, setExpanded] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -665,6 +691,7 @@ function OrcidSection({
   const valid = isOrcidId(orcidId)
 
   const handleFetch = async () => {
+    if (!allowedRef.current) return
     if (!valid || loading) return
     setLoading(true)
     setFetched(false)
@@ -684,6 +711,7 @@ function OrcidSection({
   }
 
   const handleInsertAll = () => {
+    if (!allowedRef.current) return
     const allBibtex = entries.filter(e => e.bibtex).map(e => e.bibtex!).join('\n\n')
     if (allBibtex) onInsertBibTeX('\n' + allBibtex)
   }
@@ -718,7 +746,7 @@ function OrcidSection({
             />
             <button
               onClick={handleFetch}
-              disabled={!valid || loading}
+              disabled={!allowed || !valid || loading}
               className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-2.5 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
@@ -739,14 +767,16 @@ function OrcidSection({
                   <EntryCard
                     key={i}
                     entry={entry}
-                    onInsertBibTeX={bib => onInsertBibTeX('\n' + bib)}
-                    onInsertCiteKey={onInsertCiteKey}
+                    onInsertBibTeX={bib => { if (allowedRef.current) onInsertBibTeX('\n' + bib) }}
+                    onInsertCiteKey={key => { if (allowedRef.current) onInsertCiteKey(key) }}
+                    canInsert={allowed}
                   />
                 ))}
               </div>
               {entries.length > 1 && (
                 <button
                   onClick={handleInsertAll}
+                  disabled={!allowed}
                   className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/10 py-1.5 text-[10px] font-medium text-ok ring-1 ring-ok/20 transition hover:bg-ok/20"
                 >
                   <PlusCircle className="h-3 w-3" />
@@ -860,6 +890,7 @@ function LibrarySection({
 // ── Main panel ────────────────────────────────────────────────────────────
 
 export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCiteKey, onLibraryChange }: ReferencesPanelProps) {
+  const { allowed, allowedRef } = useReferenceCapability('g09')
   const [input, setInput] = useState('')
   const [entries, setEntries] = useState<BibTeXEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -920,7 +951,7 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
   const lines = input.split('\n').filter(l => l.trim())
 
   const handleFetch = useCallback(async () => {
-    if (!lines.length || loading) return
+    if (!allowedRef.current || !lines.length || loading) return
     setLoading(true)
     setFetched(false)
     setFetchError(null)
@@ -935,9 +966,10 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
     } finally {
       setLoading(false)
     }
-  }, [lines, loading])
+  }, [lines, loading, allowedRef])
 
   const handleInsertAll = () => {
+    if (!allowedRef.current) return
     const allBibtex = entries
       .filter(e => e.bibtex)
       .map(e => e.bibtex!)
@@ -1012,7 +1044,7 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
 
         <button
           onClick={handleFetch}
-          disabled={!lines.length || loading}
+          disabled={!allowed || !lines.length || loading}
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent py-1.5 text-[11px] font-medium text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loading ? (
@@ -1045,8 +1077,9 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
                 <EntryCard
                   key={i}
                   entry={entry}
-                  onInsertBibTeX={bibtex => onInsertBibTeX('\n' + bibtex)}
-                  onInsertCiteKey={onInsertCiteKey}
+                  onInsertBibTeX={bibtex => { if (allowedRef.current) onInsertBibTeX('\n' + bibtex) }}
+                  onInsertCiteKey={key => { if (allowedRef.current) onInsertCiteKey(key) }}
+                  canInsert={allowed}
                 />
               ))}
             </div>
@@ -1121,6 +1154,7 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
         <div className="shrink-0 border-t border-line p-3">
           <button
             onClick={handleInsertAll}
+            disabled={!allowed}
             className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/15 py-1.5 text-[11px] font-medium text-ok ring-1 ring-ok/25 transition hover:bg-ok/25"
           >
             <PlusCircle className="h-3.5 w-3.5" />

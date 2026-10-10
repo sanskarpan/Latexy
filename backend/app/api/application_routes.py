@@ -16,7 +16,7 @@ from typing import Optional
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import ApplicationSubmission, Compilation, JobApplication, Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.greenhouse_service import ApplicantData as GHApplicant
 from ..services.greenhouse_service import greenhouse_service

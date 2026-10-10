@@ -27,7 +27,7 @@ import time
 import uuid
 from typing import Awaitable, Callable, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -35,6 +35,7 @@ from ..core.event_bus import event_bus
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.collab_manager import (
     MAX_CHAT_FRAME_BYTES,
     _safe_chat_label,
@@ -44,6 +45,7 @@ from ..services.collab_manager import (
     notify_if_read_only,
     reset_chat_rate_limit,
 )
+from ..services.entitlement_service import entitlement_service
 from .job_metadata import parse_ownership_metadata
 
 logger = get_logger(__name__)
@@ -422,7 +424,13 @@ async def _close_expected_collab_rejection(
 _COLLAB_HEARTBEAT_INTERVAL = 15
 
 
-async def _collab_heartbeat(websocket: WebSocket) -> None:
+async def _collab_capabilities_available(user_id: str, owner_id: str) -> bool:
+    if not await entitlement_service.users_have_feature("f05", (user_id, owner_id)):
+        return False
+    return user_id == owner_id or await entitlement_service.users_have_feature("f04", (user_id, owner_id))
+
+
+async def _collab_heartbeat(websocket: WebSocket, user_id: str | None = None, owner_id: str | None = None) -> None:
     """Keep the collab socket alive through idle-timeout proxies."""
     from ..services.collab_manager import MSG_QUERY_AWARENESS, _encode_varuint
 
@@ -430,6 +438,9 @@ async def _collab_heartbeat(websocket: WebSocket) -> None:
     try:
         while True:
             await asyncio.sleep(_COLLAB_HEARTBEAT_INTERVAL)
+            if user_id and owner_id and not await _collab_capabilities_available(user_id, owner_id):
+                await websocket.close(code=4003, reason="Collaboration is unavailable")
+                return
             await websocket.send_bytes(frame)
     except asyncio.CancelledError:
         raise
@@ -474,6 +485,29 @@ def _collab_chat_access_callback(
     async def check() -> bool:
         return await _collab_chat_access_ok(resume_id, user_id)
 
+    return check
+
+
+def _collab_live_access_callback(resume_id: str, user_id: str, owner_id: str, role: str) -> Callable[[], Awaitable[bool]]:
+    """Invalidate idle receivers and stale role snapshots as well as senders."""
+    async def check() -> bool:
+        from sqlalchemy import select as sa_select
+
+        from ..database.connection import get_async_db_session
+        from ..database.models import Resume, ResumeCollaborator
+
+        if not await _collab_capabilities_available(user_id, owner_id):
+            return False
+        async with get_async_db_session() as db:
+            current_owner = await db.scalar(sa_select(Resume.user_id).where(Resume.id == resume_id))
+            if current_owner != owner_id:
+                return False
+            if user_id == owner_id:
+                return role == "owner"
+            current_role = await db.scalar(sa_select(ResumeCollaborator.role).where(
+                ResumeCollaborator.resume_id == resume_id, ResumeCollaborator.user_id == user_id,
+            ))
+            return current_role == role and role in {"editor", "commenter", "viewer"}
     return check
 
 
@@ -545,6 +579,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
             return
 
         is_owner = resume.user_id == user_id
+        owner_id = resume.user_id
 
         if not is_owner:
             collab_result = await db.execute(
@@ -562,6 +597,10 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 )
                 return
             role = collab.role
+
+        if not await _collab_capabilities_available(user_id, owner_id):
+            await _close_expected_collab_rejection(websocket, code=4003, reason="Collaboration is unavailable")
+            return
 
         # The query-string `name` is only legacy cursor metadata and is
         # client-controlled. Chat labels must come from the authenticated
@@ -583,7 +622,10 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     }
 
     room = await collab_manager.get_or_create(resume_id)
-    await room.add(client_id, websocket, user_info)
+    await room.add(
+        client_id, websocket, user_info,
+        access_check=_collab_live_access_callback(resume_id, user_id, owner_id, role),
+    )
     # Read-only roles are told up-front so the client can disable its editor
     # instead of discovering the restriction only after edits are dropped.
     await notify_if_read_only(room, client_id)
@@ -595,7 +637,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
         room.size,
     )
 
-    heartbeat_task = asyncio.create_task(_collab_heartbeat(websocket))
+    heartbeat_task = asyncio.create_task(_collab_heartbeat(websocket, user_id, owner_id))
 
     try:
         while True:
@@ -611,6 +653,11 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 )
                 break
 
+            # An established room is not a permanent entitlement. Recheck
+            # before processing any update/chat frame after a plan change.
+            if not await _collab_capabilities_available(user_id, owner_id):
+                await websocket.close(code=4003, reason="Collaboration is unavailable")
+                break
             chat_access_check = None
             if is_chat_frame(data) and len(data) <= MAX_CHAT_FRAME_BYTES:
                 chat_access_check = _collab_chat_access_callback(resume_id, user_id)

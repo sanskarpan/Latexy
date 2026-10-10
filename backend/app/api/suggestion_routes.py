@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeCollaborator, ResumeSuggestionDecision
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix="/resumes", tags=["suggestions"])
@@ -153,6 +155,8 @@ async def _access_role(db: AsyncSession, resume_id: str, user_id: str) -> str:
     if owner_id == user_id:
         return "owner"
     if collaborator_role in _RESOLVER_ROLES:
+        await enforce_capabilities(("f04", "f07"), user_id)
+        await enforce_capabilities(("f04", "f07"), owner_id)
         return "editor"
     raise HTTPException(status_code=403, detail="Only owners and editors can decide suggestions")
 
@@ -179,6 +183,8 @@ async def _read_access_role(db: AsyncSession, resume_id: str, user_id: str) -> s
     if owner_id == user_id:
         return "owner"
     if collaborator_role in _DOCUMENT_READ_ROLES:
+        await enforce_capabilities(("f04",), user_id)
+        await enforce_capabilities(("f04",), owner_id)
         return str(collaborator_role)
     # Do not reveal that a non-collaborator's resume exists.
     raise HTTPException(status_code=404, detail="Resume not found")

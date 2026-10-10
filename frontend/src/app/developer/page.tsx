@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, Copy, KeyRound, Trash2, X } from 'lucide-react'
@@ -27,6 +29,7 @@ const fieldInput =
 const label = 'font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3'
 
 export default function DeveloperPage() {
+  const { can } = useEntitlements()
   const { session, isPending, error: sessionError } = useRequireAuth()
   const sessionToken = session?.session?.token ?? null
 
@@ -110,6 +113,7 @@ console.log(payload);`,
   }), [exampleKey])
 
   const handleCreateKey = async () => {
+    if (!can('h08')) return
     if (!createName.trim()) return
     setBusyKeyId('new')
     const result = await apiClient.createDeveloperKey(createName.trim())
@@ -214,7 +218,7 @@ console.log(payload);`,
         </div>
 
         {/* create */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+        {can('h08') && <div className="mb-6 flex flex-col gap-3 sm:flex-row">
           <label htmlFor="new-key-name" className="sr-only">
             New key name
           </label>
@@ -227,12 +231,12 @@ console.log(payload);`,
           />
           <button
             onClick={handleCreateKey}
-            disabled={busyKeyId === 'new' || !createName.trim()}
+            disabled={!can('h08') || (busyKeyId === 'new' || !createName.trim())}
             className={`${primaryBtn} shrink-0`}
-          >
+           aria-description={!can('h08') ? 'Unavailable for your current plan or feature settings' : undefined}>
             {busyKeyId === 'new' ? 'Creating…' : 'Create key'}
           </button>
-        </div>
+        </div>}
 
         {createdKey && (
           <div className="mb-6 rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">

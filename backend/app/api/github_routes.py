@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
@@ -19,9 +19,10 @@ from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, get_redis_client
 from ..database.connection import get_db
-from ..database.models import Resume, User
+from ..database.models import Resume, User, UserAPIKey
 from ..middleware.auth_middleware import get_current_user_required
-from ..middleware.entitlements import require_feature
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.entitlements import _denied, require_feature
 from ..services import github_projects_service as gh_projects
 from ..services.encryption_service import encryption_service
 from ..services.entitlement_service import entitlement_service
@@ -658,6 +659,18 @@ async def import_github_projects(
             detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
         )
 
+    # The worker resolves secrets at execution time. Authorize the optional
+    # key use now, before quota/dispatch, and snapshot the decision without
+    # serializing a secret. A disabled stored key must not silently select
+    # the platform provider instead.
+    allow_byok = await entitlement_service.has_feature("d25", user=user_id)
+    if not allow_byok:
+        stored_key = await db.scalar(select(UserAPIKey.id).where(
+            UserAPIKey.user_id == user_id, UserAPIKey.provider == "openai", UserAPIKey.is_active,
+        ).limit(1))
+        if stored_key is not None:
+            raise _denied("d25")
+
     user_plan = "free"
     if isinstance(user.subscription_plan, str) and user.subscription_plan:
         user_plan = user.subscription_plan
@@ -722,6 +735,7 @@ async def import_github_projects(
             user_id=user_id,
             user_plan=resolve_plan_family(user_plan),
             quota_refund=quota_ticket.refund_payload(),
+            allow_byok=allow_byok,
         )
         await _mark_dispatch_accepted(job_id)
         dispatched = True
@@ -767,7 +781,7 @@ async def import_github_projects(
 async def get_github_import_result(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(require_feature("ai_import_github")),
+    user_id: str = Depends(get_current_user_required),
 ):
     """Return the candidate ProjectEvidence for an import job.
 

@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -67,6 +69,7 @@ function cloneVisibility(value: VariantVisibility): VariantVisibility {
 }
 
 export default function LinkedVariantPage() {
+  const { can } = useEntitlements()
   const { resumeId } = useParams<{ resumeId: string }>()
   const { session, isPending, error: sessionError } = useRequireAuth()
   const [data, setData] = useState<VariantVisibilityResponse | null>(null)
@@ -274,7 +277,9 @@ export default function LinkedVariantPage() {
           <p className="text-xs uppercase tracking-[0.16em] text-fg-3">Source-linked variant</p>
           <h1 className="mt-2 text-3xl font-semibold text-fg">Choose what this variant includes</h1>
           <p className="mt-2 text-sm text-fg-2">
-            Content stays synced from <Link className="text-accent-strong underline" href={`/workspace/builder/${data.source_resume_id}`}>{data.source_title}</Link>.
+            Content stays synced from {can('b08')
+              ? <Link className="text-accent-strong underline" href={`/workspace/builder/${data.source_resume_id}`}>{data.source_title}</Link>
+              : <span>{data.source_title}</span>}.
             Editing its LaTeX directly will detach this variant from future source updates.
           </p>
         </div>

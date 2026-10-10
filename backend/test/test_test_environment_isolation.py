@@ -52,7 +52,7 @@ print(json.dumps({
     ("script", "boundary", "expected_environment"),
     [
         ("scripts/dev.sh", "# PID file", "development"),
-        ("scripts/ci/full-stack-smoke.sh", 'backend_pid=""', "production"),
+        ("scripts/ci/full-stack-smoke.sh", 'backend_pid=""', "test"),
     ],
 )
 def test_local_launchers_override_inherited_modal_dispatch(script, boundary, expected_environment):
@@ -69,3 +69,57 @@ def test_local_launchers_override_inherited_modal_dispatch(script, boundary, exp
         check=True,
     )
     assert process.stdout.splitlines() == ["local", expected_environment]
+
+
+def test_full_stack_keys_are_ephemeral_valid_and_never_inherit_credentials():
+    repository = Path(__file__).resolve().parents[2]
+    prefix = (repository / "scripts/ci/full-stack-smoke.sh").read_text().split('backend_pid=""', 1)[0]
+    probe = """
+import base64, hashlib, json, os
+keys = [os.environ[k] for k in ('BETTER_AUTH_SECRET', 'JWT_SECRET_KEY', 'API_KEY_ENCRYPTION_KEY')]
+assert all(k != 'synthetic-inherited-value' for k in keys)
+assert len(keys[0]) >= 32 and len(keys[1]) >= 32
+assert len(base64.urlsafe_b64decode(keys[2])) == 32
+assert not os.environ['OPENAI_API_KEY'] and not os.environ['RESEND_API_KEY']
+print(json.dumps([hashlib.sha256(k.encode()).hexdigest() for k in keys]))
+"""
+    environment = dict(os.environ, DATABASE_URL="postgresql://localhost:5434/latexy_test",
+                       BETTER_AUTH_SECRET="synthetic-inherited-value", JWT_SECRET_KEY="synthetic-inherited-value",
+                       API_KEY_ENCRYPTION_KEY="synthetic-inherited-value", OPENAI_API_KEY="synthetic-model",
+                       RESEND_API_KEY="synthetic-email")
+    digests = []
+    for _ in range(2):
+        process = subprocess.run(["bash", "-c", 'source /dev/stdin; "$1" -c "$2"', "smoke", sys.executable, probe],
+                                 input=prefix, env=environment, capture_output=True, text=True, timeout=10, check=True)
+        digests.append(json.loads(process.stdout))
+    assert set(digests[0]).isdisjoint(digests[1])
+
+
+@pytest.mark.parametrize("database", ["postgresql://remote.invalid/latexy_test", "postgresql://localhost/latexy"])
+def test_full_stack_rejects_nonisolated_database_before_startup(database):
+    repository = Path(__file__).resolve().parents[2]
+    prefix = (repository / "scripts/ci/full-stack-smoke.sh").read_text().split('backend_pid=""', 1)[0]
+    process = subprocess.run(["bash", "-c", 'source /dev/stdin; echo unsafe-startup'], input=prefix,
+                             env=dict(os.environ, DATABASE_URL=database), capture_output=True, text=True, timeout=10)
+    assert process.returncode != 0
+    assert "unsafe-startup" not in process.stdout
+    assert "loopback *_test database" in process.stderr
+
+
+def test_full_stack_allows_only_its_local_test_cors_without_relaxing_production():
+    repository = Path(__file__).resolve().parents[2]
+    prefix = (repository / "scripts/ci/full-stack-smoke.sh").read_text().split('backend_pid=""', 1)[0]
+    probe = """
+from app.core.config import settings
+assert settings.ENVIRONMENT == 'test'
+assert 'http://localhost:5180' in settings.effective_cors_origins()
+for environment in ('production', 'staging'):
+    settings.ENVIRONMENT = environment
+    assert not any('localhost' in origin or '127.0.0.1' in origin for origin in settings.effective_cors_origins())
+print('local test CORS works; deployed filtering remains intact')
+"""
+    process = subprocess.run(["bash", "-c", 'source /dev/stdin; "$1" -c "$2"', "smoke", sys.executable, probe],
+                             input=prefix, cwd=repository / "backend", capture_output=True, text=True, timeout=10,
+                             env=dict(os.environ, ENVIRONMENT="staging", DATABASE_URL="postgresql://localhost/latexy_test",
+                                      CORS_ORIGINS='["http://localhost:5180","http://127.0.0.1:5180"]'), check=True)
+    assert 'deployed filtering remains intact' in process.stdout

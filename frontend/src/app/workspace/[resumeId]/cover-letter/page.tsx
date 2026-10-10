@@ -16,6 +16,8 @@ import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
@@ -52,6 +54,9 @@ const LENGTH_OPTIONS: { value: CoverLetterLength; label: string; desc: string }[
 ]
 
 export default function CoverLetterPage() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const params = useParams()
   const searchParams = useSearchParams()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
@@ -343,6 +348,7 @@ export default function CoverLetterPage() {
   }, [])
 
   const runGeneration = async () => {
+    if (!canRef.current('e01')) return
     if (!jobDescription.trim()) {
       toast.error('Please provide a job description')
       return
@@ -444,6 +450,7 @@ export default function CoverLetterPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
+    if (!canRef.current('c06')) return
     if (isProcessing || isSubmitting) return
     setIsSubmitting(true)
     const requestResumeId = resumeId
@@ -711,14 +718,16 @@ export default function CoverLetterPage() {
             </div>
           </section>
 
-          {/* Generate Button */}
-          <button
+          {/* Generation is optional; existing letters and source recovery stay available. */}
+          {!can('e01') && <p role="status" className="text-xs text-fg-3">Cover-letter generation is unavailable for your current plan or feature settings. Existing letters remain available.</p>}
+          <CapabilityGate feature="e01"><button
             onClick={runGeneration}
-            disabled={isProcessing || isSubmitting || !jobDescription.trim()}
+            disabled={!can('e01') || isProcessing || isSubmitting || !jobDescription.trim()}
+            aria-description={!can('e01') ? 'Cover-letter generation is unavailable for your current plan or feature settings.' : undefined}
             className="w-full rounded-[var(--radius-md)] bg-accent py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isProcessing || isSubmitting ? 'Generating...' : 'Generate Cover Letter'}
-          </button>
+          </button></CapabilityGate>
 
           <CoverLetterSignaturePanel
             latex={editorContent}
@@ -866,7 +875,7 @@ export default function CoverLetterPage() {
                     <FileText size={12} className="mr-1 inline" />
                     Cover Letter LaTeX
                   </p>
-                  <button
+                  <CapabilityGate feature="c06"><button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (5s quiet period; 10s minimum interval)"
                     aria-label="Auto-compile on change"
@@ -879,7 +888,7 @@ export default function CoverLetterPage() {
                   >
                     <Zap size={10} />
                     Auto
-                  </button>
+                  </button></CapabilityGate>
                 </div>
                 <div className="flex items-center gap-2">
                   {hasUnsavedEdits && activeCoverLetterId && (
@@ -910,7 +919,7 @@ export default function CoverLetterPage() {
                   readOnly={isProcessing}
                   onCompile={compileCurrentContent}
                   onAutoCompile={handleAutoCompile}
-                  autoCompileEnabled={autoCompile}
+                  autoCompileEnabled={can('c06') && autoCompile}
                   autoCompileBusy={isProcessing || isSubmitting}
                   autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}:${activeCoverLetterId ?? 'none'}`}
                   hideEmptyAction

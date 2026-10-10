@@ -1,5 +1,9 @@
 'use client'
 
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -49,15 +53,21 @@ export default function NewBuilderPage() {
   return <NewBuilderForm key={session.user.id} session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
 }
 
-function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
+function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const router = useRouter()
   const mountedRef = useRef(true)
   const authVerifiedRef = useRef(!authUnverified)
-  authVerifiedRef.current = !authUnverified
+  authVerifiedRef.current = !authUnverified && can('b08')
   const [title, setTitle] = useState('')
   const [templates, setTemplates] = useState<BuilderTemplateResponse[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [structured, setStructured] = useState(cloneStructuredResume(DEFAULT_STRUCTURED_RESUME))
+  useCapabilityDraftRecovery(session.user.id, 'latexy-new-builder-draft.json', Boolean(title.trim()) || JSON.stringify(structured) !== JSON.stringify(DEFAULT_STRUCTURED_RESUME), {
+    format: 'latexy-builder-draft', version: 1, title, template_id: selectedTemplateId, structured_content: structured,
+  })
   const [seedMetrics, setSeedMetrics] = useState<BuilderMetricsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -105,7 +115,12 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
   const effectiveMetrics = seedMetrics ?? deriveBuilderMetrics(structured)
 
   const handleSeedUpload = async (file: File | null) => {
+    if (!canRef.current('b06')) return
     if (!file) return
+    if ((/\.json$/i.test(file.name) || file.type === 'application/json') && !canRef.current('b07')) {
+      toast.error('Structured resume import is unavailable for your current plan or feature settings.')
+      return
+    }
     if (!isCurrentRequest()) {
       toast.error('Session verification is still in progress. Please try again.')
       return
@@ -217,11 +232,11 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
             className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-base text-fg outline-none transition focus:border-accent"
           />
 
-          <div className="mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
+          <CapabilityGate feature="b06"><div className="mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
             <div>
               <p className="text-sm font-semibold text-fg">Seed from an existing resume</p>
               <p className="mt-1 text-xs text-fg-3">
-                Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.
+                {can('b07') ? 'Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.' : 'Upload PDF, DOCX, or a LinkedIn export to prefill the builder.'}
               </p>
             </div>
             <label className="cursor-pointer rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
@@ -231,11 +246,11 @@ function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnver
                 type="file"
                 className="hidden"
                 disabled={uploading}
-                accept=".json,.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex"
+                accept={can('b07') ? '.json,.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex' : '.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex'}
                 onChange={event => void handleSeedUpload(event.target.files?.[0] ?? null)}
               />
             </label>
-          </div>
+          </div></CapabilityGate>
           {uploadIssues.length > 0 && (
             <div role="alert" className="mt-3 rounded-[var(--radius-md)] border border-err/30 bg-err/5 p-4">
               <p className="text-sm font-semibold text-err">Import validation failed</p>

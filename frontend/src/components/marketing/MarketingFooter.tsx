@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 
@@ -30,12 +31,12 @@ export default function MarketingFooter() {
             <Link href="/resources" className="transition hover:text-fg">Resources</Link>
             <Link href="/updates" className="transition hover:text-fg">Updates</Link>
             <Link href="/faq" className="transition hover:text-fg">FAQ</Link>
-            <Link
+            <CapabilityGate feature="a09"><Link
               href="/try"
               className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               Open Studio
-            </Link>
+            </Link></CapabilityGate>
           </nav>
         </div>
 

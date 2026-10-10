@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
 import openai
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.entitlement_service import entitlement_service
 from ..utils.uuid_guard import ensure_uuid

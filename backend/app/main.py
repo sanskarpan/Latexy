@@ -277,6 +277,10 @@ app.add_middleware(VerifiedTenantCORSMiddleware)
 # Include routes
 app.include_router(router)
 
+from .api.plan_catalog_routes import router as plan_catalog_router
+
+app.include_router(plan_catalog_router)
+
 
 def main():
     """Application entry point."""

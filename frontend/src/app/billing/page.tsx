@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
@@ -15,6 +16,8 @@ import {
   type CurrentSubscriptionResponse,
   type TeamSeat,
 } from '@/lib/api-client'
+
+import { apiAllowance, catalogPlansForPeriod, type CatalogPlan as PricingPlan } from '@/lib/plan-catalog'
 
 type BillingPeriod = 'monthly' | 'annual'
 
@@ -56,32 +59,6 @@ function openInTab(tab: Window | null, url: string): void {
   }
 }
 
-interface PricingPlan {
-  id: string
-  name: string
-  price: number
-  currency: string
-  interval: string
-  purchase_type?: 'one_time' | 'subscription'
-  billing_period?: BillingPeriod
-  discount_percent?: number
-  monthly_equivalent_price?: number
-  max_seats?: number
-  requires_student_verification?: boolean
-  features: {
-    compilations: number | string
-    optimizations: number | string
-    historyRetention: number
-    prioritySupport: boolean
-    apiAccess: boolean
-    customModels?: boolean
-    teamSeats?: number
-  }
-}
-
-const MONTHLY_PLAN_IDS = ['free', 'basic', 'pro', 'byok', 'student', 'team', 'weekly', 'lifetime']
-const ANNUAL_PLAN_IDS = ['free', 'basic_annual', 'pro_annual', 'byok_annual', 'student', 'team']
-
 const formatFeature = (value: string | number) => {
   if (value === 'unlimited') return 'Unlimited'
   if (value === 0) return 'None'
@@ -96,13 +73,19 @@ const COMPARISON_ROWS: { label: string; value: (plan: PricingPlan) => string | n
     value: (p) => (p.features.historyRetention === 0 ? 'None' : `${p.features.historyRetention} days`),
   },
   { label: 'Priority support', value: (p) => (p.features.prioritySupport ? 'Yes' : 'No') },
-  { label: 'API access', value: (p) => (p.features.apiAccess ? 'Yes' : 'No') },
+  { label: 'API requests', value: apiAllowance },
   {
     label: 'Custom models',
     value: (p) => (typeof p.features.customModels === 'boolean' ? (p.features.customModels ? 'Yes' : 'No') : '—'),
   },
   { label: 'Team seats', value: (p) => (typeof p.features.teamSeats === 'number' ? p.features.teamSeats : '—') },
 ]
+
+function requiresCommercialFeature(planId: string, plan?: PricingPlan): boolean {
+  return plan?.requires_student_verification === true
+    || ['student', 'team'].includes(plan?.plan_family ?? planId)
+    || ['student', 'team'].includes(planId)
+}
 
 function BillingPageContent() {
   const { data: session, isPending, error: sessionError } = useSession()
@@ -119,8 +102,31 @@ function BillingPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const flags = useFeatureFlags()
+  const { can, features: entitlementFeatures, loaded: entitlementsLoaded } = useEntitlements()
+  const commercialEnabled = can('i02')
+  const commercialEnabledRef = useRef(commercialEnabled)
+  commercialEnabledRef.current = commercialEnabled
 
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
+  const catalogOwner = `${sessionUser?.id ?? 'anonymous'}:${sessionToken ?? ''}`
+  const catalogScopeRef = useRef({ owner: catalogOwner, features: entitlementFeatures })
+  catalogScopeRef.current = { owner: catalogOwner, features: entitlementFeatures }
+  const [planScope, setPlanScope] = useState<typeof catalogScopeRef.current | null>(null)
+  const targetGrantsCurrent = entitlementsLoaded && planScope?.owner === catalogOwner && planScope.features === entitlementFeatures
+  const targetPlansRef = useRef(plans)
+  targetPlansRef.current = targetGrantsCurrent ? plans : {}
+  const ownedPlansRef = useRef(plans)
+  ownedPlansRef.current = planScope?.owner === catalogOwner ? plans : {}
+  // New purchases resolve the current account role against the target SKU.
+  // A Free plan's disabled i02 must not prevent an eligible Student/Team upgrade.
+  const canPurchasePlan = (planId: string) => {
+    const plan = ownedPlansRef.current[planId]
+    return Boolean(plan && plan.purchasable !== false
+      && (!requiresCommercialFeature(planId, plan) || targetPlansRef.current[planId]?.capabilities?.i02 === true))
+  }
+  const studentVerificationEnabled = canPurchasePlan('student')
+  const studentVerificationEnabledRef = useRef(studentVerificationEnabled)
+  studentVerificationEnabledRef.current = studentVerificationEnabled
   const [billingStatus, setBillingStatus] = useState<BillingAvailability | null>(null)
   const [loading, setLoading] = useState(true)
   const [plansError, setPlansError] = useState<string | null>(null)
@@ -163,19 +169,23 @@ function BillingPageContent() {
   const fetchPlans = useCallback(async () => {
     setLoading(true)
     setPlansError(null)
+    const scope = { owner: catalogOwner, features: entitlementFeatures }
     const response = await apiClient.getSubscriptionPlans()
+    if (catalogScopeRef.current.owner !== scope.owner || catalogScopeRef.current.features !== scope.features) return
     if (response.success && response.data) {
       setPlans(response.data.plans as Record<string, PricingPlan>)
+      setPlanScope(scope)
       setBillingStatus(response.data.billing)
     } else {
       // Keep any previously-loaded plans on screen (e.g. a transient 429 on a
       // background refresh) — only fall back to the empty-state card when we
       // have nothing to show at all.
+      setPlanScope(null)
       setPlansError(response.error || "Couldn't load pricing plans. Please try again.")
       toast.error(response.error || 'Failed to fetch plans')
     }
     setLoading(false)
-  }, [])
+  }, [catalogOwner, entitlementFeatures])
 
   useEffect(() => {
     fetchPlans()
@@ -203,6 +213,10 @@ function BillingPageContent() {
   useEffect(() => {
     const generation = ++studentVerifyGenerationRef.current
     const previousAttempt = studentVerifyAttemptRef.current
+    if (!studentVerificationEnabled) {
+      studentVerifyAttemptRef.current = null
+      return
+    }
     if (
       previousAttempt &&
       studentVerifyToken &&
@@ -232,6 +246,7 @@ function BillingPageContent() {
     const verify = async () => {
       const result = await apiClient.verifyStudentSubscription(studentVerifyToken)
       const stillCurrent =
+        studentVerificationEnabledRef.current &&
         studentVerifyGenerationRef.current === owner.generation &&
         studentVerifyAttemptRef.current === owner &&
         studentVerifyToken === owner.token &&
@@ -258,16 +273,16 @@ function BillingPageContent() {
         studentVerifyGenerationRef.current += 1
       }
     }
-  }, [handledStudentToken, studentVerifyAccountKey, studentVerifyToken])
+  }, [studentVerificationEnabled, handledStudentToken, studentVerifyAccountKey, studentVerifyToken])
 
   useEffect(() => {
     const generation = ++teamInviteGenerationRef.current
-    teamInviteOwnerRef.current = teamInviteToken && sessionToken
+    teamInviteOwnerRef.current = commercialEnabled && teamInviteToken && sessionToken
       ? { token: teamInviteToken, sessionToken, generation }
       : null
     teamInviteAcceptanceRef.current = null
 
-    if (!teamInviteToken || !sessionToken) {
+    if (!commercialEnabled || !teamInviteToken || !sessionToken) {
       setTeamInviteChecking(false)
       setTeamInviteAccepting(false)
       setTeamInviteReady(false)
@@ -283,7 +298,7 @@ function BillingPageContent() {
     setTeamInviteError(null)
     const previewInvite = async () => {
       const result = await apiClient.previewTeamSeat(teamInviteToken)
-      if (cancelled || teamInviteGenerationRef.current !== generation) return
+      if (cancelled || !commercialEnabledRef.current || teamInviteGenerationRef.current !== generation) return
       setTeamInviteChecking(false)
       if (result.success) {
         setTeamInviteReady(true)
@@ -302,9 +317,10 @@ function BillingPageContent() {
         teamInviteAcceptanceRef.current = null
       }
     }
-  }, [sessionToken, teamInviteToken])
+  }, [commercialEnabled, sessionToken, teamInviteToken])
 
   const handleAcceptTeamInvite = async () => {
+    if (!commercialEnabledRef.current) return
     const owner = teamInviteOwnerRef.current
     if (
       !isTeamInviteOwnerCurrent(owner, teamInviteToken, sessionToken, teamInviteGenerationRef.current) ||
@@ -328,7 +344,7 @@ function BillingPageContent() {
       requestSessionToken,
       requestGeneration,
     )
-    if (!stillCurrent) return
+    if (!commercialEnabledRef.current || !stillCurrent) return
     teamInviteAcceptanceRef.current = null
     setTeamInviteAccepting(false)
     if (!result.success) {
@@ -361,11 +377,13 @@ function BillingPageContent() {
   }
 
   const visiblePlans = useMemo(() => {
-    const order = billingPeriod === 'annual' ? ANNUAL_PLAN_IDS : MONTHLY_PLAN_IDS
-    return order
-      .map((id) => plans[id])
-      .filter((plan): plan is PricingPlan => Boolean(plan))
-  }, [billingPeriod, plans])
+    return catalogPlansForPeriod(plans, billingPeriod)
+      .filter((plan) => !requiresCommercialFeature(plan.id, plan)
+        || (targetGrantsCurrent && plan.capabilities?.i02 === true))
+  }, [billingPeriod, plans, targetGrantsCurrent])
+  const hasStudentOffer = visiblePlans.some((plan) => plan.id === 'student'
+    || plan.plan_family === 'student' || plan.requires_student_verification)
+  const hasTeamOffer = visiblePlans.some((plan) => plan.id === 'team' || plan.plan_family === 'team')
 
   // Mirrors SubscriptionManager's own "no active paid subscription" check so the
   // Free plan card's CTA and behavior stay consistent with the subscription panel.
@@ -471,6 +489,7 @@ function BillingPageContent() {
   }
 
   const handleSelectPlan = async (planId: string) => {
+    if (planId !== 'free' && !canPurchasePlan(planId)) return
     if (planId !== 'free' && billingStatus && !billingStatus.available) {
       toast.error(billingStatus.message)
       return
@@ -490,7 +509,7 @@ function BillingPageContent() {
       return
     }
 
-    if (planId === 'student') {
+    if (planId === 'student' || plans[planId]?.plan_family === 'student' || plans[planId]?.requires_student_verification) {
       setStudentCheckoutPlan(planId)
       return
     }
@@ -502,7 +521,7 @@ function BillingPageContent() {
     const checkoutTab = window.open('', '_blank')
     if (checkoutTab) checkoutTab.opener = null
     const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod)
-    if (abort) {
+    if (abort || !canPurchasePlan(planId)) {
       checkoutTab?.close()
       setActivePlan(null)
       return
@@ -517,6 +536,10 @@ function BillingPageContent() {
       },
     )
     setActivePlan(null)
+    if (!canPurchasePlan(planId)) {
+      checkoutTab?.close()
+      return
+    }
 
     if (!result.success || !result.data) {
       checkoutTab?.close()
@@ -577,13 +600,13 @@ function BillingPageContent() {
   }
 
   const handleStudentCheckout = async () => {
-    if (!studentCheckoutPlan || !sessionUser?.email) return
+    if (!studentCheckoutPlan || !canPurchasePlan(studentCheckoutPlan) || !sessionUser?.email) return
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
     if (previewTab) previewTab.opener = null
     const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly')
-    if (abort) {
+    if (abort || !canPurchasePlan(studentCheckoutPlan)) {
       previewTab?.close()
       setActivePlan(null)
       return
@@ -599,6 +622,10 @@ function BillingPageContent() {
       },
     )
     setActivePlan(null)
+    if (!canPurchasePlan(studentCheckoutPlan)) {
+      previewTab?.close()
+      return
+    }
 
     if (!result.success || !result.data) {
       previewTab?.close()
@@ -624,13 +651,17 @@ function BillingPageContent() {
   }
 
   const handleInviteSeat = async () => {
-    if (!inviteEmail.trim()) return
+    if (!commercialEnabledRef.current || !inviteEmail.trim()) return
     setTeamLoading(true)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
     if (previewTab) previewTab.opener = null
     const result = await apiClient.inviteTeamSeat(inviteEmail.trim())
     setTeamLoading(false)
+    if (!commercialEnabledRef.current) {
+      previewTab?.close()
+      return
+    }
     if (!result.success || !result.data) {
       previewTab?.close()
       toast.error(result.error || 'Failed to invite teammate')
@@ -680,7 +711,7 @@ function BillingPageContent() {
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">
           <h1 className="text-3xl font-bold text-fg tracking-tight">Pricing & Billing</h1>
           <p className="mt-2 max-w-2xl text-fg-2">
-            Compare configured plans, including optional weekly and lifetime offers, unlock the student discount, and manage seats for team subscriptions.
+            Compare available plans and manage your subscription.
           </p>
           {billingStatus && !billingStatus.available && (
             <div className="mt-4 rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-4 text-sm text-warn">
@@ -690,12 +721,12 @@ function BillingPageContent() {
               <p className="mt-1 text-warn/80">{billingStatus.message}</p>
             </div>
           )}
-          {studentVerifyToken && !sessionToken && !isPending && (
+          {studentVerificationEnabled && studentVerifyToken && !sessionToken && !isPending && (
             <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong">
               Sign in first to finish student verification.
             </div>
           )}
-          {teamInviteToken && !sessionToken && !isPending && (
+          {commercialEnabled && teamInviteToken && !sessionToken && !isPending && (
             <div className="mt-4 flex flex-col gap-3 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong sm:flex-row sm:items-center sm:justify-between">
               <p>Sign in with the invited email address to review and activate your team seat.</p>
               <button
@@ -709,7 +740,7 @@ function BillingPageContent() {
               </button>
             </div>
           )}
-          {teamInviteToken && sessionToken && (
+          {commercialEnabled && teamInviteToken && sessionToken && (
             <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong">
               {teamInviteChecking && <p>Checking your team invitation...</p>}
               {teamInviteError && <p>{teamInviteError}</p>}
@@ -824,12 +855,12 @@ function BillingPageContent() {
               )}
             </div>
 
-            <div className="rounded-[var(--radius-lg)] border border-accent/20 bg-accent-soft p-4">
+            {hasStudentOffer && <div className="rounded-[var(--radius-lg)] border border-accent/20 bg-accent-soft p-4">
               <p className="text-sm font-semibold text-accent-strong">Student plan</p>
               <p className="mt-2 text-sm text-fg-2">
                 Get Pro-level features at 50% off after verifying an academic email address.
               </p>
-            </div>
+            </div>}
           </div>
 
           {loading ? (
@@ -865,7 +896,7 @@ function BillingPageContent() {
                     />
                     {plan.id === 'free' && !isFreeTier && (
                       <p className="mt-2 text-xs text-fg-3">
-                        Selecting this cancels your current subscription and reverts your account to Free.
+                        Cancel your paid subscription first. Your current access remains until the paid period ends.
                       </p>
                     )}
                   </div>
@@ -908,7 +939,7 @@ function BillingPageContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {COMPARISON_ROWS.map((row) => (
+                          {COMPARISON_ROWS.filter((row) => hasTeamOffer || row.label !== 'Team seats').map((row) => (
                             <tr key={row.label} className="border-b border-line last:border-b-0">
                               <th scope="row" className="px-4 py-3 text-left font-normal text-fg-2">
                                 {row.label}
@@ -946,7 +977,7 @@ function BillingPageContent() {
               <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
                 <h3 className="text-lg font-semibold text-fg">Public pricing view</h3>
                 <p className="mt-2 text-sm text-fg-2">
-                  Sign in to subscribe, manage billing, or redeem team invitations.
+                  Sign in to subscribe or manage billing.
                 </p>
                 <button
                   onClick={() => router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)}
@@ -964,11 +995,11 @@ function BillingPageContent() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-fg">Team seats</h2>
-                <p className="mt-1 text-sm text-fg-2">Invite up to 5 teammates and manage active seats.</p>
+                <p className="mt-1 text-sm text-fg-2">Manage your existing team seats.</p>
               </div>
             </div>
 
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+            {commercialEnabled && <div className="mb-5 flex flex-col gap-3 sm:flex-row">
               <input
                 value={inviteEmail}
                 onChange={(event) => setInviteEmail(event.target.value)}
@@ -982,7 +1013,7 @@ function BillingPageContent() {
               >
                 {teamLoading ? 'Inviting...' : 'Invite teammate'}
               </button>
-            </div>
+            </div>}
 
             <div className="space-y-3">
               {teamSeats.length === 0 ? (
@@ -1011,7 +1042,7 @@ function BillingPageContent() {
           </section>
         )}
 
-        {studentCheckoutPlan && (
+        {studentCheckoutPlan && canPurchasePlan(studentCheckoutPlan) && (
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
             <h2 className="text-lg font-semibold text-fg">Verify student plan</h2>
             <p className="mt-2 max-w-2xl text-sm text-fg-2">

@@ -1,0 +1,243 @@
+{
+  "checkedAt": "2026-10-09T22:46:16Z",
+  "count": 11,
+  "scope": "PR-only audit groups, explicitly excluded from implemented main-branch feature coverage. Source PRs remain unmerged.",
+  "items": [
+    {
+      "id": "P01",
+      "pr": 1833,
+      "feature": "Revision-bound PDF/SyncTeX/geometry artifacts",
+      "scope": "Private artifact manifest, cancellation/owner/epoch fences, cache/coalescing and geometry preview endpoints.",
+      "code": [
+        "backend/app/api/render_artifact_routes.py",
+        "backend/app/services/render_engine/artifacts.py"
+      ],
+      "qa": "Real latest-head worker/image render and current-revision viewer; stale/cancelled/revoked artifacts cannot be fetched or published. Timing claims require controlled cold/warm/cache distributions.",
+      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+      "currentPr": {
+        "number": 1833,
+        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    },
+    {
+      "id": "P02",
+      "pr": 1833,
+      "feature": "Guest and owned semantic document editing",
+      "scope": "Public document projection/patch and owned engine/document GET/PATCH; no-code fields with structure reordering.",
+      "code": [
+        "backend/app/api/resume_engine_routes.py",
+        "backend/app/api/resume_structure_routes.py",
+        "frontend/src/components/ResumeFieldsEditor.tsx"
+      ],
+      "qa": "Facts/source round-trip, revision precondition, collaborator write/revocation, desktop/mobile PDF\u2194field selection and older-result rejection.",
+      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+      "currentPr": {
+        "number": 1833,
+        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
+    },
+    {
+      "id": "P03",
+      "pr": 1833,
+      "feature": "Managed semantic optimization and explicit decisions",
+      "scope": "Provider listing/choice, optimize runs, per-run decisions, typed factual patches and effort tiers.",
+      "code": [
+        "backend/app/api/resume_engine_routes.py",
+        "frontend/src/components/SemanticOptimizationPanel.tsx",
+        "frontend/src/components/ImportedOptimizationPanel.tsx"
+      ],
+      "qa": "Paid-provider choice and cost boundaries; factual acceptance/rejection and canonical candidate PDF; interrupted/repeated requests, no unreviewed write.",
+      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+      "currentPr": {
+        "number": 1833,
+        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
+    },
+    {
+      "id": "P04",
+      "pr": 1833,
+      "feature": "Private original PDF import workflow",
+      "scope": "Staged PDF receipt, original read/delete, adapt into managed document and original identity lookup.",
+      "code": [
+        "backend/app/api/pdf_import_routes.py",
+        "frontend/src/components/PdfImportWizard.tsx",
+        "frontend/src/components/ResumeOriginalPdf.tsx"
+      ],
+      "qa": "Inspect original versus adapted text, explicit review, upload caps, owner isolation, cleanup, unknown confidence explicit and no original public leak.",
+      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+      "currentPr": {
+        "number": 1833,
+        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
+    },
+    {
+      "id": "P05",
+      "pr": 1833,
+      "feature": "Provider-aware conversion failure recovery and responsiveness",
+      "scope": "Configured platform endpoint/model in legacy conversion, BYOK isolation, once-only terminal failure/refund; prompt quick ATS and nonblocking New Resume catalog.",
+      "code": [
+        "backend/app/workers/converter_worker.py",
+        "frontend/src/hooks/useQuickATSScore.ts",
+        "frontend/src/app/workspace/new/page.tsx"
+      ],
+      "qa": "Permanent 404/timeout/invalid output/event publication exception all end terminal with correct refund; real provider acceptance and timings remain separate.",
+      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+      "currentPr": {
+        "number": 1833,
+        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    },
+    {
+      "id": "P06",
+      "pr": 1834,
+      "feature": "Dodo billing and recovery",
+      "scope": "Provider-neutral billing migrations, Dodo quote/checkout/reconciliation/refund ledger; main Razorpay flow is not yet replaced.",
+      "code": [
+        "backend/app/services/dodo_provider.py",
+        "backend/app/services/payment_service.py",
+        "docs/BILLING_DODO.md"
+      ],
+      "qa": "Sandbox exact SKU/amount/currency/identity, signed lifecycle and refund transitions; pending provider refund/production commercial review not claimed complete.",
+      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+      "currentPr": {
+        "number": 1834,
+        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
+    },
+    {
+      "id": "P07",
+      "pr": 1834,
+      "feature": "Guided builder conflict/current-PDF reliability",
+      "scope": "Version preconditions and row locking, preserved conflict drafts, serialized saves, current-source PDF cache, save-before-export and real browser PDF preview.",
+      "code": [
+        "backend/app/api/resume_routes.py",
+        "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
+        "frontend/src/hooks/useBuilderPdf.ts",
+        "frontend/src/lib/resume-navigation.ts"
+      ],
+      "qa": "Create\u2192edit\u2192conflicting save\u2192recover\u2192reload\u2192library reopen\u2192real PDF/SVG/JPEG; email and Drive delivery still require real integration acceptance.",
+      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+      "currentPr": {
+        "number": 1834,
+        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    },
+    {
+      "id": "P08",
+      "pr": 1834,
+      "feature": "New visual editor and first-use presentation components",
+      "scope": "VisualResumeEditor/VisualChangeReviewModal and FirstUseGuide files appear in PR diff; not current-main capabilities.",
+      "code": [
+        "frontend/src/components/VisualResumeEditor.tsx",
+        "frontend/src/components/VisualChangeReviewModal.tsx",
+        "frontend/src/components/FirstUseGuide.tsx"
+      ],
+      "qa": "Verify reachable route/wiring and intended overlap with #1833 before adding to main inventory; changed-file presence is lower evidence than exercised behavior.",
+      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+      "currentPr": {
+        "number": 1834,
+        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
+    },
+    {
+      "id": "P09",
+      "pr": 1851,
+      "feature": "GitHub OAuth completion-ticket ownership fix",
+      "scope": "Wrong account rejected before consuming rightful owner's ticket.",
+      "code": [
+        "backend/app/api/github_routes.py"
+      ],
+      "qa": "Two-account completion attempt, rightful-owner retry, expiry and atomic claim; PR description's test counts not rerun here.",
+      "head": "d6e11f97bb000b15b5d9c7e621e0647fb9b71a9e",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1851",
+      "currentPr": {
+        "number": 1851,
+        "head": "d6e11f97bb000b15b5d9c7e621e0647fb9b71a9e",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1851"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    },
+    {
+      "id": "P10",
+      "pr": 1858,
+      "feature": "Owner-scoped onboarding completion/replay",
+      "scope": "Account-bound completion/replay/readiness and stale callback guards.",
+      "code": [
+        "frontend/src/components/onboarding/OnboardingFlow.tsx"
+      ],
+      "qa": "Owner A\u2192B\u2192A, same-owner refresh, anonymous local compatibility, skip/replay and delayed preference result.",
+      "head": "d3987450aee0ed40cd3c37c4663399b36e44159e",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1858",
+      "currentPr": {
+        "number": 1858,
+        "head": "d3987450aee0ed40cd3c37c4663399b36e44159e",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1858"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    },
+    {
+      "id": "P11",
+      "pr": 1861,
+      "feature": "Legacy provider callback result/notice ownership",
+      "scope": "Settings OAuth callback dispatch/result/notice/popup ownership and provider revision guards.",
+      "code": [
+        "frontend/src/app/settings/page.tsx"
+      ],
+      "qa": "Old owner/provider callback cannot update status/toast/popup; retry intent and same-owner refresh preserved.",
+      "head": "3a8959850a0bce3caa06ddcd35f8effb07598e3a",
+      "url": "https://github.com/sanskarpan/Latexy/pull/1861",
+      "currentPr": {
+        "number": 1861,
+        "head": "3a8959850a0bce3caa06ddcd35f8effb07598e3a",
+        "draft": true,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1861"
+      },
+      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+    }
+  ]
+}

@@ -245,19 +245,21 @@ class TestDraftGraphicsInjection:
 
 
 @pytest.fixture()
-def authed_client():
-    """Create a TestClient with auth dependency overridden."""
-    from fastapi.testclient import TestClient
+async def authed_client(client):
+    """Keep requests and database-pool cleanup on pytest's async loop.
 
+    A synchronous TestClient without a lifespan closes its portal loop after
+    each request. Capability checks now open a dedicated database session, so
+    that pattern strands asyncpg sockets before the shared teardown can dispose
+    the pool. The shared ASGI client uses the same loop as that teardown.
+    """
     from app.main import app
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-user-id"
-    client = TestClient(app, base_url="http://localhost", raise_server_exceptions=False)
     try:
         yield client
     finally:
-        client.close()
         app.dependency_overrides.pop(get_current_user_required, None)
 
 
@@ -288,31 +290,31 @@ def _make_mock_resume(extra_meta=None):
 class TestCompileSettingsEndpoint:
     """Integration-style tests for PATCH /resumes/{id}/settings."""
 
-    def test_invalid_flag_returns_422(self, authed_client):
+    async def test_invalid_flag_returns_422(self, authed_client):
         """Sending an unknown latexmk flag returns 422 Unprocessable Entity."""
-        resp = authed_client.patch(
+        resp = await authed_client.patch(
             "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"latexmk_flags": ["--shell-escape; rm -rf /"]},
         )
         assert resp.status_code == 422
 
-    def test_path_traversal_main_file_returns_422(self, authed_client):
+    async def test_path_traversal_main_file_returns_422(self, authed_client):
         """Sending a path traversal main_file returns 422."""
-        resp = authed_client.patch(
+        resp = await authed_client.patch(
             "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"main_file": "../../etc/passwd"},
         )
         assert resp.status_code == 422
 
-    def test_invalid_texlive_version_returns_422(self, authed_client):
+    async def test_invalid_texlive_version_returns_422(self, authed_client):
         """Sending an invalid texlive_version returns 422."""
-        resp = authed_client.patch(
+        resp = await authed_client.patch(
             "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"texlive_version": "2020"},
         )
         assert resp.status_code == 422
 
-    def test_valid_settings_stored_correctly(self, authed_client):
+    async def test_valid_settings_stored_correctly(self, authed_client):
         """Valid compile settings are saved and reflected in the response."""
         from app.database.connection import get_db
         from app.main import app
@@ -329,7 +331,7 @@ class TestCompileSettingsEndpoint:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = authed_client.patch(
+            resp = await authed_client.patch(
                 "/resumes/11111111-1111-1111-1111-111111111111/settings",
                 json={
                     "texlive_version": "2023",
@@ -347,17 +349,17 @@ class TestCompileSettingsEndpoint:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
-    def test_extra_packages_with_special_chars_returns_422(self, authed_client):
+    async def test_extra_packages_with_special_chars_returns_422(self, authed_client):
         """Package names with special chars are rejected before hitting the DB."""
-        resp = authed_client.patch(
+        resp = await authed_client.patch(
             "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"extra_packages": ["xcolor; rm -rf /"]},
         )
         assert resp.status_code == 422
 
-    def test_package_name_too_long_returns_422(self, authed_client):
+    async def test_package_name_too_long_returns_422(self, authed_client):
         """Package names exceeding 50 chars are rejected."""
-        resp = authed_client.patch(
+        resp = await authed_client.patch(
             "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"extra_packages": ["a" * 51]},
         )

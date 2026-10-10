@@ -24,6 +24,11 @@ describe('end-of-cycle subscription cancellation', () => {
     expect(MANAGER_SOURCE).toContain("subscription.status === 'active' && subscription.subscriptionId")
   })
 
+  test('pausing new sales cannot disable the cancellation button', () => {
+    expect(MANAGER_SOURCE).toContain('disabled={isCancelling}')
+    expect(MANAGER_SOURCE).not.toContain('disabled={isCancelling || !billingStatus?.available}')
+  })
+
   test('the Free action does not claim an immediate downgrade', () => {
     expect(BILLING_PAGE_SOURCE).toContain('Your paid access continues until then.')
     expect(BILLING_PAGE_SOURCE).toContain(

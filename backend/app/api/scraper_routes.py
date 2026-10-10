@@ -4,7 +4,7 @@ Job Board URL Scraper routes — Feature 33.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from ..core.logging import get_logger
 from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.rate_limiting import client_ip_id
 from ..services.job_scraper_service import job_scraper_service
 

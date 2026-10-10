@@ -21,7 +21,7 @@ describe('BYOK load recovery', () => {
 
   it('blocks adding a key when provider configuration failed', () => {
     expect(MANAGER).toContain('const [providersError, setProvidersError]')
-    expect(MANAGER).toContain('disabled={Boolean(providersError) || Object.keys(providers).length === 0}')
+    expect(MANAGER).toContain("disabled={!can('d25') || (Boolean(providersError) || Object.keys(providers).length === 0)}")
     expect(MANAGER).toContain('Retry providers')
   })
 })

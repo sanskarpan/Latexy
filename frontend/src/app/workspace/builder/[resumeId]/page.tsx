@@ -1,5 +1,9 @@
 'use client'
 
+import CapabilityGate from '@/components/CapabilityGate'
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -300,6 +304,9 @@ function BuilderResumeForm({
   session: BuilderSession
   authUnverified: boolean
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const ownerId = session.user.id
 
   const [loading, setLoading] = useState(true)
@@ -316,6 +323,9 @@ function BuilderResumeForm({
   const structuredRef = useRef(structured)
   structuredRef.current = structured
   const [templateFamily, setTemplateFamily] = useState('minimal')
+  useCapabilityDraftRecovery(ownerId, `latexy-builder-${resumeId}-draft.json`, dirty, {
+    format: 'latexy-builder-draft', version: 1, resume_id: resumeId, title, template_id: selectedTemplateId, template_family: templateFamily, structured_content: structured,
+  })
   const [builderStatus, setBuilderStatus] = useState<'active' | 'detached'>('active')
   const [activeSection, setActiveSection] = useState<SectionKey>('summary')
   const initialLoad = useRef(true)
@@ -325,7 +335,7 @@ function BuilderResumeForm({
   const sectionRefs = useRef<Partial<Record<SectionKey, HTMLElement | null>>>({})
   const mountedRef = useRef(false)
   const authVerifiedRef = useRef(!authUnverified)
-  authVerifiedRef.current = !authUnverified
+  authVerifiedRef.current = !authUnverified && can('b08')
 
   useEffect(() => {
     mountedRef.current = true
@@ -419,7 +429,7 @@ function BuilderResumeForm({
       initialLoad.current = false
       return
     }
-    if (authUnverified) return
+    if (authUnverified || !can('b08')) return
     if (!dirty || builderStatus === 'detached') return
     if (!title.trim() || title.length > 255) {
       setSaveError(!title.trim() ? 'A resume title is required' : 'Resume titles must be 255 characters or fewer')
@@ -451,7 +461,7 @@ function BuilderResumeForm({
       }
     }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
+  }, [can, authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
@@ -521,6 +531,7 @@ function BuilderResumeForm({
   }
 
   const forceReattach = async () => {
+    if (!canRef.current('b09')) return
     if (!isCurrentRequest()) return
     const revision = editRevision.current
     const requestId = ++saveRequestId.current
@@ -630,10 +641,10 @@ function BuilderResumeForm({
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+            <CapabilityGate feature="b09"><button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
-            </button>
+            </button></CapabilityGate>
           </div>
         </section>
       ) : null}

@@ -1,5 +1,8 @@
 'use client'
 
+import CapabilityGate from '@/components/CapabilityGate'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -60,6 +63,9 @@ const CJK_TRANSLATION_CODES = new Set(['zh', 'zh-tw', 'ja', 'ko'])
 const RTL_TRANSLATION_CODES = new Set(['ar', 'he'])
 
 export default function WorkspacePage() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const { t } = useI18n()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const router = useRouter()
@@ -329,6 +335,7 @@ export default function WorkspacePage() {
   )
 
   const handleBulkExport = async (format: 'tex' | 'pdf' | 'docx') => {
+    if (!canRef.current('h04')) return
     setExportLoading(true)
     setExportMenuOpen(false)
     try {
@@ -347,6 +354,7 @@ export default function WorkspacePage() {
   // The bulk endpoint exports everything, so we export each filtered
   // resume individually to respect the active filter.
   const handleFilteredExport = async (format: 'tex' | 'pdf' | 'docx') => {
+    if (!canRef.current('h04')) return
     const targets = filteredResumes
     if (targets.length === 0) return
     setExportLoading(true)
@@ -391,6 +399,7 @@ export default function WorkspacePage() {
   }, [])
 
   const handleFork = useCallback(async (resumeId: string, title: string) => {
+    if (!canRef.current('b11')) return
     setIsForking(true)
     try {
       const newResume = await apiClient.forkResume(resumeId, title || undefined)
@@ -448,6 +457,7 @@ export default function WorkspacePage() {
   }, [])
 
   const handleTranslate = useCallback(async (resumeId: string, langCode: string) => {
+    if (!canRef.current('d15')) return
     const lang = TRANSLATE_LANGUAGES.find(l => l.code === langCode)
     if (!lang) return
     const ownerAtStart = workspaceIdentityRef.current.ownerId
@@ -480,6 +490,7 @@ export default function WorkspacePage() {
   }, [router])
 
   const handleGeneratePortfolio = useCallback(async (resumeId: string) => {
+    if (!canRef.current('g12')) return
     setIsGeneratingPortfolio(resumeId)
     try {
       const result = await apiClient.generatePortfolioSite(resumeId)
@@ -509,6 +520,7 @@ export default function WorkspacePage() {
 
   // Feature 39 handlers
   const handlePin = useCallback(async (resumeId: string, isPinned: boolean) => {
+    if (!canRef.current('b02')) return
     try {
       const updated = isPinned
         ? await apiClient.unpinResume(resumeId)
@@ -520,6 +532,7 @@ export default function WorkspacePage() {
   }, [])
 
   const handleArchive = useCallback(async (resumeId: string) => {
+    if (!canRef.current('b02')) return
     setIsArchiving(true)
     try {
       await apiClient.archiveResume(resumeId)
@@ -555,6 +568,7 @@ export default function WorkspacePage() {
   }, [])
 
   const handleSaveTags = useCallback(async () => {
+    if (!canRef.current('b02')) return
     if (!tagEditResumeId) return
     const tags = tagEditValue
       .split(',')
@@ -720,27 +734,27 @@ export default function WorkspacePage() {
             className="fixed inset-0 z-40 cursor-default"
           />
           <div className="absolute right-0 top-10 z-50 w-56 rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)]">
-            <button onClick={() => { setOpenCardMenu(null); setQuickTailorResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            <CapabilityGate feature="d04"><button onClick={() => { setOpenCardMenu(null); setQuickTailorResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Zap size={13} className="text-fg-3" /> Tailor to a job
-            </button>
+            </button></CapabilityGate>
             <Link href={`/workspace/${resume.id}/cover-letter`} onClick={() => setOpenCardMenu(null)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <FileText size={13} className="text-fg-3" /> Cover letter
             </Link>
-            <button onClick={() => { setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            <CapabilityGate feature="b11"><button onClick={() => { setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <GitFork size={13} className="text-fg-3" /> Fork a variant
-            </button>
+            </button></CapabilityGate>
             {isVariant && resume.parent_resume_id && (
               <button onClick={() => { setOpenCardMenu(null); handleCompareWithParent(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
                 <GitMerge size={13} className="text-fg-3" /> Compare with parent
               </button>
             )}
-            <button onClick={() => { setOpenCardMenu(null); openTranslateModal(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            <CapabilityGate feature="d15"><button onClick={() => { setOpenCardMenu(null); openTranslateModal(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Languages size={13} className="text-fg-3" /> Translate
-            </button>
-            <button onClick={() => { setOpenCardMenu(null); portfolioUrls[resume.id] ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer') : handleGeneratePortfolio(resume.id) }} disabled={isGeneratingPortfolio === resume.id} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50">
+            </button></CapabilityGate>
+            <CapabilityGate feature="g12"><button onClick={() => { setOpenCardMenu(null); portfolioUrls[resume.id] ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer') : handleGeneratePortfolio(resume.id) }} disabled={isGeneratingPortfolio === resume.id} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50">
               {isGeneratingPortfolio === resume.id ? <Loader2 size={13} className="animate-spin text-fg-3" /> : <Globe size={13} className="text-fg-3" />}
               {portfolioUrls[resume.id] ? 'View portfolio' : 'Portfolio site'}
-            </button>
+            </button></CapabilityGate>
             <button onClick={() => { setOpenCardMenu(null); void handlePortfolioVisibility(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <BookUser size={13} className="text-fg-3" />
               {resume.portfolio_visible ? 'Hide from public profile' : 'Show on public profile'}
@@ -748,7 +762,7 @@ export default function WorkspacePage() {
             <button onClick={() => { setOpenCardMenu(null); setShareModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Share2 size={13} className="text-fg-3" /> {resume.share_token ? 'Manage share link' : 'Share'}
             </button>
-            <button
+            <CapabilityGate feature="e12"><button
               onClick={() => { setOpenCardMenu(null); setApplyModalResume(resume) }}
               title="Fill out and submit an application for a specific job posting using this resume"
               className="flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg"
@@ -758,8 +772,8 @@ export default function WorkspacePage() {
                 <span className="block">Quick apply</span>
                 <span className="block text-[10px] text-fg-3">Submit an application now</span>
               </span>
-            </button>
-            <button
+            </button></CapabilityGate>
+            <CapabilityGate feature="e05"><button
               onClick={() => { setOpenCardMenu(null); setTrackerModalResumeId(resume.id) }}
               title="Log a job you already applied to elsewhere, so you can track its status here"
               className="flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg"
@@ -769,25 +783,25 @@ export default function WorkspacePage() {
                 <span className="block">Add to tracker</span>
                 <span className="block text-[10px] text-fg-3">Log an application you already made</span>
               </span>
-            </button>
-            <button onClick={() => { setOpenCardMenu(null); setReferencesModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            </button></CapabilityGate>
+            <CapabilityGate feature="g11"><button onClick={() => { setOpenCardMenu(null); setReferencesModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <BookUser size={13} className="text-fg-3" /> References page
-            </button>
+            </button></CapabilityGate>
             <div className="my-1 border-t border-line" />
             <div className="px-2 py-0.5"><ExportDropdown resumeId={resume.id} variant="card" /></div>
             {!isVariant && (
               <>
                 <div className="my-1 border-t border-line" />
-                <button onClick={() => { setOpenCardMenu(null); handlePin(resume.id, !!resume.pinned) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+                <CapabilityGate feature="b02"><button onClick={() => { setOpenCardMenu(null); handlePin(resume.id, !!resume.pinned) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
                   {resume.pinned ? <PinOff size={13} className="text-fg-3" /> : <Pin size={13} className="text-fg-3" />}
                   {resume.pinned ? 'Unpin' : 'Pin to top'}
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setTagEditResumeId(resume.id); setTagEditValue(resume.tags?.join(', ') ?? '') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+                </button></CapabilityGate>
+                <CapabilityGate feature="b02"><button onClick={() => { setOpenCardMenu(null); setTagEditResumeId(resume.id); setTagEditValue(resume.tags?.join(', ') ?? '') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
                   <Tag size={13} className="text-fg-3" /> Edit tags
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setArchiveConfirmResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
+                </button></CapabilityGate>
+                <CapabilityGate feature="b02"><button onClick={() => { setOpenCardMenu(null); setArchiveConfirmResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
                   <Archive size={13} /> Archive
-                </button>
+                </button></CapabilityGate>
               </>
             )}
           </div>
@@ -878,12 +892,12 @@ export default function WorkspacePage() {
         >
           <Pencil size={12} /> Edit
         </Link>
-        <Link
+        <CapabilityGate feature="d01"><Link
           href={`/workspace/${resume.id}/optimize`}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110"
         >
           <Sparkles size={12} /> Optimize
-        </Link>
+        </Link></CapabilityGate>
         {renderActionMenu(resume, isVariant)}
       </div>
     </article>
@@ -919,23 +933,24 @@ export default function WorkspacePage() {
           <p className="mt-1 text-sm text-fg-2">{t('workspace.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
+          <CapabilityGate feature="b03"><button
             onClick={() => setProjectSearchOpen(true)}
             title="Search resume content — full text (⌘⇧F)"
+            aria-label="Search resume content"
             className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-3 py-2 text-xs flex items-center gap-1.5"
           >
             <Search className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{t('workspace.searchContent')} <span className="text-fg-3">⌘⇧F</span></span>
-          </button>
+          </button></CapabilityGate>
           <Link href="/workspace/history" className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             {t('workspace.runHistory')}
           </Link>
-          <button
+          <CapabilityGate feature="d21"><button
             onClick={() => setMatchModalOpen(true)}
             className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           >
             {t('workspace.matchToJob')}
-          </button>
+          </button></CapabilityGate>
 
           {/* Export dropdown (Feature 49) */}
           <div className="relative">
@@ -975,14 +990,13 @@ export default function WorkspacePage() {
                       { format: 'pdf', label: 'PDF Files (.pdf)' },
                       { format: 'docx', label: 'Word Docs (.docx)' },
                     ] as const).map(({ format, label }) => (
-                      <button
-                        key={`filtered-${format}`}
+                      <CapabilityGate feature="h04" key={`filtered-${format}`}><button
                         onClick={() => handleFilteredExport(format)}
                         disabled={filteredResumes.length === 0}
                         className="w-full px-3 py-2 text-left text-[12px] text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50"
                       >
                         {label}
-                      </button>
+                      </button></CapabilityGate>
                     ))}
                     <div className="my-1 border-t border-line" />
                   </>
@@ -995,19 +1009,18 @@ export default function WorkspacePage() {
                   { format: 'pdf', label: 'PDF Files (.zip)' },
                   { format: 'docx', label: 'Word Docs (.zip)' },
                 ] as const).map(({ format, label }) => (
-                  <button
-                    key={`all-${format}`}
+                  <CapabilityGate feature="h04" key={`all-${format}`}><button
                     onClick={() => handleBulkExport(format)}
                     className="w-full px-3 py-2 text-left text-[12px] text-fg-2 transition hover:bg-surface-2 hover:text-fg"
                   >
                     {label}
-                  </button>
+                  </button></CapabilityGate>
                 ))}
               </div>
             )}
           </div>
 
-          <Link
+          <CapabilityGate feature="b13"><Link
             href="/workspace/merge"
             aria-label="Merge resumes"
             title="Merge resumes"
@@ -1015,7 +1028,7 @@ export default function WorkspacePage() {
           >
             <GitMerge size={12} aria-hidden="true" />
             <span className="hidden sm:inline">Merge</span>
-          </Link>
+          </Link></CapabilityGate>
 
           <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
             {t('workspace.newResume')}
@@ -1207,12 +1220,12 @@ export default function WorkspacePage() {
                             >
                               Edit
                             </Link>
-                            <Link
+                            <CapabilityGate feature="d01"><Link
                               href={`/workspace/${resume.id}/optimize`}
                               className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                             >
                               Optimize
-                            </Link>
+                            </Link></CapabilityGate>
                             {renderActionMenu(resume, false)}
                           </div>
                         </td>
@@ -1249,12 +1262,12 @@ export default function WorkspacePage() {
                               >
                                 Edit
                               </Link>
-                              <Link
+                              <CapabilityGate feature="d01"><Link
                                 href={`/workspace/${variant.id}/optimize`}
                                 className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                               >
                                 Optimize
-                              </Link>
+                              </Link></CapabilityGate>
                               {renderActionMenu(variant, true)}
                             </div>
                           </td>
@@ -1664,7 +1677,7 @@ export default function WorkspacePage() {
         />
       )}
 
-      <SemanticMatchModal
+      <CapabilityGate feature="d21"><SemanticMatchModal
         isOpen={matchModalOpen}
         onClose={() => setMatchModalOpen(false)}
         onMatch={async (jd) => {
@@ -1683,12 +1696,12 @@ export default function WorkspacePage() {
         results={matchResults}
         isLoading={isMatchLoading}
         error={matchError}
-      />
+      /></CapabilityGate>
 
-      <ProjectSearchModal
+      <CapabilityGate feature="b03"><ProjectSearchModal
         open={projectSearchOpen}
         onClose={() => setProjectSearchOpen(false)}
-      />
+      /></CapabilityGate>
 
       {shareModalResumeId && shareModalResume && (
         <ShareResumeModal
@@ -1721,16 +1734,16 @@ export default function WorkspacePage() {
       )}
 
       {trackerModalResumeId && (
-        <AddApplicationModal
+        <CapabilityGate feature="e05"><AddApplicationModal
           onClose={() => setTrackerModalResumeId(null)}
           onCreated={(_app: JobApplication) => setTrackerModalResumeId(null)}
           prefillResumeId={trackerModalResumeId}
           prefillResumeTitle={trackerModalResume?.title}
-        />
+        /></CapabilityGate>
       )}
 
       {quickTailorResume && (
-        <QuickTailorModal
+        <CapabilityGate feature="d04"><QuickTailorModal
           resumeId={quickTailorResume.id}
           resumeTitle={quickTailorResume.title}
           onClose={() => setQuickTailorResume(null)}
@@ -1739,33 +1752,33 @@ export default function WorkspacePage() {
             // Refresh resume list so the new fork appears
             void fetchData()
           }}
-        />
+        /></CapabilityGate>
       )}
 
       {referencesModalResume && (
-        <GenerateReferencesModal
+        <CapabilityGate feature="g11"><GenerateReferencesModal
           isOpen={true}
           onClose={() => setReferencesModalResume(null)}
           resumeId={referencesModalResume.id}
           resumeTitle={referencesModalResume.title}
-        />
+        /></CapabilityGate>
       )}
 
       {/* Quick Apply modal (Feature 87) */}
       {applyModalResume && (
-        <ApplyModal
+        <CapabilityGate feature="e12"><ApplyModal
           resumeId={applyModalResume.id}
           resumeTitle={applyModalResume.title}
           onClose={() => setApplyModalResume(null)}
-        />
+        /></CapabilityGate>
       )}
 
-      <OnboardingFlow
+      <CapabilityGate feature="a06"><OnboardingFlow
         isOpen={isOnboardingOpen}
         onComplete={completeOnboarding}
         onSkip={skipOnboarding}
         userType="new"
-      />
+      /></CapabilityGate>
 
       {/* Tag Edit modal (Feature 39) */}
       {tagEditResumeId && (

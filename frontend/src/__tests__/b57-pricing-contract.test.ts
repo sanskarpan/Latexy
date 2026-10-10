@@ -15,7 +15,7 @@ describe('B57 pricing contract', () => {
     expect(CARD_SOURCE).toContain("plan.purchase_type === 'one_time' ? 'one-time payment'")
     expect(CARD_SOURCE).toContain("plan.id === 'free'")
     expect(CARD_SOURCE).toContain('No payment required')
-    expect(BILLING_SOURCE).toContain("['free', 'basic', 'pro', 'byok', 'student', 'team', 'weekly', 'lifetime']")
+    expect(BILLING_SOURCE).toContain('catalogPlansForPeriod(plans, billingPeriod)')
   })
 
   it('does not offer student checkout while the provider is unavailable', () => {

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import { MotionItem, MotionReveal, MotionStagger } from '@/components/marketing/MotionPrimitives'
 
 const faqs = [
@@ -64,12 +65,12 @@ export default function FAQPage() {
         <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
           The fastest answer is a compile. Bring your own key or use ours — three free runs, no card.
         </p>
-        <Link
+        <CapabilityGate feature="a09"><Link
           href="/try"
           className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
         >
           Open the studio →
-        </Link>
+        </Link></CapabilityGate>
       </section>
     </div>
   )

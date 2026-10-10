@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func as sa_func
 from sqlalchemy import or_, select
@@ -19,6 +19,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import CoverLetter, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.entitlement_service import QuotaTicket, entitlement_service
@@ -294,6 +295,8 @@ async def generate_cover_letter(
     user_api_key = None
     try:
         user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except HTTPException:
+        raise
     except Exception:
         user_api_key = None
 

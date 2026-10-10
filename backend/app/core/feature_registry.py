@@ -13,7 +13,9 @@ always-on.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -25,16 +27,24 @@ class FeatureDef:
     category: str  # core | editor | career | advanced | integrations | analytics
     description: str
     gateable: bool = True
+    parent_key: str | None = None
+    inventory_id: str | None = None
+    always_on_reason: str | None = None
 
 
 # Plan families the matrix is keyed by (mirrors config.PLAN_FAMILY_ALIASES targets).
 PLAN_FAMILIES = ["free", "basic", "pro", "byok", "team"]
 
+# Account roles only. Document/workspace/tenant roles remain independent ACLs.
+# Anonymous is a request context, never an assignable users.role value.
+CAPABILITY_ROLES = ["anonymous", "user", "support", "admin"]
+
 
 FEATURE_REGISTRY: list[FeatureDef] = [
     # ---- core -------------------------------------------------------------
     FeatureDef("compile", "LaTeX Compilation", "core",
-               "Compile LaTeX source to PDF.", gateable=False),
+               "Compile LaTeX source to PDF.", gateable=False,
+               always_on_reason="Core compilation remains available with all security and quota limits enforced."),
     FeatureDef("llm_optimize", "AI Resume Optimization", "core",
                "Rewrite and optimize a resume with the AI engine."),
     FeatureDef("ats_score", "ATS Scoring", "core",
@@ -103,6 +113,25 @@ FEATURE_REGISTRY: list[FeatureDef] = [
 ]
 
 
+# The audited product inventory is data, not a second manually maintained list.
+# Coarse controls above remain stable parent switches for backwards compatibility.
+CAPABILITY_INVENTORY = json.loads(
+    Path(__file__).with_name("capability_catalog.json").read_text(encoding="utf-8")
+)
+FEATURE_REGISTRY.extend(
+    FeatureDef(**{key: value for key, value in row.items() if key != "source_paths"})
+    for row in CAPABILITY_INVENTORY
+)
+
+# Stable concrete commercial SKUs. A SKU restriction can only narrow its family.
+PLAN_KEYS = ["free", "basic", "basic_annual", "pro", "pro_annual", "byok",
+             "byok_annual", "student", "team", "weekly", "lifetime"]
+PLAN_MATRIX_KEYS = list(dict.fromkeys([*PLAN_FAMILIES, *PLAN_KEYS]))
+PLAN_SKU_ALIASES = {
+    "basic_monthly": "basic", "pro_monthly": "pro", "byok_monthly": "byok",
+    "student_monthly": "student", "team_monthly": "team", "team_member": "team",
+}
+
 # Index for O(1) lookup.
 _REGISTRY_BY_KEY: dict[str, FeatureDef] = {f.key: f for f in FEATURE_REGISTRY}
 
@@ -126,3 +155,17 @@ def is_gateable(key: str) -> bool:
     """Return True if the key is a known, gateable feature."""
     feature = _REGISTRY_BY_KEY.get(key)
     return bool(feature and feature.gateable)
+
+
+def feature_ancestry(key: str) -> tuple[FeatureDef, ...]:
+    """Return the capability and its parent controls, rejecting broken catalogs."""
+    chain: list[FeatureDef] = []
+    seen: set[str] = set()
+    while key:
+        feature = get_feature(key)
+        if feature is None or key in seen:
+            raise ValueError(f"Invalid capability hierarchy at {key!r}")
+        seen.add(key)
+        chain.append(feature)
+        key = feature.parent_key or ""
+    return tuple(chain)

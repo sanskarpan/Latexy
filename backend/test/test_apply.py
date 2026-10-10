@@ -170,6 +170,12 @@ def _make_app():
 
     # Override auth
     app.dependency_overrides[get_current_user_required] = lambda: "user-test-001"
+    # Payload-validation tests use a fabricated account. Explicitly allow the
+    # product boundary rather than relying on the old missing-user fail-open.
+    for route in apply_router.routes:
+        for dependency in route.dependant.dependencies:
+            if dependency.call.__module__ in {"app.middleware.entitlements", "app.middleware.capability_router"}:
+                app.dependency_overrides[dependency.call] = lambda: "user-test-001"
 
     # Override DB — minimal async mock
     mock_db = AsyncMock()

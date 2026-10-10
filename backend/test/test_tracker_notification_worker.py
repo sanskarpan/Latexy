@@ -19,6 +19,14 @@ from app.workers import tracker_notification_worker as worker
 NOW = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _allow_capabilities_for_delivery_fixtures(monkeypatch):
+    # These unit users are intentionally not stored in the DB. Keep delivery
+    # mechanics independent of grants; OFF/re-enable is covered separately in
+    # test_capability_boundary_regressions with a fail-on-send assertion.
+    monkeypatch.setattr(worker.entitlement_service, "has_feature", AsyncMock(return_value=True))
+
+
 def _result(rows):
     """Return the small synchronous result surface used by ``AsyncSession.execute``."""
     return SimpleNamespace(all=lambda: rows)

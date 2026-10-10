@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
@@ -12,8 +15,12 @@ import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
 import SecuritySettings from '@/components/auth/SecuritySettings'
 import ReferralPanel from '@/components/ReferralPanel'
 import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
+import { claimOAuthCompletion } from '@/lib/oauth-completion-claims'
 
 function SettingsContent() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -90,6 +97,7 @@ function SettingsContent() {
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
   const handleReplayTour = () => {
+    if (!can('a06')) return
     resetOnboarding()
     router.push('/workspace')
   }
@@ -216,7 +224,7 @@ function SettingsContent() {
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
-  const oauthCompletionStartedRef = useRef<string | null>(null)
+  const oauthCompletionHandledRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
   const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
@@ -567,14 +575,23 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    // A callback ticket is one intent, not a new intent after account/token
-    // rotation. Never replay a started GitHub ticket as the replacement user.
-    const completionKey = provider === 'github'
-      ? `${provider}:${ticket}`
-      : `${accountKey}:${provider}:${ticket}`
-    if (oauthCompletionStartedRef.current === completionKey) return
-
-    oauthCompletionStartedRef.current = completionKey
+    // AccountBoundary can remount this component before router.replace removes
+    // the callback URL. Admission must outlive refs and account/token changes,
+    // and is intentionally independent of current feature availability so an
+    // already-admitted OAuth flow can recover after its feature is turned off.
+    // This local marker only avoids repeating URL cleanup (which could race a
+    // successful return_to navigation). The document ledger controls dispatch.
+    const completionKey = `${provider}:${ticket}`
+    if (oauthCompletionHandledRef.current === completionKey) return
+    oauthCompletionHandledRef.current = completionKey
+    const claim = claimOAuthCompletion(provider, ticket)
+    if (claim !== 'claimed') {
+      if (claim !== 'duplicate') {
+        setProviderError(`The ${providerName} connection could not be completed safely. Refresh the page and try connecting again.`)
+      }
+      router.replace(pathname, { scroll: false })
+      return
+    }
     const googleDriveOwner = provider === 'google_drive'
       ? { accountKey, ticket, active: true, statusApplied: false }
       : null
@@ -887,10 +904,15 @@ function SettingsContent() {
   }
 
   async function handleConnectGitHub() {
+    if (!can('g01')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g01')
+    if (!isCurrent()) return
     setGhConnecting(true)
     setGhError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startGitHubOAuth('sync')
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'github.com',
         pathname: '/login/oauth/authorize',
@@ -898,16 +920,24 @@ function SettingsContent() {
       if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
+      if (!isCurrent()) return
       setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
       setGhConnecting(false)
+    } finally {
+      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setGhConnecting(false)
     }
   }
 
   async function handleConnectZotero() {
+    if (!can('g07')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g07')
+    if (!isCurrent()) return
     setZotConnecting(true)
     setZotError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startZoteroOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'www.zotero.org',
         pathname: '/oauth/authorize',
@@ -915,8 +945,11 @@ function SettingsContent() {
       if (!authorizationUrl) throw new Error('Zotero returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
+      if (!isCurrent()) return
       setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
       setZotConnecting(false)
+    } finally {
+      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setZotConnecting(false)
     }
   }
 
@@ -942,10 +975,15 @@ function SettingsContent() {
   }
 
   async function handleConnectDropbox() {
+    if (!can('g05')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g05')
+    if (!isCurrent()) return
     setDbxConnecting(true)
     setDbxError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startDropboxOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'www.dropbox.com',
         pathname: '/oauth2/authorize',
@@ -953,8 +991,11 @@ function SettingsContent() {
       if (!authorizationUrl) throw new Error('Dropbox returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
+      if (!isCurrent()) return
       setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
       setDbxConnecting(false)
+    } finally {
+      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setDbxConnecting(false)
     }
   }
 
@@ -980,11 +1021,16 @@ function SettingsContent() {
   }
 
   async function handleConnectGoogleDrive() {
+    if (!can('g06')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g06')
+    if (!isCurrent()) return
     if (gdriveConnecting || gdriveDisconnecting) return
     setGdriveConnecting(true)
     setGdriveError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startGoogleDriveOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'accounts.google.com',
         pathname: '/o/oauth2/v2/auth',
@@ -994,8 +1040,11 @@ function SettingsContent() {
       }
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
+      if (!isCurrent()) return
       setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
       setGdriveConnecting(false)
+    } finally {
+      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setGdriveConnecting(false)
     }
   }
 
@@ -1043,10 +1092,15 @@ function SettingsContent() {
   }
 
   async function handleConnectMendeley() {
+    if (!can('g08')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g08')
+    if (!isCurrent()) return
     setMenConnecting(true)
     setMenError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startMendeleyOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'api.mendeley.com',
         pathname: '/oauth/authorize',
@@ -1054,8 +1108,11 @@ function SettingsContent() {
       if (!authorizationUrl) throw new Error('Mendeley returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
+      if (!isCurrent()) return
       setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
       setMenConnecting(false)
+    } finally {
+      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setMenConnecting(false)
     }
   }
 
@@ -1223,15 +1280,15 @@ function SettingsContent() {
                   {ghDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                   {ghDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                 </button>
-                {!ghStatus.private_sync && (
+                {!ghStatus.private_sync && can('g01') && (
                   <button
                     onClick={handleConnectGitHub}
-                    disabled={ghConnecting}
+                    disabled={!can('g01') || (ghConnecting)}
                     className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-3 py-1.5 text-[11px] font-medium text-fg ring-1 ring-line transition hover:brightness-110 disabled:opacity-40"
-                  >
+                   aria-description={!can('g01') ? 'Unavailable for your current plan or feature settings' : undefined}>
                     {ghConnecting ? <Loader2 size={11} className="animate-spin" /> : <Github size={11} />}
                     {ghConnecting ? 'Authorizing…' : 'Enable private sync'}
-                  </button>
+                  {!can('g01') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
                 )}
               </div>
               <p className="text-[10px] leading-relaxed text-fg-3">
@@ -1246,14 +1303,14 @@ function SettingsContent() {
                 This requests read/write access to your repositories because GitHub OAuth cannot
                 make private source-code access read-only. Push from the editor manually to save a version in Git.
               </p>
-              <button
+              {can('g01') && <button
                 onClick={handleConnectGitHub}
-                disabled={ghConnecting}
+                disabled={!can('g01') || (ghConnecting)}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2 px-4 py-2 text-sm font-semibold text-fg ring-1 ring-line transition hover:bg-surface-2 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+               aria-description={!can('g01') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {ghConnecting ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
                 {ghConnecting ? 'Connecting…' : 'Connect GitHub'}
-              </button>
+              {!can('g01') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           )}
 
@@ -1315,14 +1372,14 @@ function SettingsContent() {
               <p className="text-[12px] text-fg-3">
                 Connect your Zotero account to import your reference library as BibTeX directly into any resume.
               </p>
-              <button
+              {can('g07') && <button
                 onClick={handleConnectZotero}
-                disabled={zotConnecting}
+                disabled={!can('g07') || (zotConnecting)}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+               aria-description={!can('g07') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {zotConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
                 {zotConnecting ? 'Connecting…' : 'Connect Zotero'}
-              </button>
+              {!can('g07') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           )}
 
@@ -1384,14 +1441,14 @@ function SettingsContent() {
               <p className="text-[12px] text-fg-3">
                 Connect your Mendeley account to import your research library as BibTeX directly into any resume.
               </p>
-              <button
+              {can('g08') && <button
                 onClick={handleConnectMendeley}
-                disabled={menConnecting}
+                disabled={!can('g08') || (menConnecting)}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+               aria-description={!can('g08') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {menConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
                 {menConnecting ? 'Connecting…' : 'Connect Mendeley'}
-              </button>
+              {!can('g08') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           )}
 
@@ -1451,14 +1508,14 @@ function SettingsContent() {
                 <span className="font-mono text-fg-2">/Latexy/</span> in your Dropbox.
                 Push and pull from the editor toolbar per resume.
               </p>
-              <button
+              {can('g05') && <button
                 onClick={handleConnectDropbox}
-                disabled={dbxConnecting}
+                disabled={!can('g05') || (dbxConnecting)}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+               aria-description={!can('g05') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {dbxConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
                 {dbxConnecting ? 'Connecting…' : 'Connect Dropbox'}
-              </button>
+              {!can('g05') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           )}
 
@@ -1517,15 +1574,15 @@ function SettingsContent() {
                 <span className="font-mono text-fg-2">drive.file</span> scope: Latexy can access files it creates for you,
                 not your whole Drive. Latexy does not read unrelated Drive files.
               </p>
-              <button
+              {can('g06') && <button
                 type="button"
                 onClick={handleConnectGoogleDrive}
-                disabled={gdriveConnecting || gdriveDisconnecting}
+                disabled={!can('g06') || (gdriveConnecting || gdriveDisconnecting)}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+               aria-description={!can('g06') ? 'Unavailable for your current plan or feature settings' : undefined}>
                 {gdriveConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
                 {gdriveConnecting ? 'Connecting…' : 'Connect Google Drive'}
-              </button>
+              {!can('g06') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           )}
 
@@ -1878,13 +1935,13 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Getting Started</h2>
           </div>
           <p className="mt-2 text-sm text-fg-2">Want a refresher? Replay the product tour that runs the first time you sign in.</p>
-          <button
+          <CapabilityGate feature="a06"><button
             type="button"
             onClick={handleReplayTour}
             className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm font-medium text-fg transition hover:bg-surface-2"
           >
             Replay product tour
-          </button>
+          </button></CapabilityGate>
         </div>
       </div>
     </div>

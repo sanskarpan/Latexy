@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.observability import record_frontend_event
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 
 logger = get_logger(__name__)
 

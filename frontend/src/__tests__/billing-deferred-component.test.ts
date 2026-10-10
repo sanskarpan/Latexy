@@ -72,21 +72,28 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
     },
   }))
   vi.doMock('react/jsx-runtime', () => ({
+    Fragment: 'Fragment',
     jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
     jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
+  }))
+  vi.doMock('react/jsx-dev-runtime', () => ({
+    Fragment: 'Fragment',
+    jsxDEV: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
   }))
   vi.doMock('next/link', () => ({ default: 'Link' }))
   vi.doMock('next/navigation', () => ({
     useRouter: () => ({ push: vi.fn() }),
     useSearchParams: () => ({ get: (key: string) => key === 'student_verify' ? studentToken : key === 'team_invite' ? teamToken : null }),
   }))
+  const entitlementFeatures = { i02: true }
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true, features: entitlementFeatures, loaded: true }) }))
   vi.doMock('@/contexts/FeatureFlagsContext', () => ({
     useFeatureFlags: () => ({ billing: true, trial_limits: true, upgrade_ctas: true }),
   }))
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: session, isPending: false, error: null }) }))
   vi.doMock('@/lib/api-client', () => ({
     apiClient: {
-      getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans: {}, billing: { available: true } } }),
+      getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans: { student: { id: 'student', capabilities: { i02: true }, purchasable: true } }, billing: { available: true } } }),
       verifyStudentSubscription: verify,
       previewTeamSeat: preview,
       joinTeamSeat: join,
@@ -104,6 +111,12 @@ async function loadBillingHarness(kind: 'student' | 'team'): Promise<Harness> {
     effects = []
     return (content.type as () => VNode)()
   }
+  // Verification waits for the authenticated, target-SKU catalog grants.
+  render()
+  effects[0]()
+  await Promise.resolve()
+  await Promise.resolve()
+  render()
   const runStudentEffect = () => {
     const effect = effects[2]
     if (!effect) throw new Error('student verification effect was not registered')
@@ -137,9 +150,11 @@ afterEach(() => {
   for (const moduleName of [
     'react',
     'react/jsx-runtime',
+    'react/jsx-dev-runtime',
     'next/link',
     'next/navigation',
     '@/contexts/FeatureFlagsContext',
+    '@/contexts/EntitlementsContext',
     '@/lib/auth-client',
     '@/lib/api-client',
     'sonner',

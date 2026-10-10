@@ -126,6 +126,7 @@ async def test_student_verification_token_cannot_create_two_checkouts():
     fake_redis.get = AsyncMock(side_effect=get_key)
     fake_redis.delete = AsyncMock(side_effect=delete_key)
     create = AsyncMock(return_value={"success": True, "subscription_id": "sub_student"})
+    admission = AsyncMock()
 
     with (
         patch("app.services.payment_service.get_redis_cache_client", new=AsyncMock(return_value=fake_redis)),
@@ -133,6 +134,7 @@ async def test_student_verification_token_cannot_create_two_checkouts():
         patch.object(service, "_release_checkout_lock", new=AsyncMock()),
         patch.object(service, "_get_live_provider_subscription", new=AsyncMock(return_value=None)),
         patch.object(service, "_create_paid_subscription", new=create),
+        patch("app.services.plan_catalog_service.plan_catalog_service.require_new_purchase", new=admission),
     ):
         first = await service.verify_student_subscription(None, token)
         second = await service.verify_student_subscription(None, token)
@@ -140,6 +142,7 @@ async def test_student_verification_token_cannot_create_two_checkouts():
     assert first["success"] is True
     assert second == {"success": False, "error": "Student verification link is invalid or expired"}
     create.assert_awaited_once()
+    admission.assert_awaited_once_with(None, "student", user_id="user-1")
 
 
 @pytest.mark.asyncio

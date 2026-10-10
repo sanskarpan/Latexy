@@ -155,6 +155,8 @@ async def test_two_real_websocket_clients_exchange_ephemeral_chat() -> None:
     name_result.scalar_one_or_none.return_value = "Alice"
     route_db = AsyncMock()
     route_db.execute = AsyncMock(side_effect=[resume_result, name_result, resume_result, name_result])
+    # Per-frame live ACL reads keep the same owner in this protocol fixture.
+    route_db.scalar = AsyncMock(return_value=user_id)
 
     @asynccontextmanager
     async def route_session():
@@ -162,6 +164,7 @@ async def test_two_real_websocket_clients_exchange_ephemeral_chat() -> None:
 
     with (
         patch("app.api.ws_routes._consume_ws_ticket", new=consume_ticket),
+        patch("app.api.ws_routes.entitlement_service.users_have_feature", AsyncMock(return_value=True)),
         patch.object(collab, "_subscribe", new_callable=AsyncMock, return_value=None),
         patch.object(collab, "_publish", new_callable=AsyncMock),
         patch.object(collab, "_chat_user_rate_allowed", new_callable=AsyncMock, return_value=True),
