@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 const plansPayload = {
   plans: {
     free: {
+      id: 'free',
       name: 'Free Trial',
       price: 0,
       currency: 'INR',
@@ -10,6 +11,7 @@ const plansPayload = {
       features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
     },
     basic: {
+      id: 'basic',
       name: 'Basic',
       price: 29900,
       currency: 'INR',
@@ -17,6 +19,7 @@ const plansPayload = {
       features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
     },
     basic_annual: {
+      id: 'basic_annual',
       name: 'Basic Annual',
       price: 287100,
       currency: 'INR',
@@ -26,6 +29,7 @@ const plansPayload = {
       features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
     },
     pro: {
+      id: 'pro',
       name: 'Pro',
       price: 59900,
       currency: 'INR',
@@ -33,6 +37,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     pro_annual: {
+      id: 'pro_annual',
       name: 'Pro Annual',
       price: 575000,
       currency: 'INR',
@@ -42,6 +47,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     byok: {
+      id: 'byok',
       name: 'BYOK (Bring Your Own Key)',
       price: 19900,
       currency: 'INR',
@@ -49,6 +55,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true, customModels: true },
     },
     byok_annual: {
+      id: 'byok_annual',
       name: 'BYOK Annual',
       price: 191000,
       currency: 'INR',
@@ -58,6 +65,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true, customModels: true },
     },
     student: {
+      id: 'student',
       name: 'Student',
       price: 29900,
       currency: 'INR',
@@ -66,6 +74,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     team: {
+      id: 'team',
       name: 'Team',
       price: 249900,
       currency: 'INR',
@@ -162,10 +171,14 @@ test.describe('Billing page', () => {
       }),
     )
 
+    await page.route('**/subscription/reconcile', route => route.fulfill({
+      json: { success: false, status: 'pending', message: 'Payment is not confirmed yet.' },
+    }))
     await page.goto('/billing?checkout=return&status=failed')
-    await expect(page.getByRole('status')).toHaveText(
+    await expect(page.getByRole('status').filter({ hasText: 'This checkout was reported as unsuccessful.' })).toHaveText(
       'This checkout was reported as unsuccessful. Your current subscription status is shown below.',
     )
+    await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeEnabled()
     await expect(page.getByText("You're currently on the Free plan.")).toBeVisible()
   })
 

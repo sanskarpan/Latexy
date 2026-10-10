@@ -49,6 +49,10 @@ class PaymentService:
         if settings.normalized_billing_mode == "disabled":
             return {"feature_enabled": False, "mode": "disabled", "available": False,
                     "reason": "billing_disabled", "message": "Billing is disabled in this environment."}
+        if settings.is_production_like() and settings.normalized_dodo_mode != "live":
+            return {"feature_enabled": True, "mode": "unconfigured", "available": False,
+                    "reason": "production_test_billing_blocked",
+                    "message": "Production billing requires explicitly configured Dodo live mode."}
         if not settings.billing_credentials_configured():
             return {"feature_enabled": True, "mode": "unconfigured", "available": False,
                     "reason": "billing_unconfigured", "message": "Dodo billing is not fully configured for this environment."}
@@ -63,6 +67,12 @@ class PaymentService:
 
     def is_available(self) -> bool:
         return bool(self._base_status["available"] and self.provider.available)
+
+    def is_service_available(self) -> bool:
+        """Existing billing remains manageable when new checkout is disabled."""
+        if settings.is_production_like() and settings.normalized_dodo_mode != "live":
+            return False
+        return self.is_available() or bool(self.provider.available)
 
     async def get_subscription_plans(self) -> dict[str, Any]:
         plans: dict[str, Any] = {}
@@ -311,6 +321,7 @@ class PaymentService:
         return await db.scalar(select(Subscription).where(
             Subscription.user_id == user_id,
             Subscription.provider == "razorpay",
+            Subscription.provider_subscription_id.is_not(None),
             Subscription.status.in_(LEGACY_BILLING_STATUSES),
         ).order_by(Subscription.created_at.desc()).limit(1))
 
@@ -338,11 +349,18 @@ class PaymentService:
             current = await self._get_live_subscription(db, user_id)
             if current and current.status in PAID_SUBSCRIPTION_STATUSES:
                 return {"success": False, "error": "Cancel your paid subscription before switching to the free plan."}
+            if current and not current.provider_subscription_id:
+                # The hosted URL can still accept payment. A local downgrade
+                # cannot revoke it, so retain the blocking intent until the
+                # provider confirms its outcome through reconciliation/webhook.
+                return {"success": False, "error": "This checkout has not activated yet. Wait for it to finish before changing plans."}
             if current and current.provider_subscription_id:
                 try:
-                    await self.provider.update_subscription(current.provider_subscription_id, {"cancel_at_next_billing_date": False, "status": "cancelled"})
+                    updated = await self.provider.update_subscription(current.provider_subscription_id, {"cancel_at_next_billing_date": False, "status": "cancelled"})
                 except DodoAPIError:
                     return {"success": False, "error": "Could not close your pending checkout. Please try again."}
+                if updated.get("status") != "cancelled":
+                    return {"success": False, "error": "Provider did not confirm checkout cancellation."}
             user = await db.get(User, user_id)
             if user:
                 user.subscription_plan, user.subscription_status, user.subscription_id = "free", "inactive", None
@@ -545,7 +563,7 @@ class PaymentService:
                 return {"success": False,
                         "error": "This subscription is still linked to the previous payment provider. Contact support to cancel it."}
             return {"success": False, "error": "No active subscription found"}
-        if not self.is_available():
+        if not self.is_service_available():
             return {"success": False, "error": self._base_status["message"]}
         if not sub.provider_subscription_id:
             return {"success": False, "error": "This checkout has not activated yet."}
@@ -601,7 +619,7 @@ class PaymentService:
         This deliberately accepts no provider identifiers from the caller. The
         checkout session ID comes only from the user's locked local intent.
         """
-        if not self.is_available():
+        if not self.is_service_available():
             return {"success": False, "status": "unavailable", "message": "Billing is unavailable."}
         try:
             lock_token = await self._acquire_reconcile_lock(user_id)
@@ -1030,6 +1048,8 @@ class PaymentService:
         )
 
     async def handle_webhook(self, db: AsyncSession, payload: bytes, headers: dict[str, str]) -> dict[str, Any]:
+        if settings.is_production_like() and settings.normalized_dodo_mode != "live":
+            return {"success": False, "retryable": False, "error": "Production Dodo webhooks require live mode"}
         normalized_headers = {str(k).lower(): str(v) for k, v in headers.items()}
         if not self._verify_webhook_signature(payload, normalized_headers):
             return {"success": False, "retryable": False, "error": "Invalid webhook signature"}

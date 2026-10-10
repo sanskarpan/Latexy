@@ -857,3 +857,18 @@ async def test_lifetime_reconciliation_requires_verified_one_time_payment(
     assert await db_session.scalar(text(
         "SELECT COUNT(*) FROM payments WHERE subscription_id=:id"
     ), {"id": intent_id}) == (1 if mutation is None else 0)
+
+
+@pytest.mark.asyncio
+async def test_existing_dodo_recovery_works_when_new_checkout_disabled(db_session, monkeypatch):
+    _configure_test_billing(monkeypatch)
+    monkeypatch.setattr(settings, "BILLING_MODE", "disabled")
+    user_id, intent_id, checkout_id, subscription_id = await _insert_pending_checkout(db_session)
+    _stub_reconcile_lock(monkeypatch)
+    provider = FakeProvider(_provider_state(user_id, intent_id, checkout_id, subscription_id))
+    service = PaymentService(provider=provider)
+    assert not service.is_available()
+    result = await service.reconcile_checkout(db_session, user_id)
+    assert result["success"] is True
+    assert result["status"] == "reconciled"
+    assert len(provider.calls) == 3

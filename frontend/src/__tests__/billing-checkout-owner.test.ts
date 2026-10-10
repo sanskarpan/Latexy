@@ -12,7 +12,7 @@ const paid = {
   userId: 'account-a', planId: 'pro', planName: 'Pro', status: 'active', subscriptionId: 'sub-a',
   features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
 }
-async function harness() {
+async function harness(billingEnabled = true) {
   let session = { user: { id: 'account-a', email: 'a@example.com', name: 'A' }, session: { token: 'token-a' } }
   let index = 0
   const states: unknown[] = [], refs: Array<{ current: unknown }> = []
@@ -22,7 +22,7 @@ async function harness() {
   vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
   const plans = Object.fromEntries(['free', 'basic', 'pro'].map(id => [id, { id, name: id, price: id === 'free' ? 0 : 100, currency: 'INR', interval: 'month', features: paid.features }]))
   const api = {
-    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { available: true } } }),
+    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { available: billingEnabled } } }),
     createSubscription: vi.fn(),
     cancelSubscription: vi.fn().mockResolvedValue({ success: true }),
     getCurrentSubscription: vi.fn().mockResolvedValue({ success: true, data: { ...paid, status: 'cancel_scheduled' } }),
@@ -40,7 +40,7 @@ async function harness() {
   vi.doMock('react/jsx-runtime', () => ({ jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }), jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }) }))
   vi.doMock('next/link', () => ({ default: 'Link' }))
   vi.doMock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams('checkout=return') }))
-  vi.doMock('@/contexts/FeatureFlagsContext', () => ({ useFeatureFlags: () => ({ billing: true }) }))
+  vi.doMock('@/contexts/FeatureFlagsContext', () => ({ useFeatureFlags: () => ({ billing: billingEnabled }) }))
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: session, isPending: false, error: null }) }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: api }))
   vi.doMock('sonner', () => ({ toast }))
@@ -104,6 +104,19 @@ describe('billing page checkout and cancellation ownership', () => {
     expect(freeCard.props.disabled).toBe(true)
     await (freeCard.props.onSelectPlan as (id: string) => Promise<void>)('free')
     expect(h.api.cancelSubscription).not.toHaveBeenCalled()
+  })
+
+
+  it('keeps the current Dodo subscription visible when new sales are disabled', async () => {
+    const h = await harness(false)
+    h.render(); h.runEffects(); await flush()
+    const manager = nodes(h.render()).find(n => n.type === 'SubscriptionManager')!
+    expect(manager).toBeDefined()
+    ;(manager.props.onLoaded as (subscription: unknown) => void)(paid)
+    const freeCard = nodes(h.render()).find(n => n.type === 'PricingCard' && (n.props.plan as { id: string }).id === 'free')!
+    expect(freeCard.props.disabled).toBe(false)
+    await (freeCard.props.onSelectPlan as (id: string) => Promise<void>)('free')
+    expect(h.api.cancelSubscription).toHaveBeenCalledTimes(1)
   })
 
 })

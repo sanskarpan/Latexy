@@ -676,7 +676,7 @@ function BillingPageContent() {
     refreshTeamSeats()
   }
 
-  if (!flags.billing) {
+  if (!flags.billing && !isAuthenticated) {
     return (
       <div className="content-shell">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">

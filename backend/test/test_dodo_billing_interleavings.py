@@ -279,3 +279,77 @@ async def test_terminal_webhook_during_cancellation_cannot_be_overwritten(
         "SELECT subscription_plan, subscription_status, subscription_id FROM users WHERE id=:id"
     ), {"id": user_id})).one()
     assert tuple(user) == ("free", "cancelled", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["checkout_pending", "checkout_unknown", "created", "pending"])
+async def test_free_downgrade_cannot_abandon_a_still_payable_hosted_checkout(db_session, monkeypatch, status):
+    user_id = await _user(db_session)
+    intent_id = await _intent(db_session, user_id)
+    await db_session.execute(text(
+        "UPDATE subscriptions SET status=:status,provider_subscription_id=NULL WHERE id=:id"
+    ), {"status": status, "id": intent_id})
+    await db_session.commit()
+    service = _service(monkeypatch)
+    cancel = AsyncMock()
+    monkeypatch.setattr(service.provider, "update_subscription", cancel)
+    result = await service.create_subscription(db_session, user_id, "free", "test@example.com", "Test")
+    assert result["success"] is False
+    cancel.assert_not_awaited()
+    assert await db_session.scalar(text("SELECT status FROM subscriptions WHERE id=:id"), {"id": intent_id}) == status
+    assert await db_session.scalar(text("SELECT subscription_id FROM users WHERE id=:id"), {"id": user_id}) == intent_id
+    create = AsyncMock()
+    monkeypatch.setattr(service.provider, "create_checkout_session", create)
+    retry = await service.create_subscription(db_session, user_id, "pro", "test@example.com", "Test")
+    assert retry["success"] is False
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_free_downgrade_requires_confirmed_provider_cancellation(db_session, monkeypatch):
+    user_id = await _user(db_session)
+    intent_id = await _intent(db_session, user_id)
+    service = _service(monkeypatch)
+    monkeypatch.setattr(service.provider, "update_subscription", AsyncMock(return_value={"status": "active"}))
+    result = await service.create_subscription(db_session, user_id, "free", "test@example.com", "Test")
+    assert result["success"] is False
+    assert await db_session.scalar(text("SELECT status FROM subscriptions WHERE id=:id"), {"id": intent_id}) == "checkout_pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("historical_mandate_id", [None, "sub_historical_mandate"])
+async def test_read_only_history_guard_ignores_rows_without_a_mandate(db_session, monkeypatch, historical_mandate_id):
+    user_id = await _user(db_session)
+    if historical_mandate_id:
+        historical_mandate_id = f"{historical_mandate_id}_{uuid.uuid4().hex}"
+    await db_session.execute(text(
+        "INSERT INTO subscriptions (id,user_id,provider,provider_subscription_id,plan_id,status) "
+        "VALUES (:id,:uid,'razorpay',:pid,:plan,'active')"
+    ), {"id": str(uuid.uuid4()), "uid": user_id, "pid": historical_mandate_id,
+        "plan": "pro" if historical_mandate_id else "free"})
+    await db_session.commit()
+    service = _service(monkeypatch)
+    create = AsyncMock(return_value={
+        "session_id": f"sess_{uuid.uuid4().hex}",
+        "checkout_url": "https://checkout.dodopayments.com/fixture",
+    })
+    monkeypatch.setattr(service.provider, "create_checkout_session", create)
+    result = await service.create_subscription(db_session, user_id, "pro", "test@example.com", "Test")
+    assert result["success"] is (historical_mandate_id is None)
+    assert create.await_count == (1 if historical_mandate_id is None else 0)
+
+
+@pytest.mark.asyncio
+async def test_existing_dodo_cancellation_works_when_new_checkout_disabled(db_session, monkeypatch):
+    user_id = await _user(db_session)
+    intent_id = await _intent(db_session, user_id, paid=True)
+    monkeypatch.setattr(settings, "BILLING_MODE", "disabled")
+    monkeypatch.setattr(settings, "DODO_TEST_API_KEY", "test-servicing-key")
+    service = PaymentService()
+    cancel = AsyncMock(return_value={"cancel_at_next_billing_date": True})
+    monkeypatch.setattr(service.provider, "update_subscription", cancel)
+    assert not service.is_available()
+    result = await service.cancel_subscription(db_session, user_id)
+    assert result["success"] is True
+    cancel.assert_awaited_once_with(f"sub_{intent_id}", {"cancel_at_next_billing_date": True})
+    assert await db_session.scalar(text("SELECT status FROM subscriptions WHERE id=:id"), {"id": intent_id}) == "cancel_scheduled"

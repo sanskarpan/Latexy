@@ -1435,8 +1435,7 @@ async def reconcile_subscription(
     user_id: str = Depends(_require_user),
 ):
     """Reconcile the authenticated user's current checkout from Dodo API reads."""
-    if not await feature_flag_service.get_flag("billing", db):
-        raise HTTPException(status_code=503, detail="Billing is currently disabled")
+    # Existing Dodo checkouts remain recoverable when new sales are disabled.
     result = await payment_service.reconcile_checkout(db, user_id)
     if result.get("status") == "pending" and result.get("message") == "Checkout recovery is already in progress.":
         raise HTTPException(status_code=429, detail=result["message"])
@@ -1526,9 +1525,7 @@ async def cancel_subscription(
 ):
     """Cancel current user's subscription."""
     try:
-        if not await feature_flag_service.get_flag("billing", db):
-            raise HTTPException(status_code=503, detail="Billing is currently disabled")
-
+        # Existing Dodo mandates remain cancellable when new sales are disabled.
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -1549,6 +1546,7 @@ async def cancel_subscription(
 
 
 @router.post("/billing/webhook")
+@router.post("/billing/dodo/webhook")
 async def dodo_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Verify and process Dodo Standard Webhooks using the raw request body."""
     try:

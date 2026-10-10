@@ -59,6 +59,12 @@ class DodoProvider:
         return bool(self.api_key)
 
     async def request(self, method: str, path: str, *, json_body: dict[str, Any] | None = None) -> dict[str, Any]:
+        if settings.is_production_like() and (
+            settings.normalized_dodo_mode != "live" or self._origin.host != "live.dodopayments.com"
+        ):
+            # Enforce this at the network boundary too: servicing and free-plan
+            # paths deliberately do not depend on new-checkout availability.
+            raise DodoAPIError(503, "production_test_billing_blocked")
         if not self.api_key:
             raise DodoAPIError(503, "billing_unconfigured")
         allowed_paths = {

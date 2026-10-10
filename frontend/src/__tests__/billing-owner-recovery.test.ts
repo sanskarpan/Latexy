@@ -187,4 +187,31 @@ describe('billing owner and checkout recovery interactions', () => {
     cleanup()
   })
 
+
+  it('can recover an existing Dodo checkout when new sales are disabled', async () => {
+    vi.useFakeTimers()
+    const h = await harness()
+    const props = { billingStatus: { ...billingStatus, available: false } }
+    h.render(props); const cleanup = h.effect(); await flush()
+    expect(h.reconcileSubscription).toHaveBeenCalledTimes(1)
+    const retry = button(h.render(props), 'Check payment status')!
+    expect(retry.props.disabled).toBe(false)
+    await (retry.props.onClick as () => Promise<void>)(); await flush()
+    expect(h.reconcileSubscription).toHaveBeenCalledTimes(2)
+    cleanup()
+  })
+
+  it('keeps existing Dodo cancellation available when new sales are disabled', async () => {
+    const h = await harness()
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    h.getCurrentSubscription.mockResolvedValue({ success: true, data: paid })
+    const props = { checkoutReturned: false, billingStatus: { ...billingStatus, available: false } }
+    h.render(props); const cleanup = h.effect(); await flush()
+    const cancel = button(h.render(props), 'Cancel')!
+    expect(cancel.props.disabled).toBe(false)
+    await (cancel.props.onClick as () => Promise<void>)()
+    expect(h.cancelSubscription).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
 })

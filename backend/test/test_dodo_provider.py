@@ -386,3 +386,35 @@ async def test_line_items_use_documented_fixed_origin_endpoint() -> None:
         result = await DodoProvider(api_key="test-adapter-key").get_payment_line_items("pay_123")
         assert result["currency"] == "INR"
         assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("environment", ["production", "staging"])
+@pytest.mark.parametrize("operation", ["create", "cancel", "read"])
+async def test_production_test_mode_is_blocked_at_provider_boundary(monkeypatch, environment, operation):
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+    monkeypatch.setattr(settings, "DODO_MODE", "test")
+    provider = DodoProvider(api_key="fixture")
+    with respx.mock(assert_all_called=False) as router:
+        route = router.route().mock(return_value=httpx.Response(200, json={}))
+        with pytest.raises(DodoAPIError, match="production_test_billing_blocked"):
+            if operation == "create":
+                await provider.create_checkout_session({})
+            elif operation == "cancel":
+                await provider.update_subscription("sub_fixture", {"status": "cancelled"})
+            else:
+                await provider.get_payment("pay_fixture")
+        assert not route.called
+
+
+@pytest.mark.asyncio
+async def test_production_live_mode_servicing_stays_available_when_checkout_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "DODO_MODE", "live")
+    monkeypatch.setattr(settings, "BILLING_MODE", "disabled")
+    with respx.mock(assert_all_called=True) as router:
+        router.patch("https://live.dodopayments.com/subscriptions/sub_fixture").mock(
+            return_value=httpx.Response(200, json={"cancel_at_next_billing_date": True}),
+        )
+        result = await DodoProvider(api_key="fixture").update_subscription("sub_fixture", {"cancel_at_next_billing_date": True})
+        assert result["cancel_at_next_billing_date"] is True

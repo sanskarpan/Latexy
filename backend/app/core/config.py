@@ -705,6 +705,11 @@ class Settings(BaseSettings):
         if self.normalized_dodo_mode not in {"test", "live"}:
             raise ValueError("DODO_MODE must be 'test' or 'live'.")
         active_dodo_fields = (self.dodo_api_key, self.dodo_webhook_key)
+        if (
+            billing_mode != "disabled" and self.is_production_like()
+            and any(active_dodo_fields) and self.normalized_dodo_mode != "live"
+        ):
+            raise ValueError("Production Dodo billing requires DODO_MODE=live.")
         if billing_mode == "required" and not all(active_dodo_fields):
             raise ValueError("BILLING_MODE=required needs the active Dodo API key and webhook signing key.")
         if billing_mode != "disabled" and any(active_dodo_fields) and not all(active_dodo_fields):

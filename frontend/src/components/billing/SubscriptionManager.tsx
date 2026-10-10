@@ -102,7 +102,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
     setIsCheckingCheckout(checkoutReturned && !checkoutStatus)
 
     const load = async () => {
-      const shouldReconcile = attempts === 0 && checkoutReturned && Boolean(authToken) && billingStatus?.available
+      const shouldReconcile = attempts === 0 && checkoutReturned && Boolean(authToken)
       if (shouldReconcile && authToken) {
         const request = Symbol('automatic reconciliation')
         reconcileRequestRef.current = request
@@ -135,7 +135,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
       if (!context.isCurrent()) return
       const paymentConfirmed = Boolean(current && current.planId !== 'free' &&
         ['active', 'cancel_scheduled'].includes(current.status))
-      if (!checkoutReturned || checkoutStatus || paymentConfirmed || !billingStatus?.available || attempts >= 11) {
+      if (!checkoutReturned || checkoutStatus || paymentConfirmed || attempts >= 11) {
         setIsCheckingCheckout(false)
         return
       }
@@ -147,12 +147,12 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
       generationRef.current += 1
       if (timer) clearTimeout(timer)
     }
-  }, [authToken, billingStatus?.available, checkoutReturned, checkoutStatus, refreshKey, captureRequestContext, fetchSubscription])
+  }, [authToken, checkoutReturned, checkoutStatus, refreshKey, captureRequestContext, fetchSubscription])
 
   const pendingCheckout = Boolean(subscription && ['checkout_pending', 'checkout_unknown'].includes(subscription.status))
 
   const handleCheckPaymentStatus = async () => {
-    if (!(checkoutReturned || pendingCheckout) || !authToken || !billingStatus?.available || reconcileRequestRef.current) return
+    if (!(checkoutReturned || pendingCheckout) || !authToken || reconcileRequestRef.current) return
     const context = captureRequestContext()
     const request = Symbol('manual reconciliation')
     reconcileRequestRef.current = request
@@ -213,7 +213,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
         </p>
       )}
       {reconcileError && <p role="alert" className="text-xs text-err">{reconcileError}</p>}
-      {authToken && billingStatus?.available && (
+      {authToken && (
         <button
           type="button"
           onClick={() => { void handleCheckPaymentStatus() }}
@@ -319,7 +319,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
             onClick={handleCancel}
-            disabled={isCancelling || !billingStatus?.available}
+            disabled={isCancelling}
             className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}

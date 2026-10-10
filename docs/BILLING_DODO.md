@@ -1,5 +1,10 @@
 # Dodo Payments operations
 
+Dodo Payments is Latexy’s only active payment provider. There is no Razorpay
+SDK, checkout, webhook handler, provider selector or fallback in this application.
+Historical financial rows and their retained migration columns are preserved;
+that preservation does not enable a legacy payment integration.
+
 Latexy creates Dodo hosted checkout sessions from the backend. The backend
 selects a configured Dodo product for the requested plan and sends a local
 checkout-intent ID in signed checkout metadata. The browser only receives the
@@ -46,11 +51,15 @@ variables through to the backend and worker. Kubernetes reads API and webhook
 keys from `latexy-secrets`; set the product IDs and amounts in the
 `latexy-config` ConfigMap. `k8s/deploy.sh` reads the credentials and mode from
 the invoking environment. The mode defaults to `test` if `DODO_MODE` is not
-provided.
+provided. Production/staging checkout with test credentials is rejected at startup;
+provider API calls and webhook processing also reject test mode at runtime, even
+when startup validation is skipped. Unconfigured `auto` billing stays unavailable.
+Disabling new sales does not prevent authenticated servicing of existing live
+Dodo subscriptions through cancellation or verified checkout recovery.
 
 ## Webhook setup
 
-Register `POST /billing/webhook` (prepend a deployment's configured API
+Register `POST /billing/webhook` (or the explicit `/billing/dodo/webhook` alias) (prepend a deployment's configured API
 prefix, if any) as the Dodo webhook destination and enable the payment, subscription,
 and refund events. Select the events used by the reconciliation service:
 
@@ -85,6 +94,9 @@ Alembic revision `0065` adds provider-neutral identifiers and webhook/refund
 tables. It copies existing Razorpay IDs into the new columns and labels those
 rows `provider='razorpay'`; the legacy database columns remain for historical
 records and rollback. New checkouts and webhooks use `provider='dodo'`.
+A historical live mandate ID blocks accidental duplicate enrollment pending
+operator reconciliation; a migrated Free row with no mandate ID does not block
+Dodo checkout. The application never calls a legacy provider to resolve it.
 
 **Revision 0061 has two historical meanings.** The pre-renumbering Dodo branch
 used `0059`–`0061` for billing, while the coordinated mainline uses `0059` for
@@ -135,15 +147,12 @@ Do not delete historical Razorpay payment or subscription records. Revenue
 analytics includes paid Dodo payments and historical paid/captured payment
 statuses, subtracting successful partial and full refunds.
 
-Revision `0065` does not cancel Razorpay mandates or import them into Dodo. Before
-switching production webhook traffic, reconcile every migrated subscription row
-with `provider='razorpay'` and a chargeable status in the Razorpay dashboard,
-then cancel or otherwise settle that mandate there. Until an old row is
-cancelled, Latexy blocks that account from starting a Dodo checkout or switching
-to the free plan; the in-app cancellation endpoint directs the user to support
-because new deployments no longer hold legacy Razorpay credentials. This
-prevents a second subscription from being created while the old mandate can
-still charge.
+Revision `0065` preserves history; it neither creates nor transfers mandates.
+If a historical subscription row contains an actual unresolved mandate ID,
+Latexy blocks a second checkout and directs the owner to support for reconciliation.
+Rows without a mandate ID do not block Dodo. This read-only check does not enable
+legacy checkout, cancellation, webhook processing or any legacy provider API call.
+Do not erase financial evidence to bypass that guard.
 
 ## Checkout uncertainty
 
