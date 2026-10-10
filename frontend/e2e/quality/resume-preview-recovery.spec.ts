@@ -108,3 +108,108 @@ test('a delayed guest field patch cannot apply after the account changes with th
   expect(submissions).toBe(0)
   expect(errors).toEqual([])
 })
+
+for (const { trigger, roundTrip } of [
+  { trigger: 'manual', roundTrip: false },
+  { trigger: 'automatic', roundTrip: false },
+  { trigger: 'trim', roundTrip: false },
+  { trigger: 'manual', roundTrip: true },
+] as const) {
+  test(`an ${roundTrip ? 'A → B → A round-trip' : 'account change'} releases a pending ${trigger} admission without letting its late response disturb the next submit`, async ({ page }, testInfo) => {
+    const errors = await mockGuest(page)
+    let signedIn = false
+    let sessionReads = 0
+    const submissions: Array<{ latex_content: string; job_type: string }> = []
+    const stateReads: string[] = []
+    let releaseOld!: () => void
+    let releaseNew!: () => void
+    const oldAdmission = new Promise<void>(resolve => { releaseOld = resolve })
+    const newAdmission = new Promise<void>(resolve => { releaseNew = resolve })
+    await page.route('**/api/auth/get-session', route => {
+      sessionReads++
+      return route.fulfill({ json: signedIn ? { session: { token: 'changed-account-token' },
+        user: { id: 'changed-account', email: 'changed-account@example.com', name: 'Changed Account' } } : null })
+    })
+    await page.route('**/public/engine/document/patch', route => {
+      const body = route.request().postDataJSON()
+      const source = body.latex_content.replace(projection(body.latex_content).nodes[0].text, body.patches[0].text)
+      return route.fulfill({ json: { document: projection(source), latex_content: source } })
+    })
+    await page.route('**/jobs/submit', async route => {
+      const index = submissions.push(route.request().postDataJSON())
+      await (index === 1 ? oldAdmission : newAdmission)
+      await route.fulfill({ json: { success: true, job_id: index === 1 ? 'stale-admission' : 'current-admission', message: 'Queued' } })
+    })
+    await page.route(/\/jobs\/(stale|current)-admission\/state$/, route => {
+      stateReads.push(new URL(route.request().url()).pathname)
+      return route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } })
+    })
+    const saveField = async (count: number) => {
+      if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Editor', exact: true }).click()
+      await page.getByRole('button', { name: /Built internal design system used across \d+ product surfaces/ }).click()
+      await page.getByLabel('Experience · bullet').fill(original.replace('6 product', `${count} product`))
+      await page.getByRole('button', { name: 'Save field', exact: true }).click()
+    }
+    try {
+      await page.goto('/try')
+      const updatePdf = page.getByRole('button', { name: 'Update PDF', exact: true })
+      await expect(updatePdf).toBeEnabled()
+      if (trigger === 'automatic') await saveField(8)
+      else if (trigger === 'trim') {
+        if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Tools', exact: true }).click()
+        await page.getByRole('button', { name: 'AI Optimize', exact: true }).click()
+        await page.getByRole('button', { name: 'Trim to one page', exact: true }).click()
+      } else await updatePdf.click()
+      await expect.poll(() => submissions.length).toBe(1)
+      await expect(updatePdf).toBeDisabled()
+
+      const previousReads = sessionReads
+      signedIn = true
+      await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', {
+        key: 'better-auth.message', newValue: JSON.stringify({ event: 'session', data: { trigger: 'updateUser' } }),
+      })))
+      await expect.poll(() => sessionReads).toBeGreaterThan(previousReads)
+      await expect(page.locator('a[title="Dashboard"]')).toBeVisible()
+      await expect(updatePdf).toBeEnabled()
+      if (roundTrip) {
+        const signedInReads = sessionReads
+        signedIn = false
+        await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', {
+          key: 'better-auth.message', newValue: JSON.stringify({ event: 'session', data: { trigger: 'signOut' } }),
+        })))
+        await expect.poll(() => sessionReads).toBeGreaterThan(signedInReads)
+        await expect(page.locator('a[title="Dashboard"]')).toHaveCount(0)
+        await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible()
+        await expect(updatePdf).toBeEnabled()
+      }
+      // Exercise both new-account entry points while the old admission is held.
+      if (trigger === 'manual') await saveField(9)
+      else await updatePdf.click()
+      await expect.poll(() => submissions.length).toBe(2)
+      await expect(updatePdf).toBeDisabled()
+      expect(stateReads).toEqual([])
+
+      const oldResponse = page.waitForResponse(response => response.url().endsWith('/jobs/submit'))
+      releaseOld()
+      await (await oldResponse).finished()
+      // Cross a render boundary after delivering the old response, without a
+      // fixed sleep or ever releasing the current admission as a side effect.
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      await expect(updatePdf).toBeDisabled()
+      expect(stateReads).toEqual([])
+      expect(submissions).toHaveLength(2)
+      await expect(page.getByText('Job submitted.', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Trimming to 1 page…', { exact: true })).toHaveCount(0)
+
+      releaseNew()
+      await expect.poll(() => stateReads.some(path => path.endsWith('/current-admission/state'))).toBe(true)
+      if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'PDF', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      expect(stateReads.some(path => path.endsWith('/stale-admission/state'))).toBe(false)
+      expect(errors).toEqual([])
+    } finally {
+      releaseOld()
+      releaseNew()
+    }
+  })
+}

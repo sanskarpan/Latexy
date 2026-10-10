@@ -20,6 +20,25 @@ inherits its secrets, builds an image during a request, or uses its fingerprint
 as evidence for the VM's assets. A selected unavailable capability fails closed.
 Immutable Docker image digests permit cache reuse; mutable Docker tags do not.
 
+## Deployment configuration preflight
+
+The Modal deployment workflow runs `modal_app.py::renderer_preflight` before
+database migrations and the rolling backend update. It uses the candidate API
+image and the same existing secret bindings as that API. It checks only accepted
+compiler/default configuration, the required VM tuple, and the existing backend
+resolver. It makes no provider or database request, creates no VM, and changes no
+configuration. Failure leaves the existing serving backend and schema untouched
+by this workflow. The frontend's protocol fallback handles frontend/backend skew.
+
+Because LuaLaTeX is accepted and is the new-resume default, a missing or malformed
+tuple blocks this rollout. A report with `configuration_ready: true` means only
+that configuration is well formed; `certification_verified` is always `false`.
+This is not proof that an image exists, matches its asset marker, supports the
+required languages/templates, or has passed certification. Before setting the
+tuple, the operator must have separately certified the exact immutable bare image
+ID, its actual asset marker, and the intended supported profile. Do not set the
+flag merely to pass deployment. The runtime compilation gate remains unchanged.
+
 Each document's VM has one deadline, no network, secrets, mounted volumes, or
 OIDC identity. Engine processes run as UID/GID 65534 under a closed environment.
 The root controller reaps that UID before bounded, no-follow artifact export.

@@ -1502,9 +1502,13 @@ async def quick_tailor_resume(
     user_id: str = Depends(get_current_user_required),
 ):
     """Fork the resume and kick off an aggressive optimization tailored to the job description."""
-    from .job_routes import _resolve_user_plan
+    from .job_routes import _require_renderer_capability, _resolve_user_plan
 
     parent = await _verify_resume_ownership(db, resume_id, user_id)
+    stored_compiler = (parent.resume_settings or {}).get("compiler")
+    compiler = stored_compiler if stored_compiler in settings.ALLOWED_LATEX_COMPILERS else settings.DEFAULT_LATEX_COMPILER
+    # An unavailable renderer must not create a fork or start paid optimization.
+    _require_renderer_capability(compiler)
 
     # Allocate the worker identity before charging so the receipt can recover
     # a crash between quota consumption and fork/dispatch.
@@ -1581,12 +1585,6 @@ async def quick_tailor_resume(
             )
             if key in fork_settings and fork_settings[key] is not None
         } or None
-        stored_compiler = fork_settings.get("compiler")
-        compiler = (
-            stored_compiler
-            if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
-            else settings.DEFAULT_LATEX_COMPILER
-        )
         await submit_async(
             submit_optimize_and_compile,
             latex_content=fork.latex_content,
@@ -1652,7 +1650,13 @@ async def convert_academic_cv(
     Create an industry-resume variant from an academic CV and queue a combined
     optimize+compile job for the new fork.
     """
+    from .job_routes import _require_renderer_capability
+
     parent = await _verify_resume_ownership(db, resume_id, user_id)
+    stored_compiler = (parent.resume_settings or {}).get("compiler")
+    compiler = stored_compiler if stored_compiler in settings.ALLOWED_LATEX_COMPILERS else settings.DEFAULT_LATEX_COMPILER
+    # Check before any variant, quota receipt or paid provider work is created.
+    _require_renderer_capability(compiler)
     report = academic_cv_service.detect(
         parent.latex_content or "",
         document_type=parent.document_type,
@@ -1769,12 +1773,6 @@ async def convert_academic_cv(
             )
             if key in variant_settings and variant_settings[key] is not None
         } or None
-        stored_compiler = variant_settings.get("compiler")
-        compiler = (
-            stored_compiler
-            if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
-            else settings.DEFAULT_LATEX_COMPILER
-        )
         await submit_async(
             submit_optimize_and_compile,
             latex_content=variant.latex_content,

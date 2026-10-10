@@ -802,8 +802,44 @@ def scheduled_minute_recovery() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Migrations
+# Deployment preflight and migrations
 # ---------------------------------------------------------------------------
+@app.function(image=api_image, secrets=_secrets, timeout=60)
+def renderer_preflight() -> dict:
+    """Validate candidate configuration only; never certify or start a VM."""
+    import contextlib
+    import json
+    import logging
+    import os
+    import sys
+
+    previous_logging_disable = logging.root.manager.disable
+    check_failed = False
+    try:
+        # This isolated function has no concurrent inputs. Suppress startup
+        # diagnostics while importing settings: existing handlers may retain
+        # the original stderr, so redirecting the streams alone is insufficient.
+        logging.disable(sys.maxsize)
+        with open(os.devnull, "w") as discarded_output, contextlib.redirect_stdout(discarded_output), contextlib.redirect_stderr(discarded_output):
+            from app.services.render_engine.deployment_preflight import renderer_configuration_report
+
+            report = renderer_configuration_report()
+    except Exception:
+        # Configuration validation failures can contain secret input values.
+        # Keep the public diagnostic fixed, including import-time failures.
+        check_failed = True
+        report = {"configuration_ready": False, "certification_verified": False,
+                  "reasons": ["configuration_check_failed"]}
+    finally:
+        logging.disable(previous_logging_disable)
+    print(json.dumps(report, sort_keys=True))
+    if check_failed:
+        raise RuntimeError("Renderer configuration preflight failed") from None
+    if not report["configuration_ready"]:
+        raise RuntimeError("Renderer configuration preflight blocked deployment")
+    return report
+
+
 # Locally, migrations run on backend startup. In production nothing applied them:
 # alembic/ was excluded from every image and no deploy step ran it. Run this
 # BEFORE `modal deploy` whenever a migration has landed:

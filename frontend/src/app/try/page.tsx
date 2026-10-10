@@ -199,8 +199,12 @@ export default function TryPage() {
     if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
   }, [artifactPreview.error, editorMode])
   const previewAccountIdentity = `${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`
-  const previewRequestIdentityRef = useRef(previewAccountIdentity)
-  previewRequestIdentityRef.current = previewAccountIdentity
+  const previewRequestIdentityRef = useRef({ accountIdentity: previewAccountIdentity })
+  // Renew synchronously during render: an A → B → A round-trip must never
+  // make a response from the first A current again, even before effects run.
+  if (previewRequestIdentityRef.current.accountIdentity !== previewAccountIdentity) {
+    previewRequestIdentityRef.current = { accountIdentity: previewAccountIdentity }
+  }
   const activeJobAtRenderRef = useRef(activeJobId)
   activeJobAtRenderRef.current = activeJobId
 
@@ -208,6 +212,9 @@ export default function TryPage() {
   useEffect(() => {
     if (previewAccountRef.current === previewAccountIdentity) return
     previewAccountRef.current = previewAccountIdentity
+    // The old account may still be awaiting its admission response. Its
+    // guarded finally cannot release submission state for the new account.
+    setIsSubmitting(false)
     clearPdfPreview()
     setActiveJobId(null)
     setCancelledPreviewJobId(null)
@@ -493,14 +500,15 @@ export default function TryPage() {
               optimization_level: 'balanced',
               device_fingerprint: trialStatus.fingerprint,
             })
-      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       if (previewRequestIdentityRef.current !== identityAtStart) return null
+      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       if (mode === 'compile') editorRef.current?.markAutoCompileCompiled?.(currentContent)
       setActiveJobId(response.job_id)
       recordPreviewAction(response.job_id, actionStarted)
       if (!resolvedSession) trialStatus.incrementUsage()
       toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
     } catch (error) {
+      if (previewRequestIdentityRef.current !== identityAtStart) return null
       toast.error(previewErrorMessage(error, editorMode === 'pdf'))
     } finally {
       if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
@@ -563,14 +571,15 @@ export default function TryPage() {
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
+      if (previewRequestIdentityRef.current !== identityAtStart) return null
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       editorRef.current?.markAutoCompileCompiled?.(content)
       autoCompileTriggeredRef.current = true
-      if (previewRequestIdentityRef.current !== identityAtStart) return null
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
       return response.job_id
     } catch (error) {
+      if (previewRequestIdentityRef.current !== identityAtStart) return null
       // Auto-compile fires on a debounce rather than a click, so a hard failure to
       // even submit (network/API error, trial exhausted, etc.) needs the same
       // toast.error runCompile's catch already gives manual compiles — deduped so a
@@ -664,6 +673,7 @@ export default function TryPage() {
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
 
   const handleTrimToOnePage = useCallback(async () => {
+    const identityAtStart = previewRequestIdentityRef.current
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) return
     if (trialBlocked) { notifyTrialBlocked(); return }
@@ -685,14 +695,16 @@ export default function TryPage() {
         custom_instructions: TRIM_INSTRUCTION,
         device_fingerprint: trialStatus.fingerprint,
       })
+      if (previewRequestIdentityRef.current !== identityAtStart) return
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to start trim')
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
       toast.success('Trimming to 1 page…')
     } catch (error) {
+      if (previewRequestIdentityRef.current !== identityAtStart) return
       toast.error(error instanceof Error ? error.message : 'Trim failed')
     } finally {
-      setIsSubmitting(false)
+      if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
     }
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
 
