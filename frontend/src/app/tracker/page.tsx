@@ -764,9 +764,9 @@ export default function TrackerPage() {
   const boardIdentityAccepted = acceptedBoardIdentityRef.current
   const staleIdentityAccepted = acceptedStaleIdentityRef.current
   const boardReadyForCurrentOwner = boardIdentityAccepted?.ownerId === trackerOwnerId
-    && boardIdentityAccepted.generation === boardGenerationRef.current
+    && boardIdentityAccepted?.generation === boardGenerationRef.current
   const staleReadyForCurrentOwner = staleIdentityAccepted?.ownerId === trackerOwnerId
-    && staleIdentityAccepted.generation === boardGenerationRef.current
+    && staleIdentityAccepted?.generation === boardGenerationRef.current
   const visibleBoardData = boardReadyForCurrentOwner ? boardData : createEmptyBoard()
   const visibleStaleApps = staleReadyForCurrentOwner ? staleApps : []
 

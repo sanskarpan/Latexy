@@ -4,6 +4,24 @@ Status: locally verified production-mode candidate; fresh published-head CI and
 deployed acceptance remain pending.
 Not merged or production-accepted. Hydration #1772 remains unresolved.
 
+## Dependency integration: 2026-10-10
+
+After the first updated head `c7a0a22e3d3776390521b5369cd2934ce3635aaa`
+passed all 14 CI jobs, merged dependency-upgrade main
+`3daebc6287d77163800128f4e74714f0d9d53e16` (#1859) into this candidate.
+The Settings/API repair and its tests merged without conflicts. Better Auth
+1.7.7, matching passkey support, and the OIDC compatibility/security changes
+are preserved unchanged from main.
+
+The integrated candidate passes **176 files / 1,212 frontend unit tests** with
+Node **22.23.3** and pnpm **10.10.0**, using the frozen #1859 dependencies. A
+fresh exact-head hosted build and browser gate remain required for this merge.
+For the previous head only, the hosted browser results were 37 quality cases
+passed (three configured skips), 51 shared production-browser regressions
+passed, and one real Better Auth hydration contract passed, all on the first
+workflow attempt. Those results do not substitute for the dependency-integrated
+head's acceptance.
+
 ## Current-main review: 2026-10-10
 
 Merged main `f5bf14a7e27f7e3198fc314157cd4cefef8c9b2f` into this branch,
