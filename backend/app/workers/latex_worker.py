@@ -29,6 +29,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
+from ..core.engine_observability import PhaseTimer, record_phase
 from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
@@ -232,7 +233,11 @@ def compute_queue_wait_seconds(job_id: str) -> Optional[float]:
         submitted_at = json.loads(raw).get("submitted_at")
         if not submitted_at:
             return None
-        return max(0.0, time.time() - float(submitted_at))
+        seconds = max(0.0, time.time() - float(submitted_at))
+        # Includes dispatch/startup and can overlap worker_initialization.
+        # API/worker wall-clock skew is clamped; it is not a pure broker metric.
+        record_phase("queue_wait", seconds)
+        return seconds
     except Exception:
         return None
 
@@ -1777,6 +1782,7 @@ def compile_latex_task(
     job_dir: Optional[Path] = None
     render_lease = None
     auxiliary_workspace = None
+    source_prepare = PhaseTimer("source_prepare")
     try:
         # ── Validation ──────────────────────────────────────────────
         publish_event(
@@ -1790,6 +1796,7 @@ def compile_latex_task(
         )
 
         if not latex_service.validate_latex_content(latex_content):
+            source_prepare.finish("error")
             error_msg = (
                 r"Invalid LaTeX: missing \documentclass, "
                 r"\begin{document}, or \end{document}"
@@ -1837,6 +1844,7 @@ def compile_latex_task(
         # Inject watermark if requested
         if watermark:
             if not _WATERMARK_RE.match(watermark) or len(watermark) > _WATERMARK_MAX_LEN:
+                source_prepare.finish("error")
                 error_msg = "Invalid watermark text"
                 result = {"success": False, "job_id": job_id, "error": error_msg}
                 terminal_accepted = publish_job_result(job_id, result)
@@ -1960,6 +1968,9 @@ def compile_latex_task(
                          "halt_on_error": _cs.get("halt_on_error") is not False},
             "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
         } if lifecycle_owned and cache_owner else None
+        # Includes validation, source/settings transforms and auto-fit probes;
+        # excludes cache lookup, coalescing, final TeX and artifact publication.
+        source_prepare.finish()
         _cache_reporting_start = time.monotonic()
         from ..core.engine_observability import engine_span
 
@@ -2704,6 +2715,7 @@ def compile_latex_task(
         return _terminal_failure(result, accepted=terminal_accepted)
 
     except SoftTimeLimitExceeded:
+        source_prepare.finish("error")
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}", exc_info=True)
         # Kill the subprocess if it was started before the limit fired
         try:
@@ -2754,6 +2766,7 @@ def compile_latex_task(
             lifecycle_owner=reconcile_owner, lifecycle_epoch=lifecycle_epoch, terminal_result=result)
         return _terminal_failure(result, accepted=terminal_accepted)
     except Exception as exc:
+        source_prepare.finish("error")
         cleanup_docker_container(locals().get("container_name"))
         logger.error("LaTeX task %s raised", task_id, extra={"error_type": type(exc).__name__})
         retryable = self.request.retries < self.max_retries
@@ -2796,6 +2809,7 @@ def compile_latex_task(
         _log_task_timing("exception")
         return _terminal_failure(result, accepted=terminal_accepted)
     finally:
+        source_prepare.finish("error")
         process_obj = locals().get("proc")
         if process_obj is not None:
             from ..services.render_engine.backend import close_engine_session

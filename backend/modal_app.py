@@ -321,14 +321,14 @@ def _init_worker_redis() -> None:
 )
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
-    _init_worker_redis()
     # throw=False: prevents Celery's self.retry() Retry exception from propagating
     # to Modal (which would cause a double-execution via Modal's retry mechanism).
     # The Celery task publishes its own error events; Modal must not independently retry.
     from app.core.tracing import worker_trace
-    from app.workers.latex_worker import compile_latex_task
     task_payload = dict(payload)
     with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.latex_worker import compile_latex_task
         compile_latex_task.apply(kwargs=task_payload, throw=False)
 
 
@@ -347,11 +347,11 @@ def run_latex_task(payload: dict) -> None:
 )
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
-    _init_worker_redis()
     from app.core.tracing import worker_trace
-    from app.workers.orchestrator import optimize_and_compile_task
     task_payload = dict(payload)
     with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.orchestrator import optimize_and_compile_task
         optimize_and_compile_task.apply(kwargs=task_payload, throw=False)
 
 
@@ -363,11 +363,11 @@ def run_orchestrator_task(payload: dict) -> None:
 )
 def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
-    _init_worker_redis()
     from app.core.tracing import worker_trace
-    from app.workers.llm_worker import optimize_resume_task
     task_payload = dict(payload)
     with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.llm_worker import optimize_resume_task
         optimize_resume_task.apply(kwargs=task_payload, throw=False)
 
 

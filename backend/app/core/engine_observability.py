@@ -40,6 +40,26 @@ def record_phase(phase: str, seconds: float, outcome: str = "success") -> None:
     if not math.isfinite(seconds) or seconds < 0:
         return
     ENGINE_PHASE_SECONDS.labels(phase=phase, outcome=outcome).observe(seconds)
+    # Modal workers may not have a scraped metrics endpoint. Keep the same
+    # bounded diagnostics for direct observations (queue/process/admission) as
+    # for spans; callers never supply request data or identifiers here.
+    if seconds >= .25:
+        logger.info("resume_engine_slow_phase", extra={"phase": phase, "outcome": outcome, "latency_seconds": seconds})
+
+
+class PhaseTimer:
+    """Finish a phase once across stateful worker success/early-return paths."""
+
+    def __init__(self, phase: str):
+        self.phase = phase
+        self.started = time.perf_counter()
+        self.finished = False
+
+    def finish(self, outcome: str = "success") -> None:
+        if self.finished:
+            return
+        self.finished = True
+        record_phase(self.phase, time.perf_counter() - self.started, outcome)
 
 
 @contextmanager
@@ -56,5 +76,3 @@ def engine_span(phase: str):
     finally:
         duration = time.perf_counter() - start
         record_phase(phase, duration, outcome)
-        if phase in PHASES and duration >= .25:
-            logger.info("resume_engine_slow_phase", extra={"phase": phase, "outcome": outcome, "latency_seconds": duration})

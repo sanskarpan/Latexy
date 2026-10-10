@@ -19,21 +19,26 @@ def prepare_worker_logging() -> None:
 
 @lru_cache(maxsize=2)
 def prepare_worker_runtime(semantic_enabled: bool = False) -> None:
-    for module in (
-        "asyncpg",
-        "sqlalchemy.dialects.postgresql.asyncpg",
-        "app.services.render_engine.cache_policy",
-        "app.services.render_engine.artifacts",
-        "app.services.render_engine.retention",
-        "app.services.render_engine.geometry",
-    ):
-        import_module(module)
-    if semantic_enabled:
-        import_module("app.services.resume_engine.service")
-    # Mapper relationship configuration is otherwise deferred to the first
-    # ownership query. All models are loaded by retention above. Configure in
-    # the parent so prefork children inherit the completed CPU-only metadata;
-    # this opens no engine, session or socket and fails readiness on bad mappings.
-    from ..database.connection import Base
+    from .engine_observability import engine_span
 
-    Base.registry.configure()
+    # Memoization excludes warm no-op calls. This measures native imports and
+    # ORM preparation, not image pull/boot or idle time before the first job.
+    with engine_span("worker_initialization"):
+        for module in (
+            "asyncpg",
+            "sqlalchemy.dialects.postgresql.asyncpg",
+            "app.services.render_engine.cache_policy",
+            "app.services.render_engine.artifacts",
+            "app.services.render_engine.retention",
+            "app.services.render_engine.geometry",
+        ):
+            import_module(module)
+        if semantic_enabled:
+            import_module("app.services.resume_engine.service")
+        # Mapper relationship configuration is otherwise deferred to the first
+        # ownership query. All models are loaded by retention above. Configure in
+        # the parent so prefork children inherit the completed CPU-only metadata;
+        # this opens no engine, session or socket and fails readiness on bad mappings.
+        from ..database.connection import Base
+
+        Base.registry.configure()

@@ -39,7 +39,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
-from ..core.engine_observability import engine_span
+from ..core.engine_observability import PhaseTimer, engine_span
 from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
@@ -1147,78 +1147,84 @@ def _run_latex_stage(
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
-    requested_source = latex_content
-    # Validate compiler
-    if compiler not in settings.ALLOWED_LATEX_COMPILERS:
-        compiler = settings.DEFAULT_LATEX_COMPILER
-    # Even worker payloads must respect the same filename/flag/package boundary
-    # as the direct compile path. Keep artifact names stable independently of
-    # the user's input filename.
-    main_file = main_file if isinstance(main_file, str) and _MAIN_FILE_RE.fullmatch(main_file) else "resume.tex"
-    custom_flags = [flag for flag in (latexmk_flags or []) if isinstance(flag, str) and flag in _ALLOWED_EXTRA_FLAGS]
-    if isinstance(extra_packages, list):
-        latex_content = _inject_packages(latex_content, extra_packages)
-    if draft_mode:
-        latex_content = _inject_draft_graphics(latex_content)
-
-    # Shared content gate (same call the latex_compilation path makes)
-    if not latex_service.validate_latex_content(latex_content):
-        error_msg = (
-            r"Invalid LaTeX: missing \documentclass, \begin{document}, "
-            r"\end{document}, or disallowed file/shell primitives"
-        )
-        # This gate runs BEFORE the compiler ever starts, so there is no
-        # pdflatex stdout to stream — without this, the Live Logs panel stays
-        # completely empty on failure (the caller publishes job.failed from
-        # the returned error_msg alone). Publish it as a log line too, so it
-        # shows up the same way a real compiler failure's output would.
-        publish_event(
-            job_id,
-            "log.line",
-            {
-                "line": f"! {error_msg}",
-                "source": compiler,
-                "is_error": True,
-            },
-        )
-        return False, 0.0, error_msg, None, None
-
-    from ..services.render_engine.backend import resolve_backend
-    from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
-    from .job_lifecycle import current_owner_epoch
-
+    source_prepare = PhaseTimer("source_prepare")
     try:
-        render_backend = resolve_backend(compiler)
-    except ModalEngineUnavailable as exc:
-        return False, 0.0, str(exc), None, None
+        requested_source = latex_content
+        # Validate compiler
+        if compiler not in settings.ALLOWED_LATEX_COMPILERS:
+            compiler = settings.DEFAULT_LATEX_COMPILER
+        # Even worker payloads must respect the same filename/flag/package boundary
+        # as the direct compile path. Keep artifact names stable independently of
+        # the user's input filename.
+        main_file = main_file if isinstance(main_file, str) and _MAIN_FILE_RE.fullmatch(main_file) else "resume.tex"
+        custom_flags = [flag for flag in (latexmk_flags or []) if isinstance(flag, str) and flag in _ALLOWED_EXTRA_FLAGS]
+        if isinstance(extra_packages, list):
+            latex_content = _inject_packages(latex_content, extra_packages)
+        if draft_mode:
+            latex_content = _inject_draft_graphics(latex_content)
 
-    content_cache_key = compile_cache_key(
-        latex_content,
-        compiler,
-        {
-            **(compile_settings or {}),
-            "main_file": main_file,
-            "latexmk_flags": custom_flags,
-            "halt_on_error": halt_on_error,
-            # Retain inputs supplied through the legacy stage arguments too.
-            **({"bibtex": bibtex} if bibtex is not None else {}),
-            **({"extra_packages": extra_packages} if extra_packages is not None else {}),
-            **({"draft_mode": True} if draft_mode else {}),
-        },
-        owner_scope,
-    )
-    if cache_context is not None:
-        cache_context["key"] = content_cache_key
-    prepared_request = {
-        **(render_request or {}), "source": requested_source,
-        "render_source": latex_content, "compiler": compiler, "owner_scope": owner_scope,
-        "settings": {**(compile_settings or {}), "main_file": main_file,
-                     "latexmk_flags": custom_flags, "halt_on_error": halt_on_error,
-                     **({"bibtex": bibtex} if bibtex is not None else {}),
-                     **({"extra_packages": extra_packages} if extra_packages is not None else {}),
-                     **({"draft_mode": True} if draft_mode else {})},
-        "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
-    } if owner_scope and current_owner_epoch(job_id) is not None else None
+        # Shared content gate (same call the latex_compilation path makes)
+        if not latex_service.validate_latex_content(latex_content):
+            error_msg = (
+                r"Invalid LaTeX: missing \documentclass, \begin{document}, "
+                r"\end{document}, or disallowed file/shell primitives"
+            )
+            # This gate runs BEFORE the compiler ever starts, so there is no
+            # pdflatex stdout to stream — without this, the Live Logs panel stays
+            # completely empty on failure (the caller publishes job.failed from
+            # the returned error_msg alone). Publish it as a log line too, so it
+            # shows up the same way a real compiler failure's output would.
+            publish_event(
+                job_id,
+                "log.line",
+                {
+                    "line": f"! {error_msg}",
+                    "source": compiler,
+                    "is_error": True,
+                },
+            )
+            return False, 0.0, error_msg, None, None
+
+        from ..services.render_engine.backend import resolve_backend
+        from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
+        from .job_lifecycle import current_owner_epoch
+
+        try:
+            render_backend = resolve_backend(compiler)
+        except ModalEngineUnavailable as exc:
+            return False, 0.0, str(exc), None, None
+
+        content_cache_key = compile_cache_key(
+            latex_content,
+            compiler,
+            {
+                **(compile_settings or {}),
+                "main_file": main_file,
+                "latexmk_flags": custom_flags,
+                "halt_on_error": halt_on_error,
+                # Retain inputs supplied through the legacy stage arguments too.
+                **({"bibtex": bibtex} if bibtex is not None else {}),
+                **({"extra_packages": extra_packages} if extra_packages is not None else {}),
+                **({"draft_mode": True} if draft_mode else {}),
+            },
+            owner_scope,
+        )
+        if cache_context is not None:
+            cache_context["key"] = content_cache_key
+        prepared_request = {
+            **(render_request or {}), "source": requested_source,
+            "render_source": latex_content, "compiler": compiler, "owner_scope": owner_scope,
+            "settings": {**(compile_settings or {}), "main_file": main_file,
+                         "latexmk_flags": custom_flags, "halt_on_error": halt_on_error,
+                         **({"bibtex": bibtex} if bibtex is not None else {}),
+                         **({"extra_packages": extra_packages} if extra_packages is not None else {}),
+                         **({"draft_mode": True} if draft_mode else {})},
+            "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
+        } if owner_scope and current_owner_epoch(job_id) is not None else None
+        source_prepare.finish()
+    finally:
+        # Covers invalid input/backend selection without timing cache or TeX.
+        source_prepare.finish("error")
     cached = restore_compile_cache(content_cache_key, job_id, prepared_request) if prepared_request else restore_compile_cache(content_cache_key, job_id)
     if cached is not None:
         try:
