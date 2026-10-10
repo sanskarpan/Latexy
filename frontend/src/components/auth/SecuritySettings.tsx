@@ -123,8 +123,8 @@ function SecuritySettingsForm({ twoFactorEnabled: initialTwoFactorEnabled, isCur
       // Password is optional for OAuth/passkey-only accounts. Better Auth
       // still enforces it server-side when the account has a credential.
       if (!isMounted()) return
-      const result = await authClient.twoFactor.enable({ ...(password ? { password } : {}), issuer: 'Latexy' })
-      if (result.error || !result.data) throw result.error || new Error('Two-factor setup failed')
+      const result = await authClient.twoFactor.enable({ ...(password ? { password } : {}), issuer: 'Latexy', method: 'totp' })
+      if (result.error || !result.data || result.data.method !== 'totp') throw result.error || new Error('Two-factor setup failed')
       if (!isMounted() || requestId !== actionRequestRef.current) return
       setTotpUri(result.data.totpURI)
       try {

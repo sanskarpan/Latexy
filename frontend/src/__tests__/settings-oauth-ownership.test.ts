@@ -31,6 +31,7 @@ async function loadSettingsHarness(): Promise<Harness> {
   let hookIndex = 0
   let states: unknown[] = []
   let refs: Array<{ current: unknown }> = []
+  let memos: Array<{ deps: unknown[]; value: unknown }> = []
   let effects: Array<() => void | (() => void)> = []
   const activeCleanups: Array<() => void> = []
   const stateUpdates: unknown[] = []
@@ -58,6 +59,14 @@ async function loadSettingsHarness(): Promise<Harness> {
           : value
         stateUpdates.push(states[index])
       }]
+    },
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const index = hookIndex++
+      const previous = memos[index]
+      const changed = !previous || deps.length !== previous.deps.length ||
+        deps.some((value, depIndex) => !Object.is(value, previous.deps[depIndex]))
+      if (changed) memos[index] = { deps: [...deps], value: factory() }
+      return memos[index].value
     },
   }))
   vi.doMock('react/jsx-runtime', () => ({
@@ -119,7 +128,10 @@ async function loadSettingsHarness(): Promise<Harness> {
   return {
     render,
     runLifecycleEffect: () => run('googleDriveStatusGenerationRef.current += 1') as () => void,
-    runInitialEffect: () => run('apiClient.getNotificationPrefs()') as () => void,
+    // Locate the initial integration effect independently of optional
+    // notification request-context arguments. The status assertions below
+    // still exercise its real cancellation and account-generation guards.
+    runInitialEffect: () => run('apiClient.getNotificationPrefs(') as () => void,
     runNormalDriveEffect: () => run('hasDriveTicket') as () => void,
     runCompletionEffect: () => run('const providers') as () => void,
     cleanups: () => { while (activeCleanups.length) activeCleanups.pop()?.() },

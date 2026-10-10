@@ -124,6 +124,7 @@ describe('GAP-005 · ProviderSelector helpers', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ONBOARDING_KEY = 'latexy_onboarding_completed'
+const ownerOnboardingKey = (ownerId: string) => `${ONBOARDING_KEY}:${encodeURIComponent(ownerId)}`
 
 describe('GAP-004 · Onboarding localStorage logic', () => {
   let store: Record<string, string>
@@ -165,6 +166,24 @@ describe('GAP-004 · Onboarding localStorage logic', () => {
     // With hasCompleted=true, startOnboarding should NOT be called
     const shouldShowOnboarding = !hasCompleted
     expect(shouldShowOnboarding).toBe(false)
+  })
+
+  test('signed-in owner state is keyed and never attributes the anonymous legacy flag', () => {
+    store[ONBOARDING_KEY] = 'true'
+    const ownerKey = ownerOnboardingKey('account-a')
+    expect(localStorage.getItem(ownerKey)).toBeNull()
+    expect(!!localStorage.getItem(ownerKey)).toBe(false)
+
+    localStorage.setItem(ownerKey, 'true')
+    expect(localStorage.getItem(ownerKey)).toBe('true')
+    expect(localStorage.getItem(ONBOARDING_KEY)).toBe('true')
+  })
+
+  test('owner-keyed replay intent stays isolated from another owner', () => {
+    const replayKey = `${ONBOARDING_KEY.replace('_completed', '_replay')}:${encodeURIComponent('account-a')}`
+    localStorage.setItem(replayKey, 'true')
+    expect(localStorage.getItem(replayKey)).toBe('true')
+    expect(localStorage.getItem(`${ONBOARDING_KEY.replace('_completed', '_replay')}:account-b`)).toBeNull()
   })
 })
 

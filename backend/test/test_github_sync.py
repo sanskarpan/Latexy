@@ -511,6 +511,7 @@ class TestGitHubEndpoints:
                 mock_cache.pop = AsyncMock(
                     return_value={"user_id": "test-user-id", "code": "abc"}
                 )
+                mock_cache.get = AsyncMock(return_value=mock_cache.pop.return_value)
                 MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_http)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -566,6 +567,7 @@ class TestGitHubEndpoints:
                         "purpose": "import",
                     }
                 )
+                mock_cache.get = AsyncMock(return_value=mock_cache.pop.return_value)
                 MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_http)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
                 resp = authed_client.post(
@@ -849,16 +851,18 @@ class TestGitHubEndpoints:
                 patch("app.api.github_routes.cache_manager") as mock_cache,
                 patch("httpx.AsyncClient") as mock_http,
             ):
-                mock_cache.pop = AsyncMock(
+                mock_cache.get = AsyncMock(
                     return_value={"user_id": "attacker-user", "code": "victim-code"}
                 )
+                mock_cache.pop = AsyncMock()
                 resp = authed_client.post(
                     "/github/complete", json={"ticket": "stolen-ticket"}
                 )
 
             assert resp.status_code == 403
             assert "different user" in resp.json()["detail"].lower()
-            mock_cache.pop.assert_awaited_once_with("gh:complete:stolen-ticket")
+            mock_cache.get.assert_awaited_once_with("gh:complete:stolen-ticket")
+            mock_cache.pop.assert_not_awaited()
             mock_http.assert_not_called()
             mock_db.execute.assert_not_called()
             mock_db.commit.assert_not_called()
@@ -877,12 +881,18 @@ class TestGitHubEndpoints:
                 patch("app.api.github_routes.cache_manager") as mock_cache,
                 patch("httpx.AsyncClient") as mock_http,
             ):
-                mock_cache.pop = AsyncMock(
+                completion = {"user_id": "test-user-id", "code": "provider-code"}
+                mock_cache.get = AsyncMock(
                     side_effect=[
-                        {"user_id": "other-user", "code": "provider-code"},
+                        completion,
                         None,
                     ]
                 )
+                mock_cache.pop = AsyncMock(return_value=completion)
+                provider = AsyncMock()
+                provider.post.side_effect = httpx.ConnectError("synthetic provider unavailable")
+                mock_http.return_value.__aenter__ = AsyncMock(return_value=provider)
+                mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
                 first = authed_client.post(
                     "/github/complete", json={"ticket": "one-time-ticket"}
                 )
@@ -890,11 +900,11 @@ class TestGitHubEndpoints:
                     "/github/complete", json={"ticket": "one-time-ticket"}
                 )
 
-            assert first.status_code == 403
+            assert first.status_code == 502
             assert replay.status_code == 400
             assert "invalid or expired" in replay.json()["detail"].lower()
-            assert mock_cache.pop.await_count == 2
-            mock_http.assert_not_called()
+            mock_cache.pop.assert_awaited_once_with("gh:complete:one-time-ticket")
+            provider.post.assert_awaited_once()
         finally:
             app.dependency_overrides.pop(get_db, None)
 

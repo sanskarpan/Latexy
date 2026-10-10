@@ -3694,15 +3694,18 @@ class ApiClient {
   //  Notification preferences (Feature 19)                           //
   // ---------------------------------------------------------------- //
 
-  async getNotificationPrefs(): Promise<NotificationPrefs> {
-    return this.request<NotificationPrefs>('/settings/notifications')
+  async getNotificationPrefs(accountContext?: AccountPreferenceRequestContext): Promise<NotificationPrefs> {
+    return this.request<NotificationPrefs>('/settings/notifications', {}, accountContext)
   }
 
-  async updateNotificationPrefs(prefs: NotificationPrefs): Promise<NotificationPrefs> {
+  async updateNotificationPrefs(
+    prefs: NotificationPrefs,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<NotificationPrefs> {
     return this.request<NotificationPrefs>('/settings/notifications', {
       method: 'PUT',
       body: JSON.stringify(prefs),
-    })
+    }, accountContext)
   }
 
   // ---------------------------------------------------------------- //
@@ -3720,8 +3723,8 @@ class ApiClient {
   //  GitHub Integration (Feature 37)                                  //
   // ---------------------------------------------------------------- //
 
-  async getGitHubStatus(): Promise<GitHubStatusResponse> {
-    return this.request<GitHubStatusResponse>('/github/status')
+  async getGitHubStatus(accountContext?: AccountPreferenceRequestContext): Promise<GitHubStatusResponse> {
+    return this.request<GitHubStatusResponse>('/github/status', {}, accountContext)
   }
 
   async startGitHubOAuth(
@@ -3735,15 +3738,15 @@ class ApiClient {
     })
   }
 
-  async completeGitHubOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+  async completeGitHubOAuth(ticket: string, accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
     return this.request('/github/complete', {
       method: 'POST',
       body: JSON.stringify({ ticket }),
-    })
+    }, accountContext)
   }
 
-  async disconnectGitHub(): Promise<{ success: boolean; message: string }> {
-    return this.request('/github/disconnect', { method: 'DELETE' })
+  async disconnectGitHub(accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
+    return this.request('/github/disconnect', { method: 'DELETE' }, accountContext)
   }
 
   async getResumeGitHubStatus(resumeId: string): Promise<GitHubResumeStatus> {
@@ -3838,8 +3841,8 @@ class ApiClient {
     })
   }
 
-  async disconnectDropbox(): Promise<{ success: boolean; message: string }> {
-    return this.request('/dropbox/disconnect', { method: 'DELETE' })
+  async disconnectDropbox(accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
+    return this.request('/dropbox/disconnect', { method: 'DELETE' }, accountContext)
   }
 
   async getResumeDropboxStatus(resumeId: string): Promise<DropboxResumeStatus> {
@@ -3874,8 +3877,8 @@ class ApiClient {
   //  Google Drive export (B50a)                                      //
   // ---------------------------------------------------------------- //
 
-  async getGoogleDriveStatus(): Promise<GoogleDriveStatusResponse> {
-    return this.request<GoogleDriveStatusResponse>('/google-drive/status')
+  async getGoogleDriveStatus(accountContext?: AccountPreferenceRequestContext): Promise<GoogleDriveStatusResponse> {
+    return this.request<GoogleDriveStatusResponse>('/google-drive/status', {}, accountContext)
   }
 
   async startGoogleDriveOAuth(): Promise<OAuthStartResponse> {
@@ -3889,8 +3892,8 @@ class ApiClient {
     })
   }
 
-  async disconnectGoogleDrive(): Promise<{ success: boolean; message: string }> {
-    return this.request('/google-drive/disconnect', { method: 'DELETE' })
+  async disconnectGoogleDrive(accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
+    return this.request('/google-drive/disconnect', { method: 'DELETE' }, accountContext)
   }
 
   async exportResumeToGoogleDrive(resumeId: string): Promise<GoogleDriveExportResponse> {
@@ -3919,8 +3922,8 @@ class ApiClient {
     })
   }
 
-  async disconnectZotero(): Promise<{ success: boolean; message: string }> {
-    return this.request('/zotero/disconnect', { method: 'DELETE' })
+  async disconnectZotero(accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
+    return this.request('/zotero/disconnect', { method: 'DELETE' }, accountContext)
   }
 
   async getZoteroCollections(): Promise<ZoteroCollectionsResponse> {
@@ -3953,8 +3956,8 @@ class ApiClient {
     })
   }
 
-  async disconnectMendeley(): Promise<{ success: boolean; message: string }> {
-    return this.request('/mendeley/disconnect', { method: 'DELETE' })
+  async disconnectMendeley(accountContext?: AccountPreferenceRequestContext): Promise<{ success: boolean; message: string }> {
+    return this.request('/mendeley/disconnect', { method: 'DELETE' }, accountContext)
   }
 
   async importFromMendeley(resumeId: string, groupId?: string): Promise<MendeleyImportResponse> {
