@@ -92,6 +92,38 @@ without discarding billing evidence.
   corrected. Final Dodo-only source requires its own latest-head CI. Results
   from the discarded compatibility candidate are not final acceptance evidence.
 
+### Production preflight handoff
+
+Exact Dodo-only head `77d7442b40d8402b905e109db7f366fe57227a0b` subsequently
+passed all 14 CI jobs, Vercel, CodeQL and credential scanning. Its production
+browser gate passed all 68 billing/builder/editor/Settings cases, in addition to
+the quality and hydration suites. Code readiness does not establish production
+configuration: a fresh read-only production plans response reported billing
+unconfigured, but does not reveal dormant Dodo configuration, the schema marker,
+or historical paid-account counts.
+
+The read-only `dodo_billing_preflight.py` diagnostic and `billing_preflight`
+Modal wrapper were added for an operator with existing authenticated access.
+They neither enable billing nor perform a migration, deploy, provider request,
+or transaction. The wrapper uses existing deployment secret bindings and emits
+redacted environment/source/image identity, while the script reports static
+configuration facts and aggregate database cutover checks. See the exact command
+and interpretation in `docs/BILLING_DODO.md`. This follow-up source requires its
+own exact-head CI; results for `77d7442b` do not certify later edits.
+The final diagnostic suite passed 131 tests, including actual read-only local
+PostgreSQL and disposable pre-Dodo schema/history/team-seat preservation checks.
+Independent read-only review passed 85 overlapping isolated cases and found no
+remaining diagnostic blocker. Existing Modal deployment/CI-visibility tests also
+pass. These tests do not certify deployed source, live credentials/catalog, or
+complete database constraint equivalence.
+
+The production report remains pending. A clean disabled/unconfigured default
+can safely leave purchases unavailable, but unknown `required`, partial-key, or
+production-test configuration can block the release. No new engine/model
+production variables are required by this branch relative to current main.
+The PR remains draft until the configuration/schema/access cutover review is
+complete; the script is not a substitute for live Dodo acceptance.
+
 ## Still requires provider or deployment acceptance
 
 These are not certified by synthetic tests or a merge:

@@ -57,6 +57,54 @@ when startup validation is skipped. Unconfigured `auto` billing stays unavailabl
 Disabling new sales does not prevent authenticated servicing of existing live
 Dodo subscriptions through cancellation or verified checkout recovery.
 
+### Read-only production preflight
+
+Before merging a release that triggers automatic production deployment, inspect
+the existing configuration without copying secret values into a terminal or chat.
+From a **clean checkout of the reviewed PR revision**, with the already-authorized
+Modal CLI account selected, run from `backend/`:
+
+```bash
+modal run --env main modal_app.py::billing_preflight \
+  --source-revision "$(git rev-parse HEAD)" --expected-environment main
+```
+
+This invokes candidate source in an ephemeral diagnostic container using the
+same existing secret bindings and migration image as deployment. It does **not**
+deploy the candidate, apply migrations, change settings, or contact Dodo. It
+does not establish that the candidate image is already serving production.
+The JSON report identifies the application, actual and expected Modal environment,
+diagnostic image ID, caller-reported source revision, source-file fingerprint,
+and expected repository migration head. The actual environment and image ID
+come from [Modal's reserved runtime metadata](https://modal.com/docs/guide/environment_variables).
+An environment mismatch refuses the database diagnostic. The wrapper also blocks
+acceptance when Modal `main` is classified as development/test by the application's
+`ENVIRONMENT` setting; production billing guards require production/staging.
+
+The standalone `python scripts/dodo_billing_preflight.py` entry point is also
+available for an environment whose configuration is already supplied. A local
+environment report alone is not evidence about the deployed Modal secret bundle.
+Both entry points print only redacted configuration facts, public catalog
+expectations, database revision/schema classification, and aggregate cutover
+counts. Database queries run in an explicitly read-only transaction with bounded
+timeouts and rollback. Connection strings, credentials, product/customer IDs,
+individual users and exception details are never included. Catalog checks concern
+local configuration only; the live merchant catalog still needs separate acceptance.
+Billing-only startup validity and checkout availability are reported separately;
+the diagnostic does not revalidate unrelated authentication/storage credentials.
+
+Exit 0 means the script's static readiness checks pass. Exit 1 is a readable
+report requiring review, including ordinary pre-migration or disabled/unconfigured
+billing states; it is not an instruction to enable billing or migrate. Exit 2
+means diagnostics were incomplete and only a fixed error code is emitted. Share
+the redacted JSON report, not environment files or secret values. A candidate
+with `auto` billing and no active-mode keys can start with paid purchases disabled;
+`required` billing without both active keys, partial keys in `auto`, or configured
+test-mode billing in production fails startup deliberately. The deployment
+workflow validates settings during its migration step before replacing the API.
+Unresolved historical paid-account counts require a deliberate access cutover
+decision; financial-row preservation alone does not establish ongoing access.
+
 ## Webhook setup
 
 Register `POST /billing/webhook` (or the explicit `/billing/dodo/webhook` alias) (prepend a deployment's configured API
