@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
@@ -18,7 +18,11 @@ function SettingsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
-  const { resetOnboarding } = useOnboarding()
+  const { resetOnboarding } = useOnboarding(useMemo(() => ({
+    ownerId: sessionData?.user?.id ?? null,
+    authToken: sessionData?.session?.token ?? '',
+    confirmed: Boolean(sessionData?.user?.id && sessionData?.session?.token && !sessionLoading && !sessionError),
+  }), [sessionData?.session?.token, sessionData?.user?.id, sessionError, sessionLoading]))
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   type ProviderActionKey =
     | 'google_drive'
