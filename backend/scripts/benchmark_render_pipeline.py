@@ -51,6 +51,7 @@ async def benchmark(samples, host_load, profile, guest, compiler="pdflatex"):
     base_source = SOURCE
     if profile == "managed_english":
         from benchmark_trusted_format import FIXTURE
+
         from app.services.resume_builder_service import resume_builder_service
 
         base_source = resume_builder_service.render(FIXTURE, "ats_safe").latex_content

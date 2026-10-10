@@ -38,7 +38,7 @@ The [parallel binary upload experiment](production-2026-10-08/upload-storage-pai
 
 - Final DB-free selection: **57 passed, one deselected**, RuntimeWarnings treated as errors. Includes new phase-boundary/once-only/error tests, queue timestamp/skew tests, actual extracted Modal wrapper ordering, worker preparation, structured logging, bounded capacity validation, upload/check join behavior and broker responsiveness.
 - Existing Modal dispatch/task/dependency-order contract selection: **four passed, 25 deselected**.
-- Changed-file Ruff, Python compilation and `git diff --check`: passed.
+- Full backend Ruff (`app test scripts modal_app.py`), Python compilation and `git diff --check`: passed. The aggregate lint check initially found one existing import-group spacing error in the render benchmark script; this follow-up fixes that formatting only.
 - A broader selection with `SKIP_INFRA_CHECK=1` produced **67 passed, three failed, one deselected**. The three existing task-timing tests require their worker environment: two fail before task admission because worker Redis is not initialized; one produces no completion-timing record. Running those tests on unchanged `fed55681` with the same no-infrastructure setup reproduces all three failures (10 passed, three failed). Assertions were not relaxed. This is not a full backend pass.
 - Local native LuaLaTeX has no `lualatex.fmt`, so this follow-up does not claim a new real-engine benchmark. No live model call, payment, production mutation or deployment was performed.
 
