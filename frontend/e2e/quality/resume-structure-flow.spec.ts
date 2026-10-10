@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createHash } from 'node:crypto'
+import { mockEngineAncillaryApi } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -52,7 +53,7 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
       compiler: 'pdflatex', settings_sha256: digest('settings'), preview_url: `/download/${id}/preview/${digest(id)}`, geometry_url: `/download/${id}/preview/${digest(id)}/geometry` }
   }
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'structure-owner', email: 'owner@example.com', name: 'Owner' } } }))
-  await page.route('http://127.0.0.1:8530/**', route => route.fulfill({ json: {} }))
+  await mockEngineAncillaryApi(page, 'structure-owner')
   await page.route('**/macros', route => route.fulfill({ json: [] }))
   await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'structure-owner', title: 'Structured resume', latex_content: source(), document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
   await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ status: 404, json: { detail: 'No original upload' } }))

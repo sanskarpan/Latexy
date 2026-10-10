@@ -2,6 +2,7 @@ import { expect, test, type WebSocketRoute } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 
@@ -47,7 +48,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   })
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close({ code: 1000, reason: 'Contract test uses state recovery' }))
   page.on('pageerror', error => errors.push(error.message))
-  await page.route('http://localhost:8030/**', route => route.fulfill({ json: {} }))
+  await mockEngineAncillaryApi(page)
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
   await page.route('**/config/feature-flags', route => route.fulfill({ json: {} }))
   await page.route('**/ats/quick-score', route => {
@@ -101,9 +102,16 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   }
   await page.getByRole('button', { name: 'Source', exact: true }).click()
   await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 60000 })
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  // WebKit/Firefox do not expose Chromium's clipboard permission grant.
+  // Capture the real Copy button's write at the browser API boundary instead.
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (text: string) => {
+      ;(window as typeof window & { copiedLatex?: string }).copiedLatex = text
+    } },
+  }))
   await page.getByRole('button', { name: 'Copy LaTeX source', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('across 8 product surfaces')
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { copiedLatex?: string }).copiedLatex)).toContain('across 8 product surfaces')
   await page.getByRole('button', { name: 'Resume', exact: true }).click()
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
   expect(scoreSources).toHaveLength(2)
@@ -143,7 +151,7 @@ test('managed review keeps provisional candidates separate and applies authorita
       branch: compiled ? 'draft' : 'candidate', owner_epoch: 1, compiler: 'pdflatex', settings_sha256: digest('settings'), pdf_sha256: createHash('sha256').update(pdf).digest('hex'),
       pdf_size: pdf.length, page_count: 1, preview_url: `/download/${jobId}/preview/${digest(jobId + source)}`, geometry_url: `/download/${jobId}/preview/${digest(jobId + source)}/geometry` }
   }
-  await page.route(/http:\/\/(localhost|127\.0\.0\.1):(8030|8530)\//, route => route.fulfill({ json: {} }))
+  await mockEngineAncillaryApi(page, 'engine-owner')
   await page.route('**/ws/ticket', route => route.fulfill({ json: { ticket: 'contract-ticket' } }))
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'engine-owner', email: 'engine-owner@example.com', name: 'Engine Owner' } } }))
   await page.route('**/macros', route => route.fulfill({ json: [] }))
@@ -286,24 +294,19 @@ test('managed review keeps provisional candidates separate and applies authorita
   try {
     await page.getByRole('button', { name: 'Source', exact: true }).click()
     await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 60000 })
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     const codeInput = page.locator('.monaco-editor .inputarea, .monaco-editor .native-edit-context')
     await expect(codeInput).toHaveCount(1)
     await codeInput.focus()
     await page.keyboard.press('Control+End')
     await page.keyboard.press('Enter')
     await page.keyboard.type('% Newer local source edit')
-    await page.keyboard.press('Control+A'); await page.keyboard.press('Control+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('% Newer local source edit')
+    await expect.poll(() => readMonacoSource(page)).toContain('% Newer local source edit')
     const completedField = page.waitForResponse((response) => response.request().method() === 'PATCH'
       && response.url().endsWith(`/resumes/${resumeId}/engine/document`))
     releaseField()
     await completedField
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-    await expect.poll(async () => {
-      await codeInput.focus(); await page.keyboard.press('Control+A'); await page.keyboard.press('Control+C')
-      return page.evaluate(() => navigator.clipboard.readText())
-    }).toContain('% Newer local source edit')
+    await expect.poll(() => readMonacoSource(page)).toContain('% Newer local source edit')
     expect(runtimeErrors).toEqual([])
   } finally { releaseField() }
 })
@@ -320,7 +323,7 @@ test('verified PDF field supports keyboard selection and mobile field pane', asy
     pdf_size: pdf.length, page_count: 1, document_id: 'guest', content_revision: 1, branch: 'draft', owner_epoch: 1,
     compiler: 'pdflatex', settings_sha256: digest('test-settings'), preview_url: `/download/mapped-preview/preview/${artifactId}`,
     geometry_url: `/download/mapped-preview/preview/${artifactId}/geometry` })
-  await page.route(/http:\/\/(localhost:8030|127\.0\.0\.1:8530)\//, route => route.fulfill({ json: {} }))
+  await mockEngineAncillaryApi(page)
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
   await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
   await page.route('**/public/engine/document', async route => { source = route.request().postDataJSON().latex_content; await route.fulfill({ json: { document: project(source), latex_content: source } }) })

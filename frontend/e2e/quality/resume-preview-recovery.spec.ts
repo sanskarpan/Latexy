@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createHash } from 'node:crypto'
+import { mockEngineAncillaryApi } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const digest = (text: string) => createHash('sha256').update(text).digest('hex')
@@ -14,6 +15,7 @@ function projection(source: string) {
 }
 
 async function mockGuest(page: Page) {
+  await mockEngineAncillaryApi(page, 'changed-account')
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
@@ -28,7 +30,7 @@ async function mockGuest(page: Page) {
   return errors
 }
 
-test('acknowledged guest cancellation allows the next saved field to preview without a terminal socket event', async ({ page }) => {
+test('acknowledged guest cancellation allows the next saved field to preview without a terminal socket event', async ({ page }, testInfo) => {
   const errors = await mockGuest(page)
   const submissions: Array<{ latex_content: string }> = []
   let cancellations = 0
@@ -53,9 +55,11 @@ test('acknowledged guest cancellation allows the next saved field to preview wit
   await page.getByLabel('Experience · bullet').fill(original.replace('6 product', '8 product'))
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(1)
+  if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'PDF', exact: true }).click()
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
   await expect.poll(() => cancellations).toBe(1)
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0)
+  if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Editor', exact: true }).click()
   await page.getByLabel('Experience · bullet').fill(original.replace('6 product', '9 product'))
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
   await expect.poll(() => submissions.length).toBe(2)

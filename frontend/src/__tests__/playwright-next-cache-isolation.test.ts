@@ -79,6 +79,12 @@ describe('Playwright Next cache isolation', () => {
     expect(FULL_STACK_SMOKE).toContain('PLAYWRIGHT_API_URL="http://127.0.0.1:${BACKEND_PORT}"')
   })
 
+  it('checks cross-browser PDFs in the production bundle with bounded interactions', () => {
+    expect(QUALITY_CONFIG).toContain('node scripts/playwright-server.mjs --port ${PORT} --mode production')
+    expect(QUALITY_CONFIG).toContain('actionTimeout: 12_000')
+    expect(QUALITY_CONFIG).toContain('timeout: 1_800_000')
+  })
+
   it('does not inherit ambient credentials into the disposable server', () => {
     const keys = [
       'SUPABASE_SERVICE_ROLE_KEY',

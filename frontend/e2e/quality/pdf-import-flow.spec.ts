@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createHash } from 'node:crypto'
+import { mockEngineAncillaryApi } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -35,17 +36,30 @@ for (const scenario of ['review', 'mismatch', 'manual']) test(scenario === 'mism
       { field_id: 'basics.name', node_revision: digest('basics.name\0' + extractedName), label: 'Name', text: extractedName, confidence: 'unknown', warnings: [] },
     ] }, supported_templates: [{ template_id: 'supported-template', name: 'Clean resume', category: 'professional' }], expires_at: '2026-10-08T00:00:00Z' }
   const adaptations: Record<string, unknown>[] = []; let conversions = 0; let originalRequests = 0
+  // WebKit's intercepted multipart postDataBuffer omits file bytes. Observe
+  // the actual FormData given to fetch, then let the application send it.
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch
+    window.fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href)
+      if (url.pathname === '/resumes/imports/pdf' && init?.body instanceof FormData) {
+        const file = init.body.get('file')
+        if (file instanceof File) {
+          ;(window as typeof window & { uploadedPdfBytes?: number[] }).uploadedPdfBytes = Array.from(new Uint8Array(await file.arrayBuffer()))
+        }
+      }
+      return originalFetch.call(window, input, init)
+    }
+  })
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' },
     user: { id: 'import-owner', email: 'import-owner@example.com', name: 'Import Owner' } } }))
-  await page.route('http://127.0.0.1:8530/**', route => {
-    const path = new URL(route.request().url()).pathname
-    return route.fulfill({ json: path.startsWith('/templates') ? [] : path.includes('resolve-host') ? { tenant: null } : {} })
-  })
+  await mockEngineAncillaryApi(page, 'import-owner')
   await page.route('**/formats/upload**', route => { conversions++; return route.fulfill({ status: 500, json: { detail: 'Paid conversion is outside this flow' } }) })
   await page.route('**/resumes/imports/pdf', async route => {
     expect(route.request().headers().authorization).toBe('Bearer contract-owner-token')
     expect(route.request().headers()['content-type']).toContain('multipart/form-data')
-    expect(route.request().postDataBuffer()?.includes(pdf)).toBe(true)
+    const uploaded = await page.evaluate(() => (window as typeof window & { uploadedPdfBytes?: number[] }).uploadedPdfBytes)
+    expect(Buffer.from(uploaded ?? [])).toEqual(pdf)
     await route.fulfill({ json: receipt })
   })
   await page.route('**/resumes/imports/contract-import/original', route => {
