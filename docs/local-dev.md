@@ -286,10 +286,21 @@ Volumes are also slot-specific (`backend_temp_2`, `celery_beat_data_2`).
 |------|---------|------------|-------|
 | `backend/Dockerfile` | **Dev** | `python:3.12-slim` | Includes texlive, tesseract. Source mounted as volume for hot-reload. |
 | `backend/Dockerfile.prod` | **Production** | `python:3.12-slim` (multi-stage) | Builder stage installs the hash-verified production lock; the runtime stage includes texlive and runs 4 uvicorn workers on port 8030. |
-| `frontend/Dockerfile.dev` | **Dev** | `node:22-alpine` | pnpm, source mounted as volume. Accepts `PORT` env var. |
+| `frontend/Dockerfile.dev` | **Dev** | `node:22-alpine` | Builds from the repository root with pnpm 10.10.0, the frozen root lock and patches. Portable dependencies; source mounted as volume. Accepts `PORT` env var. |
 | `frontend/Dockerfile.prod` | **Production** | `node:22-alpine` (multi-stage) | Standalone Next.js build with `dumb-init`. Runs on port 5180. |
 
 ### Production stack
+
+After rebuilding the development frontend, refresh its anonymous dependency and
+Next.js cache volumes so the previous image's packages are not reused:
+
+```bash
+docker compose build frontend
+docker compose up -d --no-deps --force-recreate --renew-anon-volumes frontend
+```
+
+The frontend build context uses `frontend/Dockerfile.dev.dockerignore` to include
+only manifests and patches. Local `.env` files stay outside the image.
 
 `docker-compose.prod.yml` uses the `.prod` Dockerfiles and adds:
 

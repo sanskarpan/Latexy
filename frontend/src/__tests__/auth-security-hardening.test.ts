@@ -56,6 +56,12 @@ describe('B58 authentication security contract', () => {
   })
 
   it('keeps setup material transient and requires acknowledgement for backup codes', () => {
+    expect(securitySource).toContain("if ('method' in result.data && result.data.method !== 'totp')")
+    expect(securitySource).toContain("if (!('totpURI' in result.data) || !('backupCodes' in result.data))")
+    expect(securitySource.indexOf("if ('method' in result.data && result.data.method !== 'totp')")).toBeLessThan(
+      securitySource.indexOf('setTotpUri(totpURI)'),
+    )
+    expect(securitySource).toContain('Authenticator setup is unavailable for this account.')
     expect(securitySource).toContain('setAcknowledged(false)')
     expect(securitySource).toContain('I saved these codes securely')
     expect(securitySource).toContain("setBackupCodes(null)")

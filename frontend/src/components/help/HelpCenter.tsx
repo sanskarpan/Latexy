@@ -136,9 +136,9 @@ const faqData: FAQItem[] = [
   {
     id: 'payment-methods',
     question: 'What payment methods do you accept?',
-    answer: 'We accept all major credit/debit cards, UPI, net banking, and digital wallets through our secure payment partner Razorpay. All transactions are encrypted and PCI DSS compliant for your security.',
+    answer: 'Paid plans use Dodo Payments hosted checkout. Available payment methods depend on your location and the options shown at checkout.',
     category: 'billing',
-    tags: ['payment', 'razorpay', 'security']
+    tags: ['payment', 'dodo', 'security']
   },
   {
     id: 'cancel-subscription',

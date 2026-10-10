@@ -1,5 +1,10 @@
 # Latexy — UX Audit & Improvement Backlog
 
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](../BILLING_DODO.md) and the October 2026 migration audit.
+
+
 > Deep UX review across all public + authenticated surfaces (Aug 2026). **126 findings** — **23 high, 62 medium, 41 low** (56 bugs, 70 improvements). Produced by a 7-surface parallel audit; each item lists type, severity, location, the problem, and a concrete fix.
 
 | Area | Findings | High |

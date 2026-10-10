@@ -12,8 +12,11 @@ from httpx import AsyncClient
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.database.models import DeviceTrial
 from app.services.analytics_service import analytics_service
+from app.services.dodo_provider import DodoProvider
+from app.services.payment_service import PaymentService
 from app.services.trial_service import TRIAL_LIMIT, trial_service
 
 
@@ -376,8 +379,25 @@ class TestBusinessRequirements:
     """Test business logic and requirements."""
 
     @pytest.mark.asyncio
-    async def test_subscription_billing_integration(self, client: AsyncClient):
-        """Test subscription billing system integration."""
+    async def test_subscription_billing_integration(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Configured test billing exposes the mapped paid plans."""
+        monkeypatch.setattr(settings, "DODO_MODE", "test")
+        monkeypatch.setattr(settings, "DODO_TEST_API_KEY", "test-only-not-sent")
+        monkeypatch.setattr(settings, "DODO_TEST_WEBHOOK_KEY", "test-only-webhook-key")
+        for sku in ("BASIC_MONTHLY", "PRO_MONTHLY", "BYOK_MONTHLY"):
+            monkeypatch.setattr(settings, f"DODO_TEST_PRODUCT_{sku}", f"p_test_{sku.lower()}")
+
+        # The plan-list path only needs a configured provider; this dummy key
+        # is never used for an outbound request.
+        from app.api import routes
+
+        monkeypatch.setattr(
+            routes,
+            "payment_service",
+            PaymentService(provider=DodoProvider(api_key="test-only-not-sent")),
+        )
         response = await client.get("/subscription/plans")
         assert response.status_code == 200
 
@@ -385,12 +405,48 @@ class TestBusinessRequirements:
         # Response is {"plans": {plan_id: {...}, ...}}
         assert "plans" in data
         plans = data["plans"]
-        assert len(plans) >= 3  # Should have free, basic, pro, byok
+        assert {"free", "basic", "pro", "byok"}.issubset(plans)
+        assert data["billing"]["mode"] == "enabled"
+        assert data["billing"]["available"] is True
 
         for plan_id, plan in plans.items():
             assert "name" in plan
             assert "price" in plan
             assert "features" in plan
+
+    @pytest.mark.asyncio
+    async def test_subscription_plans_are_free_only_when_unconfigured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Unconfigured test billing must not advertise checkoutable paid plans."""
+        monkeypatch.setattr(settings, "DODO_MODE", "test")
+        monkeypatch.setattr(settings, "DODO_TEST_API_KEY", "")
+        monkeypatch.setattr(settings, "DODO_TEST_WEBHOOK_KEY", "")
+        for sku in (
+            "BASIC_MONTHLY",
+            "BASIC_ANNUAL",
+            "PRO_MONTHLY",
+            "PRO_ANNUAL",
+            "BYOK_MONTHLY",
+            "BYOK_ANNUAL",
+            "STUDENT",
+            "TEAM",
+            "WEEKLY",
+            "LIFETIME",
+        ):
+            monkeypatch.setattr(settings, f"DODO_TEST_PRODUCT_{sku}", "")
+
+        service = PaymentService(provider=DodoProvider(api_key=""))
+        plans = await service.get_subscription_plans()
+
+        assert set(plans) == {"free"}
+        assert service.get_status() == {
+            "feature_enabled": True,
+            "mode": "unconfigured",
+            "available": False,
+            "reason": "billing_unconfigured",
+            "message": "Dodo billing is not fully configured for this environment.",
+        }
 
     @pytest.mark.asyncio
     async def test_usage_limit_enforcement(self, db_session: AsyncSession):

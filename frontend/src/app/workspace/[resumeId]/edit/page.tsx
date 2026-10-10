@@ -97,11 +97,10 @@ import { clearAllOfflineCompiledPdfs, getOfflineCompiledPdf, getRememberedOfflin
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
 import { acquireReconnectReservation, compileReconnectReservationKey, draftReconnectReservationKey } from '@/lib/reconnect-reservations'
 import { canEditResume, type ResumeAccessRole } from '@/lib/resume-access'
-import { parseResume } from '@/lib/wysiwyg/latex-parser'
-import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
-import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 import { buildLatexOutline, type LatexOutlineItem } from '@/lib/latex-outline'
+import { visualFeedbackText } from '@/lib/visual-feedback'
 import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
+import { createAutoCompileScheduler } from '@/lib/auto-compile-scheduler'
 const ShareResumeModal = dynamic(() => import('@/components/ShareResumeModal'))
 const DocumentAssistantPanel = dynamic(() => import('@/components/DocumentAssistantPanel'))
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
@@ -131,7 +130,8 @@ const SuggestionsPanel = dynamic(() => import('@/components/SuggestionsPanel'))
 const LaTeXDocPanel = dynamic(() => import('@/components/LaTeXDocPanel'))
 const ConfidenceScorePanel = dynamic(() => import('@/components/ConfidenceScorePanel'))
 const KeyboardShortcutsPanel = dynamic(() => import('@/components/KeyboardShortcutsPanel'))
-const WYSIWYGEditor = dynamic(() => import('@/components/WYSIWYGEditor'))
+const VisualResumeEditor = dynamic(() => import('@/components/VisualResumeEditor'))
+const VisualChangeReviewModal = dynamic(() => import('@/components/VisualChangeReviewModal'))
 const SnippetMarketplace = dynamic(() => import('@/components/SnippetMarketplace'))
 const MacroLibraryPanel = dynamic(() => import('@/components/MacroLibraryPanel'))
 const TikZEditor = dynamic(() => import('@/components/TikZEditor'))
@@ -436,6 +436,7 @@ function SectionSelector({
 // ─── AI Panel ────────────────────────────────────────────────────────────────
 
 interface AIPanelProps {
+  visualOnly?: boolean
   aiStream: JobStreamState
   isRunning: boolean
   isSubmitting: boolean
@@ -460,6 +461,7 @@ interface AIPanelProps {
 }
 
 function AIPanel({
+  visualOnly = false,
   aiStream,
   isRunning,
   isSubmitting,
@@ -502,7 +504,7 @@ function AIPanel({
             <AIStagePipeline
               stage={aiStream.stage}
               percent={aiStream.percent}
-              message={aiStream.message}
+              message={visualOnly ? 'Improving your résumé and preparing a preview…' : aiStream.message}
             />
           </div>
           {aiStream.streamingLatex && (
@@ -522,7 +524,7 @@ function AIPanel({
               <p className="text-sm font-semibold text-ok">Optimization ready to review</p>
               <p className="truncate text-[10px] text-fg-3">
                 {aiStream.changesMade?.length ?? 0} changes ·{' '}
-                {aiStream.tokensUsed ? `${aiStream.tokensUsed.toLocaleString()} tokens` : 'PDF ready'}
+                {visualOnly ? 'Ready for your review' : aiStream.tokensUsed ? `${aiStream.tokensUsed.toLocaleString()} tokens` : 'PDF ready'}
               </p>
             </div>
           </div>
@@ -587,7 +589,7 @@ function AIPanel({
                 </p>
                 {aiStream.atsDetails?.recommendations?.[0] && (
                   <p className="mt-1 text-[10px] italic text-fg-3">
-                    {aiStream.atsDetails.recommendations[0]}
+                    {visualOnly ? visualFeedbackText(aiStream.atsDetails.recommendations[0]) : aiStream.atsDetails.recommendations[0]}
                   </p>
                 )}
               </div>
@@ -625,7 +627,7 @@ function AIPanel({
             <AlertCircle size={15} className="mt-0.5 shrink-0 text-err" />
             <div>
               <p className="text-sm font-semibold text-err">Optimization failed</p>
-              <p className="mt-0.5 text-[11px] text-fg-3">{aiStream.error || 'An error occurred'}</p>
+              <p className="mt-0.5 text-[11px] text-fg-3">{visualOnly ? 'Your draft is preserved. Please try again.' : aiStream.error || 'An error occurred'}</p>
             </div>
           </div>
 
@@ -655,7 +657,7 @@ function AIPanel({
                 <p className="text-[11px] font-semibold text-warn">AI rewrite is available</p>
               </div>
               <p className="text-[10px] text-fg-3 mb-3">
-                The LaTeX rewrite completed but failed to compile. You can apply it to the editor and fix the errors manually.
+                {visualOnly ? 'The rewrite is available, but its preview could not be prepared. You can keep the current draft or try the candidate and update the preview again.' : 'The LaTeX rewrite completed but failed to compile. You can apply it to the editor and fix the errors manually.'}
               </p>
               <button
                 onClick={onApplyAnyway}
@@ -999,13 +1001,21 @@ export default function ResumeEditPage() {
   const [dbxSyncing, setDbxSyncing] = useState(false)
   const [dbxTogglingSync, setDbxTogglingSync] = useState(false)
 
-  // WYSIWYG editor mode (Feature 78)
+  // Visual editing is a view of the original source; switching never serializes it.
   const [editorMode, setEditorMode] = useState<'source' | 'wysiwyg'>(() => {
-    if (typeof window === 'undefined') return 'source'
-    return (localStorage.getItem(`latexy_editor_mode_${resumeId}`) as 'source' | 'wysiwyg') ?? 'source'
+    if (typeof window === 'undefined') return 'wysiwyg'
+    try {
+      return localStorage.getItem(`latexy_editor_mode_${resumeId}`) === 'source' ? 'source' : 'wysiwyg'
+    } catch { return 'wysiwyg' }
   })
-  const [wysiwygDoc, setWysiwygDoc] = useState<ResumeDoc | null>(null)
-  const [wysiwygHasRaw, setWysiwygHasRaw] = useState(false)
+  const latestLatexContentRef = useRef(latexContent)
+  latestLatexContentRef.current = latexContent
+  const visualPanels: RightTab[] = ['preview', 'ai', 'comments', 'interview', 'layout']
+  useEffect(() => {
+    if (editorMode === 'wysiwyg' && !visualPanels.includes(rightTab)) setRightTab('preview')
+    // The list is static and deliberately excludes panels that show source snippets.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorMode, rightTab])
 
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
@@ -2113,61 +2123,15 @@ export default function ResumeEditPage() {
     }
   }
 
-  // WYSIWYG mode toggle (Feature 78)
   const handleToggleEditorMode = useCallback((mode: 'source' | 'wysiwyg') => {
     if (mode === editorMode) return
-    if (mode === 'wysiwyg') {
-      const src = editorRef.current?.getValue() || latexContent
-      const { doc, warnings } = parseResume(src)
-      const hasRaw = warnings.some((w) => w.type === 'unrecognised_block')
-      // Round-trip through the visual model can reorder/reformat LaTeX the parser
-      // didn't fully understand. Warn once per document before the first switch
-      // when unrecognised blocks are present (Finding: silent LaTeX mutation).
-      if (hasRaw) {
-        const warnKey = `latexy_wysiwyg_warned_${resumeId}`
-        const alreadyWarned = typeof window !== 'undefined' && localStorage.getItem(warnKey) === 'true'
-        if (!alreadyWarned) {
-          const proceed = window.confirm(
-            'Some LaTeX in this document couldn’t be fully parsed for visual editing. '
-            + 'Those blocks stay read-only in Visual mode, but switching back may reformat or reorder complex content. '
-            + 'A restore point will be saved. Continue to Visual mode?'
-          )
-          if (!proceed) return
-          if (typeof window !== 'undefined') localStorage.setItem(warnKey, 'true')
-        }
-      }
-      // Snapshot before entering Visual so the switch is reversible.
-      pushUndo('Before switch to Visual')
-      setWysiwygDoc(doc)
-      setWysiwygHasRaw(hasRaw)
-    } else {
-      // wysiwyg → source: snapshot, then serialize back
-      pushUndo('Before switch to Source')
-      if (wysiwygDoc) {
-        const src = serializeResume(wysiwygDoc)
-        setLatexContent(src)
-      }
+    if (editorMode === 'source') {
+      const source = editorRef.current?.getValue()
+      if (source !== undefined) setLatexContent(source)
     }
     setEditorMode(mode)
-    localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)
-  }, [editorMode, latexContent, wysiwygDoc, resumeId, pushUndo])
-
-  const handleWysiwygChange = useCallback((doc: ResumeDoc) => {
-    if (!canEditDocument) return
-    setWysiwygDoc(doc)
-    setLatexContent(serializeResume(doc))
-  }, [canEditDocument])
-
-  // The selected mode is persisted independently from the parsed visual model.
-  // Rebuild that model after a reload; otherwise a resume last viewed in Visual
-  // mode remains on the "Parsing…" placeholder forever because no toggle event
-  // runs to call parseResume().
-  useEffect(() => {
-    if (isLoading || editorMode !== 'wysiwyg' || wysiwygDoc || !latexContent) return
-    const { doc, warnings } = parseResume(latexContent)
-    setWysiwygDoc(doc)
-    setWysiwygHasRaw(warnings.some((warning) => warning.type === 'unrecognised_block'))
-  }, [editorMode, isLoading, latexContent, wysiwygDoc])
+    try { localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode) } catch { /* optional preference */ }
+  }, [editorMode, resumeId])
 
   const handleSave = async () => {
     const ownerAtStart = offlinePdfOwnerId
@@ -2281,10 +2245,10 @@ export default function ResumeEditPage() {
       userInitiatedJobRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
-      setRightTab('logs')
-      toast.success('Compilation started')
+      setRightTab(editorMode === 'source' ? 'logs' : 'preview')
+      toast.success(editorMode === 'source' ? 'Compilation started' : 'Preparing your PDF preview')
     } catch (e) {
-      if (isActive()) toast.error(e instanceof Error ? e.message : 'Compile failed')
+      if (isActive()) toast.error(editorMode === 'source' ? e instanceof Error ? e.message : 'Compile failed' : 'Could not prepare the preview. Please try again.')
     } finally {
       if (isActive()) setIsSubmitting(false)
     }
@@ -2344,7 +2308,7 @@ export default function ResumeEditPage() {
       setLastStartedJobKind('ai')
       toast.success('AI optimization started')
     } catch (e) {
-      if (isActive()) toast.error(e instanceof Error ? e.message : 'AI optimization failed')
+      if (isActive()) toast.error(editorMode === 'source' ? e instanceof Error ? e.message : 'AI optimization failed' : 'Could not improve the résumé right now. Your draft is preserved.')
     } finally {
       if (isActive()) setIsAiSubmitting(false)
     }
@@ -2380,10 +2344,11 @@ export default function ResumeEditPage() {
     return true
   }, [aiJobId, aiStream.atsScore, aiStream.changesMade, aiStream.tokensUsed, jobDescription, latexContent, model, pushUndo, resumeId])
 
-  const handleApplyOptimization = useCallback(() => {
+  const handleApplyOptimization = useCallback((reviewedLatex?: string) => {
     if (!stagedAiLatex) return
-    if (applyOptimizationCandidate(stagedAiLatex, true)) {
-      toast.success('Applied AI optimization')
+    const candidate = reviewedLatex ?? stagedAiLatex
+    if (applyOptimizationCandidate(candidate, candidate === stagedAiLatex)) {
+      toast.success(candidate === stagedAiLatex ? 'Applied AI optimization' : 'Applied your reviewed wording. Update the PDF preview to see the final layout.')
       if (documentType !== 'presentation') {
         const ownerAtStart = offlinePdfOwnerId
         const generationAtStart = offlinePdfIdentityRef.current.generation
@@ -2413,9 +2378,9 @@ export default function ResumeEditPage() {
   const handleApplyAnyway = useCallback(() => {
     if (!aiStream.streamingLatex) return
     if (applyOptimizationCandidate(aiStream.streamingLatex, false)) {
-      toast.success('Applied optimized LaTeX — fix the compile errors manually')
+      toast.success(editorMode === 'source' ? 'Applied optimized LaTeX — fix the compile errors manually' : 'Rewrite applied. Update the preview to check the layout.')
     }
-  }, [aiStream.streamingLatex, applyOptimizationCandidate])
+  }, [aiStream.streamingLatex, applyOptimizationCandidate, editorMode])
 
   // Version history: restore from checkpoint
   const handleHistoryRestore = useCallback((latex: string) => {
@@ -2851,7 +2816,7 @@ export default function ResumeEditPage() {
       // even submit (network/API error, etc.) needs the same toast.error runCompile's
       // catch already gives a manual compile — deduped so a persistent failure
       // doesn't re-toast on every debounce tick while the user keeps typing.
-      const msg = e instanceof Error ? e.message : 'Auto-compile failed'
+      const msg = editorMode === 'source' ? e instanceof Error ? e.message : 'Auto-compile failed' : 'Could not refresh the preview. Please try again.'
       if (isActive() && lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
         toast.error(msg)
@@ -2859,7 +2824,39 @@ export default function ResumeEditPage() {
     } finally {
       if (isActive()) setIsSubmitting(false)
     }
-  }, [autoCompileIdentityReady, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId])
+  }, [autoCompileIdentityReady, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId, editorMode])
+
+  const visualAutoCompileSchedulerRef = useRef<ReturnType<typeof createAutoCompileScheduler> | null>(null)
+  const visualAutoCompileDispatchRef = useRef(handleAutoCompile)
+  visualAutoCompileDispatchRef.current = handleAutoCompile
+
+  useEffect(() => {
+    const scheduler = createAutoCompileScheduler({
+      onDispatch: (content) => void visualAutoCompileDispatchRef.current(content),
+      enabled: false,
+      busy: true,
+    })
+    visualAutoCompileSchedulerRef.current = scheduler
+    return () => {
+      scheduler.dispose()
+      visualAutoCompileSchedulerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const scheduler = visualAutoCompileSchedulerRef.current
+    if (!scheduler) return
+    scheduler.setDocument(`${offlinePdfOwnerId ?? 'anonymous'}:${resumeId}:visual`)
+    scheduler.markCompiled(latestLatexContentRef.current)
+  }, [offlinePdfOwnerId, resumeId])
+
+  useEffect(() => {
+    const scheduler = visualAutoCompileSchedulerRef.current
+    if (!scheduler) return
+    scheduler.setEnabled(editorMode === 'wysiwyg' && autoCompile && !isLoading && canEditDocument && isOnline && autoCompileIdentityReady)
+    scheduler.setBusy(isAnyRunning || isSubmitting || !canEditDocument || !isOnline || !autoCompileIdentityReady)
+    scheduler.notifyContent(latexContent)
+  }, [editorMode, autoCompile, isLoading, canEditDocument, isOnline, autoCompileIdentityReady, isAnyRunning, isSubmitting, latexContent])
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
   // compile is — runCompile switches to the Logs tab on submit so a failure is
@@ -2870,15 +2867,15 @@ export default function ResumeEditPage() {
   useEffect(() => {
     if (!autoCompileTriggeredRef.current) return
     if (compileStream.status === 'failed') {
-      const msg = compileStream.error || 'Auto-compile failed — open the Logs tab for details'
+      const msg = editorMode === 'source' ? compileStream.error || 'Auto-compile failed — open the Logs tab for details' : 'Could not refresh the preview. Your edits are saved in this draft.'
       if (lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
-        toast.error(msg, { description: 'Auto-compile failed. Open the Logs tab to see the LaTeX error.' })
+        toast.error(msg, { description: editorMode === 'source' ? 'Auto-compile failed. Open the Logs tab to see the LaTeX error.' : 'Try updating the preview again, or use Source mode to investigate a custom layout.' })
       }
     } else if (compileStream.status === 'completed') {
       lastAutoCompileErrorRef.current = null
     }
-  }, [compileStream.status, compileStream.error])
+  }, [compileStream.status, compileStream.error, editorMode])
 
   // Design panel — trigger compile after preamble change (Feature 20)
   const handleDesignTriggerCompile = useCallback(() => {
@@ -3000,7 +2997,9 @@ export default function ResumeEditPage() {
     ? compileStream.logLines
     : aiStream.logLines
 
-  const statusText = isAiRunning
+  const statusText = editorMode === 'wysiwyg'
+    ? isAnyRunning ? 'Preparing your résumé…' : compileStream.status === 'failed' || aiStream.status === 'failed' ? 'Preview unavailable. Your draft is preserved.' : pdfUrl ? 'Preview ready' : 'Résumé ready to edit'
+    : isAiRunning
     ? `AI: ${aiStream.message || aiStream.stage || 'processing…'}`
     : isCompiling
     ? `Compiling… ${compileStream.percent}%`
@@ -3014,7 +3013,7 @@ export default function ResumeEditPage() {
     ? `Compile failed: ${compileStream.error || 'error'}`
     : 'LaTeX editor ready'
 
-  const currentLatex = editorRef.current?.getValue() || latexContent
+  const currentLatex = editorMode === 'source' ? editorRef.current?.getValue() || latexContent : latexContent
   const outline = buildLatexOutline(currentLatex)
 
   // Right-panel tab hierarchy: a few primary tabs stay inline; the rest live in
@@ -3056,7 +3055,7 @@ export default function ResumeEditPage() {
   if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg">
+    <div data-editor-mode={editorMode === 'wysiwyg' ? 'visual' : 'source'} className="flex h-screen flex-col overflow-hidden bg-bg">
 
       {/* ── TOP HEADER ── */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
@@ -3110,6 +3109,7 @@ export default function ResumeEditPage() {
           <ModeToggle />
 
           <ExportDropdown
+            visualOnly={editorMode === 'wysiwyg'}
             resumeId={resumeId}
             latexContent={latexContent}
             onPdfExport={handleDownload}
@@ -3123,6 +3123,7 @@ export default function ResumeEditPage() {
               onClick={() => { if (toolsMenuOpen) { setToolsMenuOpen(false) } else { openToolsMenu() } }}
               aria-haspopup="menu"
               aria-expanded={toolsMenuOpen}
+              hidden={editorMode !== 'source'}
               title="Formatting & analysis tools"
               className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
                 academicReport?.is_academic_cv
@@ -3134,7 +3135,7 @@ export default function ResumeEditPage() {
               Tools
               <ChevronDown size={11} />
             </button>
-            {toolsMenuOpen && toolsMenuPos && createPortal(
+            {editorMode === 'source' && toolsMenuOpen && toolsMenuPos && createPortal(
               <>
                 <div className="fixed inset-0 z-[200]" onClick={() => setToolsMenuOpen(false)} />
                 <div
@@ -3360,7 +3361,7 @@ export default function ResumeEditPage() {
 
           <div className="mx-1 h-3.5 w-px bg-line" />
 
-          <CompilerSelector
+          {editorMode === 'source' && <CompilerSelector
             resumeId={resumeId}
             current={compiler}
             onChange={(c) => {
@@ -3368,9 +3369,10 @@ export default function ResumeEditPage() {
               setCompileSettings((prev) => ({ ...prev, compiler: c }))
             }}
             disabled={isAnyRunning}
-          />
+          />}
 
           <button
+            hidden={editorMode !== 'source'}
             onClick={() => setCompileSettingsOpen(true)}
             title="Compile settings"
             aria-label="Compile settings"
@@ -3397,8 +3399,8 @@ export default function ResumeEditPage() {
 
           <button
             onClick={toggleAutoCompile}
-            title="Auto-compile on change (5s quiet period; 10s minimum interval)"
-            aria-label="Auto-compile on change"
+            title={editorMode === 'source' ? 'Auto-compile on change (2s debounce)' : 'Refresh preview automatically after editing'}
+            aria-label={editorMode === 'source' ? 'Auto-compile on change' : 'Automatic preview'}
             aria-pressed={autoCompile}
             className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
               autoCompile
@@ -3428,7 +3430,7 @@ export default function ResumeEditPage() {
             {isCompiling
               ? <Loader2 size={11} className="animate-spin" />
               : <Play size={11} className="fill-current" />}
-            {isCompiling ? 'Compiling…' : 'Compile'}
+            {isCompiling ? 'Preparing…' : editorMode === 'source' ? 'Compile' : 'Update preview'}
           </button>
 
           <button
@@ -3488,7 +3490,7 @@ export default function ResumeEditPage() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
 
         {/* ── Left: Outline sidebar (collapsible) ── */}
-        <aside
+        {editorMode === 'source' && <aside
           id="document-outline"
           className={`flex shrink-0 flex-col border-b border-line bg-surface transition-all duration-200 md:border-b-0 md:border-r ${
             showOutline ? 'max-h-52 w-full md:max-h-none md:w-48' : 'h-8 w-full md:h-auto md:w-8'
@@ -3514,23 +3516,24 @@ export default function ResumeEditPage() {
             )}
           </button>
 
-          {showOutline && (
+          {showOutline && editorMode === 'source' && (
             <div id="document-outline-items" className="min-h-0 flex-1 overflow-hidden">
               <OutlinePanel latex={currentLatex} onJump={handleOutlineJump} />
             </div>
           )}
-        </aside>
+        </aside>}
 
         {/* ── Editor ── */}
         <section className="flex min-h-[55vh] w-full min-w-0 flex-col md:min-h-0 md:w-auto" style={{ flex: '3 1 0%' }}>
           <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
             <div className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-fg-2">
               <FileText size={11} className="text-fg-3" />
-              {title || 'Untitled'}.tex
+              {title || 'Untitled'}{editorMode === 'source' ? '.tex' : ''}
             </div>
             <div className="ml-auto flex items-center gap-0.5 rounded-[var(--radius-md)] bg-surface-2 p-0.5">
               <button
                 onClick={() => handleToggleEditorMode('source')}
+                aria-pressed={editorMode === 'source'}
                 className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
                   editorMode === 'source'
                     ? 'bg-surface-2 text-fg'
@@ -3542,6 +3545,7 @@ export default function ResumeEditPage() {
               </button>
               <button
                 onClick={() => handleToggleEditorMode('wysiwyg')}
+                aria-pressed={editorMode === 'wysiwyg'}
                 className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
                   editorMode === 'wysiwyg'
                     ? 'bg-surface-2 text-fg'
@@ -3623,18 +3627,8 @@ export default function ResumeEditPage() {
           )}
           <div className="relative min-h-0 flex-1">
             {/* WYSIWYG mode (Feature 78) */}
-            {canEditDocument && editorMode === 'wysiwyg' && wysiwygDoc ? (
-              <div className="h-full overflow-auto p-4">
-                <WYSIWYGEditor
-                  doc={wysiwygDoc}
-                  onChange={handleWysiwygChange}
-                  hasRawEntries={wysiwygHasRaw}
-                />
-              </div>
-            ) : canEditDocument && editorMode === 'wysiwyg' && !wysiwygDoc ? (
-              <div className="flex h-full items-center justify-center text-[12px] text-fg-3">
-                Parsing…
-              </div>
+            {editorMode === 'wysiwyg' ? (
+              <VisualResumeEditor value={latexContent} onChange={setLatexContent} readOnly={!canEditDocument} />
             ) : isMobile ? (
               /* Mobile: lightweight CodeMirror editor (Feature 79E) */
               <MobileEditor
@@ -3773,14 +3767,14 @@ export default function ResumeEditPage() {
             />
 
             <div className="absolute inset-x-0 bottom-0 z-10">
-              <ErrorExplainerPanel
+              {editorMode === 'source' && <ErrorExplainerPanel
                 isOpen={explainerOpen}
                 isLoading={explainerLoading}
                 data={explainerData}
                 errorLine={explainerLine}
                 onClose={() => setExplainerOpen(false)}
                 onApplyFix={handleApplyExplainerFix}
-              />
+              />}
             </div>
           </div>
         </section>
@@ -3847,7 +3841,7 @@ export default function ResumeEditPage() {
                 { id: 'history', label: 'History', icon: History },
                 { id: 'design', label: 'Design', icon: Palette },
               ] as const
-            ).map(({ id, label, icon: Icon }) => (
+            ).filter(({ id }) => editorMode === 'source' || visualPanels.includes(id)).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 ref={rightTab === id ? activeRightTabRef : undefined}
@@ -3923,7 +3917,7 @@ export default function ResumeEditPage() {
                       { id: 'snippets', label: 'Snippets', icon: Package },
                       { id: 'macros', label: 'Macros', icon: Keyboard },
                       { id: 'tikz', label: 'TikZ', icon: Pencil },
-                    ] as const).map(({ id, label, icon: Icon }) => (
+                    ] as const).filter(({ id }) => editorMode === 'source' || visualPanels.includes(id)).map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
                         role="menuitem"
@@ -3969,7 +3963,7 @@ export default function ResumeEditPage() {
                   PDF
                 </button>
                 <WatermarkDownloadPopover
-                  getLatex={() => editorRef.current?.getValue() ?? ''}
+                  getLatex={() => editorRef.current?.getValue() ?? latexContent}
                   filename={title}
                 />
               </>
@@ -4008,6 +4002,7 @@ export default function ResumeEditPage() {
 
             {rightTab === 'ai' && (
               <AIPanel
+                visualOnly={editorMode === 'wysiwyg'}
                 aiStream={aiStream}
                 isRunning={isAiRunning}
                 isSubmitting={isAiSubmitting}
@@ -4017,7 +4012,7 @@ export default function ResumeEditPage() {
                 setOptLevel={setOptLevel}
                 onRun={runAiOptimize}
                 stagedLatex={stagedAiLatex}
-                onApply={handleApplyOptimization}
+                onApply={() => handleApplyOptimization()}
                 onDiscard={handleDiscardOptimization}
                 onReview={handleReviewOptimization}
                 onApplyAnyway={handleApplyAnyway}
@@ -4032,7 +4027,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'logs' && (
+            {editorMode === 'source' && rightTab === 'logs' && (
               <div className="h-full overflow-auto p-3">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
@@ -4069,7 +4064,7 @@ export default function ResumeEditPage() {
               </div>
             )}
 
-            {rightTab === 'history' && (
+            {editorMode === 'source' && rightTab === 'history' && (
               <VersionHistoryPanel
                 resumeId={resumeId}
                 onRestore={handleHistoryRestore}
@@ -4087,7 +4082,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'review' && (
+            {editorMode === 'source' && rightTab === 'review' && (
               <ReviewCommentsPanel
                 resumeId={resumeId}
                 pdfUrl={pdfUrl}
@@ -4097,11 +4092,11 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'chat' && (
+            {editorMode === 'source' && rightTab === 'chat' && (
               <CollaboratorChat chat={collaboratorChat} />
             )}
 
-            {rightTab === 'references' && (
+            {editorMode === 'source' && rightTab === 'references' && (
               <ReferencesPanel
                 resumeId={resumeId}
                 onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}
@@ -4110,7 +4105,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'generate' && (
+            {editorMode === 'source' && rightTab === 'generate' && (
               <LatexGeneratorPanel
                 documentContext={latexContent}
                 onInsert={(fragment) => editorRef.current?.insertAtCursor(fragment)}
@@ -4126,7 +4121,7 @@ export default function ResumeEditPage() {
               </div>
             )}
 
-            {rightTab === 'design' && (
+            {editorMode === 'source' && rightTab === 'design' && (
               <DesignPanel
                 currentLatex={latexContent}
                 onPreambleChange={handleDesignPreambleChange}
@@ -4134,7 +4129,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'proofread' && (
+            {editorMode === 'source' && rightTab === 'proofread' && (
               <ProofreadPanel
                 resumeLatex={latexContent}
                 onApplyFix={(issue) => {
@@ -4180,7 +4175,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'packages' && (
+            {editorMode === 'source' && rightTab === 'packages' && (
               <PackageManagerPanel
                 currentLatex={latexContent}
                 onAddPackage={(newLatex, packageName) => {
@@ -4191,7 +4186,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'linter' && (
+            {editorMode === 'source' && rightTab === 'linter' && (
               <LinterPanel
                 issues={lintIssues}
                 enabled={linterEnabled}
@@ -4219,13 +4214,13 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'symbols' && (
+            {editorMode === 'source' && rightTab === 'symbols' && (
               <SymbolPalette
                 onInsert={(cmd) => editorRef.current?.insertAtCursor(cmd)}
               />
             )}
 
-            {rightTab === 'changes' && (
+            {editorMode === 'source' && rightTab === 'changes' && (
               <ChangesPanel
                 changes={trackedChanges}
                 onAccept={(id) => editorRef.current?.acceptTrackedChange(id)}
@@ -4235,7 +4230,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'suggestions' && (
+            {editorMode === 'source' && rightTab === 'suggestions' && (
               <SuggestionsPanel
                 suggestions={allSuggestions}
                 canSuggest={canSuggest}
@@ -4251,7 +4246,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'docs' && (
+            {editorMode === 'source' && rightTab === 'docs' && (
               <LaTeXDocPanel command={docCommand} />
             )}
 
@@ -4263,7 +4258,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'snippets' && (
+            {editorMode === 'source' && rightTab === 'snippets' && (
               <SnippetMarketplace
                 onInsert={(content) => {
                   const editor = editorRef.current
@@ -4276,14 +4271,14 @@ export default function ResumeEditPage() {
                 }}
               />
             )}
-            <MacroLibraryPanel
+            {editorMode === 'source' && <MacroLibraryPanel
               className={rightTab === 'macros' ? undefined : 'hidden'}
               editor={
                 editorMode === 'source' ? macroEditor : null
               }
-            />
+            />}
 
-            {rightTab === 'tikz' && (
+            {editorMode === 'source' && rightTab === 'tikz' && (
               <TikZEditor
                 onInsert={(code) => editorRef.current?.insertAtCursor(code)}
                 onPreview={handleTikZPreview}
@@ -4321,6 +4316,7 @@ export default function ResumeEditPage() {
               </button>
             </div>
             <MultiFormatUpload
+              visualOnly={editorMode === 'wysiwyg'}
               onFileUpload={(content) => {
                 if (content) {
                   // Push the pre-import buffer onto the undo stack so the replace
@@ -4338,6 +4334,7 @@ export default function ResumeEditPage() {
       )}
 
       <DeepAnalysisPanel
+        visualOnly={editorMode === 'wysiwyg'}
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
@@ -4436,7 +4433,7 @@ export default function ResumeEditPage() {
       />
 
       {/* Project import — GitHub / URL / LinkedIn (F1 — external sources to resume) */}
-      <ImportProjectsModal
+      {editorMode === 'source' && <ImportProjectsModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onInsert={(latex) => {
@@ -4444,15 +4441,15 @@ export default function ResumeEditPage() {
           editorRef.current?.insertAtCursor(latex)
           setLatexContent(editorRef.current?.getValue() || latexContent)
         }}
-      />
+      />}
 
       {/* Compile Error History (Feature 88) */}
-      {showErrorHistory && (
+      {editorMode === 'source' && showErrorHistory && (
         <CompileErrorHistory onClose={() => setShowErrorHistory(false)} />
       )}
 
       {/* Diff viewer modal */}
-      {showDiffModal && (
+      {editorMode === 'source' && showDiffModal && (
         <DiffViewerModal
           resumeId={resumeId}
           checkpointA={diffCheckpointA}
@@ -4464,7 +4461,7 @@ export default function ResumeEditPage() {
       )}
 
       {/* Parent diff modal */}
-      {showParentDiff && parentDiffData && (
+      {editorMode === 'source' && showParentDiff && parentDiffData && (
         <DiffViewerModal
           resumeId={resumeId}
           checkpointA={null}
@@ -4478,8 +4475,17 @@ export default function ResumeEditPage() {
         />
       )}
 
+      {editorMode === 'wysiwyg' && compareData && (
+        <VisualChangeReviewModal
+          original={compareData.original}
+          proposed={compareData.optimized}
+          onApply={stagedAiLatex ? handleApplyOptimization : undefined}
+          onClose={() => setCompareData(null)}
+        />
+      )}
+
       {/* Before/After optimization compare modal */}
-      {compareData && (
+      {editorMode === 'source' && compareData && (
         <CompareModal
           originalLatex={compareData.original}
           optimizedLatex={compareData.optimized}
@@ -4535,6 +4541,7 @@ export default function ResumeEditPage() {
       )}
 
       <DocumentAssistantPanel
+        visualOnly={editorMode === 'wysiwyg'}
         isOpen={documentAssistantOpen}
         resumeId={resumeId}
         documentLatex={latexContent}
@@ -4621,10 +4628,10 @@ export default function ResumeEditPage() {
       )}
 
       {/* Keyboard shortcuts panel (Feature 61) */}
-      <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <KeyboardShortcutsPanel isOpen={editorMode === 'source' && shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {/* Compile settings modal (Feature 38) */}
-      <CompileSettingsModal
+      {editorMode === 'source' && <CompileSettingsModal
         open={compileSettingsOpen}
         resumeId={resumeId}
         initial={compileSettings}
@@ -4635,7 +4642,7 @@ export default function ResumeEditPage() {
             setCompiler(saved.compiler)
           }
         }}
-      />
+      />}
 
       {/* Collaborator Panel (Feature 40) */}
       <CollaboratorPanel

@@ -281,6 +281,7 @@ class FigmaResumeExport(BaseModel):
     sections: list[FigmaSection]
 
 
+@router.get("/builder/v1/{resume_id}/canva", response_model=CanvaResumeExport)
 @router.get("/{resume_id}/canva", response_model=CanvaResumeExport)
 async def export_canva(
     resume_id: str,
@@ -314,6 +315,7 @@ async def export_canva(
         raise HTTPException(status_code=500, detail="Export failed")
 
 
+@router.get("/builder/v1/{resume_id}/figma", response_model=FigmaResumeExport)
 @router.get("/{resume_id}/figma", response_model=FigmaResumeExport)
 async def export_figma(
     resume_id: str,
@@ -353,6 +355,10 @@ async def export_figma(
         raise HTTPException(status_code=500, detail="Export failed")
 
 
+@router.get(
+    "/builder/v1/{resume_id}/{fmt}",
+    dependencies=[Depends(require_feature("exports"))],
+)
 @router.get(
     "/{resume_id}/{fmt}",
     dependencies=[Depends(require_feature("exports"))],

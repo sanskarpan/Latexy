@@ -15,7 +15,7 @@ describe('merge-resume selector failures', () => {
   })
 
   it('terminates loading while the auth guard redirects a signed-out visitor', () => {
-    expect(MERGE_SOURCE).toContain("if (!session) {\n      setLoading(false)")
+    expect(MERGE_SOURCE).toMatch(/if \(!session\) \{\s*setLoading\(false\)/)
     expect(MERGE_SOURCE).toContain('if (!session) return null')
   })
 })

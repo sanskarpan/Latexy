@@ -808,6 +808,103 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
+@app.function(image=migrate_image, secrets=_secrets, timeout=120)
+def billing_preflight(
+    source_revision: str, expected_environment: str = "main", purpose: str = "report",
+    allow_configured_live: bool = False,
+) -> None:
+    """Print a redacted, read-only billing report using the deployment secret bindings.
+
+    This runs candidate source in an ephemeral diagnostic container. It does not
+    claim that candidate source is already deployed, migrate the database, or
+    contact a payment provider. The caller supplies its clean checkout revision.
+    """
+    import hashlib
+    import json
+    import os
+    import re
+    import subprocess
+
+    def safe_identifier(value: str) -> str:
+        return value if re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value) else "unavailable"
+
+    context = {
+        "application": _APP_NAME,
+        "selected_environment": safe_identifier(os.environ.get("MODAL_ENVIRONMENT", "")),
+        "expected_environment": safe_identifier(expected_environment),
+        "image_id": safe_identifier(os.environ.get("MODAL_IMAGE_ID", "")),
+        "image_role": "candidate_migration_preflight",
+        "source_revision_reported": source_revision if re.fullmatch(r"[0-9a-f]{40}", source_revision) else "invalid",
+        "expected_repository_head": "0068",
+        "purpose": "rollout" if purpose == "rollout" else "report" if purpose == "report" else "invalid",
+    }
+    if (
+        context["source_revision_reported"] == "invalid"
+        or context["purpose"] == "invalid"
+        or context["expected_environment"] == "unavailable"
+        or context["selected_environment"] != context["expected_environment"]
+    ):
+        print(json.dumps({"execution_context": context, "status": "blocked", "error": "execution_context_mismatch"}))
+        raise RuntimeError("Billing preflight refused mismatched execution context")
+
+    try:
+        from scripts.dodo_billing_preflight import public_report, rollout_assessment
+
+        fingerprint = hashlib.sha256()
+        files = [Path("/backend/app/core/config.py"), Path("/backend/scripts/dodo_billing_preflight.py")]
+        files.extend(sorted(Path("/backend/alembic/versions").glob("*.py")))
+        for path in files:
+            fingerprint.update(str(path.relative_to("/backend")).encode())
+            fingerprint.update(b"\0")
+            fingerprint.update(path.read_bytes())
+            fingerprint.update(b"\0")
+        context["source_files_sha256"] = fingerprint.hexdigest()
+        result = subprocess.run(
+            ["python", "/backend/scripts/dodo_billing_preflight.py"],
+            cwd="/backend", capture_output=True, text=True, timeout=90,
+        )
+        # The script has a deliberately redacted JSON contract. Never print raw
+        # stderr, a traceback, or an exception that could contain a database URL.
+        report = public_report(json.loads(result.stdout))
+        if not isinstance(report, dict) or result.returncode not in {0, 1, 2}:
+            raise ValueError("Unexpected diagnostic result")
+    except Exception:
+        print(json.dumps({"execution_context": context, "status": "error", "error": "preflight_execution_failed"}))
+        raise RuntimeError("Billing preflight failed; no diagnostic details were logged") from None
+    if expected_environment == "main" and report.get("production_like") is not True:
+        # Billing mode guards depend on the application's ENVIRONMENT setting.
+        # A diagnostic against main must not bless a development classification.
+        report["status"] = "blocked"
+        report["blockers"] = list(dict.fromkeys([
+            *report.get("blockers", []), "main_environment_not_production_like",
+        ]))
+    rollout_safe = False
+    if purpose == "rollout":
+        try:
+            assessment = rollout_assessment(report, allow_configured_live=allow_configured_live)
+        except Exception:
+            print(json.dumps({"execution_context": context, "status": "error", "error": "preflight_execution_failed"}))
+            raise RuntimeError("Billing preflight failed; no diagnostic details were logged") from None
+        if result.returncode == 2:
+            assessment["safe_to_rollout"] = False
+            assessment["reasons"] = list(dict.fromkeys([
+                *assessment["reasons"], "rollout_diagnostics_incomplete",
+            ]))
+        report["rollout_safety"] = assessment
+        rollout_safe = assessment["safe_to_rollout"] is True
+    report["execution_context"] = context
+    if purpose == "rollout":
+        # Public workflow logs need only the decision, not operational account
+        # counts, catalog configuration, or credential-presence metadata.
+        print(json.dumps({"execution_context": context, "rollout_safety": assessment}, sort_keys=True))
+    else:
+        print(json.dumps(report, sort_keys=True))
+    if purpose == "rollout" and rollout_safe:
+        return
+    if purpose == "rollout" or result.returncode or report.get("status") != "ready":
+        raise RuntimeError("Billing preflight requires review; see the redacted JSON report")
+
+
 @app.function(image=migrate_image, secrets=_secrets, timeout=900)
 def sync_templates() -> None:
     """Reconcile the production template catalog with the source-owned seed files."""

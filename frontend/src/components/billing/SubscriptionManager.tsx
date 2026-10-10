@@ -1,66 +1,231 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, type BillingAvailability, type CurrentSubscriptionResponse } from '@/lib/api-client'
 
 interface SubscriptionManagerProps {
   authToken: string | null
   billingStatus: BillingAvailability | null
+  checkoutReturned?: boolean
+  checkoutStatus?: 'failed' | 'cancelled' | null
+  refreshKey?: number
   onUpgrade: () => void
   onLoaded?: (subscription: CurrentSubscriptionResponse | null) => void
 }
 
-export default function SubscriptionManager({ authToken, billingStatus, onUpgrade, onLoaded }: SubscriptionManagerProps) {
+export default function SubscriptionManager({ authToken, billingStatus, checkoutReturned = false, checkoutStatus = null, refreshKey = 0, onUpgrade, onLoaded }: SubscriptionManagerProps) {
+  const dodoBackendReady = billingStatus?.provider === 'dodo'
   const [subscription, setSubscription] = useState<CurrentSubscriptionResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isCheckingCheckout, setIsCheckingCheckout] = useState(false)
+  const [isReconciling, setIsReconciling] = useState(false)
+  const [reconcileError, setReconcileError] = useState<string | null>(null)
+  const [reconcileNotice, setReconcileNotice] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Cancellation failures are shown inline: the subscription is still live, so
   // replacing the card with an error would hide the state the user needs.
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const generationRef = useRef(0)
+  const latestAuthTokenRef = useRef(authToken)
+  const subscriptionRequestRef = useRef(0)
+  const reconcileRequestRef = useRef<symbol | null>(null)
+  const cancelRequestRef = useRef<symbol | null>(null)
+  const autoReconcileRef = useRef<{
+    token: string
+    promise: ReturnType<typeof apiClient.reconcileSubscription>
+  } | null>(null)
+  // Invalidate during render, before another account's response can publish
+  // between rendering its identity and running the replacement effect.
+  if (latestAuthTokenRef.current !== authToken) {
+    latestAuthTokenRef.current = authToken
+    generationRef.current += 1
+    autoReconcileRef.current = null
+  }
 
-  const fetchSubscription = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    // The Bearer token itself is published to apiClient by <AuthSync /> — this
-    // component must not set it (a child effect would race AuthSync and could
-    // publish a null). authToken stays a dependency purely so that a session
-    // change re-fetches the subscription.
-    void authToken
-    const response = await apiClient.getCurrentSubscription()
+  const captureRequestContext = useCallback(() => {
+    const generation = generationRef.current
+    return {
+      authToken: authToken ?? '',
+      isCurrent: () => generationRef.current === generation && latestAuthTokenRef.current === authToken,
+    }
+  }, [authToken])
+
+  const fetchSubscription = useCallback(async (quiet = false): Promise<CurrentSubscriptionResponse | null> => {
+    const context = captureRequestContext()
+    const request = ++subscriptionRequestRef.current
+    if (!quiet) {
+      setIsLoading(true)
+      setError(null)
+    }
+    // AuthSync owns the singleton token. Bind dispatch and completion to this
+    // account without publishing or overwriting that token from a child.
+    const response = await apiClient.getCurrentSubscription(authToken ? context : undefined)
+    if (!context.isCurrent() || request !== subscriptionRequestRef.current) return null
+    setIsLoading(false)
     if (response.success && response.data) {
       setSubscription(response.data)
       onLoaded?.(response.data)
-      setIsLoading(false)
-      return
+      setError(null)
+      return response.data
     }
+    if (!quiet) {
+      onLoaded?.(null)
+      setError(response.error || 'Failed to load subscription')
+      setIsLoading(false)
+    }
+    return null
+  }, [authToken, captureRequestContext, onLoaded])
 
-    onLoaded?.(null)
-    setError(response.error || 'Failed to load subscription')
-    setIsLoading(false)
-  }, [authToken, onLoaded])
+  const showReconcileResult = (result: Awaited<ReturnType<typeof apiClient.reconcileSubscription>>) => {
+    if (!result.success || !result.data) {
+      setReconcileError(result.error || 'Unable to check payment status right now.')
+    } else if (result.data.status === 'unavailable' ||
+      (result.data.status === 'reconciled' && !result.data.success)) {
+      setReconcileError(result.data.message || 'Unable to check payment status right now.')
+    } else if (result.data.status === 'closed') {
+      setReconcileNotice(result.data.message || 'This checkout is closed. Your current subscription state is shown below.')
+    }
+  }
 
   useEffect(() => {
-    fetchSubscription()
-  }, [fetchSubscription])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+    const context = captureRequestContext()
+    reconcileRequestRef.current = null
+    cancelRequestRef.current = null
+    setIsReconciling(false)
+    setIsCancelling(false)
+    setCancelError(null)
+    setReconcileError(null)
+    setReconcileNotice(null)
+    if (!checkoutReturned) autoReconcileRef.current = null
+    setIsCheckingCheckout(checkoutReturned && !checkoutStatus && dodoBackendReady)
+
+    const load = async () => {
+      const shouldReconcile = attempts === 0 && checkoutReturned && Boolean(authToken) && dodoBackendReady
+      if (shouldReconcile && authToken) {
+        const request = Symbol('automatic reconciliation')
+        reconcileRequestRef.current = request
+        setIsReconciling(true)
+        // Effect replay or a changed return-status query can await the same
+        // owner request. Each new effect owns its own completion and spinner.
+        if (autoReconcileRef.current?.token !== authToken) {
+          autoReconcileRef.current = {
+            token: authToken,
+            promise: apiClient.reconcileSubscription(context),
+          }
+        }
+        try {
+          const result = await autoReconcileRef.current.promise
+          if (!context.isCurrent()) return
+          showReconcileResult(result)
+        } catch (reconcileFailure) {
+          if (!context.isCurrent()) return
+          setReconcileError(reconcileFailure instanceof Error
+            ? reconcileFailure.message : 'Unable to check payment status right now.')
+        } finally {
+          if (context.isCurrent() && reconcileRequestRef.current === request) {
+            reconcileRequestRef.current = null
+            setIsReconciling(false)
+          }
+        }
+      }
+      if (!context.isCurrent()) return
+      const current = await fetchSubscription(attempts > 0)
+      if (!context.isCurrent()) return
+      const paymentConfirmed = Boolean(current && current.planId !== 'free' &&
+        ['active', 'cancel_scheduled'].includes(current.status))
+      if (!checkoutReturned || checkoutStatus || paymentConfirmed || !dodoBackendReady || attempts >= 11) {
+        setIsCheckingCheckout(false)
+        return
+      }
+      attempts += 1
+      timer = setTimeout(load, 2_500)
+    }
+    void load()
+    return () => {
+      generationRef.current += 1
+      if (timer) clearTimeout(timer)
+    }
+  }, [authToken, checkoutReturned, checkoutStatus, dodoBackendReady, refreshKey, captureRequestContext, fetchSubscription])
+
+  const pendingCheckout = Boolean(subscription && ['checkout_pending', 'checkout_unknown'].includes(subscription.status))
+
+  const handleCheckPaymentStatus = async () => {
+    if (!dodoBackendReady || !(checkoutReturned || pendingCheckout) || !authToken || reconcileRequestRef.current) return
+    const context = captureRequestContext()
+    const request = Symbol('manual reconciliation')
+    reconcileRequestRef.current = request
+    setIsReconciling(true)
+    setReconcileError(null)
+    setReconcileNotice(null)
+    try {
+      const result = await apiClient.reconcileSubscription(context)
+      if (!context.isCurrent()) return
+      showReconcileResult(result)
+    } catch (reconcileFailure) {
+      if (!context.isCurrent()) return
+      setReconcileError(reconcileFailure instanceof Error
+        ? reconcileFailure.message : 'Unable to check payment status right now.')
+    } finally {
+      if (context.isCurrent()) {
+        // Entitlements always come from the authenticated current endpoint.
+        await fetchSubscription()
+        if (context.isCurrent() && reconcileRequestRef.current === request) {
+          reconcileRequestRef.current = null
+          setIsReconciling(false)
+        }
+      }
+    }
+  }
 
   const handleCancel = async () => {
-    if (
-      !subscription ||
-      !confirm('Cancel renewal? Your paid access will continue through the current billing cycle.')
-    ) return
+    if (!dodoBackendReady || !subscription || !authToken || cancelRequestRef.current ||
+      !confirm('Cancel renewal? Your paid access will continue through the current billing cycle.')) return
+    const context = captureRequestContext()
+    const request = Symbol('cancellation')
+    cancelRequestRef.current = request
     setIsCancelling(true)
     setCancelError(null)
     try {
-      const response = await apiClient.cancelSubscription()
+      const response = await apiClient.cancelSubscription(context)
+      if (!context.isCurrent()) return
       if (!response.success) throw new Error(response.error || 'Failed to cancel subscription')
       await fetchSubscription()
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : 'Failed to cancel subscription')
+      if (context.isCurrent()) setCancelError(err instanceof Error ? err.message : 'Failed to cancel subscription')
     } finally {
-      setIsCancelling(false)
+      if (context.isCurrent() && cancelRequestRef.current === request) {
+        cancelRequestRef.current = null
+        setIsCancelling(false)
+      }
     }
   }
+
+  const checkoutRecovery = (checkoutReturned || pendingCheckout) && (
+    <div className="mt-3 space-y-2">
+      {checkoutStatus && <CheckoutNotice status={checkoutStatus} />}
+      {(!subscription || subscription.planId === 'free' || !['active', 'cancel_scheduled'].includes(subscription.status)) && (
+        <p role="status" className="text-xs text-fg-3">
+          {reconcileNotice || (isCheckingCheckout
+            ? 'Checking for your payment confirmation…'
+            : 'Payment confirmation has not been verified. Your current plan remains unchanged.')}
+        </p>
+      )}
+      {reconcileError && <p role="alert" className="text-xs text-err">{reconcileError}</p>}
+      {authToken && dodoBackendReady && (
+        <button
+          type="button"
+          onClick={() => { void handleCheckPaymentStatus() }}
+          disabled={isReconciling}
+          className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isReconciling ? 'Checking payment status…' : 'Check payment status'}
+        </button>
+      )}
+    </div>
+  )
 
   if (isLoading) {
     return <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-fg-2">Loading subscription state...</div>
@@ -69,25 +234,26 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
   if (error) {
     return (
       <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
-        <p className="text-sm text-err">{error}</p>
-        <button onClick={fetchSubscription} className="mt-3 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2">
+        <p role="alert" className="text-sm text-err">{error}</p>
+        <button onClick={() => { void fetchSubscription() }} className="mt-3 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2">
           Retry
         </button>
+        {checkoutRecovery}
       </div>
     )
   }
 
-  if (!subscription || (subscription.planId === 'free' && !subscription.subscriptionId)) {
+  if (!subscription || subscription.planId === 'free') {
     return (
       <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 text-center">
         <h3 className="text-lg font-semibold text-fg">
           {subscription?.planName ?? 'Free Tier'}
         </h3>
-        {/* Free-tier copy is intentionally independent of billingStatus.message —
-            that string explains *why paid plans are unavailable* (e.g. Razorpay
-            isn't configured), which is unrelated to why this user is on Free and
-            must not be presented as if it were the reason. */}
+        {/* Free-tier copy is intentionally independent of billingStatus.message,
+            which explains why paid plans are unavailable and is unrelated to
+            why this user is currently on Free. */}
         <p className="mt-1 text-sm text-fg-2">You&apos;re currently on the Free plan.</p>
+        {checkoutRecovery}
         {billingStatus && !billingStatus.available && (
           <p className="mt-1 text-xs text-fg-3">{billingStatus.message}</p>
         )}
@@ -121,6 +287,8 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           : 'No renewal date'}
       </div>
 
+      {checkoutRecovery}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <Metric label="Compilations" value={String(subscription.features.compilations)} />
         <Metric label="Optimizations" value={String(subscription.features.optimizations)} />
@@ -152,7 +320,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
             onClick={handleCancel}
-            disabled={isCancelling || !billingStatus?.available}
+            disabled={isCancelling || !dodoBackendReady}
             className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}
@@ -166,6 +334,16 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
         <p className="mt-4 text-sm text-warn">{billingStatus.message}</p>
       )}
     </div>
+  )
+}
+
+function CheckoutNotice({ status }: { status: 'failed' | 'cancelled' }) {
+  return (
+    <p role="status" className="mt-3 text-sm text-warn">
+      {status === 'failed'
+        ? 'This checkout was reported as unsuccessful. Your current subscription status is shown below.'
+        : 'This checkout was reported as cancelled. Your current subscription status is shown below.'}
+    </p>
   )
 }
 

@@ -184,6 +184,15 @@ function dateRange(start: string, end: string, current = false) {
 }
 
 export function deriveBuilderMetrics(structured: StructuredResume): BuilderMetricsResponse {
+  const hidden = new Set(structured.hidden_sections)
+  const hasText = (value: string) => Boolean(value.trim())
+  const experience = hidden.has('experience') ? [] : structured.experience.filter(item =>
+    [item.title, item.company, item.summary, ...item.bullets, ...item.technologies].some(hasText))
+  const education = hidden.has('education') ? [] : structured.education.filter(item =>
+    [item.institution, item.degree, item.field, ...item.highlights].some(hasText))
+  const skills = hidden.has('skills') ? [] : structured.skills.filter(item => item.keywords.some(hasText))
+  const projects = hidden.has('projects') ? [] : structured.projects.filter(item =>
+    [item.name, item.description, ...item.bullets, ...item.technologies].some(hasText))
   let score = 0
   const missing: string[] = []
   const warnings: string[] = []
@@ -194,31 +203,37 @@ export function deriveBuilderMetrics(structured: StructuredResume): BuilderMetri
   if (structured.basics.email.trim()) score += 10
   else missing.push('email')
 
-  if (structured.basics.summary.trim()) score += 10
-  else missing.push('summary')
+  if (!hidden.has('summary')) {
+    if (structured.basics.summary.trim()) score += 10
+    else missing.push('summary')
+  }
 
-  if (structured.experience.length) score += 25
-  else missing.push('experience')
+  if (experience.length) score += 25
+  else if (!hidden.has('experience')) missing.push('experience')
 
-  if (structured.education.length) score += 15
-  else missing.push('education')
+  if (education.length) score += 15
+  else if (!hidden.has('education')) missing.push('education')
 
-  if (structured.skills.some(group => group.keywords.length)) score += 15
-  else missing.push('skills')
+  if (skills.length) score += 15
+  else if (!hidden.has('skills')) missing.push('skills')
 
-  if (structured.projects.length) score += 10
+  if (projects.length) score += 10
 
   let totalLines = 6
-  totalLines += Object.values(structured.basics).filter(value => typeof value === 'string' && value.trim()).length
-  totalLines += structured.basics.summary.split('\n').filter(Boolean).length
-  totalLines += structured.experience.reduce((sum, entry) => sum + Math.max(3, entry.bullets.filter(Boolean).length + 2), 0)
-  totalLines += structured.education.reduce((sum, entry) => sum + Math.max(2, entry.highlights.filter(Boolean).length + 1), 0)
-  totalLines += structured.skills.reduce((sum, group) => sum + Math.max(2, Math.ceil(group.keywords.length / 5) + 1), 0)
-  totalLines += structured.projects.reduce((sum, project) => sum + Math.max(2, project.bullets.filter(Boolean).length + 2), 0)
+  totalLines += Object.entries(structured.basics).filter(([key, value]) => key !== 'summary' && typeof value === 'string' && value.trim()).length
+  if (!hidden.has('summary')) totalLines += structured.basics.summary.split('\n').filter(hasText).length
+  totalLines += experience.reduce((sum, entry) => sum + Math.max(3, entry.bullets.filter(hasText).length + 2), 0)
+  totalLines += education.reduce((sum, entry) => sum + Math.max(2, entry.highlights.filter(hasText).length + 1), 0)
+  totalLines += skills.reduce((sum, group) => sum + Math.max(2, Math.ceil(group.keywords.filter(hasText).length / 5) + 1), 0)
+  totalLines += projects.reduce((sum, project) => sum + Math.max(2, project.bullets.filter(hasText).length + 2), 0)
+  if (!hidden.has('certifications')) totalLines += structured.certifications.filter(item => [item.name, item.issuer, item.date, item.url].some(hasText)).length
+  for (const key of ['awards', 'languages', 'interests'] as const) {
+    if (!hidden.has(key)) totalLines += structured[key].filter(item => item.name.trim() || item.detail.trim()).length
+  }
 
   const pageEstimate = Math.max(1, Math.floor((totalLines + 37) / 38))
   if (pageEstimate > 1) warnings.push('Content likely exceeds one page in compact templates.')
-  if (structured.experience.some(entry => entry.bullets.length > 6)) warnings.push('Some experience entries are dense; consider trimming bullets.')
+  if (experience.some(entry => entry.bullets.filter(hasText).length > 6)) warnings.push('Some experience entries are dense; consider trimming bullets.')
   if (!structured.basics.label.trim()) warnings.push('Add a headline to improve clarity at the top of the resume.')
 
   return {
@@ -250,10 +265,10 @@ export function deriveBuilderPreview(
         key: 'experience',
         title: 'Experience',
         items: structured.experience
-          .filter(item => item.title.trim() || item.company.trim() || item.bullets.some(Boolean))
+          .filter(item => [item.title, item.company, item.summary, ...item.bullets, ...item.technologies].some(value => value.trim()))
           .map(item => ({
             title: `${item.title} — ${item.company}`.trim().replace(/^—\s*/, '').replace(/\s+—$/, ''),
-            meta: joinMeta(item.location, dateRange(item.start_date, item.end_date, item.current)),
+            meta: joinMeta(item.location, dateRange(item.start_date, item.end_date, item.current), item.technologies.some(value => value.trim()) ? `Technologies: ${item.technologies.filter(value => value.trim()).join(', ')}` : ''),
             bullets: [item.summary, ...item.bullets].filter(value => value.trim()),
           })),
       })
@@ -262,10 +277,10 @@ export function deriveBuilderPreview(
         key: 'education',
         title: 'Education',
         items: structured.education
-          .filter(item => item.institution.trim() || item.degree.trim())
+          .filter(item => [item.institution, item.degree, item.field, ...item.highlights].some(value => value.trim()))
           .map(item => ({
-            title: `${item.degree} — ${item.institution}`.trim().replace(/^—\s*/, '').replace(/\s+—$/, ''),
-            meta: joinMeta(item.location, dateRange(item.start_date, item.end_date)),
+            title: `${joinMeta(item.degree, item.field)} — ${item.institution}`.trim().replace(/^—\s*/, '').replace(/\s+—$/, ''),
+            meta: joinMeta(item.location, dateRange(item.start_date, item.end_date), item.gpa.trim() ? `GPA ${item.gpa}` : ''),
             bullets: item.highlights.filter(value => value.trim()),
           })),
       })
@@ -274,10 +289,10 @@ export function deriveBuilderPreview(
         key: 'skills',
         title: 'Skills',
         items: structured.skills
-          .filter(item => item.name.trim() || item.keywords.length)
+          .filter(item => item.keywords.some(value => value.trim()))
           .map(item => ({
             title: item.name,
-            meta: item.keywords.join(', '),
+            meta: item.keywords.filter(value => value.trim()).join(', '),
           })),
       })
     } else if (section === 'projects' && structured.projects.length) {
@@ -285,10 +300,10 @@ export function deriveBuilderPreview(
         key: 'projects',
         title: 'Projects',
         items: structured.projects
-          .filter(item => item.name.trim() || item.description.trim() || item.bullets.some(Boolean))
+          .filter(item => [item.name, item.description, ...item.bullets, ...item.technologies].some(value => value.trim()))
           .map(item => ({
             title: item.name,
-            meta: joinMeta(item.role, item.url, dateRange(item.start_date, item.end_date)),
+            meta: joinMeta(item.role, item.url, dateRange(item.start_date, item.end_date), item.technologies.some(value => value.trim()) ? `Technologies: ${item.technologies.filter(value => value.trim()).join(', ')}` : ''),
             bullets: [item.description, ...item.bullets].filter(value => value.trim()),
           })),
       })
@@ -297,7 +312,7 @@ export function deriveBuilderPreview(
         key: 'certifications',
         title: 'Certifications',
         items: structured.certifications
-          .filter(item => item.name.trim() || item.issuer.trim() || item.date.trim())
+          .filter(item => [item.name, item.issuer, item.date, item.url].some(value => value.trim()))
           .map(item => ({
             title: item.name,
             meta: joinMeta(item.issuer, item.date, item.url),
@@ -341,6 +356,6 @@ export function deriveBuilderPreview(
 
   return {
     template_family: templateFamily,
-    sections,
+    sections: sections.filter(section => section.items.length > 0),
   }
 }

@@ -16,14 +16,15 @@ import { useTheme } from './ThemeProvider'
  * live in globals.css.
  */
 export default function ModeToggle({ className = '' }: { className?: string }) {
-  const { ready, toggle } = useTheme()
+  const { ready, mode, toggle } = useTheme()
   return (
     <button
       type="button"
       disabled={!ready}
       onClick={toggle}
       aria-label="Toggle light or dark mode"
-      title="Toggle theme"
+      aria-pressed={ready ? mode === 'dark' : undefined}
+      title={ready ? `Switch to ${mode === 'dark' ? 'light' : 'dark'} mode` : 'Toggle theme'}
       className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-line text-fg-2 transition hover:text-accent hover:border-accent disabled:cursor-wait disabled:opacity-60 ${className}`}
     >
       <Moon size={15} className="mode-icon-light" />

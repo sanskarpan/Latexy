@@ -157,6 +157,9 @@ async function installFixture(page: Page) {
     })
   })
   await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
+  // These synchronization scenarios exercise source editing; new users start
+  // in the visual view and should not need to open the code editor.
+  await page.getByRole('button', { name: 'Source', exact: true }).click()
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
   observe('editor-ready')
   return {
@@ -380,7 +383,7 @@ test('retains the prior PDF while busy and disables stale selections if the new 
   await appendText(page, ' edited content')
   await expect.poll(() => fixture.submitted.length).toBe(2)
   await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Compiling…', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Preparing…', exact: true })).toBeDisabled()
   await fixture.complete(2)
   await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()

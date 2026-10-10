@@ -18,19 +18,22 @@ import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
 import ReferralCapture from '@/components/ReferralCapture'
+import { siteUrl } from '@/lib/site-url'
 
 export const metadata: Metadata = {
-  title: 'Latexy | Precision Resume Intelligence',
-  description: 'Compile, improve, and evaluate LaTeX resumes with fast typesetting and transparent document checks.',
-  keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
+  metadataBase: new URL(siteUrl()),
+  title: 'Latexy | Build a résumé for your next opportunity',
+  description: 'Build and improve your résumé with visual editing, thoughtful AI assistance, job matching feedback, and polished PDF layouts.',
+  openGraph: { type: 'website', siteName: 'Latexy', title: 'Latexy | Build a résumé for your next opportunity', description: 'Visual résumé editing, AI writing assistance, and polished PDF layouts.' },
+  twitter: { card: 'summary_large_image', title: 'Latexy | Build a résumé for your next opportunity', description: 'Visual résumé editing, AI writing assistance, and polished PDF layouts.' },
   manifest: '/manifest.json',
   icons: {
     icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.ico?v=imprint-20261006', sizes: 'any' },
+      { url: '/icon.svg?v=imprint-20261006', type: 'image/svg+xml' },
     ],
-    shortcut: '/favicon.ico',
-    apple: '/icons/apple-touch-icon.png',
+    shortcut: '/favicon.ico?v=imprint-20261006',
+    apple: '/icons/apple-touch-icon.png?v=imprint-20261006',
   },
   appleWebApp: {
     capable: true,
@@ -43,7 +46,7 @@ export const viewport: Viewport = {
   // Mode-aware browser chrome (Typeset grounds — the default marketing surface).
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#FBFAF6' },
-    { media: '(prefers-color-scheme: dark)', color: '#141310' },
+    { media: '(prefers-color-scheme: dark)', color: '#101820' },
   ],
 }
 

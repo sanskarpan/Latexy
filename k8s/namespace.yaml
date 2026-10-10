@@ -11,7 +11,7 @@ metadata:
 #   latexy-secrets, postgres-secret, redis-secret and flower-htpasswd are
 #   provisioned at deploy time by k8s/deploy.sh, which generates the passwords
 #   it can generate (postgres, redis, flower, JWT/auth secrets) and reads the
-#   externally-owned values (LLM/Razorpay API keys) from the environment.
+#   externally-owned values (LLM/Dodo API and webhook keys) from the environment.
 #   Run `./k8s/deploy.sh --help` for the full list of variables.
 #
 #   If you use an external secret store instead (External Secrets Operator,
@@ -46,10 +46,30 @@ data:
   # $remote_addr, so the backend and the frontend's auth rate limiter can trust
   # it for per-client rate-limit buckets.
   trust-proxy-headers: "true"
-  # Coupon code -> Razorpay offer ID (JSON object). Razorpay only discounts a
-  # subscription through an offer, so a percentage coupon missing from this map
-  # is refused at checkout. Empty means "no percentage coupon is redeemable".
-  razorpay-coupon-offers: "{}"
+  # Dodo product catalog IDs are configuration values, separated by mode.
+  weekly-amount-minor: "0"
+  lifetime-amount-minor: "0"
+  billing-currency: "INR"
+  dodo-test-product-basic-monthly: ""
+  dodo-test-product-basic-annual: ""
+  dodo-test-product-pro-monthly: ""
+  dodo-test-product-pro-annual: ""
+  dodo-test-product-byok-monthly: ""
+  dodo-test-product-byok-annual: ""
+  dodo-test-product-student: ""
+  dodo-test-product-team: ""
+  dodo-test-product-weekly: ""
+  dodo-test-product-lifetime: ""
+  dodo-live-product-basic-monthly: ""
+  dodo-live-product-basic-annual: ""
+  dodo-live-product-pro-monthly: ""
+  dodo-live-product-pro-annual: ""
+  dodo-live-product-byok-monthly: ""
+  dodo-live-product-byok-annual: ""
+  dodo-live-product-student: ""
+  dodo-live-product-team: ""
+  dodo-live-product-weekly: ""
+  dodo-live-product-lifetime: ""
   # B59 user referrals. Keep disabled until the extension-days policy is
   # explicitly approved; values are read by the backend deployment below.
   referral-program-enabled: "false"

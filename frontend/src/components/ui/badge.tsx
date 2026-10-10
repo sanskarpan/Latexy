@@ -17,7 +17,7 @@ const badgeVariants = cva(
         accent: "border-accent bg-accent-soft text-accent-strong",
         secondary: "border-transparent bg-surface-2 text-fg-2",
         outline: "border-line text-fg-2",
-        destructive: "border-transparent bg-err text-white",
+        destructive: "border-transparent bg-err text-err-fg",
         success: "border-[color-mix(in_srgb,var(--ok)_30%,transparent)] text-ok",
         ok: "border-[color-mix(in_srgb,var(--ok)_30%,transparent)] text-ok",
         warning: "border-[color-mix(in_srgb,var(--warn)_30%,transparent)] text-warn",

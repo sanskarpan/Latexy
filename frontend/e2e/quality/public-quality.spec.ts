@@ -274,7 +274,7 @@ test('mobile studio keeps primary controls reachable without document overflow',
     await page.goto('/try', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Editor', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PDF', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Recompile/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Tools', exact: true }).click()
     await expect(page.getByRole('button', { name: /Import file/ })).toBeVisible()
 

@@ -1,0 +1,619 @@
+- main:
+  - link "Resumatic home":
+    - /url: /
+    - generic: RESUMATIC
+  - navigation "Main":
+    - link "AI Tools":
+      - /url: /ai-resume-tools
+    - link "Builder":
+      - /url: /tools/ai-resume-builder
+    - link "Templates":
+      - /url: /resume-templates
+    - link "Examples":
+      - /url: /resume-examples
+    - link "Blog":
+      - /url: /blog
+    - link "Pricing":
+      - /url: /pricing
+  - link "Sign in":
+    - /url: https://resumatic.rezi.ai/signup
+  - link "Start free":
+    - /url: https://resumatic.rezi.ai/signup
+  - generic: Blog
+  - heading "Resume and career advice that gets you hired." [level=1]
+  - navigation "Categories":
+    - link "All":
+      - /url: /blog
+    - link "Resume Writing":
+      - /url: /blog?category=resume-writing
+    - link "Cover Letters":
+      - /url: /blog?category=cover-letters
+    - link "Interviews":
+      - /url: /blog?category=interviews
+    - link "Job Search":
+      - /url: /blog?category=job-search
+    - link "Career Advice":
+      - /url: /blog?category=career-advice
+    - link "ATS":
+      - /url: /blog?category=ats
+  - generic: 58 ARTICLES
+  - link "ChatGPT Resume Prompts I Tested (and Where Each One Broke) Resume Writing ChatGPT Resume Prompts I Tested (and Where Each One Broke) Eight ChatGPT resume prompts tested on a real profile, with the actual output shown. See where the generic prompt invented tools, where a \"good\" draft inflated results, and the prompts that fixed it. Alex Khamis Sep 16 · 12 min read":
+    - /url: /articles/chatgpt-resume-prompts-i-tested-and-where-each-one-broke
+    - img "ChatGPT Resume Prompts I Tested (and Where Each One Broke)"
+    - generic: Resume Writing
+    - heading "ChatGPT Resume Prompts I Tested (and Where Each One Broke)" [level=3]
+    - paragraph: Eight ChatGPT resume prompts tested on a real profile, with the actual output shown. See where the generic prompt invented tools, where a "good" draft inflated results, and the prompts that fixed it.
+    - generic: Alex Khamis
+    - generic: Sep 16 · 12 min read
+  - link "8 Synonyms for Contribute to Use on Your Resume in 2026 Resume Writing 8 Synonyms for Contribute to Use on Your Resume in 2026 Stop using 'contributed.' Find powerful synonyms for contribute like 'strengthened,' 'facilitated,' and 'advised' to make your resume stand out to recruiters. Alex Khamis Aug 23 · 15 min read":
+    - /url: /articles/synonyms-for-contribute
+    - img "8 Synonyms for Contribute to Use on Your Resume in 2026"
+    - generic: Resume Writing
+    - heading "8 Synonyms for Contribute to Use on Your Resume in 2026" [level=3]
+    - paragraph: Stop using 'contributed.' Find powerful synonyms for contribute like 'strengthened,' 'facilitated,' and 'advised' to make your resume stand out to recruiters.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 15 min read
+  - link "How to Write a Resume for Internship That Gets Interviews Interviews How to Write a Resume for Internship That Gets Interviews Learn how to write a resume for internship that gets interviews, with practical steps, ATS tips, bullet examples, and templates tailored to students. Alex Khamis Aug 10 · 13 min read":
+    - /url: /articles/resume-for-internship
+    - img "How to Write a Resume for Internship That Gets Interviews"
+    - generic: Interviews
+    - heading "How to Write a Resume for Internship That Gets Interviews" [level=3]
+    - paragraph: Learn how to write a resume for internship that gets interviews, with practical steps, ATS tips, bullet examples, and templates tailored to students.
+    - generic: Alex Khamis
+    - generic: Aug 10 · 13 min read
+  - 'link "Technical Interview Questions: Top Strategies for 2026 Interviews Technical Interview Questions: Top Strategies for 2026 Practice top technical interview questions with clearer reasoning frameworks, expert-backed guidance, and model approaches for coding screens. Alex Khamis Aug 3 · 19 min read"':
+    - /url: /articles/technical-interview-questions
+    - 'img "Technical Interview Questions: Top Strategies for 2026"'
+    - generic: Interviews
+    - 'heading "Technical Interview Questions: Top Strategies for 2026" [level=3]'
+    - paragraph: Practice top technical interview questions with clearer reasoning frameworks, expert-backed guidance, and model approaches for coding screens.
+    - generic: Alex Khamis
+    - generic: Aug 3 · 19 min read
+  - link "How to Write a Cover Letter for Internship That Gets Read Cover Letters How to Write a Cover Letter for Internship That Gets Read Learn how to write a cover letter for internship roles with structure, examples for tech, data, and business fields, and ATS tips that actually work in 2026. Alex Khamis Jul 30 · 12 min read":
+    - /url: /articles/cover-letter-for-internship
+    - img "How to Write a Cover Letter for Internship That Gets Read"
+    - generic: Cover Letters
+    - heading "How to Write a Cover Letter for Internship That Gets Read" [level=3]
+    - paragraph: Learn how to write a cover letter for internship roles with structure, examples for tech, data, and business fields, and ATS tips that actually work in 2026.
+    - generic: Alex Khamis
+    - generic: Jul 30 · 12 min read
+  - link "What Is a Curriculum Vitae and When Do You Actually Need One Career Advice What Is a Curriculum Vitae and When Do You Actually Need One What is a curriculum vitae? Learn how a CV differs from a resume, the sections it includes, where it's required, and how to format one for ATS in 2026. Alex Khamis Jul 27 · 13 min read":
+    - /url: /articles/what-is-a-curriculum-vitae
+    - img "What Is a Curriculum Vitae and When Do You Actually Need One"
+    - generic: Career Advice
+    - heading "What Is a Curriculum Vitae and When Do You Actually Need One" [level=3]
+    - paragraph: What is a curriculum vitae? Learn how a CV differs from a resume, the sections it includes, where it's required, and how to format one for ATS in 2026.
+    - generic: Alex Khamis
+    - generic: Jul 27 · 13 min read
+  - link "Top 8 Common Interview Questions and Answers for 2026 Interviews Top 8 Common Interview Questions and Answers for 2026 Prepare for interviews with our guide to common interview questions and answers, featuring expert tips and sample responses to help you land the job in 2026. Alex Khamis Jul 20 · 19 min read":
+    - /url: /articles/common-interview-questions-and-answers
+    - img "Top 8 Common Interview Questions and Answers for 2026"
+    - generic: Interviews
+    - heading "Top 8 Common Interview Questions and Answers for 2026" [level=3]
+    - paragraph: Prepare for interviews with our guide to common interview questions and answers, featuring expert tips and sample responses to help you land the job in 2026.
+    - generic: Alex Khamis
+    - generic: Jul 20 · 19 min read
+  - link "Do I Need a Cover Letter? the 2026 Answer for Job Seekers Cover Letters Do I Need a Cover Letter? the 2026 Answer for Job Seekers Do I need a cover letter in 2026? Yes, in most cases. Learn when it's required, when it's optional, and how to write one that gets you noticed by recruiters. Alex Khamis Jul 17 · 16 min read":
+    - /url: /articles/do-i-need-a-cover-letter
+    - img "Do I Need a Cover Letter? the 2026 Answer for Job Seekers"
+    - generic: Cover Letters
+    - heading "Do I Need a Cover Letter? the 2026 Answer for Job Seekers" [level=3]
+    - paragraph: Do I need a cover letter in 2026? Yes, in most cases. Learn when it's required, when it's optional, and how to write one that gets you noticed by recruiters.
+    - generic: Alex Khamis
+    - generic: Jul 17 · 16 min read
+  - link "Why Am I Not Getting Interviews? Fix It in 2026 Interviews Why Am I Not Getting Interviews? Fix It in 2026 Why am I not getting interviews? Uncover real reasons, from ATS to weak targeting, and get actionable fixes to land your next job in 2026. Alex Khamis Jul 14 · 10 min read":
+    - /url: /articles/why-am-i-not-getting-interviews
+    - img "Why Am I Not Getting Interviews? Fix It in 2026"
+    - generic: Interviews
+    - heading "Why Am I Not Getting Interviews? Fix It in 2026" [level=3]
+    - paragraph: Why am I not getting interviews? Uncover real reasons, from ATS to weak targeting, and get actionable fixes to land your next job in 2026.
+    - generic: Alex Khamis
+    - generic: Jul 14 · 10 min read
+  - link "How Far Back Should My Resume Go? 2026 Guide Resume Writing How Far Back Should My Resume Go? 2026 Guide Unsure how far back should my resume go? Debunk the 10-year rule and tailor your work history for 2026 career success. Get expert tips now! Alex Khamis Jul 12 · 16 min read":
+    - /url: /articles/how-far-back-should-my-resume-go
+    - img "How Far Back Should My Resume Go? 2026 Guide"
+    - generic: Resume Writing
+    - heading "How Far Back Should My Resume Go? 2026 Guide" [level=3]
+    - paragraph: Unsure how far back should my resume go? Debunk the 10-year rule and tailor your work history for 2026 career success. Get expert tips now!
+    - generic: Alex Khamis
+    - generic: Jul 12 · 16 min read
+  - 'link "Master How to Sign Cover Letter: Pro Tips 2026 Cover Letters Master How to Sign Cover Letter: Pro Tips 2026 How to sign a cover letter in 2026: why typed beats handwritten on digital applications, the right closing for the role, and format-by-format rules for PDFs, email, portals, and print. Alex Khamis Jul 10 · 15 min read"':
+    - /url: /articles/master-how-to-sign-cover-letter-pro-tips-2026
+    - 'img "Master How to Sign Cover Letter: Pro Tips 2026"'
+    - generic: Cover Letters
+    - 'heading "Master How to Sign Cover Letter: Pro Tips 2026" [level=3]'
+    - paragraph: "How to sign a cover letter in 2026: why typed beats handwritten on digital applications, the right closing for the role, and format-by-format rules for PDFs, email, portals, and print."
+    - generic: Alex Khamis
+    - generic: Jul 10 · 15 min read
+  - link "How Long Should a Cover Letter Be? (Ideal Length and Word Count) Cover Letters How Long Should a Cover Letter Be? (Ideal Length and Word Count) How long should a cover letter be? 200 to 350 words, three to four short paragraphs, and one page at most. Here's the ideal length by situation, plus a real letter cut from two pages to one. Alex Khamis Jun 25 · 7 min read":
+    - /url: /articles/how-long-should-a-cover-letter-be
+    - img "How Long Should a Cover Letter Be? (Ideal Length and Word Count)"
+    - generic: Cover Letters
+    - heading "How Long Should a Cover Letter Be? (Ideal Length and Word Count)" [level=3]
+    - paragraph: How long should a cover letter be? 200 to 350 words, three to four short paragraphs, and one page at most. Here's the ideal length by situation, plus a real letter cut from two pages to one.
+    - generic: Alex Khamis
+    - generic: Jun 25 · 7 min read
+  - 'link "What Is the Purpose of a Cover Letter? Cover Letters What Is the Purpose of a Cover Letter? The purpose of a cover letter is to do what a resume can''t: connect your experience to one specific role and reader. See it in a real annotated example, plus when a cover letter actually gets read. Alex Khamis Jun 24 · 6 min read"':
+    - /url: /articles/what-is-the-purpose-of-a-cover-letter
+    - img "What Is the Purpose of a Cover Letter?"
+    - generic: Cover Letters
+    - heading "What Is the Purpose of a Cover Letter?" [level=3]
+    - paragraph: "The purpose of a cover letter is to do what a resume can't: connect your experience to one specific role and reader. See it in a real annotated example, plus when a cover letter actually gets read."
+    - generic: Alex Khamis
+    - generic: Jun 24 · 6 min read
+  - 'link "Cover Letter vs Resume: What Each One Is Actually For Cover Letters Cover Letter vs Resume: What Each One Is Actually For A resume is the record of what you''ve done; a cover letter explains why it matters here. See the difference in action, with real before-and-after examples and when each one actually gets read. Alex Khamis Jun 24 · 8 min read"':
+    - /url: /articles/cover-letter-vs-resume
+    - 'img "Cover Letter vs Resume: What Each One Is Actually For"'
+    - generic: Cover Letters
+    - 'heading "Cover Letter vs Resume: What Each One Is Actually For" [level=3]'
+    - paragraph: A resume is the record of what you've done; a cover letter explains why it matters here. See the difference in action, with real before-and-after examples and when each one actually gets read.
+    - generic: Alex Khamis
+    - generic: Jun 24 · 8 min read
+  - 'link "How to End a Cover Letter (Closings That Get a Response) Cover Letters How to End a Cover Letter (Closings That Get a Response) How to end a cover letter the right way: a short closing that restates interest, points to your value, and asks for the interview, plus the best sign-offs and the filler endings to cut. With examples. Alex Khamis Jun 24 · 6 min read"':
+    - /url: /articles/how-to-end-a-cover-letter
+    - img "How to End a Cover Letter (Closings That Get a Response)"
+    - generic: Cover Letters
+    - heading "How to End a Cover Letter (Closings That Get a Response)" [level=3]
+    - paragraph: "How to end a cover letter the right way: a short closing that restates interest, points to your value, and asks for the interview, plus the best sign-offs and the filler endings to cut. With examples."
+    - generic: Alex Khamis
+    - generic: Jun 24 · 6 min read
+  - 'link "How to Write a Resume That Gets Interviews Interviews How to Write a Resume That Gets Interviews How to write a resume that gets interviews: a section-by-section walkthrough from an r/resumes moderator, built around what recruiters actually do in the first few seconds and what matters less. Alex Khamis Jun 18 · 10 min read"':
+    - /url: /articles/how-to-write-a-resume-that-gets-interviews
+    - img "How to Write a Resume That Gets Interviews"
+    - generic: Interviews
+    - heading "How to Write a Resume That Gets Interviews" [level=3]
+    - paragraph: "How to write a resume that gets interviews: a section-by-section walkthrough from an r/resumes moderator, built around what recruiters actually do in the first few seconds and what matters less."
+    - generic: Alex Khamis
+    - generic: Jun 18 · 10 min read
+  - 'link "Skills to Put on a Resume in 2026 (With Examples by Job Type) Resume Writing Skills to Put on a Resume in 2026 (With Examples by Job Type) Which skills to put on a resume in 2026: 8 to 12 hard skills mirrored from the posting, examples by job type, and the entries that quietly hurt you, from a CPRW who''s written 1,200+ resumes. Alex Khamis Jun 11 · 7 min read"':
+    - /url: /articles/skills-to-put-on-a-resume-in-2026
+    - img "Skills to Put on a Resume in 2026 (With Examples by Job Type)"
+    - generic: Resume Writing
+    - heading "Skills to Put on a Resume in 2026 (With Examples by Job Type)" [level=3]
+    - paragraph: "Which skills to put on a resume in 2026: 8 to 12 hard skills mirrored from the posting, examples by job type, and the entries that quietly hurt you, from a CPRW who's written 1,200+ resumes."
+    - generic: Alex Khamis
+    - generic: Jun 11 · 7 min read
+  - 'link "Functional vs. Chronological vs. Combination Resume Formats: Which One Actually Works Resume Writing Functional vs. Chronological vs. Combination Resume Formats: Which One Actually Works Reverse-chronological works for most job seekers, and functional resumes signal you''re hiding something. A CPRW who''s written thousands of resumes explains why, and when a combination format is the answer. Alex Khamis Jun 11 · 7 min read"':
+    - /url: /articles/functional-vs-chronological-vs-combination-resume-formats
+    - 'img "Functional vs. Chronological vs. Combination Resume Formats: Which One Actually Works"'
+    - generic: Resume Writing
+    - 'heading "Functional vs. Chronological vs. Combination Resume Formats: Which One Actually Works" [level=3]'
+    - paragraph: Reverse-chronological works for most job seekers, and functional resumes signal you're hiding something. A CPRW who's written thousands of resumes explains why, and when a combination format is the answer.
+    - generic: Alex Khamis
+    - generic: Jun 11 · 7 min read
+  - 'link "Resume Objective Examples: What Still Works in 2026 (and What to Write Instead) Resume Writing Resume Objective Examples: What Still Works in 2026 (and What to Write Instead) Resume objectives are mostly obsolete. A CPRW who''s written 1,200+ resumes shows what recruiters read instead, with objective-to-summary rewrites for entry-level, career change, and more. Alex Khamis Jun 11 · 9 min read"':
+    - /url: /articles/resume-objective-examples
+    - 'img "Resume Objective Examples: What Still Works in 2026 (and What to Write Instead)"'
+    - generic: Resume Writing
+    - 'heading "Resume Objective Examples: What Still Works in 2026 (and What to Write Instead)" [level=3]'
+    - paragraph: Resume objectives are mostly obsolete. A CPRW who's written 1,200+ resumes shows what recruiters read instead, with objective-to-summary rewrites for entry-level, career change, and more.
+    - generic: Alex Khamis
+    - generic: Jun 11 · 9 min read
+  - link "How to Prepare for an Interview (Without Wasting Time on the Wrong Things) Interviews How to Prepare for an Interview (Without Wasting Time on the Wrong Things) Most advice on how to prepare for an interview says research the company. The real lever is defending your own resume. Here's the priority order that works. Alex Khamis May 31 · 8 min read":
+    - /url: /articles/how-to-prepare-for-an-interview-without-wasting-time
+    - img "How to Prepare for an Interview (Without Wasting Time on the Wrong Things)"
+    - generic: Interviews
+    - heading "How to Prepare for an Interview (Without Wasting Time on the Wrong Things)" [level=3]
+    - paragraph: Most advice on how to prepare for an interview says research the company. The real lever is defending your own resume. Here's the priority order that works.
+    - generic: Alex Khamis
+    - generic: May 31 · 8 min read
+  - 'link "Targeted Resume Example: How to Tailor One Resume to Two Different Jobs Resume Writing Targeted Resume Example: How to Tailor One Resume to Two Different Jobs A targeted resume isn''t a full rewrite. It''s a 20 to 30 minute edit to three zones: the summary, your top bullets, and the keywords that match the posting. See one real channel manager''s resume tailored to two very di... Alex Khamis May 21 · 7 min read"':
+    - /url: /articles/targeted-resume-example-how-to-tailor-one-resume-to-two-different-jobs
+    - 'img "Targeted Resume Example: How to Tailor One Resume to Two Different Jobs"'
+    - generic: Resume Writing
+    - 'heading "Targeted Resume Example: How to Tailor One Resume to Two Different Jobs" [level=3]'
+    - paragraph: "A targeted resume isn't a full rewrite. It's a 20 to 30 minute edit to three zones: the summary, your top bullets, and the keywords that match the posting. See one real channel manager's resume tailored to two very di..."
+    - generic: Alex Khamis
+    - generic: May 21 · 7 min read
+  - 'link "ChatGPT Resume Prompts: Which Ones Actually Work in 2026 (Graded by a CPRW) Resume Writing ChatGPT Resume Prompts: Which Ones Actually Work in 2026 (Graded by a CPRW) Alex Khamis May 13 · 9 min read"':
+    - /url: /articles/chatgpt-resume-prompts-which-ones-actually-work-in-2026-graded-by-a-cprw
+    - 'img "ChatGPT Resume Prompts: Which Ones Actually Work in 2026 (Graded by a CPRW)"'
+    - generic: Resume Writing
+    - 'heading "ChatGPT Resume Prompts: Which Ones Actually Work in 2026 (Graded by a CPRW)" [level=3]'
+    - generic: Alex Khamis
+    - generic: May 13 · 9 min read
+  - link "Is ChatGPT Good at Reviewing Resumes? A CPRW's Honest Test Resume Writing Is ChatGPT Good at Reviewing Resumes? A CPRW's Honest Test Alex Khamis May 10 · 16 min read":
+    - /url: /articles/is-chatgpt-good-at-reviewing-resumes-a-cprws-honest-test
+    - img "Is ChatGPT Good at Reviewing Resumes? A CPRW's Honest Test"
+    - generic: Resume Writing
+    - heading "Is ChatGPT Good at Reviewing Resumes? A CPRW's Honest Test" [level=3]
+    - generic: Alex Khamis
+    - generic: May 10 · 16 min read
+  - link "Crafting the Ultimate Project Manager Resume Resume Writing Crafting the Ultimate Project Manager Resume Build a job-winning project manager resume with our guide. Get ATS-friendly advice, real-world examples, and proven strategies to land your next interview. Alex Khamis Feb 15 · 14 min read":
+    - /url: /articles/crafting-the-ultimate-project-manager-resume
+    - img "Crafting the Ultimate Project Manager Resume"
+    - generic: Resume Writing
+    - heading "Crafting the Ultimate Project Manager Resume" [level=3]
+    - paragraph: Build a job-winning project manager resume with our guide. Get ATS-friendly advice, real-world examples, and proven strategies to land your next interview.
+    - generic: Alex Khamis
+    - generic: Feb 15 · 14 min read
+  - link "How to Write an Executive Resume Summary That Gets You Hired Resume Writing How to Write an Executive Resume Summary That Gets You Hired Learn how to write a powerful executive resume summary that bypasses recruiters and ATS. Get expert advice, real-world examples, and common mistakes to avoid. Alex Khamis Feb 15 · 10 min read":
+    - /url: /articles/how-to-write-an-executive-resume-summary-that-gets-you-hired
+    - img "How to Write an Executive Resume Summary That Gets You Hired"
+    - generic: Resume Writing
+    - heading "How to Write an Executive Resume Summary That Gets You Hired" [level=3]
+    - paragraph: Learn how to write a powerful executive resume summary that bypasses recruiters and ATS. Get expert advice, real-world examples, and common mistakes to avoid.
+    - generic: Alex Khamis
+    - generic: Feb 15 · 10 min read
+  - link "Why Keywords Alone Won't Fix Your Resume (And What Actually Works) ATS Why Keywords Alone Won't Fix Your Resume (And What Actually Works) Learn why stuffing your resume with keywords doesn’t land interviews and how adding real context to your experience can make hiring managers say yes. Alex Khamis Dec 28 · 12 min read":
+    - /url: /articles/why-keywords-alone-wont-fix-your-resume-and-what-actually-works
+    - img "Why Keywords Alone Won't Fix Your Resume (And What Actually Works)"
+    - generic: ATS
+    - heading "Why Keywords Alone Won't Fix Your Resume (And What Actually Works)" [level=3]
+    - paragraph: Learn why stuffing your resume with keywords doesn’t land interviews and how adding real context to your experience can make hiring managers say yes.
+    - generic: Alex Khamis
+    - generic: Dec 28 · 12 min read
+  - 'link "Hard Skills Examples: What Actually Converts on a Resume in 2026 (Based on 1,200+ Resumes) Resume Writing Hard Skills Examples: What Actually Converts on a Resume in 2026 (Based on 1,200+ Resumes) Discover the top 10 examples of hard skills strategies and tips. Complete guide with actionable insights. Alex Khamis Dec 14 · 13 min read"':
+    - /url: /articles/10-examples-of-hard-skills-you-should-know
+    - 'img "Hard Skills Examples: What Actually Converts on a Resume in 2026 (Based on 1,200+ Resumes)"'
+    - generic: Resume Writing
+    - 'heading "Hard Skills Examples: What Actually Converts on a Resume in 2026 (Based on 1,200+ Resumes)" [level=3]'
+    - paragraph: Discover the top 10 examples of hard skills strategies and tips. Complete guide with actionable insights.
+    - generic: Alex Khamis
+    - generic: Dec 14 · 13 min read
+  - link "The 11 Best Free Resume Builder Options for 2025 (Analyzed & Ranked) Resume Writing The 11 Best Free Resume Builder Options for 2025 (Analyzed & Ranked) Searching for the best free resume builder? We analyzed 12 top tools for features, ATS-friendliness, and free tier limits to help you land your next job. Alex Khamis Dec 12 · 26 min read":
+    - /url: /articles/the-11-best-free-resume-builder-options-for-2025-analyzed-ranked
+    - img "The 11 Best Free Resume Builder Options for 2025 (Analyzed & Ranked)"
+    - generic: Resume Writing
+    - heading "The 11 Best Free Resume Builder Options for 2025 (Analyzed & Ranked)" [level=3]
+    - paragraph: Searching for the best free resume builder? We analyzed 12 top tools for features, ATS-friendliness, and free tier limits to help you land your next job.
+    - generic: Alex Khamis
+    - generic: Dec 12 · 26 min read
+  - link "How to write a cover letter that gets you hired Cover Letters How to write a cover letter that gets you hired Learn how to write a cover letter that beats ATS bots and impresses recruiters. Get practical examples and expert tips to land more interviews. Alex Khamis Dec 8 · 20 min read":
+    - /url: /articles/how-to-write-a-cover-letter-that-gets-you-hired
+    - img "How to write a cover letter that gets you hired"
+    - generic: Cover Letters
+    - heading "How to write a cover letter that gets you hired" [level=3]
+    - paragraph: Learn how to write a cover letter that beats ATS bots and impresses recruiters. Get practical examples and expert tips to land more interviews.
+    - generic: Alex Khamis
+    - generic: Dec 8 · 20 min read
+  - link "How to write a resume that gets you hired Resume Writing How to write a resume that gets you hired Learn how to write a resume that impresses recruiters and beats screening software. Get practical tips and real-world examples to land more interviews. Alex Khamis Dec 8 · 25 min read":
+    - /url: /articles/how-to-write-a-resume-that-gets-you-hired
+    - img "How to write a resume that gets you hired"
+    - generic: Resume Writing
+    - heading "How to write a resume that gets you hired" [level=3]
+    - paragraph: Learn how to write a resume that impresses recruiters and beats screening software. Get practical tips and real-world examples to land more interviews.
+    - generic: Alex Khamis
+    - generic: Dec 8 · 25 min read
+  - 'link "Problem Solving Skills on a Resume: Stand Out & Land Interviews Interviews Problem Solving Skills on a Resume: Stand Out & Land Interviews Alex Khamis Nov 27 · 17 min read"':
+    - /url: /articles/problem-solving-skills-on-a-resume-stand-out-land-interviews
+    - 'img "Problem Solving Skills on a Resume: Stand Out & Land Interviews"'
+    - generic: Interviews
+    - 'heading "Problem Solving Skills on a Resume: Stand Out & Land Interviews" [level=3]'
+    - generic: Alex Khamis
+    - generic: Nov 27 · 17 min read
+  - link "What Recruiters Look for in Resumes to Get Hired Job Search What Recruiters Look for in Resumes to Get Hired Discover what recruiters look for in resumes. Learn how to optimize for ATS, highlight achievements, and land more interviews with our expert guide. Alex Khamis Nov 25 · 22 min read":
+    - /url: /articles/what-recruiters-look-for-in-resumes-to-get-hired
+    - img "What Recruiters Look for in Resumes to Get Hired"
+    - generic: Job Search
+    - heading "What Recruiters Look for in Resumes to Get Hired" [level=3]
+    - paragraph: Discover what recruiters look for in resumes. Learn how to optimize for ATS, highlight achievements, and land more interviews with our expert guide.
+    - generic: Alex Khamis
+    - generic: Nov 25 · 22 min read
+  - 'link "How to Write a Career Change Resume to Land Interviews Interviews How to Write a Career Change Resume to Land Interviews How to write career change resume: learn to highlight transferable skills and land interviews with practical tips and real-world examples. Alex Khamis Nov 24 · 22 min read"':
+    - /url: /articles/how-to-write-a-career-change-resume-to-land-interviews
+    - img "How to Write a Career Change Resume to Land Interviews"
+    - generic: Interviews
+    - heading "How to Write a Career Change Resume to Land Interviews" [level=3]
+    - paragraph: "How to write career change resume: learn to highlight transferable skills and land interviews with practical tips and real-world examples."
+    - generic: Alex Khamis
+    - generic: Nov 24 · 22 min read
+  - 'link "How to List Skills on Your Resume to Get Noticed Fast Resume Writing How to List Skills on Your Resume to Get Noticed Fast How to list skills on resume: Learn how to showcase strengths, balance hard and soft skills, and optimize placement for ATS. Alex Khamis Nov 19 · 16 min read"':
+    - /url: /articles/how-to-list-skills-on-your-resume-to-get-noticed-fast
+    - img "How to List Skills on Your Resume to Get Noticed Fast"
+    - generic: Resume Writing
+    - heading "How to List Skills on Your Resume to Get Noticed Fast" [level=3]
+    - paragraph: "How to list skills on resume: Learn how to showcase strengths, balance hard and soft skills, and optimize placement for ATS."
+    - generic: Alex Khamis
+    - generic: Nov 19 · 16 min read
+  - 'link "Chronological vs Functional Resume: Which Should You Use? Resume Writing Chronological vs Functional Resume: Which Should You Use? Choosing between a chronological vs functional resume? This guide compares formats, ATS compatibility, and recruiter preferences to help you land the interview. Alex Khamis Nov 19 · 21 min read"':
+    - /url: /articles/chronological-vs-functional-resume-which-should-you-use
+    - 'img "Chronological vs Functional Resume: Which Should You Use?"'
+    - generic: Resume Writing
+    - 'heading "Chronological vs Functional Resume: Which Should You Use?" [level=3]'
+    - paragraph: Choosing between a chronological vs functional resume? This guide compares formats, ATS compatibility, and recruiter preferences to help you land the interview.
+    - generic: Alex Khamis
+    - generic: Nov 19 · 21 min read
+  - link "Craft a Winning Resume Executive Summary Statement Resume Writing Craft a Winning Resume Executive Summary Statement Learn to write a resume executive summary statement that gets you noticed. This guide offers practical tips, examples, and templates to land more interviews. Alex Khamis Nov 19 · 16 min read":
+    - /url: /articles/craft-a-winning-resume-executive-summary-statement
+    - img "Craft a Winning Resume Executive Summary Statement"
+    - generic: Resume Writing
+    - heading "Craft a Winning Resume Executive Summary Statement" [level=3]
+    - paragraph: Learn to write a resume executive summary statement that gets you noticed. This guide offers practical tips, examples, and templates to land more interviews.
+    - generic: Alex Khamis
+    - generic: Nov 19 · 16 min read
+  - 'link "Data Analyst Resume Keywords: What Actually Gets You Interviews in 2026 Interviews Data Analyst Resume Keywords: What Actually Gets You Interviews in 2026 data analyst resume keywords: boost your profile and land interviews in 2025 with practical tips and examples. Alex Khamis Nov 17 · 6 min read"':
+    - /url: /articles/data-analyst-resume-keywords
+    - 'img "Data Analyst Resume Keywords: What Actually Gets You Interviews in 2026"'
+    - generic: Interviews
+    - 'heading "Data Analyst Resume Keywords: What Actually Gets You Interviews in 2026" [level=3]'
+    - paragraph: "data analyst resume keywords: boost your profile and land interviews in 2025 with practical tips and examples."
+    - generic: Alex Khamis
+    - generic: Nov 17 · 6 min read
+  - link "How to tailor resume to job description and land interviews Interviews How to tailor resume to job description and land interviews Learn how to tailor resume to job description with actionable steps, keyword placement, and examples to boost responses. Alex Khamis Nov 17 · 18 min read":
+    - /url: /articles/how-to-tailor-resume-to-job-description-and-land-interviews
+    - img "How to tailor resume to job description and land interviews"
+    - generic: Interviews
+    - heading "How to tailor resume to job description and land interviews" [level=3]
+    - paragraph: Learn how to tailor resume to job description with actionable steps, keyword placement, and examples to boost responses.
+    - generic: Alex Khamis
+    - generic: Nov 17 · 18 min read
+  - link "How to Make Your Resume ATS Friendly and Land Interviews Interviews How to Make Your Resume ATS Friendly and Land Interviews Learn how to make resume ATS friendly with our expert guide. We cover formatting, keyword optimization, and common mistakes to help you beat the bots. Alex Khamis Nov 13 · 21 min read":
+    - /url: /articles/how-to-make-your-resume-ats-friendly-and-land-interviews
+    - img "How to Make Your Resume ATS Friendly and Land Interviews"
+    - generic: Interviews
+    - heading "How to Make Your Resume ATS Friendly and Land Interviews" [level=3]
+    - paragraph: Learn how to make resume ATS friendly with our expert guide. We cover formatting, keyword optimization, and common mistakes to help you beat the bots.
+    - generic: Alex Khamis
+    - generic: Nov 13 · 21 min read
+  - link "7 Essential AI Based Resume Builder Free Tools for 2025 Resume Writing 7 Essential AI Based Resume Builder Free Tools for 2025 Discover 7 essential AI based resume builder free tools for 2025 Compare features pricing and tips to create ATS optimized resumes and boost your job search Alex Khamis Nov 11 · 17 min read":
+    - /url: /articles/ai-based-resume-builder-free
+    - img "7 Essential AI Based Resume Builder Free Tools for 2025"
+    - generic: Resume Writing
+    - heading "7 Essential AI Based Resume Builder Free Tools for 2025" [level=3]
+    - paragraph: Discover 7 essential AI based resume builder free tools for 2025 Compare features pricing and tips to create ATS optimized resumes and boost your job search
+    - generic: Alex Khamis
+    - generic: Nov 11 · 17 min read
+  - link "14+ Teacher resume examples & cover letter templates [2025] Cover Letters 14+ Teacher resume examples & cover letter templates [2025] Explore teacher resume examples and templates to build a winning application. Use Resumatic to create a professional resume that stands out in education. Alex Khamis Sep 23 · 13 min read":
+    - /url: /articles/teacher-resume-examples-templates
+    - img "14+ Teacher resume examples & cover letter templates [2025]"
+    - generic: Cover Letters
+    - heading "14+ Teacher resume examples & cover letter templates [2025]" [level=3]
+    - paragraph: Explore teacher resume examples and templates to build a winning application. Use Resumatic to create a professional resume that stands out in education.
+    - generic: Alex Khamis
+    - generic: Sep 23 · 13 min read
+  - link "13 Business resume examples & templates Resume Writing 13 Business resume examples & templates Explore the best business resume examples and templates to showcase your skills, experience, and impact with ATS-friendly formatting. Alex Khamis Sep 23 · 10 min read":
+    - /url: /articles/business-resume-examples-templates
+    - img "13 Business resume examples & templates"
+    - generic: Resume Writing
+    - heading "13 Business resume examples & templates" [level=3]
+    - paragraph: Explore the best business resume examples and templates to showcase your skills, experience, and impact with ATS-friendly formatting.
+    - generic: Alex Khamis
+    - generic: Sep 23 · 10 min read
+  - link "9+ Federal resume examples & templates Resume Writing 9+ Federal resume examples & templates Discover federal resume examples and templates to build a professional application tailored to government hiring requirements. Alex Khamis Sep 23 · 10 min read":
+    - /url: /articles/federal-resume-examples-templates
+    - img "9+ Federal resume examples & templates"
+    - generic: Resume Writing
+    - heading "9+ Federal resume examples & templates" [level=3]
+    - paragraph: Discover federal resume examples and templates to build a professional application tailored to government hiring requirements.
+    - generic: Alex Khamis
+    - generic: Sep 23 · 10 min read
+  - link "23+ medical resume examples & templates Resume Writing 23+ medical resume examples & templates Discover professional medical resume examples and templates that help you showcase your skills, experience, and credentials to stand out in healthcare roles. Alex Khamis Sep 10 · 15 min read":
+    - /url: /articles/medical-resume-examples-templates
+    - img "23+ medical resume examples & templates"
+    - generic: Resume Writing
+    - heading "23+ medical resume examples & templates" [level=3]
+    - paragraph: Discover professional medical resume examples and templates that help you showcase your skills, experience, and credentials to stand out in healthcare roles.
+    - generic: Alex Khamis
+    - generic: Sep 10 · 15 min read
+  - link "40+ intelligent questions to ask at the end of an interview Interviews 40+ intelligent questions to ask at the end of an interview Ask the best questions at the end of your interview to stand out, show genuine interest, and determine if the role and company are truly right for you. Alex Khamis Sep 10 · 12 min read":
+    - /url: /articles/best-questions-to-ask-end-of-interview
+    - img "40+ intelligent questions to ask at the end of an interview"
+    - generic: Interviews
+    - heading "40+ intelligent questions to ask at the end of an interview" [level=3]
+    - paragraph: Ask the best questions at the end of your interview to stand out, show genuine interest, and determine if the role and company are truly right for you.
+    - generic: Alex Khamis
+    - generic: Sep 10 · 12 min read
+  - link "Best careers for introverts in 2025 Job Search Best careers for introverts in 2025 Explore the best careers for introverts, featuring roles that offer focus, independence, and meaningful work without constant social interaction. Alex Khamis Sep 10 · 11 min read":
+    - /url: /articles/best-careers-for-introverts
+    - img "Best careers for introverts in 2025"
+    - generic: Job Search
+    - heading "Best careers for introverts in 2025" [level=3]
+    - paragraph: Explore the best careers for introverts, featuring roles that offer focus, independence, and meaningful work without constant social interaction.
+    - generic: Alex Khamis
+    - generic: Sep 10 · 11 min read
+  - 'link "ATS Friendly Resume: How to Build One That Gets Past the Bots (+ Free Templates) ATS ATS Friendly Resume: How to Build One That Gets Past the Bots (+ Free Templates) Learn how to create an ATS friendly resume that passes applicant tracking systems. Expert formatting tips, keyword strategies, common mistakes to avoid, and free ATS-optimized templates. Alex Khamis Aug 23 · 17 min read"':
+    - /url: /articles/best-ats-resume-templates
+    - 'img "ATS Friendly Resume: How to Build One That Gets Past the Bots (+ Free Templates)"'
+    - generic: ATS
+    - 'heading "ATS Friendly Resume: How to Build One That Gets Past the Bots (+ Free Templates)" [level=3]'
+    - paragraph: Learn how to create an ATS friendly resume that passes applicant tracking systems. Expert formatting tips, keyword strategies, common mistakes to avoid, and free ATS-optimized templates.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 17 min read
+  - link "14+ Best resume writing services for 2025 Resume Writing 14+ Best resume writing services for 2025 Discover the best resume writing services and how they can help you create the right resume for your industry and job description. Alex Khamis Aug 23 · 20 min read":
+    - /url: /articles/best-resume-writing-services
+    - img "14+ Best resume writing services for 2025"
+    - generic: Resume Writing
+    - heading "14+ Best resume writing services for 2025" [level=3]
+    - paragraph: Discover the best resume writing services and how they can help you create the right resume for your industry and job description.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 20 min read
+  - link "How to create a software engineer resume in 2025 Resume Writing How to create a software engineer resume in 2025 Learn how to craft a standout software engineer resume in 2025. Expert tips on formatting, content structure, and highlighting achievements that catch recruiters' attention. Alex Khamis Aug 23 · 8 min read":
+    - /url: /articles/software-engineer-resume-in-2025
+    - img "How to create a software engineer resume in 2025"
+    - generic: Resume Writing
+    - heading "How to create a software engineer resume in 2025" [level=3]
+    - paragraph: Learn how to craft a standout software engineer resume in 2025. Expert tips on formatting, content structure, and highlighting achievements that catch recruiters' attention.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 8 min read
+  - link "20+ Software Engineer Resume Examples Resume Writing 20+ Software Engineer Resume Examples Use these software engineer resume templates to pass applicant tracking systems and land your next engineering interviews. Alex Khamis Aug 23 · 31 min read":
+    - /url: /articles/software-engineer-jobs-in-2025
+    - img "20+ Software Engineer Resume Examples"
+    - generic: Resume Writing
+    - heading "20+ Software Engineer Resume Examples" [level=3]
+    - paragraph: Use these software engineer resume templates to pass applicant tracking systems and land your next engineering interviews.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 31 min read
+  - link "11+ Customer service representative resume examples & templates Resume Writing 11+ Customer service representative resume examples & templates Explore these top customer service representative resume examples and templates to build the perfectly ATS-optimized resume. Alex Khamis Aug 23 · 22 min read":
+    - /url: /articles/customer-service-representative-resume-examples
+    - img "11+ Customer service representative resume examples & templates"
+    - generic: Resume Writing
+    - heading "11+ Customer service representative resume examples & templates" [level=3]
+    - paragraph: Explore these top customer service representative resume examples and templates to build the perfectly ATS-optimized resume.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 22 min read
+  - link "How to Get and Improve Your Resume Score for Free with Resumatic.ai Resume Writing How to Get and Improve Your Resume Score for Free with Resumatic.ai Learn how to check your resume score and improve it for free using Resumatic. Get expert tips to optimize your resume for ATS compatibility, formatting, and keyword relevance to stand out to recruiters. Alex Khamis Aug 23 · 3 min read":
+    - /url: /articles/resume-score
+    - img "How to Get and Improve Your Resume Score for Free with Resumatic.ai"
+    - generic: Resume Writing
+    - heading "How to Get and Improve Your Resume Score for Free with Resumatic.ai" [level=3]
+    - paragraph: Learn how to check your resume score and improve it for free using Resumatic. Get expert tips to optimize your resume for ATS compatibility, formatting, and keyword relevance to stand out to recruiters.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 3 min read
+  - 'link "Best resume formats: Examples & free templates Resume Writing Best resume formats: Examples & free templates Access and learn about the best resume formats and templates to help you build an ATS-friendly resume that recruiters see. Alex Khamis Aug 23 · 12 min read"':
+    - /url: /articles/best-resume-formats
+    - 'img "Best resume formats: Examples & free templates"'
+    - generic: Resume Writing
+    - 'heading "Best resume formats: Examples & free templates" [level=3]'
+    - paragraph: Access and learn about the best resume formats and templates to help you build an ATS-friendly resume that recruiters see.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 12 min read
+  - link "How Long Should a Resume Be? Page-Count Rules for 2026, Backed by Real Data Resume Writing How Long Should a Resume Be? Page-Count Rules for 2026, Backed by Real Data The ideal resume length for your career stage. Expert guidelines on how many pages your resume should be, backed by research and industry insights. Alex Khamis Aug 23 · 8 min read":
+    - /url: /articles/how-long-should-resume-be
+    - img "How Long Should a Resume Be? Page-Count Rules for 2026, Backed by Real Data"
+    - generic: Resume Writing
+    - heading "How Long Should a Resume Be? Page-Count Rules for 2026, Backed by Real Data" [level=3]
+    - paragraph: The ideal resume length for your career stage. Expert guidelines on how many pages your resume should be, backed by research and industry insights.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 8 min read
+  - link "9 Best AI resume builders Resume Writing 9 Best AI resume builders Use the best AI resume builder to create the perfect resume that will wow recruiters and help you find your dream job. Alex Khamis Aug 23 · 17 min read":
+    - /url: /articles/best-ai-resume-builders
+    - img "9 Best AI resume builders"
+    - generic: Resume Writing
+    - heading "9 Best AI resume builders" [level=3]
+    - paragraph: Use the best AI resume builder to create the perfect resume that will wow recruiters and help you find your dream job.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 17 min read
+  - link "45+ Best Skills to Put on a Resume Resume Writing 45+ Best Skills to Put on a Resume Discover how to choose the best skills to put on a resume for any industry, including hard skills, technical skills, and work methodologies. Alex Khamis Aug 23 · 13 min read":
+    - /url: /articles/best-skills-to-put-on-a-resume
+    - img "45+ Best Skills to Put on a Resume"
+    - generic: Resume Writing
+    - heading "45+ Best Skills to Put on a Resume" [level=3]
+    - paragraph: Discover how to choose the best skills to put on a resume for any industry, including hard skills, technical skills, and work methodologies.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 13 min read
+  - 'link "ATS Resume Scanner & Checker: How to Optimize Your Resume for Applicant Tracking Systems ATS ATS Resume Scanner & Checker: How to Optimize Your Resume for Applicant Tracking Systems Learn what an ATS resume is, how ATS resume checkers work, and tips to create an ATS-friendly resume. Alex Khamis Aug 23 · 7 min read"':
+    - /url: /articles/ats-resume-checker-guide
+    - 'img "ATS Resume Scanner & Checker: How to Optimize Your Resume for Applicant Tracking Systems"'
+    - generic: ATS
+    - 'heading "ATS Resume Scanner & Checker: How to Optimize Your Resume for Applicant Tracking Systems" [level=3]'
+    - paragraph: Learn what an ATS resume is, how ATS resume checkers work, and tips to create an ATS-friendly resume.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 7 min read
+  - link "5 Essential Resume Tips to Boost Your Interviews Interviews 5 Essential Resume Tips to Boost Your Interviews One of the biggest challenges with resume tips from the internet is their subjectivity. Alex Khamis Aug 23 · 3 min read":
+    - /url: /articles/5-essential-resume-tips-to-boost-your-interviews
+    - img "5 Essential Resume Tips to Boost Your Interviews"
+    - generic: Interviews
+    - heading "5 Essential Resume Tips to Boost Your Interviews" [level=3]
+    - paragraph: One of the biggest challenges with resume tips from the internet is their subjectivity.
+    - generic: Alex Khamis
+    - generic: Aug 23 · 3 min read
+  - generic: Moderator Recommended on /r/resumes
+  - heading "Your next job starts with a better resume." [level=2]
+  - paragraph: Join 4.5M job seekers tailoring every application in about ninety seconds.
+  - link "Build my resume":
+    - /url: https://resumatic.rezi.ai/signup
+  - generic: Charles Bloomberg
+  - generic: Seoul, South Korea
+  - generic: ·
+  - generic: charlesbloomberg@gmail.com
+  - generic: ·
+  - generic: (621)799-5548
+  - generic: ·
+  - generic: in/cbloomberg
+  - heading "SUMMARY" [level=3]
+  - paragraph: Passion for building inspiring consumer software companies through industry-leading tech, design, and execution. An experienced early-stage global executive with an economics degree from the University of Wisconsin Madison.
+  - heading "EXPERIENCE" [level=3]
+  - generic: CEO & Founder
+  - generic: Rezi
+  - generic: August 2015 - Present, Seoul, South Korea
+  - generic: · Launched Rezi, the leading AI-powered resume
+  - generic: SaaS
+  - generic: software, garnering trust from over 4,533,800
+  - generic: users
+  - generic: globally.
+  - generic: · Initiated Rezi at the age of 22, and within a year, successfully globalized into South Korea, raising over $550,000 in capital fundraising
+  - generic: efforts and gaining recognition as South Korea's leading English resume company.
+  - generic: · Adapted to market by developing business models, resulting in the creation of advanced AI features to outcompete alternatives. Led
+  - generic: prototyping in Figma and a shared design system with the development team, and formulated zero-investment
+  - generic: growth strategies
+  - generic: that
+  - generic: led to an addition of 1,500,000
+  - generic: users
+  - generic: in six months.
+  - generic: · Maintained a robust financial structure, supporting a company valuation of $45,000,000, with a dedicated team of 9 full-time
+  - generic: employees and an expanding user base.
+  - generic: · Devised and pursued strategic objectives that guide the company's decisions and propel it towards its goals. Assembled an advisory
+  - generic: board that has been instrumental in providing direction to corporate structure and
+  - generic: strategic planning
+  - generic: .
+  - generic: Marketing Analyst
+  - generic: Kaplan
+  - generic: May 2016 - May 2017, La Crosse, WI
+  - paragraph: · Relied and implement Tableau dashboards to track 6 marketing KPIs. Used data to create reports circulated amongst leadership. Collaborated with marketing specialists to improve marketing strategies to maximize ROI such as introducing Facebook retargeting.
+  - paragraph: · Used SurveyMonkey to collect over 100 customer feedbacks used to conduct analysis, identify market trends, and calculate NPS. Used customer feedback data and optimization software to present and suggest website improvements to management.
+  - paragraph: · Managed mobile 2 PPC strategy efforts, using Google AdWords Editor and Marin, by teaching marketing specialists best practices to prepare for the behavioral shift towards increased reliance on mobile.
+  - generic: Web Developer
+  - generic: Kaplan
+  - generic: January 2015 - January 2016, La Crosse, WI
+  - paragraph: · Executed website redesign of kaplancleantech.com using Expression Engine as a CMS while working with marketing and sales teams. Optimized 3 landing page variants using HTML, A/B testing software and customer feedback to increase leads for sales teams.
+  - paragraph: · Lead the developing SEO strategies monitoring campaigns using MOZ Analytics for a 500k budget. Maintained performance through site analysis, and new keyword research. Prepared analytics and ranking reports presented to management.
+  - paragraph: · Executed Google Analytics tracking campaigns to maximize the effectiveness of 5 email re-marketing initiatives deployed using Salesforce software. Used Salesforce Object Query Language, C, and Python to search for data for specific information.
+  - paragraph: · Contributed to Deck Writing, Channel Allocation, Budgeting, and more.
+  - heading "PROJECT" [level=3]
+  - generic: Early-Stage Startup Architect
+  - generic: Startup Consultant · May 2016 - Present
+  - paragraph: · Mentored 3 global founders to bring well-executed MVPs to market through no-code and "ship-first" methodologies.
+  - heading "EDUCATION" [level=3]
+  - generic: Bachelor of Science in Economics with a Mathematics Emphasis
+  - generic: University of Wisconsin - Madison · 2014
+  - heading "SKILLS" [level=3]
+  - paragraph: "Leadership: Speaking, Fundraising, Product Development, Communication, Partnerships, International Marketing"
+  - paragraph: "Fields of Interest: Early-Stage Fundraising, Global Entrepreneurship, Web Design, Growth"
+  - paragraph: "Front End: HTML, CSS, Bootstrap, Webflow"
+  - paragraph: "Design: Photoshop, Illustrator, Sketch"
+  - generic: Job match
+  - generic: Strong
+  - generic: 92%
+  - generic: KEYWORDS MATCHED
+  - text: SaaS
+  - text: growth strategies
+  - text: users
+  - text: strategic planning
+  - generic: Notion · Head of Growth
+  - link "Resumatic home":
+    - /url: /
+    - generic: RESUMATIC
+  - paragraph: The AI resume builder that gets you interviews, powered by ChatGPT.
+  - generic: AI TOOLS
+  - link "AI resume builder":
+    - /url: /tools/ai-resume-builder
+  - link "Cover letter generator":
+    - /url: /tools/cover-letter-generator
+  - link "ATS resume checker":
+    - /url: /tools/ats-resume-checker
+  - link "LinkedIn resume builder":
+    - /url: /tools/linkedin-resume-builder
+  - link "AI resume agent":
+    - /url: /tools/ai-resume-agent
+  - generic: RESOURCES
+  - link "Resume templates":
+    - /url: /resume-templates
+  - link "Resume examples":
+    - /url: /resume-examples
+  - link "Blog":
+    - /url: /blog
+  - link "FAQ":
+    - /url: /resources/faq
+  - generic: COMPARE
+  - link "vs ChatGPT":
+    - /url: /vs/resumatic-vs-chatgpt
+  - link "vs Kickresume":
+    - /url: /vs/resumatic-vs-kickresume
+  - link "vs Teal":
+    - /url: /vs/resumatic-vs-teal
+  - generic: COMPANY
+  - link "Pricing":
+    - /url: /pricing
+  - link "Support":
+    - /url: mailto:support@rezi.io
+  - link "Privacy":
+    - /url: https://www.rezi.ai/privacy
+  - link "Terms":
+    - /url: https://www.rezi.ai/terms
+  - text: © 2026 Resumatic · Powered by
+  - link "Rezi Enterprise":
+    - /url: https://www.rezi.ai/enterprise
+  - generic: METRICS AND RATINGS AGGREGATED WITH REZI
+- region "Notifications alt+T"
+- alert: Resume and career advice for more interviews | Resumatic

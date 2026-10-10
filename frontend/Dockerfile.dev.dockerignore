@@ -1,0 +1,11 @@
+# Only dependency manifests and source-controlled patches enter the build.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!patches
+!patches/**
+!frontend
+!frontend/package.json
+!frontend/Dockerfile.dev
+!frontend/Dockerfile.dev.dockerignore

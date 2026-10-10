@@ -23,7 +23,7 @@ export default function MarketingFooter() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-fg"><BrandLogo small /></p>
-            <p className="mt-0.5 font-body text-sm text-fg-2">Résumés, typeset — precision for modern applicants.</p>
+            <p className="mt-0.5 font-body text-sm text-fg-2">Tell your story. Build a résumé you’re ready to share — with precision for modern applicants.</p>
           </div>
           <nav className="flex flex-wrap items-center gap-5 font-ui text-sm text-fg-2">
             <Link href="/platform" className="transition hover:text-fg">Platform</Link>
@@ -31,10 +31,10 @@ export default function MarketingFooter() {
             <Link href="/updates" className="transition hover:text-fg">Updates</Link>
             <Link href="/faq" className="transition hover:text-fg">FAQ</Link>
             <Link
-              href="/try"
+              href="/try?mode=visual"
               className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
-              Open Studio
+              Build my résumé
             </Link>
           </nav>
         </div>
