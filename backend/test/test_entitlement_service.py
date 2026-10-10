@@ -121,8 +121,9 @@ class TestEffectiveFeaturesAndState:
         assert eff["cover_letters"] is False
         assert eff["compile"] is True  # non-gateable unaffected
 
+    @pytest.mark.parametrize("ending_status", ["past_due", "cancel_scheduled"])
     async def test_billing_status_gates_paid_features_and_quota_after_grace(
-        self, db_session: AsyncSession,
+        self, db_session: AsyncSession, ending_status: str,
     ):
         user_id, subscription_id = str(uuid.uuid4()), str(uuid.uuid4())
         await db_session.execute(text(
@@ -166,11 +167,11 @@ class TestEffectiveFeaturesAndState:
         assert stale_user_quota["dimensions"]["compilations"]["limit"] == get_plan_quota("free", "compilations")
 
         await db_session.execute(text(
-            "UPDATE users SET subscription_status='past_due' WHERE id=:user_id"
-        ), {"user_id": user_id})
+            "UPDATE users SET subscription_status=:status WHERE id=:user_id"
+        ), {"user_id": user_id, "status": ending_status})
         await db_session.execute(text(
-            "UPDATE subscriptions SET status='past_due', current_period_end=:period_end WHERE id=:sub_id"
-        ), {"period_end": future, "sub_id": subscription_id})
+            "UPDATE subscriptions SET status=:status, current_period_end=:period_end WHERE id=:sub_id"
+        ), {"period_end": future, "sub_id": subscription_id, "status": ending_status})
         await db_session.commit()
         user = await db_session.get(User, user_id, populate_existing=True)
         grace_features = await entitlement_service.effective_features(user)
@@ -191,8 +192,21 @@ class TestEffectiveFeaturesAndState:
         assert await entitlement_service.has_feature("cover_letters", user=user) is False
         assert expired_quota["dimensions"]["compilations"]["limit"] == get_plan_quota("free", "compilations")
 
+        # Missing term evidence also fails closed, including a missing intent.
+        await db_session.execute(text(
+            "UPDATE subscriptions SET current_period_end=NULL WHERE id=:sub_id"
+        ), {"sub_id": subscription_id})
+        await db_session.commit()
+        assert await entitlement_service.has_feature("cover_letters", user=user_id) is False
+        await db_session.execute(text(
+            "UPDATE users SET subscription_id=NULL WHERE id=:user_id"
+        ), {"user_id": user_id})
+        await db_session.commit()
+        assert await entitlement_service.has_feature("cover_letters", user=user_id) is False
+
+    @pytest.mark.parametrize("ending_status", ["past_due", "cancel_scheduled"])
     async def test_team_member_access_tracks_owner_subscription_without_revoking_seat(
-        self, db_session: AsyncSession,
+        self, db_session: AsyncSession, ending_status: str,
     ):
         owner_id, member_id, subscription_id, seat_id = (str(uuid.uuid4()) for _ in range(4))
         await db_session.execute(text(
@@ -240,8 +254,8 @@ class TestEffectiveFeaturesAndState:
 
         future = datetime.now(timezone.utc) + timedelta(days=2)
         await db_session.execute(text(
-            "UPDATE subscriptions SET status='past_due', current_period_end=:period_end WHERE id=:sub_id"
-        ), {"period_end": future, "sub_id": subscription_id})
+            "UPDATE subscriptions SET status=:status, current_period_end=:period_end WHERE id=:sub_id"
+        ), {"period_end": future, "sub_id": subscription_id, "status": ending_status})
         await db_session.commit()
         member = await db_session.get(User, member_id, populate_existing=True)
         assert await entitlement_service.has_feature("cover_letters", user=member) is True
@@ -256,6 +270,13 @@ class TestEffectiveFeaturesAndState:
         assert await db_session.scalar(text(
             "SELECT status FROM team_seats WHERE id=:seat_id"
         ), {"seat_id": seat_id}) == "active"
+        expired_quota = await entitlement_service.quota_snapshot(member_id, "team_member")
+        assert expired_quota["dimensions"]["compilations"]["limit"] == get_plan_quota("free", "compilations")
+        await db_session.execute(text(
+            "UPDATE subscriptions SET current_period_end=NULL WHERE id=:sub_id"
+        ), {"sub_id": subscription_id})
+        await db_session.commit()
+        assert await entitlement_service.has_feature("cover_letters", user=member) is False
 
     async def test_get_state_shape(self, db_session: AsyncSession):
         state = await entitlement_service.get_state(db_session)

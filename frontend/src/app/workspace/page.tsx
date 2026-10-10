@@ -109,10 +109,15 @@ export default function WorkspacePage() {
   const {
     isOnboardingOpen,
     hasCompletedOnboarding,
+    onboardingReady,
     startOnboarding,
     completeOnboarding,
     skipOnboarding,
-  } = useOnboarding()
+  } = useOnboarding(useMemo(() => ({
+    ownerId: session?.user?.id ?? null,
+    authToken: session?.session?.token ?? '',
+    confirmed: Boolean(session?.user?.id && session?.session?.token && !sessionLoading && !sessionError),
+  }), [session?.session?.token, session?.user?.id, sessionError, sessionLoading]))
 
   // Project search modal
   const [projectSearchOpen, setProjectSearchOpen] = useState(false)
@@ -205,10 +210,10 @@ export default function WorkspacePage() {
 
   // Show onboarding for first-time users (localStorage flag not yet set)
   useEffect(() => {
-    if (session && !hasCompletedOnboarding) {
+    if (session && onboardingReady && !hasCompletedOnboarding) {
       startOnboarding()
     }
-  }, [session, hasCompletedOnboarding, startOnboarding])
+  }, [session, onboardingReady, hasCompletedOnboarding, startOnboarding])
 
   useEffect(() => {
     workspaceMountedRef.current = true
@@ -1762,6 +1767,7 @@ export default function WorkspacePage() {
       )}
 
       <OnboardingFlow
+        key={session?.user?.id ?? 'anonymous'}
         isOpen={isOnboardingOpen}
         onComplete={completeOnboarding}
         onSkip={skipOnboarding}

@@ -165,7 +165,7 @@ def test_requires_exact_0067_and_nonnull_text_oauth_value_after_bridge() -> None
     )
     _validate_bridge_result(target)
 
-    with pytest.raises(ValueError, match="exact Alembic head 0067"):
+    with pytest.raises(ValueError, match="exact Alembic checkpoint 0067"):
         _validate_bridge_result(replace(target, version_rows=("0066",)))
     with pytest.raises(ValueError, match="non-null TEXT"):
         _validate_bridge_result(replace(target, column_nullable={**nullable, ("verification", "value"): True}))
@@ -180,10 +180,16 @@ def test_rejects_changed_legacy_identifier_column_shape() -> None:
         validate_legacy_snapshot(replace(snapshot, column_types=column_types))
 
 
-def test_bridge_requires_repository_graph_to_have_exactly_one_0067_head() -> None:
-    validate_current_alembic_head(["0067"])
+def test_bridge_requires_known_single_repository_head_without_changing_0067_checkpoint() -> None:
+    validate_current_alembic_head(["0068"])
 
-    with pytest.raises(ValueError, match="exactly one head at 0067"):
+    with pytest.raises(ValueError, match="exactly one head at 0068"):
         validate_current_alembic_head(["0067", "0068"])
-    with pytest.raises(ValueError, match="exactly one head at 0067"):
-        validate_current_alembic_head(["0068"])
+    with pytest.raises(ValueError, match="exactly one head at 0068"):
+        validate_current_alembic_head(["0069"])
+
+
+def test_bridge_retains_verified_0067_checkpoint() -> None:
+    from scripts.bridge_legacy_dodo_0061 import TARGET_REVISION
+
+    assert TARGET_REVISION == "0067"

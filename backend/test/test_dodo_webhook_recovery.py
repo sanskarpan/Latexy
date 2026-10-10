@@ -227,7 +227,7 @@ async def test_same_webhook_id_with_different_valid_signature_is_rejected(
         db_session, first_payload, _signed_headers(first_payload, configure_signed_test_webhooks, event_id)
     )
     changed_envelope = json.loads(first_payload)
-    changed_envelope["data"]["total_amount"] = 59899
+    changed_envelope["data"]["payment_id"] = f"pay_other_{intent_id}"
     changed_payload = json.dumps(changed_envelope).encode()
     collision = await service.handle_webhook(
         db_session, changed_payload, _signed_headers(changed_payload, configure_signed_test_webhooks, event_id)
@@ -322,3 +322,113 @@ async def test_redelivery_after_process_interruption_recovers_durable_inbox_even
             text("SELECT COUNT(*) FROM payments WHERE provider_payment_id=:payment_id"),
             {"payment_id": f"pay_restart_{intent_id}"},
         ) == 1
+
+
+@pytest.mark.asyncio
+async def test_processed_webhook_accepts_same_identity_latest_snapshot_without_mutation(
+    db_session: AsyncSession, configure_signed_test_webhooks: bytes, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DODO_TEST_PRODUCT_PRO_MONTHLY", "p_test_pro")
+    user_id, intent_id, checkout_id, subscription_id = await _create_checkout_intent(db_session)
+    payment_id = f"pay_snapshot_{intent_id}"
+    payload = _payment_payload(user_id, intent_id, checkout_id, subscription_id, payment_id)
+    event_id = f"evt_snapshot_{uuid.uuid4().hex}"
+    service = PaymentService()
+    first = await service.handle_webhook(
+        db_session, payload, _signed_headers(payload, configure_signed_test_webhooks, event_id),
+    )
+    changed = json.loads(payload)
+    changed["data"]["customer"]["name"] = "Updated customer name"
+    changed["data"]["total_amount"] = 1  # A processed duplicate must not rewrite any ledger facts.
+    newer_payload = json.dumps(changed).encode()
+    duplicate = await service.handle_webhook(
+        db_session, newer_payload, _signed_headers(newer_payload, configure_signed_test_webhooks, event_id),
+    )
+
+    assert first == {"success": True}
+    assert duplicate == {"success": True, "duplicate": True}
+    row = (await db_session.execute(text(
+        "SELECT amount, status FROM payments WHERE provider_payment_id=:id"
+    ), {"id": payment_id})).one()
+    assert tuple(row) == (59900, "paid")
+    assert await db_session.scalar(text(
+        "SELECT event_resource_id FROM billing_webhook_events WHERE event_id=:id"
+    ), {"id": event_id}) == payment_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", ["customer_name", "amount", "payment_id", "type", "timestamp", "legacy"])
+async def test_failed_webhook_changed_snapshot_requires_immutable_identity_and_full_validation(
+    db_session: AsyncSession, configure_signed_test_webhooks: bytes, monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    monkeypatch.setattr(settings, "DODO_TEST_PRODUCT_PRO_MONTHLY", "p_test_pro")
+    user_id, intent_id, checkout_id, subscription_id = await _create_checkout_intent(db_session)
+    payment_id = f"pay_failed_snapshot_{intent_id}"
+    payload = _payment_payload(user_id, intent_id, checkout_id, subscription_id, payment_id)
+    event_id = f"evt_failed_snapshot_{uuid.uuid4().hex}"
+
+    class FailFirstDelivery(PaymentService):
+        async def _process_webhook_event(self, *args, **kwargs):
+            raise RuntimeError("temporary processing failure")
+
+    first = await FailFirstDelivery().handle_webhook(
+        db_session, payload, _signed_headers(payload, configure_signed_test_webhooks, event_id),
+    )
+    assert first["success"] is False
+    if mutation == "legacy":
+        await db_session.execute(text(
+            "UPDATE billing_webhook_events SET event_resource_id=NULL WHERE event_id=:id"
+        ), {"id": event_id})
+        await db_session.commit()
+    changed = json.loads(payload)
+    changed["data"]["customer"]["name"] = "Updated name"
+    if mutation == "amount":
+        changed["data"]["total_amount"] = 1
+    elif mutation == "payment_id":
+        changed["data"]["payment_id"] = f"pay_other_{intent_id}"
+    elif mutation == "type":
+        changed["type"] = "payment.failed"
+    elif mutation == "timestamp":
+        changed["timestamp"] = "2000-01-01T00:00:00Z"
+    newer_payload = json.dumps(changed).encode()
+    retried = await PaymentService().handle_webhook(
+        db_session, newer_payload, _signed_headers(newer_payload, configure_signed_test_webhooks, event_id),
+    )
+
+    if mutation == "customer_name":
+        assert retried == {"success": True}
+    elif mutation == "amount":
+        assert retried == {"success": False, "retryable": True, "error": "Webhook processing failed"}
+    else:
+        assert retried == {"success": False, "retryable": False, "error": "Webhook ID payload mismatch"}
+    assert await db_session.scalar(text(
+        "SELECT COUNT(*) FROM payments WHERE subscription_id=:id"
+    ), {"id": intent_id}) == (1 if mutation == "customer_name" else 0)
+
+
+@pytest.mark.asyncio
+async def test_late_failed_attempt_cannot_overwrite_processed_inbox_status(
+    db_session: AsyncSession, db_session_factory, configure_signed_test_webhooks: bytes,
+) -> None:
+    user_id, intent_id, checkout_id, subscription_id = await _create_checkout_intent(db_session)
+    payload = _payment_payload(user_id, intent_id, checkout_id, subscription_id, f"pay_race_{intent_id}")
+    event_id = f"evt_processing_race_{uuid.uuid4().hex}"
+
+    class FailAfterConcurrentSuccess(PaymentService):
+        async def _process_webhook_event(self, db, *_args):
+            # Payment processing includes intermediate commits. Another delivery
+            # may finish while this older attempt is failing referral work.
+            await db.commit()
+            async with db_session_factory() as concurrent:
+                await concurrent.execute(text(
+                    "UPDATE billing_webhook_events SET status='processed', processed_at=NOW() WHERE event_id=:id"
+                ), {"id": event_id})
+                await concurrent.commit()
+            raise RuntimeError("late failure after a concurrent delivery succeeded")
+
+    await FailAfterConcurrentSuccess().handle_webhook(
+        db_session, payload, _signed_headers(payload, configure_signed_test_webhooks, event_id),
+    )
+    assert await db_session.scalar(text(
+        "SELECT status FROM billing_webhook_events WHERE event_id=:id"
+    ), {"id": event_id}) == "processed"

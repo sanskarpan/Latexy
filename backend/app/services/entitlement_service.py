@@ -398,16 +398,18 @@ class EntitlementService:
                     provider_status = str(raw_provider_status or "").lower()
                     if provider_status in suspended_statuses:
                         return "free"
-                    if provider_status == "past_due":
+                    if provider_status in {"past_due", "cancel_scheduled"}:
+                        # Scheduled cancellation ends access at the paid term
+                        # even when its final provider webhook is delayed.
                         if period_end is None:
                             return "free"
                         if period_end.tzinfo is None:
                             period_end = period_end.replace(tzinfo=timezone.utc)
                         return plan if period_end > datetime.now(timezone.utc) else "free"
-                    if provider_status not in {"active", "cancel_scheduled"}:
+                    if provider_status != "active":
                         return "free"
                     return plan
-                if subscription_status in suspended_statuses | {"past_due"}:
+                if subscription_status in suspended_statuses | {"past_due", "cancel_scheduled"}:
                     # Grace cannot be established without a matching local
                     # subscription record and its billing period end; explicit
                     # suspended user state also fails closed when no linked
@@ -454,9 +456,9 @@ class EntitlementService:
                     ):
                         continue
                     status = str(raw_status or "").lower()
-                    if status in {"active", "cancel_scheduled"}:
+                    if status == "active":
                         return "team"
-                    if status == "past_due" and period_end is not None:
+                    if status in {"past_due", "cancel_scheduled"} and period_end is not None:
                         if period_end.tzinfo is None:
                             period_end = period_end.replace(tzinfo=timezone.utc)
                         if period_end > now:

@@ -163,8 +163,9 @@ async def test_reconcile_uses_only_owner_current_intent_and_is_idempotent(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tax", [5490, None])
 async def test_reconcile_accepts_null_recurring_payment_cart_from_verified_subscription(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tax: int | None,
 ) -> None:
     _configure_test_billing(monkeypatch)
     user_id, intent_id, checkout_id, subscription_id = await _insert_pending_checkout(db_session)
@@ -173,6 +174,7 @@ async def test_reconcile_accepts_null_recurring_payment_cart_from_verified_subsc
     # Dodo's actual successful recurring-payment response shape.
     state = _provider_state(user_id, intent_id, checkout_id, subscription_id)
     state["payment"]["product_cart"] = None
+    state["payment"]["tax"] = tax
     provider = FakeProvider(state)
 
     result = await PaymentService(provider=provider).reconcile_checkout(db_session, user_id)  # type: ignore[arg-type]
@@ -802,3 +804,56 @@ async def test_late_subscription_webhook_after_recovery_cannot_resurrect_cancell
         "SELECT subscription_plan, subscription_status, subscription_id FROM users WHERE id=:id"
     ), {"id": user_id})).one()
     assert tuple(user) == ("free", "cancelled", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", [None, "missing_cart", "wrong_product", "wrong_amount", "wrong_customer", "recurring"])
+async def test_lifetime_reconciliation_requires_verified_one_time_payment(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, mutation: str | None,
+) -> None:
+    _configure_test_billing(monkeypatch)
+    monkeypatch.setattr(settings, "DODO_TEST_PRODUCT_LIFETIME", "p_test_lifetime")
+    monkeypatch.setattr(settings, "LIFETIME_AMOUNT_MINOR", 59900)
+    user_id, intent_id, checkout_id, subscription_id = await _insert_pending_checkout(db_session)
+    await db_session.execute(text(
+        "UPDATE subscriptions SET plan_id='lifetime', provider_product_id='p_test_lifetime', "
+        "provider_subscription_id=NULL WHERE id=:id"
+    ), {"id": intent_id})
+    await db_session.commit()
+    _stub_reconcile_lock(monkeypatch)
+    state = _provider_state(user_id, intent_id, checkout_id, subscription_id)
+    state["payment"]["metadata"]["latexy_plan_id"] = "lifetime"
+    state["payment"]["product_cart"] = [{"product_id": "p_test_lifetime", "quantity": 1}]
+    state["payment"]["subscription_ids"] = []
+    state["payment"]["subscription_id"] = None
+    state["payment"]["tax"] = None
+    if mutation == "missing_cart":
+        state["payment"]["product_cart"] = None
+    elif mutation == "wrong_product":
+        state["payment"]["product_cart"][0]["product_id"] = "p_test_other"
+    elif mutation == "wrong_amount":
+        state["payment"]["total_amount"] = 1
+    elif mutation == "wrong_customer":
+        state["payment"]["customer"]["email"] = "other@example.com"
+    elif mutation == "recurring":
+        state["payment"]["subscription_ids"] = [subscription_id]
+    provider = FakeProvider(state)
+    service = PaymentService(provider=provider)  # type: ignore[arg-type]
+
+    result = await service.reconcile_checkout(db_session, user_id)
+
+    assert result["success"] is (mutation is None)
+    assert provider.calls == [("checkout", checkout_id), ("payment", state["payment"]["payment_id"])]
+    user = (await db_session.execute(text(
+        "SELECT subscription_plan, subscription_status FROM users WHERE id=:id"
+    ), {"id": user_id})).one()
+    assert tuple(user) == (("lifetime", "active") if mutation is None else ("free", "checkout_pending"))
+    if mutation is None:
+        assert result["subscriptionId"] is None
+        assert result["currentPeriodEnd"] is None
+        again = await service.reconcile_checkout(db_session, user_id)
+        assert again["success"] is True
+        assert len(provider.calls) == 2
+    assert await db_session.scalar(text(
+        "SELECT COUNT(*) FROM payments WHERE subscription_id=:id"
+    ), {"id": intent_id}) == (1 if mutation is None else 0)

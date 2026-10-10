@@ -35,6 +35,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = BACKEND_ROOT / "alembic" / "versions"
 EXPECTED_REVISION = "0061"
 TARGET_REVISION = "0067"
+# Preserve the separately verified bridge checkpoint. Ordinary Alembic applies
+# the additive webhook identity revision after this guarded transaction.
+EXPECTED_REPOSITORY_HEAD = "0068"
 LOCK_KEY = 5_184_992_910_061_067
 
 FINANCIAL_TABLES = (
@@ -190,8 +193,8 @@ def validate_legacy_snapshot(snapshot: SchemaSnapshot) -> None:
 
 
 def validate_current_alembic_head(heads: list[str] | tuple[str, ...]) -> None:
-    if tuple(sorted(heads)) != (TARGET_REVISION,):
-        raise ValueError("bridge requires repository Alembic to have exactly one head at 0067")
+    if tuple(sorted(heads)) != (EXPECTED_REPOSITORY_HEAD,):
+        raise ValueError("bridge requires repository Alembic to have exactly one head at 0068")
 
 
 def _normalize(value: Any) -> Any:
@@ -317,7 +320,7 @@ def _validate_preserved_legacy_ids(connection: Any) -> None:
 
 def _validate_bridge_result(snapshot: SchemaSnapshot) -> None:
     if snapshot.version_rows != (TARGET_REVISION,):
-        raise ValueError("migration bridge did not produce exact Alembic head 0067")
+        raise ValueError("migration bridge did not produce exact Alembic checkpoint 0067")
     for table, columns in REQUIRED_COLUMNS.items():
         if table not in snapshot.tables or not columns.issubset(snapshot.columns.get(table, frozenset())):
             raise ValueError(f"billing schema is incomplete after migration at {table}")

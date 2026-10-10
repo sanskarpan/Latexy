@@ -12,6 +12,7 @@ import { isTeamInviteOwnerCurrent, type TeamInviteOwner } from '@/lib/team-invit
 import {
   apiClient,
   type BillingAvailability,
+  type AccountPreferenceRequestContext,
   type CouponValidationResponse,
   type CurrentSubscriptionResponse,
   type TeamSeat,
@@ -137,7 +138,9 @@ function BillingPageContent() {
   const [showComparison, setShowComparison] = useState(false)
   const [studentEmail, setStudentEmail] = useState('')
   const [studentCheckoutPlan, setStudentCheckoutPlan] = useState<string | null>(null)
-  const [currentSubscription, setCurrentSubscription] = useState<CurrentSubscriptionResponse | null>(null)
+  const [subscriptionSnapshot, setCurrentSubscription] = useState<CurrentSubscriptionResponse | null>(null)
+  const currentSubscription = subscriptionSnapshot?.userId === sessionUser?.id ? subscriptionSnapshot : null
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0)
   const [teamSeats, setTeamSeats] = useState<TeamSeat[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [teamLoading, setTeamLoading] = useState(false)
@@ -159,6 +162,27 @@ function BillingPageContent() {
   const teamInviteGenerationRef = useRef(0)
   const teamInviteOwnerRef = useRef<TeamInviteOwner | null>(null)
   const teamInviteAcceptanceRef = useRef<TeamInviteOwner | null>(null)
+
+  const billingOwnerRef = useRef({ token: sessionToken, active: true })
+  if (billingOwnerRef.current.token !== sessionToken) {
+    billingOwnerRef.current = { token: sessionToken, active: true }
+  }
+  useEffect(() => {
+    const owner = billingOwnerRef.current
+    owner.active = true
+    setCurrentSubscription(null)
+    setTeamSeats([])
+    setActivePlan(null)
+    return () => { owner.active = false }
+  }, [sessionToken])
+
+  const captureBillingContext = () => {
+    const owner = billingOwnerRef.current
+    return {
+      authToken: owner.token ?? '',
+      isCurrent: () => owner.active && billingOwnerRef.current === owner,
+    }
+  }
 
   // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
   // layout — it is the single source of truth. Mirroring it from here would race
@@ -361,7 +385,7 @@ function BillingPageContent() {
   // Mirrors SubscriptionManager's own "no active paid subscription" check so the
   // Free plan card's CTA and behavior stay consistent with the subscription panel.
   const isFreeTier =
-    !currentSubscription || (currentSubscription.planId === 'free' && !currentSubscription.subscriptionId)
+    !currentSubscription || currentSubscription.planId === 'free'
   const cancellationScheduled = currentSubscription?.status === 'cancel_scheduled'
   const currentPaidPlanId =
     currentSubscription?.subscriptionId &&
@@ -415,9 +439,11 @@ function BillingPageContent() {
   const resolveCouponForPlan = async (
     planId: string,
     period: BillingPeriod,
+    context: AccountPreferenceRequestContext,
   ): Promise<{ code: string | undefined; abort: boolean }> => {
     if (!appliedCoupon?.code) return { code: undefined, abort: false }
-    const check = await apiClient.validateCoupon(appliedCoupon.code, planId, period)
+    const check = await apiClient.validateCoupon(appliedCoupon.code, planId, period, context)
+    if (!context.isCurrent()) return { code: undefined, abort: true }
     if (check.success && check.data?.valid) {
       return { code: appliedCoupon.code, abort: false }
     }
@@ -429,8 +455,10 @@ function BillingPageContent() {
 
   const refreshTeamSeats = async () => {
     if (!sessionToken || currentSubscription?.planId !== 'team') return
+    const context = captureBillingContext()
     setTeamLoading(true)
     const result = await apiClient.getTeamSeats()
+    if (!context.isCurrent()) return
     setTeamLoading(false)
     if (result.success && result.data) {
       setTeamSeats(result.data)
@@ -451,15 +479,19 @@ function BillingPageContent() {
         'Cancel renewal and switch to Free after this billing cycle? Your paid access continues until then.',
       )
     ) return
+    const context = captureBillingContext()
     setActivePlan('free')
-    const result = await apiClient.cancelSubscription()
+    const result = await apiClient.cancelSubscription(context)
+    if (!context.isCurrent()) return
     setActivePlan(null)
     if (!result.success) {
       toast.error(result.error || 'Failed to downgrade to Free')
       return
     }
     toast.success(result.message || 'Cancellation scheduled for the end of the billing cycle.')
-    const refreshed = await apiClient.getCurrentSubscription()
+    const refreshed = await apiClient.getCurrentSubscription(context)
+    if (!context.isCurrent()) return
+    setSubscriptionRefreshKey((key) => key + 1)
     if (refreshed.success && refreshed.data) {
       setCurrentSubscription(refreshed.data)
     } else {
@@ -474,7 +506,7 @@ function BillingPageContent() {
     }
 
     if (!sessionUser?.email) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
+      router.push(`/login?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`)
       return
     }
 
@@ -492,13 +524,15 @@ function BillingPageContent() {
       return
     }
 
+    const context = captureBillingContext()
     setActivePlan(planId)
     // Open the target tab synchronously within the click gesture; navigating it
     // after the await avoids the browser popup blocker that fires when
     // window.open is called outside a user gesture.
     const checkoutTab = window.open('', '_blank')
     if (checkoutTab) checkoutTab.opener = null
-    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod)
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod, context)
+    if (!context.isCurrent()) { checkoutTab?.close(); return }
     if (abort) {
       checkoutTab?.close()
       setActivePlan(null)
@@ -512,7 +546,9 @@ function BillingPageContent() {
         billingPeriod: planId === 'weekly' ? 'weekly' : billingPeriod,
         couponCode: couponCodeForPlan,
       },
+      context,
     )
+    if (!context.isCurrent()) { checkoutTab?.close(); return }
     setActivePlan(null)
 
     if (!result.success || !result.data) {
@@ -553,11 +589,13 @@ function BillingPageContent() {
 
   const handleStudentCheckout = async () => {
     if (!studentCheckoutPlan || !sessionUser?.email) return
+    const context = captureBillingContext()
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
     if (previewTab) previewTab.opener = null
-    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly')
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly', context)
+    if (!context.isCurrent()) { previewTab?.close(); return }
     if (abort) {
       previewTab?.close()
       setActivePlan(null)
@@ -572,7 +610,9 @@ function BillingPageContent() {
         couponCode: couponCodeForPlan,
         studentEmail,
       },
+      context,
     )
+    if (!context.isCurrent()) { previewTab?.close(); return }
     setActivePlan(null)
 
     if (!result.success || !result.data) {
@@ -832,9 +872,9 @@ function BillingPageContent() {
                       onSelectPlan={handleSelectPlan}
                       isLoading={activePlan === plan.id}
                       disabled={
-                        plan.id === 'free'
+                        activePlan !== null || (plan.id === 'free'
                           ? isFreeTier || cancellationScheduled
-                          : plan.id === currentPaidPlanId || (!!billingStatus && !billingStatus.available)
+                          : cancellationScheduled || plan.id === currentPaidPlanId || (!!billingStatus && !billingStatus.available))
                       }
                       disabledLabel={
                         plan.id === 'free'
@@ -918,6 +958,8 @@ function BillingPageContent() {
               <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-fg-2">Loading subscription state...</div>
             ) : isAuthenticated ? (
               <SubscriptionManager
+                key={sessionToken}
+                refreshKey={subscriptionRefreshKey}
                 authToken={sessionToken}
                 billingStatus={billingStatus}
                 checkoutReturned={checkoutReturned}
@@ -932,7 +974,7 @@ function BillingPageContent() {
                   Sign in to subscribe, manage billing, or redeem team invitations.
                 </p>
                 <Link
-                  href={`/login?redirect=${encodeURIComponent('/billing')}`}
+                  href={`/login?redirect=${encodeURIComponent(`/billing${searchParams.toString() ? `?${searchParams.toString()}` : ''}`)}`}
                   className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
                 >
                   Sign In to Subscribe

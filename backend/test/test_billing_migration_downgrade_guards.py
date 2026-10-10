@@ -64,6 +64,10 @@ MIGRATIONS = [
         "0067_coupon_reservation_state.py",
         "cannot downgrade billing revision 0067",
     ),
+    (
+        "0068_webhook_resource_identity.py",
+        "cannot downgrade billing revision 0068",
+    ),
 ]
 
 

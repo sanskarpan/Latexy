@@ -453,8 +453,11 @@ jobs:
         run: >-
           pnpm exec playwright test e2e/editor-compile-sync.spec.ts
           e2e/resume-builder.spec.ts
+          e2e/billing-developer.spec.ts
           e2e/settings-provider-action-owner-isolation.spec.ts
+          e2e/onboarding-owner-isolation.spec.ts
           e2e/settings-preferences-owner-race.spec.ts
+          e2e/settings-legacy-callback-owner-isolation.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
       - name: Verify Better Auth hydration snapshot contract

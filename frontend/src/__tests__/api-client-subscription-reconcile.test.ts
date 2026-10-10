@@ -35,4 +35,33 @@ describe('subscription reconciliation API', () => {
       apiClient.setAuthToken(previousToken)
     }
   })
+
+  it.each(['getCurrentSubscription', 'reconcileSubscription', 'cancelSubscription'] as const)(
+    'binds %s dispatch to its captured account', async (method) => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      apiClient.setAuthToken('account-b')
+      const result = await apiClient[method]({ authToken: 'account-a', isCurrent: () => true })
+      expect(result.success).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      apiClient.setAuthToken('account-a')
+      const stale = await apiClient[method]({ authToken: 'account-a', isCurrent: () => false })
+      expect(stale.success).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+
+  it('does not dispatch checkout creation under another account token', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    apiClient.setAuthToken('account-b')
+    const result = await apiClient.createSubscription('basic', 'a@example.com', 'A', {}, {
+      authToken: 'account-a', isCurrent: () => true,
+    })
+    expect(result.success).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
 })

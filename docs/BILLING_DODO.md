@@ -3,8 +3,10 @@
 Latexy creates Dodo hosted checkout sessions from the backend. The backend
 selects a configured Dodo product for the requested plan and sends a local
 checkout-intent ID in signed checkout metadata. The browser only receives the
-hosted checkout URL. The return URL is informational: a signed webhook is the
-only path that grants or changes paid access. Checkout disables Dodo's default
+hosted checkout URL. The return URL is informational and cannot prove payment. Paid access requires
+either a verified signed webhook or the authenticated owner-only recovery flow,
+which independently reads and cross-checks the provider checkout, payment,
+customer, product, metadata and immutable local quote. Checkout disables Dodo's default
 currency selector and explicitly sets `billing_currency` because plan prices and webhook validation use the fixed
 catalog currency; adaptive currency support needs a separate conversion-aware
 quote and reconciliation flow.
@@ -65,6 +67,13 @@ configured, `DODO_*_BUSINESS_ID` also restricts acceptance to that business.
 
 Latexy verifies the Standard Webhooks signature using the raw request body,
 checks timestamp freshness, and stores each `webhook-id` in a durable inbox.
+Revision `0068` records the immutable provider resource ID for each new inbox
+entry. Signed retries may carry an updated resource snapshot; they must still
+match the original event type, resource ID and event timestamp. Processed events
+remain idempotent. Historical entries without saved identity retain exact-body
+matching, so investigate changed-body retries for those rows rather than
+rewriting their evidence.
+
 Successful payments must match a local intent, plan metadata, product, currency,
 and quoted amount. Subscription lifecycle events update status but do not grant
 access. Webhook retries are safe to deliver; investigate entries marked failed
@@ -88,7 +97,10 @@ schema review. It requires the selected database name explicitly, accepts only
 development/test with `DODO_MODE=test`, verifies the complete legacy billing
 schema and financial identifiers, applies OAuth and engine migrations
 `0059`–`0064` in one transaction, preserves financial and user-entitlement
-fingerprints, and advances to exact head `0067`. It refuses partial/unknown
+fingerprints, and advances to the verified checkpoint `0067`. The current repository has one
+head at `0068`; after the bridge transaction completes, run the ordinary
+`alembic upgrade head` on that same verified database to add webhook identity.
+The bridge refuses other repository heads until separately reviewed. It refuses partial/unknown
 schemas and repeat runs. Example for a disposable clone:
 
 ```powershell
@@ -111,10 +123,10 @@ stamp `0067`, drop columns, or rerun billing migrations to work around it.
 Production/staging cutover still needs a separately reviewed backup, stop-write,
 and migration plan.
 
-Billing revisions `0065`–`0067` fail closed on downgrade when provider-neutral
+Billing revisions `0065`–`0068` fail closed on downgrade when provider-neutral
 payment/subscription/webhook/refund records, saved tax quotes, or linked/reserved
 coupon redemptions would be lost. Treat a billing release rollback as an
-application-code rollback that leaves the database at `0067`; restoring a
+application-code rollback that leaves the database at its current billing head; restoring a
 pre-billing database requires a verified backup and reconciliation of every
 payment accepted after that backup. Do not use `alembic downgrade` as the normal
 release rollback procedure.
@@ -160,7 +172,9 @@ discount, and independently verify discount preservation when changing plans.
 
 Paid plan identifiers remain available for billing history while the entitlement
 resolver suspends access for paused/on-hold subscriptions and ends past-due
-access when the provider grace period expires. Recovery requires an already-paid
+access when the provider grace period expires. Scheduled cancellations end access at the paid
+period boundary even when the final cancellation webhook is delayed or missing,
+including access inherited through a team seat. Recovery requires an already-paid
 matching subscription; an unpaid lifecycle event cannot activate paid access.
 
 ## Local sandbox evidence

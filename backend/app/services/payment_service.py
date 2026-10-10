@@ -384,6 +384,22 @@ class PaymentService:
         intent_id = str(uuid4())
         provider_request_started = False
         try:
+            # The earlier checks are only a fast path. Another request may have
+            # completed its checkout between that read and this Redis lease.
+            # Serialize the durable intent creation on the account as well, so
+            # a lease expiry cannot allow a second payable checkout.
+            owner = await db.scalar(select(User).where(User.id == user_id)
+                                    .with_for_update().execution_options(populate_existing=True))
+            if owner is None:
+                await db.rollback()
+                return {"success": False, "error": "Authenticated user not found"}
+            if await self._get_legacy_subscription(db, user_id):
+                await db.rollback()
+                return {"success": False,
+                        "error": "An existing subscription is still linked to the previous payment provider. Contact support to cancel it before changing plans."}
+            if await self._get_live_subscription(db, user_id):
+                await db.rollback()
+                return {"success": False, "error": "A checkout or paid subscription is already in progress for this account."}
             if coupon:
                 try:
                     provider_discount = await self.provider.get_discount_by_code(coupon["code"])
@@ -391,6 +407,7 @@ class PaymentService:
                     logger.warning("Could not verify Dodo coupon configuration", extra={
                         "status": exc.status_code, "code": exc.code,
                     })
+                    await db.rollback()
                     return {"success": False, "error": "Coupon could not be verified with the billing provider"}
                 compatibility_error = self._provider_coupon_compatibility_error(
                     provider_discount,
@@ -399,6 +416,7 @@ class PaymentService:
                     product_id=get_dodo_product_id(concrete),
                 )
                 if compatibility_error:
+                    await db.rollback()
                     return {"success": False, "error": compatibility_error}
             # Persist the local intent before the provider call. A timeout or
             # early webhook can be reconciled using the signed metadata UUID.
@@ -456,7 +474,10 @@ class PaymentService:
             if not session_id or not isinstance(checkout_url, str) or not checkout_url.startswith("https://"):
                 raise DodoAPIError(502, "invalid_checkout_session")
             intent.provider_checkout_session_id = str(session_id)
-            await db.execute(update(User).where(User.id == user_id, User.subscription_id == intent_id).values(
+            await db.execute(update(User).where(
+                User.id == user_id, User.subscription_id == intent_id,
+                User.subscription_status.in_(("checkout_pending", "checkout_unknown")),
+            ).values(
                 subscription_status="checkout_pending", subscription_id=intent_id,
             ))
             await db.commit()
@@ -466,8 +487,9 @@ class PaymentService:
         except DodoAPIError as exc:
             logger.warning("Dodo checkout creation failed", extra={"status": exc.status_code, "code": exc.code})
             await db.rollback()
-            row = await db.get(Subscription, intent_id)
-            if row:
+            row = await db.scalar(select(Subscription).where(Subscription.id == intent_id)
+                                  .with_for_update().execution_options(populate_existing=True))
+            if row and row.status in {"checkout_pending", "checkout_unknown"}:
                 row.status = "checkout_unknown" if exc.code == "provider_unavailable" or exc.code == "invalid_checkout_session" or exc.status_code >= 500 else "failed"
                 if row.status == "failed":
                     await self._set_coupon_reservation_status(db, intent_id, "released")
@@ -475,12 +497,15 @@ class PaymentService:
                     if user and user.subscription_id == intent_id:
                         user.subscription_plan, user.subscription_status, user.subscription_id = "free", "inactive", None
                 await db.commit()
+            else:
+                await db.rollback()
             return {"success": False, "error": "Checkout could not be created. Please try again."}
         except Exception as exc:
             logger.error("Checkout creation failed", extra={"error_type": type(exc).__name__})
             await db.rollback()
-            row = await db.get(Subscription, intent_id)
-            if row:
+            row = await db.scalar(select(Subscription).where(Subscription.id == intent_id)
+                                  .with_for_update().execution_options(populate_existing=True))
+            if row and row.status in {"checkout_pending", "checkout_unknown"}:
                 row.status = "checkout_unknown" if provider_request_started else "failed"
                 if row.status == "failed":
                     await self._set_coupon_reservation_status(db, intent_id, "released")
@@ -488,6 +513,8 @@ class PaymentService:
                     if user and user.subscription_id == intent_id:
                         user.subscription_plan, user.subscription_status, user.subscription_id = "free", "inactive", None
                 await db.commit()
+            else:
+                await db.rollback()
             return {"success": False, "error": "Checkout could not be created. Please try again."}
         finally:
             try:
@@ -527,10 +554,25 @@ class PaymentService:
         except DodoAPIError as exc:
             logger.warning("Dodo cancellation failed", extra={"status": exc.status_code, "code": exc.code})
             return {"success": False, "error": "Could not cancel subscription. Please try again."}
-        if not updated.get("cancel_at_next_billing_date"):
+        if updated.get("cancel_at_next_billing_date") is not True:
             return {"success": False, "error": "Provider did not confirm scheduled cancellation."}
-        sub.status = "cancel_scheduled"
-        user.subscription_status = "cancel_scheduled"
+        # A lifecycle webhook can commit while the provider request is in
+        # flight. Re-read under the usual intent -> user row-lock order, and
+        # never turn cancellation scheduling into a paid-access restoration.
+        sub = await db.scalar(select(Subscription).where(Subscription.id == sub.id)
+                              .with_for_update().execution_options(populate_existing=True))
+        if sub is None:
+            await db.rollback()
+            return {"success": False, "error": "Subscription not found"}
+        if sub.status in {"cancelled", "expired", "failed", "refunded"}:
+            await db.rollback()
+            return {"success": True, "message": "Subscription has already ended."}
+        user = await db.scalar(select(User).where(User.id == user_id)
+                               .with_for_update().execution_options(populate_existing=True))
+        if sub.status in {"active", "cancel_scheduled"}:
+            sub.status = "cancel_scheduled"
+        if user and user.subscription_id == sub.id:
+            user.subscription_status = sub.status
         await db.commit()
         return {"success": True, "message": "Cancellation scheduled for the end of the billing cycle."}
 
@@ -756,45 +798,57 @@ class PaymentService:
                     await db.rollback()
                     return {"success": False, "status": "unavailable", "message": "Paid product did not match this plan."}
 
+                one_time = intent.plan_id == "lifetime"
                 subscription_ids = payment.get("subscription_ids")
                 provider_subscription_id = str(payment.get("subscription_id") or "")
-                if isinstance(subscription_ids, list):
-                    if len(subscription_ids) != 1:
-                        await db.rollback()
-                        return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
-                    listed_id = str(subscription_ids[0] or "")
-                    if provider_subscription_id and provider_subscription_id != listed_id:
-                        await db.rollback()
-                        return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
-                    provider_subscription_id = listed_id
-                if not provider_subscription_id:
-                    await db.rollback()
-                    return {"success": False, "status": "pending", "message": "Subscription is not confirmed yet."}
-
-                provider_subscription = self._provider_resource(
-                    await self.provider.get_subscription(provider_subscription_id)
-                )
-                if not isinstance(provider_subscription, dict):
-                    raise DodoAPIError(502, "invalid_provider_response")
-                provider_sub_id = str(provider_subscription.get("subscription_id") or provider_subscription.get("id") or "")
-                sub_customer = provider_subscription.get("customer")
-                sub_customer = sub_customer if isinstance(sub_customer, dict) else {}
-                sub_customer_id = str(sub_customer.get("customer_id") or provider_subscription.get("customer_id") or "")
-                sub_email = str(sub_customer.get("email") or "").strip().casefold()
-                if (
-                    provider_sub_id != provider_subscription_id
-                    or str(provider_subscription.get("status") or "").lower() != "active"
-                    or str(provider_subscription.get("product_id") or "") != expected_product_id
-                    or type(provider_subscription.get("quantity")) is not int
-                    or provider_subscription.get("quantity") != 1
-                    or type(provider_subscription.get("tax_inclusive")) is not bool
-                    or provider_subscription.get("tax_inclusive") is not intent.quoted_tax_inclusive
-                    or sub_customer_id != customer_id
-                    or sub_email != owner_email
-                    or not self._provider_metadata_matches(provider_subscription.get("metadata"), intent)
-                ):
+                if subscription_ids is not None and not isinstance(subscription_ids, list):
                     await db.rollback()
                     return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                provider_subscription: dict[str, Any] = {}
+                if one_time:
+                    # Lifetime is a one-time product: require direct product
+                    # proof, and never invent a recurring subscription or term.
+                    if provider_subscription_id or subscription_ids or product_cart is None:
+                        await db.rollback()
+                        return {"success": False, "status": "unavailable", "message": "Lifetime payment did not match a one-time checkout."}
+                else:
+                    if isinstance(subscription_ids, list):
+                        if len(subscription_ids) != 1:
+                            await db.rollback()
+                            return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                        listed_id = str(subscription_ids[0] or "")
+                        if provider_subscription_id and provider_subscription_id != listed_id:
+                            await db.rollback()
+                            return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
+                        provider_subscription_id = listed_id
+                    if not provider_subscription_id:
+                        await db.rollback()
+                        return {"success": False, "status": "pending", "message": "Subscription is not confirmed yet."}
+
+                    provider_subscription = self._provider_resource(
+                        await self.provider.get_subscription(provider_subscription_id)
+                    )
+                    if not isinstance(provider_subscription, dict):
+                        raise DodoAPIError(502, "invalid_provider_response")
+                    provider_sub_id = str(provider_subscription.get("subscription_id") or provider_subscription.get("id") or "")
+                    sub_customer = provider_subscription.get("customer")
+                    sub_customer = sub_customer if isinstance(sub_customer, dict) else {}
+                    sub_customer_id = str(sub_customer.get("customer_id") or provider_subscription.get("customer_id") or "")
+                    sub_email = str(sub_customer.get("email") or "").strip().casefold()
+                    if (
+                        provider_sub_id != provider_subscription_id
+                        or str(provider_subscription.get("status") or "").lower() != "active"
+                        or str(provider_subscription.get("product_id") or "") != expected_product_id
+                        or type(provider_subscription.get("quantity")) is not int
+                        or provider_subscription.get("quantity") != 1
+                        or type(provider_subscription.get("tax_inclusive")) is not bool
+                        or provider_subscription.get("tax_inclusive") is not intent.quoted_tax_inclusive
+                        or sub_customer_id != customer_id
+                        or sub_email != owner_email
+                        or not self._provider_metadata_matches(provider_subscription.get("metadata"), intent)
+                    ):
+                        await db.rollback()
+                        return {"success": False, "status": "unavailable", "message": "Subscription details did not match this checkout."}
 
                 if product_cart is None:
                     # The validated subscription is authoritative for this
@@ -808,7 +862,9 @@ class PaymentService:
                 plan = get_plan_config(intent.plan_id)
                 expected_currency = str(plan.get("currency") or settings.BILLING_CURRENCY).upper()
                 currency = str(payment.get("currency") or "").upper()
-                amount, tax = payment.get("total_amount"), payment.get("tax", 0)
+                amount, tax = payment.get("total_amount"), payment.get("tax")
+                if tax is None:
+                    tax = 0
                 if (
                     currency != expected_currency
                     or type(amount) is not int or type(tax) is not int
@@ -827,7 +883,7 @@ class PaymentService:
                     provider_subscription.get("current_period_end")
                     or provider_subscription.get("next_billing_date")
                 )
-                if period_end is None or period_end <= datetime.now(timezone.utc):
+                if not one_time and (period_end is None or period_end <= datetime.now(timezone.utc)):
                     await db.rollback()
                     return {"success": False, "status": "pending", "message": "Current billing period is not confirmed yet."}
 
@@ -878,7 +934,7 @@ class PaymentService:
                 if refreshed_user.subscription_id != refreshed_intent.id:
                     await db.rollback()
                     return {"success": False, "status": "closed", "message": "Checkout is no longer current."}
-                refreshed_intent.provider_subscription_id = provider_subscription_id
+                refreshed_intent.provider_subscription_id = provider_subscription_id or None
                 refreshed_intent.provider_customer_id = customer_id
                 newer_lifecycle_event = bool(
                     refreshed_intent.provider_event_at and refreshed_intent.provider_event_at > recovery_time
@@ -902,7 +958,7 @@ class PaymentService:
                         refreshed_user.subscription_status = "active"
                 await db.commit()
                 return {
-                    "success": True, "status": "reconciled", "subscriptionId": provider_subscription_id,
+                    "success": True, "status": "reconciled", "subscriptionId": provider_subscription_id or None,
                     "planId": refreshed_intent.plan_id,
                     "currentPeriodEnd": refreshed_intent.current_period_end.isoformat()
                     if refreshed_intent.current_period_end else None,
@@ -956,6 +1012,23 @@ class PaymentService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _webhook_snapshot_matches(
+        event: BillingWebhookEvent, *, event_type: str, resource_id: str | None,
+        event_at: datetime | None, digest: str,
+    ) -> bool:
+        if event.payload_sha256 == digest:
+            return True
+        # Dodo signs the latest resource snapshot on each delivery, so mutable
+        # payload fields may legitimately change on retry. Only a persisted
+        # immutable identity can authorize that change; legacy hash-only rows
+        # and malformed events keep the original fail-closed behavior.
+        return bool(
+            event.event_resource_id and resource_id == event.event_resource_id
+            and event.event_type == event_type
+            and event_at is not None and event.event_at == event_at
+        )
+
     async def handle_webhook(self, db: AsyncSession, payload: bytes, headers: dict[str, str]) -> dict[str, Any]:
         normalized_headers = {str(k).lower(): str(v) for k, v in headers.items()}
         if not self._verify_webhook_signature(payload, normalized_headers):
@@ -972,19 +1045,30 @@ class PaymentService:
         if settings.dodo_business_id and envelope.get("business_id") != settings.dodo_business_id:
             return {"success": False, "retryable": False, "error": "Webhook belongs to a different Dodo business"}
         digest = hashlib.sha256(payload).hexdigest()
+        event_at = self._parse_time(envelope.get("timestamp"))
+        resource_key = {"Payment": "payment_id", "Subscription": "subscription_id", "Refund": "refund_id"}.get(
+            data.get("payload_type") if isinstance(data.get("payload_type"), str) else "",
+        )
+        resource_id = data.get(resource_key) if resource_key else None
+        if not isinstance(resource_id, str) or not resource_id or len(resource_id) > 255:
+            resource_id = None
+        snapshot = {"event_type": event_type, "resource_id": resource_id, "event_at": event_at, "digest": digest}
         event = await db.scalar(select(BillingWebhookEvent).where(
             BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
-        ))
-        if event and event.payload_sha256 != digest:
+        ).with_for_update().execution_options(populate_existing=True))
+        if event and not self._webhook_snapshot_matches(event, **snapshot):
+            await db.rollback()
             return {"success": False, "retryable": False, "error": "Webhook ID payload mismatch"}
         if event and event.status == "processed":
+            await db.rollback()
             return {"success": True, "duplicate": True}
         if event:
             event.attempts += 1
+            event.payload_sha256 = digest
             event.status, event.last_error = "processing", None
         else:
             event = BillingWebhookEvent(provider="dodo", event_id=event_id, event_type=event_type,
-                                        payload_sha256=digest, event_at=self._parse_time(envelope.get("timestamp")),
+                                        payload_sha256=digest, event_at=event_at, event_resource_id=resource_id,
                                         status="processing", attempts=1)
             db.add(event)
         try:
@@ -994,28 +1078,40 @@ class PaymentService:
             event = await db.scalar(select(BillingWebhookEvent).where(
                 BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
             ))
-            if event and event.status == "processed" and event.payload_sha256 == digest:
+            if event and event.status == "processed" and self._webhook_snapshot_matches(event, **snapshot):
                 return {"success": True, "duplicate": True}
             return {"success": False, "retryable": True, "error": "Webhook is already being processed"}
         try:
+            event = await db.scalar(select(BillingWebhookEvent).where(
+                BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
+            ).with_for_update().execution_options(populate_existing=True))
+            if event and event.status == "processed":
+                await db.rollback()
+                return {"success": True, "duplicate": True}
+            if event is None or event.payload_sha256 != digest:
+                await db.rollback()
+                return {"success": False, "retryable": True, "error": "A newer webhook snapshot is being processed"}
             result = await self._process_webhook_event(db, event_type, data, envelope)
             if not result.get("success"):
                 raise ValueError(result.get("error", "Webhook could not be reconciled"))
             event = await db.scalar(select(BillingWebhookEvent).where(
                 BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
-            ))
-            event.status, event.last_error, event.processed_at = "processed", None, datetime.now(timezone.utc)
+            ).with_for_update().execution_options(populate_existing=True))
+            if event.payload_sha256 == digest:
+                event.status, event.last_error, event.processed_at = "processed", None, datetime.now(timezone.utc)
             await db.commit()
             return {"success": True}
         except Exception as exc:
             await db.rollback()
             event = await db.scalar(select(BillingWebhookEvent).where(
                 BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
-            ))
-            if event:
+            ).with_for_update().execution_options(populate_existing=True))
+            if event and event.status != "processed" and event.payload_sha256 == digest:
                 event.status = "failed"
                 event.last_error = type(exc).__name__[:240]
                 await db.commit()
+            else:
+                await db.rollback()
             logger.error("Dodo webhook processing failed", extra={"error_type": type(exc).__name__})
             return {"success": False, "retryable": True, "error": "Webhook processing failed"}
 
@@ -1162,6 +1258,17 @@ class PaymentService:
         metadata = data.get("metadata") or {}
         if not isinstance(metadata, dict):
             return {"success": False, "error": "Paid metadata does not match the local checkout"}
+        if (
+            metadata.get("latexy_intent_id") not in {None, intent.id}
+            or metadata.get("latexy_user_id") not in {None, intent.user_id}
+        ):
+            return {"success": False, "error": "Paid ownership does not match the local checkout"}
+        webhook_customer = data.get("customer") or {}
+        if not isinstance(webhook_customer, dict):
+            return {"success": False, "error": "Invalid webhook customer"}
+        webhook_customer_id = str(webhook_customer.get("customer_id") or "")
+        if intent.provider_customer_id and webhook_customer_id and webhook_customer_id != intent.provider_customer_id:
+            return {"success": False, "error": "Payment customer does not match the local intent"}
         if isinstance(metadata, dict) and metadata.get("latexy_plan_id") not in {None, intent.plan_id}:
             return {"success": False, "error": "Paid plan does not match the local checkout"}
         checkout_session_id = str(data.get("checkout_session_id") or "")
@@ -1239,6 +1346,14 @@ class PaymentService:
                 intent.status = "active"
             if intent.provider_event_at is None or now > intent.provider_event_at:
                 intent.provider_event_at = now
+        # Lifecycle webhooks can arrive before the initial payment event. An
+        # older, verified payment still proves paid access when the newer state
+        # is active, without rolling back newer pause/termination state or dates.
+        can_grant_access = (
+            intent.status not in {"cancelled", "expired", "failed", "refunded"}
+            and (not stale_event or intent.status in {"active", "cancel_scheduled"})
+            and payment.status in {"paid", "partially_refunded"}
+        )
         if intent.plan_id != "lifetime":
             if (
                 not stale_event
@@ -1253,17 +1368,17 @@ class PaymentService:
                 intent.current_period_start = now
                 intent.current_period_end = now + self._period_delta(intent.plan_id)
             user = await db.get(User, intent.user_id)
-            if not stale_event and user and (not user.subscription_id or user.subscription_id == intent.id) and intent.status not in {"cancelled", "expired", "failed", "refunded"}:
+            if can_grant_access and user and (not user.subscription_id or user.subscription_id == intent.id):
                 user.subscription_plan = intent.plan_id
                 user.subscription_status = "cancel_scheduled" if intent.status == "cancel_scheduled" else "active"
                 user.subscription_id = intent.id
-            if not stale_event and resolve_plan_family(intent.plan_id) == "team" and intent.status not in {"cancelled", "expired", "failed", "refunded"}:
+            if can_grant_access and resolve_plan_family(intent.plan_id) == "team":
                 await self._restore_team_seats(db, intent.user_id)
         else:
             if not stale_event:
                 intent.current_period_end = None
             user = await db.get(User, intent.user_id)
-            if not stale_event and user and (not user.subscription_id or user.subscription_id == intent.id) and intent.status not in {"cancelled", "expired", "failed", "refunded"}:
+            if can_grant_access and user and (not user.subscription_id or user.subscription_id == intent.id):
                 user.subscription_plan, user.subscription_status, user.subscription_id = "lifetime", "active", intent.id
         await db.commit()
         record_business_event("payment", "success")
@@ -1327,6 +1442,12 @@ class PaymentService:
         customer_id = str(customer.get("customer_id") or "")
         if intent.provider_customer_id and customer_id and customer_id != intent.provider_customer_id:
             return {"success": False, "error": "Subscription customer does not match the local intent"}
+        metadata = data.get("metadata") or {}
+        if not isinstance(metadata, dict) or (
+            metadata.get("latexy_intent_id") not in {None, intent.id}
+            or metadata.get("latexy_user_id") not in {None, intent.user_id}
+        ):
+            return {"success": False, "error": "Subscription ownership does not match the local intent"}
         if intent.status in {"cancelled", "expired", "failed", "refunded"}:
             metadata = data.get("metadata") or {}
             if (
@@ -1362,21 +1483,30 @@ class PaymentService:
             intent.provider_product_id = product_id
         intent.provider_event_at = event_at
         status = str(data.get("status") or "").lower()
-        if event_type in {"subscription.active", "subscription.renewed", "subscription.updated", "subscription.unpaused"}:
+        # Dodo delivers the latest resource snapshot, including on retries of
+        # older event types. The payload's status must win over the event name.
+        state_event = {
+            "active": "subscription.updated", "past_due": "subscription.past_due",
+            "on_hold": "subscription.on_hold", "paused": "subscription.paused",
+            "cancelled": "subscription.cancelled", "failed": "subscription.failed",
+            "expired": "subscription.expired", "pending": "subscription.updated",
+        }.get(status, event_type)
+        if data.get("next_billing_date"):
+            intent.current_period_end = self._parse_time(data["next_billing_date"])
+        if state_event in {"subscription.active", "subscription.renewed", "subscription.updated", "subscription.unpaused"}:
             # A subscription lifecycle event alone never grants paid access; a
             # matching, succeeded payment event performs that entitlement change.
-            previous_status = intent.status
             if status in {"paused", "on_hold", "past_due"}:
                 intent.status = status
             elif status in {"failed", "cancelled", "expired"}:
                 await self._end_subscription(db, intent, "failed" if status == "failed" else status)
             elif status == "active":
-                if intent.status != "cancel_scheduled":
+                if data.get("cancel_at_next_billing_date") is True:
+                    intent.status = "cancel_scheduled"
+                elif data.get("cancel_at_next_billing_date") is False or intent.status != "cancel_scheduled":
                     intent.status = "active"
             elif intent.status not in {"active", "cancel_scheduled"}:
                 intent.status = "checkout_pending" if status in {"pending", ""} else status
-            if data.get("next_billing_date"):
-                intent.current_period_end = self._parse_time(data["next_billing_date"])
             if status in {"paused", "on_hold", "past_due"}:
                 if status == "past_due" and data.get("past_due_ends_at"):
                     intent.current_period_end = self._parse_time(data["past_due_ends_at"])
@@ -1388,26 +1518,25 @@ class PaymentService:
                 if user and user.subscription_id == intent.id and user.subscription_plan == intent.plan_id:
                     # Keep an already-entitled customer in sync, including when
                     # an earlier updated event changed only the local intent.
-                    if previous_status in {"past_due", "on_hold", "paused"} or user.subscription_status in {"past_due", "on_hold", "paused"}:
-                        user.subscription_status = "active"
-        elif event_type == "subscription.past_due":
+                    user.subscription_status = intent.status
+        elif state_event == "subscription.past_due":
             intent.status = "past_due"
             if data.get("past_due_ends_at"):
                 intent.current_period_end = self._parse_time(data["past_due_ends_at"])
             user = await db.get(User, intent.user_id)
             if user and user.subscription_id == intent.id:
                 user.subscription_status = "past_due"
-        elif event_type == "subscription.on_hold":
+        elif state_event == "subscription.on_hold":
             intent.status = "on_hold"
             user = await db.get(User, intent.user_id)
             if user and user.subscription_id == intent.id:
                 user.subscription_status = "on_hold"
-        elif event_type == "subscription.paused":
+        elif state_event == "subscription.paused":
             intent.status = "paused"
             user = await db.get(User, intent.user_id)
             if user and user.subscription_id == intent.id:
                 user.subscription_status = "paused"
-        elif event_type == "subscription.cancelled":
+        elif state_event == "subscription.cancelled":
             if data.get("cancel_at_next_billing_date") and intent.current_period_end and intent.current_period_end > event_at:
                 intent.status = "cancel_scheduled"
                 user = await db.get(User, intent.user_id)
@@ -1415,8 +1544,8 @@ class PaymentService:
                     user.subscription_status = "cancel_scheduled"
             else:
                 await self._end_subscription(db, intent, "cancelled")
-        elif event_type in {"subscription.failed", "subscription.expired"}:
-            await self._end_subscription(db, intent, "failed" if event_type.endswith("failed") else "expired")
+        elif state_event in {"subscription.failed", "subscription.expired"}:
+            await self._end_subscription(db, intent, "failed" if state_event.endswith("failed") else "expired")
         await db.commit()
         return {"success": True}
 

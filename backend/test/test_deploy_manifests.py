@@ -398,6 +398,7 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     }
     assert "e2e/editor-compile-sync.spec.ts" in step["run"]
     assert "e2e/resume-builder.spec.ts" in step["run"]
+    assert "e2e/billing-developer.spec.ts" in step["run"]
     assert "--retries=0" in step["run"]
     assert "--trace=on" in step["run"]
     assert "--workers=1" in step["run"]

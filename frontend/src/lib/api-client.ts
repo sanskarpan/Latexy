@@ -2162,20 +2162,20 @@ class ApiClient {
     }
   }
 
-  async getCurrentSubscription(): Promise<{
+  async getCurrentSubscription(accountContext?: AccountPreferenceRequestContext): Promise<{
     success: boolean
     data?: CurrentSubscriptionResponse
     error?: string
   }> {
     try {
-      const data = await this.request<CurrentSubscriptionResponse>('/subscription/current')
+      const data = await this.request<CurrentSubscriptionResponse>('/subscription/current', {}, accountContext)
       return { success: true, data }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
   }
 
-  async reconcileSubscription(): Promise<{
+  async reconcileSubscription(accountContext?: AccountPreferenceRequestContext): Promise<{
     success: boolean
     data?: SubscriptionReconciliationResponse
     error?: string
@@ -2184,6 +2184,7 @@ class ApiClient {
       const data = await this.request<SubscriptionReconciliationResponse>(
         '/subscription/reconcile',
         { method: 'POST' },
+        accountContext,
       )
       return { success: true, data }
     } catch (e) {
@@ -2233,7 +2234,8 @@ class ApiClient {
       billingPeriod?: 'monthly' | 'annual' | 'weekly' | 'lifetime'
       couponCode?: string
       studentEmail?: string
-    }
+    },
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<{
     success: boolean
     data?: SubscriptionCreateResponse
@@ -2252,7 +2254,8 @@ class ApiClient {
             couponCode: options?.couponCode ?? null,
             studentEmail: options?.studentEmail ?? null,
           }),
-        }
+        },
+        accountContext,
       )
       return { success: true, data }
     } catch (e) {
@@ -2260,7 +2263,7 @@ class ApiClient {
     }
   }
 
-  async cancelSubscription(): Promise<{
+  async cancelSubscription(accountContext?: AccountPreferenceRequestContext): Promise<{
     success: boolean
     message?: string
     error?: string
@@ -2268,7 +2271,8 @@ class ApiClient {
     try {
       const data = await this.request<{ success: boolean; message?: string; error?: string }>(
         '/subscription/cancel',
-        { method: 'POST' }
+        { method: 'POST' },
+        accountContext,
       )
       return data
     } catch (e) {
@@ -2280,6 +2284,7 @@ class ApiClient {
     code: string,
     planId: string,
     billingPeriod: 'monthly' | 'annual' = 'monthly',
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<{
     success: boolean
     data?: CouponValidationResponse
@@ -2289,7 +2294,7 @@ class ApiClient {
       const data = await this.request<CouponValidationResponse>('/billing/validate-coupon', {
         method: 'POST',
         body: JSON.stringify({ code, planId, billingPeriod }),
-      })
+      }, accountContext)
       return { success: true, data }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
@@ -3849,8 +3854,8 @@ class ApiClient {
   //  Dropbox Integration (Feature 77)                               //
   // ---------------------------------------------------------------- //
 
-  async getDropboxStatus(): Promise<DropboxStatusResponse> {
-    return this.request<DropboxStatusResponse>('/dropbox/status')
+  async getDropboxStatus(accountContext?: AccountPreferenceRequestContext): Promise<DropboxStatusResponse> {
+    return this.request<DropboxStatusResponse>('/dropbox/status', {}, accountContext)
   }
 
   async startDropboxOAuth(): Promise<OAuthStartResponse> {
@@ -3930,8 +3935,8 @@ class ApiClient {
   //  Zotero Integration (Feature 42)                                 //
   // ---------------------------------------------------------------- //
 
-  async getZoteroStatus(): Promise<ZoteroStatusResponse> {
-    return this.request<ZoteroStatusResponse>('/zotero/status')
+  async getZoteroStatus(accountContext?: AccountPreferenceRequestContext): Promise<ZoteroStatusResponse> {
+    return this.request<ZoteroStatusResponse>('/zotero/status', {}, accountContext)
   }
 
   async startZoteroOAuth(): Promise<OAuthStartResponse> {
@@ -3964,8 +3969,8 @@ class ApiClient {
   //  Mendeley Integration (Feature 42)                               //
   // ---------------------------------------------------------------- //
 
-  async getMendeleyStatus(): Promise<MendeleyStatusResponse> {
-    return this.request<MendeleyStatusResponse>('/mendeley/status')
+  async getMendeleyStatus(accountContext?: AccountPreferenceRequestContext): Promise<MendeleyStatusResponse> {
+    return this.request<MendeleyStatusResponse>('/mendeley/status', {}, accountContext)
   }
 
   async startMendeleyOAuth(): Promise<OAuthStartResponse> {

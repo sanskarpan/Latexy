@@ -13,7 +13,7 @@ const migrationSource = readFileSync(new URL('../../../backend/alembic/versions/
 
 describe('B58 authentication security contract', () => {
   it('uses the installed Better Auth plugins with explicit WebAuthn origin policy', () => {
-    expect(authSource).toContain("import { genericOAuth, twoFactor } from 'better-auth/plugins'")
+    expect(authSource).toContain("import { twoFactor } from 'better-auth/plugins'")
     expect(authSource).toContain("import { passkey } from '@better-auth/passkey'")
     expect(authSource).toContain('PASSKEY_RP_ID')
     expect(authSource).toContain('PASSKEY_ORIGINS')

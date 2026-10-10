@@ -747,6 +747,7 @@ class BillingWebhookEvent(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     event_id: Mapped[str] = mapped_column(String(255), nullable=False)
     event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    event_resource_id: Mapped[Optional[str]] = mapped_column(String(255))
     payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     event_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="processing", server_default="processing")
