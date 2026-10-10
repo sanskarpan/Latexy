@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './quality-test'
 import { createHash } from 'node:crypto'
 import { mockEngineAncillaryApi } from './engine-fixtures'
 

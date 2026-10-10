@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './quality-test'
 import { mockEngineAncillaryApi } from './engine-fixtures'
 
 test('resume title and import controls remain usable while template requests are pending', async ({ page }) => {

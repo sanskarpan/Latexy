@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Request } from '@playwright/test'
+import { expect, test, type Page, type Request } from './quality-test'
 
 const authenticatedSession = {
   user: { id: 'mobile-account-owner', email: 'mobile@example.com', name: 'Mobile Owner' },

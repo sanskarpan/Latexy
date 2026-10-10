@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './quality-test'
 import { mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
 
 const source = '\\documentclass{article}\n\\begin{document}\nMy preserved resume\n\\end{document}'

@@ -1,4 +1,4 @@
-import { expect, test, type WebSocketRoute } from '@playwright/test'
+import { expect, test, type WebSocketRoute } from './quality-test'
 import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -252,11 +252,17 @@ test('managed review keeps provisional candidates separate and applies authorita
   await page.getByRole('button', { name: /^PDF/ }).last().click()
   await expect(page.getByText('Compile your current resume before downloading. Review AI suggestions before accepting them.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'AI', exact: true }).click()
-  await page.getByRole('button', { name: 'Reject', exact: true }).last().click()
+  const rejectedSuggestion = page.getByRole('article').filter({ has: page.getByText(secondSuggestion, { exact: true }) })
+  const acceptedSuggestion = page.getByRole('article').filter({ has: page.getByText(firstSuggestion, { exact: true }) })
+  await rejectedSuggestion.getByRole('button', { name: 'Reject', exact: true }).click()
   await expect.poll(() => decisionBodies.length).toBe(1)
   expect(decisions['patch-1']).toBe('rejected'); expect(authority).toBe(baseSource)
-  await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeEnabled({ timeout: 30000 })
-  await page.getByRole('button', { name: 'Accept', exact: true }).click()
+  // Request receipt precedes React's authoritative decision update. Wait for
+  // that specific card to settle before accepting the remaining suggestion.
+  await expect(rejectedSuggestion.getByText('rejected', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(1)
+  await expect(acceptedSuggestion.getByRole('button', { name: 'Accept', exact: true })).toBeEnabled()
+  await acceptedSuggestion.getByRole('button', { name: 'Accept', exact: true }).click()
   await expect.poll(() => decisionBodies.length).toBe(2)
   expect(authority).toBe(baseSource.replace(original, firstSuggestion)); expect(revision).toBe(2)
   // Opening the saved editor already admits a first preview. A reject-all

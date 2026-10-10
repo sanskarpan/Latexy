@@ -83,6 +83,9 @@ describe('Playwright Next cache isolation', () => {
     expect(QUALITY_CONFIG).toContain('node scripts/playwright-server.mjs --port ${PORT} --mode production')
     expect(QUALITY_CONFIG).toContain('actionTimeout: 12_000')
     expect(QUALITY_CONFIG).toContain('timeout: 1_800_000')
+    expect(QUALITY_CONFIG).toContain("serviceWorkers: 'block'")
+    expect(PLAYWRIGHT_CONFIG).not.toContain("serviceWorkers: 'block'")
+    expect(NEXT_CONFIG).toContain("disable: process.env.NODE_ENV === 'development'")
   })
 
   it('does not inherit ambient credentials into the disposable server', () => {

@@ -21,6 +21,9 @@ export default defineConfig({
 
     use: {
         baseURL: `http://localhost:${PORT}`,
+        // These contracts mock HTTP APIs. A claimed production PWA worker
+        // bypasses page.route in WebKit; the dedicated PWA spec tests its lifecycle.
+        serviceWorkers: 'block',
         actionTimeout: 12_000,
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',

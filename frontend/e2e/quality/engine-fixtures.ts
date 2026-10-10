@@ -5,17 +5,29 @@ import type { Page } from '@playwright/test'
 export async function mockEngineAncillaryApi(page: Page, ownerId = 'contract-owner') {
   await page.route(url => [
     '/me', '/config/entitlements', '/config/feature-flags', '/public/engine/capabilities',
-    '/tenants/resolve-host', '/ats/quick-score', '/macros',
-  ].includes(url.pathname) || url.pathname === '/templates' || url.pathname.startsWith('/templates/'), route => {
+    '/tenants/resolve-host', '/ats/quick-score', '/macros', '/github/status',
+    '/dropbox/status', '/subscription/current', '/ws/ticket', '/telemetry/frontend',
+    '/analytics/track/compilation', '/analytics/track/feature-usage',
+  ].includes(url.pathname) || url.pathname === '/templates' || url.pathname.startsWith('/templates/')
+    || /^\/resumes\/[^/]+\/academic-cv-report$/.test(url.pathname)
+    || /^\/download\/[^/]+\/preview\/[^/]+\/synctex$/.test(url.pathname), route => {
     // Do not intercept a Next document or an RSC navigation to /templates.
-    if (!['fetch', 'xhr'].includes(route.request().resourceType())
+    if (!['fetch', 'xhr', 'ping'].includes(route.request().resourceType())
       || route.request().headers().rsc === '1') return route.fallback()
     const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/synctex')) return route.fulfill({ status: 404, json: { detail: 'Optional SyncTeX is unavailable in this fixture' } })
+    if (path === '/telemetry/frontend' || path.startsWith('/analytics/track/')) return route.fulfill({ status: 204 })
     const json = path === '/public/engine/capabilities' ? { resume_engine_version: 1 }
       : path === '/me' ? { id: ownerId, preferences: { has_onboarded: true } }
-      : path === '/tenants/resolve-host' ? { tenant: null }
-        : path === '/ats/quick-score' ? { score: 80, grade: 'B', sections_found: [], missing_sections: [], keyword_match_percent: null }
-          : path === '/macros' || path.startsWith('/templates') ? [] : {}
+        : path === '/tenants/resolve-host' ? { tenant: null }
+          : path === '/ats/quick-score' ? { score: 80, grade: 'B', sections_found: [], missing_sections: [], keyword_match_percent: null }
+            : path === '/github/status' ? { connected: false, username: null, public_import: false, private_sync: false }
+              : path === '/dropbox/status' ? { connected: false, display_name: null, account_id: null }
+                : path === '/subscription/current' ? { userId: ownerId, planId: 'free', planName: 'Free', status: 'active',
+                  features: { compilations: 5, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false } }
+                  : path === '/ws/ticket' ? { ticket: 'contract-ticket' }
+                    : path.endsWith('/academic-cv-report') ? { is_academic_cv: false, detected_sections: [], estimated_pages: 1, confidence: 0, reasons: [] }
+                      : path === '/macros' || path.startsWith('/templates') ? [] : {}
     return route.fulfill({ json })
   })
 }
