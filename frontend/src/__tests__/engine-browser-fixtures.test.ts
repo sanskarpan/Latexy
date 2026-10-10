@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import type { Page, Route } from '@playwright/test'
 import { describe, expect, it, vi } from 'vitest'
 import { installMockWorkboxRegistration } from '../../e2e/helpers/mock-workbox-registration'
-import { mockEngineAncillaryApi, mockPublicEngineDocument } from '../../e2e/quality/engine-fixtures'
+import { captureClipboardText, mockEngineAncillaryApi, mockPublicEngineDocument } from '../../e2e/quality/engine-fixtures'
 
 function mockedPage() {
   const register = vi.fn()
@@ -107,6 +107,23 @@ describe('isolated engine browser fixtures', () => {
       expect(await navigatorMock.serviceWorker?.register()).toMatchObject({
         scope: href === 'about:blank' ? href : new URL('/', href).href,
       })
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('captures Copy text while preserving native rich clipboard writes and their promise handling', async () => {
+    const evaluate = vi.fn()
+    await captureClipboardText({ evaluate } as unknown as Page)
+    const write = vi.fn()
+    const clipboard = { write, writeText: vi.fn() }
+    const windowMock: { copiedLatex?: string } = {}
+    try {
+      vi.stubGlobal('window', windowMock)
+      vi.stubGlobal('navigator', { clipboard })
+      evaluate.mock.calls[0][0]()
+      expect(navigator.clipboard).toBe(clipboard)
+      expect(navigator.clipboard.write).toBe(write)
+      await navigator.clipboard.writeText('Preserved synthetic source')
+      expect(windowMock.copiedLatex).toBe('Preserved synthetic source')
     } finally { vi.unstubAllGlobals() }
   })
 

@@ -2,7 +2,7 @@ import { expect, test, type WebSocketRoute } from './quality-test'
 import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
+import { captureClipboardText, mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 
@@ -104,12 +104,7 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 60000 })
   // WebKit/Firefox do not expose Chromium's clipboard permission grant.
   // Capture the real Copy button's write at the browser API boundary instead.
-  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
-    configurable: true,
-    value: { writeText: async (text: string) => {
-      ;(window as typeof window & { copiedLatex?: string }).copiedLatex = text
-    } },
-  }))
+  await captureClipboardText(page)
   await page.getByRole('button', { name: 'Copy LaTeX source', exact: true }).click()
   await expect.poll(() => page.evaluate(() => (window as typeof window & { copiedLatex?: string }).copiedLatex)).toContain('across 8 product surfaces')
   await page.getByRole('button', { name: 'Resume', exact: true }).click()

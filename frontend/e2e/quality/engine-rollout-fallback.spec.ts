@@ -55,7 +55,7 @@ for (const scenario of ['404', 'missing-version', 'future-version'] as const) {
         return route.fulfill({ json: { success: true, job_id: 'legacy-rollout-pdf', message: 'Queued' } })
       })
       await page.route('**/jobs/legacy-rollout-pdf/state', route => route.fulfill({ json: { job_id: 'legacy-rollout-pdf', status: 'completed', stage: 'completed', percent: 100, last_updated: Date.now() / 1000 } }))
-      await page.route('**/jobs/legacy-rollout-pdf/result', route => route.fulfill({ json: { job_id: 'legacy-rollout-pdf', success: true, pdf_job_id: 'legacy-rollout-pdf', page_count: 1 } }))
+      await page.route('**/jobs/legacy-rollout-pdf/result', route => route.fulfill({ json: { job_id: 'legacy-rollout-pdf', success: true, result: { job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1 } } }))
       await page.route('**/download/legacy-rollout-pdf', route => { pdfRequests++; return route.fulfill({ contentType: 'application/pdf', body: legacyPdf() }) })
       await page.route('**/download/legacy-rollout-pdf/synctex', route => route.fulfill({ status: 404 }))
       await page.getByRole('button', { name: 'Recompile', exact: true }).click()

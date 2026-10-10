@@ -52,3 +52,13 @@ export function readMonacoSource(page: Page) {
     __latexyMonacoEditor?: { getValue(): string }
   }).__latexyMonacoEditor?.getValue())
 }
+
+/** Observe the Copy button without removing Monaco's native WebKit write API. */
+export async function captureClipboardText(page: Page) {
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, 'writeText', {
+    configurable: true,
+    value: async (text: string) => {
+      ;(window as typeof window & { copiedLatex?: string }).copiedLatex = text
+    },
+  }))
+}
