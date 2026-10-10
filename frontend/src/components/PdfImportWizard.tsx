@@ -5,11 +5,32 @@ import { apiClient, type AccountPreferenceRequestContext } from '@/lib/api-clien
 import type { PdfImportReceipt } from '@/lib/pdf-import-types'
 import { sha256Bytes } from '@/hooks/useArtifactPreview'
 import PDFPreview from '@/components/PDFPreview'
+import EngineCapabilityNotice from '@/components/EngineCapabilityNotice'
+import { useEngineCapability } from '@/hooks/useEngineCapability'
 
-export default function PdfImportWizard({ file, title, ownerId, onCreated, onCancel }: {
+type PdfImportWizardProps = {
   file: File; title: string; ownerId: string
   onCreated: (resumeId: string) => void; onCancel: () => void
-}) {
+}
+
+export default function PdfImportWizard(props: PdfImportWizardProps) {
+  const capability = useEngineCapability(props.ownerId)
+  const admitted = useRef<{ ownerId: string; file: File } | null>(null)
+  if (capability.status === 'supported') admitted.current = { ownerId: props.ownerId, file: props.file }
+  // A token refresh must not discard already-reviewed fields. Keep the admitted
+  // wizard mounted for this owner while disabling its new-only mutation.
+  return <>
+    <EngineCapabilityNotice capability={capability} pdfImport />
+    {admitted.current?.ownerId === props.ownerId && admitted.current.file === props.file
+      ? <AvailablePdfImportWizard {...props} enabled={capability.status === 'supported'} />
+      : <section aria-label="Pending PDF import" className="space-y-3 py-3">
+        <p className="text-sm text-fg-2">Selected file: {props.file.name}</p>
+        <button type="button" onClick={props.onCancel} className="text-xs text-fg-2 underline">Choose another file</button>
+      </section>}
+  </>
+}
+
+function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, enabled }: PdfImportWizardProps & { enabled: boolean }) {
   const [receipt, setReceipt] = useState<PdfImportReceipt | null>(null)
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,7 +92,7 @@ export default function PdfImportWizard({ file, title, ownerId, onCreated, onCan
   }, [file, ownerId])
 
   async function createEditableResume() {
-    if (!receipt || !receiptMatches || !originalUrl || savingRef.current || !templateId || !title.trim() || !hasReviewedContent) return
+    if (!enabled || !receipt || !receiptMatches || !originalUrl || savingRef.current || !templateId || !title.trim() || !hasReviewedContent) return
     const generation = identity.current.generation
     const isCurrent = () => mounted.current && identity.current.ownerId === ownerId
       && identity.current.file === file && identity.current.generation === generation
@@ -129,7 +150,7 @@ export default function PdfImportWizard({ file, title, ownerId, onCreated, onCan
         <p className="text-xs text-fg-3">The editable version will use this layout. Your original PDF remains available separately.</p>
         {!title.trim() && <p className="text-xs text-fg-2">Enter a resume title above before creating the editable version.</p>}
         <button type="button" onClick={createEditableResume}
-          disabled={saving || loading || !originalUrl || !templateId || !title.trim() || !hasReviewedContent}
+          disabled={!enabled || saving || loading || !originalUrl || !templateId || !title.trim() || !hasReviewedContent}
           className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
           {saving ? 'Creating editable resume…' : 'Create editable resume'}
         </button>

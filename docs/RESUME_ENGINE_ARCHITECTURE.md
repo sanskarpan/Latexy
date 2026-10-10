@@ -6,6 +6,40 @@ The first engineering priority is to remove synchronous event publication from c
 
 This proposal covers the technical editor, the future PDF-based editing surface, imported resumes, job-description tailoring, contextual memory, effort levels, model routing, deployment, and the migration sequence. The proposed latency numbers below are acceptance targets; they are not current product measurements or guarantees for every custom LaTeX document.
 
+## Staged frontend/backend rollout compatibility
+
+The editor probes `GET /public/engine/capabilities` with `cache: no-store`;
+this public, dependency-free endpoint returns `{"resume_engine_version": 1}`
+and `Cache-Control: no-store`. It describes the fields protocol, not permission
+to read/write a resume, provider readiness, semantic-optimization enablement, or
+worker deployment health. The guided builder has a separate capability contract.
+
+A 404 from this specific probe or a successful JSON response with a missing or
+unsupported version temporarily selects existing Source mode on `/try` and the
+saved editor when the preferred mode is Resume. Source text, unsaved drafts,
+saved editor choice, auto-compile preference, and existing Source/Visual choices
+are preserved. Existing authorized compilation and terminal-job PDF downloads
+remain available. Resume-specific document/provider/import requests stay gated.
+The UI explains the fallback and offers an explicit retry. Typing and mode
+changes do not re-probe; retry preserves Source while the probe is pending or
+fails. An error alone never initiates fallback; once selected for a confirmed
+older deployment, Source remains usable until support is confirmed again.
+
+401/403, transient server/network failures, and malformed responses display
+separate errors and do not imply an older server. A saved document's 404 may
+represent hidden authorization failure, so it is never a capability signal.
+The PDF import wizard also waits for supported capability before uploading; it
+retains the selected file/title and offers retry or another file/template. It
+never sends a selected PDF to legacy paid conversion as a capability fallback.
+Already-reviewed fields stay mounted during a same-owner capability recheck,
+with new-only adaptation disabled until support is reconfirmed.
+
+No failed engine mutation is retried through a legacy mutation endpoint; server
+permissions, quotas, revision checks and artifact-integrity rules are unchanged.
+During a mixed-instance rollout, an advertised capability cannot guarantee the
+next engine request reaches an upgraded instance: that request fails visibly
+without mutation replay, and Source remains an explicit user choice.
+
 ## Evidence and measurement scope
 
 October 8 continuation: current review, explicit review-provider integration,

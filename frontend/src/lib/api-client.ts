@@ -6,6 +6,7 @@
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
 import type { ATSDeepAnalysis, RenderArtifact } from './event-types'
+import { readEngineCapability } from './engine-capability'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -1942,6 +1943,11 @@ class ApiClient {
     return this.request<import('@/lib/resume-engine-types').ArtifactGeometry>(`/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}/geometry`, {
       signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
     })
+  }
+
+  async getEngineCapability(signal?: AbortSignal) {
+    const response = await this.authedFetch(`${API_BASE}/public/engine/capabilities`, { signal, cache: 'no-store' })
+    return readEngineCapability(response)
   }
 
   async getEngineProviders(accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {

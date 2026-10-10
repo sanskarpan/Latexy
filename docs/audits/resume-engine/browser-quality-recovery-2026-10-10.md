@@ -28,3 +28,11 @@ Evidence: GitHub artifact `11580060459`, `playwright-quality-report`, SHA-256 `9
 - Local browser execution did **not** reach test assertions: Chromium's process-singleton socket failed with `Operation not permitted`, including an approved escalated retry. This environment failure is not a product failure or a browser pass. No security settings were changed.
 - Exact published-head Linux browser CI remains the acceptance authority for these repairs. Record its terminal result in the PR before marking the gate complete.
 - All browser APIs, auth, PDFs, and engine responses in these contracts are synthetic fixtures. They do not measure production queueing, cold starts, provider execution, storage latency, or real action-to-PDF paint. The production latency acceptance plan in `latency-instrumentation-2026-10-10.md` remains open.
+
+## Staged frontend/backend compatibility
+
+A subsequent review found that a newer frontend defaults to Resume fields even if the backend still lacks the engine routes. The final candidate adds the independent, uncached `GET /public/engine/capabilities` protocol probe described in [the architecture document](../../RESUME_ENGINE_ARCHITECTURE.md#staged-frontendbackend-rollout-compatibility).
+
+Only that public probe's 404 or an unsupported/missing version selects the existing Source editor automatically. Initial authentication, permission, malformed-response, and transient errors remain distinct. An explicit retry does not discard an already-active Source fallback. Mode preferences, source buffers, normal edit permissions, and legacy PDF transport remain intact. Field mutation, managed review, original-PDF access and PDF-import upload/adaptation wait for capability support; no failed action is replayed through a legacy or paid-provider path.
+
+This follow-up passed **1,293 frontend unit tests across 194 files**, TypeScript, frontend lint, and **23 backend capability/semantic tests** plus Ruff. Seven new browser scenarios collected across five projects (**35 cases**) but were not executed locally because of the recorded Chromium environment restriction. Exact-head CI must execute the final contracts before the browser gate is considered complete.

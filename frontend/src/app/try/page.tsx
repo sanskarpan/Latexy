@@ -25,6 +25,9 @@ import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
 import { useArtifactPreview, useSourceHash } from '@/hooks/useArtifactPreview'
 import ResumeFieldsEditor from '@/components/ResumeFieldsEditor'
+import EngineCapabilityNotice from '@/components/EngineCapabilityNotice'
+import { useEngineCapability } from '@/hooks/useEngineCapability'
+import { engineEditorMode } from '@/lib/engine-capability'
 import { previewErrorMessage } from '@/lib/preview-errors'
 import { canExportArtifact } from '@/lib/artifact-policy'
 import { editableGeometry } from '@/lib/artifact-geometry'
@@ -68,7 +71,11 @@ export default function TryPage() {
   const flags = useFeatureFlags()
   const [hydrated, setHydrated] = useState(false)
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
-  const [editorMode, setEditorMode] = useState<'pdf' | 'source'>('pdf')
+  const { data: session, isPending: sessionPending } = useSession()
+  const engineCapability = useEngineCapability(session?.user?.id ?? 'anonymous')
+  const engineSupported = engineCapability.status === 'supported'
+  const [preferredEditorMode, setEditorMode] = useState<'pdf' | 'source'>('pdf')
+  const editorMode = engineEditorMode(preferredEditorMode, engineCapability.status, engineCapability.sourceFallback)
   const [engineDocument, setEngineDocument] = useState<ResumeEngineDocument | null>(null)
   const [engineError, setEngineError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
@@ -156,21 +163,20 @@ export default function TryPage() {
     setDisplayedArtifact(null)
   }, [])
   const trialStatus = useTrialStatus()
-  const { data: session, isPending: sessionPending } = useSession()
   const { state: stream } = useJobStream(activeJobId, { fingerprint: trialStatus.fingerprint })
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const sourceAtRenderRef = useRef(latexContent)
   sourceAtRenderRef.current = latexContent
   const sourceHash = useSourceHash(latexContent)
   useEffect(() => {
-    if (editorMode !== 'pdf' || !sourceHash) return
+    if (!engineSupported || editorMode !== 'pdf' || !sourceHash) return
     let stale = false
     setEngineError(null)
     apiClient.getGuestEngineDocument(latexContent).then((response) => {
       if (!stale) setEngineDocument(response.document)
     }).catch(() => { if (!stale) setEngineError('Resume fields are temporarily unavailable. Your document is preserved.') })
     return () => { stale = true }
-  }, [editorMode, sourceHash, latexContent])
+  }, [engineSupported, editorMode, sourceHash, latexContent])
   useEffect(() => {
     setGeometry(null)
     if (!displayedArtifact?.geometry_url || editorMode !== 'pdf') return
@@ -580,7 +586,7 @@ export default function TryPage() {
     }
   }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun, editorMode])
 
-  const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompile || editorMode === 'pdf',
+  const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompile || (engineSupported && editorMode === 'pdf'),
     blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
     cancelledJobId: cancelledPreviewJobId,
     submit: async (source) => await handleAutoCompile(source) ?? null,
@@ -804,7 +810,7 @@ export default function TryPage() {
   const saveGuestField = async (node: ResumeEngineNode, text: string) => {
     const actionStarted = performance.now()
     const identityAtStart = previewRequestIdentityRef.current
-    if (!engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
+    if (!engineSupported || !engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
     const response = await apiClient.patchGuestEngineDocument({ latex_content: latexContent,
       expected_source_sha256: engineDocument.source_sha256,
       patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }] })
@@ -1126,7 +1132,7 @@ export default function TryPage() {
         <span className="text-xs text-fg-2">{editorMode === 'source' ? 'resume.tex' : 'Your resume'}</span>
         <div className="ml-auto flex rounded-md border border-line p-0.5" role="group" aria-label="Editing mode">
           {(['pdf', 'source'] as const).map((mode) => <button key={mode} type="button" aria-pressed={editorMode === mode}
-            onClick={() => setEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+            disabled={mode === 'pdf' && !engineSupported} onClick={() => setEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
             {mode === 'pdf' ? 'Resume' : 'Source'}</button>)}
         </div>
         {editorMode === 'source' && <>
@@ -1142,10 +1148,11 @@ export default function TryPage() {
         </button>
         <span className="font-ui text-[12px] text-fg-3">⌘F to find</span></>}
       </div>
+      <EngineCapabilityNotice capability={engineCapability} />
       <div className="relative min-h-0 flex-1">
         {editorMode === 'pdf' ? <ResumeFieldsEditor document={engineDocument} currentSourceHash={sourceHash}
           selectedNode={selectedNode} onSelect={setSelectedNode} onSave={saveGuestField}
-          readOnly={false} error={engineError} /> : <LaTeXEditor
+          readOnly={!engineSupported} error={engineCapability.status === 'error' ? 'Resume fields are unavailable. Check the message above, or choose Source.' : engineError} /> : <LaTeXEditor
           editorRef={editorRef}
           value={latexContent}
           onChange={setLatexContent}

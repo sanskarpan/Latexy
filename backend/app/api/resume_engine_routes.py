@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +83,13 @@ class GuestPatch(GuestDocument):
 
 def guest_document(source: str):
     return project_document(SimpleNamespace(id="guest", user_id="guest", latex_content=source, content_revision=1))
+
+
+@public_router.get("/capabilities")
+async def engine_capabilities(response: Response):
+    """Protocol availability only; never grants document or provider access."""
+    response.headers["Cache-Control"] = "no-store"
+    return {"resume_engine_version": 1}
 
 
 @public_router.post("/document")
