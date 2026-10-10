@@ -70,6 +70,8 @@ FOCUSED_TESTS = {
 # Historical passing browser evidence is attached only to the interactions
 # actually exercised. It is not a substitute for latest-head CI or provider QA.
 BROWSER_RUN = "https://github.com/sanskarpan/Latexy/actions/runs/38004341871/job/114069613888"
+FULLSTACK_RUN = "https://github.com/sanskarpan/Latexy/actions/runs/38049161531/job/114205527502"
+FULLSTACK_COMMIT = "611484de5b194adf02e145ac29fd7d836403a829"
 BROWSER_EVIDENCE = {
     "a02": "Admin inventory displays the immutable authentication baseline and no switch; authentication itself was not exercised.",
     "b03": "Admin inventory displays the search switch and exact-SKU columns; cross-document search itself was not exercised.",
@@ -133,10 +135,18 @@ def generate() -> dict:
                 "roleCoverage": [{
                     "role": role,
                     "effectivePolicy": "tested_off_on_and_cross_role_isolation" if feature["gateable"] else "tested_immutable_baseline",
-                    "ui": ("representative real full-stack test defined; check exact-head CI for result" if key == "b03" and role != "anonymous" else "not individually browser-tested for this role"),
+                    "ui": ("representative real full-stack B03 OFF/ON passed at " + FULLSTACK_COMMIT + "; latest-head CI remains required" if key == "b03" and role != "anonymous" else "anonymous Studio Recompile OFF/ON passed at " + FULLSTACK_COMMIT + "; additional Auto/SyncTeX assertions require latest-head CI" if key == "a09" and role == "anonymous" else "not individually browser-tested for this role"),
                     "api": ("real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified" if key == "b03" and role != "anonymous" else "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution" if handlers or dynamic else "client-only or baseline; ordinary endpoint ACLs remain"),
                     "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent.",
                 } for role in ["anonymous", "user", "support", "admin"]],
+                "representativeRealFullStackEvidence": ([{
+                    "status": "passed_prior_head_real_next_fastapi_postgresql_redis",
+                    "commit": FULLSTACK_COMMIT,
+                    "run": FULLSTACK_RUN,
+                    "testFile": "frontend/e2e/capability-fullstack.spec.ts",
+                    "scope": ("user/support/admin B03 OFF/ON UI and direct API; support mobile; owner source and admin recovery; user cross-tab refresh without navigation" if key == "b03" else "anonymous A09 OFF hides Recompile, retains source, denies jobs API; ON restores Recompile; screenshot inspection found extra Auto control, corrected and requiring latest-head rerun"),
+                    "latestHeadResult": "Check the PR exact-head CI and review summary; this historical result does not verify later changes.",
+                }] if key in {"a09", "b03"} else []),
                 "automatedBrowserEvidence": ([{
                     "status": "passed_api_mocked_chromium",
                     "commit": "328acae82a918e5145e716db324679fe34673ab3",

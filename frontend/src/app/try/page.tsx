@@ -132,7 +132,21 @@ export default function TryPage() {
   const autoCompileTriggeredRef = useRef(false)
   const lastAutoCompileErrorRef = useRef<string | null>(null)
 
-  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+  const { enabled: autoCompilePreference, toggle: toggleAutoCompilePreference } = useAutoCompile()
+  // Keep the stored preference, but never advertise or schedule a denied tool.
+  const studioAllowed = can('a09')
+  const autoCompileAllowed = studioAllowed && can('c06')
+  const syncAllowed = studioAllowed && can('c10')
+  const explainErrorAllowed = studioAllowed && can('d13')
+  const optimizeAllowed = studioAllowed && can('d01')
+  const trimAllowed = studioAllowed && can('c12')
+  const deepAnalysisAllowed = studioAllowed && can('d20')
+  const atsAllowed = studioAllowed && can('d18')
+  const autoCompile = autoCompileAllowed && autoCompilePreference
+  const toggleAutoCompile = useCallback(() => {
+    if (!canRef.current('a09') || !canRef.current('c06')) return
+    toggleAutoCompilePreference()
+  }, [toggleAutoCompilePreference])
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(can('a09') && can('d18') ? latexContent : '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
@@ -373,13 +387,20 @@ export default function TryPage() {
 
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
-  const handleSyncToSource = useCallback((line: number) => {
-    if (!canRef.current('a09') || !canRef.current('c10')) return
+  const jumpToSourceLine = useCallback((line: number) => {
     if (!Number.isInteger(line) || line < 1) return
     setSyncFromLine(line)
     setSyncFromRequestId((value) => value + 1)
-    if (!isDesktop) editorRef.current?.highlightLine(line)
+    if (!isDesktop) {
+      editorRef.current?.highlightLine(line)
+      setMobilePane('editor')
+    }
   }, [isDesktop])
+
+  const handleSyncToSource = useCallback((line: number) => {
+    if (!canRef.current('a09') || !canRef.current('c10')) return
+    jumpToSourceLine(line)
+  }, [jumpToSourceLine])
 
   const handleSourceToPdf = useCallback(() => {
     if (!canRef.current('a09') || !canRef.current('c10')) return
@@ -616,6 +637,7 @@ export default function TryPage() {
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
 
   const applyStagedOptimization = useCallback((reviewedLatex?: string) => {
+    if (!canRef.current('d03')) return false
     const nextLatex = reviewedLatex ?? stagedOptimization
     if (!nextLatex) return false
     const current = editorRef.current?.getValue() || latexContent
@@ -666,7 +688,7 @@ export default function TryPage() {
         latex_content: currentContent,
         job_description: jobDescription || undefined,
         device_fingerprint: trialStatus.fingerprint,
-        industry_override: industryOverride,
+        industry_override: canRef.current('d19') ? industryOverride : undefined,
       })
       if (response.success && response.job_id) {
         setDeepAnalysisJobId(response.job_id)
@@ -772,11 +794,11 @@ export default function TryPage() {
 
   const aiPanel = (
     <div className="flex min-h-0 flex-1 flex-col">
-      {panelHead('AI Optimize')}
+      {panelHead(optimizeAllowed ? 'AI Optimize' : 'Optimization result')}
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="border-b border-line p-3">
+        {optimizeAllowed && <div className="border-b border-line p-3">
           <label className="font-ui text-[12px] text-fg-3">Target job</label>
-          <div className="mt-1.5 flex gap-1.5">
+          <CapabilityGate feature="e11"><div className="mt-1.5 flex gap-1.5">
             <input
               type="url"
               value={jobUrl}
@@ -794,7 +816,7 @@ export default function TryPage() {
             >
               {isScraping ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
             </button>
-          </div>
+          </div></CapabilityGate>
           {scrapedMeta && !scrapedMeta.error && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
               {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
@@ -815,14 +837,14 @@ export default function TryPage() {
           >
             <Sparkles size={13} /> {isSubmitting ? 'Running…' : 'Optimize for this role'}
           </button>
-          <button
+          {trimAllowed && <button
             onClick={handleTrimToOnePage}
             disabled={isSubmitting || isProcessing}
             className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg disabled:opacity-50"
           >
             Trim to one page
-          </button>
-        </div>
+          </button>}
+        </div>}
         {stagedOptimization != null && (
           <div className="border-t border-line p-3">
             <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
@@ -830,24 +852,24 @@ export default function TryPage() {
                 AI optimization is ready. Your resume is still unchanged.
               </p>
               <div className="mt-2 grid grid-cols-3 gap-1">
-                <button
+                <CapabilityGate feature="d03"><button
                   onClick={() => setShowOptimizeDiff(true)}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
                   Review changes
-                </button>
+                </button></CapabilityGate>
                 <button
                   onClick={discardStagedOptimization}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-fg-2 transition hover:bg-surface-2"
                 >
                   Discard
                 </button>
-                <button
+                <CapabilityGate feature="d03"><button
                   onClick={() => applyStagedOptimization()}
                   className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   Apply
-                </button>
+                </button></CapabilityGate>
               </div>
             </div>
           </div>
@@ -929,8 +951,8 @@ export default function TryPage() {
   const atsPanel = (
     <div className="flex min-h-0 flex-1 flex-col">
       {panelHead('ATS Score', (
-        <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[12px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
-          {isDeepAnalysisRunning ? 'Analysing…' : 'Deep scan'}
+        (deepAnalysisAllowed || deepStream.deepAnalysis) && <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId && deepAnalysisAllowed) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[12px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
+          {isDeepAnalysisRunning ? 'Analysing…' : deepAnalysisAllowed ? 'Deep scan' : 'View analysis'}
         </button>
       ))}
       <div className="border-b border-line p-4 text-center">
@@ -1030,7 +1052,15 @@ export default function TryPage() {
     </>
   )
 
-  const allowedTool = !can('a09') || (TOOL_CAPABILITIES[tool] && !can(TOOL_CAPABILITIES[tool]!)) ? 'files' : tool
+  // Revocation blocks new work without hiding results already admitted.
+  const hasOptimizationResult = stagedOptimization != null || optimizeSnapshot != null || Boolean(stream.changesMade?.length)
+  const hasATSResult = atsDisplay != null || Boolean(categoryScores || deepStream.deepAnalysis)
+  const toolAvailable = (id: Tool) => !TOOL_CAPABILITIES[id]
+    || (studioAllowed && can(TOOL_CAPABILITIES[id]!))
+    || (id === 'ai' && hasOptimizationResult)
+    || (id === 'ats' && hasATSResult)
+  const toolLabel = (id: Tool, label: string) => id === 'ai' && !optimizeAllowed ? 'Optimization result' : id === 'ats' && !atsAllowed ? 'ATS result' : label
+  const allowedTool = toolAvailable(tool) ? tool : 'files'
   const activePanel = allowedTool === 'files' ? filesPanel : allowedTool === 'ai' ? aiPanel : allowedTool === 'ats' ? atsPanel : allowedTool === 'import' ? importPanel : templatesPanel
 
   // ────────────────────────── editor + pdf panes ──────────────────────────
@@ -1057,24 +1087,25 @@ export default function TryPage() {
           onChange={setLatexContent}
           readOnly={isProcessing}
           logLines={stream.logLines}
-          onCompile={() => runCompile('compile')}
+          onCompile={resolvedSession || studioAllowed ? () => runCompile('compile') : undefined}
           onSave={persistNow}
           onCursorChange={setCursorLine}
           syncLine={syncFromLine}
           syncRequestId={syncFromRequestId}
-          onSyncToPdf={(line) => {
+          onSyncToPdf={syncAllowed ? (line) => {
+            if (!canRef.current('a09') || !canRef.current('c10')) return
             setCursorLine(line)
             setSourceSyncLine(line)
             setSourceSyncRequestId((value) => value + 1)
-          }}
-          onAutoCompile={handleAutoCompile}
-          autoCompileEnabled={can('a09') && can('c06') && autoCompile}
+          } : undefined}
+          onAutoCompile={autoCompile ? handleAutoCompile : undefined}
+          autoCompileEnabled={autoCompile}
           autoCompileBusy={isProcessing || isSubmitting}
           autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try`}
           atsScore={quickATSScore}
           atsScoreLoading={quickATSLoading}
-          onATSBadgeClick={() => openTool('ats')}
-          onExplainError={handleExplainError}
+          onATSBadgeClick={atsAllowed || hasATSResult ? () => openTool('ats') : undefined}
+          onExplainError={explainErrorAllowed ? handleExplainError : undefined}
           pageCount={stream.pageCount}
         />
         <div className="absolute inset-x-0 bottom-0 z-10">
@@ -1121,7 +1152,7 @@ export default function TryPage() {
       {stream.pageCount !== null && stream.pageCount > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-warn/20 bg-warn/10 px-4 py-2">
           <span className="font-ui text-[12px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
-          <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[12px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
+          {trimAllowed && <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[12px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>}
         </div>
       )}
       {stream.timeoutError && (
@@ -1136,14 +1167,14 @@ export default function TryPage() {
           pdfUrl={pdfUrl}
           isLoading={isProcessing}
           onDownload={handleDownload}
-          jobId={renderedPdfJobId}
+          jobId={syncAllowed ? renderedPdfJobId : undefined}
           latexContent={latexContent}
           onPdfSelectionChange={setPdfSelection}
           onSyncReadyChange={setPdfSyncReady}
           syncFromLine={sourceSyncLine}
           syncFromRequestId={sourceSyncRequestId}
-          onSyncToSource={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
-          onJumpToLine={(line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') }}
+          onSyncToSource={syncAllowed ? handleSyncToSource : undefined}
+          onJumpToLine={jumpToSourceLine}
         />
       </div>
 
@@ -1213,7 +1244,7 @@ export default function TryPage() {
             <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}</span>
           </button>
         </div>}
-        <CapabilityGate feature="c06"><button
+        {autoCompileAllowed && <button
           onClick={toggleAutoCompile}
           title="Auto-compile on change"
           aria-label="Auto-compile on change"
@@ -1223,12 +1254,12 @@ export default function TryPage() {
           }`}
         >
           <Zap size={12} /> Auto
-        </button></CapabilityGate>
+        </button>}
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex">
+          {(atsAllowed || hasATSResult) && <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex">
             <Gauge size={12} className="text-accent-strong" /> ATS <b className="tabular-nums text-accent-strong">{atsDisplay ?? '—'}</b>
-          </button>
+          </button>}
           <button
             onClick={() => setPdfOpen((v) => !v)}
             title={pdfOpen ? 'Editor only' : 'Show preview'}
@@ -1285,27 +1316,28 @@ export default function TryPage() {
           </button>
         ))}
         {/* Auto-compile toggle — header copy is hidden < sm, so surface it here */}
-        <CapabilityGate feature="c06"><button
+        {autoCompileAllowed && <button
           onClick={toggleAutoCompile}
           title="Auto-compile on change"
+          aria-label="Auto-compile on change"
           aria-pressed={autoCompile}
           className={`flex shrink-0 select-none items-center gap-1 rounded-[var(--radius-md)] border px-2.5 py-1.5 font-ui text-xs font-medium transition sm:hidden ${
             autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3'
           }`}
         >
           <Zap size={13} /> Auto
-        </button></CapabilityGate>
+        </button>}
       </div>
 
       {/* ── body ── */}
       <div className="flex min-h-0 flex-1">
         {/* icon rail (lg+) */}
         <nav className="hidden w-12 flex-shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-2 lg:flex">
-          {RAIL.filter(({ id }) => !TOOL_CAPABILITIES[id] || (can('a09') && can(TOOL_CAPABILITIES[id]!))).map(({ id, icon: Icon, label }) => (
+          {RAIL.filter(({ id }) => toolAvailable(id)).map(({ id, icon: Icon, label }) => (
             <button
               key={id}
               onClick={() => { setTool(id); setLeftOpen(true) }}
-              title={label}
+              title={toolLabel(id, label)}
               className={`grid h-9 w-9 place-items-center rounded-[var(--radius-md)] transition ${
                 tool === id && leftOpen ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
               }`}
@@ -1322,8 +1354,8 @@ export default function TryPage() {
         <aside className={`${mobilePane === 'tools' ? 'flex' : 'hidden'} ${leftOpen ? 'lg:flex' : 'lg:hidden'} w-full flex-shrink-0 flex-col border-r border-line bg-surface lg:w-64`}>
           {/* mobile rail (horizontal) */}
           <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 lg:hidden">
-            {RAIL.filter(({ id }) => !TOOL_CAPABILITIES[id] || (can('a09') && can(TOOL_CAPABILITIES[id]!))).map(({ id, icon: Icon, label }) => (
-              <button key={id} onClick={() => setTool(id)} title={label} className={`grid h-8 w-8 place-items-center rounded-[var(--radius-md)] transition ${tool === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+            {RAIL.filter(({ id }) => toolAvailable(id)).map(({ id, icon: Icon, label }) => (
+              <button key={id} onClick={() => setTool(id)} title={toolLabel(id, label)} className={`grid h-8 w-8 place-items-center rounded-[var(--radius-md)] transition ${tool === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
                 <Icon size={16} />
               </button>
             ))}
@@ -1344,13 +1376,13 @@ export default function TryPage() {
           {/* splitter (lg+) */}
           {pdfOpen && (
             <div className="relative hidden w-2 flex-shrink-0 lg:flex">
-              <CapabilityGate feature="c10"><SourcePdfDivider
+              {syncAllowed && <SourcePdfDivider
                 sourceLine={cursorLine}
                 pdfSelection={pdfSelection}
                 pdfReady={pdfSyncReady}
                 onSourceToPdf={handleSourceToPdf}
                 onPdfToSource={handlePdfToSource}
-              /></CapabilityGate>
+              />}
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -1384,6 +1416,7 @@ export default function TryPage() {
 
       {/* ── modals ── */}
       <DeepAnalysisPanel
+        allowNewActions={deepAnalysisAllowed}
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
@@ -1396,6 +1429,7 @@ export default function TryPage() {
       />
 
       <ImportProjectsModal
+        allowNewActions={studioAllowed}
         isOpen={showProjectsModal}
         onClose={() => setShowProjectsModal(false)}
         onInsert={(latex: string) => {

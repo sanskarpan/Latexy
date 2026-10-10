@@ -47,6 +47,7 @@ export const CLIENT_CAPABILITY_CONTROLS = {
   d03: ['app/workspace/[resumeId]/optimize/page.tsx', 'app/try/page.tsx'],
   d12: ['app/workspace/[resumeId]/edit/page.tsx'],
   d16: ['app/workspace/[resumeId]/edit/page.tsx'],
+  d19: ['components/ats/DeepAnalysisPanel.tsx', 'components/ATSScoreCard.tsx', 'app/try/page.tsx', 'app/workspace/[resumeId]/edit/page.tsx', 'app/workspace/[resumeId]/optimize/page.tsx'],
   d23: ['app/workspace/[resumeId]/optimize/page.tsx'],
 } as const
 

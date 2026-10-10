@@ -15,19 +15,22 @@ describe('editor and Settings capability fixture contracts', () => {
     expect(editor).toContain("unknown.push(`${route.request().method()} ${path}`)")
     expect(editor).toContain('return route.abort()')
   })
-  it('uses valid denied maps for both Settings owner-race fixtures', () => {
-    for (const fixture of [providers, preferences]) {
-      expect(fixture).toMatch(/url\.pathname === '\/config\/entitlements'[\s\S]*?body: JSON\.stringify\(\{ features: \{\} \}\)/)
-    }
+  it('denies Settings grants by default and enables Drive only for the explicit ON case', () => {
+    expect(preferences).toMatch(/url\.pathname === '\/config\/entitlements'[\s\S]*?body: JSON\.stringify\(\{ features: \{\} \}\)/)
+    expect(providers).toMatch(/url\.pathname === '\/config\/entitlements'[^\n]+features: \{ g06: options\.allowDrive === true \}/)
+    expect(providers.match(/allowDrive: true/g)).toHaveLength(1)
     expect(preferences).not.toContain("['/config/feature-flags', '/config/entitlements']")
   })
-  it('checks that visible new-connection controls remain disabled instead of granting OAuth access', () => {
+  it('requires OFF connection controls to disappear while disconnect recovery remains', () => {
     const lines = providers.split('\n')
     const visible = lines.filter((line) => line.includes('Connect Google Drive') && line.includes('.toBeVisible()'))
-    const disabled = lines.filter((line) => line.includes('Connect Google Drive') && line.includes('.toBeDisabled()'))
-    expect(visible.length).toBe(3)
-    expect(disabled.length).toBe(visible.length)
-    for (const line of disabled) expect(line).toContain('Unavailable')
+    const hidden = lines.filter((line) => line.includes('Connect Google Drive') && line.includes('.toHaveCount(0)'))
+    expect(visible).toHaveLength(1)
+    expect(hidden.length).toBeGreaterThanOrEqual(3)
+    expect(providers).toContain("name: 'Connect Google Drive', exact: true })).toBeEnabled()")
+    expect(providers).not.toMatch(/Connect Google Drive[^\n]+\.toBeDisabled\(\)/)
     expect(providers).toContain("name: 'Disconnect Google Drive', exact: true")
+    expect(providers).toContain("expect(fixture.disconnectOwners).toEqual(['a'])")
+    expect(providers).toContain("expect(fixture.githubCompletions).toEqual(['a'])")
   })
 })

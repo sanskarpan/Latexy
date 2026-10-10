@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { createPortal } from 'react-dom'
 import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp, Tag } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
@@ -35,6 +36,8 @@ interface DeepAnalysisPanelProps {
   onRun: (industryOverride?: string) => void
   isRunning: boolean
   hideUpgradeCtas?: boolean
+  /** Hide and deny new runs without interrupting admitted analysis or history. */
+  allowNewActions?: boolean
   resumeId?: string
   /** Rule-based multi-dimensional breakdown (#1367); shown above the LLM analysis. */
   categories?: ATSCategory[]
@@ -137,14 +140,24 @@ export default function DeepAnalysisPanel({
   onRun,
   isRunning,
   hideUpgradeCtas = false,
+  allowNewActions = true,
   resumeId,
   categories,
   onJumpToLine,
   quickGrade,
 }: DeepAnalysisPanelProps) {
+  const { can } = useEntitlements()
+  const industryAllowed = can('d19')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [industryOverride, setIndustryOverride] = useState<string>('generic')
   const [industryDropdownOpen, setIndustryDropdownOpen] = useState(false)
+  const actionRef = useRef({ allowNewActions, isOpen, onRun, industryOverride, can })
+  actionRef.current = { allowNewActions, isOpen, onRun, industryOverride, can }
+  const runAnalysis = () => {
+    const current = actionRef.current
+    if (!current.allowNewActions || !current.isOpen) return
+    current.onRun(current.can('d19') && current.industryOverride !== 'generic' ? current.industryOverride : undefined)
+  }
   const industryTriggerRef = useRef<HTMLButtonElement>(null)
   const [mounted, setMounted] = useState(false)
   const [industryDropdownPos, setIndustryDropdownPos] = useState<{
@@ -156,11 +169,15 @@ export default function DeepAnalysisPanel({
   } | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (!allowNewActions || !industryAllowed || !isOpen) setIndustryDropdownOpen(false)
+  }, [allowNewActions, industryAllowed, isOpen])
 
   // The industry dropdown is portaled to document.body to escape the panel's
   // overflow-y-auto scroll ancestor. Compute edge-aware fixed positioning from
   // the trigger rect (mirrors ExportDropdown).
   function openIndustryDropdown() {
+    if (!actionRef.current.allowNewActions || !actionRef.current.isOpen || !actionRef.current.can('d19')) return
     if (industryTriggerRef.current) {
       const rect = industryTriggerRef.current.getBoundingClientRect()
       const margin = 12
@@ -267,7 +284,7 @@ export default function DeepAnalysisPanel({
               </div>
 
               {/* Industry override selector */}
-              <div className="relative">
+              {allowNewActions && industryAllowed && <div className="relative">
                 <button
                   ref={industryTriggerRef}
                   type="button"
@@ -305,7 +322,11 @@ export default function DeepAnalysisPanel({
                         <button
                           key={opt.key}
                           type="button"
-                          onClick={() => { setIndustryOverride(opt.key); setIndustryDropdownOpen(false) }}
+                          onClick={() => {
+                            if (!actionRef.current.allowNewActions || !actionRef.current.isOpen || !actionRef.current.can('d19')) return
+                            setIndustryOverride(opt.key)
+                            setIndustryDropdownOpen(false)
+                          }}
                           className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-surface-2 ${
                             industryOverride === opt.key ? 'text-accent-strong' : 'text-fg-2'
                           }`}
@@ -317,7 +338,7 @@ export default function DeepAnalysisPanel({
                   </>,
                   document.body
                 )}
-              </div>
+              </div>}
 
               {usesRemaining !== null && !hideUpgradeCtas && (
                 <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-warn/20 bg-warn/[0.06] px-3 py-2">
@@ -329,14 +350,14 @@ export default function DeepAnalysisPanel({
                 </div>
               )}
 
-              <button
-                onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
+              {allowNewActions && <button
+                onClick={runAnalysis}
                 disabled={!hideUpgradeCtas && usesRemaining === 0}
                 className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent py-3 text-sm font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-40"
               >
                 <Brain size={14} />
                 Run Deep Analysis
-              </button>
+              </button>}
             </div>
           )}
 
@@ -371,12 +392,12 @@ export default function DeepAnalysisPanel({
                   <p className="mt-0.5 text-[11px] text-fg-3">{error}</p>
                 </div>
               </div>
-              <button
-                onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
+              {allowNewActions && <button
+                onClick={runAnalysis}
                 className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-accent-soft py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
               >
                 <Brain size={13} /> Try again
-              </button>
+              </button>}
             </div>
           )}
 
@@ -488,12 +509,12 @@ export default function DeepAnalysisPanel({
                 <span className="text-[10px] text-fg-3">
                   {analysis.tokens_used.toLocaleString()} tokens · {analysis.analysis_time.toFixed(1)}s
                 </span>
-                <button
-                  onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
+                {allowNewActions && <button
+                  onClick={runAnalysis}
                   className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-[11px] font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
                 >
                   <Brain size={11} /> Re-analyse
-                </button>
+                </button>}
               </div>
             </div>
           )}

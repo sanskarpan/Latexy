@@ -60,6 +60,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -110,6 +111,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [
           {
             "status": "passed_api_mocked_chromium",
@@ -168,6 +170,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -218,6 +221,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -268,6 +272,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -322,6 +327,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -372,6 +378,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -422,6 +429,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -460,7 +468,7 @@
           {
             "role": "anonymous",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "not individually browser-tested for this role",
+            "ui": "anonymous Studio Recompile OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; additional Auto/SyncTeX assertions require latest-head CI",
             "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
@@ -484,6 +492,16 @@
             "ui": "not individually browser-tested for this role",
             "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+          }
+        ],
+        "representativeRealFullStackEvidence": [
+          {
+            "status": "passed_prior_head_real_next_fastapi_postgresql_redis",
+            "commit": "611484de5b194adf02e145ac29fd7d836403a829",
+            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38049161531/job/114205527502",
+            "testFile": "frontend/e2e/capability-fullstack.spec.ts",
+            "scope": "anonymous A09 OFF hides Recompile, retains source, denies jobs API; ON restores Recompile; screenshot inspection found extra Auto control, corrected and requiring latest-head rerun",
+            "latestHeadResult": "Check the PR exact-head CI and review summary; this historical result does not verify later changes."
           }
         ],
         "automatedBrowserEvidence": [],
@@ -536,6 +554,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -596,6 +615,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -633,23 +653,33 @@
           {
             "role": "user",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack test defined; check exact-head CI for result",
+            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack test defined; check exact-head CI for result",
+            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack test defined; check exact-head CI for result",
+            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+          }
+        ],
+        "representativeRealFullStackEvidence": [
+          {
+            "status": "passed_prior_head_real_next_fastapi_postgresql_redis",
+            "commit": "611484de5b194adf02e145ac29fd7d836403a829",
+            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38049161531/job/114205527502",
+            "testFile": "frontend/e2e/capability-fullstack.spec.ts",
+            "scope": "user/support/admin B03 OFF/ON UI and direct API; support mobile; owner source and admin recovery; user cross-tab refresh without navigation",
+            "latestHeadResult": "Check the PR exact-head CI and review summary; this historical result does not verify later changes."
           }
         ],
         "automatedBrowserEvidence": [
@@ -727,6 +757,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -783,6 +814,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -846,6 +878,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -904,6 +937,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -967,6 +1001,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1021,6 +1056,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1073,6 +1109,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1132,6 +1169,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1192,6 +1230,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1249,6 +1288,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1306,6 +1346,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1356,6 +1397,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [
           {
             "status": "passed_api_mocked_chromium",
@@ -1417,6 +1459,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1469,6 +1512,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [
           {
             "status": "passed_api_mocked_chromium",
@@ -1530,6 +1574,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [
           {
             "status": "passed_api_mocked_chromium",
@@ -1588,6 +1633,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1644,6 +1690,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [
           {
             "status": "passed_api_mocked_chromium",
@@ -1708,6 +1755,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1758,6 +1806,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1808,6 +1857,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1863,6 +1913,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1915,6 +1966,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -1932,6 +1984,7 @@
         "backend/app/middleware/capability_router.py:payload_capabilities (jobs/submit auto_fit)"
       ],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/components/LaTeXEditor.tsx"
@@ -1973,6 +2026,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2029,6 +2083,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2084,6 +2139,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2136,6 +2192,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2193,6 +2250,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2246,6 +2304,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2298,6 +2357,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2350,6 +2410,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2409,6 +2470,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2467,6 +2529,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2525,6 +2588,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2582,6 +2646,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2634,6 +2699,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2684,6 +2750,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2734,6 +2801,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2758,6 +2826,7 @@
         "backend/app/api/public_api_routes.py:require_developer_operation/_authorize (optimize)"
       ],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/page.tsx"
@@ -2801,6 +2870,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2857,6 +2927,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2915,6 +2986,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -2971,6 +3043,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3025,6 +3098,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3081,6 +3155,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3137,6 +3212,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3193,6 +3269,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3250,6 +3327,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3306,6 +3384,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3362,6 +3441,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3418,6 +3498,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3435,6 +3516,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/components/LaTeXEditor.tsx"
       ],
       "verification": {
@@ -3474,6 +3556,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3534,6 +3617,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3590,6 +3674,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3649,6 +3734,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3706,6 +3792,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3779,6 +3866,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3802,8 +3890,11 @@
         "backend/app/workers/orchestrator.py:submit_optimize_and_compile/_run_ats_stage (server-owned generic-only snapshot survives queue delay)"
       ],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
-        "frontend/src/components/ATSScoreCard.tsx"
+        "frontend/src/components/ATSScoreCard.tsx",
+        "frontend/src/components/ats/DeepAnalysisPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -3844,6 +3935,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3860,7 +3952,10 @@
         "backend/app/api/ats_routes.py:deep_analyze_resume"
       ],
       "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/app/try/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
@@ -3898,6 +3993,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -3956,6 +4052,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4013,6 +4110,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4069,6 +4167,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4125,6 +4224,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4190,6 +4290,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4246,6 +4347,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4303,6 +4405,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4359,6 +4462,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4413,6 +4517,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4469,6 +4574,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4530,6 +4636,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4593,6 +4700,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4652,6 +4760,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4711,6 +4820,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4767,6 +4877,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4823,6 +4934,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4840,6 +4952,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx"
       ],
       "verification": {
@@ -4879,6 +4992,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4939,6 +5053,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -4995,6 +5110,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5054,6 +5170,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5111,6 +5228,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5170,6 +5288,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5230,6 +5349,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5291,6 +5411,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5349,6 +5470,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5405,6 +5527,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5469,6 +5592,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5526,6 +5650,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5576,6 +5701,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5626,6 +5752,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5687,6 +5814,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5741,6 +5869,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5795,6 +5924,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5851,6 +5981,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5912,6 +6043,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -5970,6 +6102,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6029,6 +6162,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6087,6 +6221,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6144,6 +6279,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6201,6 +6337,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6257,6 +6394,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6317,6 +6455,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6373,6 +6512,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6427,6 +6567,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6481,6 +6622,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6536,6 +6678,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6590,6 +6733,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6645,6 +6789,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6702,6 +6847,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6758,6 +6904,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6815,6 +6962,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6870,6 +7018,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6920,6 +7069,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -6970,6 +7120,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7020,6 +7171,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7070,6 +7222,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7120,6 +7273,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7180,6 +7334,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7237,6 +7392,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
@@ -7287,6 +7443,7 @@
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
+        "representativeRealFullStackEvidence": [],
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."

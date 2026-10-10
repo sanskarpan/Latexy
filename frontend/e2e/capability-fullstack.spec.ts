@@ -111,6 +111,8 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await guestPage.goto('/try')
     await expect(guestPage.locator('.monaco-editor').first()).toBeVisible({ timeout: 45_000 })
     await expect(guestPage.getByRole('button', { name: /recompile/i })).toHaveCount(0)
+    await expect(guestPage.locator('button[aria-label="Auto-compile on change"]')).toHaveCount(0)
+    await expect(guestPage.locator('[aria-label="Source and PDF synchronization"]')).toHaveCount(0)
     const guestDenied = await guestContext.request.post(`${backend}/jobs/submit`, {
       data: { job_type: 'latex_compilation', latex_content: 'Synthetic source' },
     })
@@ -121,6 +123,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await anonymousSwitch.click(); expect((await guestOn).status()).toBe(200)
     await guestPage.reload()
     await expect(guestPage.getByRole('button', { name: /recompile/i })).toBeVisible({ timeout: 45_000 })
+    await expect(guestPage.getByRole('button', { name: 'Auto-compile on change', exact: true })).toBeVisible()
     await adminPage.screenshot({ path: testInfo.outputPath('real-admin-role-controls.png'), fullPage: true })
   } finally {
     for (const row of oldRoles.rows) await database.query('UPDATE role_features SET enabled = $1 WHERE role = $2 AND feature_key = $3', [row.enabled, row.role, row.feature_key])

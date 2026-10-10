@@ -224,22 +224,26 @@ async def update_role_matrix_cell(
     admin_user_id: str = Depends(require_admin),
 ) -> dict:
     """Restrict one account role/context; document and tenant ACLs are unchanged."""
-    from ..core.feature_registry import CAPABILITY_ROLES, is_gateable
+    from ..core.feature_registry import CAPABILITY_ROLES, get_feature
 
-    if body.role not in CAPABILITY_ROLES:
+    # Resolve to the registry's canonical objects before persisting or logging.
+    # Never send raw request strings to the security audit event.
+    role = next((known for known in CAPABILITY_ROLES if known == body.role), None)
+    if role is None:
         raise HTTPException(status_code=400, detail=error_body(
             "invalid_capability_role", f"Unknown account role/context: {body.role!r}", None,
         ))
-    if not is_gateable(body.feature_key):
+    feature = get_feature(body.feature_key)
+    if feature is None or not feature.gateable:
         raise HTTPException(status_code=404, detail=error_body(
             "feature_not_found", f"Unknown or non-gateable feature: {body.feature_key!r}", None,
         ))
     await entitlement_service.set_role_cell(
-        body.role, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled,
+        role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
     )
     logger.info("admin_entitlement_role_updated", extra={
-        "admin_user_id": admin_user_id, "role": body.role,
-        "feature_key": body.feature_key, "enabled": body.enabled,
+        "admin_user_id": admin_user_id, "role": role,
+        "feature_key": feature.key, "enabled": body.enabled,
     })
     return await entitlement_service.get_state(db)
 

@@ -113,13 +113,15 @@ called. GitHub retains screenshots/traces for 14 days.
 
 ## Local verification checkpoint
 
-- Frontend: 189 files / 1,334 tests passed; TypeScript, strict ESLint, Node 22
+- Frontend: 192 files / 1,402 tests passed; TypeScript, strict ESLint, Node 22
   production build and artifact validation passed. Extension: 13 tests plus
   syntax/package validation passed.
 - Actual local HTTP also verified Next/Better Auth signup, its cookie session,
   the same session's FastAPI identity, admin page HTTP delivery and role-based
   API denial. This does not execute or visually validate client-side React.
-- Final full backend run: 5,414 passed, 15 failed and four skipped. All fifteen
+- Full backend checkpoint: 5,414 passed, 15 failed and four skipped. The later
+  canonical audit-field change passed 707 role/admin/audit tests, including 11
+  new canonical-field and rejected-input cases. All fifteen
   failures are host TeX format/font failures reproduced with the exact same test
   IDs on the unchanged prior head; see [the comparison](role-environment-comparison.json).
   The reused synthetic provider-ID fixture was fixed; 40 related tests and a
@@ -142,13 +144,40 @@ forces test mode; production/staging CORS rules remain unchanged. 107 local
 security/isolation/deployment tests and actual allowed/denied-origin HTTP
 preflights pass. A subsequent browser run exercised user OFF/ON and support OFF
 with matching API decisions, then found the bootstrap rate-budget issue above.
-The final exact-head run must verify the complete scenario after that correction.
+The next run at `611484de` passed the complete real-service scenario: user/support/admin B03 OFF/ON, anonymous A09 denial, owner source and admin recovery. This is representative acceptance, not exhaustive coverage of every feature.
 The user case now also checks cross-tab refresh without navigating or reloading.
 
 The mobile API-mocked fixture now explicitly enables Studio/Templates in ON
 cases, rather than expecting those links while returning an empty grant map.
 Separate OFF assertions still require those links to disappear while account
 recovery, login and sign-out remain available.
+
+Manual inspection of the passing real-browser screenshots caught an anonymous
+Studio control mismatch that its original assertions missed: Recompile was gone,
+but Auto still appeared. The follow-through applies the same composite A09/tool
+admission to Auto (including editor status), SyncTeX, error explanation, ATS,
+trim, and already-open analysis/import dialogs. New browser assertions require
+Auto and SyncTeX controls to be absent OFF. Stored Auto preference and admitted
+imports/analysis/optimization remain recoverable; independently disabled D03
+review/apply and D19 industry selection are not re-enabled by recovery UI.
+
+An inline CodeQL review flagged request-derived role/feature audit fields even
+though the endpoint validates their allowlist. The endpoint now resolves both
+fields to canonical registry objects before writing or logging. Rejected role,
+unknown/baseline feature and CR/LF injection cases cannot write or emit a success
+audit event; the authenticated admin identity remains server-owned.
+
+The Settings browser group also detected OAuth callback replay after the account
+boundary remounted the page with its old query parameters. A component-local ref
+was insufficient. Callback intent is now claimed synchronously for the browser
+document lifetime, across account/token changes and component remounts, for all
+five supported providers. Claims use bounded in-memory state, never durable
+storage or logs; exhaustion fails closed rather than evicting old claims. The
+backend's one-use, owner-bound completion validation remains independent. Tests
+cover A→B and A→B→A, same-owner completion, remount/Strict Mode, later new tickets,
+and OFF-state disconnect/status recovery. The latest-head browser run must still
+verify these follow-through corrections; older passing evidence is not a pass
+for newer code.
 
 ## Deliberate exceptions and merge gates
 

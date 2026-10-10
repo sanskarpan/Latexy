@@ -15,6 +15,7 @@ import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
 import SecuritySettings from '@/components/auth/SecuritySettings'
 import ReferralPanel from '@/components/ReferralPanel'
 import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
+import { claimOAuthCompletion } from '@/lib/oauth-completion-claims'
 
 function SettingsContent() {
   const { can } = useEntitlements()
@@ -223,7 +224,7 @@ function SettingsContent() {
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
-  const oauthCompletionStartedRef = useRef<string | null>(null)
+  const oauthCompletionHandledRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
   const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
@@ -574,14 +575,23 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    // A callback ticket is one intent, not a new intent after account/token
-    // rotation. Never replay a started GitHub ticket as the replacement user.
-    const completionKey = provider === 'github'
-      ? `${provider}:${ticket}`
-      : `${accountKey}:${provider}:${ticket}`
-    if (oauthCompletionStartedRef.current === completionKey) return
-
-    oauthCompletionStartedRef.current = completionKey
+    // AccountBoundary can remount this component before router.replace removes
+    // the callback URL. Admission must outlive refs and account/token changes,
+    // and is intentionally independent of current feature availability so an
+    // already-admitted OAuth flow can recover after its feature is turned off.
+    // This local marker only avoids repeating URL cleanup (which could race a
+    // successful return_to navigation). The document ledger controls dispatch.
+    const completionKey = `${provider}:${ticket}`
+    if (oauthCompletionHandledRef.current === completionKey) return
+    oauthCompletionHandledRef.current = completionKey
+    const claim = claimOAuthCompletion(provider, ticket)
+    if (claim !== 'claimed') {
+      if (claim !== 'duplicate') {
+        setProviderError(`The ${providerName} connection could not be completed safely. Refresh the page and try connecting again.`)
+      }
+      router.replace(pathname, { scroll: false })
+      return
+    }
     const googleDriveOwner = provider === 'google_drive'
       ? { accountKey, ticket, active: true, statusApplied: false }
       : null

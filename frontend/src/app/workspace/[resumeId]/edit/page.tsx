@@ -2519,7 +2519,7 @@ export default function ResumeEditPage() {
       const response = await apiClient.deepAnalyzeResume({
         latex_content: content,
         job_description: jobDescription.trim() || undefined,
-        industry_override: industryOverride,
+        industry_override: canRef.current('d19') ? industryOverride : undefined,
       })
       if (response.success && response.job_id) {
         if (!isActive()) return
@@ -4390,6 +4390,7 @@ export default function ResumeEditPage() {
       )}
 
       <DeepAnalysisPanel
+        allowNewActions={can('d20')}
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}

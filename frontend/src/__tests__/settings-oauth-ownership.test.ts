@@ -41,6 +41,7 @@ async function loadSettingsHarness(): Promise<Harness> {
   const githubStatus = vi.fn().mockResolvedValue({ connected: false, username: null, public_import: false, private_sync: false })
 
   vi.stubGlobal('window', { opener: null, location: { origin: 'http://localhost:5180' } })
+  vi.stubGlobal('document', { cookie: '' })
   // These lifecycle fixtures assume the optional tour is available.
   // Entitlement failures and identity isolation are exercised separately.
   vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))

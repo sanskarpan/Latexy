@@ -38,7 +38,8 @@ function handler(source, name, context = {}) {
   assert.notEqual(end, -1, `${name} end`)
   const expression = source.slice(start + marker.length, end + closing.length).replace(/^useCallback\(\s*/, '')
   const javascript = stripTypeScriptTypes(`const action = ${expression}`)
-  return new Function(...Object.keys(context), `${javascript}; return action`)(...Object.values(context))
+  const scope = { admissionRef: { current: { allowNewActions: true, version: 0 } }, ...context }
+  return new Function(...Object.keys(scope), `${javascript}; return action`)(...Object.values(scope))
 }
 const noop = () => {}
 const setters = Object.fromEntries([
@@ -198,7 +199,7 @@ test('GitHub import does not schedule polling after its source session ends', as
 })
 
 test('grant refresh does not resubmit imports; generation controls expose disabled state', () => {
-  assert.match(imports, /\[availableSource, beginGithub, isOpen, reset, source\]/)
+  assert.match(imports, /\[availableSource, isOpen, reset, source\]/)
   assert.doesNotMatch(imports, /\[can, isOpen, source\]/)
   assert.match(imports, /disabled=\{!sourceAllowed \|\| phase !== 'ready'/)
   assert.match(writing, /disabled=\{!can\(key === 'synonyms' \? 'd07' : 'd06'\)\}/)
