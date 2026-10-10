@@ -6,6 +6,7 @@ type Session = { user: { id: string }; session: { token: string } }
 type HookSlot =
   | { kind: 'state'; value: unknown }
   | { kind: 'ref'; value: { current: unknown } }
+  | { kind: 'memo'; value: unknown; deps: unknown[] }
   | { kind: 'effect'; deps: unknown[] | undefined; cleanup?: () => void }
 
 const prefs = (jobCompleted: boolean): NotificationPrefs => ({
@@ -157,6 +158,15 @@ async function loadHarness(initialACompleted = false): Promise<Harness> {
         || deps.length !== previous.deps.length
         || deps.some((value, depIndex) => !Object.is(value, previous.deps?.[depIndex]))
       if (changed) pendingEffects.push({ index, effect, deps })
+    },
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const index = hookIndex++
+      const previous = slots[index]
+      const changed = !previous || previous.kind !== 'memo'
+        || deps.length !== previous.deps.length
+        || deps.some((value, depIndex) => !Object.is(value, previous.deps[depIndex]))
+      if (changed) slots[index] = { kind: 'memo', value: factory(), deps: [...deps] }
+      return (slots[index] as Extract<HookSlot, { kind: 'memo' }>).value
     },
     useRef: (initial: unknown) => {
       const index = hookIndex++

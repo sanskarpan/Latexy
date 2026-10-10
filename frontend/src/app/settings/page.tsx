@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
@@ -18,7 +18,11 @@ function SettingsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
-  const { resetOnboarding } = useOnboarding()
+  const { resetOnboarding } = useOnboarding(useMemo(() => ({
+    ownerId: sessionData?.user?.id ?? null,
+    authToken: sessionData?.session?.token ?? '',
+    confirmed: Boolean(sessionData?.user?.id && sessionData?.session?.token && !sessionLoading && !sessionError),
+  }), [sessionData?.session?.token, sessionData?.user?.id, sessionError, sessionLoading]))
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   type ProviderActionKey =
     | 'google_drive'
@@ -101,6 +105,8 @@ function SettingsContent() {
   }
   type LegacyOwnedNotice = { ownerId: string | null; success: string | null; error: string | null }
   const legacyCallbackStartedRef = useRef<Map<LegacyProvider, LegacyCallbackAttempt>>(new Map())
+  const legacyCallbackQueryRef = useRef(searchParams)
+  legacyCallbackQueryRef.current = searchParams
   const legacyOperationRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
   const legacyStatusRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
   const legacyOwnedNoticeRef = useRef<Record<LegacyProvider, LegacyOwnedNotice>>({
@@ -153,6 +159,33 @@ function SettingsContent() {
     settingsTimersRef.current.add(t)
   }
 
+  function retireLegacyCallback(provider: LegacyProvider) {
+    // A later explicit action owns the card, even if an earlier verification
+    // has already reached the server and cannot be cancelled.
+    legacyOperationRevisionRef.current[provider] += 1
+    legacyProviderNoticeRevisionRef.current[provider] += 1
+    const attempt = legacyCallbackStartedRef.current.get(provider)
+    if (attempt) attempt.settled = true
+    const notice = legacyOwnedNoticeRef.current[provider]
+    if (notice.ownerId === providerActionIdentityRef.current.ownerId && notice.success) {
+      if (provider === 'github' && ghSuccess === notice.success) setGhSuccess(null)
+      if (provider === 'zotero' && zotSuccess === notice.success) setZotSuccess(null)
+      if (provider === 'mendeley' && menSuccess === notice.success) setMenSuccess(null)
+      if (provider === 'dropbox' && dbxSuccess === notice.success) setDbxSuccess(null)
+    }
+    legacyOwnedNoticeRef.current[provider] = {
+      ownerId: providerActionIdentityRef.current.ownerId,
+      success: null,
+      error: null,
+    }
+    const query = new URLSearchParams(legacyCallbackQueryRef.current.toString())
+    if (query.get(provider) === 'connected') {
+      query.delete(provider)
+      const remaining = query.toString()
+      router.replace(remaining ? `${pathname}?${remaining}` : pathname, { scroll: false })
+    }
+  }
+
   function beginProviderAction(key: ProviderActionKey) {
     if (
       !providerActionMountedRef.current
@@ -170,6 +203,11 @@ function SettingsContent() {
     const lifecycle = providerActionLifecycleRef.current
     const revision = ++providerActionRevisionRef.current[key]
     providerActionActiveRef.current[key] = true
+    if (key !== 'google_drive') {
+      const provider = key.replace('_disconnect', '') as LegacyProvider
+      retireLegacyCallback(provider)
+      legacyStatusRevisionRef.current[provider] += 1
+    }
     const isCurrent = () => (
       providerActionMountedRef.current
       && providerActionLifecycleRef.current === lifecycle
@@ -639,6 +677,7 @@ function SettingsContent() {
       : `${accountKey}:${provider}:${ticket}`
     if (oauthCompletionStartedRef.current === completionKey) return
 
+    if (provider !== 'google_drive') retireLegacyCallback(provider)
     oauthCompletionStartedRef.current = completionKey
     const googleDriveOwner = provider === 'google_drive'
       ? { accountKey, ticket, active: true, statusApplied: false }
@@ -761,10 +800,13 @@ function SettingsContent() {
     const connectedProviders = ['github', 'zotero', 'mendeley', 'dropbox'] as const
     const activeProviders = connectedProviders.filter((provider) => searchParams.get(provider) === 'connected')
 
-    if (!activeProviders.length) {
-      for (const provider of connectedProviders) legacyCallbackStartedRef.current.delete(provider)
-      return
+    for (const provider of connectedProviders) {
+      if (!activeProviders.includes(provider) && legacyCallbackStartedRef.current.has(provider)) {
+        legacyOperationRevisionRef.current[provider] += 1
+        legacyCallbackStartedRef.current.delete(provider)
+      }
     }
+    if (!activeProviders.length) return
     if (!providerActionAuthReady || !providerActionIdentity.ownerId || !providerActionIdentity.authToken) {
       for (const provider of activeProviders) {
         const attempt = legacyCallbackStartedRef.current.get(provider)
@@ -783,11 +825,17 @@ function SettingsContent() {
     const requestKey = `${providerActionIdentity.generation}:${searchParams.toString()}`
     const ownerGeneration = legacyOwnerGenerationRef.current
     const clearQueryAfterVerification = () => {
-      if (activeProviders.every((provider) => {
+      // Navigation can add a provider or unrelated parameters while a read is
+      // held. Only consume the current, fully settled callback markers.
+      const query = new URLSearchParams(legacyCallbackQueryRef.current.toString())
+      const currentProviders = connectedProviders.filter((provider) => query.get(provider) === 'connected')
+      if (currentProviders.length && currentProviders.every((provider) => {
         const attempt = legacyCallbackStartedRef.current.get(provider)
         return attempt?.ownerGeneration === ownerGeneration && attempt.settled
       })) {
-        router.replace(pathname, { scroll: false })
+        for (const provider of currentProviders) query.delete(provider)
+        const remaining = query.toString()
+        router.replace(remaining ? `${pathname}?${remaining}` : pathname, { scroll: false })
       }
     }
     const verifyLegacyConnection = async <T extends { connected: boolean }>(
@@ -827,6 +875,8 @@ function SettingsContent() {
         && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
         && legacyOwnerGenerationRef.current === ownerGeneration
         && legacyOperationRevisionRef.current[provider] === operationRevision
+        && legacyCallbackStartedRef.current.get(provider) === attempt
+        && legacyCallbackQueryRef.current.get(provider) === 'connected'
       )
       const isCurrentDispatch = () => {
         const current = (
@@ -938,6 +988,10 @@ function SettingsContent() {
     if (activeProviders.includes('dropbox')) {
       void verifyLegacyConnection<DropboxStatusResponse>('dropbox', 'Dropbox account', (context) => apiClient.getDropboxStatus(context), setDbxStatus, setDbxLoading, setDbxSuccess, setDbxError)
     }
+    // Removing a pending provider may leave only already-settled callbacks.
+    // They are deduplicated above, but their remaining URL markers still need
+    // consuming so a later reload does not replay a finished verification.
+    clearQueryAfterVerification()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, router, searchParams, providerActionIdentity.generation, providerActionAuthReady])
 
@@ -1059,6 +1113,7 @@ function SettingsContent() {
     if (!action) return
     setGhDisconnecting(true)
     setGhError(null)
+    setGhSuccess(null)
     try {
       await apiClient.disconnectGitHub(action.accountContext)
       if (!action.isCurrent()) return
@@ -1114,6 +1169,7 @@ function SettingsContent() {
     if (!action) return
     setZotDisconnecting(true)
     setZotError(null)
+    setZotSuccess(null)
     try {
       await apiClient.disconnectZotero(action.accountContext)
       if (!action.isCurrent()) return
@@ -1152,6 +1208,7 @@ function SettingsContent() {
     if (!action) return
     setDbxDisconnecting(true)
     setDbxError(null)
+    setDbxSuccess(null)
     try {
       await apiClient.disconnectDropbox(action.accountContext)
       if (!action.isCurrent()) return
@@ -1253,6 +1310,7 @@ function SettingsContent() {
     if (!action) return
     setMenDisconnecting(true)
     setMenError(null)
+    setMenSuccess(null)
     try {
       await apiClient.disconnectMendeley(action.accountContext)
       if (!action.isCurrent()) return

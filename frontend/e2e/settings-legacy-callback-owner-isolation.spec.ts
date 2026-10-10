@@ -16,6 +16,7 @@ type Provider = 'github' | 'zotero' | 'mendeley' | 'dropbox' | 'google-drive'
 type Outcome = 'success' | 'failure'
 
 type FixtureOptions = {
+  allowGitHubDisconnect?: boolean
   holdLegacyA?: boolean
   holdLegacyB?: boolean
   holdLegacyARevisit?: boolean
@@ -136,6 +137,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
   const providerRequests: Fixture['providerRequests'] = []
   const consumedBodyLabels = new Map<Page, string[]>()
   const counts = new Map<string, number>()
+  const disconnectedGitHubOwners = new Set<Owner>()
   let releaseLegacyA!: () => void
   let markLegacyAStarted!: () => void
   const legacyAStarted = new Promise<void>((resolve) => { markLegacyAStarted = resolve })
@@ -255,7 +257,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       '/settings/notifications', '/github/status', '/zotero/status', '/mendeley/status',
       '/dropbox/status', '/google-drive/status', '/me', '/me/preferences',
       '/config/feature-flags', '/config/entitlements', '/tenants/resolve-host',
-    ].includes(pathname)
+    ].includes(pathname) || (options.allowGitHubDisconnect && pathname === '/github/disconnect')
     const sameOriginBackendRequest = apiOrigin === appOrigin
       && (apiPrefixMatches || (!apiPrefix && rootApiPath))
       && !pathname.startsWith('/api/auth/')
@@ -310,6 +312,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
 
     if (method === 'OPTIONS') {
       const telemetryPost = apiPath === '/telemetry/frontend'
+      const githubDisconnect = options.allowGitHubDisconnect && apiPath === '/github/disconnect'
       const knownRead = [
         '/settings/notifications', '/github/status', '/zotero/status', '/mendeley/status',
         '/dropbox/status', '/google-drive/status', '/me', '/me/preferences',
@@ -317,7 +320,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       ].includes(apiPath)
       const providerStatus = ['github', 'zotero', 'mendeley', 'dropbox', 'google-drive']
         .some((name) => apiPath === `/${name}/status`)
-      if (!knownRead && !providerStatus && !telemetryPost) {
+      if (!knownRead && !providerStatus && !telemetryPost && !githubDisconnect) {
         await unexpected(route, 'unknown API preflight')
         return
       }
@@ -327,7 +330,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
           'access-control-allow-origin': appOrigin,
           'access-control-allow-credentials': 'true',
           'access-control-allow-headers': 'authorization, content-type, x-request-id, traceparent',
-          'access-control-allow-methods': telemetryPost ? 'POST, OPTIONS' : 'GET, OPTIONS',
+          'access-control-allow-methods': telemetryPost ? 'POST, OPTIONS' : githubDisconnect ? 'DELETE, OPTIONS' : 'GET, OPTIONS',
           vary: 'Origin',
         },
       })
@@ -337,6 +340,20 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
     if (apiPath === '/telemetry/frontend' && method === 'POST') {
       // Web-vitals/page-view telemetry is explicitly synthetic and never reaches a real service.
       await route.fulfill({ status: 204, headers: { 'access-control-allow-origin': appOrigin, 'access-control-allow-credentials': 'true' } })
+      return
+    }
+
+    if (options.allowGitHubDisconnect && apiPath === '/github/disconnect' && method === 'DELETE') {
+      const current = ownerFromAuthorization(await request.headerValue('authorization'))
+      if (!current) {
+        authErrors.push('/github/disconnect missing synthetic bearer')
+        await unexpected(route, 'disconnect without a known synthetic bearer')
+        return
+      }
+      disconnectedGitHubOwners.add(current)
+      await fulfillJson(route, { success: true, message: 'Synthetic GitHub disconnect' }, {
+        headers: bodyLabelHeaders(`disconnect-github-${current}`, appOrigin),
+      })
       return
     }
 
@@ -384,6 +401,12 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       if (!current) {
         authErrors.push(`${statusProvider}/status missing synthetic bearer`)
         await fulfillJson(route, { detail: 'Synthetic fixture requires a known bearer.' }, { status: 401, headers: bodyLabelHeaders(`${statusProvider}-unauthorized`, appOrigin) })
+        return
+      }
+      if (statusProvider === 'github' && disconnectedGitHubOwners.has(current)) {
+        await fulfillJson(route, { connected: false, username: null, public_import: false, private_sync: false }, {
+          headers: bodyLabelHeaders(`status-github-${current}-after-disconnect`, appOrigin),
+        })
         return
       }
       if (statusProvider !== provider) {
@@ -489,6 +512,61 @@ async function assertFixtureClean(fixture: Fixture) {
 }
 
 test.describe('legacy Settings provider callback owner isolation', () => {
+  test('held legacy success cannot undo a later same-owner disconnect', async ({ page, context }) => {
+    const fixture = await installFixture(context, page, 'github', { holdLegacyA: true, allowGitHubDisconnect: true })
+    await page.goto('/settings?github=connected', { waitUntil: 'domcontentloaded' })
+    await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-1')
+    await expect(page.getByText('AliceInitialGitHub', { exact: true })).toBeVisible()
+    await fixture.legacyAStarted
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await expect.poll(() => bodyReads(page, fixture)).toContain('disconnect-github-a')
+    await expect(page.getByRole('button', { name: 'Connect GitHub', exact: true })).toBeVisible()
+    fixture.releaseLegacyA()
+    await expect.poll(() => bodyReads(page, fixture)).toContain('legacy-github-a')
+    await flushEffects(page)
+    await expect(page.getByText('AliceLegacyGitHub', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Connect GitHub', exact: true })).toBeVisible()
+    await expect(page).toHaveURL(/\/settings$/)
+    await assertFixtureClean(fixture)
+  })
+
+  test('abandoned popup callback stays open and preserves newer navigation', async ({ page, context }) => {
+    const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true })
+    await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
+    const popupPromise = context.waitForEvent('page')
+    await page.locator('#open').click()
+    const popup = await popupPromise
+    await expect.poll(() => bodyReads(popup, fixture)).toContain('status-zotero-a-1')
+    await expect(popup.getByText('@AliceZotero1', { exact: true })).toBeVisible()
+    await fixture.legacyAStarted
+
+    await popup.evaluate(() => window.history.pushState(null, '', '/settings?tab=integrations'))
+    await flushEffects(popup)
+    fixture.releaseLegacyA()
+    await expect.poll(() => bodyReads(popup, fixture)).toContain('legacy-zotero-a')
+    await flushEffects(popup)
+    expect(popup.isClosed()).toBe(false)
+    await expect(popup).toHaveURL(/\/settings\?tab=integrations$/)
+    await expect(popup.getByText('@AliceZotero2', { exact: true })).toHaveCount(0)
+    await expect(popup.getByText('Zotero connected successfully!', { exact: true })).toHaveCount(0)
+    expect(await page.evaluate(() => (window as typeof window & { __messages?: unknown[] }).__messages ?? [])).toEqual([])
+    await assertFixtureClean(fixture)
+  })
+
+  test('verification consumes only its callback marker and preserves unrelated query parameters', async ({ page, context }) => {
+    const fixture = await installFixture(context, page, 'github', { holdLegacyA: true })
+    await page.goto('/settings?github=connected&tab=integrations', { waitUntil: 'domcontentloaded' })
+    await fixture.legacyAStarted
+    fixture.releaseLegacyA()
+    await expect.poll(() => bodyReads(page, fixture)).toContain('legacy-github-a')
+    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toBeVisible()
+    await expect(page).toHaveURL(/\/settings\?tab=integrations$/)
+    await assertFixtureClean(fixture)
+  })
+
   test('same-owner legacy GitHub success applies only after its status body is consumed', async ({ page, context }) => {
     const fixture = await installFixture(context, page, 'github', { holdLegacyA: true })
     await page.goto('/settings?github=connected', { waitUntil: 'domcontentloaded' })

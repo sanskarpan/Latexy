@@ -4,6 +4,46 @@ Status: locally verified production-mode candidate; fresh published-head CI and
 deployed acceptance remain pending.
 Not merged or production-accepted. Hydration #1772 remains unresolved.
 
+## Current-main review: 2026-10-10
+
+Merged main `f5bf14a7e27f7e3198fc314157cd4cefef8c9b2f` into this branch,
+preserving the GitHub one-use ticket retention and onboarding owner-isolation
+repairs. The legacy callback still exists on that main, so #1794 is not
+superseded by those fixes.
+
+Fresh independent component-executed review reproduced additional interruption
+cases and added regressions before the repairs:
+
+- A held callback could repaint connected state after a same-owner disconnect.
+- Removing one callback marker, including while another provider remained,
+  did not cancel its pending result or popup message/close.
+- Older verification could remove a newly added provider's unresolved callback
+  marker and unrelated query parameters.
+- An old legacy notice timer could expire a newer ticketed success too early.
+
+Callback retirement now invalidates the pending operation and its owned notice;
+disconnect also supersedes older initial-status reads. Query consumption uses
+the latest active providers, preserves unrelated parameters, and consumes
+settled markers left after navigation. Ticketed OAuth keeps its existing
+initial-loading lifecycle; tests cover successful and failed newer ticketed
+callbacks so retirement cannot strand a spinner or a prior success notice.
+
+The final local application/test checkpoint passes **175 files / 1,197 unit
+tests**, full frontend ESLint, no-incremental TypeScript, all 21 CI classifier
+tests, and the privacy/credential/public-copy guards. These local checks use
+Node **24.19.0** with the existing frozen dependency installation, not supported
+Node 22 production-build acceptance. Production build preflight rejects this
+runtime, and local Chromium execution is restricted, so neither safeguard was
+disabled. Hosted Node 22 CI must pass on the published head before merge.
+
+The existing production-browser suite now contains **19 cases**, adding
+synthetic disconnect, abandoned-popup navigation, and unrelated-query controls.
+The list command, lint, and types pass; execution awaits the fresh hosted shared
+browser gate. No real provider credentials or production writes are used.
+
+The dated evidence below describes the earlier candidate, not a substitute for
+the current revision's CI or post-merge deployment certification.
+
 ## Scope and base
 
 This leaf covers legacy `github`, `zotero`, `mendeley`, and `dropbox` connected

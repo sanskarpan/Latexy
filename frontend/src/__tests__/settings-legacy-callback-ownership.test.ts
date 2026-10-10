@@ -7,12 +7,15 @@ type Provider = 'github' | 'zotero' | 'mendeley' | 'dropbox'
 type Harness = {
   render: () => VNode
   runMountedEffect: () => () => void
+  runGitHubMountedEffect: () => () => void
+  runTicketedEffect: () => () => void
   runLegacyEffect: () => () => void
   runLegacyOwnerNoticeEffect: () => () => void
   setSession: (session: Session) => void
   setProvider: (provider: Provider) => void
   setProviders: (providers: Provider[]) => void
   setQuery: (connected: boolean) => void
+  setRawQuery: (query: string) => void
   setAuthState: (pending: boolean, error?: Error | null) => void
   holdGitHubDispatch: (held: boolean) => void
   dispatchGitHub: (index?: number) => void
@@ -27,6 +30,8 @@ type Harness = {
   routerReplacements: string[]
   dropboxContexts: Array<{ authToken: string; isCurrent: () => boolean }>
   stateUpdates: unknown[]
+  disconnectGitHub: ReturnType<typeof vi.fn>
+  completeGitHubOAuth: ReturnType<typeof vi.fn>
   cleanups: () => void
   opener: { postMessage: ReturnType<typeof vi.fn> }
   close: ReturnType<typeof vi.fn>
@@ -37,6 +42,7 @@ async function loadHarness(): Promise<Harness> {
   let session: Session = { user: { id: 'account-a' }, session: { token: 'session-a' } }
   let providers: Provider[] = ['github']
   let queryConnected = true
+  let rawQuery: string | null = null
   let sessionPending = false
   let sessionError: Error | null = null
   let hookIndex = 0
@@ -90,8 +96,11 @@ async function loadHarness(): Promise<Harness> {
   })
   const opener = { postMessage: vi.fn() }
   const close = vi.fn()
+  const disconnectGitHub = vi.fn().mockResolvedValue({ success: true })
+  const completeGitHubOAuth = vi.fn().mockResolvedValue({ success: true })
 
   vi.stubGlobal('window', { opener, close, location: { origin: 'http://localhost:5180' } })
+  vi.stubGlobal('confirm', vi.fn(() => true))
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
@@ -124,7 +133,7 @@ async function loadHarness(): Promise<Harness> {
     jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
   }))
   vi.doMock('next/navigation', () => ({
-    useSearchParams: () => ({
+    useSearchParams: () => rawQuery !== null ? new URLSearchParams(rawQuery) : ({
       get: (key: string) => providers.includes(key as Provider) && queryConnected ? 'connected' : null,
       toString: () => queryConnected ? providers.map((provider) => `${provider}=connected`).join('&') : '',
     }),
@@ -152,6 +161,8 @@ async function loadHarness(): Promise<Harness> {
       getMendeleyStatus: mendeleyStatus,
       getDropboxStatus: dropboxStatus,
       getGoogleDriveStatus: vi.fn().mockResolvedValue({ connected: false }),
+      disconnectGitHub,
+      completeGitHubOAuth,
     },
   }))
 
@@ -173,12 +184,15 @@ async function loadHarness(): Promise<Harness> {
   return {
     render,
     runMountedEffect: () => run('providerActionMountedRef.current = true') as () => void,
+    runGitHubMountedEffect: () => run('githubOAuthMountedRef.current = true') as () => void,
+    runTicketedEffect: () => run('oauthCompletionStartedRef.current === completionKey') as () => void,
     runLegacyEffect: () => run('const connectedProviders') as () => void,
     runLegacyOwnerNoticeEffect: () => run('clearPreviousOwnerNotice') as () => void,
     setSession: (next) => { session = next },
     setProvider: (next) => { providers = [next] },
     setProviders: (next) => { providers = next },
     setQuery: (connected) => { queryConnected = connected },
+    setRawQuery: (query) => { rawQuery = query },
     setAuthState: (pending, error = null) => { sessionPending = pending; sessionError = error },
     holdGitHubDispatch: (held) => { holdGitHubDispatch = held },
     dispatchGitHub: (index = 0) => githubDispatchers[index]?.(),
@@ -193,6 +207,8 @@ async function loadHarness(): Promise<Harness> {
     routerReplacements,
     dropboxContexts,
     stateUpdates,
+    disconnectGitHub,
+    completeGitHubOAuth,
     cleanups: () => { while (activeCleanups.length) activeCleanups.pop()?.() },
     opener,
     close,
@@ -201,6 +217,21 @@ async function loadHarness(): Promise<Harness> {
 
 async function settle() {
   for (let index = 0; index < 8; index += 1) await Promise.resolve()
+}
+
+function findClickHandler(tree: unknown, name: string): (() => Promise<void>) | undefined {
+  if (!tree || typeof tree !== 'object') return
+  if (Array.isArray(tree)) {
+    for (const child of tree) {
+      const handler = findClickHandler(child, name)
+      if (handler) return handler
+    }
+    return
+  }
+  const node = tree as VNode
+  const handler = node.props?.onClick
+  if (typeof handler === 'function' && handler.name === name) return handler as () => Promise<void>
+  return findClickHandler(node.props?.children, name)
 }
 
 beforeEach(() => vi.useFakeTimers())
@@ -320,6 +351,240 @@ describe('legacy Settings callback ownership', () => {
     await settle()
     expect(harness.stateUpdates).toContainEqual(expect.objectContaining({ username: 'NewerSameOwner' }))
     expect(harness.stateUpdates).not.toContainEqual(expect.objectContaining({ username: 'OlderSameOwner' }))
+    harness.cleanups()
+  })
+
+  it('cancels a removed provider callback while another provider query remains', async () => {
+    const harness = await loadHarness()
+    harness.setProviders(['github', 'zotero'])
+    harness.render()
+    harness.runMountedEffect()
+    harness.runLegacyEffect()
+
+    harness.setProviders(['zotero'])
+    harness.render()
+    harness.runLegacyEffect()
+    const beforeAbandonedResponse = harness.stateUpdates.length
+    harness.resolveGitHub({ connected: true, username: 'RemovedProvider', public_import: true, private_sync: false })
+    await settle()
+
+    expect(harness.stateUpdates.slice(beforeAbandonedResponse)).not.toContainEqual(
+      expect.objectContaining({ username: 'RemovedProvider' }),
+    )
+    expect(harness.stateUpdates.slice(beforeAbandonedResponse)).not.toContain('GitHub account connected successfully!')
+    expect(harness.routerReplacements).toEqual([])
+    harness.resolveZotero({ connected: true, username: 'RetainedProvider', user_id: 'zotero-a' })
+    await settle()
+    expect(harness.stateUpdates).toContainEqual(expect.objectContaining({ username: 'RetainedProvider' }))
+    expect(harness.routerReplacements).toEqual(['/settings'])
+    harness.cleanups()
+  })
+
+  it('does not post or close an abandoned popup callback after its query is removed', async () => {
+    const harness = await loadHarness()
+    harness.setProvider('zotero')
+    harness.render()
+    harness.runMountedEffect()
+    harness.runLegacyEffect()
+
+    harness.setQuery(false)
+    harness.render()
+    harness.runLegacyEffect()
+    const beforeAbandonedResponse = harness.stateUpdates.length
+    harness.resolveZotero({ connected: true, username: 'AbandonedPopup', user_id: 'zotero-a' })
+    await settle()
+
+    expect(harness.opener.postMessage).not.toHaveBeenCalled()
+    expect(harness.close).not.toHaveBeenCalled()
+    expect(harness.stateUpdates.slice(beforeAbandonedResponse)).not.toContainEqual(
+      expect.objectContaining({ username: 'AbandonedPopup' }),
+    )
+    expect(harness.routerReplacements).toEqual([])
+    harness.cleanups()
+  })
+
+  it('does not let a held callback restore connected status after a newer disconnect succeeds', async () => {
+    const harness = await loadHarness()
+    harness.render()
+    harness.runMountedEffect()
+    harness.runInitialStatusEffect()
+    harness.runLegacyEffect()
+    harness.resolveGitHub({ connected: true, username: 'InitialConnected', public_import: true, private_sync: true }, 0)
+    await settle()
+
+    const disconnect = findClickHandler(harness.render(), 'handleDisconnectGitHub')
+    expect(disconnect).toBeDefined()
+    await disconnect?.()
+    expect(harness.disconnectGitHub).toHaveBeenCalledTimes(1)
+    expect(harness.stateUpdates).toContainEqual({ connected: false, username: null, public_import: false, private_sync: false })
+
+    const beforeHeldResponse = harness.stateUpdates.length
+    harness.resolveGitHub({ connected: true, username: 'BeforeDisconnect', public_import: true, private_sync: true }, 1)
+    await settle()
+    expect(harness.stateUpdates.slice(beforeHeldResponse)).not.toContainEqual(
+      expect.objectContaining({ connected: true }),
+    )
+    expect(harness.stateUpdates.slice(beforeHeldResponse)).not.toContain('GitHub account connected successfully!')
+    harness.cleanups()
+  })
+
+  it('does not replay a retired callback when the token rotates before query replacement renders', async () => {
+    const harness = await loadHarness()
+    harness.render()
+    harness.runMountedEffect()
+    harness.runInitialStatusEffect()
+    harness.runLegacyEffect()
+    harness.resolveGitHub({ connected: true, username: 'InitialConnected', public_import: true, private_sync: true }, 0)
+    await settle()
+
+    const disconnect = findClickHandler(harness.render(), 'handleDisconnectGitHub')
+    expect(disconnect).toBeDefined()
+    await disconnect?.()
+    expect(harness.disconnectGitHub).toHaveBeenCalledTimes(1)
+    harness.setSession({ user: { id: 'account-a' }, session: { token: 'rotated-token' } })
+    harness.render()
+    harness.runLegacyEffect()
+    expect(harness.githubContexts).toHaveLength(1)
+
+    const beforeRetiredResponse = harness.stateUpdates.length
+    harness.resolveGitHub({ connected: true, username: 'RetiredCallback', public_import: true, private_sync: true }, 1)
+    await settle()
+    expect(harness.stateUpdates.slice(beforeRetiredResponse)).not.toContainEqual(
+      expect.objectContaining({ connected: true }),
+    )
+    harness.cleanups()
+  })
+
+  it('preserves the latest unrelated query parameters when verification settles', async () => {
+    const harness = await loadHarness()
+    harness.setRawQuery('github=connected&tab=integrations')
+    harness.render()
+    harness.runMountedEffect()
+    harness.runLegacyEffect()
+    harness.setRawQuery('github=connected&tab=security&return_to=%2Fworkspace')
+    harness.render()
+    harness.runLegacyEffect()
+    expect(harness.githubContexts).toHaveLength(1)
+
+    harness.resolveGitHub({ connected: true, username: 'VerifiedCurrent', public_import: true, private_sync: false })
+    await settle()
+    expect(harness.routerReplacements).toEqual(['/settings?tab=security&return_to=%2Fworkspace'])
+    harness.cleanups()
+  })
+
+  it('consumes settled callbacks when navigation removes the last pending provider', async () => {
+    const harness = await loadHarness()
+    harness.setProviders(['github', 'zotero'])
+    harness.render()
+    harness.runMountedEffect()
+    harness.runLegacyEffect()
+    harness.resolveGitHub({ connected: true, username: 'AlreadyVerified', public_import: true, private_sync: false })
+    await settle()
+    expect(harness.routerReplacements).toEqual([])
+
+    harness.setProviders(['github'])
+    harness.render()
+    harness.runLegacyEffect()
+    expect(harness.routerReplacements).toEqual(['/settings'])
+    harness.resolveZotero({ connected: true, username: 'RemovedPending', user_id: 'zotero-a' })
+    await settle()
+    expect(harness.opener.postMessage).not.toHaveBeenCalled()
+    expect(harness.close).not.toHaveBeenCalled()
+    harness.cleanups()
+  })
+
+  it('waits for callbacks added by newer navigation before removing the current query', async () => {
+    const harness = await loadHarness()
+    harness.render()
+    harness.runMountedEffect()
+    harness.runLegacyEffect()
+
+    harness.setProviders(['github', 'zotero'])
+    harness.render()
+    harness.runLegacyEffect()
+    expect(harness.githubContexts).toHaveLength(1)
+    expect(harness.zoteroContexts).toHaveLength(1)
+    harness.resolveGitHub({ connected: true, username: 'EarlierCallback', public_import: true, private_sync: false })
+    await settle()
+    expect(harness.routerReplacements).toEqual([])
+
+    harness.resolveZotero({ connected: true, username: 'LaterCallback', user_id: 'zotero-a' })
+    await settle()
+    expect(harness.routerReplacements).toEqual(['/settings'])
+    harness.cleanups()
+  })
+
+  it('does not let an older legacy timer expire a newer ticketed callback success', async () => {
+    const harness = await loadHarness()
+    harness.render()
+    harness.runMountedEffect()
+    harness.runGitHubMountedEffect()
+    harness.runLegacyEffect()
+    harness.resolveGitHub({ connected: true, username: 'LegacySuccess', public_import: true, private_sync: false }, 0)
+    await settle()
+    vi.advanceTimersByTime(1_000)
+
+    harness.setRawQuery('github=complete&ticket=newer-ticket')
+    harness.render()
+    harness.runTicketedEffect()
+    harness.runLegacyEffect()
+    await settle()
+    expect(harness.githubContexts).toHaveLength(2)
+    harness.resolveGitHub({ connected: true, username: 'TicketedSuccess', public_import: true, private_sync: false }, 1)
+    await settle()
+    expect(harness.stateUpdates).toContainEqual(expect.objectContaining({ username: 'TicketedSuccess' }))
+
+    const beforeOlderTimer = harness.stateUpdates.length
+    vi.advanceTimersByTime(4_000)
+    expect(harness.stateUpdates.slice(beforeOlderTimer)).not.toContain(null)
+    vi.advanceTimersByTime(1_000)
+    expect(harness.stateUpdates[harness.stateUpdates.length - 1]).toBeNull()
+    harness.cleanups()
+  })
+
+  it('does not strand the status spinner when a ticketed callback supersedes initial loading', async () => {
+    const harness = await loadHarness()
+    harness.setRawQuery('github=complete&ticket=ticket-on-entry')
+    harness.render()
+    harness.runMountedEffect()
+    harness.runGitHubMountedEffect()
+    harness.runInitialStatusEffect()
+    harness.runTicketedEffect()
+    harness.runLegacyEffect()
+    await settle()
+
+    harness.resolveGitHub({ connected: false, username: null, public_import: false, private_sync: false }, 0)
+    await settle()
+    harness.resolveGitHub({ connected: true, username: 'TicketedOnEntry', public_import: true, private_sync: false }, 1)
+    await settle()
+    expect(harness.stateUpdates).toContainEqual(expect.objectContaining({ username: 'TicketedOnEntry' }))
+    const rendered = JSON.stringify(harness.render())
+    expect(rendered.includes('Checking GitHub status')).toBe(false)
+    expect(rendered.includes('TicketedOnEntry')).toBe(true)
+    harness.cleanups()
+  })
+
+  it('does not strand legacy success when a newer ticketed callback fails', async () => {
+    const harness = await loadHarness()
+    harness.render()
+    harness.runMountedEffect()
+    harness.runGitHubMountedEffect()
+    harness.runLegacyEffect()
+    harness.resolveGitHub({ connected: true, username: 'LegacySuccess', public_import: true, private_sync: false })
+    await settle()
+    vi.advanceTimersByTime(1_000)
+
+    harness.completeGitHubOAuth.mockRejectedValueOnce(new Error('New ticket failed'))
+    harness.setRawQuery('github=complete&ticket=failing-new-ticket')
+    harness.render()
+    harness.runTicketedEffect()
+    harness.runLegacyEffect()
+    await settle()
+    vi.advanceTimersByTime(6_000)
+
+    const rendered = JSON.stringify(harness.render())
+    expect(rendered.includes('New ticket failed')).toBe(true)
+    expect(rendered.includes('GitHub account connected successfully!')).toBe(false)
     harness.cleanups()
   })
 
