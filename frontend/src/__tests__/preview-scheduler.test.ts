@@ -42,6 +42,32 @@ describe('revision preview scheduling', () => {
     scheduler.dispose()
   })
 
+  it.each(['terminal-first', 'unblock-first'] as const)('immediately releases the latest aged busy edit (%s) without a new quiet window', async order => {
+    const submit = vi.fn().mockResolvedValueOnce('job-1').mockResolvedValueOnce('job-2')
+    const scheduler = new PreviewScheduler(submit, () => now)
+    scheduler.update(true, false); scheduler.request('A'); await advance(5000)
+    scheduler.update(true, true)
+    scheduler.request('B'); await advance(1000); scheduler.request('C'); await advance(15_000)
+    expect(submit.mock.calls.map(call => call[0])).toEqual(['A'])
+    if (order === 'terminal-first') {
+      scheduler.complete('job-1'); await advance(0)
+      expect(submit).toHaveBeenCalledTimes(1)
+      scheduler.update(true, false)
+    } else {
+      scheduler.update(true, false); await advance(0)
+      expect(submit).toHaveBeenCalledTimes(1)
+      scheduler.complete('job-1')
+    }
+    await advance(0)
+    expect(submit.mock.calls.map(call => call[0])).toEqual(['A', 'C'])
+    expect(submit.mock.calls[1][1]).toBe(6000)
+    scheduler.complete('job-1'); await advance(0)
+    expect(submit).toHaveBeenCalledTimes(2)
+    scheduler.complete('job-2'); await advance(15_000)
+    expect(submit).toHaveBeenCalledTimes(2)
+    scheduler.dispose()
+  })
+
   it('handles completion arriving before the submission response', async () => {
     let acknowledge!: (job: string) => void
     const submit = vi.fn().mockImplementationOnce(() => new Promise<string>((resolve) => { acknowledge = resolve }))

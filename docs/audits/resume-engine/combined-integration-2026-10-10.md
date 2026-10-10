@@ -68,6 +68,39 @@ rollout decision. All **546** combined billing script/wrapper, workflow ordering
 renderer preflight and Modal parity tests passed with warnings as errors; full
 affected Ruff and whitespace checks passed. No production retry was performed.
 
+## Corrected-head browser queue contract
+
+[CI run 38086721592](https://github.com/sanskarpan/Latexy/actions/runs/38086721592)
+on `e2e6a61c16c2a3404cf924530c110b515155363c` passed 13 of 14 jobs, including
+the complete backend suite, canonical production build/artifacts and full-stack
+smoke. Vercel and CodeQL (zero new alerts) passed. Desktop/mobile quality passed
+**142 tests with three skips and no flaky result**. The following explicit stage
+passed **80 of 82** tests; both remaining failures were in the source-editor
+fixture, and hydration was skipped.
+
+The retained traces establish expected queue behavior rather than a runtime
+failure. In the coalescing case, job 1 completed at `21:26:16.785` UTC and job 2
+submitted at `21:26:16.800` with exactly the first source plus ` pending latest`
+(492 to 507 characters). Its subscription/state read showed processing and the
+button showed disabled `Preparing…`. The helper incorrectly required an idle
+`Compile` button despite that already-quiet successor. In the stale-mapping
+case, job 2 contained exactly the original source plus ` edited content`
+(82 to 97 characters), and was processing with disabled `Preparing…`; the test
+still looked for the older `Compiling…` label. These are mocked browser-contract
+observations, not production latency measurements.
+
+The fixture follow-up makes successor-versus-final completion expectations
+explicit, keeps source/cadence/quota assertions and final idle/no-duplicate
+checks, and uses the actual busy label. No runtime source is changed.
+Retained artifact `11681899535`, 168,346,186 bytes, SHA-256:
+`d35fd346b19f03b2a50fe5ef71c1ff834c28bf9425201c9e52f0c864964a7550`.
+Ten added unit cases exercise the actual completion helper, including missing
+PDF/subscription and incorrectly enabled busy-state failures, and both scheduler
+terminal/unblock orders with the original edit timestamp. Final validation:
+**1,582 frontend tests across 225 files**, nonincremental TypeScript, full lint,
+whitespace and independent narrow review passed. No local browser/build retry
+was performed. All exact-head gates must run again after publication.
+
 ## Scope reviewed
 
 The remaining engine delta is a broad release, not a telemetry-only patch. It

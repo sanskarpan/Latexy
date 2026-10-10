@@ -69,6 +69,7 @@ async function installFixture(page: Page) {
   const submittedAt: number[] = []
   const synctexOverrides = new Map<string, string>()
   const requestedSynctexJobs: string[] = []
+  const requestedPdfJobs: string[] = []
   const pdfDownloadGates = new Map<string, Promise<void>>()
   const subscribers = new Map<string, () => void>()
   let sequence = 0
@@ -138,6 +139,7 @@ async function installFixture(page: Page) {
       return route.fulfill({ contentType: 'text/plain', body: synctexOverrides.get(jobId) ?? fixtureSynctex() })
     }
     if (/^\/download\/editor-fixture-job-\d+$/.test(path)) {
+      requestedPdfJobs.push(path.split('/')[2])
       await pdfDownloadGates.get(path.split('/')[2])
       return route.fulfill({ contentType: 'application/pdf', body: fixturePdf() })
     }
@@ -169,7 +171,7 @@ async function installFixture(page: Page) {
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
   observe('editor-ready')
   return {
-    submitted, submittedAt, synctexOverrides, requestedSynctexJobs, unknown, errors,
+    submitted, submittedAt, synctexOverrides, requestedSynctexJobs, requestedPdfJobs, unknown, errors,
     async attachDiagnostics() {
       await Promise.all(pendingObservationReads)
       await test.info().attach('editor-hydration-timeline', {
@@ -182,12 +184,23 @@ async function installFixture(page: Page) {
       pdfDownloadGates.set(`editor-fixture-job-${index}`, new Promise<void>(resolve => { release = resolve }))
       return release
     },
-    async complete(index: number) {
+    async complete(index: number, after: 'idle' | 'next-preview' = 'idle') {
       const jobId = `editor-fixture-job-${index}`
       await expect.poll(() => subscribers.has(jobId)).toBe(true)
       subscribers.get(jobId)!()
+      // Observe this job's terminal result without waiting on its optionally
+      // held PDF response; an older visible canvas alone is not completion.
+      await expect.poll(() => requestedPdfJobs.includes(jobId)).toBe(true)
       await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
+      if (after === 'next-preview') {
+        // A newer edit may already satisfy quiet/cadence deadlines. Completing
+        // this job must release that successor, not require a transient idle UI.
+        await expect.poll(() => submitted.length).toBe(index + 1)
+        await expect.poll(() => subscribers.has(`editor-fixture-job-${index + 1}`)).toBe(true)
+        await expect(page.getByRole('button', { name: 'Preparing…', exact: true })).toBeDisabled()
+      } else {
+        await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
+      }
     },
   }
 }
@@ -226,9 +239,9 @@ test('coalesces typing, retains busy edits, and does not repeat a matching manua
   await appendText(page, ' pending latest')
   await page.waitForTimeout(15_000)
   expect(fixture.submitted).toHaveLength(1)
-  await fixture.complete(1)
+  await fixture.complete(1, 'next-preview')
   await expect.poll(() => fixture.submitted.length).toBe(2)
-  expect(fixture.submitted[1].latex_content).toContain('pending latest')
+  expect(fixture.submitted[1].latex_content).toBe(SOURCE.replace('Second line.', `Second line.${words} pending latest`))
   await fixture.complete(2)
   await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
   await appendText(page, ' manually compiled')
@@ -238,6 +251,7 @@ test('coalesces typing, retains busy edits, and does not repeat a matching manua
   await page.getByRole('button', { name: 'Auto-compile on change', exact: true }).click()
   await page.waitForTimeout(12_000)
   expect(fixture.submitted).toHaveLength(3)
+  await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
   expect(fixture.unknown).toEqual([])
   expect(fixture.errors).toEqual([])
 })
@@ -360,7 +374,7 @@ test('bounds automatic cadence even after a fast compile and cancels pending wor
   await appendText(page, ' first automatic')
   await expect.poll(() => fixture.submitted.length).toBe(1)
   await appendText(page, ' newest automatic')
-  await fixture.complete(1)
+  await fixture.complete(1, 'next-preview')
   await expect.poll(() => fixture.submitted.length).toBe(2)
   // Server receipt timing includes small transport/React scheduling variance;
   // the injected-timer unit test asserts the exact 10,000ms boundary.
@@ -371,6 +385,7 @@ test('bounds automatic cadence even after a fast compile and cancels pending wor
   await auto.click()
   await page.waitForTimeout(12_000)
   expect(fixture.submitted).toHaveLength(2)
+  await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
   expect(fixture.unknown).toEqual([])
   expect(fixture.errors).toEqual([])
 })
@@ -389,7 +404,8 @@ test('retains the prior PDF while busy and disables stale selections if the new 
   await appendText(page, ' edited content')
   await expect.poll(() => fixture.submitted.length).toBe(2)
   await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Compiling…', exact: true })).toBeDisabled()
+  expect(fixture.submitted[1].latex_content).toBe(SOURCE.replace('Second line.', 'Second line. edited content'))
+  await expect(page.getByRole('button', { name: 'Preparing…', exact: true })).toBeDisabled()
   await fixture.complete(2)
   await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()
