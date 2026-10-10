@@ -3694,15 +3694,18 @@ class ApiClient {
   //  Notification preferences (Feature 19)                           //
   // ---------------------------------------------------------------- //
 
-  async getNotificationPrefs(): Promise<NotificationPrefs> {
-    return this.request<NotificationPrefs>('/settings/notifications')
+  async getNotificationPrefs(accountContext?: AccountPreferenceRequestContext): Promise<NotificationPrefs> {
+    return this.request<NotificationPrefs>('/settings/notifications', {}, accountContext)
   }
 
-  async updateNotificationPrefs(prefs: NotificationPrefs): Promise<NotificationPrefs> {
+  async updateNotificationPrefs(
+    prefs: NotificationPrefs,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<NotificationPrefs> {
     return this.request<NotificationPrefs>('/settings/notifications', {
       method: 'PUT',
       body: JSON.stringify(prefs),
-    })
+    }, accountContext)
   }
 
   // ---------------------------------------------------------------- //

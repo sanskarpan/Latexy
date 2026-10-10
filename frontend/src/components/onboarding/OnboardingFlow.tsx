@@ -656,7 +656,10 @@ export function useOnboarding(accountScope?: OnboardingAccountScope) {
     const isCurrent = () => isCurrentOwner(identity)
       && actionRevisionRef.current === actionRevision
       && requestRevisionRef.current === requestRevision
-    const context = { authToken, isCurrent: () => isCurrent() && confirmedRef.current }
+    const context = {
+      authToken,
+      isCurrent: () => isCurrent() && confirmedRef.current && authTokenRef.current === authToken,
+    }
     const completedKey = ownerStorageKey(ONBOARDING_OWNER_KEY_PREFIX, ownerId)
     if (completed) {
       localStorage.setItem(completedKey, 'true')
@@ -708,7 +711,10 @@ export function useOnboarding(accountScope?: OnboardingAccountScope) {
     const isCurrent = () => isCurrentOwner(identity)
       && actionRevisionRef.current === actionRevision
       && requestRevisionRef.current === requestRevision
-    const context = { authToken, isCurrent: () => isCurrent() && confirmedRef.current }
+    const context = {
+      authToken,
+      isCurrent: () => isCurrent() && confirmedRef.current && authTokenRef.current === authToken,
+    }
     const completedKey = ownerStorageKey(ONBOARDING_OWNER_KEY_PREFIX, ownerId)
     const currentReplayKey = ownerStorageKey(ONBOARDING_REPLAY_KEY_PREFIX, ownerId)
     localStorage.removeItem(completedKey)

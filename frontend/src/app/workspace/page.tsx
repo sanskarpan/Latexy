@@ -1766,6 +1766,7 @@ export default function WorkspacePage() {
       )}
 
       <OnboardingFlow
+        key={session?.user?.id ?? 'anonymous'}
         isOpen={isOnboardingOpen}
         onComplete={completeOnboarding}
         onSkip={skipOnboarding}

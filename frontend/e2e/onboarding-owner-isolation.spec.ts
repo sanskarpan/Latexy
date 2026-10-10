@@ -397,6 +397,29 @@ test.describe('onboarding owner-isolation acceptance', () => {
     await assertClean(state, 'A completion then B false')
   })
 
+  test('tour progress resets for B and returning A without a document reload', async ({ page }) => {
+    const state = await installFixture(page, { initialOwner: 'A', onboarded: { A: false, B: false } })
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await waitForSessionOwner(page, 'A')
+    await waitForMeOwner(page, 'A')
+    await expect(page.getByRole('dialog', { name: 'Welcome to Latexy' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(page.getByRole('dialog').getByText('2 / 4', { exact: true })).toBeVisible()
+
+    await switchOwner(page, state, 'B')
+    await waitForMeOwner(page, 'B')
+    await expect(page.getByRole('dialog', { name: 'Welcome to Latexy' })).toBeVisible()
+    await expect(page.getByRole('dialog').getByText('1 / 4', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(page.getByRole('dialog').getByText('2 / 4', { exact: true })).toBeVisible()
+
+    await switchOwner(page, state, 'A')
+    await expect(page.getByRole('dialog', { name: 'Welcome to Latexy' })).toBeVisible()
+    await expect(page.getByRole('dialog').getByText('1 / 4', { exact: true })).toBeVisible()
+    expect(state.patches).toEqual([])
+    await assertClean(state, 'ABA tour progress')
+  })
+
   test('held server-true reconciliation does not flash the tour', async ({ page }) => {
     const state = await installFixture(page, { initialOwner: 'B', onboarded: { A: false, B: true }, holdInitialMe: 'B' })
     await page.goto('/workspace', { waitUntil: 'domcontentloaded' })

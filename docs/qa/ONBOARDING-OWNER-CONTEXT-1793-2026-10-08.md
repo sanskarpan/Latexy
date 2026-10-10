@@ -129,3 +129,42 @@ are in the former's sibling output directory. Publish this checkpoint to draft
 #1858; require fresh exact-head CI and normal protected merge followed by
 production verification before release acceptance. Notification draft #1855
 and legacy callback issue #1794 remain separate, as does hydration #1772.
+
+## Current-main release review — 2026-10-10
+
+Refreshed the existing branch from canonical main
+`b96aa3b59463b82c2a6ce1df2a0ab79aa5960890`, including notification owner
+isolation and GitHub OAuth ticket retention. The workflow conflict retains
+both onboarding and notification browser regressions. The newly inherited
+notification harness now has an indexed, dependency-aware `useMemo` slot;
+its existing assertions are unchanged.
+
+The change remains necessary: main still has a global anonymous completion
+key and unscoped onboarding preference requests. Independent review also found
+that dialog-local step progress survived account switching. Workspace now
+keys `OnboardingFlow` by stable owner ID, so A/B/A transitions remount the tour
+at step one while same-owner token rotation preserves current progress. A new
+production-browser case exercises both switches without reloading the page.
+
+Local cloud verification: 173 frontend unit files / 1,142 tests passed; full
+non-incremental TypeScript and changed-file ESLint passed, plus `git diff
+--check`. These runs use Node 24.19.0 and the existing frozen Next 15.5.27
+dependencies through read-only links; no install was performed through the
+links. An initial unit invocation from the repository root failed cwd-relative
+file lookups; rerunning from the documented frontend directory passed. These
+are unit/test-double results, not browser acceptance. The new browser test and
+full Node 22 acceptance must pass on the final GitHub CI head before merge.
+Local Chromium is not claimed because the cloud browser process has an IPC
+restriction. No security setting was changed to bypass it.
+
+No live account, provider, or payment mutation is part of this verification.
+Preference persistence remains best-effort and does not promise atomic writes
+across independent tabs/devices. Other draft PRs were not merged.
+
+A second review found a narrow pre-dispatch credential-rotation window for
+queued writes: the owner's current credential changed during render before
+AuthSync published it to the shared API client. Both write contexts now compare
+the captured credential with the hook's current token at dispatch, without
+invalidation of already-dispatched UI state. Skip and replay regressions were
+added first: both failed before the guard and pass after it. The complete
+18-case onboarding runtime suite is included in the 1,142-test result above.

@@ -548,6 +548,36 @@ describe('useOnboarding runtime lifecycle', () => {
     expect(harness.result.isOnboardingOpen).toBe(true)
   })
 
+  it.each(['skipOnboarding', 'resetOnboarding'] as const)('invalidates queued %s dispatch when the same owner rotates credentials', async (action) => {
+    const write = deferred<ReturnType<typeof me>>()
+    mocks.getMe.mockResolvedValueOnce(me(false))
+    mocks.updateMePreferences.mockReturnValueOnce(write.promise)
+    const harness = createHarness({ ownerId: 'account-a', authToken: 'token-a', confirmed: true })
+    harness.render()
+    harness.commit()
+    await settle()
+    harness.render()
+    harness.commit()
+    harness.result[action]()
+    const oldContext = mocks.updateMePreferences.mock.calls[0][1] as { authToken: string; isCurrent: () => boolean }
+    expect(oldContext.isCurrent()).toBe(true)
+
+    harness.scope = { ownerId: 'account-a', authToken: 'token-a-rotated', confirmed: true }
+    harness.render()
+    // The shared API client may still hold token-a until AuthSync's effect.
+    // Reject the old dispatch immediately, before committing any effects.
+    expect(oldContext.isCurrent()).toBe(false)
+    expect(harness.result.onboardingReady).toBe(true)
+    expect(harness.result.isOnboardingOpen).toBe(action === 'resetOnboarding')
+    harness.commit()
+    write.resolve(me(action === 'skipOnboarding'))
+    await settle()
+    harness.render()
+    harness.result.completeOnboarding()
+    expect(mocks.updateMePreferences.mock.calls[1][1]).toMatchObject({ authToken: 'token-a-rotated' })
+    expect(mocks.updateMePreferences.mock.calls[1][1].isCurrent()).toBe(true)
+  })
+
   it('releases an old action without clearing a newer owner action', async () => {
     const firstRead = deferred<ReturnType<typeof me>>()
     const secondRead = deferred<ReturnType<typeof me>>()
