@@ -113,14 +113,14 @@ called. GitHub retains screenshots/traces for 14 days.
 
 ## Local verification checkpoint
 
-- Frontend: 192 files / 1,402 tests passed; TypeScript, strict ESLint, Node 22
+- Frontend: 192 files / 1,405 tests passed; TypeScript, strict ESLint, Node 22
   production build and artifact validation passed. Extension: 13 tests plus
   syntax/package validation passed.
 - Actual local HTTP also verified Next/Better Auth signup, its cookie session,
   the same session's FastAPI identity, admin page HTTP delivery and role-based
   API denial. This does not execute or visually validate client-side React.
-- Full backend checkpoint: 5,414 passed, 15 failed and four skipped. The later
-  canonical audit-field change passed 707 role/admin/audit tests, including 11
+- Full backend checkpoint: 5,431 passed, 15 failed and four skipped. The
+  canonical audit-field changes also passed 713 role/admin/audit tests, including 17
   new canonical-field and rejected-input cases. All fifteen
   failures are host TeX format/font failures reproduced with the exact same test
   IDs on the unchanged prior head; see [the comparison](role-environment-comparison.json).
@@ -157,7 +157,8 @@ Studio control mismatch that its original assertions missed: Recompile was gone,
 but Auto still appeared. The follow-through applies the same composite A09/tool
 admission to Auto (including editor status), SyncTeX, error explanation, ATS,
 trim, and already-open analysis/import dialogs. New browser assertions require
-Auto and SyncTeX controls to be absent OFF. Stored Auto preference and admitted
+Auto and SyncTeX controls to be absent OFF. The empty ATS status also disappears
+when there is no admitted result, while a saved score (including zero) remains readable. Stored Auto preference and admitted
 imports/analysis/optimization remain recoverable; independently disabled D03
 review/apply and D19 industry selection are not re-enabled by recovery UI.
 
@@ -165,7 +166,11 @@ An inline CodeQL review flagged request-derived role/feature audit fields even
 though the endpoint validates their allowlist. The endpoint now resolves both
 fields to canonical registry objects before writing or logging. Rejected role,
 unknown/baseline feature and CR/LF injection cases cannot write or emit a success
-audit event; the authenticated admin identity remains server-owned.
+audit event; the authenticated admin identity remains server-owned. Because the
+shared JSON formatter drops non-allowlisted `extra` fields, this event now records
+its non-secret identifiers explicitly in a parameterized message, with CR/LF and
+Unicode line breaks escaped at the sink. Plain-text and JSON formatter regressions
+prove one record with useful fields. This follows [CodeQL's log-injection guidance](https://codeql.github.com/codeql-query-help/python/py-log-injection/); no scanner suppression is used.
 
 The Settings browser group also detected OAuth callback replay after the account
 boundary remounted the page with its old query parameters. A component-local ref

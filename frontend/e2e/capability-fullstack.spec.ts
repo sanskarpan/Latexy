@@ -113,6 +113,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await expect(guestPage.getByRole('button', { name: /recompile/i })).toHaveCount(0)
     await expect(guestPage.locator('button[aria-label="Auto-compile on change"]')).toHaveCount(0)
     await expect(guestPage.locator('[aria-label="Source and PDF synchronization"]')).toHaveCount(0)
+    await expect(guestPage.getByText('ATS —', { exact: true })).toHaveCount(0)
     const guestDenied = await guestContext.request.post(`${backend}/jobs/submit`, {
       data: { job_type: 'latex_compilation', latex_content: 'Synthetic source' },
     })

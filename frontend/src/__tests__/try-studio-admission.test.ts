@@ -5,6 +5,7 @@ import ts from 'typescript'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CapabilityGate from '@/components/CapabilityGate'
 import SourcePdfDivider from '@/components/SourcePdfDivider'
+import ATSScoreBadge from '@/components/ATSScoreBadge'
 
 const grants = vi.hoisted(() => new Set<string>())
 vi.mock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: (key: string) => grants.has(key) }) }))
@@ -53,6 +54,7 @@ const autoButtons = buttons.filter((node) => node.openingElement.attributes.getT
 const manual = buttons.find((node) => node.openingElement.attributes.getText(page).includes('aria-label="Recompile"'))!
 const divider = find(page, (node) => ts.isJsxSelfClosingElement(node) && node.tagName.getText(page) === 'SourcePdfDivider')[0]
 const autoStatus = find(editor, (node) => ts.isJsxExpression(node) && node.expression?.getText(editor).startsWith("can('c06') && onAutoCompile &&") === true)[0] as ts.JsxExpression
+const atsStatus = find(editor, (node) => ts.isJsxExpression(node) && node.expression?.getText(editor).startsWith("can('d18') && (atsScore !== undefined || atsScoreLoading)") === true)[0] as ts.JsxExpression
 const icon = () => null
 function render(expression: ts.Node, scope: Record<string, unknown>) {
   const result = execute(expression, {
@@ -143,6 +145,49 @@ describe('Studio composite admission controls', () => {
     const callback = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), { ...policy(true, { atsDisplay: 85 }), openTool })
     callback()
     expect(openTool).toHaveBeenCalledWith('ats')
+  })
+
+  it('omits the empty ATS status and stale loading state when Studio admission is OFF', () => {
+    grants.add('d18')
+    for (const quickATSLoading of [false, true]) {
+      const scope = { ...policy(), quickATSScore: null, quickATSLoading }
+      const atsScore = execute(attribute('LaTeXEditor', 'atsScore'), scope)
+      const atsScoreLoading = execute(attribute('LaTeXEditor', 'atsScoreLoading'), scope)
+      const onATSBadgeClick = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), scope)
+      expect(atsScore).toBeUndefined()
+      expect(atsScoreLoading).toBeUndefined()
+      expect(onATSBadgeClick).toBeUndefined()
+      expect(render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })).toBe('')
+    }
+  })
+
+  it('keeps admitted ATS scores readable after Studio denial, including a genuine zero', () => {
+    grants.add('d18')
+    for (const savedScore of [0, 85]) {
+      const scope = { ...policy(true, { atsDisplay: savedScore }), quickATSScore: null, quickATSLoading: true, openTool: vi.fn() }
+      const atsScore = execute(attribute('LaTeXEditor', 'atsScore'), scope)
+      const atsScoreLoading = execute(attribute('LaTeXEditor', 'atsScoreLoading'), scope)
+      const onATSBadgeClick = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), scope)
+      expect(atsScore).toBe(savedScore)
+      expect(atsScoreLoading).toBeUndefined()
+      const html = render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })
+      expect(html).toContain(`ATS ${savedScore}`)
+      expect(html).not.toContain('animate-spin')
+      onATSBadgeClick()
+      expect(scope.openTool).toHaveBeenCalledWith('ats')
+    }
+  })
+
+  it('restores the enabled ATS badge handoff without replacing its live quick-score semantics', () => {
+    grants.add('a09'); grants.add('d18')
+    const scope = { ...policy(true, { atsDisplay: 85 }), quickATSScore: 92, quickATSLoading: false, openTool: vi.fn() }
+    const atsScore = execute(attribute('LaTeXEditor', 'atsScore'), scope)
+    const atsScoreLoading = execute(attribute('LaTeXEditor', 'atsScoreLoading'), scope)
+    const onATSBadgeClick = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), scope)
+    expect(atsScore).toBe(92)
+    expect(atsScoreLoading).toBe(false)
+    expect(render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })).toContain('ATS 92')
+    expect(execute(attribute('LaTeXEditor', 'atsScoreLoading'), { ...scope, quickATSLoading: true })).toBe(true)
   })
 
   it('hides both trim actions and passes composite admission to already-open dialogs', () => {

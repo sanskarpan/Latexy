@@ -1102,8 +1102,8 @@ export default function TryPage() {
           autoCompileEnabled={autoCompile}
           autoCompileBusy={isProcessing || isSubmitting}
           autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try`}
-          atsScore={quickATSScore}
-          atsScoreLoading={quickATSLoading}
+          atsScore={atsAllowed ? quickATSScore : hasATSResult ? atsDisplay : undefined}
+          atsScoreLoading={atsAllowed ? quickATSLoading : undefined}
           onATSBadgeClick={atsAllowed || hasATSResult ? () => openTool('ats') : undefined}
           onExplainError={explainErrorAllowed ? handleExplainError : undefined}
           pageCount={stream.pageCount}

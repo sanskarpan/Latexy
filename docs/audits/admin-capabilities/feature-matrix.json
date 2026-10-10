@@ -468,7 +468,7 @@
           {
             "role": "anonymous",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "anonymous Studio Recompile OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; additional Auto/SyncTeX assertions require latest-head CI",
+            "ui": "anonymous Studio Recompile/Auto OFF/ON and SyncTeX OFF passed at e0881b31db0cd534d7fed4868ebe5fc2a0403ee6; empty ATS badge assertion requires latest-head CI",
             "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
@@ -497,10 +497,10 @@
         "representativeRealFullStackEvidence": [
           {
             "status": "passed_prior_head_real_next_fastapi_postgresql_redis",
-            "commit": "611484de5b194adf02e145ac29fd7d836403a829",
-            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38049161531/job/114205527502",
+            "commit": "e0881b31db0cd534d7fed4868ebe5fc2a0403ee6",
+            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38050964761/job/114210546206",
             "testFile": "frontend/e2e/capability-fullstack.spec.ts",
-            "scope": "anonymous A09 OFF hides Recompile, retains source, denies jobs API; ON restores Recompile; screenshot inspection found extra Auto control, corrected and requiring latest-head rerun",
+            "scope": "anonymous A09 OFF hides Recompile/Auto/SyncTeX, retains source and denies jobs API; ON restores Recompile/Auto; screenshot inspection found an empty ATS indicator, corrected and requiring latest-head rerun",
             "latestHeadResult": "Check the PR exact-head CI and review summary; this historical result does not verify later changes."
           }
         ],
@@ -653,21 +653,21 @@
           {
             "role": "user",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
+            "ui": "representative real full-stack B03 OFF/ON passed at e0881b31db0cd534d7fed4868ebe5fc2a0403ee6; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
+            "ui": "representative real full-stack B03 OFF/ON passed at e0881b31db0cd534d7fed4868ebe5fc2a0403ee6; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
-            "ui": "representative real full-stack B03 OFF/ON passed at 611484de5b194adf02e145ac29fd7d836403a829; latest-head CI remains required",
+            "ui": "representative real full-stack B03 OFF/ON passed at e0881b31db0cd534d7fed4868ebe5fc2a0403ee6; latest-head CI remains required",
             "api": "real PostgreSQL/Redis ASGI and local TCP HTTP OFF/ON denial verified",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
@@ -675,8 +675,8 @@
         "representativeRealFullStackEvidence": [
           {
             "status": "passed_prior_head_real_next_fastapi_postgresql_redis",
-            "commit": "611484de5b194adf02e145ac29fd7d836403a829",
-            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38049161531/job/114205527502",
+            "commit": "e0881b31db0cd534d7fed4868ebe5fc2a0403ee6",
+            "run": "https://github.com/sanskarpan/Latexy/actions/runs/38050964761/job/114210546206",
             "testFile": "frontend/e2e/capability-fullstack.spec.ts",
             "scope": "user/support/admin B03 OFF/ON UI and direct API; support mobile; owner source and admin recovery; user cross-tab refresh without navigation",
             "latestHeadResult": "Check the PR exact-head CI and review summary; this historical result does not verify later changes."

@@ -217,6 +217,22 @@ async def update_matrix_cell(
     return await entitlement_service.get_state(db)
 
 
+def _log_role_toggle(admin_user_id: str, role: str, feature_key: str, enabled: bool) -> None:
+    """Keep the audit useful with JSON or plain-text handlers and one record per change."""
+    # Inputs are canonical registry values/server-owned identity. Escape line
+    # breaks again at the sink so a future caller cannot forge audit records.
+    def one_line(value: str) -> str:
+        return (value.replace("\r", "\\r").replace("\n", "\\n")
+                .replace("\x85", "\\x85").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+    # JsonFormatter intentionally allowlists extra fields and excludes these.
+    # Include bounded identifiers in the message so the audit is not empty.
+    logger.info(
+        "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
+        one_line(admin_user_id), one_line(role), one_line(feature_key), bool(enabled),
+    )
+
+
 @router.patch("/admin/entitlements/roles")
 async def update_role_matrix_cell(
     body: RoleMatrixUpdateRequest,
@@ -241,10 +257,7 @@ async def update_role_matrix_cell(
     await entitlement_service.set_role_cell(
         role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
     )
-    logger.info("admin_entitlement_role_updated", extra={
-        "admin_user_id": admin_user_id, "role": role,
-        "feature_key": feature.key, "enabled": body.enabled,
-    })
+    _log_role_toggle(admin_user_id, role, feature.key, body.enabled)
     return await entitlement_service.get_state(db)
 
 
