@@ -49,6 +49,12 @@ from ..services.resume_builder_service import (
     StructuredResume,
     resume_builder_service,
 )
+from ..services.resume_source_service import (
+    apply_source_change,
+)
+from ..services.resume_source_service import (
+    invalidate_anonymous_share_pdf as _invalidate_anonymous_share_pdf,
+)
 from ..services.resume_validation_service import (
     pydantic_validation_issues,
     validation_error_detail,
@@ -476,25 +482,17 @@ def _builder_payload(resume: Resume, category: str) -> BuilderResumeResponse:
     )
 
 
-def _invalidate_anonymous_share_pdf(resume: Resume) -> None:
-    meta = dict(resume.resume_settings or {})
-    had_cached_share = "share_anonymous_job_id" in meta or "share_anonymous_pending" in meta
-    meta.pop("share_anonymous_job_id", None)
-    meta.pop("share_anonymous_pending", None)
-    if had_cached_share:
-        resume.resume_settings = meta
-        flag_modified(resume, "resume_settings")
-
-
 async def _sync_linked_variants(parent: Resume, db: AsyncSession) -> None:
     """Regenerate direct linked variants after their master source changes."""
     if not parent.structured_content:
         return
+    # The filtered lock rechecks link eligibility after a concurrent source
+    # writer commits; a freshly detached variant must never be regenerated.
     result = await db.execute(
         select(Resume).where(
             Resume.parent_resume_id == parent.id,
             Resume.content_source == "builder_variant",
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     for variant in result.scalars().all():
         template_id = variant.selected_template_id or parent.selected_template_id
@@ -1108,20 +1106,10 @@ async def update_resume(
         and update_data["latex_content"] is not None
         and update_data["latex_content"] != resume.latex_content
     )
+    if latex_changed:
+        apply_source_change(resume, update_data["latex_content"])
     for key, value in update_data.items():
         setattr(resume, key, value)
-
-    if latex_changed and (
-        (resume.selected_template_id and resume.structured_content) or resume.content_source == "builder_variant"
-    ):
-        resume.builder_status = "detached"
-        resume.content_source = "manual_latex"
-        resume.variant_visibility = None
-
-    # Content changed → invalidate the cached anonymous (redacted) share PDF so the
-    # next create_share_link call regenerates it from the updated content.
-    if latex_changed:
-        _invalidate_anonymous_share_pdf(resume)
 
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -1341,18 +1329,27 @@ class DiffWithParentResponse(BaseModel):
 
 
 async def _linked_variant_context(
-    resume_id: str, user_id: str, db: AsyncSession
+    resume_id: str, user_id: str, db: AsyncSession, *, for_update: bool = False,
 ) -> tuple[Resume, Resume, ResumeTemplate]:
     variant = await _verify_resume_ownership(db, resume_id, user_id)
     if variant.content_source != "builder_variant" or not variant.parent_resume_id:
         raise HTTPException(status_code=409, detail="This is not a source-linked builder variant")
-    parent_result = await db.execute(
-        select(Resume).where(
-            Resume.id == variant.parent_resume_id,
-            Resume.user_id == user_id,
-        )
-    )
-    parent = parent_result.scalar_one_or_none()
+    parent_id = variant.parent_resume_id
+    parent_query = select(Resume).where(Resume.id == parent_id, Resume.user_id == user_id)
+    if for_update:
+        # Match parent-save/sync lock order. Never lock a variant then wait on
+        # its parent, or simultaneous visibility/master saves can deadlock.
+        parent_query = parent_query.with_for_update().execution_options(populate_existing=True)
+    parent = (await db.execute(parent_query)).scalar_one_or_none()
+    if for_update:
+        variant = (await db.execute(
+            select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+            .with_for_update().execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        if variant is None:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        if variant.content_source != "builder_variant" or variant.parent_resume_id != parent_id:
+            raise HTTPException(status_code=409, detail="This is not a source-linked builder variant")
     if not parent or not parent.structured_content:
         raise HTTPException(status_code=409, detail="The variant source is no longer available")
     template_id = variant.selected_template_id or parent.selected_template_id
@@ -1403,7 +1400,7 @@ async def update_variant_visibility(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    variant, parent, template = await _linked_variant_context(resume_id, user_id, db)
+    variant, parent, template = await _linked_variant_context(resume_id, user_id, db, for_update=True)
     try:
         visibility = validate_variant_visibility(parent.structured_content, body.visibility.model_dump())
     except ValueError as exc:
@@ -1425,6 +1422,8 @@ async def update_variant_visibility(
     effective = apply_variant_visibility(parent.structured_content, visibility)
     render = resume_builder_service.render(effective, template.category)
     variant.variant_visibility = visibility.model_dump()
+    if render.latex_content != variant.latex_content:
+        _invalidate_anonymous_share_pdf(variant)
     variant.latex_content = render.latex_content
     variant.structured_version = parent.structured_version
     variant.updated_at = datetime.now(timezone.utc)
@@ -2057,7 +2056,12 @@ async def restore_optimization(
 ):
     """Restore a resume to a previously optimized version."""
     # Verify ownership of resume
-    res_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
+    res_result = await db.execute(
+        select(Resume)
+        .where(Resume.id == resume_id, Resume.user_id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     resume = res_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -2074,8 +2078,7 @@ async def restore_optimization(
     if not opt:
         raise HTTPException(status_code=404, detail="Optimization record not found")
 
-    resume.latex_content = opt.optimized_latex
-    resume.updated_at = datetime.now(timezone.utc)
+    apply_source_change(resume, opt.optimized_latex)
     await db.commit()
     return {"success": True, "latex_content": opt.optimized_latex}
 

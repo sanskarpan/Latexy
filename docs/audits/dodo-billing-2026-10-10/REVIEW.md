@@ -170,6 +170,24 @@ constant and passes temporary paths/module URLs through argv instead of source
 interpolation. All eight lifecycle/cache tests and the full frontend unit suite
 pass without weakening their assertions or suppressing the rule.
 
+Before merge, a bounded audit found an additional source-loss path: restore,
+suggestion acceptance and generated-result persistence could change source while
+leaving an older builder draft active. GitHub pull also missed linked variants,
+whose structured data intentionally resides on their parent. The follow-up uses
+one explicit changed-source helper for those writers and ordinary source PUT;
+it detaches the builder/variant, clears variant visibility and invalidates cached
+anonymous PDFs, preserving no-op/replay state and unrelated metadata. Builder
+save, linked synchronization and visibility editing remain structured writers.
+Linked synchronization now locks/refetches its filtered rows; visibility PATCH
+locks parent then variant and revalidates the link. GET remains read-only.
+GitHub rechecks the owner row and sync settings after network I/O.
+
+The repair passed 225 affected backend tests, including 32 new real-PostgreSQL
+cases, and a 698-test combined billing/rollout/builder regression run (overlapping
+counts). Independent frozen-source review found no blocker. The preceding
+`b18edf50` passed all 14 CI jobs, Vercel and CodeQL with zero new alerts; that
+result does not replace the source-repair publication's exact-head CI.
+
 ## Still requires provider or deployment acceptance
 
 These are not certified by synthetic tests or a merge:
