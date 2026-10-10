@@ -1,0 +1,135 @@
+{
+  "measured_at_utc": "2026-10-08T13:35:36.676Z",
+  "frontend_url": "http://localhost:5361",
+  "backend_url": "http://127.0.0.1:8530",
+  "compiler": null,
+  "build_kind": "production",
+  "source_commit": "3d556b8771ffcb48d0fbe3e547dd29a5df7b989e",
+  "environment": "isolated local CPU Celery, warm seed image, fresh browser context",
+  "scenario": "fresh guest saves a field before first PDF",
+  "limitations": [
+    "production Next and local backend; excludes production deployment/Modal latency",
+    "Three functional samples do not support percentile claims",
+    "Host resource contention is uncontrolled"
+  ],
+  "samples": [],
+  "failures": [
+    {
+      "type": "probe",
+      "message": "locator.waitFor: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /^Experience · bullet Built internal design system used across 6 product surfaces/ }) to be visible\u001b[22m\n"
+    }
+  ],
+  "console_errors": [
+    "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+    "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+    "Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED",
+    "Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED",
+    "Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED",
+    "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+    "Failed to load resource: net::ERR_EMPTY_RESPONSE"
+  ],
+  "quota_cooldown_waits": [],
+  "diagnostics": {
+    "jobs": [],
+    "states": [],
+    "errors": [],
+    "geometry": [],
+    "requests": [
+      {
+        "origin": "http://localhost:5361",
+        "path": "/api/auth/get-session",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/config/feature-flags",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/tenants/resolve-host",
+        "method": "GET"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/",
+        "method": "GET"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/login",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      }
+    ],
+    "failedRequests": [
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/config/feature-flags",
+        "error": "net::ERR_EMPTY_RESPONSE"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/telemetry/frontend",
+        "error": "net::ERR_EMPTY_RESPONSE"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/telemetry/frontend",
+        "error": "net::ERR_SOCKET_NOT_CONNECTED"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/telemetry/frontend",
+        "error": "net::ERR_SOCKET_NOT_CONNECTED"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/tenants/resolve-host",
+        "error": "net::ERR_SOCKET_NOT_CONNECTED"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "error": "net::ERR_EMPTY_RESPONSE"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "error": "net::ERR_EMPTY_RESPONSE"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "origin": "http://localhost:5361",
+        "path": "/login",
+        "error": "net::ERR_ABORTED"
+      }
+    ],
+    "httpTimings": [
+      {
+        "path": "/ats/quick-score",
+        "status": 200,
+        "duration_ms": 2674
+      }
+    ],
+    "eventTimings": []
+  }
+}

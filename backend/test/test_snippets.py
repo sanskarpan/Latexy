@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import _insert_session
 from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import text
@@ -22,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.snippet_routes import _check_content_safety
 from app.database.models import Snippet, SnippetInstall, SnippetUpvote
+
+from .conftest import _insert_session
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

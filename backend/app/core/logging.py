@@ -110,8 +110,9 @@ class JsonFormatter(logging.Formatter):
         # of one opaque duration, and can be grepped/aggregated by "outcome" and
         # "compiler" across all compiles.
         for key in (
-            "compiler", "outcome", "error_type",
+            "compiler", "outcome", "error_type", "phase",
             "queue_wait_seconds", "cold_start_seconds",
+            "worker_import_to_first_task_seconds",
             "compile_subprocess_seconds", "reporting_seconds", "total_task_seconds",
             "optimization_seconds", "ats_scoring_seconds",
         ):

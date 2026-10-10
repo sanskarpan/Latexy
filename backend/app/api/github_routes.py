@@ -17,6 +17,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import cache_manager, get_redis_client
 from ..database.connection import get_db
 from ..database.models import Resume, User
@@ -736,7 +737,8 @@ async def import_github_projects(
         # ambiguous immediately before invoking the broker/Modal submit helper.
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        submit_github_import(
+        await submit_async(
+            submit_github_import,
             job_id=job_id,
             user_id=user_id,
             user_plan=resolve_plan_family(user_plan),

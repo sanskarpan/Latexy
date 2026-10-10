@@ -122,13 +122,13 @@ def test_fresh_runtime_owned_cache_warms_before_30_second_document(monkeypatch):
         assert any(names.glob("luaotfload-names.*"))
         assert all(path.stat().st_uid == os.getuid() for path in isolated.rglob("*"))
         with tempfile.TemporaryDirectory(prefix="latexy-warmed-document-") as jobs:
-            original_env = ls.engine_env
-
-            def prepared_env(compiler):
-                return {**original_env(compiler), "TEXMFVAR": str(cache_dir), "TEXMFCONFIG": str(config_dir)}
-
+            # Seed a private job cache with fixed trusted setup data. Never
+            # replace the renderer's job-local writable prefix with a shared one.
+            job_id = str(uuid4())
+            job_cache = Path(jobs) / job_id / ".tex-cache"
+            shutil.copytree(cache_dir, job_cache)
+            monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
             monkeypatch.setattr(orch.settings, "TEMP_DIR", Path(jobs))
-            monkeypatch.setattr(orch, "engine_env", prepared_env)
             monkeypatch.setattr(orch, "docker_engine_available", lambda: False)
             monkeypatch.setattr(orch, "assert_local_engine_allowed", lambda _job: None)
             monkeypatch.setattr(orch, "is_cancelled", lambda _job: False)
@@ -137,6 +137,6 @@ def test_fresh_runtime_owned_cache_warms_before_30_second_document(monkeypatch):
             monkeypatch.setattr(orch, "cache_compile_log", lambda *_args: None)
             monkeypatch.setattr(orch, "record_compile", lambda *_args, **_kwargs: None)
             monkeypatch.setattr(orch, "cache_compile_output", lambda _job, path: (path / "resume.pdf").read_bytes())
-            result = orch._run_latex_stage(str(uuid4()), warmup.FONT_CACHE_SOURCE, compiler="lualatex", timeout_seconds=30)
+            result = orch._run_latex_stage(job_id, warmup.FONT_CACHE_SOURCE, compiler="lualatex", timeout_seconds=30)
             assert result[0] is True, result[2]
             assert result[4].startswith(b"%PDF")

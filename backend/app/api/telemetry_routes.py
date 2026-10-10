@@ -19,7 +19,7 @@ router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 # Prometheus label values must come from a bounded set to avoid a cardinality
 # bomb. Unknown (attacker-controlled) names/routes are bucketed to "other".
 _OTHER_LABEL = "other"
-_WEB_VITAL_NAMES = frozenset({"LCP", "FID", "CLS", "TTFB", "INP", "FCP", "TTI"})
+_WEB_VITAL_NAMES = frozenset({"LCP", "FID", "CLS", "TTFB", "INP", "FCP", "TTI", "PDF_RENDER_PAINT"})
 _BUSINESS_EVENT_NAMES = frozenset({"page_view", "job_submit"})
 _KNOWN_ROUTES = frozenset({
     "/",

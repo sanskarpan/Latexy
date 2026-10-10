@@ -25,6 +25,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..database.connection import get_db
 from ..database.models import (
     Compilation,
@@ -49,12 +50,8 @@ from ..services.resume_builder_service import (
     StructuredResume,
     resume_builder_service,
 )
-from ..services.resume_source_service import (
-    apply_source_change,
-)
-from ..services.resume_source_service import (
-    invalidate_anonymous_share_pdf as _invalidate_anonymous_share_pdf,
-)
+from ..services.resume_source_service import apply_source_change
+from ..services.resume_source_service import invalidate_anonymous_share_pdf as _invalidate_anonymous_share_pdf
 from ..services.resume_validation_service import (
     pydantic_validation_issues,
     validation_error_detail,
@@ -145,6 +142,7 @@ class ResumeResponse(ResumeBase):
     builder_status: str = "detached"
     structured_content: Optional[Dict[str, Any]] = None
     structured_version: int = 1
+    content_revision: int = 1
     # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
     metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
     share_token: Optional[str] = None
@@ -227,6 +225,7 @@ def _resume_response_from_obj(resume: Any, *, access_role: str = "owner") -> Res
         "builder_status": _typed_attr(resume, "builder_status", str, "detached"),
         "structured_content": _typed_attr(resume, "structured_content", dict),
         "structured_version": int(getattr(resume, "structured_version", 1) or 1),
+        "content_revision": _typed_attr(resume, "content_revision", int, 1),
         "metadata": _typed_attr(resume, "resume_settings", dict),
         "share_token": _typed_attr(resume, "share_token", str),
         "share_url": _typed_attr(resume, "share_url", str),
@@ -714,7 +713,7 @@ async def create_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for resume %s",
@@ -1106,10 +1105,25 @@ async def update_resume(
         and update_data["latex_content"] is not None
         and update_data["latex_content"] != resume.latex_content
     )
+    previous_imported_document = None
     if latex_changed:
+        from ..services.resume_engine.imported_identity_db import ensure_imported_projection
+
+        # Source CAS and collaborator recheck above already hold the document
+        # lock. Metadata preparation must remain in that same transaction.
+        category = None
+        if resume.selected_template_id:
+            template = await db.get(ResumeTemplate, resume.selected_template_id)
+            category = template.category if template else None
+        previous_imported_document = await ensure_imported_projection(db, resume, category)
         apply_source_change(resume, update_data["latex_content"])
     for key, value in update_data.items():
         setattr(resume, key, value)
+
+    if previous_imported_document is not None:
+        from ..services.resume_engine.imported_identity_db import persist_reconciled_projection
+
+        persist_reconciled_projection(resume, previous_imported_document, resume.latex_content)
 
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -1119,7 +1133,7 @@ async def update_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for resume %s",
@@ -1485,7 +1499,7 @@ async def fork_resume(
         try:
             from ..workers.ats_worker import submit_embed_resume
 
-            submit_embed_resume(str(variant.id), variant.latex_content, user_id)
+            await submit_async(submit_embed_resume, str(variant.id), variant.latex_content, user_id)
         except Exception as exc:
             logger.warning(
                 "Failed to enqueue embedding for variant %s",
@@ -1546,9 +1560,13 @@ async def quick_tailor_resume(
     user_id: str = Depends(get_current_user_required),
 ):
     """Fork the resume and kick off an aggressive optimization tailored to the job description."""
-    from .job_routes import _resolve_user_plan
+    from .job_routes import _require_renderer_capability, _resolve_user_plan
 
     parent = await _verify_resume_ownership(db, resume_id, user_id)
+    stored_compiler = (parent.resume_settings or {}).get("compiler")
+    compiler = stored_compiler if stored_compiler in settings.ALLOWED_LATEX_COMPILERS else settings.DEFAULT_LATEX_COMPILER
+    # An unavailable renderer must not create a fork or start paid optimization.
+    _require_renderer_capability(compiler)
 
     # Allocate the worker identity before charging so the receipt can recover
     # a crash between quota consumption and fork/dispatch.
@@ -1625,13 +1643,8 @@ async def quick_tailor_resume(
             )
             if key in fork_settings and fork_settings[key] is not None
         } or None
-        stored_compiler = fork_settings.get("compiler")
-        compiler = (
-            stored_compiler
-            if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
-            else settings.DEFAULT_LATEX_COMPILER
-        )
-        submit_optimize_and_compile(
+        await submit_async(
+            submit_optimize_and_compile,
             latex_content=fork.latex_content,
             job_description=body.job_description,
             job_id=job_id,
@@ -1695,7 +1708,13 @@ async def convert_academic_cv(
     Create an industry-resume variant from an academic CV and queue a combined
     optimize+compile job for the new fork.
     """
+    from .job_routes import _require_renderer_capability
+
     parent = await _verify_resume_ownership(db, resume_id, user_id)
+    stored_compiler = (parent.resume_settings or {}).get("compiler")
+    compiler = stored_compiler if stored_compiler in settings.ALLOWED_LATEX_COMPILERS else settings.DEFAULT_LATEX_COMPILER
+    # Check before any variant, quota receipt or paid provider work is created.
+    _require_renderer_capability(compiler)
     report = academic_cv_service.detect(
         parent.latex_content or "",
         document_type=parent.document_type,
@@ -1812,13 +1831,8 @@ async def convert_academic_cv(
             )
             if key in variant_settings and variant_settings[key] is not None
         } or None
-        stored_compiler = variant_settings.get("compiler")
-        compiler = (
-            stored_compiler
-            if stored_compiler in settings.ALLOWED_LATEX_COMPILERS
-            else settings.DEFAULT_LATEX_COMPILER
-        )
-        submit_optimize_and_compile(
+        await submit_async(
+            submit_optimize_and_compile,
             latex_content=variant.latex_content,
             job_description=body.target_role_description,
             job_id=job_id,
@@ -2334,6 +2348,7 @@ async def create_share_link(
             .where(
                 Compilation.resume_id == resume_id,
                 Compilation.status == "completed",
+                Compilation.artifact_accepted.is_(True),
             )
             .order_by(Compilation.created_at.desc())
             .limit(1)
@@ -2428,7 +2443,8 @@ async def create_share_link(
 
             anon_job_id = str(uuid4())
             redacted_latex = redact(resume.latex_content)
-            submit_latex_compilation(
+            await submit_async(
+                submit_latex_compilation,
                 latex_content=redacted_latex,
                 job_id=anon_job_id,
                 user_id=user_id,
@@ -2687,6 +2703,7 @@ async def bulk_export(
             .where(
                 Compilation.resume_id.in_([resume.id for resume in resumes]),
                 Compilation.status == "completed",
+                Compilation.artifact_accepted.is_(True),
             )
             .distinct(Compilation.resume_id)
             .order_by(Compilation.resume_id, Compilation.created_at.desc())

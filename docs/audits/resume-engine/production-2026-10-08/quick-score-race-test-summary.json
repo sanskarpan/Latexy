@@ -1,0 +1,15 @@
+{
+  "runtime": "Windows, real hook imported with controlled React lifecycle and async responses; no network mocks passed off as production",
+  "green": {
+    "passed": 5,
+    "sha256": "d44dcdfd4bbb72b32cd82b382a9e4b4f78e34d276166036c83fe9acf2904de0c",
+    "failed": 0
+  },
+  "red": {
+    "passed": 4,
+    "failed_test": "ignores a retained refetch callback after the document input changes",
+    "reason": "expected 82 to be null",
+    "failed": 1,
+    "sha256": "dc87d25a9a3c7e4e12b114edd78623e7fb04ebfa39c5c83270b104bee02de145"
+  }
+}

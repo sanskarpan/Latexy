@@ -173,20 +173,30 @@ async def test_missing_response_without_disconnect_is_not_swallowed():
     assert sent == []
 
 
+def _configured_real_cors_origin(app):
+    from starlette.middleware.cors import CORSMiddleware
+    middleware = next(item for item in app.user_middleware if item.cls is CORSMiddleware)
+    origins = middleware.kwargs["allow_origins"]
+    # Exercise the actual configured static origin contract; production
+    # deliberately excludes localhost and must never be relaxed for this test.
+    return next(origin for origin in origins if origin != "*")
+
+
 async def test_short_circuited_413_carries_cors_headers():
     """CORSMiddleware must wrap the limit middlewares so browsers can read the 413."""
     from app.core.config import settings
     from app.main import app as real_app
 
+    origin = _configured_real_cors_origin(real_app)
     oversized = b"x" * (settings.MAX_REQUEST_BODY_BYTES + 1)
     async with await _client(real_app) as ac:
         resp = await ac.post(
             "/compile",
             content=oversized,
-            headers={"content-type": "application/json", "origin": "http://localhost:5180"},
+            headers={"content-type": "application/json", "origin": origin},
         )
     assert resp.status_code == 413
-    assert resp.headers["access-control-allow-origin"] == "http://localhost:5180"
+    assert resp.headers["access-control-allow-origin"] == origin
     # The fix is only useful if JS can actually read the diagnostic headers.
     exposed = {h.strip().lower() for h in resp.headers.get("access-control-expose-headers", "").split(",")}
     assert "retry-after" in exposed
@@ -211,16 +221,17 @@ async def test_preflight_short_circuits_at_cors_and_is_allowed():
     preflight, so it is asserted in the 413 test instead."""
     from app.main import app as real_app
 
+    origin = _configured_real_cors_origin(real_app)
     async with await _client(real_app) as ac:
         resp = await ac.options(
             "/compile",
             headers={
-                "origin": "http://localhost:5180",
+                "origin": origin,
                 "access-control-request-method": "POST",
                 "access-control-request-headers": "content-type,authorization",
             },
         )
     assert resp.status_code == 200
-    assert resp.headers["access-control-allow-origin"] == "http://localhost:5180"
+    assert resp.headers["access-control-allow-origin"] == origin
     assert resp.headers["access-control-allow-credentials"] == "true"
     assert "authorization" in resp.headers.get("access-control-allow-headers", "").lower()

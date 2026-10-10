@@ -22,8 +22,10 @@ from .latex_service import (
     docker_container_name,
     docker_sandbox_args,
     engine_env,
+    engine_sandbox_flags,
     find_engine_read_escape,
     find_recorder_read_escape,
+    native_engine_command,
 )
 
 logger = logging.getLogger(__name__)
@@ -175,14 +177,14 @@ class LaTeXCompiler:
             assert_local_engine_allowed(work_dir.name)
             # Run pdflatex command
             process = await asyncio.create_subprocess_exec(
-                self.latex_command or "pdflatex",
-                *LATEX_SANDBOX_FLAGS,
+                *native_engine_command(self.latex_command or "pdflatex", [
+                *engine_sandbox_flags(self.latex_command or "pdflatex"),
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-output-directory", str(work_dir),
-                "document.tex",
+                "document.tex"], work_dir),
                 cwd=str(work_dir),
-                env=engine_env(self.latex_command or "pdflatex"),
+                env=engine_env(work_dir, self.latex_command or "pdflatex"),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -223,7 +225,7 @@ class LaTeXCompiler:
             # Run Docker command
             docker_cmd = [
                 "docker", "run", "--rm", "--name", container_name,
-                *docker_sandbox_args("pdflatex"),
+                *docker_sandbox_args("/work", "pdflatex"),
                 "-v", f"{work_dir}:/work",
                 "-w", "/work",
                 self.docker_image,
@@ -236,7 +238,7 @@ class LaTeXCompiler:
 
             process = await asyncio.create_subprocess_exec(
                 *docker_cmd,
-                env=engine_env("pdflatex"),
+                env=engine_env(work_dir, "pdflatex"),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

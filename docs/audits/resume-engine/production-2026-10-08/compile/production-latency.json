@@ -1,0 +1,5520 @@
+{
+  "measured_at_utc": "2026-10-08T17:27:27.433Z",
+  "origin": "https://latexy.xyz",
+  "api": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+  "scope": "Normal production guest, no authentication spoofing, no quota bypass, no paid AI requests",
+  "limitations": [
+    "Single-browser observational run; no percentile or regional claims",
+    "Client and server clock offsets are unknown"
+  ],
+  "navigation": [
+    {
+      "path": "/",
+      "observed_load_ms": 2411,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 2244.89999999851,
+          "navigationId": 5537,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 2.699999999254942,
+          "domainLookupStart": 12.100000001490116,
+          "domainLookupEnd": 12.100000001490116,
+          "connectStart": 12.100000001490116,
+          "secureConnectionStart": 12.899999998509884,
+          "connectEnd": 197.39999999850988,
+          "requestStart": 197.80000000074506,
+          "responseStart": 230.10000000149012,
+          "firstInterimResponseStart": 230.10000000149012,
+          "finalResponseHeadersStart": 495.19999999925494,
+          "responseEnd": 501.30000000074506,
+          "transferSize": 10142,
+          "encodedBodySize": 9842,
+          "decodedBodySize": 50573,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 1805.8999999985099,
+          "domContentLoadedEventStart": 1806.1000000014901,
+          "domContentLoadedEventEnd": 1807.1000000014901,
+          "domComplete": 2243.699999999255,
+          "loadEventStart": 2243.89999999851,
+          "loadEventEnd": 2244.89999999851,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 1792,
+          "duration": 0,
+          "navigationId": 5537,
+          "paintTime": 1579.1000000014901,
+          "presentationTime": 1792
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 1792,
+          "duration": 0,
+          "navigationId": 5537,
+          "paintTime": 1579.1000000014901,
+          "presentationTime": 1792
+        }
+      ],
+      "images": []
+    },
+    {
+      "path": "/platform",
+      "observed_load_ms": 837,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/platform",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 650.7000000029802,
+          "navigationId": 379,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.4000000022351742,
+          "domainLookupStart": 1.4000000022351742,
+          "domainLookupEnd": 1.4000000022351742,
+          "connectStart": 1.4000000022351742,
+          "secureConnectionStart": 1.4000000022351742,
+          "connectEnd": 1.4000000022351742,
+          "requestStart": 5.300000000745058,
+          "responseStart": 47.80000000074506,
+          "firstInterimResponseStart": 47.80000000074506,
+          "finalResponseHeadersStart": 360.5,
+          "responseEnd": 362,
+          "transferSize": 9990,
+          "encodedBodySize": 9690,
+          "decodedBodySize": 51262,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 385.9000000022352,
+          "unloadEventEnd": 385.9000000022352,
+          "domInteractive": 499.9000000022352,
+          "domContentLoadedEventStart": 499.9000000022352,
+          "domContentLoadedEventEnd": 500,
+          "domComplete": 650.4000000022352,
+          "loadEventStart": 650.5,
+          "loadEventEnd": 650.7000000029802,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 492,
+          "duration": 0,
+          "navigationId": 379,
+          "paintTime": 466.20000000298023,
+          "presentationTime": 492
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 492,
+          "duration": 0,
+          "navigationId": 379,
+          "paintTime": 466.20000000298023,
+          "presentationTime": 492
+        }
+      ],
+      "images": []
+    },
+    {
+      "path": "/templates",
+      "observed_load_ms": 624,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/templates",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 499.70000000298023,
+          "navigationId": 1983,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.1000000014901161,
+          "domainLookupStart": 1.1000000014901161,
+          "domainLookupEnd": 1.1000000014901161,
+          "connectStart": 1.1000000014901161,
+          "secureConnectionStart": 1.1000000014901161,
+          "connectEnd": 1.1000000014901161,
+          "requestStart": 4.400000002235174,
+          "responseStart": 35.400000002235174,
+          "firstInterimResponseStart": 35.400000002235174,
+          "finalResponseHeadersStart": 303.9000000022352,
+          "responseEnd": 327,
+          "transferSize": 8297,
+          "encodedBodySize": 7997,
+          "decodedBodySize": 37509,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 320,
+          "unloadEventEnd": 320,
+          "domInteractive": 397.1000000014901,
+          "domContentLoadedEventStart": 397.4000000022352,
+          "domContentLoadedEventEnd": 399.4000000022352,
+          "domComplete": 499.30000000074506,
+          "loadEventStart": 499.4000000022352,
+          "loadEventEnd": 499.70000000298023,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 492,
+          "duration": 0,
+          "navigationId": 1983,
+          "paintTime": 446.70000000298023,
+          "presentationTime": 492
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 492,
+          "duration": 0,
+          "navigationId": 1983,
+          "paintTime": 446.70000000298023,
+          "presentationTime": 492
+        }
+      ],
+      "images": []
+    },
+    {
+      "path": "/pricing",
+      "observed_load_ms": 761,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/pricing",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 611.5,
+          "navigationId": 6951,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 3.899999998509884,
+          "domainLookupStart": 3.899999998509884,
+          "domainLookupEnd": 3.899999998509884,
+          "connectStart": 3.899999998509884,
+          "secureConnectionStart": 3.899999998509884,
+          "connectEnd": 3.899999998509884,
+          "requestStart": 21.199999999254942,
+          "responseStart": 81.69999999925494,
+          "firstInterimResponseStart": 81.69999999925494,
+          "finalResponseHeadersStart": 323.80000000074506,
+          "responseEnd": 505.8999999985099,
+          "transferSize": 9131,
+          "encodedBodySize": 8831,
+          "decodedBodySize": 56319,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 349.1000000014901,
+          "unloadEventEnd": 349.1000000014901,
+          "domInteractive": 602.3999999985099,
+          "domContentLoadedEventStart": 602.3999999985099,
+          "domContentLoadedEventEnd": 602.8000000007451,
+          "domComplete": 610.6999999992549,
+          "loadEventStart": 611,
+          "loadEventEnd": 611.5,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "low"
+          }
+        }
+      ],
+      "paint": [],
+      "images": []
+    },
+    {
+      "path": "/resources",
+      "observed_load_ms": 831,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/resources",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 597,
+          "navigationId": 6687,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3999999985098839,
+          "domainLookupStart": 1.3999999985098839,
+          "domainLookupEnd": 1.3999999985098839,
+          "connectStart": 1.3999999985098839,
+          "secureConnectionStart": 1.3999999985098839,
+          "connectEnd": 1.3999999985098839,
+          "requestStart": 14.300000000745058,
+          "responseStart": 62.30000000074506,
+          "firstInterimResponseStart": 62.30000000074506,
+          "finalResponseHeadersStart": 296.5,
+          "responseEnd": 476.5999999977648,
+          "transferSize": 8404,
+          "encodedBodySize": 8104,
+          "decodedBodySize": 43278,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 334.8999999985099,
+          "unloadEventEnd": 334.8999999985099,
+          "domInteractive": 594.3999999985099,
+          "domContentLoadedEventStart": 594.3999999985099,
+          "domContentLoadedEventEnd": 595,
+          "domComplete": 596.1999999992549,
+          "loadEventStart": 596.3000000007451,
+          "loadEventEnd": 597,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 608,
+          "duration": 0,
+          "navigationId": 6687,
+          "paintTime": 569.8000000007451,
+          "presentationTime": 608
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 608,
+          "duration": 0,
+          "navigationId": 6687,
+          "paintTime": 569.8000000007451,
+          "presentationTime": 608
+        }
+      ],
+      "images": []
+    },
+    {
+      "path": "/faq",
+      "observed_load_ms": 836,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/faq",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 710.8000000007451,
+          "navigationId": 5095,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.300000000745058,
+          "domainLookupStart": 1.300000000745058,
+          "domainLookupEnd": 1.300000000745058,
+          "connectStart": 1.300000000745058,
+          "secureConnectionStart": 1.300000000745058,
+          "connectEnd": 1.300000000745058,
+          "requestStart": 3.699999999254942,
+          "responseStart": 80.19999999925494,
+          "firstInterimResponseStart": 80.19999999925494,
+          "finalResponseHeadersStart": 479.30000000074506,
+          "responseEnd": 481,
+          "transferSize": 8382,
+          "encodedBodySize": 8082,
+          "decodedBodySize": 40635,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 547.6000000014901,
+          "unloadEventEnd": 547.6000000014901,
+          "domInteractive": 629.1000000014901,
+          "domContentLoadedEventStart": 629.1000000014901,
+          "domContentLoadedEventEnd": 629.3000000007451,
+          "domComplete": 710.3999999985099,
+          "loadEventStart": 710.3999999985099,
+          "loadEventEnd": 710.8000000007451,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 704,
+          "duration": 0,
+          "navigationId": 5095,
+          "paintTime": 674.3000000007451,
+          "presentationTime": 704
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 704,
+          "duration": 0,
+          "navigationId": 5095,
+          "paintTime": 674.3000000007451,
+          "presentationTime": 704
+        }
+      ],
+      "images": []
+    },
+    {
+      "path": "/try",
+      "observed_load_ms": 2110,
+      "navigation": [
+        {
+          "name": "https://latexy.xyz/try",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 1748.800000000745,
+          "navigationId": 2232,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "br",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.300000000745058,
+          "domainLookupStart": 1.300000000745058,
+          "domainLookupEnd": 1.300000000745058,
+          "connectStart": 1.300000000745058,
+          "secureConnectionStart": 1.300000000745058,
+          "connectEnd": 1.300000000745058,
+          "requestStart": 3.800000000745058,
+          "responseStart": 31.699999999254942,
+          "firstInterimResponseStart": 31.699999999254942,
+          "finalResponseHeadersStart": 356.30000000074506,
+          "responseEnd": 559.3000000007451,
+          "transferSize": 10849,
+          "encodedBodySize": 10549,
+          "decodedBodySize": 53028,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 375,
+          "unloadEventEnd": 375,
+          "domInteractive": 747.8000000007451,
+          "domContentLoadedEventStart": 747.8000000007451,
+          "domContentLoadedEventEnd": 748.3000000007451,
+          "domComplete": 1742.199999999255,
+          "loadEventStart": 1742.199999999255,
+          "loadEventEnd": 1748.800000000745,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        }
+      ],
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 640,
+          "duration": 0,
+          "navigationId": 2232,
+          "paintTime": 617.8999999985099,
+          "presentationTime": 640
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 1960,
+          "duration": 0,
+          "navigationId": 2232,
+          "paintTime": 1733.300000000745,
+          "presentationTime": 1960
+        }
+      ],
+      "images": []
+    }
+  ],
+  "http": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 480,
+      "response_complete_ms": 541,
+      "network_timing": {
+        "startTime": 1791480451687.569,
+        "domainLookupStart": 0,
+        "domainLookupEnd": 0,
+        "connectStart": 0,
+        "secureConnectionStart": 0.781,
+        "connectEnd": 185.304,
+        "requestStart": 185.68,
+        "responseStart": 484.037,
+        "responseEnd": 498.637
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 31,
+      "response_complete_ms": 33,
+      "network_timing": {
+        "startTime": 1791480452268.883,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.575,
+        "responseStart": 54.296,
+        "responseEnd": 130.628
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 141,
+      "response_complete_ms": 146,
+      "network_timing": {
+        "startTime": 1791480452196.4219,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.623,
+        "responseStart": 73.641,
+        "responseEnd": 78.921
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 145,
+      "response_complete_ms": 146,
+      "network_timing": {
+        "startTime": 1791480452201.1829,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.429,
+        "responseStart": 70.829,
+        "responseEnd": 80.197
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 147,
+      "response_complete_ms": 148,
+      "network_timing": {
+        "startTime": 1791480452202.479,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.399,
+        "responseStart": 71.953,
+        "responseEnd": 113.9
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 168,
+      "response_complete_ms": 169,
+      "network_timing": {
+        "startTime": 1791480452332.185,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 6.129,
+        "responseStart": 41.985,
+        "responseEnd": 150.963
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 849,
+      "response_complete_ms": 850,
+      "network_timing": {
+        "startTime": 1791480452340.112,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.904,
+        "responseStart": 53.421,
+        "responseEnd": 170.289
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 850,
+      "response_complete_ms": 851,
+      "network_timing": {
+        "startTime": 1791480452339.0342,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.738,
+        "responseStart": 39.318,
+        "responseEnd": 167.184
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 851,
+      "response_complete_ms": 852,
+      "network_timing": {
+        "startTime": 1791480452370.2522,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 3.364,
+        "responseStart": 71.717,
+        "responseEnd": 217.593
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/page-f736d689b3fdf01b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 855,
+      "response_complete_ms": 858,
+      "network_timing": {
+        "startTime": 1791480452364.563,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 8.683,
+        "responseStart": 82.536,
+        "responseEnd": 236.783
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 865,
+      "response_complete_ms": 866,
+      "network_timing": {
+        "startTime": 1791480452342.7278,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.381,
+        "responseStart": 63.472,
+        "responseEnd": 181.593
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 866,
+      "response_complete_ms": 866,
+      "network_timing": {
+        "startTime": 1791480452385.029,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.94,
+        "responseStart": 77.77,
+        "responseEnd": 250.783
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 867,
+      "response_complete_ms": 867,
+      "network_timing": {
+        "startTime": 1791480452388.279,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 8.038,
+        "responseStart": 109.308,
+        "responseEnd": 302.455
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 867,
+      "response_complete_ms": 868,
+      "network_timing": {
+        "startTime": 1791480452383.2058,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.658,
+        "responseStart": 60.439,
+        "responseEnd": 220.673
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 868,
+      "response_complete_ms": 869,
+      "network_timing": {
+        "startTime": 1791480452414.196,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.585,
+        "responseStart": 124.396,
+        "responseEnd": 316.894
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 869,
+      "response_complete_ms": 870,
+      "network_timing": {
+        "startTime": 1791480452408.902,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 4.059,
+        "responseStart": 120.164,
+        "responseEnd": 304.929
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 870,
+      "response_complete_ms": 871,
+      "network_timing": {
+        "startTime": 1791480452403.623,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 3.853,
+        "responseStart": 149.243,
+        "responseEnd": 330.214
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 871,
+      "response_complete_ms": 872,
+      "network_timing": {
+        "startTime": 1791480452413.623,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.018,
+        "responseStart": 143.167,
+        "responseEnd": 331.495
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 873,
+      "response_complete_ms": 873,
+      "network_timing": {
+        "startTime": 1791480452386.305,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.809,
+        "responseStart": 88.015,
+        "responseEnd": 329.475
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 874,
+      "response_complete_ms": 875,
+      "network_timing": {
+        "startTime": 1791480452405.397,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.257,
+        "responseStart": 74.14,
+        "responseEnd": 265.986
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 876,
+      "response_complete_ms": 876,
+      "network_timing": {
+        "startTime": 1791480452339.61,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.313,
+        "responseStart": 54.936,
+        "responseEnd": 176.748
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 367,
+      "response_complete_ms": 381,
+      "network_timing": {
+        "startTime": 1791480453979.4849,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.191,
+        "responseStart": 280.371,
+        "responseEnd": 282.628
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 365,
+      "response_complete_ms": 478,
+      "network_timing": {
+        "startTime": 1791480454130.209,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.481,
+        "responseStart": 355.849,
+        "responseEnd": 360.676
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454522.67,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.275,
+        "responseEnd": 0.275
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 13,
+      "network_timing": {
+        "startTime": 1791480454523.064,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.159,
+        "responseEnd": 0.159
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454523.277,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.117,
+        "responseEnd": 0.117
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454529.5862,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.248,
+        "responseEnd": 0.248
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454530.283,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.298,
+        "responseEnd": 0.298
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454530.7852,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.508,
+        "responseEnd": 0.508
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454533.377,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 3.464,
+        "responseEnd": 3.464
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454537.185,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 1.898,
+        "responseEnd": 1.898
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454539.4321,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.362,
+        "responseEnd": 0.362
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454546.8398,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.335,
+        "responseEnd": 0.335
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454547.2642,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.183,
+        "responseEnd": 0.183
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454547.504,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.134,
+        "responseEnd": 0.134
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 7,
+      "network_timing": {
+        "startTime": 1791480454547.6912,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.127,
+        "responseEnd": 0.127
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454547.904,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.428,
+        "responseEnd": 0.428
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454548.661,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.251,
+        "responseEnd": 0.251
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454549.0078,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.415,
+        "responseEnd": 0.415
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454549.591,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.298,
+        "responseEnd": 0.298
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480454550.193,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.304,
+        "responseEnd": 0.304
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480454550.575,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.275,
+        "responseEnd": 0.275
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/platform/page-9e7b57a7f8066a89.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 58,
+      "response_complete_ms": 59,
+      "network_timing": {
+        "startTime": 1791480454547.7441,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.749,
+        "responseStart": 33.391,
+        "responseEnd": 43.166
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 271,
+      "response_complete_ms": 273,
+      "network_timing": {
+        "startTime": 1791480454798.964,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.769,
+        "responseStart": 263.209,
+        "responseEnd": 265.842
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 284,
+      "response_complete_ms": 285,
+      "network_timing": {
+        "startTime": 1791480454883.093,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.557,
+        "responseStart": 260.015,
+        "responseEnd": 267.224
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 306,
+      "response_complete_ms": 311,
+      "network_timing": {
+        "startTime": 1791480454876.309,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.866,
+        "responseStart": 292.495,
+        "responseEnd": 294.631
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 309,
+      "response_complete_ms": 311,
+      "network_timing": {
+        "startTime": 1791480454880.125,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 3.915,
+        "responseStart": 290.214,
+        "responseEnd": 293.857
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 311,
+      "response_complete_ms": 312,
+      "network_timing": {
+        "startTime": 1791480454878.799,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.664,
+        "responseStart": 293.206,
+        "responseEnd": 296.448
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 312,
+      "response_complete_ms": 312,
+      "network_timing": {
+        "startTime": 1791480454877.729,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.923,
+        "responseStart": 300.498,
+        "responseEnd": 303.401
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 306,
+      "response_complete_ms": 503,
+      "network_timing": {
+        "startTime": 1791480454910.1108,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.123,
+        "responseStart": 300.942,
+        "responseEnd": 325.816
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 5,
+      "response_complete_ms": 22,
+      "network_timing": {
+        "startTime": 1791480455243.3801,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.281,
+        "responseEnd": 0.281
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455243.754,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.16,
+        "responseEnd": 0.16
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455243.979,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.125,
+        "responseEnd": 0.125
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455245.734,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.246,
+        "responseEnd": 0.246
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455246.068,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.177,
+        "responseEnd": 0.177
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455246.292,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.121,
+        "responseEnd": 0.121
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455246.4558,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.194,
+        "responseEnd": 0.194
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 20,
+      "response_complete_ms": 21,
+      "network_timing": {
+        "startTime": 1791480455246.697,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.201,
+        "responseEnd": 0.201
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480455246.978,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.314,
+        "responseEnd": 0.314
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455247.468,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.2,
+        "responseEnd": 0.2
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 6,
+      "network_timing": {
+        "startTime": 1791480455247.74,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.177,
+        "responseEnd": 0.177
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455248.865,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.223,
+        "responseEnd": 0.223
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 4,
+      "network_timing": {
+        "startTime": 1791480455249.197,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.173,
+        "responseEnd": 0.173
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 4,
+      "network_timing": {
+        "startTime": 1791480455249.429,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.168,
+        "responseEnd": 0.168
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455249.6719,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.16,
+        "responseEnd": 0.16
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455249.9011,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.251,
+        "responseEnd": 0.251
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455250.265,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.149,
+        "responseEnd": 0.149
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455250.592,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.396,
+        "responseEnd": 0.396
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480455251.043,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.218,
+        "responseEnd": 0.218
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/page-f736d689b3fdf01b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455251.323,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.234,
+        "responseEnd": 0.234
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/8334-7a4993108fd7bb95.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 39,
+      "response_complete_ms": 40,
+      "network_timing": {
+        "startTime": 1791480455249.5989,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.199,
+        "responseStart": 56.391,
+        "responseEnd": 59.529
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/templates/page-006989e6852a20d2.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 32,
+      "response_complete_ms": 33,
+      "network_timing": {
+        "startTime": 1791480455251.398,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.667,
+        "responseStart": 56.744,
+        "responseEnd": 60.38
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 289,
+      "response_complete_ms": 290,
+      "network_timing": {
+        "startTime": 1791480455410.686,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.717,
+        "responseStart": 286.266,
+        "responseEnd": 289.319
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 304,
+      "response_complete_ms": 309,
+      "network_timing": {
+        "startTime": 1791480455468.117,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.15,
+        "responseStart": 270.993,
+        "responseEnd": 273.478
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 306,
+      "response_complete_ms": 310,
+      "network_timing": {
+        "startTime": 1791480455470.3228,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.853,
+        "responseStart": 270.495,
+        "responseEnd": 274.471
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 306,
+      "response_complete_ms": 309,
+      "network_timing": {
+        "startTime": 1791480455475.1438,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.629,
+        "responseStart": 267.032,
+        "responseEnd": 275.311
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 308,
+      "response_complete_ms": 309,
+      "network_timing": {
+        "startTime": 1791480455472.251,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.531,
+        "responseStart": 283.261,
+        "responseEnd": 288.454
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 311,
+      "response_complete_ms": 311,
+      "network_timing": {
+        "startTime": 1791480455471.225,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.407,
+        "responseStart": 291.907,
+        "responseEnd": 296.55
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 319,
+      "response_complete_ms": 624,
+      "network_timing": {
+        "startTime": 1791480455567.976,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.739,
+        "responseStart": 303.558,
+        "responseEnd": 502.025
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455905.284,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.23,
+        "responseEnd": 0.23
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480455905.649,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.181,
+        "responseEnd": 0.181
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480455905.945,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.151,
+        "responseEnd": 0.151
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 2,
+      "response_complete_ms": 3,
+      "network_timing": {
+        "startTime": 1791480456056.457,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.244,
+        "responseEnd": 0.244
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480456056.781,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.136,
+        "responseEnd": 0.136
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 7,
+      "response_complete_ms": 7,
+      "network_timing": {
+        "startTime": 1791480456056.967,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.135,
+        "responseEnd": 0.135
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 17,
+      "response_complete_ms": 18,
+      "network_timing": {
+        "startTime": 1791480456057.153,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.115,
+        "responseEnd": 0.115
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456057.3062,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.111,
+        "responseEnd": 0.111
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480456057.458,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.097,
+        "responseEnd": 0.097
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480456058.049,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.131,
+        "responseEnd": 0.131
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456058.2322,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.105,
+        "responseEnd": 0.105
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456058.374,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.105,
+        "responseEnd": 0.105
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 3,
+      "network_timing": {
+        "startTime": 1791480456058.5151,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.097,
+        "responseEnd": 0.097
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480456058.653,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.099,
+        "responseEnd": 0.099
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456058.782,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.111,
+        "responseEnd": 0.111
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 4,
+      "response_complete_ms": 7,
+      "network_timing": {
+        "startTime": 1791480456058.938,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.164,
+        "responseEnd": 0.164
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 45,
+      "response_complete_ms": 46,
+      "network_timing": {
+        "startTime": 1791480456059.177,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.159,
+        "responseEnd": 0.159
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 5,
+      "response_complete_ms": 6,
+      "network_timing": {
+        "startTime": 1791480456059.381,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.162,
+        "responseEnd": 0.162
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456059.5889,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 1.716,
+        "responseEnd": 1.716
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/pricing/page-9e7b57a7f8066a89.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 90,
+      "response_complete_ms": 91,
+      "network_timing": {
+        "startTime": 1791480456060.45,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.787,
+        "responseStart": 32.257,
+        "responseEnd": 36.689
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 229,
+      "response_complete_ms": 230,
+      "network_timing": {
+        "startTime": 1791480456162.361,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.455,
+        "responseStart": 254.686,
+        "responseEnd": 256.734
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 269,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480456263.852,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.978,
+        "responseStart": 259.99,
+        "responseEnd": 287.89
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 280,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480456257.583,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.564,
+        "responseStart": 273.941,
+        "responseEnd": 300.157
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 285,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480456259.8513,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.278,
+        "responseStart": 272.945,
+        "responseEnd": 296.361
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 295,
+      "response_complete_ms": 298,
+      "network_timing": {
+        "startTime": 1791480456258.847,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 3.066,
+        "responseStart": 276.597,
+        "responseEnd": 283.221
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 297,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480456261.004,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.286,
+        "responseStart": 284.945,
+        "responseEnd": 302.726
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 235,
+      "response_complete_ms": 516,
+      "network_timing": {
+        "startTime": 1791480456321.639,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.899,
+        "responseStart": 285.426,
+        "responseEnd": 475.204
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456658.9019,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.371,
+        "responseEnd": 0.371
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 4,
+      "response_complete_ms": 31,
+      "network_timing": {
+        "startTime": 1791480456659.404,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.21,
+        "responseEnd": 0.21
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456659.706,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.134,
+        "responseEnd": 0.134
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456662.117,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.426,
+        "responseEnd": 0.426
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480456663.015,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.905,
+        "responseEnd": 0.905
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 5,
+      "network_timing": {
+        "startTime": 1791480456664.0771,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.92,
+        "responseEnd": 0.92
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480456665.138,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.261,
+        "responseEnd": 0.261
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480456665.5012,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.884,
+        "responseEnd": 0.884
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456666.525,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.172,
+        "responseEnd": 0.172
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456674.217,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.254,
+        "responseEnd": 0.254
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 3,
+      "response_complete_ms": 4,
+      "network_timing": {
+        "startTime": 1791480456674.531,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.213,
+        "responseEnd": 0.213
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480456674.9438,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.395,
+        "responseEnd": 0.395
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456675.437,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.281,
+        "responseEnd": 0.281
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456675.802,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.18,
+        "responseEnd": 0.18
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480456676.035,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.762,
+        "responseEnd": 0.762
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456676.9868,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.228,
+        "responseEnd": 0.228
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 5,
+      "response_complete_ms": 7,
+      "network_timing": {
+        "startTime": 1791480456677.299,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.214,
+        "responseEnd": 0.214
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456677.5999,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.164,
+        "responseEnd": 0.164
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480456677.8481,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.205,
+        "responseEnd": 0.205
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/resources/page-f736d689b3fdf01b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 150,
+      "response_complete_ms": 150,
+      "network_timing": {
+        "startTime": 1791480456679.216,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.515,
+        "responseStart": 39.355,
+        "responseEnd": 50.707
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 560,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480456992.079,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.703,
+        "responseStart": 634.815,
+        "responseEnd": -1
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 521,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480457084.118,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.389,
+        "responseStart": 544.058,
+        "responseEnd": -1
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 572,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480457080.2942,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.03,
+        "responseStart": 549.365,
+        "responseEnd": -1
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 525,
+      "inspection_timeout": true,
+      "network_timing": {
+        "startTime": 1791480457083.009,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.214,
+        "responseStart": 547.85,
+        "responseEnd": -1
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 525,
+      "response_complete_ms": 648,
+      "network_timing": {
+        "startTime": 1791480457164.183,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.948,
+        "responseStart": 476.797,
+        "responseEnd": 479.651
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457722.302,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.21,
+        "responseEnd": 0.21
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457722.615,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.208,
+        "responseEnd": 0.208
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457722.931,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.164,
+        "responseEnd": 0.164
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457724.524,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.207,
+        "responseEnd": 0.207
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457724.813,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.221,
+        "responseEnd": 0.221
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457725.112,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.133,
+        "responseEnd": 0.133
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457725.302,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.113,
+        "responseEnd": 0.113
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457725.461,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.116,
+        "responseEnd": 0.116
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 4,
+      "network_timing": {
+        "startTime": 1791480457725.6392,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.104,
+        "responseEnd": 0.104
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457725.793,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.11,
+        "responseEnd": 0.11
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457726.5479,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.256,
+        "responseEnd": 0.256
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457726.821,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.131,
+        "responseEnd": 0.131
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457726.998,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.144,
+        "responseEnd": 0.144
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457727.197,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.117,
+        "responseEnd": 0.117
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457727.355,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.121,
+        "responseEnd": 0.121
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457727.514,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.105,
+        "responseEnd": 0.105
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480457727.664,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.25,
+        "responseEnd": 0.25
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480457728.134,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.691,
+        "responseEnd": 0.691
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 9,
+      "network_timing": {
+        "startTime": 1791480457728.941,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.222,
+        "responseEnd": 0.222
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/faq/page-c1fd7b8afdfc8cf9.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 78,
+      "response_complete_ms": 78,
+      "network_timing": {
+        "startTime": 1791480457756.51,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.966,
+        "responseStart": 67.527,
+        "responseEnd": 98.936
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 248,
+      "response_complete_ms": 249,
+      "network_timing": {
+        "startTime": 1791480457875.58,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.535,
+        "responseStart": 245.914,
+        "responseEnd": 248.955
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 271,
+      "response_complete_ms": 275,
+      "network_timing": {
+        "startTime": 1791480457949.742,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.919,
+        "responseStart": 269.499,
+        "responseEnd": 274.432
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 273,
+      "response_complete_ms": 278,
+      "network_timing": {
+        "startTime": 1791480457947.1062,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.588,
+        "responseStart": 274.35,
+        "responseEnd": 276.698
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 273,
+      "response_complete_ms": 278,
+      "network_timing": {
+        "startTime": 1791480457948.617,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.712,
+        "responseStart": 273.92,
+        "responseEnd": 277.401
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 274,
+      "response_complete_ms": 278,
+      "network_timing": {
+        "startTime": 1791480457945.893,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.577,
+        "responseStart": 277.917,
+        "responseEnd": 279.613
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/pricing",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 275,
+      "response_complete_ms": 276,
+      "network_timing": {
+        "startTime": 1791480457949.2542,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.23,
+        "responseStart": 284.987,
+        "responseEnd": 289.952
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/try",
+      "method": "GET",
+      "type": "document",
+      "status": 200,
+      "response_headers_ms": 356,
+      "response_complete_ms": 596,
+      "network_timing": {
+        "startTime": 1791480457960.753,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.515,
+        "responseStart": 353.239,
+        "responseEnd": 557.945
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/0b78ff376f6b9734-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 4,
+      "response_complete_ms": 5,
+      "network_timing": {
+        "startTime": 1791480458340.2869,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.233,
+        "responseEnd": 0.233
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/33553e7595b74ccf-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 3,
+      "response_complete_ms": 4,
+      "network_timing": {
+        "startTime": 1791480458340.6328,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.192,
+        "responseEnd": 0.192
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/bb3ef058b751a6ad-s.p.woff2",
+      "method": "GET",
+      "type": "font",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 2,
+      "network_timing": {
+        "startTime": 1791480458340.926,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.17,
+        "responseEnd": 0.17
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/2f4ec53299301d52.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 3,
+      "response_complete_ms": 3,
+      "network_timing": {
+        "startTime": 1791480458519.567,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.23,
+        "responseEnd": 0.23
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/webpack-e4fd43eca273ae3d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458521.552,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.216,
+        "responseEnd": 0.216
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/20b811a2-5f19bef7dc87b3ca.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 8,
+      "network_timing": {
+        "startTime": 1791480458521.844,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.141,
+        "responseEnd": 0.141
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4990-72c992ad8b985b91.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458522.044,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.122,
+        "responseEnd": 0.122
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/main-app-c2868e9da62d3968.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458522.207,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.127,
+        "responseEnd": 0.127
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4585-44cea1a3a9289f63.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458522.544,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.213,
+        "responseEnd": 0.213
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1745-b554070edeb142e7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458522.889,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.162,
+        "responseEnd": 0.162
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4243-2d6b36e9f2a48c6d.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458523.1472,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.146,
+        "responseEnd": 0.146
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7412-a8d8b7b24cfc3cb0.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458523.36,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.241,
+        "responseEnd": 0.241
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9248-a99bd431d25bd5a5.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 11,
+      "response_complete_ms": 11,
+      "network_timing": {
+        "startTime": 1791480458523.708,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.189,
+        "responseEnd": 0.189
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/624-955dd17fd9682967.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458524.222,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.134,
+        "responseEnd": 0.134
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/global-error-a84003f4d1d3bbe3.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458524.799,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.13,
+        "responseEnd": 0.13
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/410-e6c66430170b9fa4.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458524.98,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.127,
+        "responseEnd": 0.127
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1889-7f3a9514f87d23dc.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458525.1638,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.381,
+        "responseEnd": 0.381
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/layout-367da376c8667d02.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458525.646,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.127,
+        "responseEnd": 0.127
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/error-20cd25c54d43e15b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 0,
+      "response_complete_ms": 0,
+      "network_timing": {
+        "startTime": 1791480458525.804,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.156,
+        "responseEnd": 0.156
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/page-f736d689b3fdf01b.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 1,
+      "response_complete_ms": 1,
+      "network_timing": {
+        "startTime": 1791480458526.0078,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 0.121,
+        "responseEnd": 0.121
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/499bd586-f31a57290a4b5dc2.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 24,
+      "response_complete_ms": 25,
+      "network_timing": {
+        "startTime": 1791480458533.032,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.282,
+        "responseStart": 0.454,
+        "responseEnd": 15.37
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/4b73a4951aba0a1c.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 38,
+      "response_complete_ms": 38,
+      "network_timing": {
+        "startTime": 1791480458521.867,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.517,
+        "responseStart": 33.435,
+        "responseEnd": 38.306
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/css/1d49b5ab040e9f51.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 43,
+      "response_complete_ms": 43,
+      "network_timing": {
+        "startTime": 1791480458522.924,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.4,
+        "responseStart": 36.019,
+        "responseEnd": 38.388
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/2150-c92985a691e37e68.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 21,
+      "response_complete_ms": 22,
+      "network_timing": {
+        "startTime": 1791480458538.854,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.171,
+        "responseStart": 1.186,
+        "responseEnd": 17.003
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1466-5c882995be91716c.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 20,
+      "response_complete_ms": 20,
+      "network_timing": {
+        "startTime": 1791480458549.072,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.149,
+        "responseStart": 0.393,
+        "responseEnd": 23.902
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4937.e9ecc57587ac5fef.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 21,
+      "response_complete_ms": 21,
+      "network_timing": {
+        "startTime": 1791480458553.459,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.171,
+        "responseStart": 2.411,
+        "responseEnd": 29.815
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/1572.055f9f777047525c.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 21,
+      "response_complete_ms": 22,
+      "network_timing": {
+        "startTime": 1791480458557.201,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.142,
+        "responseStart": 3.035,
+        "responseEnd": 34.238
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/2738-e31fe31550f63352.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 26,
+      "response_complete_ms": 27,
+      "network_timing": {
+        "startTime": 1791480458542.016,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.135,
+        "responseStart": 2.043,
+        "responseEnd": 20.993
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9028-3908d11ba342b9dd.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 52,
+      "response_complete_ms": 55,
+      "network_timing": {
+        "startTime": 1791480458539.303,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.658,
+        "responseStart": 31.333,
+        "responseEnd": 48.023
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/6671-bcd0f6b76f307215.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 55,
+      "response_complete_ms": 55,
+      "network_timing": {
+        "startTime": 1791480458541.63,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.591,
+        "responseStart": 34.604,
+        "responseEnd": 52.95
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/952-08f7d060e4a11956.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 55,
+      "response_complete_ms": 55,
+      "network_timing": {
+        "startTime": 1791480458542.5752,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.118,
+        "responseStart": 32.061,
+        "responseEnd": 50.955
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/app/try/page-af71409dae2cabe6.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 56,
+      "response_complete_ms": 56,
+      "network_timing": {
+        "startTime": 1791480458546.104,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.454,
+        "responseStart": 31.713,
+        "responseEnd": 54.749
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9708.533d2290de67c96e.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 55,
+      "response_complete_ms": 56,
+      "network_timing": {
+        "startTime": 1791480458547.014,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.937,
+        "responseStart": 33.16,
+        "responseEnd": 57.143
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7783.8ee1159740032a89.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 63,
+      "response_complete_ms": 64,
+      "network_timing": {
+        "startTime": 1791480458547.41,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.663,
+        "responseStart": 34.896,
+        "responseEnd": 57.587
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/8488.108cc201fdef4478.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 64,
+      "response_complete_ms": 66,
+      "network_timing": {
+        "startTime": 1791480458551.334,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.072,
+        "responseStart": 37.226,
+        "responseEnd": 62.842
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7183-a612b8803fb71472.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 67,
+      "response_complete_ms": 67,
+      "network_timing": {
+        "startTime": 1791480458557.524,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.633,
+        "responseStart": 34.686,
+        "responseEnd": 66.61
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/8552.4444cf3c9f67a369.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 67,
+      "response_complete_ms": 68,
+      "network_timing": {
+        "startTime": 1791480458561.481,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.452,
+        "responseStart": 32.322,
+        "responseEnd": 67.575
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/7368-e56a989aafa118d7.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 68,
+      "response_complete_ms": 68,
+      "network_timing": {
+        "startTime": 1791480458552.041,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.442,
+        "responseStart": 37.886,
+        "responseEnd": 68.193
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 236,
+      "response_complete_ms": 284,
+      "network_timing": {
+        "startTime": 1791480459995.206,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.918,
+        "responseStart": 271.155,
+        "responseEnd": 274.712
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/loader.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 64,
+      "response_complete_ms": 66,
+      "network_timing": {
+        "startTime": 1791480460417.3838,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.636,
+        "responseStart": 47.06,
+        "responseEnd": 60.24
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 400,
+      "response_complete_ms": 401,
+      "network_timing": {
+        "startTime": 1791480460011.504,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.696,
+        "responseStart": 477.125,
+        "responseEnd": 485.956
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/editor/editor.main.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 117,
+      "response_complete_ms": 121,
+      "network_timing": {
+        "startTime": 1791480460493.173,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.674,
+        "responseStart": 56.129,
+        "responseEnd": 60.954
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 523,
+      "response_complete_ms": 534,
+      "network_timing": {
+        "startTime": 1791480460063.709,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 15.634,
+        "responseStart": 527.044,
+        "responseEnd": 566.764
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 523,
+      "response_complete_ms": 541,
+      "network_timing": {
+        "startTime": 1791480460062.638,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 9.93,
+        "responseStart": 528.716,
+        "responseEnd": 575.551
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/monaco.contribution-DO3azKX8.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 141,
+      "response_complete_ms": 152,
+      "network_timing": {
+        "startTime": 1791480460593.81,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.415,
+        "responseStart": 45.681,
+        "responseEnd": 66.071
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/nls.messages-loader.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 180,
+      "response_complete_ms": 180,
+      "network_timing": {
+        "startTime": 1791480460596.2998,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.91,
+        "responseStart": 50.138,
+        "responseEnd": 72.318
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/monaco.contribution-qLAYrEOP.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 180,
+      "response_complete_ms": 181,
+      "network_timing": {
+        "startTime": 1791480460594.394,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.957,
+        "responseStart": 54.788,
+        "responseEnd": 73.989
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/monaco.contribution-EcChJV6a.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 182,
+      "response_complete_ms": 182,
+      "network_timing": {
+        "startTime": 1791480460594.836,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.596,
+        "responseStart": 50.024,
+        "responseEnd": 68.831
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/monaco.contribution-D2OdxNBt.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 182,
+      "response_complete_ms": 226,
+      "network_timing": {
+        "startTime": 1791480460596.2131,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.521,
+        "responseStart": 47.355,
+        "responseEnd": 67.027
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/basic-languages/monaco.contribution.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 226,
+      "response_complete_ms": 239,
+      "network_timing": {
+        "startTime": 1791480460597.333,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.36,
+        "responseStart": 48.83,
+        "responseEnd": 69.075
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/workers-DcJshg-q.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 239,
+      "response_complete_ms": 239,
+      "network_timing": {
+        "startTime": 1791480460600.4,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.717,
+        "responseStart": 129.711,
+        "responseEnd": 159.03
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 511,
+      "response_complete_ms": 515,
+      "network_timing": {
+        "startTime": 1791480460323.478,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.762,
+        "responseStart": 450.583,
+        "responseEnd": 486.36
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 408,
+      "response_complete_ms": 409,
+      "network_timing": {
+        "startTime": 1791480460445.737,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.506,
+        "responseStart": 347.66,
+        "responseEnd": 351.123
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/login",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 408,
+      "response_complete_ms": 408,
+      "network_timing": {
+        "startTime": 1791480460452.765,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.66,
+        "responseStart": 343.945,
+        "responseEnd": 354.286
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 765,
+      "response_complete_ms": 766,
+      "network_timing": {
+        "startTime": 1791480460009.726,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.397,
+        "responseStart": 794.498,
+        "responseEnd": 797.478
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/editor.api-CalNCsUg.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 807,
+      "response_complete_ms": 821,
+      "network_timing": {
+        "startTime": 1791480460598.0361,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.802,
+        "responseStart": 52.754,
+        "responseEnd": 323.91
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 1466,
+      "response_complete_ms": 1466,
+      "network_timing": {
+        "startTime": 1791480461006.861,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2.819,
+        "responseStart": 455.453,
+        "responseEnd": 532.583
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 1415,
+      "response_complete_ms": 1418,
+      "network_timing": {
+        "startTime": 1791480461057.303,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.081,
+        "responseStart": 469.279,
+        "responseEnd": 472.037
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/public/trial-status",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 2067,
+      "response_complete_ms": 2090,
+      "network_timing": {
+        "startTime": 1791480460805.9182,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.569,
+        "responseStart": 1158.968,
+        "responseEnd": 1602.061
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/editor/editor.main.css",
+      "method": "GET",
+      "type": "stylesheet",
+      "status": 200,
+      "response_headers_ms": 421,
+      "response_complete_ms": 433,
+      "network_timing": {
+        "startTime": 1791480462463.018,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 3.695,
+        "responseStart": 48.921,
+        "responseEnd": 107.779
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "https://latexy.xyz/66763efc-6612-4e4d-82cc-da6c4bf10788",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 34,
+      "response_complete_ms": 166,
+      "network_timing": {
+        "startTime": 1791480463338.054,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 175.986,
+        "responseEnd": 175.986
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/monaco/vs/assets/editor.worker-Be8ye1pW.js",
+      "method": "GET",
+      "type": "other",
+      "status": 200,
+      "response_headers_ms": 128,
+      "response_complete_ms": 131,
+      "network_timing": {
+        "startTime": 1791480463389.3992,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.736,
+        "responseStart": 51.798,
+        "responseEnd": 91.144
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/submit",
+      "method": "POST",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 4314,
+      "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+      "response_complete_ms": 4377,
+      "network_timing": {
+        "startTime": 1791480461338.679,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.026,
+        "responseStart": 3962.656,
+        "responseEnd": 4374.113
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "type": "ping",
+      "status": 202,
+      "response_headers_ms": 437,
+      "response_complete_ms": 485,
+      "network_timing": {
+        "startTime": 1791480465365.5469,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.108,
+        "responseStart": 433.396,
+        "responseEnd": 489.804
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/5658c65b-32a3-475a-80bd-33e8430e6999/state",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 905,
+      "response_complete_ms": 905,
+      "network_timing": {
+        "startTime": 1791480469727.966,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.651,
+        "responseStart": 584.048,
+        "responseEnd": 919.638
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/ats/quick-score",
+      "method": "POST",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 854,
+      "response_complete_ms": 855,
+      "network_timing": {
+        "startTime": 1791480470764.02,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.506,
+        "responseStart": 515.768,
+        "responseEnd": 855.655
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/5658c65b-32a3-475a-80bd-33e8430e6999/state",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 588,
+      "response_complete_ms": 589,
+      "network_timing": {
+        "startTime": 1791480474327.446,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.275,
+        "responseStart": 583.7,
+        "responseEnd": 589.111
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/ats/quick-score",
+      "method": "POST",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 580,
+      "response_complete_ms": 582,
+      "network_timing": {
+        "startTime": 1791480477181.438,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.287,
+        "responseStart": 577.736,
+        "responseEnd": 581.774
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/download/5658c65b-32a3-475a-80bd-33e8430e6999",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 998,
+      "response_complete_ms": 1243,
+      "network_timing": {
+        "startTime": 1791480477521.662,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.158,
+        "responseStart": 656.272,
+        "responseEnd": 1245.714
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/6162.59e84968fa7f2240.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 13,
+      "response_complete_ms": 15,
+      "network_timing": {
+        "startTime": 1791480478431.852,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.81,
+        "responseStart": 10.488,
+        "responseEnd": 12.656
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/9397.a5302b13600b0e7f.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 16,
+      "response_complete_ms": 17,
+      "network_timing": {
+        "startTime": 1791480478433.058,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 1.223,
+        "responseStart": 10.457,
+        "responseEnd": 11.722
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/4021.4649c90facff6646.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 17,
+      "response_complete_ms": 17,
+      "network_timing": {
+        "startTime": 1791480478432.451,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.719,
+        "responseStart": 10.415,
+        "responseEnd": 12.134
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/chunks/fd07eb41.f5bc361155bff97a.js",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 18,
+      "response_complete_ms": 18,
+      "network_timing": {
+        "startTime": 1791480478431.621,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.402,
+        "responseStart": 8.676,
+        "responseEnd": 13.226
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/analytics/track/feature-usage",
+      "method": "POST",
+      "type": "fetch",
+      "status": 201,
+      "response_headers_ms": 1587,
+      "response_complete_ms": 1640,
+      "network_timing": {
+        "startTime": 1791480477597.907,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.389,
+        "responseStart": 1172.263,
+        "responseEnd": 1645.961
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/analytics/track/compilation",
+      "method": "POST",
+      "type": "fetch",
+      "status": 201,
+      "response_headers_ms": 1592,
+      "response_complete_ms": 1647,
+      "network_timing": {
+        "startTime": 1791480477588.032,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.287,
+        "responseStart": 1188.182,
+        "responseEnd": 1653.052
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/_next/static/media/pdf.worker.min.b67f3282.mjs",
+      "method": "GET",
+      "type": "script",
+      "status": 200,
+      "response_headers_ms": 26,
+      "response_complete_ms": 84,
+      "network_timing": {
+        "startTime": 1791480478756.919,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.563,
+        "responseStart": 3.094,
+        "responseEnd": 81.095
+      }
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "https://latexy.xyz/b31d0114-c616-49fe-b755-3af70cde94cd",
+      "method": "GET",
+      "type": "xhr",
+      "status": 200,
+      "response_headers_ms": 10,
+      "response_complete_ms": 12,
+      "network_timing": {
+        "startTime": 1791480478894.478,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": -1,
+        "responseStart": 3.003,
+        "responseEnd": 3.003
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/download/5658c65b-32a3-475a-80bd-33e8430e6999/synctex",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 944,
+      "response_complete_ms": 949,
+      "network_timing": {
+        "startTime": 1791480478787.5562,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.409,
+        "responseStart": 585.148,
+        "responseEnd": 918.239
+      }
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/5658c65b-32a3-475a-80bd-33e8430e6999/state",
+      "method": "GET",
+      "type": "fetch",
+      "status": 200,
+      "response_headers_ms": 585,
+      "response_complete_ms": 587,
+      "network_timing": {
+        "startTime": 1791480478925.4648,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.511,
+        "responseStart": 577.555,
+        "responseEnd": 580.332
+      }
+    }
+  ],
+  "events": [
+    {
+      "origin": "wss://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/ws/jobs",
+      "opened_at_utc": "2026-10-08T17:27:45.896Z",
+      "frames": [
+        {
+          "observed_at_utc": "2026-10-08T17:27:46.774Z",
+          "type": "job.queued",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480465.1841874
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:46.815Z",
+          "type": "subscribed",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999"
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:47.938Z",
+          "type": "job.started",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480469.637379,
+          "stage": "latex_compilation"
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:47.989Z",
+          "type": "job.progress",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480469.715933,
+          "stage": "latex_compilation"
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:48.207Z",
+          "type": "job.progress",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480469.873348,
+          "stage": "latex_compilation"
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:48.520Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480470.21329
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:48.712Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480470.449724
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:48.951Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480470.685705
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:49.191Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480470.923141
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:49.422Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480471.158147
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:49.688Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480471.392755
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:49.879Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480471.627967
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:50.118Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480471.862714
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:50.354Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480472.097597
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:50.621Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480472.332331
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:50.884Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480472.567136
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:51.060Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480472.801543
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:51.294Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480473.036991
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:51.528Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480473.271762
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:51.771Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480473.506287
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:52.001Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480473.743782
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:52.234Z",
+          "type": "log.line",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480473.978036
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:52.683Z",
+          "type": "job.progress",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480474.431263,
+          "stage": "latex_compilation"
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:57.070Z",
+          "type": "job.pdf_extracted",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480478.816716
+        },
+        {
+          "observed_at_utc": "2026-10-08T17:27:57.158Z",
+          "type": "job.completed",
+          "job_id": "5658c65b-32a3-475a-80bd-33e8430e6999",
+          "server_timestamp": 1791480478.899584
+        }
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/faq",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/templates",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "inspection_errors": [],
+  "console_errors": [],
+  "samples": [
+    {
+      "name": "starter-compile",
+      "action_to_visible_canvas_ms": 18823,
+      "paint_measurement": "visible nonzero canvas followed by two animation frames; no app telemetry assumption"
+    }
+  ],
+  "identities": {
+    "frontend": {
+      "status": 200,
+      "elapsed_ms": 525,
+      "body": {
+        "commitSha": "26e802ca3e83b11b565365f817407911080c5ff3",
+        "source": "vercel"
+      }
+    },
+    "backend": {
+      "status": 200,
+      "elapsed_ms": 1970,
+      "body": {
+        "status": "healthy",
+        "version": "1.0.0",
+        "latex_available": true,
+        "database": "ok",
+        "redis": "ok",
+        "redis_cache": "ok",
+        "redis_capacity": {
+          "provider": "upstash",
+          "status": "unconfigured",
+          "configured": false
+        },
+        "storage": "ok"
+      }
+    }
+  },
+  "final_url": "https://latexy.xyz/try",
+  "deployed_no_code_toggle": 0,
+  "loaded_monaco": 1
+}

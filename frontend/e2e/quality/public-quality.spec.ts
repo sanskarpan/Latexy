@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './quality-test'
+import { mockEngineAncillaryApi, mockPublicEngineDocument } from './engine-fixtures'
 
 const PUBLIC_ROUTES = [
     '/',
@@ -16,6 +17,8 @@ const PUBLIC_ROUTES = [
 ]
 
 async function installPublicPageMocks(page: Page) {
+    await mockEngineAncillaryApi(page)
+    await mockPublicEngineDocument(page)
     const jsonHeaders = {
         'access-control-allow-origin': '*',
         'content-type': 'application/json',
@@ -32,7 +35,8 @@ async function installPublicPageMocks(page: Page) {
     await page.route(
         url => url.pathname === '/templates' || url.pathname.startsWith('/templates/'),
         async route => {
-            if (!['fetch', 'xhr'].includes(route.request().resourceType())) return route.fallback()
+            if (!['fetch', 'xhr'].includes(route.request().resourceType())
+                || route.request().headers().rsc === '1') return route.fallback()
             return route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' })
         }
     )
@@ -274,7 +278,7 @@ test('mobile studio keeps primary controls reachable without document overflow',
     await page.goto('/try', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Editor', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PDF', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update PDF', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Tools', exact: true }).click()
     await expect(page.getByRole('button', { name: /Import file/ })).toBeVisible()
 

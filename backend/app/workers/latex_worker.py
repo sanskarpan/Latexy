@@ -1,9 +1,9 @@
 """
 LaTeX compilation worker — event-driven rebuild.
 
-Streams pdflatex log lines via publish_event() instead of collecting
-them all at once.  Uses subprocess.Popen for line-by-line stdout
-streaming.  All Redis I/O goes through the synchronous event_publisher helpers;
+Collects bounded compiler diagnostics and publishes them only after each
+pass passes recorder validation. Uses subprocess.Popen for line-by-line stdout
+reading. All Redis I/O goes through the synchronous event_publisher helpers;
 the only asyncio here is the short-lived asyncio.run() used to reconcile the
 Compilation row (SQLAlchemy async engine has no sync counterpart in this app).
 """
@@ -29,6 +29,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
+from ..core.engine_observability import PhaseTimer, record_phase
 from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
@@ -41,26 +42,32 @@ from ..services.auto_fit_service import (
 from ..services.cover_letter_signature_service import materialize_embedded_signature
 from ..services.latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
-    LATEX_SANDBOX_FLAGS,
     RECORDER_SUFFIX,
     assert_local_engine_allowed,
     cleanup_docker_container,
     docker_container_name,
     docker_engine_available,
+    docker_engine_command,
     docker_sandbox_args,
     engine_env,
     engine_output_error,
+    engine_sandbox_flags,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
+    native_engine_command,
     publish_verified_engine_log,
 )
+from ..services.render_engine.cancellation import CancellationPoll
+from ..services.render_engine.modal_sandbox import ModalEngineUnavailable
+from ..services.render_engine.passes import RenderPassError
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
     MAX_SYNCTEX_COMPRESSED_BYTES,
     MAX_SYNCTEX_DECOMPRESSED_BYTES,
     BoundedReadError,
     BoundedTranscript,
+    UntrustedFileError,
     decode_base64_bounded,
     iter_bounded_lines,
     read_file_bounded,
@@ -175,11 +182,10 @@ def _refund_compile_quota_once(
 #  the next measurement shows which phase actually dominates:        #
 #    - queue_wait_seconds: job creation (API writes :meta.submitted_at)  #
 #      to this worker picking the task up.                            #
-#    - cold_start_seconds: only set for the FIRST task this worker    #
-#      process (== this Modal container) handles — the gap between    #
-#      module import (proxy for container start) and task start, i.e. #
-#      container boot + image pull. None on every task after that,    #
-#      i.e. on a warm min_containers=1 container.                      #
+#    - worker_import_to_first_task_seconds: first task only; the gap   #
+#      between module import and task start. This includes idle wait, #
+#      excludes image pull before import, and is not a cold-boot      #
+#      measurement. cold_start_seconds remains a legacy alias.        #
 #    - compile_subprocess_seconds: the pdflatex/xelatex/lualatex        #
 #      subprocess itself (already computed elsewhere as                #
 #      compilation_time — reused, not duplicated).                     #
@@ -197,11 +203,11 @@ _first_task_seen = False
 
 
 def consume_cold_start_seconds() -> Optional[float]:
-    """Elapsed time since this worker process started, but only once.
+    """Legacy API: elapsed module-import-to-first-task time, only once.
 
     The first caller (the first task this process handles) gets the real gap;
-    every later call returns None so a warm container's fast tasks are never
-    mislabeled as cold starts.
+    Every later call returns None. This does not measure container boot or
+    image-pull latency, which occurred before the module was imported.
     """
     global _first_task_seen
     with _first_task_lock:
@@ -228,7 +234,11 @@ def compute_queue_wait_seconds(job_id: str) -> Optional[float]:
         submitted_at = json.loads(raw).get("submitted_at")
         if not submitted_at:
             return None
-        return max(0.0, time.time() - float(submitted_at))
+        seconds = max(0.0, time.time() - float(submitted_at))
+        # Includes dispatch/startup and can overlap worker_initialization.
+        # API/worker wall-clock skew is clamped; it is not a pure broker metric.
+        record_phase("queue_wait", seconds)
+        return seconds
     except Exception:
         return None
 
@@ -323,12 +333,19 @@ def _probe_auto_fit_candidate(
     """Compile an isolated fit candidate without publishing its artifact or log."""
     probe_dir = Path(settings.TEMP_DIR) / f"{job_id}-autofit-{profile_intensity}"
     container_name: Optional[str] = None
+    probe_process = None
+    probe_watchdog = None
     try:
+        from ..services.render_engine.backend import resolve_backend, start_engine_process
+
+        render_backend = resolve_backend(compiler)
         probe_dir.mkdir(parents=True, exist_ok=False)
         (probe_dir / main_file).write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, probe_dir)
         write_reference_library(probe_dir, bibtex)
-        use_docker = docker_engine_available()
+        use_docker = render_backend.kind == "docker"
+        if use_docker and not docker_engine_available():
+            raise RenderPassError("Configured Docker renderer is unavailable")
         container_name = docker_container_name(job_id, "probe") if use_docker else None
         if use_docker:
             command = [
@@ -337,14 +354,14 @@ def _probe_auto_fit_candidate(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(compiler),
+                *docker_sandbox_args("/workspace", compiler),
                 "-v",
                 f"{probe_dir}:/workspace",
                 "-w",
                 "/workspace",
                 settings.LATEX_DOCKER_IMAGE,
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+                *docker_engine_command(compiler, [
+                *engine_sandbox_flags(compiler),
                 *error_mode_flags,
                 "-output-directory",
                 "/workspace",
@@ -352,14 +369,15 @@ def _probe_auto_fit_candidate(
                 "resume",
                 *custom_flags,
                 main_file,
+                ], "/workspace"),
             ]
             compile_cwd = None
             workspace = "/workspace"
         else:
-            assert_local_engine_allowed(job_id)
-            command = [
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+            if render_backend.kind == "native":
+                assert_local_engine_allowed(job_id)
+            arguments = [
+                *engine_sandbox_flags(compiler),
                 *error_mode_flags,
                 "-jobname",
                 "resume",
@@ -368,19 +386,27 @@ def _probe_auto_fit_candidate(
                 *custom_flags,
                 main_file,
             ]
+            command = native_engine_command(compiler, arguments, probe_dir) if render_backend.kind == "native" else [compiler, *arguments]
             compile_cwd = str(probe_dir)
             workspace = str(probe_dir)
 
-        completed = subprocess.run(
-            command,
-            cwd=compile_cwd,
-            env=engine_env(compiler),
-            # The compiler log is the bounded source of diagnostics/page
-            # counts.  Do not let a generated document fill subprocess pipes.
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=max(1.0, timeout),
-        )
+        if render_backend.kind == "modal_vm":
+            probe_process = start_engine_process(command, cwd=compile_cwd,
+                env=engine_env(probe_dir, compiler), workspace=str(probe_dir),
+                compiler=compiler, timeout=max(1.0, timeout), backend=render_backend,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            workspace = probe_process.remote_workspace
+            probe_watchdog = ProcessWatchdog(probe_process, timeout=max(1.0, timeout),
+                is_cancelled=lambda: is_cancelled(job_id)).start()
+            probe_process.wait(timeout=max(1.0, timeout))
+            completed = probe_process
+        else:
+            completed = subprocess.run(
+                command, cwd=compile_cwd, env=engine_env(probe_dir, compiler),
+                # Diagnostics come from a bounded on-disk compiler log.
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=max(1.0, timeout),
+            )
         log_file = probe_dir / "resume.log"
         transcript = read_text_file_bounded(log_file) if log_file.is_file() else ""
         for line in transcript.splitlines():
@@ -395,7 +421,7 @@ def _probe_auto_fit_candidate(
         recorder_escape = find_recorder_read_escape(
             probe_dir / f"resume{RECORDER_SUFFIX}",
             workspace,
-            require_recorder=completed.returncode == 0,
+            require_recorder=completed.returncode == 0 or compiler == "lualatex",
         )
         if recorder_escape:
             logger.warning(
@@ -411,6 +437,16 @@ def _probe_auto_fit_candidate(
     except subprocess.TimeoutExpired:
         return False, None, "Auto-fit probe timed out"
     finally:
+        if probe_watchdog is not None:
+            probe_watchdog.stop()
+        if probe_process is not None:
+            from ..services.render_engine.backend import close_engine_session
+
+            try:
+                close_engine_session(probe_process)
+            except Exception as cleanup_exc:
+                logger.warning("Renderer probe cleanup failed (%s)", type(cleanup_exc).__name__)
+            probe_process.stdout.close()
         cleanup_docker_container(container_name)
         if probe_dir.exists():
             shutil.rmtree(probe_dir, ignore_errors=True)
@@ -667,7 +703,7 @@ def cache_compile_log(job_id: str, log_text: str) -> None:
         logger.warning("Failed to cache logs in Redis for job %s", job_id, extra={"error_type": type(exc).__name__})
 
 
-def cache_compile_output(job_id: str, job_dir: Path) -> Optional[bytes]:
+def cache_compile_output(job_id: str, job_dir: Path, *, render_request: Optional[Dict[str, Any]] = None, page_count: Optional[int] = None) -> Optional[bytes]:
     """
     Cache the compiled PDF and SyncTeX data from job_dir in Redis.
 
@@ -678,6 +714,14 @@ def cache_compile_output(job_id: str, job_dir: Path) -> Optional[bytes]:
 
     Returns the PDF bytes so callers can reuse them without re-reading the file.
     """
+    if render_request is not None and current_owner_epoch(job_id) is not None:
+        from ..services.render_engine.artifacts import persist_render
+
+        pdf_bytes = read_file_bounded(job_dir / "resume.pdf", MAX_COMPILED_PDF_BYTES)
+        manifest = persist_render(get_worker_redis(), job_id, job_dir, render_request, pdf_bytes, page_count)
+        if manifest is None:
+            return None
+        return pdf_bytes
     pdf_bytes: Optional[bytes] = None
     redis = None
     pdf_key = f"latexy:job:{job_id}:pdf"
@@ -739,12 +783,29 @@ def compile_cache_key(
     operator-controlled epoch keep semantically different builds separate.
     Anonymous internal jobs without a stable device/user scope are not cached.
     """
-    if not owner_scope:
+    from ..services.render_engine.cache_policy import supports_exact_cache
+
+    if not owner_scope or not supports_exact_cache(latex_content):
         return None
+    from ..services.render_engine.artifacts import RENDERER_EPOCH
+    from ..services.render_engine.backend import resolve_backend
+    from ..services.render_engine.trusted_profiles import trusted_format_identity
+
+    try:
+        backend = resolve_backend(compiler)
+    except ModalEngineUnavailable as exc:
+        raise RenderPassError(str(exc)) from exc
+    if not backend.cacheable:
+        return None
+
     material = json.dumps(
         {
             "epoch": _COMPILE_CACHE_EPOCH,
             "image": settings.LATEX_DOCKER_IMAGE,
+            "engine_fingerprint": backend.engine_fingerprint,
+            "trusted_format": trusted_format_identity(latex_content, compiler),
+            "renderer_epoch": RENDERER_EPOCH,
+            "lua_policy": backend.policy_identity,
             "owner": owner_scope,
             "compiler": compiler,
             "settings": compile_settings,
@@ -757,7 +818,7 @@ def compile_cache_key(
     return f"latexy:compile-cache:{hashlib.sha256(material).hexdigest()}"
 
 
-def restore_compile_cache(cache_key: Optional[str], job_id: str) -> Optional[Dict[str, Any]]:
+def restore_compile_cache(cache_key: Optional[str], job_id: str, render_request: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Copy a cached success into fresh job-owned Redis keys.
 
     Cache entries only point at a prior job. The current request keeps its own
@@ -771,6 +832,19 @@ def restore_compile_cache(cache_key: Optional[str], job_id: str) -> Optional[Dic
         source_job_id = redis.get(cache_key)
         if isinstance(source_job_id, bytes):
             source_job_id = source_job_id.decode("utf-8")
+        if isinstance(source_job_id, str) and source_job_id.startswith("{"):
+            if render_request is None:
+                return None
+            from ..services.render_engine.artifacts import restore_render
+
+            restored = restore_render(redis, job_id, render_request, source_job_id)
+            if restored is None:
+                return None
+            manifest, pdf_bytes = restored
+            return {"success": True, "job_id": job_id, "pdf_job_id": job_id,
+                    "cached": True, "compilation_time": 0.0,
+                    "page_count": manifest.page_count, "pdf_size": len(pdf_bytes),
+                    "compiler": manifest.compiler, "artifact": manifest.public(), "_pdf_bytes": pdf_bytes}
         if not isinstance(source_job_id, str) or not source_job_id or source_job_id == job_id:
             return None
         pdf, synctex, log_text, raw_result = redis.mget(
@@ -794,6 +868,13 @@ def restore_compile_cache(cache_key: Optional[str], job_id: str) -> Optional[Dic
         if not isinstance(result, dict) or result.get("success") is not True:
             redis.delete(cache_key)
             return None
+        # A combined job may seed this renderer cache. Reuse rendering facts
+        # only; optimization, ATS, persistence and auto-fit decisions belong to
+        # the new request and must never be inherited from an earlier job.
+        result = {
+            key: value for key, value in result.items()
+            if key in {"success", "page_count", "slide_count", "is_beamer", "compiler", "pdf_size", "extracted_text"}
+        }
         result.update(
             {
                 "job_id": job_id,
@@ -812,6 +893,11 @@ def restore_compile_cache(cache_key: Optional[str], job_id: str) -> Optional[Dic
         return result
     except Exception as exc:
         logger.warning("Failed to restore compile cache for job %s", job_id, extra={"error_type": type(exc).__name__})
+        if isinstance(exc, (ValueError, BoundedReadError)):
+            try:
+                get_worker_redis().delete(cache_key)
+            except Exception:
+                pass
         return None
 
 
@@ -820,7 +906,9 @@ def remember_compile_cache(cache_key: Optional[str], job_id: str) -> None:
     if not cache_key:
         return
     try:
-        get_worker_redis().set(cache_key, job_id, ex=_COMPILE_CACHE_TTL)
+        redis = get_worker_redis()
+        manifest = redis.get(f"latexy:job:{job_id}:artifact")
+        redis.set(cache_key, manifest or job_id, ex=_COMPILE_CACHE_TTL)
     except Exception as exc:
         logger.warning("Failed to remember compile cache for job %s", job_id, extra={"error_type": type(exc).__name__})
 
@@ -902,9 +990,9 @@ def commit_latex_finalization(
 ) -> LatexFinalizationResult:
     """Upload and atomically commit a lifecycle-owned successful compile.
 
-    A Compilation row gets an immutable owner-tokenized object before the DB
-    transaction. Jobs without a Compilation row retain their Redis-only PDF
-    retention policy and commit no durable PDF path.
+    Admitted renders commit their validated content-addressed manifest object;
+    legacy renders upload an owner-tokenized object. The finalizer rechecks
+    current durable ownership before accepting either object.
     """
 
     async def _commit() -> LatexFinalizationResult:
@@ -993,8 +1081,9 @@ def commit_latex_finalization(
                 await session.rollback()
 
             pdf_path = pdf_sha256 = None
+            render_manifest = None
             pdf_size = None
-            if has_compilation:
+            if has_compilation or result_payload.get("artifact") is not None:
                 failure_message = "Compiled PDF could not be durably stored"
 
                 async def _record_storage_failure(session):
@@ -1056,11 +1145,26 @@ def commit_latex_finalization(
                     async with factory() as failure_session:
                         return await _record_storage_failure(failure_session)
                 try:
-                    # Anonymous/preview jobs have no Compilation row and must
-                    # not receive a durable 40-day object.
-                    pdf_path, pdf_sha256 = upload_compilation_pdf(
-                        job_id, lifecycle_owner, pdf_bytes
-                    )
+                    # Guest renders already have a device-scoped immutable
+                    # manifest with its shorter TTL. Bind that same object;
+                    # never upload a legacy 40-day guest object.
+                    from ..services.render_engine.artifacts import get_job_manifest, sha256
+
+                    manifest = get_job_manifest(get_worker_redis(), job_id)
+                    if manifest is not None:
+                        if (manifest.owner_token_sha256 != sha256(lifecycle_owner)
+                                or manifest.owner_epoch != owner_epoch
+                                or manifest.pdf.sha256 != sha256(pdf_bytes)
+                                or manifest.pdf.size != len(pdf_bytes)):
+                            raise ValueError("render finalization artifact mismatch")
+                        pdf_path, pdf_sha256 = manifest.pdf.key, manifest.pdf.sha256
+                        render_manifest = manifest.model_dump()
+                    elif has_compilation:
+                        pdf_path, pdf_sha256 = upload_compilation_pdf(
+                            job_id, lifecycle_owner, pdf_bytes
+                        )
+                    else:
+                        raise ValueError("Guest render manifest unavailable")
                 except SoftTimeLimitExceeded:
                     # Celery's worker deadline is a task timeout, not an
                     # object-storage failure. Let the outer timeout handler
@@ -1096,12 +1200,13 @@ def commit_latex_finalization(
                     pdf_path=pdf_path,
                     pdf_sha256=pdf_sha256,
                     pdf_size=pdf_size,
+                    render_manifest=render_manifest,
                     compilation_time=compilation_time,
                     resume_id=resume_id,
                     resume_user_id=resume_user_id,
                     resume_content=resume_content,
                     expected_resume_sha256=expected_resume_sha256,
-                    require_pdf=has_compilation,
+                    require_pdf=has_compilation or render_manifest is not None,
                 )
                 row = await session.scalar(
                     select(JobFinalization).where(JobFinalization.job_id == job_id)
@@ -1151,7 +1256,10 @@ def commit_latex_finalization(
             await engine.dispose()
 
     try:
-        return asyncio.run(_commit())
+        from ..core.engine_observability import engine_span
+
+        with engine_span("finalization"):
+            return asyncio.run(_commit())
     except SoftTimeLimitExceeded:
         raise
     except Exception:
@@ -1559,14 +1667,17 @@ def compile_latex_task(
     quota_refund: Optional[Dict[str, Any]] = None,
     auto_fit: bool = False,
     auto_fit_intensity: Optional[int] = None,
+    render_request: Optional[Dict[str, Any]] = None,
+    cache_only: bool = False,
 ) -> Dict[str, Any]:
     """
-    Compile LaTeX content to PDF, streaming each pdflatex log line as
-    a log.line event.  Publishes job.completed on success or job.failed
+    Compile LaTeX content to PDF, publishing bounded verified diagnostics as
+    log.line events. Publishes job.completed on success or job.failed
     on error.
     """
     if job_id is None:
         job_id = str(uuid.uuid4())
+    requested_source = latex_content
 
     # Timing instrumentation (#1281) — captured before anything else so
     # cold_start/queue_wait reflect the true start of this task's execution.
@@ -1593,6 +1704,7 @@ def compile_latex_task(
             "compiler": compiler,
             "queue_wait_seconds": _queue_wait_seconds,
             "cold_start_seconds": _cold_start_seconds,
+            "worker_import_to_first_task_seconds": _cold_start_seconds,
         },
     )
 
@@ -1636,6 +1748,7 @@ def compile_latex_task(
                 "outcome": outcome,
                 "queue_wait_seconds": _queue_wait_seconds,
                 "cold_start_seconds": _cold_start_seconds,
+                "worker_import_to_first_task_seconds": _cold_start_seconds,
                 "compile_subprocess_seconds": compile_subprocess_seconds,
                 "reporting_seconds": reporting_seconds,
                 "total_task_seconds": time.monotonic() - _task_monotonic_start,
@@ -1668,6 +1781,9 @@ def compile_latex_task(
         )
 
     job_dir: Optional[Path] = None
+    render_lease = None
+    auxiliary_workspace = None
+    source_prepare = PhaseTimer("source_prepare")
     try:
         # ── Validation ──────────────────────────────────────────────
         publish_event(
@@ -1681,6 +1797,7 @@ def compile_latex_task(
         )
 
         if not latex_service.validate_latex_content(latex_content):
+            source_prepare.finish("error")
             error_msg = (
                 r"Invalid LaTeX: missing \documentclass, "
                 r"\begin{document}, or \end{document}"
@@ -1728,6 +1845,7 @@ def compile_latex_task(
         # Inject watermark if requested
         if watermark:
             if not _WATERMARK_RE.match(watermark) or len(watermark) > _WATERMARK_MAX_LEN:
+                source_prepare.finish("error")
                 error_msg = "Invalid watermark text"
                 result = {"success": False, "job_id": job_id, "error": error_msg}
                 terminal_accepted = publish_job_result(job_id, result)
@@ -1839,9 +1957,33 @@ def compile_latex_task(
             },
             cache_owner,
         )
+        from ..services.render_engine.backend import resolve_backend
+
+        render_backend = resolve_backend(compiler)
+
+        prepared_render_request = {
+            **(render_request or {}),
+            "owner_scope": cache_owner, "source": requested_source,
+            "render_source": latex_content, "compiler": compiler,
+            "settings": {**_cs, "main_file": main_file, "latexmk_flags": custom_flags,
+                         "halt_on_error": _cs.get("halt_on_error") is not False},
+            "engine_fingerprint": render_backend.engine_fingerprint, "cache_key": content_cache_key,
+        } if lifecycle_owned and cache_owner else None
+        # Includes validation, source/settings transforms and auto-fit probes;
+        # excludes cache lookup, coalescing, final TeX and artifact publication.
+        source_prepare.finish()
         _cache_reporting_start = time.monotonic()
-        cached_result = restore_compile_cache(content_cache_key, job_id)
+        from ..core.engine_observability import engine_span
+
+        with engine_span("cache_lookup"):
+            cached_result = restore_compile_cache(content_cache_key, job_id, prepared_render_request) if prepared_render_request else restore_compile_cache(content_cache_key, job_id)
+        if cached_result is None and prepared_render_request and content_cache_key and not cache_only:
+            from ..services.render_engine.coalescing import await_render_slot
+
+            render_lease = await_render_slot(queue_redis, content_cache_key, job_id, timeout)
+            cached_result = restore_compile_cache(content_cache_key, job_id, prepared_render_request)
         if cached_result is not None:
+            render_cached_bytes = cached_result.pop("_pdf_bytes", None)
             for contextual_key in (
                 "auto_fit",
                 "fit_succeeded",
@@ -1866,6 +2008,13 @@ def compile_latex_task(
                 if cached_pdf_value
                 else None
             )
+            if isinstance(render_cached_bytes, bytes):
+                cached_pdf_bytes = render_cached_bytes
+            elif cached_result.get("artifact"):
+                from ..services.render_engine.artifacts import download_object, get_job_manifest
+
+                manifest = get_job_manifest(get_worker_redis(), job_id)
+                cached_pdf_bytes = download_object(manifest.pdf, MAX_COMPILED_PDF_BYTES) if manifest else None
             replayed = False
             if lifecycle_owned:
                 if not begin_finalizing(queue_redis, job_id, lifecycle_owner, lifecycle_epoch):
@@ -1957,6 +2106,8 @@ def compile_latex_task(
             return cached_result
 
         # ── Setup ────────────────────────────────────────────────────
+        if cache_only:
+            raise RenderPassError("Exact render cache expired before execution")
         job_dir = Path(settings.TEMP_DIR) / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         # job_dir is now set; finally block will clean it up
@@ -1964,6 +2115,10 @@ def compile_latex_task(
         tex_file.write_text(latex_content, encoding="utf-8")
         materialize_embedded_signature(latex_content, job_dir)
         write_reference_library(job_dir, _cs.get("bibtex"))
+        if prepared_render_request and render_backend.cacheable:
+            from ..services.render_engine.auxiliary import AuxiliaryWorkspace
+
+            auxiliary_workspace = AuxiliaryWorkspace(queue_redis, job_dir, prepared_render_request, timeout)
 
         publish_event(
             job_id,
@@ -1976,7 +2131,9 @@ def compile_latex_task(
         )
 
         # ── Compile ──────────────────────────────────────────────────
-        _use_docker = docker_engine_available()
+        _use_docker = render_backend.kind == "docker"
+        if _use_docker and not docker_engine_available():
+            raise RenderPassError("Configured Docker renderer is unavailable")
         container_name = docker_container_name(job_id, "worker") if _use_docker else None
         if _use_docker:
             cmd = [
@@ -1985,14 +2142,14 @@ def compile_latex_task(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(compiler),
+                *docker_sandbox_args("/workspace", compiler),
                 "-v",
                 f"{job_dir}:/workspace",
                 "-w",
                 "/workspace",
                 settings.LATEX_DOCKER_IMAGE,
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+                *docker_engine_command(compiler, [
+                *engine_sandbox_flags(compiler),
                 *error_mode_flags,
                 "-synctex=1",
                 "-output-directory",
@@ -2001,19 +2158,23 @@ def compile_latex_task(
                 "resume",
                 *custom_flags,
                 main_file,
+                ], "/workspace"),
             ]
             compile_cwd = None
             workspace = "/workspace"
         else:
-            assert_local_engine_allowed(job_id)
+            if render_backend.kind == "native":
+                assert_local_engine_allowed(job_id)
             # Run WITH cwd=job_dir and pass RELATIVE paths. The sandbox sets
             # openin_any/openout_any=p (paranoid), under which kpathsea refuses to
             # read/write ABSOLUTE paths (e.g. /tmp/.../resume.tex) — pdflatex would
             # fail with "Not reading from … (openin_any = p)". Relative names
             # resolve against cwd, which paranoid mode permits.
-            cmd = [
-                compiler,
-                *LATEX_SANDBOX_FLAGS,
+            from ..services.render_engine.trusted_profiles import trusted_format_flags
+
+            arguments = [
+                *engine_sandbox_flags(compiler),
+                *trusted_format_flags(latex_content, compiler),
                 *error_mode_flags,
                 "-synctex=1",
                 "-jobname",
@@ -2023,19 +2184,29 @@ def compile_latex_task(
                 *custom_flags,
                 main_file,
             ]
+            cmd = native_engine_command(compiler, arguments, job_dir) if render_backend.kind == "native" else [compiler, *arguments]
             compile_cwd = str(job_dir)
             workspace = str(job_dir)
 
         _perf_start = time.perf_counter()
         with traced("latex.compile", compiler=compiler, docker=_use_docker):
             start_time = time.time()
-            proc = subprocess.Popen(
+            from ..services.render_engine.backend import start_engine_process
+
+            proc = start_engine_process(
                 cmd,
+                workspace=str(job_dir), compiler=compiler, timeout=timeout,
+                backend=render_backend, popen_factory=subprocess.Popen,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=compile_cwd,
-                env=engine_env(compiler),
+                env=engine_env(job_dir, compiler),
             )
+            if render_backend.kind == "modal_vm":
+                workspace = proc.remote_workspace
+            from ..services.render_engine.process_timing import ProcessTiming
+
+            process_timing = ProcessTiming(proc)
 
             # ── Detect Beamer presentation ───────────────────────────────
             is_beamer = is_beamer_document(latex_content)
@@ -2047,7 +2218,7 @@ def compile_latex_task(
 
             watchdog = ProcessWatchdog(
                 proc,
-                timeout=timeout,
+                timeout=max(0.0, timeout - (time.time() - start_time)),
                 is_cancelled=lambda: is_cancelled(job_id),
             ).start()
 
@@ -2086,6 +2257,7 @@ def compile_latex_task(
                 return _terminal_failure(escape_result, accepted=terminal_accepted)
 
             try:
+                cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
                 for stripped in iter_bounded_lines(proc.stdout):
                     if not stripped:
                         continue
@@ -2102,9 +2274,6 @@ def compile_latex_task(
                         proc.wait()
                         return _fail_read_escape(escaped)
 
-                    # Hold compiler output until the recorder has been checked:
-                    # an obfuscated openin/read can leak through typeout without
-                    # announcing the opened path in this transcript.
                     transcript.append(stripped)
 
                     # Extract page count from pdflatex summary line
@@ -2117,7 +2286,7 @@ def compile_latex_task(
                         first_latex_error = stripped[:250]
 
                     # ── Cancellation check ───────────────────────────────────
-                    if is_cancelled(job_id):
+                    if cancellation_poll():
                         proc.kill()
                         cleanup_docker_container(container_name)
                         proc.wait()
@@ -2125,14 +2294,15 @@ def compile_latex_task(
                         terminal_accepted = publish_job_result(job_id, result)
                         if terminal_accepted:
                             publish_event(job_id, "job.cancelled", {})
-                        # Cache only a safe cancellation message; interrupted
-                        # output has not passed final recorder validation. Move
-                        # the row out of "processing" — DELETE /jobs/{job_id} is a
+                        # Withhold interrupted output until recorder validation, and
+                        # move the row out of "processing" — DELETE /jobs/{job_id} is a
                         # shipped endpoint, so this is a reachable terminal path.
                         # "cancelled" (not "failed") keeps it out of the error-history
                         # and failed-compile analytics buckets, both of which already
                         # understand the value.
-                        cache_compile_log(job_id, "Compilation cancelled before engine output could be validated.")
+                        from ..services.render_engine.log_gating import interrupted_log
+
+                        cache_compile_log(job_id, interrupted_log(compiler, transcript))
                         reconcile_compilation_record(
                             job_id,
                             success=False,
@@ -2194,7 +2364,9 @@ def compile_latex_task(
                 terminal_accepted = publish_job_result(job_id, result)
                 if terminal_accepted:
                     publish_event(job_id, "job.cancelled", {})
-                cache_compile_log(job_id, "Compilation cancelled before engine output could be validated.")
+                from ..services.render_engine.log_gating import interrupted_log
+
+                cache_compile_log(job_id, interrupted_log(compiler, transcript))
                 reconcile_compilation_record(
                     job_id,
                     success=False,
@@ -2248,6 +2420,7 @@ def compile_latex_task(
             proc.wait()
             compilation_time = time.time() - start_time
         _compile_duration = time.perf_counter() - _perf_start
+        process_timing.finish()
         # Everything from here on is post-subprocess bookkeeping (recorder check,
         # Redis caching, DB reconcile, event publish) — the "reporting" phase.
         _reporting_start = time.monotonic()
@@ -2262,8 +2435,26 @@ def compile_latex_task(
         )
         if recorder_escape:
             return _fail_read_escape(recorder_escape)
-
         publish_verified_engine_log(job_id, transcript, compiler, publish_event)
+
+        if proc.returncode == 0:
+            from ..services.render_engine.passes import converge
+
+            try:
+                converged_pages = converge(job_id=job_id, job_dir=job_dir, command=cmd,
+                    cwd=compile_cwd, workspace=workspace, compiler=compiler, timeout=timeout,
+                    started_at=start_time, transcript=transcript, is_cancelled=lambda: is_cancelled(job_id),
+                    publisher=publish_event, container_name=container_name,
+                    engine_backend=render_backend, engine_session=getattr(proc, "renderer_session", None),
+                    force_second_pass=bool(auxiliary_workspace and auxiliary_workspace.loaded))
+            except (BoundedReadError, OSError, UnicodeError) as exc:
+                raise RenderPassError("Auxiliary artifacts invalid or unavailable") from exc
+            page_count = converged_pages if converged_pages is not None else page_count
+            compilation_time = time.time() - start_time
+            _compile_duration = time.perf_counter() - _perf_start
+            if auxiliary_workspace:
+                auxiliary_workspace.save()
+
         cache_compile_log(job_id, transcript.text())
 
         publish_event(
@@ -2315,11 +2506,10 @@ def compile_latex_task(
                 pages=page_count,
             )
 
-            # ── PDF text extraction for ATS pre-flight ───────────────
-            extracted_text = _extract_pdf_text(pdf_file, job_id)
-
             try:
-                pdf_bytes = cache_compile_output(job_id, job_dir)
+                pdf_bytes = cache_compile_output(job_id, job_dir, render_request=prepared_render_request, page_count=page_count) if prepared_render_request else cache_compile_output(job_id, job_dir)
+            except UntrustedFileError:
+                return _fail_read_escape("<untrusted generated artifact>")
             except BoundedReadError:
                 # The stat gate above normally catches this; retain the same
                 # terminal behavior if the file grows between stat and read.
@@ -2350,6 +2540,8 @@ def compile_latex_task(
                 _log_task_timing("pdf_too_large", _compile_duration, _reporting_start)
                 return _terminal_failure(result, accepted=terminal_accepted)
 
+            # Preview readiness precedes auxiliary ATS extraction.
+            extracted_text = _extract_pdf_text(pdf_file, job_id)
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None
 
@@ -2365,6 +2557,12 @@ def compile_latex_task(
                 "extracted_text": extracted_text,
                 **fit_payload,
             }
+            if prepared_render_request:
+                from ..services.render_engine.artifacts import get_job_manifest
+
+                manifest = get_job_manifest(get_worker_redis(), job_id)
+                if manifest:
+                    result["artifact"] = manifest.public()
             replayed = False
             if lifecycle_owned:
                 if not begin_finalizing(queue_redis, job_id, lifecycle_owner, lifecycle_epoch):
@@ -2499,6 +2697,7 @@ def compile_latex_task(
         return _terminal_failure(result, accepted=terminal_accepted)
 
     except SoftTimeLimitExceeded:
+        source_prepare.finish("error")
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}", exc_info=True)
         # Kill the subprocess if it was started before the limit fired
         try:
@@ -2539,7 +2738,74 @@ def compile_latex_task(
         _log_task_timing("soft_time_limit_exceeded")
         return _terminal_failure(result, accepted=terminal_accepted)
 
+    except (RenderPassError, ModalEngineUnavailable) as exc:
+        # Convergence owns and stops its extra child processes, but terminal
+        # classification still belongs to this task. Keep later-pass deadline
+        # and cancellation outcomes identical to the first-pass paths above.
+        if isinstance(exc, RenderPassError) and str(exc) == "cancelled":
+            result = {"success": False, "job_id": job_id, "cancelled": True}
+            terminal_accepted = publish_job_result(job_id, result)
+            if terminal_accepted:
+                publish_event(job_id, "job.cancelled", {})
+            from ..services.render_engine.log_gating import interrupted_log
+
+            cache_compile_log(job_id, interrupted_log(compiler, transcript))
+            reconcile_compilation_record(
+                job_id,
+                success=False,
+                status="cancelled",
+                compilation_time=time.time() - start_time,
+                error_message="cancelled",
+                lifecycle_owner=reconcile_owner,
+                lifecycle_epoch=lifecycle_epoch,
+                terminal_result=result,
+            )
+            _log_task_timing("cancelled", time.time() - start_time)
+            return _terminal_failure(result, accepted=terminal_accepted)
+        if isinstance(exc, RenderPassError) and str(exc) == "compile_timeout":
+            record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+            upgrade_msg = (
+                "Upgrade to Pro for a 4-minute compile timeout"
+                if resolve_plan_family(user_plan) in {"free", "basic"}
+                else None
+            )
+            result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
+            terminal_accepted = publish_job_result(job_id, result)
+            if terminal_accepted:
+                publish_event(
+                    job_id,
+                    "job.failed",
+                    {
+                        "stage": "latex_compilation",
+                        "error_code": "compile_timeout",
+                        "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+                        "upgrade_message": upgrade_msg,
+                        "user_plan": user_plan,
+                        "timeout_seconds": int(timeout),
+                        "retryable": False,
+                    },
+                )
+            reconcile_compilation_record(
+                job_id,
+                success=False,
+                compilation_time=time.time() - start_time,
+                error_message="compile_timeout",
+                lifecycle_owner=reconcile_owner,
+                lifecycle_epoch=lifecycle_epoch,
+                terminal_result=result,
+            )
+            _log_task_timing("compile_timeout", time.time() - start_time)
+            return _terminal_failure(result, accepted=terminal_accepted)
+        result = {"success": False, "job_id": job_id, "error": str(exc)}
+        terminal_accepted = publish_job_result(job_id, result)
+        if terminal_accepted:
+            publish_event(job_id, "job.failed", {"stage": "latex_compilation", "error_code": "render_pass_failed",
+                "error_message": str(exc), "retryable": False})
+        reconcile_compilation_record(job_id, success=False, error_message=str(exc),
+            lifecycle_owner=reconcile_owner, lifecycle_epoch=lifecycle_epoch, terminal_result=result)
+        return _terminal_failure(result, accepted=terminal_accepted)
     except Exception as exc:
+        source_prepare.finish("error")
         cleanup_docker_container(locals().get("container_name"))
         logger.error("LaTeX task %s raised", task_id, extra={"error_type": type(exc).__name__})
         retryable = self.request.retries < self.max_retries
@@ -2582,6 +2848,22 @@ def compile_latex_task(
         _log_task_timing("exception")
         return _terminal_failure(result, accepted=terminal_accepted)
     finally:
+        source_prepare.finish("error")
+        process_obj = locals().get("proc")
+        if process_obj is not None:
+            from ..services.render_engine.backend import close_engine_session
+
+            try:
+                close_engine_session(process_obj)
+            except Exception as cleanup_exc:
+                logger.warning("Renderer session cleanup failed (%s)", type(cleanup_exc).__name__)
+            stdout = getattr(process_obj, "stdout", None)
+            if stdout is not None:
+                stdout.close()
+        if auxiliary_workspace is not None:
+            auxiliary_workspace.close()
+        if render_lease is not None:
+            render_lease.close()
         if job_dir is not None and job_dir.exists():
             try:
                 shutil.rmtree(job_dir)
@@ -2610,6 +2892,7 @@ def submit_latex_compilation(
     quota_refund: Optional[Dict[str, Any]] = None,
     auto_fit: bool = False,
     auto_fit_intensity: Optional[int] = None,
+    render_request: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue (Celery) or Modal."""
     import os
@@ -2639,6 +2922,7 @@ def submit_latex_compilation(
                 "quota_refund": quota_refund,
                 "auto_fit": auto_fit,
                 "auto_fit_intensity": auto_fit_intensity,
+                "render_request": render_request,
             },
         )
         logger.info(f"Modal spawn: LaTeX compilation for job {job_id} (compiler={compiler})")
@@ -2660,6 +2944,7 @@ def submit_latex_compilation(
             "quota_refund": quota_refund,
             "auto_fit": auto_fit,
             "auto_fit_intensity": auto_fit_intensity,
+            "render_request": render_request,
         },
         priority=priority,
         queue="latex",

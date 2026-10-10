@@ -131,7 +131,10 @@ def test_database_transaction_is_read_only_rolled_back_and_aggregated():
     report = preflight.database_report("postgresql+asyncpg://user:secret@host/database", engine_factory=factory)
     assert captured[0] == "SET TRANSACTION READ ONLY"
     assert factory.call_args.kwargs["hide_parameters"] is True
-    assert "default_transaction_read_only=on" in factory.call_args.kwargs["connect_args"]["options"]
+    assert factory.call_args.kwargs["connect_args"] == {
+        "connect_timeout": 5,
+        "options": "-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000",
+    }
     assert factory.call_args.kwargs["isolation_level"] == "REPEATABLE READ"
     transaction.rollback.assert_called_once()
     transaction.commit.assert_not_called()
@@ -651,3 +654,189 @@ def test_pending_dodo_count_does_not_require_a_provider_subscription_id():
     assert "provider_subscription_id" not in query
     assert {"checkout_pending", "checkout_unknown", "active", "cancel_scheduled"} <= set(call.args[1]["live_statuses"])
     assert report["counts"]["existing_dodo_live_intent_users"] == 0
+
+
+DATABASE_FAILURE_CASES = [
+    ("missing_url", "configuration"), ("invalid_url", "configuration"),
+    ("unsupported_url", "configuration"), ("engine", "engine"),
+    ("connect", "connect"), ("enter", "connect"),
+    ("begin", "read_only_setup"), ("set_read_only", "read_only_setup"),
+    ("show_read_only", "read_only_setup"), ("read_only_off", "read_only_setup"),
+    ("metadata_query", "schema_metadata"), ("metadata_rows", "schema_metadata"),
+    ("revision_query", "schema_revision"), ("revision_rows", "schema_revision"),
+    ("revision_files", "schema_revision"), ("schema_classification", "schema_revision"),
+    ("aggregate_query", "aggregate_counts"), ("aggregate_schema", "aggregate_counts"),
+    ("aggregate_seats", "aggregate_counts"), ("aggregate_mandates", "aggregate_counts"),
+    ("aggregate_dodo", "aggregate_counts"),
+    ("rollback", "cleanup"), ("exit", "cleanup"), ("dispose", "cleanup"),
+]
+
+
+@pytest.mark.parametrize("failure_point,stage", DATABASE_FAILURE_CASES)
+def test_each_database_failure_stage_is_fixed_redacted_and_blocks_rollout(monkeypatch, capsys, failure_point, stage):
+    sentinel = "private-password-host-customer-SQL-sentinel"
+    error = RuntimeError(sentinel)
+    engine, connection, transaction, captured = fake_engine()
+    factory = MagicMock(return_value=engine)
+    env = live_environment() | {"DEPLOY_TARGET": "modal", "BILLING_MODE": "disabled"}
+    execute = connection.execute.side_effect
+    scalar = connection.scalar.side_effect
+
+    def fail(*_args, **_kwargs):
+        raise error
+
+    def broken_rows():
+        raise error
+        yield  # Iterator failures must be classified while consuming rows.
+
+    query_failures = {
+        "set_read_only": "SET TRANSACTION", "metadata_query": "information_schema.columns",
+        "aggregate_query": "historical_paid_pointer_users",
+    }
+    if failure_point == "missing_url":
+        env.pop("DATABASE_URL")
+    elif failure_point == "invalid_url":
+        env["DATABASE_URL"] = sentinel
+    elif failure_point == "unsupported_url":
+        env["DATABASE_URL"] = "sqlite:///" + sentinel
+    elif failure_point == "engine":
+        factory.side_effect = error
+    elif failure_point == "connect":
+        engine.connect.side_effect = error
+    elif failure_point == "enter":
+        engine.connect.return_value.__enter__.side_effect = error
+    elif failure_point == "begin":
+        connection.begin.side_effect = error
+    elif failure_point in query_failures:
+        def execute_failure(statement, params=None):
+            if query_failures[failure_point] in str(statement):
+                raise error
+            return execute(statement, params)
+        connection.execute.side_effect = execute_failure
+    elif failure_point == "show_read_only":
+        connection.scalar.side_effect = error
+    elif failure_point == "read_only_off":
+        connection.scalar.return_value = "off"
+        connection.scalar.side_effect = None
+    elif failure_point == "metadata_rows":
+        connection.execute.side_effect = lambda statement, params=None: (
+            broken_rows() if "information_schema.columns" in str(statement) else execute(statement, params)
+        )
+    elif failure_point == "revision_query":
+        connection.scalars.side_effect = error
+    elif failure_point == "revision_rows":
+        connection.scalars.return_value = broken_rows()
+    elif failure_point == "revision_files":
+        monkeypatch.setattr(preflight, "known_revisions", fail)
+    elif failure_point == "schema_classification":
+        monkeypatch.setattr(preflight, "classify_schema", fail)
+    elif failure_point == "aggregate_schema":
+        connection.execute.side_effect = lambda statement, params=None: (
+            [] if "information_schema.columns" in str(statement) else execute(statement, params)
+        )
+    elif failure_point in {"aggregate_seats", "aggregate_mandates", "aggregate_dodo"}:
+        needle = {"aggregate_seats": "team_seats", "aggregate_mandates": "razorpay", "aggregate_dodo": "s.provider='dodo'"}[failure_point]
+        def scalar_failure(statement, params=None):
+            if needle in str(statement):
+                raise error
+            return scalar(statement, params)
+        connection.scalar.side_effect = scalar_failure
+    elif failure_point == "rollback":
+        transaction.rollback.side_effect = error
+    elif failure_point == "exit":
+        engine.connect.return_value.__exit__.side_effect = error
+    elif failure_point == "dispose":
+        engine.dispose.side_effect = error
+    else:
+        pytest.fail("Uncovered failure injection")
+
+    monkeypatch.setattr(preflight, "read_environment", lambda *_: env)
+    report, code = preflight.collect_report(engine_factory=factory)
+    public = preflight.public_report(report)
+    assert code == 2
+    assert public["database"] == {"status": "unavailable_or_unsupported", "failure_stage": stage}
+    assert public["status"] == "diagnostic_error"
+    for accepted in (False, True):
+        result = preflight.rollout_assessment(public, allow_configured_live=accepted)
+        assert result == {
+            "safe_to_rollout": False, "sales_state": "unsafe", "live_sales_acceptance": "unverified",
+            "reasons": ["rollout_diagnostics_incomplete", "rollout_database_diagnostics_incomplete",
+                        preflight.DATABASE_FAILURE_REASONS[stage]],
+        }
+    monkeypatch.setattr(preflight, "collect_report", lambda: (report, code))
+    assert preflight.main() == 2
+    output = capsys.readouterr()
+    assert json.loads(output.out) == public
+    assert output.err == ""
+    assert sentinel not in json.dumps(public) + output.out
+    assert "RuntimeError" not in output.out
+    transaction.commit.assert_not_called()
+    if stage in {"configuration", "engine"}:
+        engine.connect.assert_not_called()
+    else:
+        engine.dispose.assert_called_once()
+    if stage == "read_only_setup":
+        assert not any("information_schema" in sql or "historical_paid_pointer_users" in sql for sql in captured)
+    if stage not in {"configuration", "engine", "connect"} and failure_point != "begin":
+        transaction.rollback.assert_called_once()
+
+
+@pytest.mark.parametrize("cleanup", ["rollback", "exit", "dispose"])
+def test_cleanup_failure_is_reported_even_when_an_earlier_query_also_fails(monkeypatch, cleanup):
+    engine, connection, transaction, _ = fake_engine()
+    connection.execute.side_effect = RuntimeError("private-query-sentinel")
+    target = {"rollback": transaction.rollback, "exit": engine.connect.return_value.__exit__, "dispose": engine.dispose}[cleanup]
+    target.side_effect = RuntimeError("private-cleanup-sentinel")
+    monkeypatch.setattr(preflight, "read_environment", lambda *_: live_environment())
+    report, code = preflight.collect_report(engine_factory=lambda *_a, **_k: engine)
+    assert code == 2
+    assert report["database"]["failure_stage"] == "cleanup"
+    assert "sentinel" not in json.dumps(preflight.public_report(report))
+
+
+@pytest.mark.parametrize("stage", list(preflight.DATABASE_FAILURE_REASONS) + [None])
+@pytest.mark.parametrize("minimal", [False, True])
+def test_valid_incomplete_database_reports_never_cascade_to_invalid_report(stage, minimal):
+    report = {} if minimal else rollout_report()
+    report.update(status="diagnostic_error", blockers=["diagnostics_incomplete"],
+                  database={"status": "unavailable_or_unsupported"})
+    if stage is not None:
+        report["database"]["failure_stage"] = stage
+    result = preflight.rollout_assessment(preflight.public_report(report), allow_configured_live=True)
+    assert result["safe_to_rollout"] is False
+    assert "rollout_database_diagnostics_incomplete" in result["reasons"]
+    assert "rollout_public_report_invalid" not in result["reasons"]
+
+
+@pytest.mark.parametrize("stage", ["private-stage-sentinel", "", None, False, 1, [], {"value": "private-stage-sentinel"}])
+def test_unknown_database_failure_stages_never_cross_stdout_boundary(monkeypatch, capsys, stage):
+    report = rollout_report()
+    report.update(status="diagnostic_error", blockers=["diagnostics_incomplete"],
+                  database={"status": "unavailable_or_unsupported", "failure_stage": stage})
+    with pytest.raises(ValueError, match="Invalid public diagnostic report"):
+        preflight.public_report(report)
+    monkeypatch.setattr(preflight, "collect_report", lambda: (report, 2))
+    assert preflight.main() == 2
+    output = capsys.readouterr()
+    assert "sentinel" not in output.out + output.err
+    assert json.loads(output.out) == {"status": "diagnostic_error", "blockers": ["diagnostics_incomplete"],
+                                    "database": {"status": "unavailable_or_unsupported"}}
+
+
+@pytest.mark.parametrize("state", ["ready", "blocked", "diagnostic_error"])
+def test_failure_stage_is_not_permitted_on_complete_database_report(state):
+    report = complete_public_report()
+    report["status"] = state
+    report["database"]["failure_stage"] = "connect"
+    with pytest.raises(ValueError, match="Invalid public diagnostic report"):
+        preflight.public_report(report)
+
+
+def test_stage_reporting_does_not_turn_schema_or_history_holds_into_failures(monkeypatch):
+    engine, _, _, _ = fake_engine(revision="0061", historical=3)
+    monkeypatch.setattr(preflight, "read_environment", lambda *_: live_environment())
+    report, code = preflight.collect_report(engine_factory=lambda *_a, **_k: engine)
+    assert code == 1
+    assert report["database"]["schema_classification"] == "ambiguous_0061_requires_review"
+    assert "failure_stage" not in report["database"]
+    assert "historical_paid_accounts_require_cutover_review" in report["blockers"]

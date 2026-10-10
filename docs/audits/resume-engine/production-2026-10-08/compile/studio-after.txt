@@ -1,0 +1,149 @@
+Skip to content
+Résumé Studio
+Résumé Studio
+resume.tex
+Saved locally
+Recompile
+Auto
+ATS
+59
+Export
+trials 2
+Log in
+PROJECT
+resume.tex
+
+Source
+
+Reset
+Clear
+Import file (PDF · DOCX · TEX)
+resume.tex
+Copy
+⌘F to find
+LaTeX Presets
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{enumitem}
+\setlist{nosep}
+\begin{document}
+\begin{center}
+{\LARGE\textbf{Alex Morgan}} \\
+\vspace{1mm}
+Senior Software Engineer \\
+Email: alex@example.com | linkedin.com/in/alexmorgan
+\end{center}
+\section*{Summary}
+Product-focused engineer with 6+ years building resilient
+SaaS systems, developer tooling,
+and observability-first workflows.
+\section*{Experience}
+\textbf{Staff Engineer, Northbeam Labs} \hfill 2022 - Present
+\begin{itemize}
+\item Led migration to event-driven backend reducing
+deployment risk by 35\%
+\item Built internal design system used across 6 product
+surfaces
+\item Mentored 4 engineers and introduced measurable review
+standards
+\end{itemize}
+\section*{Skills}
+TypeScript, Next.js, Python, PostgreSQL, Redis, Kubernetes,
+AWS
+\end{document}
+LATEX EDITOR
+Editor keybindings
+Standard
+Vim
+Emacs
+STANDARD
+AUTO
+1 PAGE
+ATS 59
+856 CHARS
+⌘S SAVE · ⌘↵ COMPILE · ⌘⇧H PRESETS
+100%
+Fit
+Ctrl+click to sync
+Heatmap
+Print
+PDF
+Alex Morgan
+
+
+Senior Software Engineer
+
+
+Email: alex@example.com — linkedin.com/in/alexmorgan
+
+
+Summary
+
+
+Product-focused engineer with 6+ years building resilient SaaS systems, developer tooling, and observability-
+
+
+first workflows.
+
+
+Experience
+
+
+Staff Engineer, Northbeam Labs
+
+2022 - Present
+
+
+•
+
+Led migration to event-driven backend reducing deployment risk by 35%
+
+
+•
+
+Built internal design system used across 6 product surfaces
+
+
+•
+
+Mentored 4 engineers and introduced measurable review standards
+
+
+Skills
+
+
+TypeScript, Next.js, Python, PostgreSQL, Redis, Kubernetes, AWS
+
+
+1
+Compiled
+17 log lines
+Copy

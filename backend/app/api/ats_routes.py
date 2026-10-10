@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
@@ -264,7 +265,8 @@ async def score_resume_ats(
                     detail="ATS job service temporarily unavailable. Please try again.",
                 )
             try:
-                submit_ats_scoring(
+                await submit_async(
+                    submit_ats_scoring,
                     latex_content=request.latex_content,
                     job_id=job_id,
                     job_description=request.job_description,
@@ -404,7 +406,8 @@ async def analyze_job_description_ats(
                     detail="ATS job service temporarily unavailable. Please try again.",
                 )
             try:
-                submit_job_description_analysis(
+                await submit_async(
+                    submit_job_description_analysis,
                     job_description=request.job_description,
                     job_id=job_id,
                     user_id=user_id,
@@ -1002,7 +1005,8 @@ async def deep_analyze_resume(
         # protocol, even when no quota receipt is present.
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        submit_deep_analyze_ats(
+        await submit_async(
+            submit_deep_analyze_ats,
             latex_content=request.latex_content,
             job_id=job_id,
             job_description=request.job_description,
@@ -1109,7 +1113,7 @@ async def semantic_match_resumes(
             try:
                 from ..workers.ats_worker import submit_embed_resume
 
-                submit_embed_resume(str(resume.id), resume.latex_content or "")
+                await submit_async(submit_embed_resume, str(resume.id), resume.latex_content or "")
             except Exception:
                 pass
 

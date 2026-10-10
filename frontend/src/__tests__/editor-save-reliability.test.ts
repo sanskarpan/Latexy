@@ -69,9 +69,9 @@ describe('editor save reliability', () => {
   })
 
   it('rebuilds the visual document when visual mode was persisted across reload', () => {
-    expect(EDITOR).toContain("localStorage.getItem(`latexy_editor_mode_${resumeId}`) === 'source' ? 'source' : 'wysiwyg'")
+    expect(EDITOR).toContain("setEditorMode(saved === 'source' || saved === 'wysiwyg' ? saved : 'pdf')")
     expect(EDITOR).toContain('localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)')
-    expect(EDITOR).toContain('<VisualResumeEditor value={latexContent} onChange={setLatexContent} readOnly={!canEditDocument} />')
+    expect(EDITOR).toContain('<VisualResumeEditor value={latexContent} onChange={handleVisualChange} readOnly={!canEditDocument} />')
     expect(VISUAL_EDITOR).toContain('useMemo(() => projectVisualResume(value), [value])')
   })
 

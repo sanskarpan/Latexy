@@ -7,7 +7,7 @@ FROM ${TEXLIVE_BASE_IMAGE}
 # font collection alone does not include the system font used by the shipped
 # Hindi template, or the Noto CJK families used by multilingual documents.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-lohit-deva fonts-noto-core fonts-noto-cjk \
+    python3 fonts-lohit-deva fonts-noto-core fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 # OCI layers may round directory mtimes to whole seconds. Upstream fontconfig

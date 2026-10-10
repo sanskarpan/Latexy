@@ -15,12 +15,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from _entitlement_reset import reset_entitlements_baseline
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.feature_registry import FEATURE_REGISTRY
+
+from ._entitlement_reset import reset_entitlements_baseline
 
 
 @pytest.fixture(autouse=True)

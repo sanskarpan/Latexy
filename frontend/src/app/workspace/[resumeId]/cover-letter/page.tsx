@@ -15,6 +15,7 @@ import {
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
 import { useJobStream } from '@/hooks/useJobStream'
+import { usePreviewScheduler } from '@/hooks/usePreviewScheduler'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
@@ -444,7 +445,7 @@ export default function CoverLetterPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (isProcessing || isSubmitting) return
+    if (isProcessing || isSubmitting) return null
     setIsSubmitting(true)
     const requestResumeId = resumeId
     const requestUserId = sessionUserId
@@ -452,9 +453,10 @@ export default function CoverLetterPage() {
     try {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
-      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
+      return response.job_id
     } catch {
       // Silent
     } finally {
@@ -552,6 +554,12 @@ export default function CoverLetterPage() {
     // selected even though persistence itself succeeded earlier.
     return isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)
   }
+
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:${activeCoverLetterId}`, enabled: autoCompile,
+    blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
+
 
   if (sessionLoading || isLoading) {
     return (
@@ -909,10 +917,11 @@ export default function CoverLetterPage() {
                   }}
                   readOnly={isProcessing}
                   onCompile={compileCurrentContent}
-                  onAutoCompile={handleAutoCompile}
+                  onAutoCompile={autoCompile ? queuePreview : undefined}
                   autoCompileEnabled={autoCompile}
-                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileBusy={false}
                   autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}:${activeCoverLetterId ?? 'none'}`}
+                  autoCompileDebounceMs={0}
                   hideEmptyAction
                 />
               </div>

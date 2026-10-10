@@ -11,6 +11,7 @@ import ast
 import json
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -69,6 +70,34 @@ CURRENT_BILLING_COLUMNS = {
     "coupon_redemptions": {"id", "coupon_id", "user_id", "subscription_id", "status", "redeemed_at"},
     "team_seats": {"owner_user_id", "member_user_id", "status"},
 }
+DATABASE_FAILURE_REASONS = {
+    "configuration": "rollout_database_configuration_failed",
+    "engine": "rollout_database_engine_failed",
+    "connect": "rollout_database_connect_failed",
+    "read_only_setup": "rollout_database_read_only_setup_failed",
+    "schema_metadata": "rollout_database_schema_metadata_failed",
+    "schema_revision": "rollout_database_schema_revision_failed",
+    "aggregate_counts": "rollout_database_aggregate_counts_failed",
+    "cleanup": "rollout_database_cleanup_failed",
+}
+
+
+class DatabaseDiagnosticFailure(Exception):
+    """A fixed code-position marker; never carries driver or customer details."""
+
+    def __init__(self, stage: str):
+        self.stage = canonical_choice(stage, tuple(DATABASE_FAILURE_REASONS))
+        if self.stage == "invalid":
+            raise ValueError("Invalid database diagnostic stage")
+        super().__init__("Database diagnostic failed")
+
+
+@contextmanager
+def database_step(stage: str):
+    try:
+        yield
+    except Exception:
+        raise DatabaseDiagnosticFailure(stage) from None
 
 
 def read_environment(environ: Mapping[str, str] | None = None, backend_root: Path = BACKEND_ROOT) -> dict[str, str]:
@@ -318,36 +347,54 @@ def aggregate_counts(connection, columns: dict[str, set[str]]) -> dict[str, int]
 
 
 def database_report(database_url: str, *, backend_root: Path = BACKEND_ROOT, engine_factory=create_engine) -> dict:
-    if not database_url:
-        raise ValueError("database_unconfigured")
-    url = make_url(re.sub(r"^postgres://", "postgresql://", database_url))
-    if url.get_backend_name() != "postgresql":
-        raise ValueError("unsupported_database")
-    url = url.set(drivername="postgresql+psycopg2")
-    engine = engine_factory(url, echo=False, hide_parameters=True, isolation_level="REPEATABLE READ",
-                            connect_args={"connect_timeout": 5, "options":
-                                "-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000"})
+    with database_step("configuration"):
+        if not database_url:
+            raise ValueError("database_unconfigured")
+        url = make_url(re.sub(r"^postgres://", "postgresql://", database_url))
+        if url.get_backend_name() != "postgresql":
+            raise ValueError("unsupported_database")
+        url = url.set(drivername="postgresql+psycopg2")
+    with database_step("engine"):
+        engine = engine_factory(url, echo=False, hide_parameters=True, isolation_level="REPEATABLE READ",
+                                connect_args={"connect_timeout": 5, "options":
+                                    "-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000"})
+    connection_stage = "connect"
     try:
         with engine.connect() as connection:
-            transaction = connection.begin()
+            # Once entered, any unwrapped context-manager failure is cleanup.
+            # Each database operation below has its own fixed stage marker.
+            connection_stage = "cleanup"
+            with database_step("read_only_setup"):
+                transaction = connection.begin()
             try:
-                connection.execute(text("SET TRANSACTION READ ONLY"))
-                if connection.scalar(text("SHOW transaction_read_only")) != "on":
-                    raise ValueError("read_only_required")
-                rows = connection.execute(text("""SELECT table_name,column_name FROM information_schema.columns
-                    WHERE table_schema='public' AND table_name = ANY(:tables)"""), {"tables": list(TABLES)})
-                columns: dict[str, set[str]] = {}
-                for table, column in rows:
-                    columns.setdefault(table, set()).add(column)
-                revisions = list(connection.scalars(text("SELECT version_num FROM public.alembic_version ORDER BY version_num")))
-                known = known_revisions(backend_root)
+                with database_step("read_only_setup"):
+                    connection.execute(text("SET TRANSACTION READ ONLY"))
+                    if connection.scalar(text("SHOW transaction_read_only")) != "on":
+                        raise ValueError("read_only_required")
+                with database_step("schema_metadata"):
+                    rows = connection.execute(text("""SELECT table_name,column_name FROM information_schema.columns
+                        WHERE table_schema='public' AND table_name = ANY(:tables)"""), {"tables": list(TABLES)})
+                    columns: dict[str, set[str]] = {}
+                    for table, column in rows:
+                        columns.setdefault(table, set()).add(column)
+                with database_step("schema_revision"):
+                    revisions = list(connection.scalars(text("SELECT version_num FROM public.alembic_version ORDER BY version_num")))
+                    known = known_revisions(backend_root)
+                    schema = classify_schema(revisions, columns, known)
+                with database_step("aggregate_counts"):
+                    counts = aggregate_counts(connection, columns)
                 return {"status": "read_only_complete", "alembic_revisions": [r if r in known else "unrecognized" for r in revisions],
-                        "schema_classification": classify_schema(revisions, columns, known),
-                        "counts": aggregate_counts(connection, columns)}
+                        "schema_classification": schema, "counts": counts}
             finally:
-                transaction.rollback()
+                with database_step("cleanup"):
+                    transaction.rollback()
+    except DatabaseDiagnosticFailure:
+        raise
+    except Exception:
+        raise DatabaseDiagnosticFailure(connection_stage) from None
     finally:
-        engine.dispose()
+        with database_step("cleanup"):
+            engine.dispose()
 
 
 def collect_report(environ: Mapping[str, str] | None = None, *, backend_root: Path = BACKEND_ROOT,
@@ -368,6 +415,10 @@ def collect_report(environ: Mapping[str, str] | None = None, *, backend_root: Pa
             blockers.append("historical_live_mandates_require_cutover_review")
         report.update(status="blocked" if blockers else "ready", blockers=blockers)
         return report, 1 if blockers else 0
+    except DatabaseDiagnosticFailure as failure:
+        report.update(status="diagnostic_error", blockers=["diagnostics_incomplete"],
+                      database={"status": "unavailable_or_unsupported", "failure_stage": failure.stage})
+        return report, 2
     except Exception:
         # Never format exceptions: driver/parser messages may contain credentials,
         # environment values, SQL parameters or customer data.
@@ -481,7 +532,7 @@ def public_report(raw: Any) -> dict[str, Any]:
                 "interval": None if row["interval"] is None else _public_enum(row["interval"], ("day", "week", "month", "year", "lifetime")),
                 "tax_inclusive": None if row["tax_inclusive"] is None else _public_bool(row["tax_inclusive"]),
             }
-    database = _public_object(raw["database"], {"status", "alembic_revisions", "schema_classification", "counts"}, {"status"})
+    database = _public_object(raw["database"], {"status", "alembic_revisions", "schema_classification", "counts", "failure_stage"}, {"status"})
     database_state = _public_enum(database["status"], ("read_only_complete", "unavailable_or_unsupported"))
     result["database"] = {"status": database_state}
     if database_state == "read_only_complete":
@@ -496,8 +547,11 @@ def public_report(raw: Any) -> dict[str, Any]:
         )
         counts = _public_object(database["counts"], set(PUBLIC_COUNT_FIELDS), set(PUBLIC_COUNT_FIELDS))
         result["database"]["counts"] = {name: _public_number(counts[name]) for name in PUBLIC_COUNT_FIELDS}
-    elif database.keys() != {"status"} or state != "diagnostic_error":
-        raise ValueError("Invalid public diagnostic report")
+    else:
+        if database.keys() - {"status", "failure_stage"} or state != "diagnostic_error":
+            raise ValueError("Invalid public diagnostic report")
+        if "failure_stage" in database:
+            result["database"]["failure_stage"] = _public_enum(database["failure_stage"], tuple(DATABASE_FAILURE_REASONS))
     return result
 
 
@@ -518,6 +572,19 @@ def rollout_assessment(report: Mapping[str, Any], *, allow_configured_live: bool
         state = _public_enum(report["status"], PUBLIC_ENUM_FIELDS["status"])
         if state == "diagnostic_error":
             reasons.append("rollout_diagnostics_incomplete")
+        database = report["database"]
+        if database["status"] == "unavailable_or_unsupported":
+            if state != "diagnostic_error":
+                raise ValueError("Invalid public diagnostic report")
+            _public_object(database, {"status", "failure_stage"}, {"status"})
+            reasons.append("rollout_database_diagnostics_incomplete")
+            if "failure_stage" in database:
+                stage = _public_enum(database["failure_stage"], tuple(DATABASE_FAILURE_REASONS))
+                reasons.append(DATABASE_FAILURE_REASONS[stage])
+            # Incomplete diagnostics may also lack configuration fields. This
+            # valid failure report must block without reading absent metadata.
+            return {"safe_to_rollout": False, "sales_state": sales_state,
+                    "reasons": list(dict.fromkeys(reasons)), "live_sales_acceptance": acceptance}
         environment = _public_enum(report["environment"], PUBLIC_ENUM_FIELDS["environment"])
         target = _public_enum(report["deploy_target"], PUBLIC_ENUM_FIELDS["deploy_target"])
         if environment not in {"production", "staging"} or report["production_like"] is not True:
@@ -528,7 +595,6 @@ def rollout_assessment(report: Mapping[str, Any], *, allow_configured_live: bool
             reasons.append("rollout_billing_startup_invalid")
         if report["startup_validation_scope"] != "strict_billing_rules_only_without_skip_bypass":
             reasons.append("rollout_startup_assessment_unrecognized")
-        database = report["database"]
         if database["status"] != "read_only_complete":
             reasons.append("rollout_database_diagnostics_incomplete")
         schema = _public_enum(database["schema_classification"], PUBLIC_SCHEMA_STATES)

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..database.connection import get_db
 from ..database.models import (
     Resume,
@@ -320,7 +321,7 @@ async def _enqueue_mention_emails(comment_id: str, db: AsyncSession) -> None:
         )
     )
     for mention_id in result.scalars().all():
-        submit_comment_mention_email(str(mention_id))
+        await submit_async(submit_comment_mention_email, str(mention_id))
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -479,7 +480,7 @@ async def update_comment(
         await db.refresh(mention)
         from ..workers.email_worker import submit_comment_mention_email
 
-        submit_comment_mention_email(str(mention.id))
+        await submit_async(submit_comment_mention_email, str(mention.id))
 
     u_result = await db.execute(select(User).where(User.id == user_id))
     author = u_result.scalar_one_or_none()

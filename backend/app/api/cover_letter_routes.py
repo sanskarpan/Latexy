@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import CoverLetter, Resume, User
@@ -363,7 +364,8 @@ async def generate_cover_letter(
         # receipt because the broker may have accepted work without returning.
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        submit_cover_letter_generation(
+        await submit_async(
+            submit_cover_letter_generation,
             resume_latex=resume.latex_content,
             job_description=request.job_description,
             job_id=job_id,

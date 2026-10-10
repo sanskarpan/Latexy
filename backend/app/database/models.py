@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     PrimaryKeyConstraint,
     String,
     Text,
@@ -23,6 +24,96 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 
 from .connection import Base
+
+
+class ResumePdfImport(Base):
+    """Private original attachment, outside hot document/render queries."""
+    __tablename__ = "resume_pdf_imports"
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0 AND size_bytes <= 10485760", name="ck_pdf_import_size"),
+        CheckConstraint("octet_length(original_pdf) = size_bytes", name="ck_pdf_import_bytes"),
+        CheckConstraint("octet_length(structured_seed::text) <= 1048576", name="ck_pdf_import_seed"),
+    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=True, unique=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_pdf: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    structured_seed: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    extraction_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    adaptation_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResumeOptimizationRun(Base):
+    """Owner-scoped, expiring candidate snapshot and hard run budget."""
+    __tablename__ = "resume_optimization_runs"
+    __table_args__ = (
+        CheckConstraint("base_revision > 0", name="ck_optimization_run_revision"),
+        CheckConstraint("effort IN ('quick','standard','deep')", name="ck_optimization_run_effort"),
+        CheckConstraint("status IN ('running','completed','partial','failed','cancelled')", name="ck_optimization_run_status"),
+        Index("ix_optimization_runs_owner_resume", "user_id", "resume_id", "created_at"),
+        Index("ix_optimization_runs_expiry", "expires_at"),
+    )
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(255), ForeignKey("job_finalizations.job_id", ondelete="CASCADE"), nullable=False, unique=True)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    base_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    context_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    effort: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    credential_scope: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="running", server_default="running")
+    snapshot: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    context_payload: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    budget: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    result: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    decisions: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ResumeOptimizationStage(Base):
+    """A unique durable intent prevents repaying an ambiguous provider call."""
+    __tablename__ = "resume_optimization_stages"
+    __table_args__ = (
+        UniqueConstraint("run_id", "stage_key", name="uq_optimization_stage_key"),
+        CheckConstraint("status IN ('requesting','completed','failed','ambiguous')", name="ck_optimization_stage_status"),
+        CheckConstraint("owner_epoch > 0", name="ck_optimization_stage_epoch"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(255), ForeignKey("resume_optimization_runs.id", ondelete="CASCADE"), nullable=False)
+    stage_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="requesting", server_default="requesting")
+    owner_token: Mapped[str] = mapped_column(String(128), nullable=False)
+    owner_epoch: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_usage: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    usage: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    output: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    output_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ResumeRequirementContext(Base):
+    __tablename__ = "resume_requirement_contexts"
+    __table_args__ = (UniqueConstraint("user_id", "jd_hash", "version", "language", name="uq_resume_requirement_context"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    jd_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    language: Mapped[str] = mapped_column(String(16), nullable=False)
+    requirements: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class User(Base):
@@ -197,6 +288,9 @@ class Resume(Base):
 
     __tablename__ = "resumes"
     __table_args__ = (
+        CheckConstraint("content_revision > 0", name="ck_resumes_content_revision_positive"),
+        CheckConstraint("imported_projection IS NULL OR octet_length(imported_projection::text) <= 131072",
+                        name="ck_resumes_imported_projection_bounded"),
         # DB-015: composite index supports ORDER BY updated_at queries scoped to a user
         Index("idx_resumes_user_updated", "user_id", "updated_at"),
         # DB-009: matches the partial unique index created in migration 0008
@@ -217,6 +311,8 @@ class Resume(Base):
     latex_content: Mapped[str] = mapped_column(Text, nullable=False)
     structured_content: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
     structured_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    content_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    imported_projection: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)
@@ -365,6 +461,8 @@ class Compilation(Base):
     job_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     pdf_path: Mapped[Optional[str]] = mapped_column(String(500))
+    artifact_branch: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft", default="draft")
+    artifact_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
     compilation_time: Mapped[Optional[float]] = mapped_column(Float)
     pdf_size: Mapped[Optional[int]] = mapped_column(Integer)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
@@ -1745,6 +1843,23 @@ class TenantMember(Base):
 
 
 # Create indexes for performance
+class RenderArtifactManifest(Base):
+    """Durable private references for authorized preview and safe binary GC."""
+    __tablename__ = "render_artifact_manifests"
+    artifact_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(255), ForeignKey("job_finalizations.job_id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_epoch: Mapped[int] = mapped_column(Integer, nullable=False)
+    owner_token_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    owner_scope_kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    manifest_key: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    pdf_key: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    synctex_key: Mapped[Optional[str]] = mapped_column(String(500), index=True)
+    geometry_key: Mapped[Optional[str]] = mapped_column(String(500), index=True)
+    payload: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 Index("idx_users_email", User.email)
 Index("idx_device_trials_fingerprint", DeviceTrial.device_fingerprint)
 Index("idx_device_trials_ip", DeviceTrial.ip_address)

@@ -1,0 +1,58 @@
+{
+  "branch": "codex/resume-engine",
+  "issues": [
+    {
+      "slug": "tracking",
+      "title": "Epic: complete revision-aware resume engine migration",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1814",
+      "ok": true
+    },
+    {
+      "slug": "artifacts",
+      "title": "Resume engine: immutable binary artifacts, early preview and authorized exact-cache admission",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1815",
+      "ok": true
+    },
+    {
+      "slug": "workspace",
+      "title": "Resume engine: serialized auxiliary workspaces and certified render pass policy",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1816",
+      "ok": true
+    },
+    {
+      "slug": "semantic",
+      "title": "Resume engine: persistent semantic revisions, fact ledger and JD context",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1817",
+      "ok": true
+    },
+    {
+      "slug": "optimizer",
+      "title": "Resume engine: bounded provider optimization and durable paid-stage recovery",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1818",
+      "ok": true
+    },
+    {
+      "slug": "editor",
+      "title": "Resume engine: latest-only preview scheduling and exact-PDF semantic editing",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1819",
+      "ok": true
+    },
+    {
+      "slug": "certification",
+      "title": "Resume engine: end-to-end telemetry, fixture certification and release gates",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1820",
+      "ok": true
+    },
+    {
+      "slug": "cold_worker",
+      "title": "Resume engine: certify first-task rendering after cold native-import preparation",
+      "url": "https://github.com/sanskarpan/Latexy/issues/1862",
+      "ok": true
+    }
+  ],
+  "existing_dependencies": [
+    1809,
+    1810
+  ],
+  "status": "implementation_in_progress"
+}

@@ -278,3 +278,27 @@ def extract_trace_context(carrier: dict):
         return extract(carrier or {})
     except Exception:  # pragma: no cover - defensive
         return None
+
+
+@contextmanager
+def worker_trace(carrier: dict | None):
+    """Attach only bounded W3C trace identifiers, never baggage or user input."""
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
+        yield
+        return
+    safe = {}
+    if isinstance(carrier, dict):
+        for key, limit in (("traceparent", 128), ("tracestate", 512)):
+            value = carrier.get(key)
+            if isinstance(value, str) and len(value) <= limit and "\n" not in value and "\r" not in value:
+                safe[key] = value
+    extracted = extract_trace_context(safe)
+    if extracted is None:
+        yield
+        return
+    from opentelemetry import context
+    token = context.attach(extracted)
+    try:
+        yield
+    finally:
+        context.detach(token)

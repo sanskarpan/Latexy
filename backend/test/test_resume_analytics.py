@@ -314,7 +314,7 @@ class TestResumeAnalyticsEndpoint:
         self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
         """Non-owner of the resume → 403 or 404 (ownership check uses 404 for security)."""
-        from conftest import _insert_session
+        from .conftest import _insert_session
 
         info = await _create_resume_and_share(client, auth_headers)
 

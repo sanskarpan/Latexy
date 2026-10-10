@@ -1,0 +1,280 @@
+{
+  "measured_at_utc": "2026-10-06T20:11:32.567Z",
+  "frontend_url": "http://localhost:5361",
+  "backend_url": "http://127.0.0.1:8530",
+  "compiler": "pdflatex",
+  "environment": "isolated local CPU Celery, warm seed image, fresh browser context",
+  "limitations": [
+    "Development Next and local backend, not production or Modal latency",
+    "Three functional samples do not support percentile claims"
+  ],
+  "samples": [
+    {
+      "name": "starter-first-render",
+      "observed_wall_ms": 2451,
+      "user_action_to_paint_ms": 2331.199999988079,
+      "verified_blob_to_paint_ms": 818.3999999761581,
+      "admission_http_status": 200,
+      "geometry": {
+        "box_count": 7,
+        "omission_count": 2
+      }
+    },
+    {
+      "name": "identical-source-cache",
+      "observed_wall_ms": 30465,
+      "user_action_to_paint_ms": 30205,
+      "verified_blob_to_paint_ms": 654,
+      "admission_http_status": 200,
+      "geometry": {
+        "box_count": 7,
+        "omission_count": 2
+      }
+    }
+  ],
+  "failures": [
+    {
+      "type": "probe",
+      "message": "locator.click: Error: strict mode violation: getByRole('button', { name: /Built internal design system used across 6 product surfaces/ }) resolved to 2 elements:\n    1) <button type=\"button\" aria-pressed=\"false\" class=\"w-full rounded-lg border p-3 text-left transition disabled:opacity-50 border-line hover:border-accent/50\">…</button> aka getByRole('button', { name: 'Experience · bullet Built' })\n    2) <button type=\"button\" title=\"Edit: Built internal design system used across 6 product surfaces\" aria-label=\"Edit resume field: Built internal design system used across 6 product surfaces\" class=\"absolute z-10 rounded border border-transparent bg-transparent transition hover:border-accent hover:bg-accent/10 focus:border-accent focus:bg-accent/10 focus:outline-none\"></button> aka getByRole('button', { name: 'Edit resume field: Built' })\n\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /Built internal design system used across 6 product surfaces/ })\u001b[22m\n"
+    }
+  ],
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "quota_cooldown_waits": [
+    {
+      "before_sample": "identical-source-cache",
+      "seconds": 299
+    }
+  ],
+  "diagnostics": {
+    "jobs": [
+      {
+        "status": 200,
+        "body": {
+          "success": true,
+          "job_id": "abd98071-2711-4305-ae4f-6756b2af132d",
+          "message": "Job queued: latex_compilation",
+          "estimated_time": 30
+        }
+      },
+      {
+        "status": 200,
+        "body": {
+          "success": true,
+          "job_id": "d2af62d9-b414-4064-ab99-7d2c51f56c51",
+          "message": "Job queued: latex_compilation",
+          "estimated_time": 30
+        }
+      }
+    ],
+    "states": [
+      {
+        "http": 200,
+        "status": "queued",
+        "stage": "",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "processing",
+        "stage": "latex_compilation",
+        "has_artifact": false
+      },
+      {
+        "http": 200,
+        "status": "completed",
+        "stage": "",
+        "has_artifact": true
+      },
+      {
+        "http": 200,
+        "status": "completed",
+        "stage": "",
+        "has_artifact": true
+      }
+    ],
+    "errors": [
+      {
+        "path": "/download/d2af62d9-b414-4064-ab99-7d2c51f56c51/synctex",
+        "status": 404
+      }
+    ],
+    "geometry": [
+      {
+        "box_count": 7,
+        "omission_count": 2
+      },
+      {
+        "box_count": 7,
+        "omission_count": 2
+      }
+    ],
+    "requests": [
+      {
+        "origin": "http://localhost:5361",
+        "path": "/api/auth/get-session",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/config/feature-flags",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/tenants/resolve-host",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/submit",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/abd98071-2711-4305-ae4f-6756b2af132d/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/abd98071-2711-4305-ae4f-6756b2af132d/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/abd98071-2711-4305-ae4f-6756b2af132d/preview/10e9b70b80c719b5adba47c1ff66f9b45b27fd345aed55ae72958abd0d54c74d",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/abd98071-2711-4305-ae4f-6756b2af132d/preview/10e9b70b80c719b5adba47c1ff66f9b45b27fd345aed55ae72958abd0d54c74d/synctex",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/abd98071-2711-4305-ae4f-6756b2af132d/preview/10e9b70b80c719b5adba47c1ff66f9b45b27fd345aed55ae72958abd0d54c74d/geometry",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/compilation",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/feature-usage",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/abd98071-2711-4305-ae4f-6756b2af132d/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/abd98071-2711-4305-ae4f-6756b2af132d/result",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/trial-status",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/public/engine/document",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/submit",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/d2af62d9-b414-4064-ab99-7d2c51f56c51/state",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/d2af62d9-b414-4064-ab99-7d2c51f56c51/synctex",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/ats/quick-score",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/compilation",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/d2af62d9-b414-4064-ab99-7d2c51f56c51/preview/083ff21615582ffe64ef250c40446d1bf938bfdd7224cc05b317319cd6351aae",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/analytics/track/feature-usage",
+        "method": "POST"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/jobs/d2af62d9-b414-4064-ab99-7d2c51f56c51/result",
+        "method": "GET"
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/d2af62d9-b414-4064-ab99-7d2c51f56c51/preview/083ff21615582ffe64ef250c40446d1bf938bfdd7224cc05b317319cd6351aae/synctex",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      },
+      {
+        "origin": "http://127.0.0.1:8530",
+        "path": "/download/d2af62d9-b414-4064-ab99-7d2c51f56c51/preview/083ff21615582ffe64ef250c40446d1bf938bfdd7224cc05b317319cd6351aae/geometry",
+        "method": "GET",
+        "fingerprint_present": true,
+        "fingerprint_matches_pdf": true,
+        "fingerprint_matches_admission": true
+      }
+    ],
+    "failedRequests": []
+  }
+}

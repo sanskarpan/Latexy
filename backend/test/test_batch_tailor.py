@@ -75,6 +75,26 @@ def _patch_infra():
 
 @pytest.mark.asyncio
 class TestBatchTailorEndpoint:
+    async def test_unavailable_renderer_creates_no_forks_or_paid_jobs(self, client: AsyncClient, auth_headers: dict):
+        from app.services.render_engine.modal_sandbox import ModalEngineUnavailable
+
+        parent = await _create_resume(client, auth_headers)
+        updated = await client.patch(f"/resumes/{parent['id']}/settings", headers=auth_headers,
+                                     json={"compiler": "lualatex"})
+        assert updated.status_code == 200
+        with (
+            patch("app.services.render_engine.backend.resolve_backend", side_effect=ModalEngineUnavailable("missing certificate")),
+            patch("app.api.job_routes.entitlement_service.enforce_quota", new_callable=AsyncMock) as quota,
+            patch("app.api.job_routes.submit_async", new_callable=AsyncMock) as dispatch,
+        ):
+            response = await client.post("/jobs/batch", headers=auth_headers,
+                                         json={"resume_id": parent["id"], "jobs": [_make_job()]})
+        assert response.status_code == 503
+        quota.assert_not_called()
+        dispatch.assert_not_called()
+        variants = await client.get(f"/resumes/{parent['id']}/variants", headers=auth_headers)
+        assert variants.status_code == 200 and variants.json() == []
+
     async def test_batch_of_three_creates_three_variants(
         self, client: AsyncClient, auth_headers: dict
     ):

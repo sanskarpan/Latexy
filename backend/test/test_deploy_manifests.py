@@ -688,7 +688,7 @@ def test_ci_enforces_the_pdf_extraction_contract_for_every_seeded_template():
 
     assert "template-pdf-contract:" in ci
     assert "bash scripts/verify-template-extraction.sh" in ci
-    for dependency in ("texlive-luatex", "fonts-lohit-deva", "poppler-utils"):
+    for dependency in ("texlive-luatex", "fonts-lohit-deva", "fonts-texgyre", "poppler-utils"):
         assert dependency in ci
 
     assert "find \"$templates_root\" -type f -name '*.tex'" in verifier

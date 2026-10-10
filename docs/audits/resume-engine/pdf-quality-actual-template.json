@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "status": "checked",
+  "pdf_sha256": "ac9f15aa23a507a2d92aeb801d3b782ec14a64cb9f1bd2235fed25df7788b75b",
+  "source_sha256": "edbae050bfdac72bfa3fb0cb9eb9349584d04af98f27ed5d0bed2cc506f4b314",
+  "page_count": 1,
+  "word_count": 267,
+  "missing_field_count": 0,
+  "embedded_font_count": 6,
+  "link_count": 2,
+  "warnings": []
+}

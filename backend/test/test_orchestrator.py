@@ -44,9 +44,16 @@ def eager_celery():
 
 
 @pytest.fixture(autouse=True)
-def docker_capability_probe():
+def docker_capability_probe(monkeypatch):
     """Use an explicit capability result while subprocesses are mocked."""
-    with patch("app.workers.orchestrator.docker_engine_available", return_value=False):
+    from app.services.latex_service import engine_env
+
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
+
+    with (
+        patch("app.workers.orchestrator.docker_engine_available", return_value=False),
+        patch("app.workers.orchestrator.engine_env", side_effect=lambda *_: engine_env()),
+    ):
         yield
 
 
@@ -170,15 +177,15 @@ class TestRunAtsStage:
         score, details = _run_ats_stage(str(uuid.uuid4()), GOOD_LATEX, None)
         assert score == 78.0
 
-    def test_scoring_exception_returns_zero_score(self):
+    def test_scoring_exception_returns_unavailable_score(self):
         with patch(
             "app.workers.orchestrator.ats_scoring_service.score_resume",
             new_callable=AsyncMock,
             side_effect=RuntimeError("Scoring broke"),
         ):
             score, details = _run_ats_stage(str(uuid.uuid4()), GOOD_LATEX, JD)
-        assert score == 0.0
-        assert details == {}
+        assert score is None
+        assert details == {"status": "unavailable", "reason_code": "scoring_failed"}
 
     def test_scoring_exception_does_not_propagate(self):
         with patch(
@@ -274,6 +281,8 @@ class TestOrchestratorMissingApiKey:
             mock_settings.TEMP_DIR = MagicMock()
             mock_settings.TEMP_DIR.__truediv__ = lambda self, x: MagicMock()
             mock_settings.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             mock_client = MagicMock()
             mock_openai_cls.return_value = mock_client
@@ -338,7 +347,7 @@ class TestOrchestratorFullPipeline:
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345, st_mode=0)),
             is_cancelled_patch,
         ):
             mock_client = MagicMock()
@@ -487,7 +496,7 @@ class TestOrchestratorPageCount:
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321)),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321, st_mode=0)),
         ):
             mock_client = MagicMock()
             mock_openai_cls.return_value = mock_client

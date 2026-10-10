@@ -1,0 +1,3039 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-08T16:06:53.811320+00:00",
+  "host_load": "quiet",
+  "profile": "managed_english",
+  "compiler": "lualatex",
+  "fixture_source_sha256": "38d96ff6023f8efd3a7c4c9f771c95d36036815718e15cbba5418b238c77bc84",
+  "guest": false,
+  "watermark": null,
+  "renderer_fingerprint": "engine_assets_fingerprint:d50065510d953251a32735c8072e676702e9cc71bdc93441c545836251d338b6",
+  "benchmark_container_cpu_limit": "none",
+  "scope": "warm eager direct-worker task; actual lualatex+Redis Lua+PostgreSQL+S3; geometry enabled",
+  "exclusions": [
+    "public HTTP admission/quota",
+    "Celery transport",
+    "AI",
+    "browser paint",
+    "cold image startup"
+  ],
+  "method": "3 fresh warmups +1 exact seed excluded; 30 or more deterministic alternating fresh/cache pairs; distinct fresh source",
+  "phase_warning": "phase intervals overlap; sums are not total wall latency",
+  "samples": [
+    {
+      "condition": "fresh",
+      "pair": 0,
+      "elapsed_seconds": 1.024868553999113,
+      "compiler_seconds": 0.6959271430969238,
+      "tex_passes": 1,
+      "pdf_size": 89214,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00017778599794837646,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6878147889983666,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016142810018209275,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.003173461002006661,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02709251700071036,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.027208191000681836,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011368108000169741,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012510696000390453,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0705784899982973,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.081003328999941,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 0,
+      "elapsed_seconds": 0.2358071460002975,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0055279699990933295,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.008368012997379992,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06801910099966335,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08575538600052823,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07530070099892328,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 1,
+      "elapsed_seconds": 0.231584754998039,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006013758000335656,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010297559001628542,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05617548200098099,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07448698300140677,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07791966899822,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 1,
+      "elapsed_seconds": 1.0748577430022124,
+      "compiler_seconds": 0.7301149368286133,
+      "tex_passes": 1,
+      "pdf_size": 89336,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00011745599840651266,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.7198064910007815,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0018069529978674836,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.00318994500048575,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05582713699914166,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02707923900015885,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012222264002048178,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012406951002049027,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05700043000251753,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.0797894869974698,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 2,
+      "elapsed_seconds": 0.9843034419973264,
+      "compiler_seconds": 0.6380507946014404,
+      "tex_passes": 1,
+      "pdf_size": 89214,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0003360720002092421,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6287465669993253,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016193960000236984,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0024522900021111127,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.025940194002032513,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.026979365000443067,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.008654221001052065,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009048895997693762,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05888337699798285,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09918452499914565,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 2,
+      "elapsed_seconds": 0.27637707000030787,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0077656229987042025,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01700921500014374,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07606468399899313,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.10376497600009316,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08477051600129926,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 3,
+      "elapsed_seconds": 0.24731806999989203,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.003978018001362216,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01109544700011611,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0663523270013684,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08360402699690894,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08273303099849727,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 3,
+      "elapsed_seconds": 1.0207425879998482,
+      "compiler_seconds": 0.6989865303039551,
+      "tex_passes": 1,
+      "pdf_size": 89436,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00018806599837262183,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6901309790009691,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.001427354000043124,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.003406414998607943,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.026869809000345413,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.029038541000772966,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010071832002722658,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012785134000296239,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06122132499876898,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07870327300042845,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 4,
+      "elapsed_seconds": 0.9820573620017967,
+      "compiler_seconds": 0.671208381652832,
+      "tex_passes": 1,
+      "pdf_size": 89345,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00013417900117929094,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6632196470018243,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0013763669994659722,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002463753000483848,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.026129079997190274,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.027031776000512764,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009647261998907197,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011083003999374341,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05428441199910594,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07608633500058204,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 4,
+      "elapsed_seconds": 0.21802252699853852,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.005262272999971174,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.00934755399794085,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05267755499880877,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.06920332600202528,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07714489700083504,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 5,
+      "elapsed_seconds": 0.3539687180018518,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004848571003094548,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010477353000169387,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06662771100309328,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08565518700197572,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08108747599908384,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 5,
+      "elapsed_seconds": 0.9947884529974544,
+      "compiler_seconds": 0.6483001708984375,
+      "tex_passes": 1,
+      "pdf_size": 89214,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00015655800234526396,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6399245380016509,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016085200004454236,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.003060036997339921,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02953919900028268,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.03046037000240176,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011367103998054517,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012833574000978842,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05696503799845232,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09920264000174939,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 6,
+      "elapsed_seconds": 0.9880895099995541,
+      "compiler_seconds": 0.6379818916320801,
+      "tex_passes": 1,
+      "pdf_size": 89424,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00046393000229727477,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6266672009987815,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0015879420025157742,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0035703100002137944,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.04013493499951437,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.032050567999249324,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012037370001053205,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01058433599973796,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05618377800055896,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.0868736739976157,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 6,
+      "elapsed_seconds": 0.23703657100122655,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.00476096600323217,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012106745998607948,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05933708600059617,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07831847600027686,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.076312176999636,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 7,
+      "elapsed_seconds": 0.2853060550005466,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.00778283700128668,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013518361000024015,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07357589200182701,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.097975860000588,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08299506199909956,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 7,
+      "elapsed_seconds": 1.0513907530003053,
+      "compiler_seconds": 0.6780617237091064,
+      "tex_passes": 1,
+      "pdf_size": 89364,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0001957809981831815,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6679536400006327,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016791799971542787,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0030651589986518957,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03459841400035657,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.031634782997571165,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012522344997705659,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.019048725000175182,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07779798100091284,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09130451099917991,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 8,
+      "elapsed_seconds": 1.0316019460005919,
+      "compiler_seconds": 0.6407110691070557,
+      "tex_passes": 1,
+      "pdf_size": 89372,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0002248700002382975,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6322726500002318,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0014198709977790713,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002842042002157541,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02173866600060137,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02702205100285937,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01639634199818829,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02225933899899246,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0650012100013555,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.12266556699978537,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 8,
+      "elapsed_seconds": 0.2746848319984565,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004283318001398584,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011450160000094911,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06367280099948402,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08153370299987728,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.10518869499719585,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 9,
+      "elapsed_seconds": 0.2478126499991049,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006273834998864913,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.015682060999097303,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06378399000095669,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0879453019988432,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07895581000047969,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 9,
+      "elapsed_seconds": 0.945182120998652,
+      "compiler_seconds": 0.630232572555542,
+      "tex_passes": 1,
+      "pdf_size": 89462,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00012637200052267872,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6206018440025218,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0019833179976558313,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002928640002210159,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02660239100077888,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02857939200112014,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.00911624199943617,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01074692800102639,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06024959200294688,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08209372099736356,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 10,
+      "elapsed_seconds": 1.1882038099975034,
+      "compiler_seconds": 0.8705995082855225,
+      "tex_passes": 1,
+      "pdf_size": 89337,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00012081699969712645,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.858437564002088,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.004165968999586767,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0034230579985887744,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03222584900140646,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.028358215000480413,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014703482000186341,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011301795002509607,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.057218055000703316,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07752422599878628,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 10,
+      "elapsed_seconds": 0.25152289399920846,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.009509837000223342,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014236674000130733,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0541362769981788,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07986914600041928,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08490384799733874,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 11,
+      "elapsed_seconds": 0.26664526799868327,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0045590579975396395,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013359584001591429,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07138134300112142,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.09286921700186213,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09138639500088175,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 11,
+      "elapsed_seconds": 1.0082126289998996,
+      "compiler_seconds": 0.6396174430847168,
+      "tex_passes": 1,
+      "pdf_size": 89337,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00011399999857530929,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6318046210035391,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0022564999999303836,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0025679440004751086,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02869949000159977,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.028456587002438027,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012705888999335002,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011063694997574203,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07639925100011169,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.10112734900030773,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 12,
+      "elapsed_seconds": 1.0081133540006704,
+      "compiler_seconds": 0.6727933883666992,
+      "tex_passes": 1,
+      "pdf_size": 89337,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00020017399947391823,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6634121460010647,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0014344640003400855,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0023975160002009943,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.023731543999019777,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.031128239999816287,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01117653500114102,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014876035002089338,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0605550129985204,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08078004900016822,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 12,
+      "elapsed_seconds": 0.2434887070012337,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006474328001786489,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011391570002160734,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05542525499913609,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07513821800239384,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09255201300038607,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 13,
+      "elapsed_seconds": 0.23336411899799714,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004648412999813445,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011258151000220096,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06152148500041221,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.079770650001592,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07356921300015529,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 13,
+      "elapsed_seconds": 0.9846462690002227,
+      "compiler_seconds": 0.6651332378387451,
+      "tex_passes": 1,
+      "pdf_size": 89554,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00017504700008430518,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6548346579984354,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.001698071999271633,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0040563139991718344,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.024350083000172162,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.026365339999756543,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009588679000444245,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013349230001040269,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05489209900042624,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08132372399995802,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 14,
+      "elapsed_seconds": 1.0082907270007126,
+      "compiler_seconds": 0.6913044452667236,
+      "tex_passes": 1,
+      "pdf_size": 89467,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00015490800069528632,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6827252309994947,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0020647040000767447,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0033266550017287955,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.025182213001244236,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02752368100118474,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012741049999021925,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010732563998317346,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05383676199926413,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08088718999715638,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 14,
+      "elapsed_seconds": 0.23899777800033917,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.00526653700217139,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010641725999448681,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.053095072998985415,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07110010600081296,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08674809500007541,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 15,
+      "elapsed_seconds": 0.2409304790016904,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004528154000581708,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009511992000625469,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06115132299964898,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07704558400291717,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08624338200024795,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 15,
+      "elapsed_seconds": 1.0010270800012222,
+      "compiler_seconds": 0.6609830856323242,
+      "tex_passes": 1,
+      "pdf_size": 89337,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0002906540030380711,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6518365140000242,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0015842410030018073,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0030498810010612942,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.021606900001643226,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.030360151002241764,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012222566998389084,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.019104838000203017,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06608612399941194,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08198037900001509,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 16,
+      "elapsed_seconds": 1.096431185000256,
+      "compiler_seconds": 0.7414135932922363,
+      "tex_passes": 1,
+      "pdf_size": 89565,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.000297219001367921,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.7287845200007723,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0017907029978232458,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.003057516001717886,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03450454700214323,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02985890100171673,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009452923000935698,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014199629000358982,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06243836100111366,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08890104700185475,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 16,
+      "elapsed_seconds": 0.2256837759996415,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004357033001724631,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010993708001478808,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.056723109002632555,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07390769199992064,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07461592300023767,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 17,
+      "elapsed_seconds": 0.2663311190008244,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006036097001924645,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014111247997789178,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06083664099787711,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08510937399842078,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09107900799790514,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 17,
+      "elapsed_seconds": 0.9883729169996514,
+      "compiler_seconds": 0.6511225700378418,
+      "tex_passes": 1,
+      "pdf_size": 89496,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0002842819994839374,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.637316648997512,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0031734870026411954,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.003995047998614609,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.026740878998680273,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.03166292699825135,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011094337998656556,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010180467001191573,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06352863799838815,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08763688000180991,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 18,
+      "elapsed_seconds": 1.0049851119983941,
+      "compiler_seconds": 0.6637585163116455,
+      "tex_passes": 1,
+      "pdf_size": 89522,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0002739249976002611,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6536075760013773,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016314179993059952,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0030462989998341072,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.02653778300009435,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02859361000082572,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009368639999593142,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012229956002556719,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05864667800051393,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09877709400097956,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 18,
+      "elapsed_seconds": 0.2274176509999961,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.004286123999918345,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.008739303000766085,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.058171558997855755,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0733950849971734,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07354112499888288,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 19,
+      "elapsed_seconds": 0.2271984840008372,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006839984998805448,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009599729997717077,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.057908746999601135,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07616389100076049,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07816625200212002,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 19,
+      "elapsed_seconds": 0.9655181489979441,
+      "compiler_seconds": 0.6381027698516846,
+      "tex_passes": 1,
+      "pdf_size": 89609,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.000171050000062678,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6301212830003351,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0015737590001663193,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0023109520006983075,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.025117468998359982,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.03027948899762123,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013423718002741225,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012617377000424312,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0691408640013833,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08080932699886034,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 20,
+      "elapsed_seconds": 0.9500020140003471,
+      "compiler_seconds": 0.6312835216522217,
+      "tex_passes": 1,
+      "pdf_size": 89215,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00024507900161552243,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6239448460000858,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0013177410000935197,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0025892279991239775,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.025107053999818163,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02759511200201814,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009709550999104977,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0135135780001292,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.060952801002713386,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07940688500093529,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 20,
+      "elapsed_seconds": 0.2769742150012462,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006871773999591824,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012792716002877569,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05838846900223871,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08254793500236701,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09827069399761967,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 21,
+      "elapsed_seconds": 0.339838220999809,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.006533297997521004,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.016560739000851754,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.11312284199811984,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.1393204890009656,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09474336799758021,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 21,
+      "elapsed_seconds": 1.2185766900001909,
+      "compiler_seconds": 0.821098804473877,
+      "tex_passes": 1,
+      "pdf_size": 89337,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00022885299767949618,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.8130421149980975,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016411059987149201,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0027546259989321698,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03277150400026585,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.04280461200323771,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.020391779999044957,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.016365415998734534,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07684352900105296,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08894629700080259,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 22,
+      "elapsed_seconds": 1.0218902000015078,
+      "compiler_seconds": 0.6725296974182129,
+      "tex_passes": 1,
+      "pdf_size": 89215,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00023884499751147814,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6635018480010331,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.001883992001239676,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0025620710002840497,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.023837994998757495,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.029669481999007985,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013413319000392221,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.01829062300021178,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.07280262999847764,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08251247699809028,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 22,
+      "elapsed_seconds": 0.2433921019983245,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0064206259994534776,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011832967000373174,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05303854399971897,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07335824799883994,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09001983200141694,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 23,
+      "elapsed_seconds": 0.25812635499823955,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.00567927299925941,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012104563000320923,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06605511999805458,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08605575600086013,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.0825906579993898,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 23,
+      "elapsed_seconds": 1.04453800400006,
+      "compiler_seconds": 0.6777799129486084,
+      "tex_passes": 1,
+      "pdf_size": 89438,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0001191180017485749,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6670436649983458,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.00200002700148616,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0043090290018881205,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03482839899879764,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.038585783000598894,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.014543331999448128,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.018078908000461524,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.08367105300203548,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07605128900104319,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 24,
+      "elapsed_seconds": 0.9517844490001153,
+      "compiler_seconds": 0.6018412113189697,
+      "tex_passes": 1,
+      "pdf_size": 89347,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.000117015002615517,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.5980177790006564,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0016807739993964788,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.0026199150015600026,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03346738599793753,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.031257163998816395,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011996491000900278,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011754322000342654,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06565208399842959,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09006347000104142,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 24,
+      "elapsed_seconds": 0.24836339499961468,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.007055164998746477,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011530280997249065,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05328412400194793,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.07454494400008116,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07465997499821242,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 25,
+      "elapsed_seconds": 0.22555446900150855,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0058339989991509356,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011176637002790812,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05836453300071298,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0773605359972862,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07743538000067929,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 25,
+      "elapsed_seconds": 1.0443719949980732,
+      "compiler_seconds": 0.7517297267913818,
+      "tex_passes": 1,
+      "pdf_size": 89215,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00012222300210851245,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.7435305649996735,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0015487140008190181,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002339377002499532,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.022551583999302238,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.02869682299933629,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011780059001466725,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010245737998047844,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.05416289699860499,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.07218394899973646,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 26,
+      "elapsed_seconds": 1.0024255130010715,
+      "compiler_seconds": 0.6677439212799072,
+      "tex_passes": 1,
+      "pdf_size": 89426,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00023154699738370255,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.658982142998866,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0014087960007600486,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002519847999792546,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.025472026998613728,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.0268479610022041,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010109728002134943,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011522590000822674,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06549546700261999,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08159390100263408,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 26,
+      "elapsed_seconds": 0.24408441799823777,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.005592802001046948,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011487382002087543,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06213928099896293,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08146908799972152,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08015882900144788,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 27,
+      "elapsed_seconds": 0.23811831800048822,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.005962409999483498,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009264659998734714,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06243311999787693,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.080585573999997,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.0760073379969981,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 27,
+      "elapsed_seconds": 0.963261724999029,
+      "compiler_seconds": 0.6246652603149414,
+      "tex_passes": 1,
+      "pdf_size": 89365,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00012418800179148093,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6154187510001066,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0013768360004178248,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002835027997207362,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.030579361999116372,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.030807388000539504,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.009060167998541147,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.011583185998460976,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06089911699746153,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.09095817899651593,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 28,
+      "elapsed_seconds": 1.045673929998884,
+      "compiler_seconds": 0.7142295837402344,
+      "tex_passes": 1,
+      "pdf_size": 89373,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.00026499000159674324,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.7026639729992894,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0015392969980894122,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.00412669299839763,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.03334237200033385,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.03122535100192181,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.012408487000357127,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010143319999770029,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0528215470003488,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08812715599924559,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 28,
+      "elapsed_seconds": 0.28256218300157343,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0058927890022459906,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010390570998424664,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.06875399899945478,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.08860301299864659,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.10363947199948598,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "exact_cache",
+      "pair": 29,
+      "elapsed_seconds": 0.2927012239997566,
+      "compiler_seconds": 0.0,
+      "tex_passes": 0,
+      "pdf_size": 88806,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "artifact_download",
+          "seconds": 0.0054676489999110345,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013173778999771457,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.0713476740020269,
+          "outcome": "success"
+        },
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0933831080001255,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.11249923500145087,
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "condition": "fresh",
+      "pair": 29,
+      "elapsed_seconds": 1.007739913999103,
+      "compiler_seconds": 0.6560556888580322,
+      "tex_passes": 1,
+      "pdf_size": 89463,
+      "page_count": 1,
+      "phases": [
+        {
+          "phase": "cache_lookup",
+          "seconds": 0.0005229599992162548,
+          "outcome": "success"
+        },
+        {
+          "phase": "tex_process",
+          "seconds": 0.6426194670020777,
+          "outcome": "success"
+        },
+        {
+          "phase": "output_drain",
+          "seconds": 0.0019987179985037073,
+          "outcome": "success"
+        },
+        {
+          "phase": "event_publication",
+          "seconds": 0.002668206001544604,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.030034737999812933,
+          "outcome": "success"
+        },
+        {
+          "phase": "geometry_inspection",
+          "seconds": 0.03242601799865952,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.013354157999856398,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.010511745000258088,
+          "outcome": "success"
+        },
+        {
+          "phase": "artifact_storage",
+          "seconds": 0.056403499002044555,
+          "outcome": "success"
+        },
+        {
+          "phase": "finalization",
+          "seconds": 0.08598182200148585,
+          "outcome": "success"
+        }
+      ]
+    }
+  ],
+  "aggregates": {
+    "fresh": {
+      "wall": {
+        "samples": 30,
+        "p50_seconds": 1.0079266339998867,
+        "p95_seconds": 1.1882038099975034,
+        "min_seconds": 0.945182120998652,
+        "max_seconds": 1.2185766900001909
+      },
+      "phase_totals_per_job": {
+        "cache_lookup": {
+          "samples": 30,
+          "p50_seconds": 0.00019192349827790167,
+          "p95_seconds": 0.00046393000229727477,
+          "min_seconds": 0.00011399999857530929,
+          "max_seconds": 0.0005229599992162548
+        },
+        "tex_process": {
+          "samples": 30,
+          "p50_seconds": 0.6569084004986507,
+          "p95_seconds": 0.8130421149980975,
+          "min_seconds": 0.5980177790006564,
+          "max_seconds": 0.858437564002088
+        },
+        "output_drain": {
+          "samples": 30,
+          "p50_seconds": 0.0016254069996648468,
+          "p95_seconds": 0.0031734870026411954,
+          "min_seconds": 0.0013177410000935197,
+          "max_seconds": 0.004165968999586767
+        },
+        "event_publication": {
+          "samples": 30,
+          "p50_seconds": 0.002987469501022133,
+          "p95_seconds": 0.00412669299839763,
+          "min_seconds": 0.0023109520006983075,
+          "max_seconds": 0.0043090290018881205
+        },
+        "artifact_storage": {
+          "samples": 30,
+          "p50_seconds": 0.11236082249888568,
+          "p95_seconds": 0.1463722289990983,
+          "min_seconds": 0.0987402779974218,
+          "max_seconds": 0.15112169200074277
+        },
+        "geometry_inspection": {
+          "samples": 30,
+          "p50_seconds": 0.029354011499890476,
+          "p95_seconds": 0.038585783000598894,
+          "min_seconds": 0.026365339999756543,
+          "max_seconds": 0.04280461200323771
+        },
+        "finalization": {
+          "samples": 30,
+          "p50_seconds": 0.08230309899772692,
+          "p95_seconds": 0.10112734900030773,
+          "min_seconds": 0.07218394899973646,
+          "max_seconds": 0.12266556699978537
+        }
+      }
+    },
+    "exact_cache": {
+      "wall": {
+        "samples": 30,
+        "p50_seconds": 0.2457012439990649,
+        "p95_seconds": 0.339838220999809,
+        "min_seconds": 0.21802252699853852,
+        "max_seconds": 0.3539687180018518
+      },
+      "phase_totals_per_job": {
+        "artifact_download": {
+          "samples": 30,
+          "p50_seconds": 0.005756635999205173,
+          "p95_seconds": 0.00778283700128668,
+          "min_seconds": 0.003978018001362216,
+          "max_seconds": 0.009509837000223342
+        },
+        "artifact_storage": {
+          "samples": 30,
+          "p50_seconds": 0.07223870799862198,
+          "p95_seconds": 0.09307389899913687,
+          "min_seconds": 0.06202510899674962,
+          "max_seconds": 0.1296835809989716
+        },
+        "cache_lookup": {
+          "samples": 30,
+          "p50_seconds": 0.08102733099985926,
+          "p95_seconds": 0.10376497600009316,
+          "min_seconds": 0.06920332600202528,
+          "max_seconds": 0.1393204890009656
+        },
+        "finalization": {
+          "samples": 30,
+          "p50_seconds": 0.08266184449894354,
+          "p95_seconds": 0.10518869499719585,
+          "min_seconds": 0.07354112499888288,
+          "max_seconds": 0.11249923500145087
+        }
+      }
+    }
+  },
+  "fresh_target_p95_below_1s_met": false,
+  "fresh_milestone_p95_below_2s_met": true,
+  "source_commit": "9741be26ea68e43449099c49a6de3b48bd257f21",
+  "image_id": "df9a8c1332fb"
+}

@@ -73,7 +73,7 @@ def _template_runtime(monkeypatch, converter, *, existing_keys=(), upload=None):
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
         assert kwargs["timeout"] == 60
-        output_dir = Path(command[3])
+        output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\nsynthetic\n")
         (output_dir / "template.fls").write_text(f"PWD {output_dir}\nINPUT {output_dir / 'template.tex'}\n")
         return SimpleNamespace(returncode=0)

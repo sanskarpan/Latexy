@@ -111,6 +111,29 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = Field(default="", description="OpenAI-compatible base URL for the platform key (blank = api.openai.com)")
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 4000
+    # Opt in only after quality/provider benchmarks. Unsupported source retains
+    # the legacy optimizer; a started compact call never falls back or retries.
+    RESUME_COMPACT_PATCHES_ENABLED: bool = False
+    RESUME_STAGE_CHECKPOINTS_ENABLED: bool = True
+    RESUME_SEMANTIC_ENGINE_ENABLED: bool = True
+    # Exact provider/model prices; compatible endpoints must be configured,
+    # never priced as OpenAI or silently switched to another provider.
+    # Native pricing verified 2026-10-07 against official model pages:
+    # developers.openai.com/api/docs/models/gpt-4o-mini and /gpt-4o.
+    # Operator override is required for every compatible provider/model.
+    RESUME_ENGINE_MODEL_PRICING: Dict[str, Dict[str, float]] = Field(default_factory=lambda: {
+        "openai:gpt-4o-mini": {"input_per_million": .15, "output_per_million": .60},
+        "openai:gpt-4o-mini-2024-07-18": {"input_per_million": .15, "output_per_million": .60},
+        "openai:gpt-4o": {"input_per_million": 2.50, "output_per_million": 10.0},
+        "openai:gpt-4o-2024-08-06": {"input_per_million": 2.50, "output_per_million": 10.0},
+    })
+    RESUME_ENGINE_PROVIDER_RPM: int = Field(default=60, ge=1, le=10000)
+    RESUME_ENGINE_PROVIDER_TPM: int = Field(default=100000, ge=1000, le=10000000)
+    # Per owner+credential+model limits leave shared platform headroom under
+    # the default global 60 RPM / 100k TPM. They are caps, not a fair scheduler;
+    # multiple tenants can still collectively exhaust provider capacity.
+    RESUME_ENGINE_TENANT_RPM: int = Field(default=20, ge=1, le=10000)
+    RESUME_ENGINE_TENANT_TPM: int = Field(default=50000, ge=1000, le=10000000)
     OPENAI_TEMPERATURE: float = 0.7
 
     # Multi-Provider & BYOK (Phase 10)

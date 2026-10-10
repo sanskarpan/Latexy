@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "Overlapping isolated local suites; source and exclusions in release-audit-2026-10-08.md",
+  "reports": [
+    {
+      "file": "storage-upload-windows-failed.xml",
+      "sha256": "e71d1750ea61c785c0c82a92e3dcc89264bf42239636b3633c8fb25b823593be",
+      "tests": 43,
+      "passed": 25,
+      "failed": [
+        "test.test_render_artifacts::test_durable_finalization_binds_private_manifest[None]",
+        "test.test_render_artifacts::test_durable_finalization_binds_private_manifest[owner]",
+        "test.test_render_artifacts::test_durable_finalization_binds_private_manifest[epoch]",
+        "test.test_render_artifacts::test_durable_finalization_binds_private_manifest[tenant]",
+        "test.test_render_artifacts::test_durable_finalization_binds_private_manifest[public_artifact]"
+      ],
+      "errors": [
+        "test.test_render_artifact_access::test_completed_publication_without_redis_owner_allows_verified_pdf",
+        "test.test_render_artifact_access::test_preview_ready_does_not_authorize_export",
+        "test.test_render_artifact_access::test_scope_and_manifest_id_cannot_be_substituted",
+        "test.test_render_artifact_access::test_completed_manifest_recovers_after_redis_expiry",
+        "test.test_render_artifact_access::test_storage_io_cannot_cross_cancellation_or_owner_replacement[False]",
+        "test.test_render_artifact_access::test_storage_io_cannot_cross_cancellation_or_owner_replacement[True]",
+        "test.test_render_artifact_access::test_corrupt_binary_is_never_returned",
+        "test.test_render_artifact_access::test_guest_job_requires_exact_device_scope"
+      ],
+      "skipped": [
+        "test.test_render_artifacts::test_actual_poppler_geometry_range_and_rotation_guard[1-None-True]",
+        "test.test_render_artifacts::test_actual_poppler_geometry_range_and_rotation_guard[2-None-True]",
+        "test.test_render_artifacts::test_actual_poppler_geometry_range_and_rotation_guard[2-2-False]",
+        "test.test_render_artifacts::test_actual_poppler_geometry_range_and_rotation_guard[1000-None-True]",
+        "test.test_render_artifacts::test_actual_poppler_geometry_range_and_rotation_guard[1001-None-False]"
+      ],
+      "suite_seconds": 29.385
+    },
+    {
+      "file": "storage-upload-linux.xml",
+      "sha256": "177943673f4bde483b4ecec7f440ab031f598994a767e66187034f7e15adc0c6",
+      "tests": 46,
+      "passed": 46,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 51.521
+    }
+  ]
+}

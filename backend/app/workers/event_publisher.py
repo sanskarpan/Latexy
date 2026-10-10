@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Module-level worker-local synchronous Redis client.
 # None until initialize_worker_redis() is called via Celery signal.
 _worker_redis: Optional[redis.Redis] = None
+_worker_redis_identity: Optional[tuple[int, str, Optional[str]]] = None
+_worker_redis_checked_at = 0.0
+_REDIS_HEALTH_CHECK_SECONDS = 60.0
 
 # Default TTL for all job-related keys (24 hours)
 _DEFAULT_TTL = 86400
@@ -315,10 +318,31 @@ return {stream_id, tostring(sequence), payload}
 
 def initialize_worker_redis(redis_url: str, password: Optional[str] = None) -> None:
     """
-    Create a fresh synchronous Redis connection for this worker process.
-    Called from the worker_process_init Celery signal in celery_app.py.
+    Reuse a process-local connection pool for warm worker invocations.
+
+    Pools are scoped to PID and credentials. Redis reconnects sockets on use;
+    a periodic health check also replaces an unhealthy pool without adding a
+    PING round-trip to every Modal invocation.
     """
-    global _worker_redis
+    global _worker_redis, _worker_redis_identity, _worker_redis_checked_at
+
+    identity = (os.getpid(), redis_url, password or None)
+    now = time.monotonic()
+    if _worker_redis is not None and _worker_redis_identity == identity:
+        if now - _worker_redis_checked_at < _REDIS_HEALTH_CHECK_SECONDS:
+            return
+        try:
+            _worker_redis.ping()
+        except Exception:
+            close_worker_redis()
+        else:
+            _worker_redis_checked_at = now
+            return
+
+    # Never retain credentials from a different tenant/configuration or an
+    # inherited parent-process pool when replacement connectivity fails.
+    if _worker_redis is not None and _worker_redis_identity is not None:
+        close_worker_redis()
 
     previous = _worker_redis
     client = redis.from_url(
@@ -338,6 +362,8 @@ def initialize_worker_redis(redis_url: str, password: Optional[str] = None) -> N
         raise
 
     _worker_redis = client
+    _worker_redis_identity = identity
+    _worker_redis_checked_at = now
     if previous is not None:
         _close_redis_client(previous)
     logger.info(f"Worker Redis client initialized (PID {os.getpid()})")
@@ -352,10 +378,12 @@ def _close_redis_client(client: redis.Redis) -> None:
 
 def close_worker_redis() -> None:
     """Close and forget the synchronous client owned by this worker process."""
-    global _worker_redis
+    global _worker_redis, _worker_redis_identity, _worker_redis_checked_at
 
     client = _worker_redis
     _worker_redis = None
+    _worker_redis_identity = None
+    _worker_redis_checked_at = 0.0
     if client is None:
         return
     _close_redis_client(client)
@@ -376,22 +404,7 @@ def get_worker_redis() -> redis.Redis:
 #  Core publish_event()                                               #
 # ------------------------------------------------------------------ #
 
-def publish_event(
-    job_id: str,
-    event_type: str,
-    payload_extra: Dict[str, Any],
-    ttl: int = _DEFAULT_TTL,
-) -> str:
-    """
-    Build a typed event dict, persist it to a Redis Stream, and
-    publish it to the Redis Pub/Sub channel for live delivery.
-
-    Returns the Redis Stream entry ID (use as last_event_id for replay).
-
-    Workers call this instead of job_status_manager.set_job_status().
-    """
-    r = get_worker_redis()
-
+def _prepare_event(r, job_id, event_type, payload_extra, ttl):
     event_id = str(uuid.uuid4())
     event: Dict[str, Any] = {
         "event_id": event_id,
@@ -424,9 +437,9 @@ def publish_event(
                         try:
                             owner_epoch = int(raw_epoch.decode("utf-8"))
                         except (TypeError, ValueError):
-                            return ""
+                            return None
                     else:
-                        return ""
+                        return None
                 event["_lifecycle_epoch"] = str(owner_epoch)
             else:
                 event["_lifecycle_epoch"] = str(owner_epoch)
@@ -435,7 +448,7 @@ def publish_event(
     # High-frequency content deltas are not state transitions and carry no
     # stage/percent. Persisting them would both add needless writes and reset the
     # REST fallback progress snapshot to blank/zero.
-    update_state = event_type not in {"llm.token", "log.line"}
+    update_state = event_type not in {"llm.token", "log.line", "artifact.ready", "context.ready", "section.ready", "patch.ready", "review.ready"}
     if update_state:
         from ..models.event_schemas import status_from_event_type
 
@@ -454,7 +467,7 @@ def publish_event(
     stream_key = f"latexy:stream:{job_id}"
     channel = f"latexy:events:{job_id}"
     state_key = f"latexy:job:{job_id}:state"
-    result = r.eval(
+    return owner, (
         _PUBLISH_EVENT_SCRIPT,
         4,
         sequence_key,
@@ -468,6 +481,29 @@ def publish_event(
         "1" if update_state else "0",
         state_json,
     )
+
+
+def publish_event(
+    job_id: str,
+    event_type: str,
+    payload_extra: Dict[str, Any],
+    ttl: int = _DEFAULT_TTL,
+) -> str:
+    """
+    Build a typed event dict, persist it to a Redis Stream, and
+    publish it to the Redis Pub/Sub channel for live delivery.
+
+    Returns the Redis Stream entry ID (use as last_event_id for replay).
+
+    Workers call this instead of job_status_manager.set_job_status().
+    """
+    r = get_worker_redis()
+
+    prepared = _prepare_event(r, job_id, event_type, payload_extra, ttl)
+    if prepared is None:
+        return ""
+    owner, args = prepared
+    result = r.eval(*args)
     if event_type in {"job.completed", "job.failed", "job.cancelled", "job.retrying"}:
         try:
             from .job_lifecycle import (
@@ -507,6 +543,26 @@ def publish_event(
 
     logger.debug(f"[{job_id}] Published {event_type} (seq={seq})")
     return str(entry_id)
+
+
+def publish_event_batch(job_id: str, events: list[tuple[str, Dict[str, Any]]], ttl: int = _DEFAULT_TTL) -> None:
+    """Pipeline content deltas through the exact existing per-event fence.
+
+    Lifecycle transitions remain synchronous. Each Lua invocation still decides
+    owner, epoch, cancellation and sequence atomically at execution time.
+    """
+    if any(kind not in {"log.line", "llm.token"} for kind, _ in events):
+        raise ValueError("Only content deltas may be batched")
+    r = get_worker_redis()
+    with r.pipeline(transaction=False) as pipeline:
+        count = 0
+        for kind, payload in events:
+            prepared = _prepare_event(r, job_id, kind, payload, ttl)
+            if prepared is not None:
+                pipeline.eval(*prepared[1])
+                count += 1
+        if count:
+            pipeline.execute()
 
 
 def _submit_job_failure_email_once(r: redis.Redis, job_id: str, ttl: int) -> None:

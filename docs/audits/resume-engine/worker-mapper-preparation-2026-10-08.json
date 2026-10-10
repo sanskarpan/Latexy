@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-08",
+  "baseline_source": "36de1a5100ac35e3eb961227f49d61d228edce74",
+  "candidate_source": "d095fb837aef3c599a2a5089c110e6a0eb20a583",
+  "candidate_backend_tree": "d6c7663f38a516d26b94237d39fb717f6dcc6d26",
+  "image_id": "sha256:df9a8c1332fb3ec4fe80891ff102145f6689810b1f2fa9032916a2b107b59db6",
+  "model_count": 59,
+  "baseline_unconfigured_after_runtime_preparation": 59,
+  "baseline_first_registry_configuration_seconds": 0.29361589800100774,
+  "candidate_unconfigured_after_runtime_preparation": 0,
+  "candidate_subsequent_registry_configuration_seconds": 0.0002650520000315737,
+  "candidate_database_engine_created": false,
+  "candidate_database_connection_opened": false,
+  "method": "Each condition in a clean Python process: prepare_worker_runtime(False), count registry mapper configured flags, then time Base.registry.configure with perf_counter. Candidate also forbids asyncpg.connect and sqlalchemy.ext.asyncio.create_async_engine via raising mocks.",
+  "limitations": [
+    "One diagnostic sample per condition; not a latency distribution or whole-render speedup",
+    "Mapper configuration moved before readiness, so its startup cost remains real",
+    "API retains the storage source at 36de1a51; the changed readiness helper runs in the d095fb83 worker",
+    "Tests ran backend tree 524c1f0f6e3a87ed69234edf27358b4c8d011245; final tree differs only by a blank-line import formatting fix in the test fixture"
+  ]
+}

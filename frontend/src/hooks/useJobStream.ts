@@ -170,7 +170,7 @@ export function buildJobResultRecoveryEvents(jobId: string, result: RecoverableJ
   return events
 }
 
-export function useJobStream(jobId: string | null): UseJobStreamResult {
+export function useJobStream(jobId: string | null, options?: { fingerprint?: string }): UseJobStreamResult {
   const [state, dispatch] = useReducer(streamReducer, initialState)
   const committedJobIdRef = useRef(jobId)
   const requestedJobIdRef = useRef(jobId)
@@ -182,6 +182,9 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   // the previous job's completed/content state during that one render; doing
   // so lets a page start a compile or PDF fetch for the newly selected job.
   const stateForJob = committedJobIdRef.current === jobId ? state : initialState
+  const artifactRef = useRef(stateForJob.artifact)
+  artifactRef.current = stateForJob.artifact
+  const fingerprint = options?.fingerprint
 
   useEffect(() => {
     committedJobIdRef.current = jobId
@@ -257,18 +260,27 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     if (!jobId) return
     let stopped = false
     let attempts = 0
-    const MAX_POLLS = 150 // ~10 min at 4s — cap so a wedged job can't poll forever
-    const POLL_INTERVAL_MS = 4000
+    const MAX_POLLS = 157 // initial fast recovery, then ~10 minutes at four seconds
+    const pollInterval = () => attempts < 8 ? 750 : 4000
     let timer: ReturnType<typeof setTimeout> | null = null
+    let inFlight = false
+    let terminal = false
     const isCurrent = () => !stopped && requestedJobIdRef.current === jobId
 
     const poll = async () => {
+      if (!isCurrent() || inFlight || terminal || attempts >= MAX_POLLS) return
+      inFlight = true
       attempts += 1
       try {
-        const snap = await apiClient.getJobState(jobId)
+        const snap = await apiClient.getJobState(jobId, fingerprint)
         if (!isCurrent()) return
+        if (snap.artifact && artifactRef.current?.artifact_id !== snap.artifact.artifact_id) {
+          dispatch({ ...snap.artifact, type: 'artifact.ready', job_id: jobId,
+            event_id: `artifact-recovery-${snap.artifact.artifact_id}`, timestamp: Date.now() / 1000, sequence: 0 })
+        }
         if (snap?.status === 'cancelled') {
           dispatch({ type: 'job.cancelled', job_id: jobId } as unknown as AnyEvent)
+          terminal = true
           return // terminal → stop polling
         }
         if (snap?.status === 'completed') {
@@ -285,6 +297,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
           // or rewriting the already-completed server decision.
           if (result?.job_id === jobId && result.recovery_complete === false) {
             for (const event of buildJobResultRecoveryEvents(jobId, result)) dispatch(event)
+            terminal = true
             return
           }
 
@@ -295,7 +308,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
           // job id; doing so makes the page stop retrying a still-propagating
           // PDF and leaves the preview on its placeholder forever.
           if (!result?.success) {
-            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
+            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, pollInterval())
             return
           }
 
@@ -305,10 +318,11 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
           // for another job is rejected and retried rather than relabeled.
           const recoveryEvents = buildJobResultRecoveryEvents(jobId, result)
           if (recoveryEvents.length === 0) {
-            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
+            if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, pollInterval())
             return
           }
           for (const event of recoveryEvents) dispatch(event)
+          terminal = true
           return // terminal → stop polling
         }
         if (snap?.status === 'failed') {
@@ -321,6 +335,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
             retryable: false,
             stage: '',
           } as unknown as AnyEvent)
+          terminal = true
           return
         }
         if (snap?.status === 'queued' || snap?.status === 'processing') {
@@ -333,17 +348,25 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
         }
       } catch {
         /* transient — keep polling */
+      } finally {
+        inFlight = false
       }
-      if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, POLL_INTERVAL_MS)
+      if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, pollInterval())
     }
 
-    // Delay the first poll so a healthy WS stream gets the first chance.
-    timer = setTimeout(poll, POLL_INTERVAL_MS)
+    // Recover fast cache hits immediately; slow jobs back off to four seconds.
+    timer = setTimeout(poll, 0)
+    const recoverOnReconnect = () => {
+      if (timer) clearTimeout(timer)
+      void poll()
+    }
+    wsClient.on('connected', recoverOnReconnect)
     return () => {
       stopped = true
+      wsClient.off('connected', recoverOnReconnect)
       if (timer) clearTimeout(timer)
     }
-  }, [jobId])
+  }, [jobId, fingerprint])
 
   const cancel = useCallback(() => {
     if (jobId) wsClient.cancelJob(jobId)

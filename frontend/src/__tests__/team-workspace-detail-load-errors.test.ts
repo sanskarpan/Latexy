@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const DETAIL_SOURCE = readFileSync(
   new URL('../app/workspaces/[workspaceId]/page.tsx', import.meta.url),
   'utf8',
-)
+).replace(/\r\n/g, '\n')
 
 describe('team-workspace detail failures', () => {
   it('renders recovery UI instead of returning a blank page', () => {

@@ -122,6 +122,13 @@ jobs:
           fi
           modal run --env main modal_app.py::billing_preflight "${args[@]}"
 
+      # Use the candidate API's existing bindings before touching the schema or
+      # serving functions. This checks configuration, not image certification.
+      - name: Check renderer configuration before migrations
+        if: steps.freshness.outputs.current == 'true'
+        working-directory: backend
+        run: modal run --env main modal_app.py::renderer_preflight
+
       # modal_app.py deliberately keeps migrations separate from API startup.
       # Apply them first so incompatible application code is never made live.
       - name: Apply production database migrations

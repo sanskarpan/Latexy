@@ -1,0 +1,98 @@
+# Browser quality recovery, 2026-10-10
+
+## What was actually failing
+
+Historical head `fed556813b68a999e03813bf2ecdf170259ba834` completed [CI run 37829214371](https://github.com/sanskarpan/Latexy/actions/runs/37829214371) with **43 failed, 44 passed, 3 skipped** browser cases in 1.8 hours. Its previously recorded “still installing browsers” status was only an interim observation. The cadence and hydration steps were skipped after the quality step failed.
+
+The frontend was unchanged by the subsequent backend-instrumentation commits through `7ab3cc0dbc12a2d554d48e645d5aaf7d76baaac2`. These failures must not be attributed to that instrumentation or reported as a browser pass.
+
+Evidence: GitHub artifact `11580060459`, `playwright-quality-report`, SHA-256 `9bc3a242651d41e238bd2ae9257342fff34fb0d46403f056c5923e60048d38c9`. The archive includes the HTML report, error contexts, screenshots, and retry traces under `test-results/quality/`. Three separate causes were confirmed:
+
+1. **PDF.js module evaluation, before rendering.** Import review, mapped-PDF keyboard selection, and structure-editing Chromium retry traces show `Object.defineProperty called on non-object`, through `__webpack_require__.r`, `pdfjs-dist/build/pdf.mjs`, and `ReactPdfClient.tsx`. WebKit reports the equivalent object-definition error. No PDF worker request occurs. The Next development error boundary then replaces the editor, explaining both missing canvases and long control-locator timeouts. The installed Next 15.5.27 bundles Webpack 5.98.0; this matches the [upstream development-eval runtime collision](https://github.com/webpack/webpack/issues/20095). The existing `frontend-verification.md` had recorded the problem, but its claimed development-launcher correction was absent from the tracked launcher.
+2. **Unsupported browser fixture assumptions.** Firefox/WebKit reject the Chromium clipboard permission names. WebKit's intercepted multipart request exposes framing without the file bytes: its import handler assertion throws before returning the mocked receipt. See the [Playwright multipart interception limitation](https://github.com/microsoft/playwright/issues/6479).
+3. **Stale API/UI fixtures.** Hardcoded API ports 8030/8530 do not match the quality launcher's isolated backend port 7182. This lets template requests escape the held-request test and produces unmocked WebKit API errors. The public mobile test also expects the old `Recompile` label while Resume mode now exposes `Update PDF`. A mobile cancellation test needs to select the PDF pane to reach its Stop control, then return to the Editor pane.
+
+## Scoped repairs
+
+- Run quality tests through the existing isolated **production** launcher, keeping the shared launcher and product rendering code unchanged. This tests the deployed bundling behavior rather than the broken development-eval wrapper. Give the one-time build the same 30-minute budget as the existing production harness, while bounding individual interactions at 12 seconds.
+- Mock ancillary API paths independently of the chosen local port, preserving document/RSC navigation and all engine-specific request handlers. Add unit checks for multiple ports, navigation pass-through, and source-bound public projections.
+- Preserve the real canvas, field-overlay, exact-source, revision, authentication, receipt-integrity, and request-count assertions.
+- Capture the Copy button's actual `clipboard.writeText` argument across engines. Inspect the existing Monaco test hook for the newer-source race, rather than depending on OS clipboard permissions.
+- Observe the actual FormData File bytes supplied to fetch and then call the original fetch. Continue checking upload authorization and multipart metadata. No browser is skipped to avoid the WebKit limitation.
+
+## Validation and limits
+
+- Targeted launcher/fixture unit tests: **16 passed**.
+- Changed-file ESLint, full TypeScript check, and `git diff --check` passed before publication.
+- Current main `c21bcc20f7060b09269375f1b1f8f0b4f8229bae` then merged without conflicts, preserving dependency/auth upgrade #1859 and owner fixes #1851, #1858, and #1861. The integrated tree passed **1,273 frontend unit tests in 191 files**, full frontend ESLint, and the **57-test** DB-free engine/storage/dispatch selection; full backend Ruff also passed. Existing Markdown line-break whitespace imported unchanged from main is outside the fixture diff.
+- Local browser execution did **not** reach test assertions: Chromium's process-singleton socket failed with `Operation not permitted`, including an approved escalated retry. This environment failure is not a product failure or a browser pass. No security settings were changed.
+- Exact published-head Linux browser CI remains the acceptance authority for these repairs. Record its terminal result in the PR before marking the gate complete.
+- All browser APIs, auth, PDFs, and engine responses in these contracts are synthetic fixtures. They do not measure production queueing, cold starts, provider execution, storage latency, or real action-to-PDF paint. The production latency acceptance plan in `latency-instrumentation-2026-10-10.md` remains open.
+
+## Staged frontend/backend compatibility
+
+A subsequent review found that a newer frontend defaults to Resume fields even if the backend still lacks the engine routes. The final candidate adds the independent, uncached `GET /public/engine/capabilities` protocol probe described in [the architecture document](../../RESUME_ENGINE_ARCHITECTURE.md#staged-frontendbackend-rollout-compatibility).
+
+Only that public probe's 404 or an unsupported/missing version selects the existing Source editor automatically. Initial authentication, permission, malformed-response, and transient errors remain distinct. An explicit retry does not discard an already-active Source fallback. Mode preferences, source buffers, normal edit permissions, and legacy PDF transport remain intact. Field mutation, managed review, original-PDF access and PDF-import upload/adaptation wait for capability support; no failed action is replayed through a legacy or paid-provider path.
+
+This follow-up passed **1,293 frontend unit tests across 194 files**, TypeScript, frontend lint, and **23 backend capability/semantic tests** plus Ruff. Seven new browser scenarios collected across five projects (**35 cases**) but were not executed locally because of the recorded Chromium environment restriction. Exact-head CI must execute the final contracts before the browser gate is considered complete.
+
+## Production-bundle follow-up
+
+Integrated head `b413e14672d70dd3d05e1c20e2bccd7324447711` completed [CI run 38075956001](https://github.com/sanskarpan/Latexy/actions/runs/38075956001) with **73 passed, 14 failed, 3 skipped** quality cases in **11.1 minutes**. The former PDF.js module-evaluation failures disappeared. Backend, frontend build, lint, full-stack smoke, Modal/template checks and CodeQL passed; the subsequent explicit browser and hydration steps remained skipped after quality failed. This is an improvement in test execution, not a production-latency measurement or a complete browser pass.
+
+Evidence: artifact `11679501216`, SHA-256 `5eb314c27c53fec9bd101845c8040b6699c117a55832d605b79ee36be882cd25`.
+
+- The generated production PWA worker was active during these mocked HTTP contracts. WebKit retry traces show `/sw.js` returning 200, whose generated script calls `skipWaiting` and `clientsClaim`. Initial auth/engine calls are intercepted successfully; approximately two seconds later, identical API URLs bypass the handlers. Sign-out/session requests reach the real Next auth route (500), while later score, import adaptation, document and compilation requests hit the deliberately absent backend. This explains the shared mid-test failures. Two independent source/trace reviews found no additional application defect in the import/sign-out cases.
+- The quality config now blocks service workers, following [Playwright's documented network-interception guidance](https://playwright.dev/docs/network#missing-network-events-and-service-workers). Every quality case also installs the existing registration-shaped Workbox fixture, because Playwright's blocked registration otherwise resolves without the object expected by Workbox. The product PWA configuration and separate `pwa-production.spec.ts` remain unchanged; these quality cases do not claim real PWA lifecycle coverage.
+- The managed-review test observed the decision request before React removed the rejected card's controls, making its unscoped Accept locator transiently ambiguous. It now identifies each suggestion by its content and waits for the rejected card's authoritative state before accepting the remaining card. Exact patch, source, revision, PDF and request-count assertions remain.
+- Known ancillary connector, subscription, academic-report, ticket, analytics, telemetry and optional SyncTeX paths are explicitly mocked. Engine mutations and unrelated URLs remain outside the helper; Next document/RSC navigation still passes through. This removes unrelated network errors without suppressing runtime-error assertions.
+
+After these fixture corrections and the capability fallback, **1,303 frontend unit tests in 194 files**, full TypeScript and ESLint passed; **125 browser cases across eight files collected**. An independent review also caught direct context-created pages and initial about:blank handling; the shared context fixture and three executed stub regressions cover both. Exact-head browser CI must still pass before claiming completion. Local browser execution remains blocked by the previously verified host restriction; no further launch workaround was attempted.
+
+## Final source-review follow-up
+
+The broader review found two functional gaps after the fixture work. `/try` reset its active job on account change but retained the previous submission's busy flag; its correctly guarded stale `finally` then could not release that flag. The identity reset now releases busy state, while manual, automatic and trim callbacks reject old responses/errors/cleanup before affecting a newer admission. Twenty-three controlled tests execute the actual render-time identity token, page callbacks and reset effect with deferred promises, including A→B→A round-trips; four browser scenarios cover the interrupted/repeated flow across five projects.
+
+Quick Tailor and academic-CV conversion now resolve the saved compiler and apply the existing renderer capability check before creating a fork, consuming optimization quota, or dispatching provider work. Ten controlled route tests verify zero such side effects when the renderer is unavailable and preserve supported/legacy compiler selection and submission payloads.
+
+The deployment review also confirmed that existing new saved resumes default to LuaLaTeX while PR #1833 introduces a separately certified Modal VM requirement. The committed cloud image evidence is explicitly incomplete for the broad default. The configuration-only `renderer_preflight` now runs before migrations and deployment using the existing API image and secret bindings. Missing or malformed required configuration blocks this workflow and preserves the serving backend. Configuration import/report logs and streams are suppressed only within this isolated preflight, with prior state restored before fixed diagnostics are emitted; synthetic sentinel tests cover success/failure. It creates no VM and performs no certification; a successful configuration report still has `certification_verified: false`. See [the exact requirements and provenance](../../MODAL_RENDERER_CAPABILITY.md). This guard must be preserved alongside #1834's independent billing preflight during integration.
+
+Validation of these source-review corrections: **1,326 frontend units in 195 files**, full TypeScript/ESLint and full backend Ruff passed; **162 controlled backend/deployment contract tests passed** with RuntimeWarnings treated as errors. **145 quality browser cases collected**, but local browser execution remains unavailable for the recorded reason. The next exact published-head CI remains required. None of this is new production compiler certification or latency acceptance.
+
+## Capability-fallback browser result
+
+Head `4aa2ee4355b0f449341687c7d2febeb94c005c21` completed [CI run 38077967513](https://github.com/sanskarpan/Latexy/actions/runs/38077967513) with **115 passed, seven failed, three skipped** quality cases in **14.2 minutes**. The earlier service-worker takeover, sign-out, import, structure and managed-review failures were resolved. Other CI jobs, Vercel and all CodeQL analyses passed; later browser/hydration steps were skipped after quality failed.
+
+Artifact `11679760663`, SHA-256 `6e308b8ac1c3f02b0277550acfd439a2e7847b2b21de7e28a8e206fbb52436c1`, identifies the remaining fixture defects:
+
+- Across all five projects, the new legacy-PDF fixture returned `pdf_job_id` at the top level instead of the backend's `result` envelope. Traces show successful submit/state/result requests but no PDF request because the real client correctly unwraps only `result`. The fixture now uses the real envelope; a regression exercises the existing client parser.
+- Both WebKit projects reached the guest test's final error assertion. Replacing all of `navigator.clipboard` with a writeText-only fake removed the native `write` method used by Monaco's WebKit user-gesture workaround. That also left its deferred ClipboardItem promise without the native consumer, producing a later cancellation rejection. The fixture now intercepts only `writeText` on the existing clipboard object. A unit regression checks that native rich writes remain intact. Runtime-error assertions remain unchanged.
+
+These are fixture repairs, not production changes or a browser pass. Exact final-head CI must run the expanded contracts, including the later admission and deployment-preflight corrections.
+
+Final local combined tree: **1,328 frontend units in 195 files**, full TypeScript/ESLint, full backend Ruff and diff checks passed. The **162-test** backend/deployment selection remains applicable; **145 browser cases** collect. Both final fixture corrections and the source-review corrections received independent review with no remaining concrete code blocker. Browser runtime and actual Modal VM certification remain unverified locally.
+
+## Firefox logout-reload follow-up
+
+Head `f159de85c017742ac5ba816285cc02432963a1fb` completed [CI run 38079656330](https://github.com/sanskarpan/Latexy/actions/runs/38079656330) with **141 passed, one failed, three skipped** quality cases in **9.5 minutes**. All engine, rollout-fallback, field/structure/import and account-incarnation cases passed across the five projects. The remaining desktop Firefox account-navigation case passed its functional assertions but recorded `NS_BINDING_ABORTED` in its final runtime-error assertion on both attempts. Later explicit browser and hydration steps were skipped, so this head is not browser-complete. Other CI jobs, all CodeQL analyses and Vercel passed.
+
+Evidence: artifact `11679917710`, SHA-256 `cdd3b2164c67be4686a7bc7b2f986f46b3ad82ffb74ea53610d9e486ff39db14`.
+
+The retry trace shows the sign-out POST and first guest-session read both returning 200. The fixture then calls `page.reload` approximately 18 ms after that guest response completes, while the newly navigated landing page is still fetching. The page error follows approximately 34 ms after the reload, alongside canceled tenant resolution and RSC prefetches. The post-reload guest session also returns 200. Source review found existing handling for the tenant/RSC cancellations; next-pwa's navigation start-URL cache work is another overlapping operation, but the stackless error does not establish its exact producer.
+
+The fixture now verifies guest controls on the first landing page and waits for that navigation's network settlement before deliberately reloading to test session persistence. It repeats the guest assertions after reload. The empty runtime-error assertion remains unchanged; no error is filtered, no fixed sleep is added, and product PWA behavior is unchanged. A focused source contract verifies this ordering. This is a controlled fixture-sequencing correction, not evidence that all rapid production navigation/PWA cases are error-free. Exact-head CI must establish the correction and execute the still-pending later browser steps.
+
+The corrected tree passes **1,330 frontend units in 196 files**, full ESLint, nonincremental TypeScript, and diff checks; **145 quality cases in eight files** collect. The persistence assertion requires a strictly newer guest-session response than the count captured immediately before reload. Browser execution remains CI-only in this environment.
+
+## Source-editor synchronization fixture
+
+Head `680bfc5c87084a408a290c3aaec976a29c970557` completed [CI run 38081131499](https://github.com/sanskarpan/Latexy/actions/runs/38081131499) with **142 passed and three skipped** desktop/mobile quality cases in **6.9 minutes**. The Firefox logout correction passed. The newly reached editor/Settings stage finished **46 passed and five failed** in **2.9 minutes**; all five failures are in the common source/PDF-sync setup, before Monaco mounts. The Settings, onboarding and legacy-callback contracts passed. Hydration remained skipped after this later failure, so the overall browser gate is still open.
+
+Evidence: artifact `11680930677`, SHA-256 `32d1b41019b8bbfd537f5dabb2b8c16678fc9b05c8bd1f894d3a62f5409aa60c`.
+
+The source/PDF synchronization fixture assumed Source was still the default, but the editor now defaults to Resume fields. It also omitted the new capability and optional original-PDF reads. Screenshots and traces show a loaded editor shell while the common fixture waits for a Monaco object that is correctly absent in Resume mode. The correction explicitly stores Source mode for this fixture's resume before navigation and supplies only the exact GET capability and absent-original responses. It retains unknown-request rejection, runtime-error assertions, real Monaco/source comparisons, PDF/SyncTeX identity assertions and cadence checks. The separate quality suite continues to test the default Resume mode and capability fallback.
+
+Three fixture-contract unit tests and targeted ESLint pass. Exact-head browser execution must still establish all source/PDF synchronization assertions and the final hydration stage; this fixture setup diagnosis does not pre-judge their outcomes.
+
+The fixture-only correction also passes **1,333 frontend units in 197 files**, nonincremental TypeScript, full ESLint and diff checks. It will be included with the separately reviewed integration corrections; no further browser result is claimed from local checks.

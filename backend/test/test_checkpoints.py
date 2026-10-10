@@ -477,7 +477,7 @@ class TestOwnershipEnforcement:
         )
         await db_session.commit()
 
-        from conftest import _insert_session
+        from .conftest import _insert_session
 
         token2 = await _insert_session(db_session, user2_id)
         headers2 = {"Authorization": f"Bearer {token2}"}

@@ -33,7 +33,13 @@ from app.core.config import settings
 from app.database.models import ResumeTemplate
 from app.services import storage_service
 from app.services.europecv import configure_europecv_latex, is_europecv_source
-from app.services.latex_service import LATEX_SANDBOX_FLAGS, engine_env, engine_output_error, find_recorder_read_escape
+from app.services.latex_service import (
+    engine_env,
+    engine_output_error,
+    engine_sandbox_flags,
+    find_recorder_read_escape,
+    native_engine_command,
+)
 from app.utils.bounded_io import MAX_COMPILED_PDF_BYTES, read_file_bounded
 
 
@@ -105,21 +111,20 @@ async def main():
                     ok = True
                     for _pass in range(2):
                         result = subprocess.run(
-                            [
-                                compiler,
+                            native_engine_command(compiler, [
                                 "-interaction=nonstopmode",
                                 "-output-directory",
                                 tmpdir,
-                                *LATEX_SANDBOX_FLAGS,
+                                *engine_sandbox_flags(compiler),
                                 str(tex_path),
-                            ],
+                            ], tmpdir),
                             # Diagnostics are read from the bounded .log below;
                             # never retain arbitrary compiler pipes in memory.
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             timeout=60,
                             cwd=tmpdir,
-                            env=engine_env(compiler),
+                            env=engine_env(tmpdir, compiler),
                         )
                         violation = find_recorder_read_escape(Path(tmpdir) / "template.fls", tmpdir, require_recorder=True)
                         if violation:

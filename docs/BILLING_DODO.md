@@ -123,6 +123,26 @@ Public workflow logs contain only execution identity and fixed rollout decisions
 the detailed configuration and aggregate counts remain in the operator-only
 default report rather than being copied into deployment logs.
 
+Incomplete database diagnostics always block rollout (script exit 2). The
+operator report may include `database.failure_stage`; public rollout output uses
+the corresponding fixed `rollout_database_<stage>_failed` reason. Stages are:
+
+- `configuration`: database URL configuration could not be interpreted.
+- `engine`: the local database engine could not be constructed.
+- `connect`: acquiring or entering the connection failed.
+- `read_only_setup`: transaction setup or its read-only verification failed.
+- `schema_metadata`: reading the allowlisted schema columns failed.
+- `schema_revision`: reading or classifying the Alembic revision failed.
+- `aggregate_counts`: computing the aggregate access counts failed.
+- `cleanup`: rollback, connection exit or engine disposal failed; this takes
+  precedence if cleanup also fails after an earlier diagnostic failure.
+
+These codes identify the operation that failed, not its root cause. They never
+contain exception text, connection details, SQL, credential values or customer
+identifiers. A valid incomplete report does not imply malformed public output.
+Read-only enforcement, timeouts and all rollout holds remain unchanged; do not
+infer a pooler, credential or production-schema fault from a stage alone.
+
 The rollout policy is deliberately separate from live-sales readiness:
 
 - Strict billing startup rules, production/staging classification and Modal

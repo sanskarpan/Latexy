@@ -356,6 +356,8 @@ export function deriveBuilderPreview(
 
   return {
     template_family: templateFamily,
-    sections: sections.filter(section => section.items.length > 0),
+    sections: sections
+      .filter(section => section.items.length > 0)
+      .map(section => ({ ...section, title: structured.section_titles?.[section.key]?.trim() || section.title })),
   }
 }

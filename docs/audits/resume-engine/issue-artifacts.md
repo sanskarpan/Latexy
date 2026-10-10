@@ -1,0 +1,3 @@
+Replace Redis base64 copies with immutable durable binary manifests. Emit artifact.ready after recorder/read-confinement validation and before scoring/finalization. Provide authenticated revision-bound preview separately from authoritative export. Reuse exact canonical cached artifacts after normal authorization, entitlement, quota and durable admission, and coalesce duplicate work with bounded fenced leases.
+
+Acceptance: direct and combined paths share rendering; restart/cancellation/stale-owner/tenant/asset/settings tests pass; Redis stores bounded references; preview is never silently accepted/exported.

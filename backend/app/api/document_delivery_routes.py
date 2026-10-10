@@ -148,6 +148,7 @@ async def _owned_compiled_pdf(
         Compilation.resume_id == resume_id,
         Compilation.user_id == user_id,
         Compilation.status == "completed",
+        Compilation.artifact_accepted.is_(True),
     )
     if compilation_id is not None:
         compilation_query = compilation_query.where(Compilation.id == compilation_id)

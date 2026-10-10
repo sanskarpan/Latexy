@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..database.connection import get_db
 from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
@@ -171,7 +172,8 @@ async def generate_interview_prep(
     # row would otherwise be orphaned forever with questions=[]; delete it and
     # surface the failure to the caller.
     try:
-        submit_interview_prep_generation(
+        await submit_async(
+            submit_interview_prep_generation,
             resume_latex=resume.latex_content,
             prep_id=prep_id,
             job_id=job_id,

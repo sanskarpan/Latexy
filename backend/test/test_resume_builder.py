@@ -316,7 +316,8 @@ class TestResumeBuilder:
         )
         assert update_resp.status_code == 200
         updated = update_resp.json()
-        assert updated["resume"]["structured_version"] >= 2
+        assert updated["resume"]["structured_version"] == 2
+        assert updated["resume"]["content_revision"] >= 2
         assert updated["resume"]["structured_content"]["basics"]["name"] == "Updated Name"
 
     async def test_manual_editor_update_detaches_builder(self, client: AsyncClient, auth_headers: dict, db_session):
@@ -613,3 +614,23 @@ class TestResumeBuilder:
 
         assert exported.status_code == 422
         assert "must use YYYY" in exported.json()["detail"]
+
+
+@pytest.mark.parametrize("category", ["ats_safe", "minimal", "executive"])
+def test_builder_custom_headings_preserve_content_filtering_and_certification_url(category):
+    content = {
+        "section_titles": {"experience": "Career History", "education": "Training",
+                           "skills": "Expertise", "projects": "Selected Work", "certifications": "Credentials"},
+        "experience": [{"id": "empty-work"}, {"id": "work", "company": "Example", "title": "Engineer"}],
+        "education": [{"id": "empty-school"}],
+        "skills": [{"id": "empty-skills", "keywords": [" "]}],
+        "projects": [{"id": "empty-project"}],
+        "certifications": [{"id": "certificate", "name": "Example Certificate", "url": "https://example.test/cert"}],
+    }
+    latex = resume_builder_service.render(content, category).latex_content
+    sections = resume_builder_service.build_preview(content, category)["sections"]
+    assert "Career History" in latex and "Credentials" in latex
+    assert "https://example.test/cert" in latex
+    for heading in ("Training", "Expertise", "Selected Work"):
+        assert heading not in latex
+    assert [section["title"] for section in sections] == ["Career History", "Credentials"]

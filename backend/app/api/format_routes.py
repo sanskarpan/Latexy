@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.celery_app import get_task_priority
 from ..core.logging import get_logger
+from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import User
@@ -445,7 +446,8 @@ async def upload_for_conversion(
             # lifecycle initialization itself is still pre-dispatch.
             dispatch_attempted = True
 
-            submit_document_conversion(
+            await submit_async(
+                submit_document_conversion,
                 extracted_data=parsed.to_dict(),
                 source_format=detected_format.value,
                 job_id=job_id,

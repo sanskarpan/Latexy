@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y \
     texlive-lang-english \
     fonts-noto-cjk \
     fonts-noto-core \
+    fonts-texgyre \
     fonts-lohit-deva \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -57,6 +58,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Copy virtual environment from builder stage
+COPY scripts/warm_tex_cache.sh /usr/local/bin/latexy-warm-tex-cache
+RUN sh /usr/local/bin/latexy-warm-tex-cache
+COPY scripts/build_trusted_render_formats.py /opt/latexy-format-build/scripts/build_trusted_render_formats.py
+COPY app/services/render_engine/managed_preamble.py /opt/latexy-format-build/app/services/render_engine/managed_preamble.py
+RUN python /opt/latexy-format-build/scripts/build_trusted_render_formats.py
+COPY scripts/write_renderer_fingerprint.py /usr/local/bin/latexy-write-renderer-fingerprint.py
+RUN python /usr/local/bin/latexy-write-renderer-fingerprint.py
+ENV TEXMFCACHE=/var/lib/texmf
+
 COPY --from=builder /opt/venv /opt/venv
 
 # Create non-root user

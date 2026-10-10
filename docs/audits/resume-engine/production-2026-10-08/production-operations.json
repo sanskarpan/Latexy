@@ -1,0 +1,240 @@
+{
+  "measured_at_utc": "2026-10-08T17:26:51.976Z",
+  "origin": "https://latexy.xyz",
+  "api": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+  "scope": "Sequential public API probes with synthetic starter; no paid models, authentication or quota bypass",
+  "limitations": [
+    "Three samples are diagnostic, not a p95 certification",
+    "HTTP includes client transport and backend; no server span attribution"
+  ],
+  "samples": [
+    {
+      "name": "frontend-identity",
+      "path": "/api/deployment-identity",
+      "status": 200,
+      "headers_ms": 554.9254999999999,
+      "complete_ms": 567.4734,
+      "bytes": 74,
+      "cache": "MISS",
+      "server_timing": null,
+      "identity": {
+        "commitSha": "26e802ca3e83b11b565365f817407911080c5ff3",
+        "source": "vercel"
+      }
+    },
+    {
+      "name": "health",
+      "path": "/health",
+      "status": 200,
+      "headers_ms": 1836.8989000000001,
+      "complete_ms": 1842.8837000000003,
+      "bytes": 207,
+      "cache": null,
+      "server_timing": null,
+      "identity": {
+        "status": "healthy",
+        "version": "1.0.0",
+        "latex_available": true,
+        "database": "ok",
+        "redis": "ok",
+        "redis_cache": "ok",
+        "redis_capacity": {
+          "provider": "upstash",
+          "status": "unconfigured",
+          "configured": false
+        },
+        "storage": "ok"
+      }
+    },
+    {
+      "name": "ready",
+      "path": "/readyz",
+      "status": 200,
+      "headers_ms": 1034.9279000000001,
+      "complete_ms": 1037.7262999999998,
+      "bytes": 77,
+      "cache": null,
+      "server_timing": null
+    },
+    {
+      "name": "job-health",
+      "path": "/jobs/health",
+      "status": 200,
+      "headers_ms": 662.4495000000002,
+      "complete_ms": 663.8110000000001,
+      "bytes": 117,
+      "cache": null,
+      "server_timing": null
+    },
+    {
+      "name": "template-list",
+      "path": "/templates/",
+      "status": 200,
+      "headers_ms": 1072.5361000000003,
+      "complete_ms": 1076.9715999999999,
+      "bytes": 28944,
+      "cache": null,
+      "server_timing": null,
+      "item_count": 61
+    },
+    {
+      "name": "template-categories",
+      "path": "/templates/categories",
+      "status": 200,
+      "headers_ms": 789.6661999999997,
+      "complete_ms": 790.6570000000002,
+      "bytes": 843,
+      "cache": null,
+      "server_timing": null
+    },
+    {
+      "name": "quick-score",
+      "path": "/ats/quick-score",
+      "status": 200,
+      "headers_ms": 1033.7415,
+      "complete_ms": 1035.7096000000001,
+      "bytes": 152,
+      "cache": null,
+      "server_timing": null,
+      "score": 59
+    },
+    {
+      "name": "template-list",
+      "path": "/templates/",
+      "status": 200,
+      "headers_ms": 991.1274000000003,
+      "complete_ms": 995.4934000000003,
+      "bytes": 28944,
+      "cache": null,
+      "server_timing": null,
+      "item_count": 61
+    },
+    {
+      "name": "template-categories",
+      "path": "/templates/categories",
+      "status": 200,
+      "headers_ms": 784.7303000000002,
+      "complete_ms": 787.0374000000002,
+      "bytes": 843,
+      "cache": null,
+      "server_timing": null
+    },
+    {
+      "name": "quick-score",
+      "path": "/ats/quick-score",
+      "status": 200,
+      "headers_ms": 529.8846000000012,
+      "complete_ms": 531.2741999999998,
+      "bytes": 152,
+      "cache": null,
+      "server_timing": null,
+      "score": 59
+    },
+    {
+      "name": "template-list",
+      "path": "/templates/",
+      "status": 200,
+      "headers_ms": 941.3060000000005,
+      "complete_ms": 943.1435000000001,
+      "bytes": 28944,
+      "cache": null,
+      "server_timing": null,
+      "item_count": 61
+    },
+    {
+      "name": "template-categories",
+      "path": "/templates/categories",
+      "status": 200,
+      "headers_ms": 762.2964999999986,
+      "complete_ms": 763.0753999999997,
+      "bytes": 843,
+      "cache": null,
+      "server_timing": null
+    },
+    {
+      "name": "quick-score",
+      "path": "/ats/quick-score",
+      "status": 200,
+      "headers_ms": 518.9850999999999,
+      "complete_ms": 519.7044999999998,
+      "bytes": 152,
+      "cache": null,
+      "server_timing": null,
+      "score": 59
+    },
+    {
+      "name": "parse-application/x-tex",
+      "path": "/formats/parse",
+      "status": 200,
+      "headers_ms": 434.53369999999995,
+      "complete_ms": 435.5692999999992,
+      "bytes": 166,
+      "cache": null,
+      "server_timing": null,
+      "success": true
+    },
+    {
+      "name": "parse-text/plain",
+      "path": "/formats/parse",
+      "status": 200,
+      "headers_ms": 452.1205000000009,
+      "complete_ms": 452.57620000000134,
+      "bytes": 188,
+      "cache": null,
+      "server_timing": null,
+      "success": true
+    },
+    {
+      "name": "tex-passthrough",
+      "path": "/formats/upload",
+      "status": 200,
+      "headers_ms": 444.5720000000001,
+      "complete_ms": 446.1847000000016,
+      "bytes": 1027,
+      "cache": null,
+      "server_timing": null,
+      "success": true
+    },
+    {
+      "name": "no-code-projection",
+      "path": "/public/engine/document",
+      "status": 404,
+      "headers_ms": 816.9537,
+      "complete_ms": 818.3595000000005,
+      "bytes": 126,
+      "cache": null,
+      "server_timing": null,
+      "error_detail": "Not Found"
+    },
+    {
+      "name": "brand-asset",
+      "path": "/icon.svg",
+      "status": 200,
+      "headers_ms": 594.9002,
+      "complete_ms": 595.922700000001,
+      "bytes": 263,
+      "cache": "PRERENDER",
+      "server_timing": null
+    },
+    {
+      "name": "brand-asset",
+      "path": "/favicon.ico",
+      "status": 200,
+      "headers_ms": 51.456499999998414,
+      "complete_ms": 55.67229999999836,
+      "bytes": 8663,
+      "cache": "HIT",
+      "server_timing": null
+    },
+    {
+      "name": "brand-asset",
+      "path": "/icons/apple-touch-icon.png",
+      "status": 200,
+      "headers_ms": 54.96110000000044,
+      "complete_ms": 56.16110000000117,
+      "bytes": 6717,
+      "cache": "HIT",
+      "server_timing": null
+    }
+  ]
+}

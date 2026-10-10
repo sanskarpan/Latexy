@@ -5,7 +5,8 @@
  */
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
-import type { ATSDeepAnalysis } from './event-types'
+import type { ATSDeepAnalysis, RenderArtifact } from './event-types'
+import { readEngineCapability } from './engine-capability'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -150,6 +151,7 @@ export interface WebSocketTicketResponse {
 }
 
 export interface JobStateResponse {
+  artifact?: RenderArtifact | null
   job_id?: string
   job_type?: JobType
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
@@ -475,6 +477,7 @@ export interface AcademicCVConvertResponse {
 }
 
 export interface StructuredResume {
+  section_titles?: Record<string, string>
   basics: {
     name: string
     label: string
@@ -1627,8 +1630,8 @@ class ApiClient {
   //  Job state & result                                               //
   // ---------------------------------------------------------------- //
 
-  async getJobState(jobId: string): Promise<JobStateResponse> {
-    return this.request<JobStateResponse>(`/jobs/${encodeURIComponent(jobId)}/state`)
+  async getJobState(jobId: string, fingerprint?: string): Promise<JobStateResponse> {
+    return this.request<JobStateResponse>(`/jobs/${encodeURIComponent(jobId)}/state`, { headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined })
   }
 
   async getJobResult(jobId: string): Promise<JobResultResponse> {
@@ -1936,6 +1939,138 @@ class ApiClient {
     const res = await this.authedFetch(this.getPdfUrl(jobId), { signal })
     if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
     return res.blob()
+  }
+
+  async downloadArtifactPdf(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<Blob> {
+    const res = await this.authedFetch(`${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+    if (!res.ok) throw new Error(`PDF preview failed: HTTP ${res.status}`)
+    return res.blob()
+  }
+
+  async getArtifactManifest(jobId: string, fingerprint?: string, signal?: AbortSignal) {
+    return this.request<import('@/lib/event-types').RenderArtifact | null>(`/download/${encodeURIComponent(jobId)}/preview/manifest`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+  }
+
+  async getArtifactGeometry(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal) {
+    return this.request<import('@/lib/resume-engine-types').ArtifactGeometry>(`/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}/geometry`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+  }
+
+  async getEngineCapability(signal?: AbortSignal) {
+    const response = await this.authedFetch(`${API_BASE}/public/engine/capabilities`, { signal, cache: 'no-store' })
+    return readEngineCapability(response)
+  }
+
+  async getEngineProviders(accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/resume-engine-types').EngineProviderOptions>('/resumes/engine/providers', { signal }, accountContext)
+  }
+
+  async optimizeEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; job_description: string
+    effort: import('@/lib/resume-engine-types').OptimizationEffort
+    provider?: import('@/lib/resume-engine-types').EngineProvider
+    provider_model?: string
+  }, accountContext?: AccountPreferenceRequestContext) {
+    return this.request<JobSubmitResponse>(`/resumes/${encodeURIComponent(resumeId)}/engine/optimize`, {
+      method: 'POST', body: JSON.stringify(body),
+    }, accountContext)
+  }
+
+  async getEngineRun(resumeId: string, runId: string) {
+    return this.request<import('@/lib/resume-engine-types').SemanticOptimizationRun>(`/resumes/${encodeURIComponent(resumeId)}/engine/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async decideEngineRun(resumeId: string, runId: string, body: {
+    accept_patch_ids: string[]; reject_patch_ids: string[]; expected_content_revision: number; expected_source_sha256: string
+  }) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument;
+      decisions: import('@/lib/resume-engine-types').OptimizationDecisions }>(`/resumes/${encodeURIComponent(resumeId)}/engine/runs/${encodeURIComponent(runId)}/decisions`, {
+      method: 'POST', body: JSON.stringify(body),
+    })
+  }
+
+  async getGuestEngineDocument(latex_content: string) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>('/public/engine/document', {
+      method: 'POST', body: JSON.stringify({ latex_content }),
+    })
+  }
+
+  async patchGuestEngineDocument(body: {
+    latex_content: string; expected_source_sha256: string
+    patches: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>('/public/engine/document/patch', {
+      method: 'POST', body: JSON.stringify(body),
+    })
+  }
+
+  async getEngineDocument(resumeId: string) {
+    return this.request<{ document: import('@/lib/resume-engine-types').ResumeEngineDocument; latex_content: string }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`)
+  }
+
+  async uploadPdfImport(file: File, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    const body = new FormData()
+    body.append('file', file)
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>('/resumes/imports/pdf', {
+      method: 'POST', body, signal,
+    }, accountContext)
+  }
+
+  async getPdfImport(importId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>(`/resumes/imports/${encodeURIComponent(importId)}`, { signal }, accountContext)
+  }
+
+  async getResumePdfImport(resumeId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportReceipt>(`/resumes/${encodeURIComponent(resumeId)}/engine/import`, { signal }, accountContext)
+  }
+
+  async downloadPdfImportOriginal(importId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal): Promise<Blob> {
+    const response = await this.authedFetch(`${API_BASE}/resumes/imports/${encodeURIComponent(importId)}/original`, { signal }, accountContext)
+    if (!response.ok) throw new Error(`Original PDF could not be loaded (HTTP ${response.status})`)
+    const declared = Number(response.headers.get('Content-Length'))
+    if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) throw new Error('Original PDF exceeds the import size limit')
+    const blob = await response.blob()
+    if (blob.size > 10 * 1024 * 1024 || !blob.size) throw new Error('Original PDF has an invalid size')
+    return blob
+  }
+
+  async adaptPdfImport(importId: string, body: {
+    template_id: string; title: string; expected_original_sha256: string
+    field_edits?: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return this.request<import('@/lib/pdf-import-types').PdfImportAdaptation>(`/resumes/imports/${encodeURIComponent(importId)}/adapt`, {
+      method: 'POST', body: JSON.stringify(body), signal,
+    }, accountContext)
+  }
+
+  async patchEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; merge_disjoint: boolean
+    patches: Array<{ node_id: string; expected_node_revision: string; text: string }>
+  }, accountContext?: AccountPreferenceRequestContext) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument }>(`/resumes/${encodeURIComponent(resumeId)}/engine/document`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    }, accountContext)
+  }
+
+  async reorderEngineDocument(resumeId: string, body: {
+    expected_content_revision: number; expected_source_sha256: string; container_id: string; ordered_ids: string[]
+  }, accountContext: AccountPreferenceRequestContext) {
+    return this.request<{ latex_content: string; document: import('@/lib/resume-engine-types').ResumeEngineDocument }>(`/resumes/${encodeURIComponent(resumeId)}/engine/structure`, {
+      method: 'POST', body: JSON.stringify(body),
+    }, accountContext)
+  }
+
+  async downloadArtifactSynctex(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<string | null> {
+    const response = await this.authedFetch(`${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}/synctex`, {
+      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
+    })
+    if (!response.ok) return null
+    return response.text()
   }
 
   async downloadSynctex(jobId: string, signal?: AbortSignal): Promise<string | null> {
@@ -2625,9 +2760,11 @@ class ApiClient {
   async quickScoreATS(
     latexContent: string,
     jobDescription?: string,
+    signal?: AbortSignal,
   ): Promise<QuickScoreResponse> {
     return this.request<QuickScoreResponse>('/ats/quick-score', {
       method: 'POST',
+      signal,
       body: JSON.stringify({
         latex_content: latexContent,
         job_description: jobDescription ?? null,

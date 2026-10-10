@@ -81,8 +81,9 @@ def mock_publish():
 
 
 @pytest.fixture(autouse=True)
-def _docker_capability_probe():
+def _docker_capability_probe(monkeypatch):
     """Avoid routing pdflatex subprocess doubles through Docker inspection."""
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
         yield
 

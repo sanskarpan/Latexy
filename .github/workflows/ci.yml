@@ -207,7 +207,7 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y --no-install-recommends
           texlive-latex-extra texlive-fonts-recommended cm-super
-          texlive-science texlive-luatex fonts-lohit-deva fonts-noto-core poppler-utils
+          texlive-science texlive-luatex fonts-lohit-deva fonts-noto-core fonts-texgyre poppler-utils
       - name: Verify every seeded template's extracted PDF contract
         run: bash scripts/verify-template-extraction.sh
 
@@ -316,7 +316,7 @@ jobs:
           node ../scripts/ci/audit-dependencies.mjs
       - name: Upload dependency audit summary
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: latexy-dependency-audit-summary
           path: ${{ runner.temp }}/latexy-dependency-audit-summary.json

@@ -15,8 +15,14 @@ def rollout_script():
     source = WORKFLOW.read_text()
     marker = source.index("      - name: Validate read-only billing rollout safety")
     start = source.index("        run: |\n", marker) + len("        run: |\n")
-    end = source.index("\n      # modal_app.py", start)
-    return textwrap.dedent(source[start:end])
+    # Keep this shell fixture scoped to this step when another preflight is
+    # inserted before migrations. Comments and adjacent YAML are not shell.
+    lines = []
+    for line in source[start:].splitlines():
+        if line.strip() and not line.startswith("          "):
+            break
+        lines.append(line)
+    return textwrap.dedent("\n".join(lines))
 
 
 def run_guard(tmp_path, accepted, result=0):
@@ -53,9 +59,10 @@ def test_failed_rollout_guard_stops_following_commands(tmp_path):
 def test_rollout_guard_keeps_production_and_main_boundaries_and_precedes_migration():
     source = WORKFLOW.read_text()
     guard = source.index("- name: Validate read-only billing rollout safety")
+    renderer = source.index("- name: Check renderer configuration before migrations")
     migrate = source.index("- name: Apply production database migrations")
     deploy = source.index("- name: Deploy backend with a rolling update")
-    assert source.index("- name: Validate immutable main revision and canonical CI success") < guard < migrate < deploy
+    assert source.index("- name: Validate immutable main revision and canonical CI success") < guard < renderer < migrate < deploy
     assert "environment: Production" in source
     assert "git merge-base --is-ancestor" in source
     assert "branches: [main]" in source

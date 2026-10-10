@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "compiler": "lualatex",
+  "owned_format_id": "latexy-managed-english-v2",
+  "scope": "Fixed English builder with synthetic hyperlink probes; fresh workspaces; TeX process/convergence only; no latency SLO claim",
+  "confinement": "Minimal engine environment, no-shell-escape, recorder checks; Lua uses mandatory Linux kernel launcher",
+  "renderer_fingerprint": "engine_assets_fingerprint:d50065510d953251a32735c8072e676702e9cc71bdc93441c545836251d338b6",
+  "samples": [
+    {
+      "pair": 0,
+      "condition": "baseline",
+      "elapsed_seconds": 42.492605869001636,
+      "passes": 2,
+      "page_count": 1,
+      "source_sha256": "9993229e409007a7387cb419f8df19e812aea1615b8ff4cd841b3116e650fd34",
+      "rerun_messages_by_pass": [
+        [
+          "Package rerunfilecheck Warning: File `resume.out' has changed.",
+          "(rerunfilecheck)                Rerun to get outlines right"
+        ],
+        []
+      ],
+      "text_sha256": "98255882ae731268bddbe9cfedd963eafe283a284b5862cf7863c4728c7497b9",
+      "pixel_sha256": "acbaf3eb496754963478079d613b178bc2c08e48f31fcf960e33ed9d3d3d0e90",
+      "geometry_sha256": "adf73c9455f9d7d696968f25e9a0171bd0750066fc112f6ef81223267af220e4",
+      "synctex_source_line": 12,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "60.547985",
+        "518.400879",
+        "12.598127"
+      ],
+      "synctex_source_records": 360,
+      "synctex_source_records_sha256": "a4eb90b2dda772f1015cacb268beccd6d1d964ebbbb1e0e2c1069c0e2c023df0",
+      "annotation_urls": [
+        "https://example.test/profile",
+        "mailto:avery@example.test"
+      ],
+      "missing_glyph_warning": false
+    },
+    {
+      "pair": 0,
+      "condition": "candidate",
+      "elapsed_seconds": 21.1596968190006,
+      "passes": 1,
+      "page_count": 1,
+      "source_sha256": "3c44cc60afc343defad9f310a9ae95706f53b9a7429565fdea09d758e9284a17",
+      "rerun_messages_by_pass": [
+        []
+      ],
+      "text_sha256": "98255882ae731268bddbe9cfedd963eafe283a284b5862cf7863c4728c7497b9",
+      "pixel_sha256": "acbaf3eb496754963478079d613b178bc2c08e48f31fcf960e33ed9d3d3d0e90",
+      "geometry_sha256": "adf73c9455f9d7d696968f25e9a0171bd0750066fc112f6ef81223267af220e4",
+      "synctex_source_line": 12,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "60.547985",
+        "518.400879",
+        "12.598127"
+      ],
+      "synctex_source_records": 360,
+      "synctex_source_records_sha256": "a4eb90b2dda772f1015cacb268beccd6d1d964ebbbb1e0e2c1069c0e2c023df0",
+      "annotation_urls": [
+        "https://example.test/profile",
+        "mailto:avery@example.test"
+      ],
+      "missing_glyph_warning": false
+    },
+    {
+      "pair": 1,
+      "condition": "candidate",
+      "elapsed_seconds": 20.667106083001272,
+      "passes": 1,
+      "page_count": 1,
+      "source_sha256": "3c44cc60afc343defad9f310a9ae95706f53b9a7429565fdea09d758e9284a17",
+      "rerun_messages_by_pass": [
+        []
+      ],
+      "text_sha256": "98255882ae731268bddbe9cfedd963eafe283a284b5862cf7863c4728c7497b9",
+      "pixel_sha256": "acbaf3eb496754963478079d613b178bc2c08e48f31fcf960e33ed9d3d3d0e90",
+      "geometry_sha256": "adf73c9455f9d7d696968f25e9a0171bd0750066fc112f6ef81223267af220e4",
+      "synctex_source_line": 12,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "60.547985",
+        "518.400879",
+        "12.598127"
+      ],
+      "synctex_source_records": 360,
+      "synctex_source_records_sha256": "a4eb90b2dda772f1015cacb268beccd6d1d964ebbbb1e0e2c1069c0e2c023df0",
+      "annotation_urls": [
+        "https://example.test/profile",
+        "mailto:avery@example.test"
+      ],
+      "missing_glyph_warning": false
+    },
+    {
+      "pair": 1,
+      "condition": "baseline",
+      "elapsed_seconds": 26.69941875100085,
+      "passes": 2,
+      "page_count": 1,
+      "source_sha256": "9993229e409007a7387cb419f8df19e812aea1615b8ff4cd841b3116e650fd34",
+      "rerun_messages_by_pass": [
+        [
+          "Package rerunfilecheck Warning: File `resume.out' has changed.",
+          "(rerunfilecheck)                Rerun to get outlines right"
+        ],
+        []
+      ],
+      "text_sha256": "98255882ae731268bddbe9cfedd963eafe283a284b5862cf7863c4728c7497b9",
+      "pixel_sha256": "acbaf3eb496754963478079d613b178bc2c08e48f31fcf960e33ed9d3d3d0e90",
+      "geometry_sha256": "adf73c9455f9d7d696968f25e9a0171bd0750066fc112f6ef81223267af220e4",
+      "synctex_source_line": 12,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "60.547985",
+        "518.400879",
+        "12.598127"
+      ],
+      "synctex_source_records": 360,
+      "synctex_source_records_sha256": "a4eb90b2dda772f1015cacb268beccd6d1d964ebbbb1e0e2c1069c0e2c023df0",
+      "annotation_urls": [
+        "https://example.test/profile",
+        "mailto:avery@example.test"
+      ],
+      "missing_glyph_warning": false
+    }
+  ],
+  "parity": [
+    {
+      "pair": 0,
+      "page_count": true,
+      "text_sha256": true,
+      "pixel_sha256": true,
+      "geometry_sha256": true,
+      "synctex_source_records_sha256": true,
+      "synctex_view_coordinates": true,
+      "annotation_urls": true
+    },
+    {
+      "pair": 1,
+      "page_count": true,
+      "text_sha256": true,
+      "pixel_sha256": true,
+      "geometry_sha256": true,
+      "synctex_source_records_sha256": true,
+      "synctex_view_coordinates": true,
+      "annotation_urls": true
+    }
+  ],
+  "builder_source_sha256": "38d96ff6023f8efd3a7c4c9f771c95d36036815718e15cbba5418b238c77bc84",
+  "medians_seconds": {
+    "baseline": 34.59601231000124,
+    "candidate": 20.913401451000937
+  },
+  "verified": true
+}

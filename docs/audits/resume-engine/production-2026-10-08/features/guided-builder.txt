@@ -1,0 +1,266 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Latexy
+Dashboard
+Workspace
+Tracker
+Templates
+Studio
+Language
+English
+हिन्दी
+मराठी
+తెలుగు
+ਪੰਜਾਬੀ
+বাংলা
+L
+Latency
+
+GUIDED BUILDER
+
+Build from structured content
+
+This path is optimized for fast resume creation: pick a builder-native template, fill structured sections, and keep the advanced LaTeX editor as a fallback rather than the starting point.
+
+Back to Create Resume
+RESUME TITLE
+
+Seed from an existing resume
+
+Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.
+
+Upload
+Why use this builder
+Structured sections with live preview, autosave, and section reordering.
+Curated builder-native templates that stay stable under template swaps.
+Advanced LaTeX editor remains available after creation for power users.
+1. Seed
+
+Start from a past resume, LinkedIn export, or JSON Resume so you do not rebuild the basics manually.
+
+2. Shape
+
+Tune the headline, impact bullets, skills, and sections with a live structured editing surface.
+
+3. Ship
+
+Swap builder-safe templates, keep page density in check, and open the advanced editor only when needed.
+
+Choose a builder-native template
+
+ATS-SAFE
+
+Ats Clean
+
+ats builder layout
+
+Family: ats
+
+ATS-SAFE
+
+Ats Modern
+
+ats builder layout
+
+Family: ats
+
+ATS-SAFE
+
+Ats Plain
+
+ats builder layout
+
+Family: ats
+
+ATS-SAFE
+
+Ats Standard
+
+ats builder layout
+
+Family: ats
+
+ATS-SAFE
+
+Hindi Professional
+
+ats builder layout
+
+Family: ats
+
+EXECUTIVE
+
+Board Advisor
+
+executive builder layout
+
+Family: executive
+
+EXECUTIVE
+
+Cxo
+
+executive builder layout
+
+Family: executive
+
+EXECUTIVE
+
+Executive Classic
+
+executive builder layout
+
+Family: executive
+
+EXECUTIVE
+
+Vp Director
+
+executive builder layout
+
+Family: executive
+
+GRADUATE / ENTRY-LEVEL
+
+Bootcamp
+
+professional builder layout
+
+Family: professional
+
+GRADUATE / ENTRY-LEVEL
+
+Career Changer
+
+professional builder layout
+
+Family: professional
+
+GRADUATE / ENTRY-LEVEL
+
+Mba
+
+professional builder layout
+
+Family: professional
+
+GRADUATE / ENTRY-LEVEL
+
+New Grad
+
+professional builder layout
+
+Family: professional
+
+MINIMAL / CLEAN
+
+Classic
+
+minimal builder layout
+
+Family: minimal
+
+MINIMAL / CLEAN
+
+Clean Simple
+
+minimal builder layout
+
+Family: minimal
+
+MINIMAL / CLEAN
+
+Modern Minimal
+
+minimal builder layout
+
+Family: minimal
+
+MINIMAL / CLEAN
+
+Ultra Minimal
+
+minimal builder layout
+
+Family: minimal
+
+SOFTWARE ENGINEERING
+
+Data Scientist
+
+professional builder layout
+
+Family: professional
+
+SOFTWARE ENGINEERING
+
+Devops
+
+professional builder layout
+
+Family: professional
+
+SOFTWARE ENGINEERING
+
+Fullstack
+
+professional builder layout
+
+Family: professional
+
+SOFTWARE ENGINEERING
+
+Ml Engineer
+
+professional builder layout
+
+Family: professional
+
+SOFTWARE ENGINEERING
+
+Swe Clean
+
+professional builder layout
+
+Family: professional
+
+SOFTWARE ENGINEERING
+
+Swe Technical
+
+professional builder layout
+
+Family: professional
+
+SEED PREVIEW
+
+BASICS
+
+No name imported yet
+
+Add role headline later
+
+SECTIONS
+
+No imported sections yet
+
+READINESS
+
+0% complete
+
+Missing: name, email, summary, experience, education, skills
+
+Add a headline to improve clarity at the top of the resume.
+
+READY
+
+Ats Clean
+
+The builder will create a structured draft first, then keep LaTeX in sync behind the scenes.
+
+Builder first, editor second
+
+This path is best when you want guided UX, richer section controls, safer template switching, and fewer chances to break layout details manually.
+
+Start Guided Builder

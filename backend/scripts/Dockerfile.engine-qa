@@ -1,0 +1,10 @@
+# QA harness used for the October 7 migration checkpoint.
+# Build from the backend directory as the Docker build context.
+# The local parent is prepared with scripts/Dockerfile.engine-certification.
+FROM latexy-engine-certification:20261006
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends jq git && rm -rf /var/lib/apt/lists/*
+COPY requirements-dev.lock /tmp/requirements-dev.lock
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements-dev.lock
+ENV PYTHONPYCACHEPREFIX=/opt/engine-qa-pycache
+RUN python -m compileall -q /usr/local/lib/python3.12

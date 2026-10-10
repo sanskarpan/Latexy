@@ -1,5 +1,6 @@
 """LuaTeX compatibility keeps credentials and unvalidated engine output confined."""
 
+import io
 import shutil
 import subprocess
 import tempfile
@@ -16,20 +17,17 @@ REAL_RECORDER_CHECK = ls.find_recorder_read_escape
 
 
 @pytest.fixture(scope="session")
-def warm_trusted_lualatex_font_cache():
-    """Prepare engine data with fixed trusted input before timed canary jobs.
-
-    LuaTeX rebuilds its font database on a fresh worker/cache directory. That
-    setup can take longer than a document deadline; it is not user compilation.
-    """
+def trusted_lualatex_assets_ready():
+    """Verify trusted image assets through the confined, job-local Lua launcher."""
     with tempfile.TemporaryDirectory(prefix="latexy-trusted-lua-warmup-") as directory:
         workspace = Path(directory)
         (workspace / "warmup.tex").write_text(
             r"\documentclass{article}\begin{document}Trusted font cache warmup\end{document}",
         )
         result = subprocess.run(
-            ["lualatex", *ls.LATEX_SANDBOX_FLAGS, "-interaction=nonstopmode", "-halt-on-error", "warmup.tex"],
-            cwd=workspace, env=ls.engine_env("lualatex"), capture_output=True, timeout=180,
+            ls.native_engine_command("lualatex", [*ls.engine_sandbox_flags("lualatex"),
+                "-interaction=nonstopmode", "-halt-on-error", "warmup.tex"], workspace),
+            cwd=workspace, env=ls.engine_env(workspace, "lualatex"), capture_output=True, timeout=180,
         )
         assert result.returncode == 0, "Trusted LuaTeX font-cache setup failed"
         assert (workspace / "warmup.pdf").is_file()
@@ -37,34 +35,40 @@ def warm_trusted_lualatex_font_cache():
 
 
 @pytest.mark.parametrize("compiler,read_mode", [
-    (None, "p"), ("pdflatex", "p"), ("xelatex", "p"), ("lualatex", "r"),
+    (None, "p"), ("pdflatex", "p"), ("xelatex", "p"), ("lualatex", "p"),
     ("lualatex --shell-escape", "p"), ("/usr/bin/lualatex", "p"), ("unknown", "p"),
 ])
-def test_compiler_specific_read_policy_preserves_minimal_environment(monkeypatch, compiler, read_mode):
+def test_compiler_specific_read_policy_preserves_minimal_environment(tmp_path, monkeypatch, compiler, read_mode):
     monkeypatch.setenv("DODO_API_KEY", "synthetic-canary-only")
     monkeypatch.setenv("DATABASE_URL", "synthetic-canary-only")
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-canary-only")
     monkeypatch.setenv("LATEXY_PRIVATE_CANARY", "synthetic-canary-only")
-    env = ls.engine_env(compiler)
+    env = ls.engine_env(tmp_path, compiler or "pdflatex")
     assert env["openin_any"] == read_mode
     assert env["openout_any"] == "p"
     assert env["shell_escape"] == "f"
     assert all(name not in env for name in ("DODO_API_KEY", "DATABASE_URL", "OPENAI_API_KEY", "LATEXY_PRIVATE_CANARY"))
     assert ls.engine_env()["openin_any"] == "p"
-    docker_args = ls.docker_sandbox_args(compiler)
+    docker_args = ls.docker_sandbox_args("/workspace", compiler or "pdflatex")
     assert f"openin_any={read_mode}" in docker_args
     assert "openout_any=p" in docker_args and "shell_escape=f" in docker_args
     assert "no-new-privileges" in docker_args and "ALL" in docker_args
     assert docker_args[docker_args.index("--network") + 1] == "none"
 
 
-class _Stream:
+class _Stream(io.BytesIO):
     def __init__(self, output):
-        self.output = output.encode()
+        super().__init__(output.encode())
 
-    def read(self, size=-1):
-        chunk, self.output = self.output[:size], self.output[size:]
-        return chunk
+
+def test_stream_fixture_supports_bounded_reads_and_close():
+    stream = _Stream("ordinary diagnostic\n")
+    assert stream.read(8) == b"ordinary"
+    assert stream.read() == b" diagnostic\n"
+    assert stream.read(8) == b""
+    stream.close()
+    stream.close()
+    assert stream.closed
 
 
 @pytest.mark.asyncio
@@ -120,7 +124,8 @@ async def test_legacy_service_never_returns_log_file_without_recorder(tmp_path, 
 
 @pytest.mark.parametrize("return_code", [0, 1])
 @pytest.mark.parametrize("recorder_case", ["private_read", "missing", "tampered"])
-def test_worker_releases_no_typeout_or_error_canary_before_recorder_validation(tmp_path, return_code, recorder_case):
+def test_worker_releases_no_typeout_or_error_canary_before_recorder_validation(tmp_path, monkeypatch, return_code, recorder_case):
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     # Standalone engine proofs do not load the application's conftest first.
     # Initialize Celery registration before importing an individual task module.
     import_module("app.core.celery_app")
@@ -134,7 +139,8 @@ def test_worker_releases_no_typeout_or_error_canary_before_recorder_validation(t
     queue.get.return_value = None
 
     def popen(command, **kwargs):
-        assert kwargs["env"]["openin_any"] == "r"
+        assert kwargs["env"]["openin_any"] == "p"
+        assert command[1].endswith("linux_engine_sandbox.py")
         assert "-no-shell-escape" in command and "-recorder" in command
         if recorder_case == "private_read":
             (tmp_path / job_id / "resume.fls").write_text(f"PWD {tmp_path / job_id}\nINPUT {tmp_path / 'owned-canary.txt'}\n")
@@ -175,7 +181,7 @@ def test_worker_releases_no_typeout_or_error_canary_before_recorder_validation(t
 
 @pytest.mark.skipif(shutil.which("lualatex") is None, reason="Actual LuaTeX engine is not installed on this host")
 @pytest.mark.parametrize("case", ["benign", "typeout", "typeout_then_error", "luaio_typeout", "luaio_typeout_then_error"])
-def test_actual_lualatex_outputs_only_after_recorder_validation(tmp_path, monkeypatch, case, warm_trusted_lualatex_font_cache):
+def test_actual_lualatex_outputs_only_after_recorder_validation(tmp_path, monkeypatch, case, trusted_lualatex_assets_ready):
     from app.workers import orchestrator as orch
 
     marker = "OWNED-ENGINE-CANARY-NOT-A-CREDENTIAL"
@@ -201,6 +207,7 @@ def test_actual_lualatex_outputs_only_after_recorder_validation(tmp_path, monkey
         )
         # Deliberately exercise the engine boundary beyond the source denylist.
         assert orch.latex_service.validate_latex_content(source)
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     monkeypatch.setattr(orch.settings, "TEMP_DIR", tmp_path)
     monkeypatch.setattr(orch, "docker_engine_available", lambda: False)
     monkeypatch.setattr(orch, "assert_local_engine_allowed", lambda _job: None)
@@ -237,7 +244,8 @@ def test_actual_lualatex_outputs_only_after_recorder_validation(tmp_path, monkey
 
     monkeypatch.setattr(orch, "find_recorder_read_escape", recorder)
     result = orch._run_latex_stage(str(uuid4()), source, compiler="lualatex", timeout_seconds=30)
-    assert commands and commands[0][1]["openin_any"] == "r"
+    assert commands and commands[0][1]["openin_any"] == "p"
+    assert commands[0][0][1].endswith("linux_engine_sandbox.py")
     assert "-no-shell-escape" in commands[0][0] and "-recorder" in commands[0][0]
     if case == "benign":
         assert result[0] is True, result[2]
@@ -246,9 +254,14 @@ def test_actual_lualatex_outputs_only_after_recorder_validation(tmp_path, monkey
         assert artifacts and any(event[1] == "log.line" for event in events)
     else:
         assert result[0] is False
-        assert result[2] == ls.ENGINE_READ_ESCAPE_ERROR
         assert result[3] is None and result[4] is None
-        assert recorder_checks == [str(canary)]
-        assert not artifacts and not logs
-        assert marker not in repr(events)
-        assert not any(event[1] == "log.line" for event in events)
+        assert not artifacts
+        assert marker not in repr(events) + repr(logs) + repr(result)
+        # The stronger native launcher can reject the read before it reaches
+        # the recorder. Safe diagnostics from that verified failed pass may
+        # publish; a recorder-detected read must still withhold all output.
+        assert recorder_checks in ([None], [str(canary)])
+        if recorder_checks == [str(canary)]:
+            assert result[2] == ls.ENGINE_READ_ESCAPE_ERROR
+            assert not logs
+            assert not any(event[1] == "log.line" for event in events)
