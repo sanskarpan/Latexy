@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { Check } from 'lucide-react'
 
 /**
@@ -8,9 +9,11 @@ import { Check } from 'lucide-react'
  * this page sells the tiers by value and links there for current numbers.
  */
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Pricing | Latexy',
   description: 'Start free, then pick the plan that fits — or bring your own key.',
+  alternates: { canonical: '/pricing' },
+  openGraph: { title: 'Find the résumé plan that fits | Latexy', description: 'Start with the guest editor and explore plans for your job search.', url: '/pricing', type: 'website' },
 }
 
 type Tier = {
@@ -27,27 +30,27 @@ const tiers: Tier[] = [
     id: 'free',
     name: 'Free',
     tagline: 'Try it on a real résumé.',
-    features: ['3 free compiles', 'Per-change accept / reject review', 'ATS score & recommendations', 'Import from GitHub, a URL, or LinkedIn'],
-    cta: { label: 'Start free →', href: '/try' },
+    features: ['Visual editing with an example résumé', 'Limited guest PDF previews', 'AI suggestions for your review', 'Résumé checks and feedback'],
+    cta: { label: 'Try the résumé builder →', href: '/try?mode=visual' },
   },
   {
     id: 'basic',
     name: 'Basic',
     tagline: 'For an active job search.',
-    features: ['Everything in Free', 'More monthly compiles & optimizations', 'Cover letters', 'Version history & variants'],
+    features: ['Everything in Free', 'More monthly PDF updates and AI writing', 'Cover letters', 'Saved history and role-specific versions'],
     cta: { label: 'Choose Basic', href: '/billing' },
   },
   {
     id: 'pro',
     name: 'Pro',
-    tagline: 'The full toolchain.',
-    features: ['Everything in Basic', 'Higher limits & priority compiles', 'All AI tools (steer, batch-tailor, interview prep)', 'Deep ATS analysis'],
+    tagline: 'More support for your next move.',
+    features: ['Everything in Basic', 'Higher usage limits and priority processing', 'More ways to tailor your writing and practise interviews', 'Detailed résumé analysis'],
     cta: { label: 'Go Pro', href: '/billing' },
     featured: true,
   },
   {
     id: 'byok',
-    name: 'BYOK',
+    name: 'Your AI key',
     tagline: 'Your key, your models.',
     features: ['Bring your own OpenAI / Anthropic / Gemini key', 'Use the models you choose', 'Your usage billed to you', 'All Pro features'],
     cta: { label: 'Use your key', href: '/billing' },
@@ -62,8 +65,8 @@ export default function PricingPage() {
           Start free. Pay only when it&apos;s working for you.
         </h1>
         <p className="mt-5 max-w-[50ch] font-body text-lg text-fg-2">
-          Three free compiles, no card. Upgrade for higher limits and the full AI toolchain, or bring your own key.
-          Current prices and checkout live on your <Link href="/billing" className="text-accent-strong underline-offset-4 hover:underline">billing page</Link>.
+          Try the visual résumé editor without a card. Choose more support when you need it, or connect your own AI provider.
+          Sign in to see current prices, plan limits, and checkout on your <Link href="/billing" className="text-accent-strong underline-offset-4 hover:underline">billing page</Link>.
         </p>
 
         <div className="mt-12 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line md:grid-cols-2 lg:grid-cols-4">
@@ -76,7 +79,7 @@ export default function PricingPage() {
                 <h2 className="font-display text-xl font-semibold text-fg">{t.name}</h2>
                 {t.featured && (
                   <span className="rounded-[var(--radius-sm)] border border-accent bg-accent-soft px-1.5 py-0.5 font-ui text-[0.6rem] uppercase tracking-[0.12em] text-accent-strong">
-                    Popular
+                    More flexibility
                   </span>
                 )}
               </div>

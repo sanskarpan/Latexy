@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { cp, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'

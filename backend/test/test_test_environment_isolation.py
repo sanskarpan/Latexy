@@ -36,7 +36,8 @@ print(json.dumps({
         env=environment,
         capture_output=True,
         text=True,
-        timeout=30,
+        # This checks import-time isolation, not a 30-second startup SLA.
+        timeout=60,
         check=True,
     )
     payload = json.loads(process.stdout.strip().splitlines()[-1])

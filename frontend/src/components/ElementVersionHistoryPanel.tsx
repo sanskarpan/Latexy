@@ -219,7 +219,7 @@ export default function ElementVersionHistoryPanel({ resumeId, elements, onResto
             </div>
           ) : !applicationsLoading && !applications.length && <p className="mt-1 text-[10px] text-fg-3">No tracker applications are linked to this resume.</p>}
           <p className="mt-1 text-[10px] text-fg-3">Tracker status is user-recorded evidence, not proof this version caused an interview.</p>
-          <p className="mt-1 text-[10px] text-fg-3">Branch forks remain API-only until a duplicated builder element can be selected and persisted safely.</p>
+          <p className="mt-1 text-[10px] text-fg-3">Save an earlier wording here before trying a new version. You can restore it later.</p>
           {error && <p className="mt-3 rounded border border-danger/30 bg-danger/10 p-2 text-xs text-danger">{error}</p>}
           <div className="mt-4 space-y-2">
             {loading && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}

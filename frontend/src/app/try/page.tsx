@@ -17,6 +17,8 @@ import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor from '@/components/DeferredLaTeXEditor'
 import type { LaTeXEditorRef } from '@/components/LaTeXEditor'
+import FirstUseGuide from '@/components/FirstUseGuide'
+import VisualChangeReviewModal from '@/components/VisualChangeReviewModal'
 import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import ChangeReviewModal from '@/components/ChangeReviewModal'
@@ -34,7 +36,7 @@ import { editableGeometry } from '@/lib/artifact-geometry'
 import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
 import type { ArtifactReadyEvent } from '@/lib/event-types'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
-import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
+import { FIRST_USE_ENGINE_RESUME_TEMPLATE as DEMO_RESUME_TEMPLATE } from '@/lib/first-use-resume'
 import { insertProjectLatex } from '@/lib/github-projects-latex'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
@@ -70,6 +72,7 @@ const RAIL: { id: Tool; icon: typeof Files; label: string }[] = [
 export default function TryPage() {
   const flags = useFeatureFlags()
   const [hydrated, setHydrated] = useState(false)
+  const [showGuide, setShowGuide] = useState(true)
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
   const { data: session, isPending: sessionPending } = useSession()
   const engineCapability = useEngineCapability(session?.user?.id ?? 'anonymous')
@@ -237,6 +240,17 @@ export default function TryPage() {
 
   useEffect(() => {
     setHydrated(true)
+    try {
+      const requested = new URLSearchParams(window.location.search).get('mode')
+      const saved = localStorage.getItem('latexy_try_editor_mode')
+      // Existing marketing links call the engine-backed Resume view "visual".
+      // A missing engine changes only the effective mode, never this preference.
+      const mode = requested === 'source' ? 'source'
+        : requested === 'visual' || requested === 'pdf' ? 'pdf'
+          : saved === 'source' ? 'source' : 'pdf'
+      setEditorMode(mode)
+      setShowGuide(localStorage.getItem('latexy_try_guide_dismissed') !== '1')
+    } catch { /* Browser preferences are optional. */ }
   }, [])
 
   // Rehydrate the last locally-saved draft on mount so a reload/tab-close no
@@ -477,42 +491,46 @@ export default function TryPage() {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
     if (trialBlocked) { notifyTrialBlocked(); return }
-    preRunSnapshotRef.current = currentContent
-    lastRunOptimizeRef.current = mode === 'combined'
-    if (mode === 'combined') {
-      setStagedOptimization(null)
-      setOptimizeSnapshot(null)
-      setShowOptimizeDiff(false)
-    }
-    cleanBaselineRef.current = currentContent
-    // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
-    setMobilePane('pdf')
-    setIsSubmitting(true)
-    autoCompileTriggeredRef.current = false
-    try {
-      // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
-      const response =
-        mode === 'compile'
-          ? await apiClient.compileLatex({ latex_content: currentContent, device_fingerprint: trialStatus.fingerprint })
-          : await apiClient.optimizeAndCompile({
-              latex_content: currentContent,
-              job_description: jobDescription,
-              optimization_level: 'balanced',
-              device_fingerprint: trialStatus.fingerprint,
-            })
-      if (previewRequestIdentityRef.current !== identityAtStart) return null
-      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
-      if (mode === 'compile') editorRef.current?.markAutoCompileCompiled?.(currentContent)
-      setActiveJobId(response.job_id)
-      recordPreviewAction(response.job_id, actionStarted)
-      if (!resolvedSession) trialStatus.incrementUsage()
-      toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
-    } catch (error) {
-      if (previewRequestIdentityRef.current !== identityAtStart) return null
-      toast.error(previewErrorMessage(error, editorMode === 'pdf'))
-    } finally {
-      if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
-    }
+    return queuePreview.submitManual(currentContent, async () => {
+      preRunSnapshotRef.current = currentContent
+      lastRunOptimizeRef.current = mode === 'combined'
+      if (mode === 'combined') {
+        setStagedOptimization(null)
+        setOptimizeSnapshot(null)
+        setShowOptimizeDiff(false)
+      }
+      cleanBaselineRef.current = currentContent
+      // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
+      setMobilePane('pdf')
+      setIsSubmitting(true)
+      autoCompileTriggeredRef.current = false
+      try {
+        // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
+        const response =
+          mode === 'compile'
+            ? await apiClient.compileLatex({ latex_content: currentContent, device_fingerprint: trialStatus.fingerprint })
+            : await apiClient.optimizeAndCompile({
+                latex_content: currentContent,
+                job_description: jobDescription,
+                optimization_level: 'balanced',
+                device_fingerprint: trialStatus.fingerprint,
+              })
+        if (previewRequestIdentityRef.current !== identityAtStart) return null
+        if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
+        if (mode === 'compile') editorRef.current?.markAutoCompileCompiled?.(currentContent)
+        setActiveJobId(response.job_id)
+        recordPreviewAction(response.job_id, actionStarted)
+        if (!resolvedSession) trialStatus.incrementUsage()
+        toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
+        return response.job_id
+      } catch (error) {
+        if (previewRequestIdentityRef.current !== identityAtStart) return null
+        toast.error(previewErrorMessage(error, editorMode === 'pdf'))
+        return null
+      } finally {
+        if (previewRequestIdentityRef.current === identityAtStart) setIsSubmitting(false)
+      }
+    })
   }
 
   const handleCancel = useCallback(async () => {
@@ -831,6 +849,12 @@ export default function TryPage() {
     setLatexContent(response.latex_content); setEngineDocument(response.document)
     queuePreview(response.latex_content, actionStarted, true)
   }
+  const handleToggleEditorMode = useCallback((mode: 'pdf' | 'source') => {
+    if (mode === preferredEditorMode || (mode === 'pdf' && !engineSupported)) return
+    if (editorMode === 'source') setLatexContent(editorRef.current?.getValue() || latexContent)
+    setEditorMode(mode)
+    try { localStorage.setItem('latexy_try_editor_mode', mode) } catch { /* optional preference */ }
+  }, [engineSupported, preferredEditorMode, editorMode, latexContent])
   const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
   const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
   const atsDisplay = stream.atsScore ?? quickATSScore
@@ -935,7 +959,7 @@ export default function TryPage() {
               </p>
               <div className="mt-2 grid grid-cols-3 gap-1">
                 <button
-                  onClick={() => { if (editorMode === 'source') setShowOptimizeDiff(true); else { setMobilePane('pdf'); setPdfOpen(true) } }}
+                  onClick={() => setShowOptimizeDiff(true)}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
                   Review changes
@@ -962,10 +986,10 @@ export default function TryPage() {
               <span className="font-ui text-[12px] text-fg-2">AI rewrote your resume.</span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => { if (editorMode === 'source') setShowOptimizeDiff(true); else { setMobilePane('pdf'); setPdfOpen(true) } }}
+                  onClick={() => setShowOptimizeDiff(true)}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
-                  {editorMode === 'source' ? 'View diff' : 'Review PDF'}
+                  {editorMode === 'source' ? 'View diff' : 'Review wording'}
                 </button>
                 <button
                   onClick={() => revertOptimize()}
@@ -976,6 +1000,16 @@ export default function TryPage() {
               </div>
             </div>
           </div>
+        )}
+        {editorMode !== 'source' && showOptimizeDiff && (stagedOptimization != null || optimizeSnapshot != null) && (
+          <VisualChangeReviewModal
+            original={stagedOptimization != null ? preRunSnapshotRef.current || latexContent : optimizeSnapshot!}
+            proposed={stagedOptimization ?? latexContent}
+            onApply={stagedOptimization == null ? undefined : (reviewed) => {
+              if (applyStagedOptimization(reviewed)) queuePreview(reviewed, undefined, true)
+            }}
+            onClose={() => setShowOptimizeDiff(false)}
+          />
         )}
         {editorMode === 'source' && showOptimizeDiff && stagedOptimization != null && (
           <ChangeReviewModal
@@ -1144,7 +1178,7 @@ export default function TryPage() {
         <span className="text-xs text-fg-2">{editorMode === 'source' ? 'resume.tex' : 'Your resume'}</span>
         <div className="ml-auto flex rounded-md border border-line p-0.5" role="group" aria-label="Editing mode">
           {(['pdf', 'source'] as const).map((mode) => <button key={mode} type="button" aria-pressed={editorMode === mode}
-            disabled={mode === 'pdf' && !engineSupported} onClick={() => setEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+            disabled={mode === 'pdf' && !engineSupported} onClick={() => handleToggleEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
             {mode === 'pdf' ? 'Resume' : 'Source'}</button>)}
         </div>
         {editorMode === 'source' && <>
@@ -1303,7 +1337,7 @@ export default function TryPage() {
   )
 
   return (
-    <div className="fixed inset-0 top-0 flex flex-col bg-bg text-fg">
+    <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="fixed inset-0 top-0 flex flex-col bg-bg text-fg">
       <h1 className="sr-only">Résumé Studio</h1>
       {/* ── top project bar ── */}
       <header className="flex h-12 flex-shrink-0 items-center gap-1 border-b border-line bg-surface px-2 sm:gap-3 sm:px-3">
@@ -1360,6 +1394,7 @@ export default function TryPage() {
           </span>
           <ModeToggle className="hidden sm:inline-flex" />
           <ExportDropdown
+            visualOnly={editorMode !== 'source'}
             latexContent={editorRef.current?.getValue() || latexContent}
             onPdfExport={handleDownload}
             className="shrink-0 [&>button]:px-2 [&>button]:py-1.5 [&>button]:text-xs sm:[&>button]:px-4 sm:[&>button]:py-2 sm:[&>button]:text-sm"
@@ -1376,6 +1411,16 @@ export default function TryPage() {
           )}
         </div>
       </header>
+
+      {showGuide && engineSupported && editorMode === 'pdf' && <FirstUseGuide
+        onImport={() => setShowImportModal(true)}
+        onTailor={() => openTool('ai')}
+        onPreview={() => { setPdfOpen(true); setMobilePane('pdf'); void runCompile('compile') }}
+        onDismiss={() => {
+          setShowGuide(false)
+          try { localStorage.setItem('latexy_try_guide_dismissed', '1') } catch { /* optional preference */ }
+        }}
+      />}
 
       {/* ── trial-exhausted banner ── */}
       {trialBlocked && (
@@ -1503,6 +1548,7 @@ export default function TryPage() {
 
       {/* ── modals ── */}
       <DeepAnalysisPanel
+        visualOnly={editorMode !== 'source'}
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
@@ -1547,6 +1593,7 @@ export default function TryPage() {
               </div>
             )}
             <MultiFormatUpload
+              visualOnly={editorMode !== 'source'}
               serverConversionEnabled={Boolean(resolvedSession)}
               onFileUpload={(content) => {
                 if (content) {

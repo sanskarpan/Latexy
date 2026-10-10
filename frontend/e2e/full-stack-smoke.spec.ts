@@ -15,7 +15,9 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   expect(flags.ok()).toBeTruthy()
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('link', { name: 'Start compiling →' })).toBeVisible()
+  const studioLink = page.getByRole('link', { name: 'Build my résumé', exact: true }).first()
+  await expect(studioLink).toBeVisible()
+  await expect(studioLink).toHaveAttribute('href', '/try?mode=visual')
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {

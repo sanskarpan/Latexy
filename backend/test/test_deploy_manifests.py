@@ -20,7 +20,7 @@ FRONTEND_PORT = "5180"
 
 
 def _read(relative: str) -> str:
-    return (REPO_ROOT / relative).read_text()
+    return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
 
 def _load_all(relative: str) -> list:
@@ -30,7 +30,7 @@ def _load_all(relative: str) -> list:
 def _k8s_manifests() -> list:
     docs = []
     for path in sorted((REPO_ROOT / "k8s").rglob("*.yaml")):
-        docs.extend(doc for doc in yaml.safe_load_all(path.read_text()) if doc)
+        docs.extend(doc for doc in yaml.safe_load_all(path.read_text(encoding="utf-8")) if doc)
     return docs
 
 
@@ -95,6 +95,19 @@ def test_shipped_workflow_actions_are_pinned_to_commit_shas():
         )
 
 
+def test_backend_images_provide_non_root_lualatex_cache():
+    """Lua font loading must work for system users without a home directory."""
+    for relative, owner in (
+        ("backend/Dockerfile", "appuser:appgroup"),
+        ("backend/Dockerfile.prod", "latexy:latexy"),
+    ):
+        dockerfile = _read(relative)
+        assert "mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config" in dockerfile
+        assert f"chown {owner} /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config" in dockerfile
+        assert "TEXMFVAR=/var/lib/texmf/latexy-cache" in dockerfile
+        assert "TEXMFCONFIG=/var/lib/texmf/latexy-config" in dockerfile
+
+
 def test_ci_audits_the_complete_javascript_dependency_graph():
     """Development dependencies execute in CI and need the same advisory gate."""
     ci = _read(".github/workflows/ci.yml")
@@ -116,6 +129,9 @@ def test_ci_lock_freshness_starts_from_both_committed_resolutions():
     ci = _read(".github/workflows/ci.yml")
     assert 'cp requirements.lock "$lock_tmp/requirements.lock"' in ci
     assert 'cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"' in ci
+    assert ci.count("uv pip compile --universal --python-version 3.12 --generate-hashes") == 4
+    assert "uv pip compile --python-version 3.12 --generate-hashes requirements.txt" not in ci
+    assert "uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt" not in ci
 
 
 def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency():
@@ -133,7 +149,7 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
     locked_versions = {
         re.sub(r"[-_.]+", "-", match.group(1).lower()): match.group(2)
         for match in re.finditer(
-            r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s]+)", production, re.MULTILINE
+            r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s;]+)", production, re.MULTILINE
         )
     }
     assert _pinned_requirements("backend/requirements.txt") == {
@@ -152,7 +168,7 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
     ci = _read(".github/workflows/ci.yml")
     assert "uv pip install -r requirements-dev.txt" not in ci
     assert ci.count("uv pip sync --require-hashes --verify-hashes requirements-dev.lock") == 4
-    assert "uv pip compile --python-version 3.12 --generate-hashes" in ci
+    assert "uv pip compile --universal --python-version 3.12 --generate-hashes" in ci
     assert "--custom-compile-command" in ci
     assert "diff -u <(sed '/^[[:space:]]*#/d' requirements.lock)" in ci
     assert "diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock)" in ci
@@ -374,13 +390,15 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert "needs.classify-changes.outputs.frontend == 'true'" in job["if"]
     step = next(
         step for step in job["steps"]
-        if step.get("name") == "Verify desktop compile cadence and source-PDF synchronization"
+        if step.get("name") == "Verify guided builder, compile cadence and source-PDF synchronization"
     )
     assert step["env"] == {
         "PLAYWRIGHT_PORT": "5183",
         "PLAYWRIGHT_SERVER_MODE": "production",
     }
     assert "e2e/editor-compile-sync.spec.ts" in step["run"]
+    assert "e2e/resume-builder.spec.ts" in step["run"]
+    assert "e2e/billing-developer.spec.ts" in step["run"]
     assert "--retries=0" in step["run"]
     assert "--trace=on" in step["run"]
     assert "--workers=1" in step["run"]
@@ -524,6 +542,26 @@ def test_production_compose_requires_an_immutable_image_revision():
     assert compose.count("${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}") == 5
     assert "${LATEXY_VERSION:-latest}" not in compose
     assert env_example["LATEXY_VERSION"] == ""
+
+
+def test_frontend_development_image_uses_the_root_frozen_workspace_lockfile():
+    dockerfile = _read("frontend/Dockerfile.dev")
+    dockerignore = _read("frontend/Dockerfile.dev.dockerignore")
+    compose = _read("docker-compose.yml")
+
+    assert "pnpm@10.10.0" in dockerfile
+    assert "COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./" in dockerfile
+    assert "COPY patches ./patches" in dockerfile
+    assert "pnpm install --frozen-lockfile" in dockerfile
+    assert "--no-frozen-lockfile" not in dockerfile
+    assert "pnpm --filter ./frontend deploy --legacy /dev-runtime" in dockerfile
+    assert "COPY --from=dependencies /dev-runtime/node_modules ./node_modules" in dockerfile
+    assert "  frontend:\n    build:\n      context: .\n      dockerfile: frontend/Dockerfile.dev" in compose
+    # The root context is an allowlist; local env and source fixtures never enter it.
+    assert dockerignore.splitlines()[1] == "**"
+    assert "!pnpm-lock.yaml" in dockerignore
+    assert "!frontend/package.json" in dockerignore
+    assert not any(line.startswith("!") and ".env" in line for line in dockerignore.splitlines())
 
 
 def test_frontend_production_image_uses_the_root_frozen_workspace_lockfile():
@@ -1080,6 +1118,17 @@ def test_plain_http_health_endpoint_is_not_a_redirect():
     http_server = re.search(r"server \{\s*\n\s*listen 80;(.*?)\n    \}", conf, re.S)
     assert http_server, "no plain-HTTP server block found"
     assert "location /health {" in http_server.group(1)
+
+
+def test_frontend_runner_matches_the_workspace_standalone_layout():
+    """Root-workspace builds emit standalone/frontend/server.js."""
+    dockerfile = _read("frontend/Dockerfile.prod")
+    assert "WORKDIR /app" in dockerfile
+    assert "/app/frontend/.next/standalone ./" in dockerfile
+    assert "/app/frontend/.next/static ./frontend/.next/static" in dockerfile
+    assert "/app/frontend/public ./frontend/public" in dockerfile
+    assert 'CMD ["node", "frontend/server.js"]' in dockerfile
+    assert 'CMD ["node", "server.js"]' not in dockerfile
 
 
 def test_frontend_ws_url_build_arg_must_be_absolute():

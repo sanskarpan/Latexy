@@ -2,7 +2,6 @@
 Application configuration settings.
 """
 
-import json
 import logging
 import os
 from copy import deepcopy
@@ -45,7 +44,7 @@ class Settings(BaseSettings):
     # LaTeX Configuration
     COMPILE_TIMEOUT: int = 30  # seconds — fallback for unauthenticated/unknown plan
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    TEMP_DIR: Path = Path("/tmp/latex_compile")
+    TEMP_DIR: Path = Path(os.environ.get("TEMP", "/tmp")) / "latex_compile"
     ALLOWED_LATEX_COMPILERS: List[str] = ["pdflatex", "xelatex", "lualatex"]
     # Persisted on newly-created resumes. Keep DEFAULT_LATEX_COMPILER as the
     # compatibility fallback for legacy rows that predate compiler metadata.
@@ -253,35 +252,38 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = Field(default=20, description="SQLAlchemy async pool max overflow")
     DB_POOL_TIMEOUT: int = Field(default=30, description="Seconds to wait for a pooled DB connection before erroring")
 
-    # Razorpay Configuration
-    RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
-    RAZORPAY_KEY_SECRET: str = Field(default="", description="Razorpay API Key Secret")
-    RAZORPAY_WEBHOOK_SECRET: str = Field(default="", description="Razorpay Webhook Secret")
-    RAZORPAY_PLAN_BASIC_MONTHLY: str = Field(default="", description="Razorpay plan ID for Basic monthly")
-    RAZORPAY_PLAN_BASIC_ANNUAL: str = Field(default="", description="Razorpay plan ID for Basic annual")
-    RAZORPAY_PLAN_PRO_MONTHLY: str = Field(default="", description="Razorpay plan ID for Pro monthly")
-    RAZORPAY_PLAN_PRO_ANNUAL: str = Field(default="", description="Razorpay plan ID for Pro annual")
-    RAZORPAY_PLAN_BYOK_MONTHLY: str = Field(default="", description="Razorpay plan ID for BYOK monthly")
-    RAZORPAY_PLAN_BYOK_ANNUAL: str = Field(default="", description="Razorpay plan ID for BYOK annual")
-    RAZORPAY_PLAN_STUDENT: str = Field(default="", description="Razorpay plan ID for Student monthly")
-    RAZORPAY_PLAN_TEAM: str = Field(default="", description="Razorpay plan ID for Team monthly")
-    # B57 pricing SKUs. Amounts are integer INR paise; zero deliberately means
-    # "not configured" and keeps the SKU out of the public pricing response.
-    # Weekly is a pre-created Razorpay subscription plan. Lifetime uses the
-    # Orders API and therefore has no provider plan ID.
-    RAZORPAY_PLAN_WEEKLY: str = Field(default="", description="Razorpay plan ID for Weekly recurring")
-    RAZORPAY_WEEKLY_AMOUNT: int = Field(default=0, ge=0, description="Weekly price in INR paise")
-    RAZORPAY_LIFETIME_AMOUNT: int = Field(default=0, ge=0, description="Lifetime price in INR paise")
-    RAZORPAY_BILLING_CURRENCY: str = Field(default="INR", description="Three-letter currency for B57 SKUs")
-    RAZORPAY_COUPON_OFFERS: str = Field(
-        default="",
-        description=(
-            "JSON object mapping coupon code -> Razorpay offer ID "
-            '(e.g. {"LAUNCH20": "offer_XXXX"}). A percentage coupon can only be '
-            "honoured at checkout when its offer is mapped here, because Razorpay "
-            "discounts subscriptions through offers, not ad-hoc amounts."
-        ),
-    )
+    # Dodo credentials are separated by mode so a configuration-only switch is
+    # possible without reusing test credentials or product IDs in production.
+    DODO_MODE: str = Field(default="test", description="Dodo environment: test or live")
+    DODO_TEST_API_KEY: str = Field(default="", description="Dodo test-mode API key (server only)")
+    DODO_LIVE_API_KEY: str = Field(default="", description="Dodo live-mode API key (server only)")
+    DODO_TEST_WEBHOOK_KEY: str = Field(default="", description="Dodo test webhook signing key")
+    DODO_LIVE_WEBHOOK_KEY: str = Field(default="", description="Dodo live webhook signing key")
+    DODO_TEST_BUSINESS_ID: str = ""
+    DODO_LIVE_BUSINESS_ID: str = ""
+    DODO_TEST_PRODUCT_BASIC_MONTHLY: str = ""
+    DODO_TEST_PRODUCT_BASIC_ANNUAL: str = ""
+    DODO_TEST_PRODUCT_PRO_MONTHLY: str = ""
+    DODO_TEST_PRODUCT_PRO_ANNUAL: str = ""
+    DODO_TEST_PRODUCT_BYOK_MONTHLY: str = ""
+    DODO_TEST_PRODUCT_BYOK_ANNUAL: str = ""
+    DODO_TEST_PRODUCT_STUDENT: str = ""
+    DODO_TEST_PRODUCT_TEAM: str = ""
+    DODO_TEST_PRODUCT_WEEKLY: str = ""
+    DODO_TEST_PRODUCT_LIFETIME: str = ""
+    DODO_LIVE_PRODUCT_BASIC_MONTHLY: str = ""
+    DODO_LIVE_PRODUCT_BASIC_ANNUAL: str = ""
+    DODO_LIVE_PRODUCT_PRO_MONTHLY: str = ""
+    DODO_LIVE_PRODUCT_PRO_ANNUAL: str = ""
+    DODO_LIVE_PRODUCT_BYOK_MONTHLY: str = ""
+    DODO_LIVE_PRODUCT_BYOK_ANNUAL: str = ""
+    DODO_LIVE_PRODUCT_STUDENT: str = ""
+    DODO_LIVE_PRODUCT_TEAM: str = ""
+    DODO_LIVE_PRODUCT_WEEKLY: str = ""
+    DODO_LIVE_PRODUCT_LIFETIME: str = ""
+    WEEKLY_AMOUNT_MINOR: int = Field(default=0, ge=0)
+    LIFETIME_AMOUNT_MINOR: int = Field(default=0, ge=0)
+    BILLING_CURRENCY: str = Field(default="INR", description="ISO currency for optional Weekly/Lifetime SKUs")
     BILLING_MODE: str = Field(
         default="auto",
         description="Billing mode: disabled | auto | required",
@@ -616,14 +618,41 @@ class Settings(BaseSettings):
         return origins
 
     def billing_credentials_configured(self) -> bool:
-        """Return whether the full Razorpay credential set is present."""
-        return all(
-            [
-                self.RAZORPAY_KEY_ID,
-                self.RAZORPAY_KEY_SECRET,
-                self.RAZORPAY_WEBHOOK_SECRET,
-            ]
-        )
+        """Return whether the active Dodo mode has both API and webhook keys."""
+        return bool(self.dodo_api_key and self.dodo_webhook_key)
+
+    @property
+    def normalized_dodo_mode(self) -> str:
+        return (self.DODO_MODE or "test").strip().lower()
+
+    @property
+    def dodo_api_key(self) -> str:
+        return self.DODO_LIVE_API_KEY if self.normalized_dodo_mode == "live" else self.DODO_TEST_API_KEY
+
+    @property
+    def dodo_webhook_key(self) -> str:
+        return self.DODO_LIVE_WEBHOOK_KEY if self.normalized_dodo_mode == "live" else self.DODO_TEST_WEBHOOK_KEY
+
+    @property
+    def dodo_business_id(self) -> str:
+        return self.DODO_LIVE_BUSINESS_ID if self.normalized_dodo_mode == "live" else self.DODO_TEST_BUSINESS_ID
+
+    @property
+    def dodo_api_base_url(self) -> str:
+        return "https://live.dodopayments.com" if self.normalized_dodo_mode == "live" else "https://test.dodopayments.com"
+
+    def dodo_product_id(self, plan_id: str | None) -> str:
+        plan = (plan_id or "").strip().lower()
+        product_key = {
+            "basic": "BASIC_MONTHLY", "basic_annual": "BASIC_ANNUAL",
+            "pro": "PRO_MONTHLY", "pro_annual": "PRO_ANNUAL",
+            "byok": "BYOK_MONTHLY", "byok_annual": "BYOK_ANNUAL",
+            "student": "STUDENT", "team": "TEAM", "weekly": "WEEKLY", "lifetime": "LIFETIME",
+        }.get(plan)
+        if not product_key:
+            return ""
+        mode = "LIVE" if self.normalized_dodo_mode == "live" else "TEST"
+        return getattr(self, f"DODO_{mode}_PRODUCT_{product_key}", "")
 
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
@@ -696,25 +725,18 @@ class Settings(BaseSettings):
                     "print(Fernet.generate_key().decode())\""
                 ) from exc
 
-        razorpay_fields = {
-            "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,
-            "RAZORPAY_KEY_SECRET": self.RAZORPAY_KEY_SECRET,
-            "RAZORPAY_WEBHOOK_SECRET": self.RAZORPAY_WEBHOOK_SECRET,
-        }
-        populated_razorpay_fields = [key for key, value in razorpay_fields.items() if value]
-
-        if billing_mode == "required" and len(populated_razorpay_fields) != len(razorpay_fields):
-            raise ValueError(
-                "BILLING_MODE=required requires RAZORPAY_KEY_ID, "
-                "RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET."
-            )
-
-        if billing_mode != "disabled" and 0 < len(populated_razorpay_fields) < len(razorpay_fields):
-            raise ValueError(
-                "Partial Razorpay configuration detected. Set RAZORPAY_KEY_ID, "
-                "RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET together, or "
-                "set BILLING_MODE=disabled."
-            )
+        if self.normalized_dodo_mode not in {"test", "live"}:
+            raise ValueError("DODO_MODE must be 'test' or 'live'.")
+        active_dodo_fields = (self.dodo_api_key, self.dodo_webhook_key)
+        if (
+            billing_mode != "disabled" and self.is_production_like()
+            and any(active_dodo_fields) and self.normalized_dodo_mode != "live"
+        ):
+            raise ValueError("Production Dodo billing requires DODO_MODE=live.")
+        if billing_mode == "required" and not all(active_dodo_fields):
+            raise ValueError("BILLING_MODE=required needs the active Dodo API key and webhook signing key.")
+        if billing_mode != "disabled" and any(active_dodo_fields) and not all(active_dodo_fields):
+            raise ValueError("Set the active Dodo API key and webhook signing key together, or disable billing.")
 
         # CONFIG-001: Warn when MinIO credentials are still at insecure default values
         # in a production-like environment.
@@ -800,33 +822,15 @@ def get_plan_config(plan_id: str | None) -> Dict[str, Any]:
     if direct:
         result = deepcopy(direct)
         if normalized == "weekly":
-            result["price"] = settings.RAZORPAY_WEEKLY_AMOUNT
-            result["currency"] = settings.RAZORPAY_BILLING_CURRENCY.upper()
+            result["price"] = settings.WEEKLY_AMOUNT_MINOR
+            result["currency"] = settings.BILLING_CURRENCY.upper()
         elif normalized == "lifetime":
-            result["price"] = settings.RAZORPAY_LIFETIME_AMOUNT
-            result["currency"] = settings.RAZORPAY_BILLING_CURRENCY.upper()
+            result["price"] = settings.LIFETIME_AMOUNT_MINOR
+            result["currency"] = settings.BILLING_CURRENCY.upper()
         return result
 
     family = resolve_plan_family(normalized)
     return deepcopy(settings.SUBSCRIPTION_PLANS.get(family, settings.SUBSCRIPTION_PLANS["free"]))
-
-
-def get_razorpay_plan_id(plan_id: str | None) -> str:
-    """Resolve the configured Razorpay plan ID for a concrete plan SKU."""
-    normalized = (plan_id or "").strip().lower()
-    env_map = {
-        "basic": "RAZORPAY_PLAN_BASIC_MONTHLY",
-        "basic_annual": "RAZORPAY_PLAN_BASIC_ANNUAL",
-        "pro": "RAZORPAY_PLAN_PRO_MONTHLY",
-        "pro_annual": "RAZORPAY_PLAN_PRO_ANNUAL",
-        "byok": "RAZORPAY_PLAN_BYOK_MONTHLY",
-        "byok_annual": "RAZORPAY_PLAN_BYOK_ANNUAL",
-        "student": "RAZORPAY_PLAN_STUDENT",
-        "team": "RAZORPAY_PLAN_TEAM",
-        "weekly": "RAZORPAY_PLAN_WEEKLY",
-    }
-    env_key = env_map.get(normalized)
-    return getattr(settings, env_key, "") if env_key else ""
 
 
 def is_b57_sku_configured(plan_id: str | None) -> bool:
@@ -836,41 +840,16 @@ def is_b57_sku_configured(plan_id: str | None) -> bool:
     missing environment variable from becoming a free lifetime entitlement.
     """
     normalized = (plan_id or "").strip().lower()
-    if (settings.RAZORPAY_BILLING_CURRENCY or "").strip().upper() != "INR":
-        return False
     if normalized == "weekly":
-        return bool(get_razorpay_plan_id("weekly") and settings.RAZORPAY_WEEKLY_AMOUNT > 0)
+        return bool(settings.dodo_product_id("weekly") and settings.WEEKLY_AMOUNT_MINOR > 0)
     if normalized == "lifetime":
-        return settings.RAZORPAY_LIFETIME_AMOUNT > 0
+        return bool(settings.dodo_product_id("lifetime") and settings.LIFETIME_AMOUNT_MINOR > 0)
     return False
 
 
-def get_razorpay_offer_id(coupon_code: str | None) -> str:
-    """Resolve the Razorpay offer ID that implements a coupon code.
-
-    Razorpay applies subscription discounts through offers created in the
-    dashboard, so a percentage coupon is only usable at checkout when it is
-    mapped to an offer here. An unmapped code has no way to reach the provider
-    and must be refused rather than silently charged at full price.
-    """
-    normalized = (coupon_code or "").strip().upper()
-    if not normalized:
-        return ""
-
-    raw = (settings.RAZORPAY_COUPON_OFFERS or "").strip()
-    if not raw:
-        return ""
-
-    try:
-        mapping = json.loads(raw)
-    except (TypeError, ValueError):
-        return ""
-
-    if not isinstance(mapping, dict):
-        return ""
-
-    value = mapping.get(normalized)
-    return value.strip() if isinstance(value, str) else ""
+def get_dodo_product_id(plan_id: str | None) -> str:
+    """Resolve the server-controlled Dodo catalog product for a concrete SKU."""
+    return settings.dodo_product_id(plan_id)
 
 
 def get_developer_api_daily_limit(plan_id: str | None) -> int:

@@ -24,6 +24,8 @@ from ..services.resume_engine.semantic import (
     project_document,
     public_document,
 )
+from ..services.resume_managed_source_service import apply_managed_document_change
+from ..services.resume_source_service import apply_source_change
 from ..utils.uuid_guard import ensure_uuid
 from .resume_routes import _get_resume_document_access, _sync_linked_variants
 
@@ -193,12 +195,13 @@ async def patch_document(
         )
     except (DocumentConflict, ValidationError) as exc:
         raise HTTPException(409, str(exc)) from exc
-    resume.latex_content = source
-    if document["source_mode"] == "imported":
-        persist_reconciled_projection(resume, document, source, [p.model_dump() for p in body.patches])
     if structured is not None:
-        resume.structured_content = structured
-        await _sync_linked_variants(resume, db)
+        if apply_managed_document_change(
+            resume, source, structured, previous_structured=document["_structured_content"]
+        ):
+            await _sync_linked_variants(resume, db)
+    elif apply_source_change(resume, source):
+        persist_reconciled_projection(resume, document, source, [p.model_dump() for p in body.patches])
     await db.commit()
     await db.refresh(resume)
     return {"document": public_document(await _document(db, resume)), "latex_content": resume.latex_content}
@@ -390,10 +393,12 @@ async def decide_run(
     except (DocumentConflict, ValidationError) as exc:
         raise HTTPException(409, str(exc)) from exc
     if new_accept:
-        resume.latex_content, resume.structured_content = source, structured
-        await _sync_linked_variants(resume, db)
-        await db.flush()
-        await db.refresh(resume)
+        if structured is not None and apply_managed_document_change(
+            resume, source, structured, previous_structured=document["_structured_content"]
+        ):
+            await _sync_linked_variants(resume, db)
+            await db.flush()
+            await db.refresh(resume)
     statuses.update({pid: "accepted" for pid in accept})
     statuses.update({pid: "rejected" for pid in reject})
     decisions["patches"] = statuses

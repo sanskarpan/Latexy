@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
 test('builder import renders source-aware validation details', async ({ page }) => {
   await page.route('**/api/auth/get-session', (route) => route.fulfill({
     status: 200,
@@ -23,7 +27,7 @@ test('builder import renders source-aware validation details', async ({ page }) 
       template_family: 'minimal',
     }]),
   }))
-  await page.route((url) => url.pathname === '/resumes/builder/seed-upload', (route) => route.fulfill({
+  await page.route((url) => url.pathname === '/resumes/builder/v1/seed-upload', (route) => route.fulfill({
     status: 422,
     contentType: 'application/json',
     body: JSON.stringify({

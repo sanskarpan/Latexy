@@ -5,6 +5,7 @@ Revises: 0059
 """
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
 from alembic import op
 
 revision = "0060"
@@ -17,7 +18,7 @@ def upgrade():
     op.add_column("resumes", sa.Column("content_revision", sa.Integer(), nullable=False, server_default="1"))
     op.create_check_constraint("ck_resumes_content_revision_positive", "resumes", "content_revision > 0")
     # Every write surface, including integrations/finalization, participates.
-    # structured_version remains the schema version, not an edit counter.
+    # content_revision tracks source/content changes independently of builder saves.
     op.execute("""CREATE FUNCTION latexy_resume_revision() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
         IF NEW.latex_content IS DISTINCT FROM OLD.latex_content

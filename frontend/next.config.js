@@ -41,6 +41,10 @@ const nextConfig = {
     // Handle canvas for react-pdf
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false
+    // Runtime keybinding adapters need Monaco's module API. The package's
+    // CommonJS `main` points at an AMD bundle whose loader plugin syntax is
+    // not understood by Webpack when the adapters are imported server-side.
+    config.resolve.alias['monaco-editor$'] = require.resolve('monaco-editor/esm/vs/editor/editor.api.js')
     return config
   },
   // Development intentionally uses Turbopack. The aliases above are only

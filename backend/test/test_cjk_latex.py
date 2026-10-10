@@ -207,12 +207,16 @@ def test_each_cjk_script_compiles_with_mixed_latin_and_extractable_source(
     has equivalent Apple fonts but not the deployment package, so this still
     exercises the package/JFM path without pretending the font assets match.
     """
-    font_probe = subprocess.run(["fc-match", host_font], capture_output=True, text=True, check=False)
-    if host_font not in font_probe.stdout:
-        pytest.skip(f"developer host does not carry {host_font}")
+    selected_font = deployment_font
+    font_probe = subprocess.run(["fc-match", deployment_font], capture_output=True, text=True, check=False)
+    if deployment_font not in font_probe.stdout:
+        selected_font = host_font
+        font_probe = subprocess.run(["fc-match", host_font], capture_output=True, text=True, check=False)
+        if host_font not in font_probe.stdout:
+            pytest.skip(f"neither {deployment_font} nor {host_font} is installed")
     source = configure_cjk_latex(
         SOURCE.replace("日本語 中文 한국어", text), code
-    ).replace(deployment_font, host_font)
+    ).replace(deployment_font, selected_font)
     tex = tmp_path / f"{code.replace('-', '_')}.tex"
     tex.write_text(source, encoding="utf-8")
     result = subprocess.run(

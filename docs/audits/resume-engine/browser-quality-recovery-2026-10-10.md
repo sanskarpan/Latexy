@@ -84,3 +84,15 @@ The retry trace shows the sign-out POST and first guest-session read both return
 The fixture now verifies guest controls on the first landing page and waits for that navigation's network settlement before deliberately reloading to test session persistence. It repeats the guest assertions after reload. The empty runtime-error assertion remains unchanged; no error is filtered, no fixed sleep is added, and product PWA behavior is unchanged. A focused source contract verifies this ordering. This is a controlled fixture-sequencing correction, not evidence that all rapid production navigation/PWA cases are error-free. Exact-head CI must establish the correction and execute the still-pending later browser steps.
 
 The corrected tree passes **1,330 frontend units in 196 files**, full ESLint, nonincremental TypeScript, and diff checks; **145 quality cases in eight files** collect. The persistence assertion requires a strictly newer guest-session response than the count captured immediately before reload. Browser execution remains CI-only in this environment.
+
+## Source-editor synchronization fixture
+
+Head `680bfc5c87084a408a290c3aaec976a29c970557` completed [CI run 38081131499](https://github.com/sanskarpan/Latexy/actions/runs/38081131499) with **142 passed and three skipped** desktop/mobile quality cases in **6.9 minutes**. The Firefox logout correction passed. The newly reached editor/Settings stage finished **46 passed and five failed** in **2.9 minutes**; all five failures are in the common source/PDF-sync setup, before Monaco mounts. The Settings, onboarding and legacy-callback contracts passed. Hydration remained skipped after this later failure, so the overall browser gate is still open.
+
+Evidence: artifact `11680930677`, SHA-256 `32d1b41019b8bbfd537f5dabb2b8c16678fc9b05c8bd1f894d3a62f5409aa60c`.
+
+The source/PDF synchronization fixture assumed Source was still the default, but the editor now defaults to Resume fields. It also omitted the new capability and optional original-PDF reads. Screenshots and traces show a loaded editor shell while the common fixture waits for a Monaco object that is correctly absent in Resume mode. The correction explicitly stores Source mode for this fixture's resume before navigation and supplies only the exact GET capability and absent-original responses. It retains unknown-request rejection, runtime-error assertions, real Monaco/source comparisons, PDF/SyncTeX identity assertions and cadence checks. The separate quality suite continues to test the default Resume mode and capability fallback.
+
+Three fixture-contract unit tests and targeted ESLint pass. Exact-head browser execution must still establish all source/PDF synchronization assertions and the final hydration stage; this fixture setup diagnosis does not pre-judge their outcomes.
+
+The fixture-only correction also passes **1,333 frontend units in 197 files**, nonincremental TypeScript, full ESLint and diff checks. It will be included with the separately reviewed integration corrections; no further browser result is claimed from local checks.

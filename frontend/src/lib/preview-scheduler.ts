@@ -28,6 +28,16 @@ export class PreviewScheduler {
     this.drain()
   }
 
+  /** Manual previews share the admission fence, even when auto-preview is off. */
+  submitManual(source: string, submit: () => Promise<string | null>) {
+    if (this.disposed || this.blocked || this.running || !source.trim()) return Promise.resolve(null)
+    // The caller synchronously captured the latest editor buffer. It supersedes
+    // every notification already queued (which may lag behind that buffer).
+    // Clear only at admission: newer edits queued during its ACK/run survive.
+    this.pending = null
+    return this.admit(source, submit)
+  }
+
   complete(jobId: string) {
     this.lastTerminal = jobId
     if (this.running?.jobId !== jobId) return
@@ -64,19 +74,28 @@ export class PreviewScheduler {
     const source = this.pending.source
     const editedAt = this.pending.editedAt
     this.pending = null
+    await this.admit(source, () => this.submit(source, editedAt))
+  }
+
+  private async admit(source: string, submit: () => Promise<string | null>) {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
     this.lastAttempted = source
     const invocation = { source, startedAt: this.now(), jobId: null as string | null }
     this.lastDispatchAt = invocation.startedAt
     this.running = invocation // includes the admission/ACK window
     try {
-      invocation.jobId = await this.submit(source, editedAt)
-      if (!invocation.jobId && this.running === invocation) this.running = null
-      else if (invocation.jobId && invocation.jobId === this.lastTerminal) this.complete(invocation.jobId)
+      invocation.jobId = await submit()
+      if (this.running === invocation) {
+        if (!invocation.jobId) this.running = null
+        else if (invocation.jobId === this.lastTerminal) this.complete(invocation.jobId)
+      }
     } catch {
       // Caller owns quota/auth/network feedback. Never automatically retry an
       // ambiguous admission or consume another quota unit for the same edit.
       if (this.running === invocation) this.running = null
     }
     this.drain()
+    return invocation.jobId
   }
 }

@@ -298,7 +298,14 @@ class TestEnforceQuota:
     async def test_counter_outage_does_not_log_user_identifiers(
         self, monkeypatch, caplog, plan, allowed
     ):
+        import importlib
+
         import app.core.redis as core_redis
+
+        # Exercise the numeric quota policy independently of whether this
+        # operator environment has configured a paid-provider catalog.
+        quota_module = importlib.import_module("app.services.entitlement_service")
+        monkeypatch.setattr(quota_module, "get_plan_quota", lambda _plan, _dimension: None if allowed else 10)
 
         owner = "test_private_owner\r\nFORGED_QUOTA_EVENT"
 

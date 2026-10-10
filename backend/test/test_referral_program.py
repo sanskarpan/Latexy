@@ -122,7 +122,7 @@ async def test_status_reports_only_the_callers_referrals_and_rewards(
     payment = Payment(
         user_id=referred.id,
         subscription_id=subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -187,7 +187,7 @@ async def test_pending_reward_is_issued_when_referrer_later_has_a_paid_term(
     earned_payment = Payment(
         user_id=referred.id,
         subscription_id=earned_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -225,7 +225,7 @@ async def test_pending_reward_is_issued_when_referrer_later_has_a_paid_term(
     activating_payment = Payment(
         user_id=referrer.id,
         subscription_id=paid_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -270,7 +270,7 @@ async def test_reward_stays_pending_for_an_unpaid_checkout(
     payment = Payment(
         user_id=referred.id,
         subscription_id=earned_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -319,7 +319,7 @@ async def test_payment_before_attribution_cannot_qualify_referral(
     payment = Payment(
         user_id=referred.id,
         subscription_id=earned_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -338,7 +338,7 @@ async def test_payment_before_attribution_cannot_qualify_referral(
     renewal = Payment(
         user_id=referred.id,
         subscription_id=earned_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -375,7 +375,7 @@ async def test_payment_subscription_must_belong_to_payer(
     payment = Payment(
         user_id=referred.id,
         subscription_id=unrelated_subscription.id,
-        razorpay_payment_id=f"pay_{uuid4().hex}",
+        provider_payment_id=f"pay_{uuid4().hex}",
         amount=100,
         currency="INR",
         status="paid",
@@ -433,7 +433,7 @@ async def test_reversing_an_earlier_reward_preserves_later_reward(
         payment = Payment(
             user_id=referred.id,
             subscription_id=earned_subscription.id,
-            razorpay_payment_id=f"pay_{uuid4().hex}",
+            provider_payment_id=f"pay_{uuid4().hex}",
             amount=100,
             currency="INR",
             status="paid",

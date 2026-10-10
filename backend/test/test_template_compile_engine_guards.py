@@ -72,6 +72,7 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
         assert kwargs["timeout"] == 60
         output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\nsynthetic\n")
+        (output_dir / "template.fls").write_text(f"PWD {output_dir}\nINPUT {output_dir / 'template.tex'}\n")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(compile_templates.subprocess, "run", run)
@@ -98,7 +99,7 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
         assert child_env["TEXMFVAR"] == str(Path(command[command.index("-output-directory") + 1]).resolve() / ".tex-cache")
         assert child_env["TEXMFCACHE"].startswith(child_env["TEXMFVAR"] + os.pathsep)
         assert child_env["TEXMFHOME"] == "/tmp/synthetic-texmfhome"
-        assert child_env["openin_any"] == "p"
+        assert child_env["openin_any"] == "p"  # Compatibility mode is set only inside the confined launcher.
         assert child_env["openout_any"] == "p"
         assert child_env["shell_escape"] == "f"
         for credential_name in (

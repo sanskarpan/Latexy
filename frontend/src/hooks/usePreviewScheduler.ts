@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { PreviewScheduler } from '@/lib/preview-scheduler'
 import { trackWebVital } from '@/lib/telemetry'
 
@@ -27,17 +27,20 @@ export function usePreviewScheduler(options: {
   submitRef.current = options.submit
   const identityRef = useRef(options.identity)
   identityRef.current = options.identity
+  const schedulerRef = useRef<PreviewScheduler | null>(null)
   const scheduler = useMemo(() => {
     const identity = options.identity
-    return new PreviewScheduler(async (source, editedAt) => {
-    if (identityRef.current !== identity) return null
-    const jobId = await submitRef.current(source)
-    if (jobId) {
-      recordPreviewAction(jobId, editedAt)
-    }
-    return jobId
+    const instance = new PreviewScheduler(async (source, editedAt) => {
+      if (identityRef.current !== identity || schedulerRef.current !== instance) return null
+      const jobId = await submitRef.current(source)
+      if (identityRef.current !== identity || schedulerRef.current !== instance) return null
+      if (jobId) recordPreviewAction(jobId, editedAt)
+      return jobId
     })
+    return instance
   }, [options.identity])
+  // Instance identity also fences A → B → A before effect cleanup has run.
+  schedulerRef.current = scheduler
   useEffect(() => { scheduler.activate(); return () => scheduler.dispose() }, [scheduler])
   useEffect(() => { scheduler.update(options.enabled, options.blocked) }, [scheduler, options.enabled, options.blocked])
   useEffect(() => {
@@ -46,5 +49,13 @@ export function usePreviewScheduler(options: {
   useEffect(() => {
     if (options.cancelledJobId) scheduler.complete(options.cancelledJobId)
   }, [scheduler, options.cancelledJobId])
-  return useCallback((source: string, editedAt?: number, force = false) => scheduler.request(source, editedAt, force), [scheduler])
+  return useMemo(() => Object.assign(
+    (source: string, editedAt?: number, force = false) => {
+      if (schedulerRef.current === scheduler) scheduler.request(source, editedAt, force)
+    },
+    {
+      submitManual: (source: string, submit: () => Promise<string | null>) =>
+        schedulerRef.current === scheduler ? scheduler.submitManual(source, submit) : Promise.resolve(null),
+    },
+  ), [scheduler])
 }

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeCollaborator, ResumeSuggestionDecision
 from ..middleware.auth_middleware import get_current_user_required
+from ..services.resume_source_service import apply_source_change
 from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix="/resumes", tags=["suggestions"])
@@ -221,7 +222,10 @@ async def decide_suggestion(
     # Lock the single resume row. Every accepted suggestion on a resume is
     # serialized here, including two requests from separate API workers.
     resume = (
-        await db.execute(select(Resume).where(Resume.id == resume_id).with_for_update())
+        await db.execute(
+            select(Resume).where(Resume.id == resume_id)
+            .with_for_update().execution_options(populate_existing=True)
+        )
     ).scalar_one_or_none()
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -306,8 +310,7 @@ async def decide_suggestion(
             raise HTTPException(status_code=422, detail="The accepted document contains invalid Unicode") from exc
         if result_bytes > MAX_LATEX_CONTENT_BYTES:
             raise HTTPException(status_code=422, detail="The accepted document exceeds the byte limit")
-        resume.latex_content = result_content
-        resume.updated_at = datetime.now(timezone.utc)
+        apply_source_change(resume, result_content)
 
     digest = sha256(body.expected_content.encode("utf-8")).hexdigest()
     decision = ResumeSuggestionDecision(

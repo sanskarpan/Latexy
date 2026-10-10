@@ -29,13 +29,14 @@ const EXPORT_FORMATS = [
   { key: 'google_drive', label: 'Google Drive', icon: Cloud, desc: 'Export the latest compiled PDF to your Google Drive' },
 ] as const
 
-type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
+export type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
 
 interface ExportDropdownProps {
   // One of these must be provided:
   resumeId?: string          // For saved resumes (workspace/edit pages)
   latexContent?: string      // For unsaved content (/try page)
-  onPdfExport?: () => void   // If provided, called instead of apiClient for PDF
+  onPdfExport?: () => void | Promise<void>   // If provided, called instead of apiClient for PDF
+  beforeExport?: (format: ExportFormatKey) => Promise<void>
   className?: string
   /**
    * Visual variant:
@@ -44,14 +45,23 @@ interface ExportDropdownProps {
    *  'inline'  — medium size, sits alongside px-4 py-2 toolbar buttons (/try page)
    */
   variant?: 'toolbar' | 'card' | 'inline'
+  /** Keep the beginner export menu focused on human-readable documents. */
+  visualOnly?: boolean
+  /** Use versioned export routes for the guided builder rollout contract. */
+  guidedBuilder?: boolean
+  disabled?: boolean
 }
 
 export default function ExportDropdown({
   resumeId,
   latexContent,
   onPdfExport,
+  beforeExport,
   className = '',
   variant = 'inline',
+  visualOnly = false,
+  guidedBuilder = false,
+  disabled = false,
 }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
@@ -68,10 +78,13 @@ export default function ExportDropdown({
 
   useEffect(() => { setMounted(true) }, [])
 
+  useEffect(() => { if (disabled) setIsOpen(false) }, [disabled])
+
   const isExporting = loading !== null
+  const visibleFormats = visualOnly ? EXPORT_FORMATS.filter(format => ['pdf', 'docx', 'txt'].includes(format.key)) : EXPORT_FORMATS
 
   function openDropdown() {
-    if (isExporting) return
+    if (isExporting || disabled) return
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
       const margin = 12
@@ -100,12 +113,21 @@ export default function ExportDropdown({
 
   async function handleExport(format: ExportFormatKey) {
     // Prevent concurrent exports
-    if (isExporting) return
+    if (isExporting || disabled) return
 
     if (format === 'pdf') {
       setIsOpen(false)
       if (onPdfExport) {
-        onPdfExport()
+        setLoading(format)
+        setExportError(null)
+        try {
+          await beforeExport?.(format)
+          await onPdfExport()
+        } catch (error) {
+          setExportError({ format, message: error instanceof Error ? error.message : 'PDF could not be created. Please retry.' })
+        } finally {
+          setLoading(null)
+        }
         return
       }
       toast.info('Use the compile button to generate PDF')
@@ -145,8 +167,9 @@ export default function ExportDropdown({
     setDriveNeedsConnection(false)
     setIsOpen(false)
     try {
+      await beforeExport?.(format)
       if (format === 'canva' && resumeId) {
-        const data = await apiClient.exportCanva(resumeId)
+        const data = await apiClient.exportCanva(resumeId, guidedBuilder)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         downloadBlob(blob, 'resume-canva.json')
         toast.success("Canva JSON downloaded — import it via Canva's Content Import feature", {
@@ -156,7 +179,7 @@ export default function ExportDropdown({
       }
 
       if (format === 'figma' && resumeId) {
-        const data = await apiClient.exportFigma(resumeId)
+        const data = await apiClient.exportFigma(resumeId, guidedBuilder)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         downloadBlob(blob, 'resume-figma.json')
         toast.success('Figma JSON downloaded — open it with the Latexy Figma plugin', {
@@ -199,11 +222,11 @@ export default function ExportDropdown({
         // Raster/vector formats are rendered from the latest owned compiled
         // PDF. Never send the live LaTeX buffer to /export/content for these
         // formats, even when an editor supplies both props.
-        blob = await apiClient.exportResume(resumeId, format)
+        blob = await apiClient.exportResume(resumeId, format, guidedBuilder)
       } else if (latexContent !== undefined) {
         blob = await apiClient.exportContent(latexContent, format)
       } else if (resumeId) {
-        blob = await apiClient.exportResume(resumeId, format)
+        blob = await apiClient.exportResume(resumeId, format, guidedBuilder)
       } else {
         throw new Error('No resume content to export')
       }
@@ -219,6 +242,7 @@ export default function ExportDropdown({
       else if (format === 'email' && message.includes('503')) message = 'Email provider did not accept the PDF — please retry'
       else if (message.includes('500') || message.includes('502') || message.includes('503'))
         message = 'Server error — please try again'
+      if (visualOnly) message = 'Could not export this document. Try again, or update the PDF preview first.'
       setExportError({ format, message })
       toast.error(message)
     } finally {
@@ -246,7 +270,7 @@ export default function ExportDropdown({
       <button
         ref={triggerRef}
         onClick={openDropdown}
-        disabled={isExporting}
+        disabled={isExporting || disabled}
         className={triggerCls}
       >
         {isExporting ? (
@@ -269,7 +293,7 @@ export default function ExportDropdown({
               <> <a href="/settings" className="font-semibold underline">Open Settings</a></>
             )}
           </span>
-          <button type="button" onClick={() => void handleExport(exportError.format)} disabled={isExporting} className="shrink-0 font-semibold underline disabled:opacity-50">Retry</button>
+          <button type="button" onClick={() => void handleExport(exportError.format)} disabled={isExporting || disabled} className="shrink-0 font-semibold underline disabled:opacity-50">Retry</button>
         </div>
       )}
 
@@ -298,12 +322,12 @@ export default function ExportDropdown({
               </p>
             </div>
             <div className="pb-1.5">
-              {EXPORT_FORMATS.map((fmt, idx) => {
+              {visibleFormats.map((fmt, idx) => {
                 const Icon = fmt.icon
                 const isLoading = loading === fmt.key
                 const isDesignExport = fmt.key === 'canva' || fmt.key === 'figma'
                 // Separator before design exports
-                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(EXPORT_FORMATS[idx - 1].key)
+                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(visibleFormats[idx - 1].key)
                 return (
                   <div key={fmt.key}>
                     {showSeparator && (
@@ -315,7 +339,7 @@ export default function ExportDropdown({
                     )}
                     <button
                       onClick={() => handleExport(fmt.key)}
-                      disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma' || fmt.key === 'svg' || fmt.key === 'jpeg' || fmt.key === 'google_drive') && !resumeId)}
+                      disabled={isExporting || disabled || ((fmt.key === 'canva' || fmt.key === 'figma' || fmt.key === 'svg' || fmt.key === 'jpeg' || fmt.key === 'google_drive') && !resumeId)}
                       title={fmt.desc}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -326,7 +350,7 @@ export default function ExportDropdown({
                       )}
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-fg">{fmt.label}</div>
-                        <div className="text-[11px] text-fg-3 truncate">{fmt.desc}</div>
+                        <div className="text-[11px] text-fg-3 truncate">{visualOnly && fmt.key === 'pdf' ? 'Your résumé as a PDF document' : fmt.desc}</div>
                       </div>
                     </button>
                   </div>

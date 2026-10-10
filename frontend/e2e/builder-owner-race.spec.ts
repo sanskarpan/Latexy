@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
 const TEMPLATES = [{
   id: '11111111-1111-1111-1111-111111111111',
   name: 'ATS Guided',
@@ -45,7 +49,7 @@ test.describe('guided builder ownership boundaries', () => {
       })
     })
     let createResponseFinished = false
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       createStarted = true
       await createGate
@@ -68,9 +72,9 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await page.locator('input[placeholder*="Senior Backend Engineer"]').fill('Owner A draft')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect.poll(() => createStarted).toBe(true)
 
     owner = 'owner-b'
@@ -92,7 +96,7 @@ test.describe('guided builder ownership boundaries', () => {
       }))
 
       await expect(page).toHaveURL(/\/workspace\/builder\/new$/)
-      await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     } finally {
       releaseCreate()
     }
@@ -113,7 +117,7 @@ test.describe('guided builder ownership boundaries', () => {
       contentType: 'application/json',
       body: JSON.stringify(TEMPLATES),
     }))
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       return route.fulfill({
         status: 201,
@@ -133,9 +137,9 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     await page.locator('input[placeholder*="Senior Backend Engineer"]').fill('Owner A draft')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb$/)
   })
 
@@ -169,7 +173,7 @@ test.describe('guided builder ownership boundaries', () => {
       contentType: 'application/json',
       body: JSON.stringify(TEMPLATES),
     }))
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       createCalls += 1
       return route.fulfill({
@@ -184,7 +188,7 @@ test.describe('guided builder ownership boundaries', () => {
     })
 
     await page.goto('/workspace/builder/new', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
     const title = page.locator('input[placeholder*="Senior Backend Engineer"]')
     await title.fill('Draft survives auth refresh')
 
@@ -197,8 +201,8 @@ test.describe('guided builder ownership boundaries', () => {
     await expect.poll(() => sessionCalls).toBeGreaterThan(1)
     await expect.poll(() => errorResponseFinished).toBe(true)
     await expect(title).toHaveValue('Draft survives auth refresh')
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page.getByText('Session verification is still in progress. Please try again.')).toBeVisible()
     expect(createCalls).toBe(0)
 
@@ -211,7 +215,7 @@ test.describe('guided builder ownership boundaries', () => {
     await expect.poll(() => sessionCalls).toBeGreaterThan(2)
     await expect.poll(() => recoveryResponseFinished).toBe(true)
     await expect(title).toHaveValue('Draft survives auth refresh')
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/cccccccc-cccc-cccc-cccc-cccccccccccc$/)
     expect(createCalls).toBe(1)
   })

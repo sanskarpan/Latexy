@@ -58,10 +58,7 @@ describe('SyncTeX parser', () => {
   })
 
   test('uses the measured height independently for different pages', () => {
-    const content = nativeSynctex.replace(
-      /\{1\r?\n/,
-      '{2\n',
-    )
+    const content = nativeSynctex.replace(/\{1\r?\n/, '{2\n')
     const data = parseSynctex(`${nativeSynctex}\n${content}`, { 1: 792, 2: 612 })
     const pageOne = synctexForward(data, 3, '/fixture/resume.tex')
     const pageTwo = data.lineIndex['1:3'].find((block) => block.page === 2)

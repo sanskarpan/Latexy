@@ -99,10 +99,13 @@ async function installFixture(page: Page) {
     errors.push(error.message)
     observe('page-error', { message: error.message })
   })
-  await page.addInitScript(() => {
+  await page.addInitScript(resumeId => {
     localStorage.setItem('latexy_auto_compile', 'false')
     localStorage.setItem('latexy_high_contrast', 'false')
-  })
+    // These contracts exercise Monaco and source/PDF synchronization. Resume
+    // fields are the product default and have their own quality contracts.
+    localStorage.setItem(`latexy_editor_mode_${resumeId}`, 'source')
+  }, RESUME_ID)
   // All app backend traffic is synthetic. Unknown traffic fails closed.
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
@@ -115,6 +118,12 @@ async function installFixture(page: Page) {
       return
     }
     if (url.origin === new URL(page.url() === 'about:blank' ? test.info().project.use.baseURL! : page.url()).origin) return route.continue()
+    if (path === '/public/engine/capabilities' && route.request().method() === 'GET') {
+      return route.fulfill({ json: { resume_engine_version: 1 } })
+    }
+    if (path === `/resumes/${RESUME_ID}/engine/import` && route.request().method() === 'GET') {
+      return route.fulfill({ status: 404, json: { detail: 'No original PDF for this source fixture' } })
+    }
     if (path === `/resumes/${RESUME_ID}`) {
       return route.fulfill({ json: { id: RESUME_ID, user_id: 'editor-fixture-owner', access_role: 'owner', title: 'Compile and SyncTeX fixture', latex_content: SOURCE, metadata: {}, created_at: '2026-10-06T00:00:00Z', updated_at: '2026-10-06T00:00:00Z' } })
     }

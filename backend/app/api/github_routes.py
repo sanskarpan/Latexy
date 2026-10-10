@@ -29,6 +29,7 @@ from ..services.entitlement_service import entitlement_service
 from ..services.external_budget_service import enforce_external_budget
 from ..services.github_sync_service import GitHubSyncConflict, github_sync_service
 from ..services.job_result_recovery import recover_terminal_job
+from ..services.resume_source_service import apply_source_change
 from ..utils.uuid_guard import ensure_uuid
 from ..workers.github_import_worker import submit_github_import
 from ..workers.job_lifecycle import lifecycle_key
@@ -601,6 +602,7 @@ async def pull_from_github(
 
     # Use stable resume.id as filename (matches push)
     file_path = f"{resume.id}.tex"
+    repo_name = resume.github_repo_name
 
     # Decrypt token for API calls
     token = encryption_service.decrypt(user.github_access_token)
@@ -609,7 +611,7 @@ async def pull_from_github(
         remote = await github_sync_service.pull_file(
             token=token,
             owner=user.github_username,
-            repo=resume.github_repo_name,
+            repo=repo_name,
             path=file_path,
         )
     except httpx.HTTPStatusError as exc:
@@ -632,18 +634,21 @@ async def pull_from_github(
         raise HTTPException(status_code=413, detail="The GitHub LaTeX file exceeds the 1 MB document limit")
     if "\x00" in content:
         raise HTTPException(status_code=422, detail="The GitHub LaTeX file contains unsupported null bytes")
+    # Network I/O must not hold a database lock. Re-read the owner row under
+    # lock afterwards so detachment and metadata updates use current state.
+    resume = (await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if not resume.github_sync_enabled or resume.github_repo_name != repo_name:
+        raise HTTPException(status_code=409, detail="GitHub sync settings changed while pulling; please retry")
+    apply_source_change(resume, content)
     metadata = dict(resume.resume_settings or {})
     metadata[_GITHUB_SYNC_SHA_KEY] = remote["sha"]
-    # A pulled source file invalidates a compiled anonymous share artifact in
-    # exactly the same way as a normal editor save.
-    metadata.pop("share_anonymous_job_id", None)
-    metadata.pop("share_anonymous_pending", None)
     resume.resume_settings = metadata
     flag_modified(resume, "resume_settings")
-    if content != resume.latex_content and resume.selected_template_id and resume.structured_content:
-        resume.builder_status = "detached"
-        resume.content_source = "manual_latex"
-    resume.latex_content = content
     resume.github_last_sync_at = datetime.now(timezone.utc)
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()

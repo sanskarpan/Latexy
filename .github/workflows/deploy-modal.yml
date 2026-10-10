@@ -107,6 +107,21 @@ jobs:
         if: steps.freshness.outputs.current == 'true'
         run: python -m pip install "modal==1.5.4"
 
+      - name: Validate read-only billing rollout safety
+        if: steps.freshness.outputs.current == 'true'
+        working-directory: backend
+        env:
+          # Unset/false keeps configured live sales on hold. This non-secret
+          # operator assertion never bypasses startup, schema or access checks.
+          DODO_LIVE_BILLING_ACCEPTED: ${{ vars.DODO_LIVE_BILLING_ACCEPTED }}
+        run: |
+          set -euo pipefail
+          args=(--source-revision "$DEPLOY_SHA" --expected-environment main --purpose rollout)
+          if [[ "${DODO_LIVE_BILLING_ACCEPTED:-}" == "true" ]]; then
+            args+=(--allow-configured-live)
+          fi
+          modal run --env main modal_app.py::billing_preflight "${args[@]}"
+
       # Use the candidate API's existing bindings before touching the schema or
       # serving functions. This checks configuration, not image certification.
       - name: Check renderer configuration before migrations

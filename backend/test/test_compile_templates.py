@@ -100,6 +100,7 @@ async def test_asset_backfill_uses_new_resume_engine_for_latin_and_unicode_templ
         sources[tex_path.read_text(encoding="utf-8")] = command[command.index("-interaction=nonstopmode") - 1]
         output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\n")
+        (output_dir / "template.fls").write_text(f"PWD {output_dir}\nINPUT {output_dir / 'template.tex'}\n")
         return SimpleNamespace(returncode=0)
 
     europecv = (Path(__file__).resolve().parents[1] / "app" / "data" / "templates" / "regional" / "europecv.tex").read_text()
@@ -138,6 +139,7 @@ async def test_asset_backfill_propagates_failed_compilation(monkeypatch):
         calls.append(command)
         output_dir = Path(command[command.index("-output-directory") + 1])
         (output_dir / "template.log").write_text("! synthetic compiler failure\nl.1", encoding="utf-8")
+        (output_dir / "template.fls").write_text(f"PWD {output_dir}\nINPUT {output_dir / 'template.tex'}\n")
         return SimpleNamespace(returncode=1)
 
     hindi = (Path(__file__).resolve().parents[1] / "app" / "data" / "templates" / "ats_safe" / "hindi_professional.tex").read_text()

@@ -705,7 +705,7 @@ class TestGitHubEndpoints:
         user_result.scalar_one_or_none.return_value = mock_user
         resume_result = MagicMock()
         resume_result.scalar_one_or_none.return_value = mock_resume
-        mock_db.execute = AsyncMock(side_effect=[user_result, resume_result])
+        mock_db.execute = AsyncMock(side_effect=[user_result, resume_result, resume_result])
         mock_db.commit = AsyncMock()
         app.dependency_overrides[get_db] = lambda: mock_db
         try:

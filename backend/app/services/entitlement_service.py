@@ -45,7 +45,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import (
@@ -61,7 +61,7 @@ from ..core.feature_registry import (
     is_gateable,
 )
 from ..core.logging import get_logger
-from ..database.models import FeatureFlag, PlanFeature, User
+from ..database.models import FeatureFlag, PlanFeature, Subscription, TeamSeat, User
 
 logger = get_logger(__name__)
 
@@ -309,6 +309,15 @@ class EntitlementService:
         role = getattr(user, "role", None)
         plan = getattr(user, "subscription_plan", None)
         if role is not None or plan is not None:
+            user_id = getattr(user, "id", None)
+            if role in _ADMIN_ROLES or not isinstance(user_id, str):
+                return role, plan
+            plan = await self._effective_plan_for_billing_status(
+                user_id,
+                plan,
+                subscription_status=getattr(user, "subscription_status", None),
+                subscription_id=getattr(user, "subscription_id", None),
+            )
             return role, plan
 
         # user is a user_id string → load the row on a dedicated session.
@@ -316,14 +325,147 @@ class EntitlementService:
             from ..database.connection import get_async_db_session
 
             async with get_async_db_session() as db:
-                result = await db.execute(
-                    select(User.role, User.subscription_plan).where(User.id == user)
-                )
+                result = await db.execute(select(
+                    User.role, User.subscription_plan, User.subscription_status, User.subscription_id,
+                ).where(User.id == user))
                 row = result.first()
             if row:
-                return row[0], row[1]
+                role, plan = row[0], row[1]
+                if role not in _ADMIN_ROLES:
+                    plan = await self._effective_plan_for_billing_status(
+                        user, plan, subscription_status=row[2], subscription_id=row[3],
+                    )
+                return role, plan
 
         return None, None
+
+    async def _effective_plan_for_billing_status(
+        self,
+        user_id: str,
+        plan: Optional[str],
+        *,
+        subscription_status: str | None = None,
+        subscription_id: str | None = None,
+    ) -> Optional[str]:
+        """Resolve paid access without changing the plan stored for billing history."""
+        if plan == "team_member":
+            return await self._effective_team_member_plan(user_id)
+        suspended_statuses = {
+            "on_hold", "paused", "checkout_pending", "checkout_unknown", "created", "pending",
+            "inactive", "failed", "cancelled", "expired", "refunded",
+        }
+        try:
+            from ..database.connection import get_async_db_session
+
+            async with get_async_db_session() as db:
+                if subscription_status is None:
+                    user_state = await db.execute(select(
+                        User.role, User.subscription_plan, User.subscription_status, User.subscription_id,
+                    ).where(User.id == user_id))
+                    row = user_state.first()
+                    if row:
+                        if row.role in _ADMIN_ROLES:
+                            return plan
+                        plan = row.subscription_plan or plan
+                        subscription_status = row.subscription_status
+                        subscription_id = row.subscription_id
+                    else:
+                        return plan
+                # User billing fields are denormalized for API convenience and
+                # can lag a newer subscription.updated event. When a local Dodo
+                # intent is linked, its status is authoritative for gating.
+                provider_state = None
+                if subscription_id:
+                    provider_state = await db.execute(select(
+                        Subscription.plan_id, Subscription.status, Subscription.current_period_end,
+                    ).where(
+                        Subscription.id == subscription_id,
+                        Subscription.user_id == user_id,
+                        Subscription.provider == "dodo",
+                    ))
+                    provider_state = provider_state.first()
+                if provider_state:
+                    provider_plan, raw_provider_status, period_end = provider_state
+                    # A linked paid user plan proves this is an established
+                    # entitlement. The subscription row is authoritative when
+                    # its event was newer than the denormalized User fields.
+                    if (
+                        not plan
+                        or resolve_plan_family(plan) == "free"
+                        or resolve_plan_family(plan) != resolve_plan_family(provider_plan)
+                    ):
+                        return "free"
+                    provider_status = str(raw_provider_status or "").lower()
+                    if provider_status in suspended_statuses:
+                        return "free"
+                    if provider_status in {"past_due", "cancel_scheduled"}:
+                        # Scheduled cancellation ends access at the paid term
+                        # even when its final provider webhook is delayed.
+                        if period_end is None:
+                            return "free"
+                        if period_end.tzinfo is None:
+                            period_end = period_end.replace(tzinfo=timezone.utc)
+                        return plan if period_end > datetime.now(timezone.utc) else "free"
+                    if provider_status != "active":
+                        return "free"
+                    return plan
+                if subscription_status in suspended_statuses | {"past_due", "cancel_scheduled"}:
+                    # Grace cannot be established without a matching local
+                    # subscription record and its billing period end; explicit
+                    # suspended user state also fails closed when no linked
+                    # Dodo intent exists.
+                    return "free"
+        except Exception as exc:
+            # An inability to verify a suspended/grace-period subscription
+            # must not continue granting its paid quota or feature family.
+            logger.warning("Billing status lookup failed for entitlement", extra={"error_type": type(exc).__name__})
+            return "free"
+        return plan
+
+    async def _effective_team_member_plan(self, member_user_id: str) -> str:
+        """Grant team access only while an active seat has a paid team owner."""
+        try:
+            from ..database.connection import get_async_db_session
+
+            async with get_async_db_session() as db:
+                result = await db.execute(
+                    select(
+                        User.subscription_plan,
+                        Subscription.plan_id,
+                        Subscription.status,
+                        Subscription.current_period_end,
+                    )
+                    .select_from(TeamSeat)
+                    .join(User, User.id == TeamSeat.owner_user_id)
+                    .join(
+                        Subscription,
+                        (cast(Subscription.id, String) == User.subscription_id)
+                        & (Subscription.user_id == User.id)
+                        & (Subscription.provider == "dodo"),
+                    )
+                    .where(
+                        TeamSeat.member_user_id == member_user_id,
+                        TeamSeat.status == "active",
+                    )
+                )
+                now = datetime.now(timezone.utc)
+                for owner_plan, subscription_plan, raw_status, period_end in result.all():
+                    if (
+                        resolve_plan_family(owner_plan) != "team"
+                        or resolve_plan_family(subscription_plan) != "team"
+                    ):
+                        continue
+                    status = str(raw_status or "").lower()
+                    if status == "active":
+                        return "team"
+                    if status in {"past_due", "cancel_scheduled"} and period_end is not None:
+                        if period_end.tzinfo is None:
+                            period_end = period_end.replace(tzinfo=timezone.utc)
+                        if period_end > now:
+                            return "team"
+        except Exception as exc:
+            logger.warning("Team member entitlement lookup failed", extra={"error_type": type(exc).__name__})
+        return "free"
 
     async def get_state(self, db: AsyncSession | None = None) -> dict:
         """Return full entitlement state for the admin API.
@@ -453,6 +595,7 @@ class EntitlementService:
         protect, so a counter outage degrades usage *reporting* only and must not
         deny the highest-paying tiers.
         """
+        plan = await self._effective_plan_for_billing_status(user_id, plan)
         limit = get_plan_quota(plan, dimension)
         window = get_plan_quota_window(plan, dimension)
         period = _current_period(window)
@@ -641,6 +784,7 @@ class EntitlementService:
         Drives the frontend's usage meters. Never mutates a counter; a Redis
         outage reports ``used: null`` rather than failing the request.
         """
+        plan = await self._effective_plan_for_billing_status(user_id, plan)
         windows = {d: get_plan_quota_window(plan, d) for d in QUOTA_DIMENSIONS}
         periods = {d: _current_period(w) for d, w in windows.items()}
         counts: dict[str, Optional[int]] = {d: None for d in QUOTA_DIMENSIONS}

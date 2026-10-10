@@ -1,0 +1,80 @@
+- link "Skip to content":
+  - /url: "#main-content"
+- banner:
+  - link "Latexy":
+    - /url: /
+  - navigation:
+    - link "Platform":
+      - /url: /platform
+    - link "Templates":
+      - /url: /templates
+    - link "Pricing":
+      - /url: /pricing
+    - link "Resources" [active]:
+      - /url: /resources
+    - link "FAQ":
+      - /url: /faq
+  - generic: Language
+  - combobox "Interface language":
+    - option "English" [selected]
+    - option "हिन्दी"
+    - option "मराठी"
+    - option "తెలుగు"
+    - option "ਪੰਜਾਬੀ"
+    - option "বাংলা"
+  - button "Turn on high contrast mode":
+  - button "Toggle light or dark mode":
+  - link "Log In":
+    - /url: /login
+  - link "Try Free":
+    - /url: /try
+- main:
+  - text: Resources
+  - heading "Everything needed to ship better resumes, faster." [level=1]
+  - paragraph: "Practical resources focused on outcomes: stronger interviews, faster iteration, better scoring confidence."
+  - list:
+    - heading "Guides" [level=2]
+    - paragraph: Role-specific resume strategy, ATS optimization heuristics, and rewrite frameworks.
+    - link "Read Guides →":
+      - /url: /faq
+    - heading "Workflows" [level=2]
+    - paragraph: Operational checklists for weekly resume iteration and job-targeted adaptation.
+    - link "See Workflows →":
+      - /url: /platform
+    - heading "Templates" [level=2]
+    - paragraph: LaTeX-ready templates designed for readable text extraction and strong visual hierarchy.
+    - link "Open Studio →":
+      - /url: /try
+    - heading "Best Practices" [level=2]
+    - paragraph: How to decide when to rewrite, when to trim, and how to benchmark score movement.
+    - link "Start Learning →":
+      - /url: /faq
+  - heading "Stop reading. Start compiling." [level=2]
+  - link "Open the studio →":
+    - /url: /try
+- contentinfo:
+  - paragraph: Latexy
+  - paragraph: Résumés, typeset — precision for modern applicants.
+  - navigation:
+    - link "Platform":
+      - /url: /platform
+    - link "Resources":
+      - /url: /resources
+    - link "Updates":
+      - /url: /updates
+    - link "FAQ":
+      - /url: /faq
+    - link "Open Studio":
+      - /url: /try
+  - paragraph: © 2026 Latexy. All rights reserved.
+  - navigation:
+    - link "Privacy":
+      - /url: /privacy
+    - link "Terms":
+      - /url: /terms
+    - link "Accessibility":
+      - /url: /accessibility
+    - link "Contact":
+      - /url: mailto:support@latexy.com
+- region "Notifications alt+T"
+- alert: Latexy | Precision Resume Intelligence

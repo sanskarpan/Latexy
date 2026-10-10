@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
 const OWNER_A_RESUME = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 const TEMPLATE_A = '11111111-1111-1111-1111-111111111111'
 const TEMPLATE_B = '22222222-2222-2222-2222-222222222222'
@@ -101,7 +105,7 @@ test.describe('saved guided builder ownership boundaries', () => {
       contentType: 'application/json',
       body: JSON.stringify(templatesFor(owner.value)),
     }))
-    await page.route(`**/resumes/${OWNER_A_RESUME}/builder`, async route => {
+    await page.route(`**/resumes/${OWNER_A_RESUME}/builder/v1`, async route => {
       if (route.request().method() === 'GET') {
         const currentOwner = owner.value
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse({ id: OWNER_A_RESUME, owner: currentOwner, templateId: currentOwner === 'owner-a' ? TEMPLATE_A : TEMPLATE_B })) })
@@ -154,7 +158,7 @@ test.describe('saved guided builder ownership boundaries', () => {
     }))
     await page.route('**/ws/**', route => route.abort())
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templatesFor('owner-a')) }))
-    await page.route(`**/resumes/${OWNER_A_RESUME}/builder`, async route => {
+    await page.route(`**/resumes/${OWNER_A_RESUME}/builder/v1`, async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse({ id: OWNER_A_RESUME, owner: 'owner-a', templateId: TEMPLATE_A })) })
       }
@@ -203,7 +207,7 @@ test.describe('saved guided builder ownership boundaries', () => {
     })
     await page.route('**/ws/**', route => route.abort())
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templatesFor('owner-a')) }))
-    await page.route(`**/resumes/${OWNER_A_RESUME}/builder`, async route => {
+    await page.route(`**/resumes/${OWNER_A_RESUME}/builder/v1`, async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse({ id: OWNER_A_RESUME, owner: 'owner-a', templateId: TEMPLATE_A })) })
       }
@@ -276,7 +280,7 @@ test.describe('saved guided builder ownership boundaries', () => {
     })
     await page.route('**/ws/**', route => route.abort())
     await page.route('**/resumes/builder/templates', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(templatesFor(owner.value)) }))
-    await page.route(`**/resumes/${OWNER_A_RESUME}/builder`, async route => {
+    await page.route(`**/resumes/${OWNER_A_RESUME}/builder/v1`, async route => {
       if (route.request().method() === 'GET') {
         const currentOwner = owner.value
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse({ id: OWNER_A_RESUME, owner: currentOwner, status: 'detached', templateId: currentOwner === 'owner-a' ? TEMPLATE_A : TEMPLATE_B })) })
@@ -292,6 +296,7 @@ test.describe('saved guided builder ownership boundaries', () => {
     })
     await page.goto(`/workspace/builder/${OWNER_A_RESUME}`, { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Builder detached')).toBeVisible()
+    page.once('dialog', dialog => dialog.accept())
     await page.getByRole('button', { name: /Reattach Builder/ }).click()
     await expect.poll(() => reattachStarted).toBe(true)
 

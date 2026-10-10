@@ -139,15 +139,15 @@ jobs:
           # today's latest registry versions instead of checking this lock.
           cp requirements.lock "$lock_tmp/requirements.lock"
           cp requirements-dev.lock "$lock_tmp/requirements-dev.lock"
-          uv pip compile --python-version 3.12 --generate-hashes \
-            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
+          uv pip compile --universal --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --universal --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
             requirements.txt -o "$lock_tmp/requirements.lock"
-          uv pip compile --python-version 3.12 --generate-hashes \
-            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
+          uv pip compile --universal --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
             requirements-dev.txt -o "$lock_tmp/requirements-dev.lock"
-          # Resolver provenance comments can differ by host (for example,
-          # SQLAlchemy's platform-specific greenlet edge). Compare all actual
-          # lock data, including pins, markers and hashes, not those comments.
+          # A universal resolution retains platform markers and covers Windows,
+          # macOS, and Linux from the same resolved lock data. Compare pins,
+          # markers, and hashes (not resolver provenance comments).
           diff -u <(sed '/^[[:space:]]*#/d' requirements.lock) \
             <(sed '/^[[:space:]]*#/d' "$lock_tmp/requirements.lock")
           diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock) \
@@ -443,15 +443,18 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality
-      - name: Verify desktop compile cadence and source-PDF synchronization
+      - name: Verify guided builder, compile cadence and source-PDF synchronization
         env:
           PLAYWRIGHT_PORT: "5183"
           PLAYWRIGHT_SERVER_MODE: production
-        # Reuse one disposable production bundle for editor and Settings owner
+        # Reuse one disposable production bundle for builder, editor and Settings owner
         # regressions with synthetic HTTP/WS/PDF/provider fixtures. No TeX
         # installation, provider credentials or live backend is required.
         run: >-
           pnpm exec playwright test e2e/editor-compile-sync.spec.ts
+          e2e/resume-builder.spec.ts
+          e2e/builder-capabilities.spec.ts
+          e2e/billing-developer.spec.ts
           e2e/settings-provider-action-owner-isolation.spec.ts
           e2e/onboarding-owner-isolation.spec.ts
           e2e/settings-preferences-owner-race.spec.ts

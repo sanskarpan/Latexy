@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
+import { PreviewScheduler } from '@/lib/preview-scheduler'
 
 // Exercise the actual page callbacks with controlled admission promises. This
 // isolates their account/busy-state contract without claiming a DOM render.
@@ -47,6 +48,7 @@ function callback(trigger: Trigger, context: Record<string, unknown>) {
 
 function harness() {
   let identity = 'anonymous:device'
+  let scheduler = new PreviewScheduler(async () => null)
   let busy = false
   let activeJob: string | null = null
   const admissions: Array<{ resolve: (response: Admission) => void; reject: (error: Error) => void }> = []
@@ -61,6 +63,7 @@ function harness() {
   const clearPdfPreview = vi.fn()
   const context = () => ({
     Error, performance,
+    queuePreview: { submitManual: (source: string, submit: () => Promise<string | null>) => scheduler.submitManual(source, submit) },
     previewRequestIdentityRef, previewAccountRef, previewAccountIdentity: identity,
     isProcessing: false, isSubmitting: busy,
     setIsSubmitting: (value: boolean) => { busy = value },
@@ -78,6 +81,10 @@ function harness() {
     previewErrorMessage: (error: Error) => error.message,
   })
   const renderIdentity = (nextIdentity = identity) => {
+    if (identity !== nextIdentity) {
+      scheduler.dispose()
+      scheduler = new PreviewScheduler(async () => null)
+    }
     identity = nextIdentity
     previewRequestIdentityRef = evaluateCode(`(() => { ${identityRenderCode}; return previewRequestIdentityRef })()`, {
       ...context(), useRef: (current: unknown) => previewRequestIdentityRef ?? { current },

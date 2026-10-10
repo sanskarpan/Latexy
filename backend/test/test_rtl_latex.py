@@ -2,6 +2,7 @@
 
 import shutil
 import subprocess
+import unicodedata
 
 import pytest
 
@@ -201,10 +202,9 @@ def test_lualatex_rtl_compile_and_pdf_text_layer(
         text=True,
         check=True,
     ).stdout
-    import unicodedata
-
-    # Poppler may return Arabic presentation forms. Require the exact words
-    # after Unicode compatibility normalization, preserving their order.
-    assert arabic in unicodedata.normalize("NFKC", extracted)
-    assert hebrew in extracted
-    assert "Acme Corp" in extracted
+    # Poppler can emit Arabic presentation forms for the shaped font's glyphs.
+    # Compare Unicode-equivalent text while retaining all content assertions.
+    normalized_text = unicodedata.normalize("NFKC", extracted)
+    assert arabic in normalized_text
+    assert hebrew in normalized_text
+    assert "Acme Corp" in normalized_text

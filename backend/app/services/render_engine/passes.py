@@ -13,6 +13,7 @@ from ..latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
     cleanup_docker_container,
     engine_env,
+    engine_output_error,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
@@ -64,29 +65,23 @@ def converge(*, job_id: str, job_dir: Path, command: list[str], cwd: str | None,
         output = BoundedTranscript()
         pages = None
         try:
-            # Import only at execution time: workers.__init__ eagerly loads
-            # Celery tasks which themselves import RenderPassError.
-            from ...workers.buffered_events import BufferedEventPublisher
-
-            with BufferedEventPublisher(job_id, publisher=publisher) as events:
-                for line in iter_bounded_lines(proc.stdout):
-                    if tex and find_engine_read_escape(line, read_workspace):
-                        raise RenderPassError(ENGINE_READ_ESCAPE_ERROR)
-                    bounded = output.append(line)
-                    transcript.append(line)
-                    if compiler != "lualatex" and tex:
-                        events.publish("log.line", {"line": bounded, "source": compiler,
-                                                   "is_error": line.startswith("!")})
-                    matched = _PAGES.search(line)
-                    if matched:
-                        pages = int(matched[1])
+            for line in iter_bounded_lines(proc.stdout):
+                if tex and find_engine_read_escape(line, read_workspace):
+                    raise RenderPassError(ENGINE_READ_ESCAPE_ERROR)
+                output.append(line)
+                transcript.append(line)
+                matched = _PAGES.search(line)
+                if matched:
+                    pages = int(matched[1])
             proc.wait()
             process_timing.finish()
             if watchdog.reason:
                 raise RenderPassError("cancelled" if watchdog.reason == "cancelled" else "compile_timeout")
-            if tex and find_recorder_read_escape(job_dir / "resume.fls", read_workspace, require_recorder=True):
-                raise RenderPassError(ENGINE_READ_ESCAPE_ERROR)
-            if compiler == "lualatex" and tex:
+            if tex:
+                violation = find_recorder_read_escape(job_dir / "resume.fls", read_workspace, require_recorder=True)
+                if violation:
+                    raise RenderPassError(engine_output_error(violation))
+            if tex:
                 from .log_gating import publish_verified_log
 
                 publish_verified_log(job_id, output, compiler, publisher)

@@ -1202,7 +1202,8 @@ class TestReconcileCompilationRecord:
         """
         DELETE /jobs/{id} is a shipped endpoint: the cancel branch used to return
         without reconciling, wedging the row at "processing" forever, and without
-        caching the log so GET /logs/{id} 404'd.
+        caching a safe status log so GET /logs/{id} 404'd. Partial engine output
+        cannot be released before final recorder validation.
         """
         job_id = str(uuid.uuid4())
         with (
@@ -1221,7 +1222,8 @@ class TestReconcileCompilationRecord:
         assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
         assert mock_reconcile.call_args.kwargs["success"] is False
         assert mock_cache_log.call_args.args[0] == job_id
-        assert "partial output" in mock_cache_log.call_args.args[1]
+        assert mock_cache_log.call_args.args[1] == "Compilation cancelled before engine output could be validated."
+        assert "partial output" not in repr(mock_publish.call_args_list)
 
     def test_invalid_watermark_reconciles_row(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
         with patch("app.workers.latex_worker.reconcile_compilation_record") as mock_reconcile:

@@ -38,7 +38,7 @@ describe('guided builder route reliability', () => {
   it('enforces title limits before builder writes', () => {
     expect(NEW_BUILDER).toContain('title.trim().length > 255')
     expect(NEW_BUILDER).toContain('maxLength={255}')
-    expect(EDIT_BUILDER).toContain("!title.trim() || title.length > 255")
+    expect(EDIT_BUILDER).toContain("!snapshot.title.trim() || snapshot.title.length > 255")
     expect(EDIT_BUILDER).toContain('maxLength={255}')
   })
 })

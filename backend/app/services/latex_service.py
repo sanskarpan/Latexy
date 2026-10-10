@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import HTTPException
 
@@ -25,7 +25,6 @@ from ..utils.bounded_io import (
     MAX_RECORDER_BYTES,
     BoundedReadError,
     BoundedTranscript,
-    bound_log_line,
     capture_process_output_bounded,
     iter_bounded_lines,
     read_file_bounded,
@@ -258,6 +257,18 @@ def engine_env(workspace: str | Path | None = None, compiler: str = "pdflatex") 
     return env
 
 
+def publish_verified_engine_log(
+    job_id: str,
+    transcript: BoundedTranscript,
+    compiler: str,
+    publish: Callable[..., object],
+) -> None:
+    """Release bounded diagnostics only after all engine read checks passed."""
+    from .render_engine.log_gating import publish_verified_log
+
+    publish_verified_log(job_id, transcript, compiler, publish)
+
+
 ENGINE_UNAVAILABLE_ERROR = "LaTeX compilation is temporarily unavailable."
 
 
@@ -477,6 +488,13 @@ def find_recorder_read_escape(
 
 
 ENGINE_READ_ESCAPE_ERROR = "Compilation blocked: the document tried to read a file outside its own directory."
+ENGINE_UNVERIFIED_OUTPUT_ERROR = "Compilation failed before engine output could be validated."
+
+
+def engine_output_error(violation: str) -> str:
+    if violation.startswith("<no recorder file"):
+        return ENGINE_UNVERIFIED_OUTPUT_ERROR
+    return ENGINE_READ_ESCAPE_ERROR
 
 
 # ── LaTeX injection guards (defence in depth) ───────────────────────────────
@@ -728,7 +746,7 @@ class LaTeXService:
             recorder_escape = find_recorder_read_escape(
                 job_dir / f"resume{RECORDER_SUFFIX}",
                 workspace,
-                require_recorder=process.returncode == 0,
+                require_recorder=True,
             )
             if recorder_escape:
                 logger.warning(
@@ -742,7 +760,7 @@ class LaTeXService:
                 return CompilationResponse(
                     success=False,
                     job_id=job_id,
-                    message=ENGINE_READ_ESCAPE_ERROR,
+                    message=engine_output_error(recorder_escape),
                     compilation_time=compilation_time,
                 )
 
@@ -900,7 +918,6 @@ def run_latex_subprocess(
     can include any extra payload (e.g. ``optimized_latex``).
     """
     # Lazy import to avoid circular imports (workers → services → workers)
-    from ..workers.buffered_events import BufferedEventPublisher  # noqa: PLC0415
     from ..workers.event_publisher import is_cancelled, publish_event  # noqa: PLC0415
     from .render_engine.cancellation import CancellationPoll  # noqa: PLC0415
 
@@ -968,43 +985,35 @@ def run_latex_subprocess(
         timeout=timeout,
         is_cancelled=lambda: is_cancelled(job_id),
     ).start()
+    transcript = BoundedTranscript()
     try:
-        with BufferedEventPublisher(job_id, publisher=publish_event) as events:
-            cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
-            for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
-                if not line:
-                    continue
-                escaped = find_engine_read_escape(line, workspace)
-                if escaped:
-                    # Kill before publishing: the next lines would carry the file's contents.
-                    proc.kill()
-                    cleanup_docker_container(container_name)
-                    proc.wait()
-                    logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
-                    return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
+        cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
+        for line in iter_bounded_lines(proc.stdout):  # type: ignore[arg-type]
+            if not line:
+                continue
+            escaped = find_engine_read_escape(line, workspace)
+            if escaped:
+                # Kill before publishing: the next lines would carry the file's contents.
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                logger.warning("[%s] engine read outside the job directory: %s", job_id, escaped)
+                return False, time.time() - start_time, ENGINE_READ_ESCAPE_ERROR
 
-                line_lower = line.lower()
-                is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
-                events.publish(
-                    "log.line",
-                    {
-                        "source": "pdflatex",
-                        "line": bound_log_line(line)[0],
-                        "is_error": is_error,
-                    },
-                )
+            # Release diagnostics only after the recorder validates the pass.
+            transcript.append(line)
 
-                if timeout is not None and time.time() - start_time > timeout:
-                    proc.kill()
-                    cleanup_docker_container(container_name)
-                    proc.wait()
-                    return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
+            if timeout is not None and time.time() - start_time > timeout:
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
 
-                if cancellation_poll():
-                    proc.kill()
-                    cleanup_docker_container(container_name)
-                    proc.wait()
-                    raise RuntimeError("Job cancelled during LaTeX compilation")
+            if cancellation_poll():
+                proc.kill()
+                cleanup_docker_container(container_name)
+                proc.wait()
+                raise RuntimeError("Job cancelled during LaTeX compilation")
     except BaseException:
         cleanup_docker_container(container_name)
         raise
@@ -1028,12 +1037,14 @@ def run_latex_subprocess(
     recorder_escape = find_recorder_read_escape(
         job_dir / f"resume{RECORDER_SUFFIX}",
         workspace,
-        require_recorder=proc.returncode == 0,
+        require_recorder=True,
     )
     if recorder_escape:
         logger.warning("[%s] engine read outside the job directory (recorder): %s", job_id, recorder_escape)
         cleanup_docker_container(container_name)
-        return False, compilation_time, ENGINE_READ_ESCAPE_ERROR
+        return False, compilation_time, engine_output_error(recorder_escape)
+
+    publish_verified_engine_log(job_id, transcript, "pdflatex", publish_event)
 
     if proc.returncode == 0 and pdf_file.exists():
         cleanup_docker_container(container_name)

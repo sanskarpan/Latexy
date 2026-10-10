@@ -1,5 +1,10 @@
 # Local remediation ledger — 2026-08-31
 
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](../BILLING_DODO.md) and the October 2026 migration audit.
+
+
 This is the working ledger for the current uncommitted QA pass. It records
 locally reproduced findings and verification evidence; GitHub issue #1621 and
 the canonical `docs/HANDOFF.md` remain authoritative after publication.

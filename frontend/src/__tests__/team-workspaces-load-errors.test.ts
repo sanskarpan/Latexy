@@ -16,6 +16,6 @@ describe('team-workspace load failures', () => {
 
   it('uses the confirmed-session guard and terminates loading when signed out', () => {
     expect(WORKSPACES_SOURCE).toContain('useRequireAuth()')
-    expect(WORKSPACES_SOURCE).toContain("if (!session?.user) {\n      setLoading(false)")
+    expect(WORKSPACES_SOURCE).toMatch(/if \(!session\?\.user\) \{\s*setLoading\(false\)/)
   })
 })

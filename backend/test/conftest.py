@@ -85,6 +85,12 @@ os.environ["ENVIRONMENT"] = "test"
 # exercise Modal parity opt in explicitly with monkeypatch; ordinary fixtures
 # must not spawn remote work with locally configured credentials.
 os.environ["DEPLOY_TARGET"] = "local"
+# Unit/contract suites must never inherit an operator's sandbox or live billing
+# credentials/catalog. Real provider verification uses a separate explicit run.
+for _billing_env_name in list(os.environ):
+    if _billing_env_name.startswith("DODO_"):
+        os.environ[_billing_env_name] = ""
+os.environ["DODO_MODE"] = "test"
 # Always force test secrets — overrides anything in .env so make_jwt() matches settings
 os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
 os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"

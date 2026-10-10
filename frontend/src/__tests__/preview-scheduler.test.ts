@@ -145,3 +145,153 @@ describe('revision preview scheduling', () => {
     scheduler.dispose()
   })
 })
+
+describe('manual previews share the scheduler admission fence', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  function harness() {
+    const automatic = vi.fn().mockResolvedValue('automatic-job')
+    const scheduler = new PreviewScheduler(automatic, () => Date.now())
+    scheduler.update(true, false)
+    let resolve!: (job: string | null) => void
+    let reject!: (error: Error) => void
+    const manual = vi.fn(() => new Promise<string | null>((yes, no) => { resolve = yes; reject = no }))
+    return { scheduler, automatic, manual, resolve: (job: string | null) => resolve(job), reject: () => reject(new Error('ACK lost')) }
+  }
+
+  it('adopts a queued identical source and never submits it again after terminal', async () => {
+    const h = harness()
+    h.scheduler.request('A')
+    const pending = h.scheduler.submitManual('A', h.manual)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.manual).toHaveBeenCalledOnce()
+    expect(h.automatic).not.toHaveBeenCalled()
+    h.resolve('manual-job'); await pending
+    h.scheduler.complete('manual-job')
+    h.scheduler.request('A')
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.automatic).not.toHaveBeenCalled()
+    h.scheduler.dispose()
+  })
+
+  it('preserves only the latest edit made during manual admission and rendering', async () => {
+    const h = harness()
+    h.scheduler.request('A')
+    const pending = h.scheduler.submitManual('A', h.manual)
+    h.scheduler.request('B')
+    h.resolve('manual-job'); await pending
+    h.scheduler.request('C')
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.automatic).not.toHaveBeenCalled()
+    h.scheduler.complete('manual-job')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.automatic).toHaveBeenCalledExactlyOnceWith('C', expect.any(Number))
+    h.scheduler.dispose()
+  })
+
+  it('discards a pre-manual notification superseded by the latest captured buffer', async () => {
+    const h = harness()
+    h.scheduler.request('older')
+    const pending = h.scheduler.submitManual('newer', h.manual)
+    h.resolve('manual-job'); await pending
+    h.scheduler.complete('manual-job')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(h.automatic).not.toHaveBeenCalled()
+    h.scheduler.dispose()
+  })
+
+  it('reserves synchronously against repeated manual clicks and an already due auto timer', async () => {
+    const h = harness()
+    h.scheduler.request('A', undefined, true)
+    const pending = h.scheduler.submitManual('A', h.manual)
+    await h.scheduler.submitManual('A', h.manual)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.manual).toHaveBeenCalledOnce()
+    expect(h.automatic).not.toHaveBeenCalled()
+    h.resolve('manual-job'); await pending
+    await h.scheduler.submitManual('A', h.manual)
+    expect(h.manual).toHaveBeenCalledOnce()
+    h.scheduler.dispose()
+  })
+
+  it('does not admit a manual click when the automatic admission wins the race', async () => {
+    let resolve!: (job: string) => void
+    const automatic = vi.fn(() => new Promise<string>(yes => { resolve = yes }))
+    const manual = vi.fn().mockResolvedValue('manual-job')
+    const scheduler = new PreviewScheduler(automatic, () => Date.now())
+    scheduler.update(true, false); scheduler.request('A', undefined, true)
+    await vi.advanceTimersByTimeAsync(0)
+    await scheduler.submitManual('A', manual)
+    expect(automatic).toHaveBeenCalledOnce()
+    expect(manual).not.toHaveBeenCalled()
+    resolve('automatic-job'); await vi.advanceTimersByTimeAsync(0)
+    await scheduler.submitManual('A', manual)
+    expect(manual).not.toHaveBeenCalled()
+    scheduler.dispose()
+  })
+
+  for (const outcome of ['failure', 'ambiguous'] as const) {
+    it(`does not automatically repeat a ${outcome} manual admission, but permits an explicit retry`, async () => {
+      const h = harness()
+      h.scheduler.request('A', undefined, true)
+      const pending = h.scheduler.submitManual('A', h.manual)
+      if (outcome === 'failure') h.resolve(null)
+      else h.reject()
+      await pending
+      h.scheduler.request('A')
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(h.automatic).not.toHaveBeenCalled()
+      const retry = h.scheduler.submitManual('A', h.manual)
+      expect(h.manual).toHaveBeenCalledTimes(2)
+      h.resolve('retry-job'); await retry
+      h.scheduler.dispose()
+    })
+  }
+
+  it('allows manual previews when automatic previews are disabled', async () => {
+    const h = harness()
+    h.scheduler.update(false, false)
+    const pending = h.scheduler.submitManual('A', h.manual)
+    expect(h.manual).toHaveBeenCalledOnce()
+    h.resolve('manual-job'); await pending
+    h.scheduler.dispose()
+  })
+
+  it('respects a busy external job and disposal before any manual side effect', async () => {
+    const h = harness()
+    h.scheduler.update(true, true)
+    await h.scheduler.submitManual('A', h.manual)
+    h.scheduler.update(true, false); h.scheduler.dispose()
+    await h.scheduler.submitManual('A', h.manual)
+    expect(h.manual).not.toHaveBeenCalled()
+  })
+
+  for (const beforeAck of [false, true]) {
+    it(`releases an acknowledged terminal/cancellation ${beforeAck ? 'before' : 'after'} the manual ACK`, async () => {
+      const h = harness()
+      const pending = h.scheduler.submitManual('A', h.manual)
+      h.scheduler.request('B', undefined, true)
+      h.scheduler.complete('unrelated-job')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(h.automatic).not.toHaveBeenCalled()
+      if (beforeAck) h.scheduler.complete('manual-job')
+      h.resolve('manual-job'); await pending
+      if (!beforeAck) h.scheduler.complete('manual-job')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(h.automatic).toHaveBeenCalledExactlyOnceWith('B', expect.any(Number))
+      h.scheduler.dispose()
+    })
+  }
+
+  it('preserves explicit accepted-edit behavior for unchanged source after manual admission', async () => {
+    const h = harness()
+    const pending = h.scheduler.submitManual('A', h.manual)
+    h.scheduler.request('A', undefined, true)
+    h.resolve('manual-job'); await pending
+    h.scheduler.complete('manual-job')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.automatic).toHaveBeenCalledExactlyOnceWith('A', expect.any(Number))
+    h.scheduler.dispose()
+  })
+})

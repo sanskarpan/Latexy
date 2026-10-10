@@ -55,11 +55,13 @@ from ..services.latex_service import (
     docker_engine_command,
     docker_sandbox_args,
     engine_env,
+    engine_output_error,
     engine_sandbox_flags,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
     native_engine_command,
+    publish_verified_engine_log,
 )
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
@@ -72,7 +74,6 @@ from ..utils.bounded_io import (
     iter_bounded_lines,
 )
 from ..utils.process_watchdog import ProcessWatchdog
-from ..workers.buffered_events import BufferedEventPublisher
 from ..workers.event_publisher import (
     get_worker_redis,
     is_cancelled,
@@ -1360,66 +1361,52 @@ def _run_latex_stage(
                 is_cancelled=lambda: is_cancelled(job_id),
             ).start()
             try:
-                with BufferedEventPublisher(job_id, publisher=publish_event) as events:
-                    cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
-                    for stripped in iter_bounded_lines(proc.stdout):
-                        if stripped:
-                            # Read confinement (see latex_service.find_engine_read_escape):
-                            # kill before the line is streamed, because what follows it is
-                            # the contents of whatever file was opened. \openin reads are
-                            # invisible here — the recorder check after the run covers those.
-                            escaped = find_engine_read_escape(stripped, workspace)
-                            if escaped:
-                                proc.kill()
-                                cleanup_docker_container(container_name)
-                                proc.wait()
-                                logger.warning(f"[{job_id}] engine read outside the job directory: {escaped}")
-                                return (
-                                    False,
-                                    time.time() - start_time,
-                                    ENGINE_READ_ESCAPE_ERROR,
-                                    None,
-                                    None,
-                                )
-
-                            bounded_line = transcript.append(stripped)
-
-                            # Extract page count from pdflatex summary line
-                            m = _PAGE_COUNT_RE.search(stripped)
-                            if m:
-                                page_count = int(m.group(1))
-
-                            is_error = "error" in stripped.lower() or stripped.startswith("!")
-                            if "fatal" in stripped.lower():
-                                is_error = True
-                            if compiler != "lualatex":
-                                events.publish(
-                                    "log.line",
-                                    {
-                                        "line": bounded_line,
-                                        "source": compiler,
-                                        "is_error": is_error,
-                                    },
-                                )
-
-                        if cancellation_poll():
+                cancellation_poll = CancellationPoll(lambda: is_cancelled(job_id))
+                for stripped in iter_bounded_lines(proc.stdout):
+                    if stripped:
+                        # Read confinement (see latex_service.find_engine_read_escape):
+                        # kill before the line is streamed, because what follows it is
+                        # the contents of whatever file was opened. \openin reads are
+                        # invisible here — the recorder check after the run covers those.
+                        escaped = find_engine_read_escape(stripped, workspace)
+                        if escaped:
                             proc.kill()
                             cleanup_docker_container(container_name)
                             proc.wait()
-                            return False, time.time() - start_time, "cancelled", None, None
-
-                        if time.time() - start_time > timeout:
-                            proc.kill()
-                            cleanup_docker_container(container_name)
-                            proc.wait()
-                            record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+                            logger.warning(f"[{job_id}] engine read outside the job directory: {escaped}")
                             return (
                                 False,
                                 time.time() - start_time,
-                                f"Compilation timed out after {int(timeout)}s",
+                                ENGINE_READ_ESCAPE_ERROR,
                                 None,
                                 None,
                             )
+
+                        transcript.append(stripped)
+
+                        # Extract page count from pdflatex summary line
+                        m = _PAGE_COUNT_RE.search(stripped)
+                        if m:
+                            page_count = int(m.group(1))
+
+                    if cancellation_poll():
+                        proc.kill()
+                        cleanup_docker_container(container_name)
+                        proc.wait()
+                        return False, time.time() - start_time, "cancelled", None, None
+
+                    if time.time() - start_time > timeout:
+                        proc.kill()
+                        cleanup_docker_container(container_name)
+                        proc.wait()
+                        record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+                        return (
+                            False,
+                            time.time() - start_time,
+                            f"Compilation timed out after {int(timeout)}s",
+                            None,
+                            None,
+                        )
             except SoftTimeLimitExceeded:
                 # Kill the subprocess before the exception propagates to the task handler
                 try:
@@ -1472,15 +1459,12 @@ def _run_latex_stage(
         recorder_escape = find_recorder_read_escape(
             job_dir / f"resume{RECORDER_SUFFIX}",
             workspace,
-            require_recorder=proc.returncode == 0 or compiler == "lualatex",
+            require_recorder=True,
         )
         if recorder_escape:
             logger.warning(f"[{job_id}] engine read outside the job directory: {recorder_escape}")
-            return False, compilation_time, ENGINE_READ_ESCAPE_ERROR, None, None
-        if compiler == "lualatex":
-            from ..services.render_engine.log_gating import publish_verified_log
-
-            publish_verified_log(job_id, transcript, compiler, publish_event)
+            return False, compilation_time, engine_output_error(recorder_escape), None, None
+        publish_verified_engine_log(job_id, transcript, compiler, publish_event)
 
         if proc.returncode == 0:
             from ..services.render_engine.passes import RenderPassError, converge

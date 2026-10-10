@@ -396,6 +396,15 @@ class ResumeBuilderService:
     def is_supported_category(self, category: str, document_type: str = "resume") -> bool:
         return document_type == "resume" and category in SUPPORTED_BUILDER_CATEGORIES
 
+    def _experience_has_content(self, entry: BuilderExperienceEntry) -> bool:
+        return any(value.strip() for value in [entry.title, entry.company, entry.summary, *entry.bullets, *entry.technologies])
+
+    def _education_has_content(self, entry: BuilderEducationEntry) -> bool:
+        return any(value.strip() for value in [entry.institution, entry.degree, entry.field, *entry.highlights])
+
+    def _project_has_content(self, entry: BuilderProjectEntry) -> bool:
+        return any(value.strip() for value in [entry.name, entry.description, *entry.bullets, *entry.technologies])
+
     def _skills_from_parsed(self, parsed: ParsedResume) -> List[BuilderSkillGroup]:
         if parsed.skills_categorized:
             return [
@@ -410,47 +419,55 @@ class ResumeBuilderService:
         score = 0
         missing: list[str] = []
         warnings: list[str] = []
+        hidden = set(structured.hidden_sections)
+        experience = [entry for entry in structured.experience if self._experience_has_content(entry)] if "experience" not in hidden else []
+        education = [entry for entry in structured.education if self._education_has_content(entry)] if "education" not in hidden else []
+        skills = [group for group in structured.skills if any(word.strip() for word in group.keywords)] if "skills" not in hidden else []
+        projects = [entry for entry in structured.projects if self._project_has_content(entry)] if "projects" not in hidden else []
 
-        if structured.basics.name:
+        if structured.basics.name.strip():
             score += 15
         else:
             missing.append("name")
-        if structured.basics.email:
+        if structured.basics.email.strip():
             score += 10
         else:
             missing.append("email")
-        if structured.basics.summary.strip():
-            score += 10
-        else:
-            missing.append("summary")
-        if structured.experience:
-            score += 25
-        else:
-            missing.append("experience")
-        if structured.education:
-            score += 15
-        else:
-            missing.append("education")
-        if any(group.keywords for group in structured.skills):
-            score += 15
-        else:
-            missing.append("skills")
-        if structured.projects:
+        if "summary" not in hidden:
+            if structured.basics.summary.strip():
+                score += 10
+            else:
+                missing.append("summary")
+        for section, entries, weight in (
+            ("experience", experience, 25), ("education", education, 15), ("skills", skills, 15),
+        ):
+            if section not in hidden:
+                if entries:
+                    score += weight
+                else:
+                    missing.append(section)
+        if projects:
             score += 10
 
         total_lines = 6
-        total_lines += len([1 for value in structured.basics.model_dump().values() if isinstance(value, str) and value.strip()])
-        total_lines += len(structured.basics.summary.splitlines())
-        total_lines += sum(max(3, len(entry.bullets) + 2) for entry in structured.experience)
-        total_lines += sum(max(2, len(entry.highlights) + 1) for entry in structured.education)
-        total_lines += sum(max(2, len(group.keywords) // 5 + 1) for group in structured.skills)
-        total_lines += sum(max(2, len(item.bullets) + 2) for item in structured.projects)
+        total_lines += sum(bool(value.strip()) for key, value in structured.basics.model_dump().items() if key != "summary")
+        if "summary" not in hidden:
+            total_lines += sum(bool(line.strip()) for line in structured.basics.summary.splitlines())
+        total_lines += sum(max(3, sum(bool(b.strip()) for b in entry.bullets) + 2) for entry in experience)
+        total_lines += sum(max(2, sum(bool(b.strip()) for b in entry.highlights) + 1) for entry in education)
+        total_lines += sum(max(2, (sum(bool(word.strip()) for word in group.keywords) + 4) // 5 + 1) for group in skills)
+        total_lines += sum(max(2, sum(bool(b.strip()) for b in item.bullets) + 2) for item in projects)
+        if "certifications" not in hidden:
+            total_lines += sum(any(value.strip() for value in (item.name, item.issuer, item.date, item.url)) for item in structured.certifications)
+        for section in ("awards", "languages", "interests"):
+            if section not in hidden:
+                total_lines += sum(bool(item.name.strip() or item.detail.strip()) for item in getattr(structured, section))
         page_estimate = max(1, (total_lines + 37) // 38)
         if page_estimate > 1:
             warnings.append("Content likely exceeds one page in compact templates.")
-        if structured.experience and any(len(entry.bullets) > 6 for entry in structured.experience):
+        if any(sum(bool(b.strip()) for b in entry.bullets) > 6 for entry in experience):
             warnings.append("Some experience entries are dense; consider trimming bullets.")
-        if not structured.basics.label:
+        if not structured.basics.label.strip():
             warnings.append("Add a headline to improve clarity at the top of the resume.")
         return BuilderMetrics(
             completeness_score=min(score, 100),
@@ -462,79 +479,98 @@ class ResumeBuilderService:
     def _preview_sections(self, structured: StructuredResume) -> List[Dict[str, Any]]:
         hidden = set(structured.hidden_sections)
         sections: list[dict[str, Any]] = []
+        experience = [entry for entry in structured.experience if self._experience_has_content(entry)]
+        education = [entry for entry in structured.education if self._education_has_content(entry)]
+        projects = [entry for entry in structured.projects if self._project_has_content(entry)]
+        skills = [group for group in structured.skills if any(word.strip() for word in group.keywords)]
+        certifications = [entry for entry in structured.certifications if any(value.strip() for value in (entry.name, entry.issuer, entry.date, entry.url))]
+        awards = [entry for entry in structured.awards if entry.name.strip() or entry.detail.strip()]
+        languages = [entry for entry in structured.languages if entry.name.strip() or entry.detail.strip()]
+        interests = [entry for entry in structured.interests if entry.name.strip() or entry.detail.strip()]
         for section in structured.section_order:
             if section in hidden:
                 continue
             if section == "summary" and structured.basics.summary.strip():
                 sections.append({"key": "summary", "title": "Summary", "items": [structured.basics.summary.strip()]})
-            elif section == "experience" and structured.experience:
+            elif section == "experience" and experience:
                 sections.append({
                     "key": "experience",
                     "title": "Experience",
                     "items": [
                         {
                             "title": f"{item.title} — {item.company}".strip(" —"),
-                            "meta": self._join_meta(item.location, self._date_range(item.start_date, item.end_date, item.current)),
-                            "bullets": [b for b in item.bullets if b.strip()],
+                            "meta": self._join_meta(
+                                item.location,
+                                self._date_range(item.start_date, item.end_date, item.current),
+                                f"Technologies: {', '.join(word for word in item.technologies if word.strip())}" if any(word.strip() for word in item.technologies) else "",
+                            ),
+                            "bullets": ([item.summary] if item.summary.strip() else []) + [b for b in item.bullets if b.strip()],
                         }
-                        for item in structured.experience
+                        for item in experience
                     ],
                 })
-            elif section == "education" and structured.education:
+            elif section == "education" and education:
                 sections.append({
                     "key": "education",
                     "title": "Education",
                     "items": [
                         {
-                            "title": f"{item.degree} — {item.institution}".strip(" —"),
-                            "meta": self._join_meta(item.location, self._date_range(item.start_date, item.end_date, False)),
+                            "title": f"{self._join_meta(item.degree, item.field)} — {item.institution}".strip(" —"),
+                            "meta": self._join_meta(
+                                item.location,
+                                self._date_range(item.start_date, item.end_date, False),
+                                f"GPA {item.gpa}" if item.gpa else "",
+                            ),
                             "bullets": [b for b in item.highlights if b.strip()],
                         }
-                        for item in structured.education
+                        for item in education
                     ],
                 })
-            elif section == "skills" and structured.skills:
+            elif section == "skills" and skills:
                 sections.append({
                     "key": "skills",
                     "title": "Skills",
-                    "items": [{"title": item.name, "meta": ", ".join(item.keywords)} for item in structured.skills if item.keywords],
+                    "items": [{"title": item.name, "meta": ", ".join(word for word in item.keywords if word.strip())} for item in skills],
                 })
-            elif section == "projects" and structured.projects:
+            elif section == "projects" and projects:
                 sections.append({
                     "key": "projects",
                     "title": "Projects",
                     "items": [
                         {
                             "title": item.name,
-                            "meta": self._join_meta(item.role, item.url),
+                            "meta": self._join_meta(
+                                item.role, item.url, self._date_range(item.start_date, item.end_date, False),
+                                f"Technologies: {', '.join(word for word in item.technologies if word.strip())}" if any(word.strip() for word in item.technologies) else "",
+                            ),
                             "bullets": ([item.description] if item.description else []) + [b for b in item.bullets if b.strip()],
                         }
-                        for item in structured.projects
+                        for item in projects
                     ],
                 })
-            elif section == "certifications" and structured.certifications:
+            elif section == "certifications" and certifications:
                 sections.append({
                     "key": "certifications",
                     "title": "Certifications",
-                    "items": [{"title": item.name, "meta": self._join_meta(item.issuer, item.date)} for item in structured.certifications],
+                    "items": [{"title": item.name, "meta": self._join_meta(item.issuer, item.date, item.url)} for item in certifications],
                 })
-            elif section == "awards" and structured.awards:
+            elif section == "awards" and awards:
                 sections.append({
                     "key": "awards",
                     "title": "Awards",
-                    "items": [{"title": item.name, "meta": item.detail} for item in structured.awards if item.name or item.detail],
+                    "items": [{"title": item.name, "meta": item.detail} for item in awards],
                 })
-            elif section == "languages" and structured.languages:
+            elif section == "languages" and languages:
                 sections.append({
                     "key": "languages",
                     "title": "Languages",
-                    "items": [{"title": item.name, "meta": item.detail} for item in structured.languages if item.name or item.detail],
+                    "items": [{"title": item.name, "meta": item.detail} for item in languages],
                 })
-            elif section == "interests" and structured.interests:
+            elif section == "interests" and interests:
                 sections.append({
                     "key": "interests",
                     "title": "Interests",
-                    "items": [{"title": item.name, "meta": item.detail} for item in structured.interests if item.name or item.detail],
+                    "items": [{"title": item.name, "meta": item.detail} for item in interests],
                 })
         for section in sections:
             section["title"] = structured.section_titles.get(section["key"], section["title"])
@@ -563,7 +599,7 @@ class ResumeBuilderService:
             elif section == "certifications" and structured.certifications:
                 rendered = self._named_list_section(
                     title,
-                    [self._join_meta(item.name, item.issuer, item.date) for item in structured.certifications],
+                    [self._join_meta(item.name, item.issuer, item.date, item.url) for item in structured.certifications],
                     family,
                 )
             elif section == "awards" and structured.awards:
@@ -612,7 +648,7 @@ class ResumeBuilderService:
         if family == "ats":
             lines = [rf"{{\Large\textbf{{{name}}}}}\\[2pt]"]
             if label:
-                lines.append(self._escape(label) + r"\\[2pt]")
+                lines.append(label + r"\\[2pt]")
             if escaped_parts:
                 lines.append(r" \quad | \quad ".join(escaped_parts) + r"\\[4pt]")
             return "\n".join(lines)
@@ -636,6 +672,9 @@ class ResumeBuilderService:
         return rf"\section*{{{escaped}}}\vspace{{-0.4em}}\hrule\vspace{{0.25em}}"
 
     def _experience_section(self, items: List[BuilderExperienceEntry], family: str, title: str = "Experience") -> str:
+        items = [item for item in items if self._experience_has_content(item)]
+        if not items:
+            return ""
         lines = [self._section_heading(title, family)]
         for item in items:
             title = self._escape(item.title)
@@ -653,12 +692,16 @@ class ResumeBuilderService:
                 lines.append(r"\begin{itemize}")
                 lines.extend(rf"  \item {self._escape(bullet)}" for bullet in bullets)
                 lines.append(r"\end{itemize}")
-            elif item.technologies:
-                lines.append(rf"\textit{{Technologies:}} {self._escape(', '.join(item.technologies))}\\")
+            technologies = [word for word in item.technologies if word.strip()]
+            if technologies:
+                lines.append(rf"\textit{{Technologies:}} {self._escape(', '.join(technologies))}\\")
             lines.append("")
         return "\n".join(lines)
 
     def _education_section(self, items: List[BuilderEducationEntry], family: str, title: str = "Education") -> str:
+        items = [item for item in items if self._education_has_content(item)]
+        if not items:
+            return ""
         lines = [self._section_heading(title, family)]
         for item in items:
             primary = self._join_meta(item.degree, item.field)
@@ -668,25 +711,32 @@ class ResumeBuilderService:
             detail = self._join_meta(item.location, f"GPA {item.gpa}" if item.gpa else "")
             if detail:
                 lines.append(self._escape(detail) + r"\\")
-            if item.highlights:
+            highlights = [highlight for highlight in item.highlights if highlight.strip()]
+            if highlights:
                 lines.append(r"\begin{itemize}")
-                lines.extend(rf"  \item {self._escape(highlight)}" for highlight in item.highlights if highlight.strip())
+                lines.extend(rf"  \item {self._escape(highlight)}" for highlight in highlights)
                 lines.append(r"\end{itemize}")
             lines.append("")
         return "\n".join(lines)
 
     def _skills_section(self, items: List[BuilderSkillGroup], family: str, title: str = "Skills") -> str:
+        items = [item for item in items if any(word.strip() for word in item.keywords)]
+        if not items:
+            return ""
         lines = [self._section_heading(title, family)]
         for group in items:
             if not group.keywords:
                 continue
             name = self._escape(group.name or "Skills")
-            keywords = self._escape(", ".join(group.keywords))
+            keywords = self._escape(", ".join(word for word in group.keywords if word.strip()))
             lines.append(rf"\textbf{{{name}:}} {keywords}\\")
         lines.append("")
         return "\n".join(lines)
 
     def _projects_section(self, items: List[BuilderProjectEntry], family: str, title: str = "Projects") -> str:
+        items = [item for item in items if self._project_has_content(item)]
+        if not items:
+            return ""
         lines = [self._section_heading(title, family)]
         for item in items:
             lines.append(rf"\textbf{{{self._escape(item.name)}}} \hfill {self._escape(self._date_range(item.start_date, item.end_date, False))}\\")
@@ -698,8 +748,9 @@ class ResumeBuilderService:
                 lines.append(r"\begin{itemize}")
                 lines.extend(rf"  \item {self._escape(detail)}" for detail in details)
                 lines.append(r"\end{itemize}")
-            if item.technologies:
-                lines.append(rf"\textit{{Technologies:}} {self._escape(', '.join(item.technologies))}\\")
+            technologies = [word for word in item.technologies if word.strip()]
+            if technologies:
+                lines.append(rf"\textit{{Technologies:}} {self._escape(', '.join(technologies))}\\")
             lines.append("")
         return "\n".join(lines)
 
@@ -725,9 +776,9 @@ class ResumeBuilderService:
     def _escape(self, text: str) -> str:
         if not text:
             return ""
-        escaped = text
-        for src, target in self._escape_table.items():
-            escaped = escaped.replace(src, target)
+        # Replace original characters once: recursive replacement corrupts the
+        # braces inside generated commands such as \textbackslash{}.
+        escaped = "".join(self._escape_table.get(char, char) for char in text)
         escaped = re.sub(r"\s+", " ", escaped)
         return escaped.strip()
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { visualFeedback } from '@/lib/visual-feedback'
 import { createPortal } from 'react-dom'
 import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp, Tag } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
@@ -42,6 +43,7 @@ interface DeepAnalysisPanelProps {
   onJumpToLine?: (line: number) => void
   /** Quick-score grade, shown on the breakdown card. */
   quickGrade?: string | null
+  visualOnly?: boolean
 }
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
@@ -131,8 +133,8 @@ export default function DeepAnalysisPanel({
   isOpen,
   onClose,
   isLoading,
-  analysis,
-  error,
+  analysis: originalAnalysis,
+  error: originalError,
   usesRemaining,
   onRun,
   isRunning,
@@ -141,7 +143,10 @@ export default function DeepAnalysisPanel({
   categories,
   onJumpToLine,
   quickGrade,
+  visualOnly = false,
 }: DeepAnalysisPanelProps) {
+  const analysis = useMemo(() => visualOnly ? visualFeedback(originalAnalysis) : originalAnalysis, [originalAnalysis, visualOnly])
+  const error = visualOnly && originalError ? 'The résumé review could not complete. Please try again.' : originalError
   const [historyOpen, setHistoryOpen] = useState(false)
   const [industryOverride, setIndustryOverride] = useState<string>('generic')
   const [industryDropdownOpen, setIndustryDropdownOpen] = useState(false)

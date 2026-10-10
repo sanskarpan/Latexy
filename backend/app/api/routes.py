@@ -5,7 +5,7 @@ API routes for the application.
 import asyncio
 import hashlib
 import json
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
@@ -1337,6 +1337,7 @@ async def compile_latex_anonymous(
 
 
 class BillingStatusResponse(BaseModel):
+    provider: Literal["dodo"] = "dodo"
     feature_enabled: bool
     mode: str
     available: bool
@@ -1361,12 +1362,8 @@ class CreateSubscriptionRequest(BaseModel):
 class CreateSubscriptionResponse(BaseModel):
     success: bool
     subscriptionId: Optional[str] = None
+    checkoutSessionId: Optional[str] = None
     shortUrl: Optional[str] = None
-    customerId: Optional[str] = None
-    orderId: Optional[str] = None
-    amount: Optional[int] = None
-    currency: Optional[str] = None
-    keyId: Optional[str] = None
     checkoutType: Optional[str] = None
     verificationRequired: bool = False
     verificationPreviewUrl: Optional[str] = None
@@ -1404,6 +1401,15 @@ class CancelSubscriptionResponse(BaseModel):
     error: Optional[str] = None
 
 
+class CheckoutReconcileResponse(BaseModel):
+    success: bool
+    status: str
+    subscriptionId: Optional[str] = None
+    planId: Optional[str] = None
+    currentPeriodEnd: Optional[str] = None
+    message: Optional[str] = None
+
+
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
 async def get_subscription_plans(
     db: AsyncSession = Depends(get_db),
@@ -1422,6 +1428,7 @@ async def get_subscription_plans(
 
 
 @router.post("/subscription/create", response_model=CreateSubscriptionResponse)
+@router.post("/billing/dodo/subscription/create", response_model=CreateSubscriptionResponse)
 async def create_subscription(
     request_data: CreateSubscriptionRequest,
     db: AsyncSession = Depends(get_db),
@@ -1462,12 +1469,8 @@ async def create_subscription(
         return CreateSubscriptionResponse(
             success=result["success"],
             subscriptionId=result.get("subscription_id"),
+            checkoutSessionId=result.get("checkout_session_id"),
             shortUrl=result.get("short_url"),
-            customerId=result.get("customer_id"),
-            orderId=result.get("order_id"),
-            amount=result.get("amount"),
-            currency=result.get("currency"),
-            keyId=result.get("key_id"),
             checkoutType=result.get("checkout_type"),
             verificationRequired=bool(result.get("verification_required")),
             verificationPreviewUrl=result.get("verification_preview_url"),
@@ -1483,7 +1486,31 @@ async def create_subscription(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/subscription/reconcile", response_model=CheckoutReconcileResponse)
+@router.post("/billing/dodo/subscription/reconcile", response_model=CheckoutReconcileResponse)
+async def reconcile_subscription(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(_require_user),
+):
+    """Reconcile the authenticated user's current checkout from Dodo API reads."""
+    # Existing Dodo checkouts remain recoverable when new sales are disabled.
+    result = await payment_service.reconcile_checkout(db, user_id)
+    if result.get("status") == "pending" and result.get("message") == "Checkout recovery is already in progress.":
+        raise HTTPException(status_code=429, detail=result["message"])
+    if result.get("status") == "unavailable":
+        raise HTTPException(status_code=503, detail=result.get("message") or "Payment status could not be checked yet.")
+    return CheckoutReconcileResponse(
+        success=bool(result.get("success")),
+        status=str(result.get("status") or "pending"),
+        subscriptionId=result.get("subscriptionId"),
+        planId=result.get("planId"),
+        currentPeriodEnd=result.get("currentPeriodEnd"),
+        message=result.get("message"),
+    )
+
+
 @router.get("/subscription/student/verify/{token}")
+@router.get("/billing/dodo/subscription/student/verify/{token}")
 async def verify_student_subscription(
     token: str,
     db: AsyncSession = Depends(get_db),
@@ -1552,14 +1579,13 @@ async def get_current_subscription(
 
 
 @router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
+@router.post("/billing/dodo/subscription/cancel", response_model=CancelSubscriptionResponse)
 async def cancel_subscription(
     db: AsyncSession = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Cancel current user's subscription."""
     try:
-        if not await feature_flag_service.get_flag("billing", db):
-            raise HTTPException(status_code=503, detail="Billing is currently disabled")
-
+        # Existing Dodo mandates remain cancellable when new sales are disabled.
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -1580,26 +1606,19 @@ async def cancel_subscription(
 
 
 @router.post("/billing/webhook")
-async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handle Razorpay webhook events."""
+@router.post("/billing/dodo/webhook")
+async def dodo_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Verify and process Dodo Standard Webhooks using the raw request body."""
     try:
-        if not payment_service.is_available():
-            raise HTTPException(
-                status_code=503,
-                detail=payment_service.get_status()["message"],
-            )
-
         payload = await request.body()
-        signature = request.headers.get("X-Razorpay-Signature", "")
-        event_id = request.headers.get("X-Razorpay-Event-Id")
-
-        result = await payment_service.handle_webhook(db, payload, signature, event_id)
+        result = await payment_service.handle_webhook(db, payload, dict(request.headers))
 
         if result["success"]:
             return {"status": "ok"}
         else:
-            logger.error("Webhook processing failed")
-            raise HTTPException(status_code=400, detail="Webhook processing failed")
+            logger.error("Dodo webhook rejected or failed", extra={"retryable": bool(result.get("retryable"))})
+            raise HTTPException(status_code=500 if result.get("retryable") else 400,
+                                detail="Webhook processing failed")
 
     except HTTPException:
         raise

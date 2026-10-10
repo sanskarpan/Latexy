@@ -7,6 +7,7 @@ from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_required
 from ..services.resume_engine.semantic import DocumentConflict, public_document
 from ..services.resume_engine.structure import apply_reorder
+from ..services.resume_managed_source_service import apply_managed_document_change
 
 router = APIRouter(tags=["resume-engine"])
 
@@ -35,8 +36,10 @@ async def reorder_document(resume_id: str, body: StructureMutation,
                                            container_id=body.container_id, ordered_ids=body.ordered_ids)
     except (DocumentConflict, ValidationError) as exc:
         raise HTTPException(409, str(exc)) from exc
-    resume.latex_content, resume.structured_content = source, structured
-    await _sync_linked_variants(resume, db)
+    if apply_managed_document_change(
+        resume, source, structured, previous_structured=document["_structured_content"]
+    ):
+        await _sync_linked_variants(resume, db)
     await db.commit()
     await db.refresh(resume)
     return {"document": public_document(await _document(db, resume)), "latex_content": resume.latex_content}

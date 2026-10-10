@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from ..core.celery_app import celery_app
+from ..services.resume_source_service import apply_source_change
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ async def apply_resume_content(
         select(Resume)
         .where(Resume.id == resume_id, Resume.user_id == user_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if resume is None:
         return False
@@ -62,8 +64,7 @@ async def apply_resume_content(
         raise ResumePersistenceConflict(
             f"resume {resume_id} changed after generated job dispatch"
         )
-    resume.latex_content = latex_content
-    resume.updated_at = datetime.now(timezone.utc)
+    apply_source_change(resume, latex_content)
     return True
 
 

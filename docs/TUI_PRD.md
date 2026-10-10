@@ -396,7 +396,7 @@ from `GET /subscription/current`.
 name, price, feature list, and a clear comparison of limits.
 
 **TUI-076** — When the user requests an upgrade, the TUI must call `POST /subscription/create`
-and display the returned `short_url` (Razorpay payment page), instructing the user to open it in
+and display the returned `short_url` (Dodo hosted checkout page), instructing the user to open it in
 a browser to complete payment.
 
 **TUI-077** — After displaying the payment URL, the TUI must poll `GET /subscription/current`

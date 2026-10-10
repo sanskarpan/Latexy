@@ -5,10 +5,11 @@ const BILLING_SOURCE = readFileSync(new URL('../app/billing/page.tsx', import.me
 const CARD_SOURCE = readFileSync(new URL('../components/billing/PricingCard.tsx', import.meta.url), 'utf8')
 
 describe('B57 pricing contract', () => {
-  it('renders lifetime as a one-time Razorpay Orders checkout', () => {
-    expect(BILLING_SOURCE).toContain("checkoutType === 'one_time'")
-    expect(BILLING_SOURCE).toContain('order_id: result.data.orderId')
-    expect(BILLING_SOURCE).toContain('Payment received. Your Lifetime access will appear after verification.')
+  it('opens the Dodo hosted checkout returned by the backend', () => {
+    expect(BILLING_SOURCE).toContain('result.data.shortUrl')
+    expect(BILLING_SOURCE).toContain('window.location.assign(result.data.shortUrl)')
+    expect(BILLING_SOURCE).toContain('openInTab(checkoutTab, result.data.shortUrl)')
+    expect(BILLING_SOURCE).not.toContain('order_id:')
   })
 
   it('does not invent unavailable B57 prices in the card', () => {
