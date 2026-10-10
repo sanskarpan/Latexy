@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from app.api.plan_catalog_routes import PlanCatalogUpdate, get_plan_catalog, update_plan_catalog
 from app.core.config import PLAN_QUOTAS, get_plan_config, settings
-from app.core.feature_registry import FEATURE_REGISTRY, PLAN_MATRIX_KEYS
+from app.core.feature_registry import CAPABILITY_ROLES, FEATURE_REGISTRY, PLAN_MATRIX_KEYS
 from app.services.plan_catalog_service import CatalogConflict, PlanCatalogService
 
 
@@ -26,6 +26,7 @@ def state():
         "registry": [{"key": feature.key, "label": feature.label, "gateable": feature.gateable} for feature in FEATURE_REGISTRY],
         "kill_switches": dict.fromkeys(keys, True),
         "matrix": {family: dict.fromkeys(keys, True) for family in PLAN_MATRIX_KEYS},
+        "role_matrix": {role: dict.fromkeys(keys, True) for role in CAPABILITY_ROLES},
     }
 
 
@@ -213,10 +214,11 @@ async def test_missing_optional_provider_prices_stay_unavailable(monkeypatch):
 
 def test_catalog_guard_only_covers_new_checkout_not_subscription_lifecycle():
     source = (Path(__file__).parents[1] / "app/api/routes.py").read_text()
-    assert 'require_new_purchase(db, concrete_sku)' in source
-    assert 'require_new_purchase(db, "student")' in source
+    assert 'require_new_purchase(db, concrete_sku, user_id=user_id)' in source
+    assert 'require_sale_available(db, "student")' in source
     payments = (Path(__file__).parents[1] / "app/services/payment_service.py").read_text()
-    assert "require_new_purchase" not in payments
+    assert 'require_new_purchase(db, "student", user_id=user_id)' in payments
+    assert payments.count("require_new_purchase") == 1
 
 
 def test_catalog_admin_routes_always_require_admin():
@@ -267,9 +269,10 @@ async def test_catalog_outage_preserves_current_subscription_recovery(monkeypatc
 async def test_commercial_capability_uses_target_sku(sku, monkeypatch):
     db = db_with_row(None)
     gate = AsyncMock(return_value=False)
-    monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature", gate)
+    monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature_for_plan", gate)
     with pytest.raises(HTTPException) as exc:
         await PlanCatalogService().require_new_purchase(db, sku)
     assert exc.value.status_code == 403
     assert gate.call_args.args[0] == "i02"
-    assert gate.call_args.kwargs["user"].subscription_plan == sku
+    assert gate.call_args.kwargs["plan"] == sku
+    assert gate.call_args.kwargs["user"] is None

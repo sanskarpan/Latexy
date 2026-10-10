@@ -7,5 +7,6 @@ export async function assertCompanionAvailable(appOrigin, fetcher = fetch) {
   })
   if (!response.ok) throw new Error('Open Latexy and sign in to check Job Companion access, then try again.')
   const data = await response.json()
-  if (data?.available !== true) throw new Error('Job Companion is currently unavailable for your plan.')
+  if (data?.available !== true || typeof data.owner_id !== 'string' || !data.owner_id) throw new Error('Job Companion is currently unavailable for your plan.')
+  return { ownerId: data.owner_id, captureAvailable: data.capture_available === true }
 }

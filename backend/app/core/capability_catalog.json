@@ -265,7 +265,7 @@
     "inventory_id": "B09",
     "label": "Builder/source detachment",
     "category": "editor",
-    "description": "Manual LaTeX editing versus structured source authority; explicit reattach recovery.",
+    "description": "Manual LaTeX editing versus structured source authority; explicit reattach recovery. The switch gates explicit structured reattachment; ordinary source editing and detachment remain recovery baselines.",
     "gateable": true,
     "parent_key": "resume_builder",
     "always_on_reason": null,

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import { FileText, GitBranch, Radio, KeyRound } from 'lucide-react'
 
 /**
@@ -54,12 +55,12 @@ export default function PlatformPage() {
             document checks, and a fast iteration workflow.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
+            <CapabilityGate feature="a09"><Link
               href="/try"
               className="inline-flex items-center rounded-[var(--radius-md)] bg-accent px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
             >
               Open Studio →
-            </Link>
+            </Link></CapabilityGate>
             <Link
               href="/dashboard"
               className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
@@ -128,12 +129,12 @@ export default function PlatformPage() {
           <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
             Deterministic output, measurable performance, and iteration speed — from a single studio.
           </p>
-          <Link
+          <CapabilityGate feature="a09"><Link
             href="/try"
             className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
           >
             Open the studio →
-          </Link>
+          </Link></CapabilityGate>
         </div>
       </section>
     </div>

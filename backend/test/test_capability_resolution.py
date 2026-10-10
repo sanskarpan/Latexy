@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.core.feature_registry import FEATURE_REGISTRY, PLAN_MATRIX_KEYS, gateable_keys
+from app.core.feature_registry import CAPABILITY_ROLES, FEATURE_REGISTRY, PLAN_MATRIX_KEYS, gateable_keys
 from app.services.entitlement_service import EntitlementService, _blob_from_rows
 from app.services.feature_flag_service import FeatureFlagService
 
 
 def allowed_blob():
     keys = gateable_keys()
-    return {"kill": dict.fromkeys(keys, True), "matrix": {p: dict.fromkeys(keys, True) for p in PLAN_MATRIX_KEYS}}
+    return {"kill": dict.fromkeys(keys, True), "matrix": {p: dict.fromkeys(keys, True) for p in PLAN_MATRIX_KEYS}, "roles": {r: dict.fromkeys(keys, True) for r in CAPABILITY_ROLES}}
 
 
 @pytest.mark.parametrize("role", [None, "user", "support", "admin"])
@@ -154,13 +154,14 @@ async def test_collaboration_batch_uses_one_filtered_snapshot(monkeypatch):
     from contextlib import asynccontextmanager
 
     db = AsyncMock()
-    user_rows = [("owner", "pro"), ("member", "student")]
+    user_rows = [("identity", "owner", '["user", "pro"]', True), ("identity", "member", '["support", "student"]', True)]
     blob = allowed_blob()
     rows = [("kill", key, "", enabled) for key, enabled in blob["kill"].items()]
     rows += [
         ("matrix", key, plan, enabled) for plan, grants in blob["matrix"].items() for key, enabled in grants.items()
     ]
-    db.execute.side_effect = [Mock(all=lambda: user_rows), Mock(all=lambda: rows)]
+    rows += [("role", key, role, enabled) for role, grants in blob["roles"].items() for key, enabled in grants.items()]
+    db.execute.return_value = Mock(all=lambda: rows + user_rows)
 
     @asynccontextmanager
     async def session():
@@ -168,8 +169,8 @@ async def test_collaboration_batch_uses_one_filtered_snapshot(monkeypatch):
 
     monkeypatch.setattr("app.database.connection.get_async_db_session", session)
     assert await EntitlementService().users_have_feature("f05", ("owner", "member"))
-    assert db.execute.await_count == 2
-    snapshot_query = db.execute.await_args_list[1].args[0]
+    assert db.execute.await_count == 1
+    snapshot_query = db.execute.await_args_list[0].args[0]
     params = snapshot_query.compile().params
     assert any(value == ("f05", "collaboration") or value == ["f05", "collaboration"] for value in params.values())
 
@@ -178,7 +179,7 @@ async def test_collaboration_batch_rejects_missing_owner(monkeypatch):
     from contextlib import asynccontextmanager
 
     db = AsyncMock()
-    db.execute.return_value = Mock(all=lambda: [("member", "pro")])
+    db.execute.return_value = Mock(all=lambda: [("identity", "member", '["user", "pro"]', True)])
 
     @asynccontextmanager
     async def session():

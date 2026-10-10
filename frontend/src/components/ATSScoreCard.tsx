@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { apiClient, type BenchmarkResult } from '@/lib/api-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 const FALLBACK_PROFILES = [
   { key: 'generic', label: 'General' },
@@ -113,6 +114,9 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   onOptimize,
   isOptimizing = false,
 }) => {
+  const { can } = useEntitlements()
+  const profilesAllowed = can('d18') && can('d19')
+  const benchmarkAllowed = can('d24')
   const [industryProfiles, setIndustryProfiles] = useState(FALLBACK_PROFILES)
   const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null)
   const [benchmarkLoading, setBenchmarkLoading] = useState(false)
@@ -124,23 +128,23 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   ])
 
   useEffect(() => {
-    if (!onIndustryOverride) return
+    if (!profilesAllowed || !onIndustryOverride) return
     apiClient.getIndustryProfiles()
       .then((res) => { if (res.profiles?.length) setIndustryProfiles(res.profiles) })
       .catch(() => { /* keep fallback */ })
-  }, [onIndustryOverride])
+  }, [onIndustryOverride, profilesAllowed])
 
   useEffect(() => {
-    if (!onLocaleOverride) return
+    if (!profilesAllowed || !onLocaleOverride) return
     apiClient.getATSLocaleProfiles()
       .then((response) => { if (response.profiles?.length) setLocaleProfiles(response.profiles) })
       .catch(() => { /* keep transparent built-in choices */ })
-  }, [onLocaleOverride])
+  }, [onLocaleOverride, profilesAllowed])
 
   // Refresh when the score changes and ignore a late response for an older
   // score/industry pair.
   useEffect(() => {
-    if (score === undefined) {
+    if (!benchmarkAllowed || score === undefined) {
       setBenchmark(null)
       setBenchmarkLoading(false)
       return
@@ -153,7 +157,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
       .catch(() => { /* benchmark unavailable — don't show */ })
       .finally(() => { if (!cancelled) setBenchmarkLoading(false) })
     return () => { cancelled = true }
-  }, [score, industryKey])
+  }, [score, industryKey, benchmarkAllowed])
 
   if (isLoading) {
     return (
@@ -234,7 +238,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                 </span>
               </div>
             )}
-            {onIndustryOverride && (
+            {profilesAllowed && onIndustryOverride && (
               <select
                 className="text-xs border border-line rounded-[var(--radius-md)] px-1.5 py-0.5 text-fg-2 bg-surface cursor-pointer"
                 defaultValue=""
@@ -247,7 +251,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                 ))}
               </select>
             )}
-            {onLocaleOverride && (
+            {profilesAllowed && onLocaleOverride && (
               <select
                 aria-label="ATS locale"
                 className="text-xs border border-line rounded-[var(--radius-md)] px-1.5 py-0.5 text-fg-2 bg-surface cursor-pointer"
@@ -451,7 +455,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         )}
 
         {/* Benchmark Row */}
-        {(benchmarkLoading || benchmark) && (
+        {benchmarkAllowed && (benchmarkLoading || benchmark) && (
           <div className="space-y-2 pt-2 border-t border-line">
             <h4 className="font-medium text-fg flex items-center gap-2 text-sm">
               <Users className="w-4 h-4 text-accent" />

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Value = { features: Record<string, boolean>; can: (key: string) => boolean; loading: boolean; loaded: boolean; error: string | null; refresh: () => void }
 type Session = { data: { user: { id: string } } | null; isPending: boolean; error: unknown }
@@ -10,6 +10,10 @@ async function harness() {
   const states: unknown[] = []
   const refs: Array<{ current: unknown }> = []
   let effects: Array<() => void | (() => void)> = []
+  const listeners = new Map<string, () => void>()
+  vi.stubGlobal('window', { setTimeout, clearTimeout, setInterval, clearInterval,
+    addEventListener: (key: string, fn: () => void) => listeners.set(key, fn), removeEventListener: vi.fn() })
+  vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: vi.fn(), removeEventListener: vi.fn() })
   const getEntitlements = vi.fn()
   vi.doMock('react', () => ({
     createContext: (value: unknown) => ({ Provider: 'Provider', value }),
@@ -25,11 +29,15 @@ async function harness() {
     },
   }))
   vi.doMock('react/jsx-runtime', () => ({ jsx: (type: unknown, props: unknown) => ({ type, props }) }))
+  vi.doMock('react/jsx-dev-runtime', () => ({ jsxDEV: (type: unknown, props: unknown) => ({ type, props }) }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: { getEntitlements } }))
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => session }))
   const { EntitlementsProvider } = await import('@/contexts/EntitlementsContext')
   return {
     getEntitlements,
+    listen: () => effects[1](),
+    expire: () => effects[2](),
+    background: () => listeners.get('focus')?.(),
     session: (next: Session) => { session = next },
     render: () => {
       index = 0; effects = []
@@ -40,8 +48,11 @@ async function harness() {
 }
 
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
+beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
-  for (const moduleName of ['react', 'react/jsx-runtime', '@/lib/api-client', '@/lib/auth-client']) vi.doUnmock(moduleName)
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  for (const moduleName of ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', '@/lib/api-client', '@/lib/auth-client']) vi.doUnmock(moduleName)
   vi.resetModules()
 })
 
@@ -96,5 +107,37 @@ describe('identity-scoped feature availability', () => {
     h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('expired') })
     const value = h.render(); h.fetch(); expect(value.can('d01')).toBe(false); expect(value.error).toBeTruthy()
     expect(h.getEntitlements).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('bounded non-destructive background refresh', () => {
+  it('keeps the exact verified feature map through a pending same-identity refresh', async () => {
+    const h = await harness(); h.getEntitlements.mockResolvedValue({ features: { d01: true } })
+    h.render(); h.fetch(); await flush()
+    const ready = h.render(); h.listen()
+    h.getEntitlements.mockImplementation(() => new Promise(() => {}))
+    h.background(); const refreshing = h.render(); h.fetch()
+    expect(refreshing.features).toBe(ready.features)
+    expect(refreshing.can('d01')).toBe(true)
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(h.render().can('d01')).toBe(false)
+    expect(h.render().error).toContain('timed out')
+  })
+  it('closes on a background denial or error rather than retaining stale grants', async () => {
+    const h = await harness(); h.getEntitlements.mockResolvedValue({ features: { d01: true } })
+    h.render(); h.fetch(); await flush(); h.render(); h.listen()
+    h.getEntitlements.mockResolvedValue({ features: { d01: false } }); h.background(); h.render(); h.fetch(); await flush()
+    expect(h.render().can('d01')).toBe(false)
+    h.getEntitlements.mockRejectedValue(new Error('offline')); h.background(); h.render(); h.fetch(); await flush()
+    expect(h.render().error).toBe('offline')
+  })
+  it('expires an old grant even when background polling is throttled', async () => {
+    const h = await harness(); h.getEntitlements.mockResolvedValue({ features: { d01: true } })
+    h.render(); h.fetch(); await flush(); h.render(); h.expire()
+    await vi.advanceTimersByTimeAsync(38000)
+    expect(h.render().can('d01')).toBe(false)
+    expect(h.render().error).toContain('expired')
+    expect(h.render().can('b01')).toBe(true)
   })
 })

@@ -2,6 +2,7 @@
 
 import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -54,6 +55,8 @@ export default function NewBuilderPage() {
 
 function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
   const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const router = useRouter()
   const mountedRef = useRef(true)
   const authVerifiedRef = useRef(!authUnverified)
@@ -112,7 +115,12 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
   const effectiveMetrics = seedMetrics ?? deriveBuilderMetrics(structured)
 
   const handleSeedUpload = async (file: File | null) => {
+    if (!canRef.current('b06')) return
     if (!file) return
+    if ((/\.json$/i.test(file.name) || file.type === 'application/json') && !canRef.current('b07')) {
+      toast.error('Structured resume import is unavailable for your current plan or feature settings.')
+      return
+    }
     if (!isCurrentRequest()) {
       toast.error('Session verification is still in progress. Please try again.')
       return
@@ -224,11 +232,11 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
             className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-base text-fg outline-none transition focus:border-accent"
           />
 
-          <div className="mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
+          <CapabilityGate feature="b06"><div className="mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
             <div>
               <p className="text-sm font-semibold text-fg">Seed from an existing resume</p>
               <p className="mt-1 text-xs text-fg-3">
-                Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.
+                {can('b07') ? 'Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.' : 'Upload PDF, DOCX, or a LinkedIn export to prefill the builder.'}
               </p>
             </div>
             <label className="cursor-pointer rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
@@ -238,11 +246,11 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
                 type="file"
                 className="hidden"
                 disabled={uploading}
-                accept=".json,.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex"
+                accept={can('b07') ? '.json,.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex' : '.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex'}
                 onChange={event => void handleSeedUpload(event.target.files?.[0] ?? null)}
               />
             </label>
-          </div>
+          </div></CapabilityGate>
           {uploadIssues.length > 0 && (
             <div role="alert" className="mt-3 rounded-[var(--radius-md)] border border-err/30 bg-err/5 p-4">
               <p className="text-sm font-semibold text-err">Import validation failed</p>

@@ -1,7 +1,7 @@
 # Capability controls: execution and recovery
 
 The catalog combines legacy feature groups with the 129 audited user-facing
-capabilities. A child permission also requires its configured parent. Product
+capabilities. A child permission also requires its configured parent. Optional use intersects global, current account-role, plan-family and exact-SKU grants; anonymous is a separate context. Document/workspace/tenant ACLs still apply independently. Product
 capabilities are checked against current server-side grants before admitting a
 new operation; administrative privileges do not grant product access.
 
@@ -52,3 +52,5 @@ Previously downloaded/cached artifacts cannot be recalled. Previously issued
 presigned storage URLs remain valid until their original expiry (currently up
 to one hour for shared PDFs and 24 hours for template assets); the capability
 check stops issuing new URLs. Gated template API responses use `no-store`.
+
+The additional [role/UI/service review](audits/admin-capabilities/role-review.md) records the current account-role matrix, race/recipient fixes and precise tested/unverified boundaries.

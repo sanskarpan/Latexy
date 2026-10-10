@@ -35,6 +35,10 @@ class FeatureDef:
 # Plan families the matrix is keyed by (mirrors config.PLAN_FAMILY_ALIASES targets).
 PLAN_FAMILIES = ["free", "basic", "pro", "byok", "team"]
 
+# Account roles only. Document/workspace/tenant roles remain independent ACLs.
+# Anonymous is a request context, never an assignable users.role value.
+CAPABILITY_ROLES = ["anonymous", "user", "support", "admin"]
+
 
 FEATURE_REGISTRY: list[FeatureDef] = [
     # ---- core -------------------------------------------------------------

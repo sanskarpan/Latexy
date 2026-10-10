@@ -473,6 +473,8 @@ async def _sync_linked_variants(parent: Resume, db: AsyncSession) -> None:
     """Regenerate direct linked variants after their master source changes."""
     if not parent.structured_content:
         return
+    if not await entitlement_service.has_feature("b12", user=parent.user_id):
+        return
     result = await db.execute(
         select(Resume).where(
             Resume.parent_resume_id == parent.id,
@@ -966,6 +968,10 @@ async def _get_resume_document_access(
     if resume.user_id == user_id:
         return resume, "owner"
     if collaborator_role in _COLLABORATOR_ROLES:
+        # An existing collaborator row is not a perpetual sharing grant.
+        # Owner reads and source recovery deliberately bypass this check.
+        await enforce_capabilities(("f04",), user_id)
+        await enforce_capabilities(("f04",), resume.user_id)
         return resume, collaborator_role
     raise HTTPException(status_code=404, detail="Resume not found")
 
@@ -1559,7 +1565,10 @@ async def quick_tailor_resume(
         await _write_initial_redis_state(job_id, "combined", user_id, 120)
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        fork_settings = dict(fork.resume_settings or {})
+        fork_settings = (
+            dict(fork.resume_settings or {})
+            if await entitlement_service.has_feature("c07", user=user_id) else {}
+        )
         compile_settings = {
             key: fork_settings[key]
             for key in (
@@ -1746,7 +1755,10 @@ async def convert_academic_cv(
         await _write_initial_redis_state(job_id, "combined", user_id, 120)
         await _mark_dispatch_started(job_id)
         dispatch_attempted = True
-        variant_settings = dict(variant.resume_settings or {})
+        variant_settings = (
+            dict(variant.resume_settings or {})
+            if await entitlement_service.has_feature("c07", user=user_id) else {}
+        )
         compile_settings = {
             key: variant_settings[key]
             for key in (
@@ -2252,6 +2264,15 @@ async def create_share_link(
     current_meta: dict = dict(resume.resume_settings or {})
     current_anonymous = current_meta.get("share_anonymous", False)
     current_review_comments = bool(current_meta.get("share_review_comments", False))
+    review_only_revoke = bool(
+        body and body.model_fields_set == {"review_comments"} and body.review_comments is False
+    )
+    if review_only_revoke:
+        if not resume.share_token:
+            raise HTTPException(status_code=404, detail="Share link not found")
+        # Removing review permission must not create a public link, change
+        # blind-sharing privacy, or dispatch a redacted compilation.
+        anonymous = current_anonymous
     if anonymous != current_anonymous:
         current_meta["share_anonymous"] = anonymous
         resume.resume_settings = current_meta
@@ -2365,7 +2386,7 @@ async def create_share_link(
         resume.share_token_created_at = datetime.now(timezone.utc)
 
     # If anonymous mode is newly enabled, submit a compile job for redacted LaTeX
-    if anonymous and not current_meta.get("share_anonymous_job_id"):
+    if anonymous and not review_only_revoke and not current_meta.get("share_anonymous_job_id"):
         try:
             from ..services.latex_pii_redactor import redact
             from ..workers.latex_worker import submit_latex_compilation
@@ -2885,6 +2906,10 @@ async def update_collaborator_role(
     if collab is None:
         raise HTTPException(status_code=404, detail="Collaborator not found")
 
+    if body.role == "commenter" and collab.role not in {"editor", "commenter"}:
+        # Downgrading editor -> commenter is recovery; viewer -> commenter
+        # grants new write permission and still needs the optional capability.
+        await enforce_capabilities(("f04",), user_id)
     collab.role = body.role
     await db.commit()
     await db.refresh(collab)

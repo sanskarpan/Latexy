@@ -7,6 +7,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from fastapi import HTTPException
 from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,11 +161,11 @@ class PaymentService:
         """Check if payment service is available."""
         return bool(self._base_status["available"] and self.client is not None)
 
-    async def get_subscription_plans(self, db: AsyncSession | None = None, *, feature_enabled: bool = True) -> Dict[str, Any]:
+    async def get_subscription_plans(self, db: AsyncSession | None = None, *, feature_enabled: bool = True, user_id: str | None = None) -> Dict[str, Any]:
         """The public pricing and checkout catalog share one server authority."""
         from .plan_catalog_service import plan_catalog_service
 
-        return await plan_catalog_service.list_plans(db, provider_available=self.is_available() and feature_enabled)
+        return await plan_catalog_service.list_plans(db, provider_available=self.is_available() and feature_enabled, user_id=user_id)
 
     async def create_razorpay_plan(self, plan_id: str) -> Optional[str]:
         """Create a plan in Razorpay."""
@@ -281,6 +282,12 @@ class PaymentService:
 
                 payload = json.loads(raw)
                 user_id = payload["user_id"]
+                from .plan_catalog_service import plan_catalog_service
+
+                # The bearer link belongs to its recorded owner, even when
+                # opened signed out. Check before any new provider checkout;
+                # never apply this gate to paid fulfillment/webhooks/refunds.
+                await plan_catalog_service.require_new_purchase(db, "student", user_id=user_id)
 
                 if not self.client:
                     # Never grant a paid/Pro-equivalent plan (student resolves to the
@@ -320,6 +327,8 @@ class PaymentService:
                 return result
             finally:
                 await redis.delete(token_lock)
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error("Error verifying student subscription", extra={"error_type": type(exc).__name__})
             await db.rollback()
@@ -2249,7 +2258,7 @@ class PaymentService:
 
             from .plan_catalog_service import plan_catalog_service
 
-            plan_config = await plan_catalog_service.current_subscription_display(user.subscription_plan)
+            plan_config = await plan_catalog_service.current_subscription_display(user.subscription_plan, user_id=user_id)
 
             return {
                 "user_id": user_id,

@@ -26,7 +26,9 @@ from ..database.models import (
 )
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
+from ..services.entitlement_service import entitlement_service
 from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, BoundedReadError, decode_base64_bounded
 from ..utils.file_utils import get_job_files
 from ..utils.uuid_guard import ensure_uuid
@@ -161,6 +163,14 @@ async def _require_member(
 async def _require_owner(workspace: Workspace, user_id: str) -> None:
     if workspace.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Only the workspace owner can perform this action")
+
+
+async def _require_workspace_use(workspace: Workspace, user_id: str, *, recruiter: bool = False) -> None:
+    """An existing membership cannot bypass the actor's or owner's switches."""
+    keys = ("f08", "f09") if recruiter else ("f08",)
+    await enforce_capabilities(keys, user_id)
+    if workspace.owner_id != user_id:
+        await enforce_capabilities(keys, workspace.owner_id)
 
 
 async def _require_editor(
@@ -499,6 +509,7 @@ async def add_resume_to_workspace(
     """Explicitly submit one of the caller's resumes to a workspace."""
     ensure_uuid(resume_id, "Resume not found or not owned by you")
     ws = await _get_workspace_or_404(workspace_id, db)
+    await _require_workspace_use(ws, user_id)
     await _require_member(ws, user_id, db)
 
     resume_result = await db.execute(
@@ -589,6 +600,10 @@ async def list_workspace_resumes(
         .join(Resume, WorkspaceResume.resume_id == Resume.id)
         .where(WorkspaceResume.workspace_id == workspace_id)
     )
+    if not await entitlement_service.users_have_feature("f08", (user_id, ws.owner_id)):
+        # Keep a candidate's submitted data recoverable without continuing
+        # to expose other members' documents through a disabled workspace.
+        query = query.where(Resume.user_id == user_id)
     # Career-centre students opt in by submitting a resume, but should not see
     # other students' submissions. Tenant cohort admins retain the full roster.
     if ws.tenant_id and member.role == "viewer":
@@ -645,6 +660,8 @@ async def download_workspace_resume(
     if not row:
         raise HTTPException(status_code=404, detail="Resume not found in workspace")
     workspace_resume, resume = row
+    if resume.user_id != user_id:
+        await _require_workspace_use(ws, user_id)
     # Tenant-backed cohort viewers can submit and retrieve their own resume,
     # but must not use a guessed resume_id to download another student's
     # submission. Keep this boundary aligned with list_workspace_resumes,
@@ -768,6 +785,7 @@ async def create_recruiter_note(
     """Create a recruiter note on a workspace resume (owner or editor)."""
     ws = await _get_workspace_or_404(workspace_id, db)
     await _require_editor(ws, user_id, db)
+    await _require_workspace_use(ws, user_id, recruiter=True)
     await _require_resume_in_workspace(workspace_id, resume_id, db)
 
     note = RecruiterNote(
@@ -800,7 +818,7 @@ async def list_recruiter_notes(
     await _require_editor(ws, user_id, db)
     await _require_resume_in_workspace(workspace_id, resume_id, db)
 
-    result = await db.execute(
+    query = (
         select(RecruiterNote, User)
         .join(User, RecruiterNote.author_id == User.id)
         .where(
@@ -809,6 +827,10 @@ async def list_recruiter_notes(
         )
         .order_by(RecruiterNote.created_at)
     )
+    if (not await entitlement_service.users_have_feature("f08", (user_id, ws.owner_id))
+            or not await entitlement_service.users_have_feature("f09", (user_id, ws.owner_id))):
+        query = query.where(RecruiterNote.author_id == user_id)
+    result = await db.execute(query)
     return [_note_to_response(n, u) for n, u in result.fetchall()]
 
 
@@ -829,6 +851,7 @@ async def update_recruiter_note(
     ensure_uuid(note_id, "Note not found")
     ws = await _get_workspace_or_404(workspace_id, db)
     await _require_editor(ws, user_id, db)
+    await _require_workspace_use(ws, user_id, recruiter=True)
 
     note_result = await db.execute(
         select(RecruiterNote).where(

@@ -13,13 +13,17 @@
       <span id="source" class="muted"></span>
     </header>
     <p id="status" role="status">Reading this tab…</p>
+    <section id="companion-tools" hidden>
+    <section id="capture-tools" hidden>
     <label>Company<input id="company" maxlength="200" autocomplete="organization"></label>
     <label>Role<input id="title" maxlength="200" autocomplete="organization-title"></label>
     <label>Location<input id="location" maxlength="200"></label>
     <label>Job description<textarea id="description" maxlength="20000" rows="7"></textarea></label>
     <label>Posting URL<input id="url" maxlength="500" type="url"></label>
     <button id="save" class="primary" disabled>Review and save in Latexy</button>
+    </section>
     <button id="autofill">Autofill this application</button>
+    </section>
     <button id="options" class="link">Edit local autofill profile</button>
     <p class="fineprint">Nothing is submitted automatically. Capture data stays in extension storage for at most 15 minutes and is removed after Latexy imports it.</p>
     <script type="module" src="popup.js"></script>

@@ -1,6 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useSession } from '@/lib/auth-client'
 
 type ReferralStatus = {
   available: boolean
@@ -14,26 +17,40 @@ type ReferralStatus = {
 }
 
 export default function ReferralPanel() {
-  const [status, setStatus] = useState<ReferralStatus | null>(null)
+  const { can } = useEntitlements()
+  const { data: session } = useSession()
+  const userId = session?.user?.id ?? null
+  const enabled = Boolean(userId) && can('i03')
+  const userIdRef = useRef(userId)
+  userIdRef.current = userId
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
+  const [snapshot, setSnapshot] = useState<{ userId: string; status: ReferralStatus } | null>(null)
+  const status = snapshot && snapshot.userId === userId ? snapshot.status : null
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
+    if (!enabled || !userId) return
+    let active = true
+    setSnapshot(null)
+    setError(null)
     fetch('/api/referral', { credentials: 'include', cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) throw new Error('Referral status unavailable')
         return response.json() as Promise<ReferralStatus>
       })
-      .then(setStatus)
-      .catch(() => setError('Referral status is unavailable right now.'))
-  }, [])
+      .then((data) => { if (active) setSnapshot({ userId, status: data }) })
+      .catch(() => { if (active) setError('Referral status is unavailable right now.') })
+    return () => { active = false }
+  }, [enabled, userId])
 
   const shareUrl = status?.share_code && typeof window !== 'undefined'
     ? `${window.location.origin}/signup?ref=${encodeURIComponent(status.share_code)}`
     : null
 
   const copy = async () => {
-    if (!shareUrl) return
+    if (!enabledRef.current || userIdRef.current !== userId || !shareUrl) return
     try {
       await navigator.clipboard.writeText(shareUrl)
       setCopied(true)
@@ -42,6 +59,8 @@ export default function ReferralPanel() {
       setError('Copy failed. You can select the link manually.')
     }
   }
+
+  if (!enabled) return null
 
   return (
     <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-4" aria-labelledby="referral-heading">

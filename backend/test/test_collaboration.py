@@ -1111,6 +1111,18 @@ class TestCollabWebSocket:
             results.append(result)
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=results)
+
+        async def scalar(statement):
+            # Live authorization checks repeat the admitted document/role, not
+            # the finite sequence of handshake reads above.
+            column = next(iter(statement.selected_columns))
+            if column.name == "user_id":
+                return getattr(objects[0], "user_id", None) if objects else None
+            if column.name == "role":
+                return getattr(objects[1], "role", None) if len(objects) > 1 else None
+            return None
+
+        db.scalar = AsyncMock(side_effect=scalar)
         return db
 
     def _client(self):
@@ -1242,7 +1254,7 @@ class TestCollabWebSocket:
         resume = MagicMock(user_id="owner")
         collaborator = MagicMock(role="editor")
         db = self._db_returning(resume, collaborator, "Editor")
-        check = AsyncMock(side_effect=[True, False])
+        check = AsyncMock(side_effect=[True, True, False])
         with (
             patch("app.api.ws_routes._consume_ws_ticket", AsyncMock(return_value="editor")),
             patch("app.database.connection.get_async_db_session", self._fake_db_session(db)),
@@ -1262,7 +1274,7 @@ class TestCollabWebSocket:
                 client.close()
         assert exc.value.code == 4003
         handle.assert_not_awaited()
-        assert check.await_count == 2
+        assert check.await_count == 3
         assert check.await_args.args == ("f05", ("editor", "owner"))
 
     def test_editor_document_update_is_accepted(self) -> None:

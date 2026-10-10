@@ -2672,6 +2672,7 @@ export default function ResumeEditPage() {
     endLine: number
     endColumn: number
   }) => {
+    if (!['d06', 'd07', 'd10'].some(feature => canRef.current(feature))) return
     setWritingSelected(info.selectedText)
     setWritingContext(info.context)
     setWritingRange({ startLine: info.startLine, startColumn: info.startColumn, endLine: info.endLine, endColumn: info.endColumn })
@@ -2729,6 +2730,7 @@ export default function ResumeEditPage() {
         setSavedSnapshot({ title, latex: content })
         setLastSavedAt(Date.now())
       }
+      if (!canRef.current('b11')) return
       const newResume = await apiClient.forkResume(resumeId, forkTitleInput || undefined)
       setForkPopoverOpen(false)
       setForkTitleInput('')
@@ -2761,6 +2763,7 @@ export default function ResumeEditPage() {
         setSavedSnapshot({ title, latex: content })
         setLastSavedAt(Date.now())
       }
+      if (!canRef.current('b14')) return
       const result = await apiClient.convertAcademicCV(resumeId, {
         target_industry: academicTargetIndustry,
         target_role_description: academicRoleDescription.trim() || undefined,
@@ -3210,9 +3213,9 @@ export default function ResumeEditPage() {
                     </button>
                   ))}
                   <div className="my-1 h-px bg-line" />
-                  <button
+                  <CapabilityGate feature="b14"><button
                     role="menuitem"
-                    onClick={() => { setAcademicConvertOpen(true); setToolsMenuOpen(false) }}
+                    onClick={() => { if (canRef.current('b14')) setAcademicConvertOpen(true); setToolsMenuOpen(false) }}
                     className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[11px] font-medium transition hover:bg-surface-2 ${
                       academicReport?.is_academic_cv ? 'text-accent-strong' : 'text-fg-2 hover:text-fg'
                     }`}
@@ -3222,7 +3225,7 @@ export default function ResumeEditPage() {
                     {academicReport?.is_academic_cv && (
                       <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent-strong" />
                     )}
-                  </button>
+                  </button></CapabilityGate>
                 </div>
               </>,
               document.body
@@ -3276,8 +3279,8 @@ export default function ResumeEditPage() {
                     className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg outline-none focus:border-accent mb-2"
                   />
                   <div className="flex gap-2 justify-end">
-                    <CapabilityGate feature="b11"><button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button></CapabilityGate>
-                    <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent/20 px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:bg-accent/25 disabled:opacity-50">
+                    <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button>
+                    <button onClick={handleCreateVariant} disabled={!can('b11') || isForkingResume} className="rounded-[var(--radius-md)] bg-accent/20 px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:bg-accent/25 disabled:opacity-50">
                       {isForkingResume ? 'Creating...' : 'Create'}
                     </button>
                   </div>
@@ -3787,7 +3790,7 @@ export default function ResumeEditPage() {
               top={summaryWidgetTop}
             /></CapabilityGate>
 
-            <CapabilityGate feature="d06"><WritingAssistantWidget
+            {['d06', 'd07', 'd10'].some(can) && <WritingAssistantWidget
               isOpen={writingOpen}
               selectedText={writingSelected}
               context={writingContext}
@@ -3797,7 +3800,7 @@ export default function ResumeEditPage() {
               onAccept={handleWritingAccept}
               onClose={() => setWritingOpen(false)}
               top={writingTop}
-            /></CapabilityGate>
+            />}
 
             {/* AI Bullet Widget trigger — shown when cursor is on \item line */}
             {bulletWidgetLine !== null && !bulletWidgetOpen && (

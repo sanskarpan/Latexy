@@ -5,6 +5,7 @@ export function entitlementBlocker(
   state: AdminEntitlementsState,
   feature: EntitlementFeatureDef,
   plan?: string,
+  role?: string,
 ): string | null {
   if (!feature.gateable) return null
   const registry = new Map(state.registry.map((entry) => [entry.key, entry]))
@@ -15,6 +16,7 @@ export function entitlementBlocker(
     seen.add(current.key)
     if (current.gateable) {
       if (state.kill_switches[current.key] !== true) return `${current.label}: globally disabled`
+      if (role && state.role_matrix?.[role]?.[current.key] !== true) return `${current.label}: disabled for role ${role}`
       const family = plan ? state.plan_family_by_key?.[plan] : undefined
       if (family && family !== plan && state.matrix[family]?.[current.key] !== true) {
         return `${current.label}: disabled for ${family}`
@@ -37,6 +39,10 @@ export function matchesFeatureSearch(feature: EntitlementFeatureDef, query: stri
 
 export function patchEntitlementCell(state: AdminEntitlementsState | null, scope: string, key: string, enabled: boolean): AdminEntitlementsState | null {
   if (!state) return state
+  if (scope.startsWith('role:')) {
+    const role = scope.slice(5)
+    return { ...state, role_matrix: { ...state.role_matrix, [role]: { ...state.role_matrix?.[role], [key]: enabled } } }
+  }
   if (scope === 'global') return { ...state, kill_switches: { ...state.kill_switches, [key]: enabled } }
   return { ...state, matrix: { ...state.matrix, [scope]: { ...state.matrix[scope], [key]: enabled } } }
 }

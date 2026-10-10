@@ -15,7 +15,8 @@ test.use({ serviceWorkers: 'block' })
 async function fixture(page: Page) {
   let features = Object.fromEntries(registry.map((item) => [item.key, true]))
   let failed = false
-  const state: AdminEntitlementsState = { registry, plan_families: families, plan_keys: keys,
+  const roles = ['anonymous', 'user', 'support', 'admin'] as const
+  const state: AdminEntitlementsState = { roles: [...roles], role_matrix: Object.fromEntries(roles.map((role) => [role, Object.fromEntries(registry.map((item) => [item.key, true]))])), registry, plan_families: families, plan_keys: keys,
     plan_family_by_key: Object.fromEntries(keys.map((key) => [key, ['student', 'weekly', 'lifetime'].includes(key) ? 'pro' : key.split('_')[0]])),
     kill_switches: Object.fromEntries(registry.map((item) => [item.key, true])),
     matrix: Object.fromEntries(keys.map((key) => [key, Object.fromEntries(registry.map((item) => [item.key, true]))])),
@@ -57,6 +58,9 @@ test('admin searches all audited features and explains immutable and individual-
   await expect(page.getByRole('switch', { name: 'Cross-document search global kill-switch' })).toBeVisible()
   await page.getByRole('button', { name: 'Individual plans' }).click()
   await expect(page.getByRole('columnheader', { name: 'pro annual', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Account roles', exact: true }).click()
+  for (const role of ['anonymous', 'user', 'support', 'admin']) await expect(page.getByRole('switch', { name: `Cross-document search for role ${role}`, exact: true })).toBeVisible()
+  await expect(page.getByText('Admins do not bypass product permissions.', { exact: false })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('capability-admin.png'), fullPage: true })
 })
 

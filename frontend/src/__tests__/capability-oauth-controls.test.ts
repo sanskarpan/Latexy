@@ -45,3 +45,30 @@ describe('OAuth and sync capability controls', () => {
     expect(source).toContain("if (!canRef.current('g05')) return\n      const result = await apiClient.pushToDropbox")
   })
 })
+
+describe('OAuth navigation after asynchronous capability changes', () => {
+  it.each([
+    ['GitHub', 'Gh'], ['Zotero', 'Zot'], ['Mendeley', 'Men'], ['Dropbox', 'Dbx'], ['GoogleDrive', 'Gdrive'],
+  ])('does not navigate %s after its new-connection grant is revoked', async (provider, prefix) => {
+    let allowed = true
+    let complete!: (data: unknown) => void
+    const start = vi.fn(() => new Promise((resolve) => { complete = resolve }))
+    const assign = vi.fn()
+    const identity = { current: {} }
+    const context = {
+      can: () => allowed, canRef: { current: () => allowed },
+      providerActionMountedRef: { current: true }, providerActionIdentityRef: identity,
+      apiClient: { [`start${provider}OAuth`]: start },
+      [`set${prefix}Connecting`]: vi.fn(), [`set${prefix}Error`]: vi.fn(),
+      gdriveConnecting: false, gdriveDisconnecting: false,
+      safeOAuthAuthorizationUrl: (url: string) => url,
+      window: { location: { assign } },
+    }
+    const pending = action(settings, `handleConnect${provider}`, context)()
+    expect(start).toHaveBeenCalledOnce()
+    allowed = false
+    complete({ authorization_url: 'https://provider.example.test/authorize' })
+    await pending
+    expect(assign).not.toHaveBeenCalled()
+  })
+})

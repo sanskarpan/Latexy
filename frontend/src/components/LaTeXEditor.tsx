@@ -38,6 +38,7 @@ import {
   type EditorKeybindingMode,
 } from '@/lib/editor-keybindings'
 import { createAutoCompileScheduler, type AutoCompileScheduler } from '@/lib/auto-compile-scheduler'
+import { installFindCapabilityActions } from '@/lib/editor-find-capability'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then((module) => module.default), {
   ssr: false,
@@ -682,9 +683,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const canRef = useRef(can)
     canRef.current = can
     const editorRef = useRef<any>(null)
+    const findCapabilitiesRef = useRef<ReturnType<typeof installFindCapabilityActions> | null>(null)
+    const optionalActionContextsRef = useRef<{ writing: import('monaco-editor').editor.IContextKey<boolean>; docs: import('monaco-editor').editor.IContextKey<boolean> } | null>(null)
     const parentValueGuardRef = useRef(createEditorParentValueGuard(value))
     parentValueGuardRef.current.observeParentValue(value)
     const syncingParentValueRef = useRef(false)
+    const onSaveRef = useRef(onSave)
+    onSaveRef.current = onSave
+    const onCompileRef = useRef(onCompile)
+    onCompileRef.current = onCompile
     const onEditorReadyRef = useRef(onEditorReady)
     onEditorReadyRef.current = onEditorReady
     const onSyncToPdfRef = useRef(onSyncToPdf)
@@ -727,7 +734,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const onCursorInSummarySectionRef = useRef(onCursorInSummarySection)
     onCursorInSummarySectionRef.current = onCursorInSummarySection
     const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
-    onWritingAssistantActionRef.current = can('d06') ? onWritingAssistantAction : undefined
+    onWritingAssistantActionRef.current = ['d06', 'd07', 'd10'].some(can) ? onWritingAssistantAction : undefined
     const onShowDocsRef = useRef(onShowDocs)
     onShowDocsRef.current = can('c17') ? onShowDocs : undefined
     const spellCheckIssuesRef = useRef(spellCheckIssues)
@@ -859,6 +866,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
     useEffect(() => {
+      findCapabilitiesRef.current?.update()
+      optionalActionContextsRef.current?.writing.set(['d06', 'd07', 'd10'].some(can))
+      optionalActionContextsRef.current?.docs.set(can('c17'))
       if (!can('c03')) {
         setSearchPanelOpen(false)
         editorRef.current?.trigger('capability-change', 'closeFindWidget', null)
@@ -1756,18 +1766,31 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       // ── Keyboard shortcuts ─────────────────────────────────────────
       if (onSave) {
-        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave())
+        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current?.())
         if (d) disposablesRef.current.push(d)
       }
       if (onCompile) {
-        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompile())
+        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompileRef.current?.())
         if (d) disposablesRef.current.push(d)
       }
+      const findCapabilities = installFindCapabilityActions(editor, () => canRef.current('c03'))
+      findCapabilitiesRef.current = findCapabilities
+      disposablesRef.current.push({ dispose: () => { findCapabilities.dispose(); findCapabilitiesRef.current = null } })
+
       // Override optional find/replace shortcuts with live capability checks.
       for (const [key, action] of [
         [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, 'actions.find'],
         [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH, 'editor.action.startFindReplaceAction'],
         [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, 'editor.action.startFindReplaceAction'],
+        [monaco.KeyCode.F3, 'editor.action.nextMatchFindAction'],
+        [monaco.KeyMod.Shift | monaco.KeyCode.F3, 'editor.action.previousMatchFindAction'],
+        [monaco.KeyMod.CtrlCmd | monaco.KeyCode.F3, 'editor.action.nextSelectionMatchFindAction'],
+        [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.F3, 'editor.action.previousSelectionMatchFindAction'],
+        ...(/Mac|iPhone|iPad/.test(navigator.platform) ? [
+          [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, 'editor.action.nextMatchFindAction'],
+          [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyG, 'editor.action.previousMatchFindAction'],
+          [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE, 'actions.findWithSelection'],
+        ] as const : []),
       ] as const) {
         const command = editor.addCommand(key, () => {
           if (canRef.current('c03')) void editor.getAction(action)?.run()
@@ -1826,13 +1849,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         disposablesRef.current.push({ dispose: () => { if (summaryTimer) clearTimeout(summaryTimer) } })
       }
 
+      const writingAllowedContext = editor.createContextKey('latexyWritingAllowed', ['d06', 'd07', 'd10'].some(feature => canRef.current(feature)))
+      const docsAllowedContext = editor.createContextKey('latexyDocsAllowed', canRef.current('c17'))
+      optionalActionContextsRef.current = { writing: writingAllowedContext, docs: docsAllowedContext }
+      disposablesRef.current.push({ dispose: () => {
+        writingAllowedContext.reset()
+        docsAllowedContext.reset()
+        optionalActionContextsRef.current = null
+      } })
+
       // ── AI Writing Assistant context menu action ───────────────────
       const writingActionDisposable = editor.addAction({
         id: 'latexy.writingAssistant',
         label: '✨ AI Writing Assistant',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1.5,
-        precondition: 'editorHasSelection',
+        precondition: 'editorHasSelection && latexyWritingAllowed',
         run: (ed) => {
           const selection = ed.getSelection()
           if (!selection) return
@@ -1861,6 +1893,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const docsActionDisposable = editor.addAction({
         id: 'latexy.showDocs',
         label: '📖 Show Documentation',
+        precondition: 'latexyDocsAllowed',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 2.0,
         run: (ed) => {
@@ -2337,18 +2370,18 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {/* Page count badge — actual (post-compile) or estimated (pre-compile) */}
             {(pageCount !== null && pageCount !== undefined) ? (
               <span
-                title={`${warnOnMultiplePages ? 'Resume' : 'Document'} is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
+                title={`${can('c12') && warnOnMultiplePages ? 'Resume' : 'Document'} is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
                 className={`text-[12px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
                   pageCount === 1
                     ? 'text-ok bg-ok/10'
-                    : !warnOnMultiplePages
+                    : !can('c12') || !warnOnMultiplePages
                     ? 'text-fg-2 bg-surface-2'
                     : pageCount === 2
                     ? 'text-warn bg-warn/10'
                     : 'text-err bg-err/10 animate-pulse'
                 }`}
               >
-                {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 && warnOnMultiplePages ? ' ⚠' : ''}
+                {pageCount} {pageCount === 1 ? 'page' : 'pages'}{can('c12') && pageCount > 1 && warnOnMultiplePages ? ' ⚠' : ''}
               </span>
             ) : estimatedPageCount !== null ? (
               <span

@@ -3,7 +3,7 @@ import base from './playwright.config'
 
 export default defineConfig({
   ...base,
-  testMatch: ['capability-controls.spec.ts', 'plan-catalog.spec.ts'],
+  testMatch: ['capability-controls.spec.ts', 'capability-native-find.spec.ts', 'plan-catalog.spec.ts'],
   retries: 0,
   reporter: 'list',
   use: {

@@ -44,6 +44,7 @@ async def reset_entitlements_baseline() -> None:
 
     # 1. DB: reset the matrix + gateable kill-switches to enabled, committed.
     async with get_async_db_session() as db:
+        await db.execute(text("UPDATE role_features SET enabled = true WHERE enabled = false"))
         await db.execute(text("UPDATE plan_features SET enabled = true WHERE enabled = false"))
         if gateable:
             await db.execute(

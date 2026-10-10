@@ -477,7 +477,7 @@ def submit_ats_scoring(
 
     # An omitted profile normally triggers auto-detection from the JD. A
     # disabled profiles capability must use generic scoring on that path too.
-    if not entitlement_service.sync_has_feature("d19", user_plan):
+    if not entitlement_service.sync_has_feature("d19", user_plan, user_id=user_id):
         industry, industry_profile_key, locale_key = "generic", "generic", "global"
     if priority is None:
         priority = get_task_priority(user_plan)
@@ -839,7 +839,9 @@ async def _async_deep_analyze(
         scoring_result = await ats_scoring_service.score_resume(
             latex_content=latex_content,
             job_description=job_description,
-            # Explicit profile key when provided; None → "generic" → auto-detect from JD
+            # A disabled profiles capability is snapshotted as "generic" at
+            # admission. Suppress JD auto-detection as well as explicit keys.
+            industry="generic" if industry_override == "generic" else None,
             industry_profile_key=industry_override or "generic",
         )
         multi_dim_scores = scoring_result.multi_dim_scores or {}
@@ -1166,6 +1168,10 @@ def submit_deep_analyze_ats(
     """Enqueue deep_analyze_ats_task (Celery) or Modal."""
     import os
 
+    from ..services.entitlement_service import entitlement_service
+
+    if not entitlement_service.sync_has_feature("d19", "free", user_id=(metadata or {}).get("user_id")):
+        industry_override = "generic"
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
 

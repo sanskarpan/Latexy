@@ -218,7 +218,7 @@ console.log(payload);`,
         </div>
 
         {/* create */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+        {can('h08') && <div className="mb-6 flex flex-col gap-3 sm:flex-row">
           <label htmlFor="new-key-name" className="sr-only">
             New key name
           </label>
@@ -235,8 +235,8 @@ console.log(payload);`,
             className={`${primaryBtn} shrink-0`}
            aria-description={!can('h08') ? 'Unavailable for your current plan or feature settings' : undefined}>
             {busyKeyId === 'new' ? 'Creating…' : 'Create key'}
-          {!can('h08') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
-        </div>
+          </button>
+        </div>}
 
         {createdKey && (
           <div className="mb-6 rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">

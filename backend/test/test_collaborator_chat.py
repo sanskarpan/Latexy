@@ -155,6 +155,8 @@ async def test_two_real_websocket_clients_exchange_ephemeral_chat() -> None:
     name_result.scalar_one_or_none.return_value = "Alice"
     route_db = AsyncMock()
     route_db.execute = AsyncMock(side_effect=[resume_result, name_result, resume_result, name_result])
+    # Per-frame live ACL reads keep the same owner in this protocol fixture.
+    route_db.scalar = AsyncMock(return_value=user_id)
 
     @asynccontextmanager
     async def route_session():

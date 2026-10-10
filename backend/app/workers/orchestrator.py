@@ -1356,7 +1356,12 @@ def submit_optimize_and_compile(
 
     # Snapshot this optional sub-capability at admission. Never trust a
     # caller-supplied false flag, and never retroactively change admitted work.
-    metadata = {**(metadata or {}), "_ats_generic_only": not entitlement_service.sync_has_feature("d19", user_plan)}
+    metadata = {
+        **(metadata or {}),
+        "_ats_generic_only": not entitlement_service.sync_has_feature("d19", user_plan, user_id=user_id),
+    }
+    if compile_settings and not entitlement_service.sync_has_feature("c07", user_plan, user_id=user_id):
+        compile_settings = None
     if priority is None:
         priority = get_task_priority(user_plan)
 

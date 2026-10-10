@@ -26,6 +26,11 @@ interface APIKeyManagerProps {
 
 const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const { can } = useEntitlements()
+  const canAdd = can('d25')
+  const canRef = useRef(can)
+  canRef.current = can
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providers, setProviders] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
@@ -94,7 +99,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   }, [fetchAPIKeys, fetchProviders])
 
   useEffect(() => {
-    if (!showAddModal) return
+    if (!showAddModal || !canAdd) return
 
     triggerRef.current = document.activeElement as HTMLElement | null
     const previousOverflow = document.body.style.overflow
@@ -141,7 +146,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       document.body.style.overflow = previousOverflow
       triggerRef.current?.focus()
     }
-  }, [showAddModal, closeAddModal])
+  }, [showAddModal, canAdd, closeAddModal])
 
   const validateAPIKey = async (provider: string, apiKey: string): Promise<{ valid: boolean; reason?: string }> => {
     try {
@@ -161,7 +166,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   }
 
   const addAPIKey = async () => {
-    if (!can('d25')) return
+    if (!mounted.current || !canRef.current('d25')) return
     if (saving) return
     if (!newKey.provider || !newKey.api_key) {
       toast.error('Provider and API key are required')
@@ -171,6 +176,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
     setSaving(true)
     try {
       const { valid, reason } = await validateAPIKey(newKey.provider, newKey.api_key)
+      if (!mounted.current || !canRef.current('d25')) return
       if (!valid) {
         toast.error(reason ? `Key validation failed: ${reason}` : 'Key validation failed for selected provider')
         return
@@ -182,15 +188,16 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
         body: JSON.stringify(newKey),
       })
 
+      if (!mounted.current) return
       if (!response.ok) throw new Error('Failed to add API key')
       toast.success('API key added')
       setShowAddModal(false)
       setNewKey(initialKey)
       void fetchAPIKeys()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to add key')
+      if (mounted.current) toast.error(error instanceof Error ? error.message : 'Failed to add key')
     } finally {
-      setSaving(false)
+      if (mounted.current) setSaving(false)
     }
   }
 
@@ -217,14 +224,14 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
           <h2 className="text-xl font-semibold text-fg">API Key Management</h2>
           <p className="text-sm text-fg-2">Encrypted BYOK credential management with provider validation.</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
+        {canAdd && <button
+          onClick={() => can('d25') && setShowAddModal(true)}
           disabled={!can('d25') || (Boolean(providersError) || Object.keys(providers).length === 0)}
           title={providersError ?? (Object.keys(providers).length === 0 ? 'No providers are currently available' : undefined)}
           className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
          aria-description={!can('d25') ? 'Unavailable for your current plan or feature settings' : undefined}>
           Add Key
-        {!can('d25') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+        </button>}
       </div>
 
       {providersError ? (
@@ -295,7 +302,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
         )}
       </div>
 
-      {showAddModal && (
+      {showAddModal && canAdd && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
           onMouseDown={(e) => {

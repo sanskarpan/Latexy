@@ -120,12 +120,21 @@ async def update_feature_flag(
 
 class KillSwitchUpdateRequest(BaseModel):
     enabled: bool
+    expected_enabled: bool | None = None
 
 
 class MatrixUpdateRequest(BaseModel):
     plan_family: str
     feature_key: str
     enabled: bool
+    expected_enabled: bool | None = None
+
+
+class RoleMatrixUpdateRequest(BaseModel):
+    role: str
+    feature_key: str
+    enabled: bool
+    expected_enabled: bool | None = None
 
 
 @router.get("/admin/entitlements")
@@ -146,7 +155,7 @@ async def update_kill_switch(
 ) -> dict:
     """Toggle a global feature kill-switch. Admin only. 404 if the key is not gateable."""
     try:
-        await entitlement_service.set_kill_switch(key, body.enabled, db)
+        await entitlement_service.set_kill_switch(key, body.enabled, db, expected_enabled=body.expected_enabled)
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -194,7 +203,7 @@ async def update_matrix_cell(
             ),
         )
     await entitlement_service.set_matrix_cell(
-        body.plan_family, body.feature_key, body.enabled, db
+        body.plan_family, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled
     )
     logger.info(
         "admin_entitlement_matrix_updated",
@@ -205,6 +214,33 @@ async def update_matrix_cell(
             "enabled": body.enabled,
         },
     )
+    return await entitlement_service.get_state(db)
+
+
+@router.patch("/admin/entitlements/roles")
+async def update_role_matrix_cell(
+    body: RoleMatrixUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user_id: str = Depends(require_admin),
+) -> dict:
+    """Restrict one account role/context; document and tenant ACLs are unchanged."""
+    from ..core.feature_registry import CAPABILITY_ROLES, is_gateable
+
+    if body.role not in CAPABILITY_ROLES:
+        raise HTTPException(status_code=400, detail=error_body(
+            "invalid_capability_role", f"Unknown account role/context: {body.role!r}", None,
+        ))
+    if not is_gateable(body.feature_key):
+        raise HTTPException(status_code=404, detail=error_body(
+            "feature_not_found", f"Unknown or non-gateable feature: {body.feature_key!r}", None,
+        ))
+    await entitlement_service.set_role_cell(
+        body.role, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled,
+    )
+    logger.info("admin_entitlement_role_updated", extra={
+        "admin_user_id": admin_user_id, "role": body.role,
+        "feature_key": body.feature_key, "enabled": body.enabled,
+    })
     return await entitlement_service.get_state(db)
 
 

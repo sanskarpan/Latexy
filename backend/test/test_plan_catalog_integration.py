@@ -76,10 +76,11 @@ async def test_non_admin_cannot_read_or_change_catalog(client: AsyncClient, db_s
 
 async def test_retired_sku_preserves_existing_subscription_and_entitlement(db_session: AsyncSession):
     admin_id, _ = await headers(db_session)
-    customer = User(id=str(uuid4()), email=f"test_{uuid4().hex}@example.com", subscription_plan="pro", subscription_status="active", subscription_id="sub_test_existing")
+    provider_id = f"sub_test_existing_{uuid4().hex}"
+    customer = User(id=str(uuid4()), email=f"test_{uuid4().hex}@example.com", subscription_plan="pro", subscription_status="active", subscription_id=provider_id)
     db_session.add(customer)
     await db_session.flush()
-    subscription = Subscription(user_id=customer.id, plan_id="pro", razorpay_subscription_id="sub_test_existing", status="active", current_period_start=datetime.now(timezone.utc), current_period_end=datetime.now(timezone.utc) + timedelta(days=30))
+    subscription = Subscription(user_id=customer.id, plan_id="pro", razorpay_subscription_id=provider_id, status="active", current_period_start=datetime.now(timezone.utc), current_period_end=datetime.now(timezone.utc) + timedelta(days=30))
     db_session.add(subscription)
     await db_session.commit()
     original_end = subscription.current_period_end
@@ -87,7 +88,7 @@ async def test_retired_sku_preserves_existing_subscription_and_entitlement(db_se
     await db_session.refresh(customer)
     await db_session.refresh(subscription)
     assert customer.subscription_plan == "pro"
-    assert customer.subscription_id == "sub_test_existing"
+    assert customer.subscription_id == provider_id
     assert subscription.status == "active"
     assert subscription.plan_id == "pro"
     assert subscription.current_period_end == original_end

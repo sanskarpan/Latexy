@@ -1,0 +1,39 @@
+{
+  "baseline_commit": "1e0f1c459dff1e44db7f79bac992008244b2913e",
+  "current_failed": [
+    "test/test_ai_math_generation.py::test_rendered_math_modes_compile_with_pdflatex",
+    "test/test_ai_table_generation.py::test_generated_table_compiles_with_pdflatex",
+    "test/test_auto_fit_service.py::test_real_tex_profile_can_recover_a_small_second_page",
+    "test/test_cjk_latex.py::test_luahbtex_cjk_compile_uses_hosted_font_when_available",
+    "test/test_compile_settings.py::TestDraftGraphicsInjection::test_real_draft_compile_skips_a_missing_image",
+    "test/test_cover_letter_signature.py::test_materialized_signature_compiles_with_pdftex",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[en]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[fr]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[pl]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[el]",
+    "test/test_europecv.py::test_compiled_pdf_extraction_contains_standard_and_candidate_text",
+    "test/test_latex_worker.py::TestLatexCompilationSuccess::test_real_auto_fit_probe_reports_the_candidate_page_count",
+    "test/test_multilingual_latex.py::test_luahbtex_mixed_cjk_rtl_compile_and_text_extraction",
+    "test/test_rtl_latex.py::test_lualatex_rtl_compile_and_pdf_text_layer[ar-Noto Naskh Arabic-\\u0627\\u0644\\u0633\\u064a\\u0631\\u0629 \\u0627\\u0644\\u0630\\u0627\\u062a\\u064a\\u0629-\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea]",
+    "test/test_rtl_latex.py::test_lualatex_rtl_compile_and_pdf_text_layer[he-Noto Sans Hebrew-\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629-\\u05e7\\u05d5\\u05e8\\u05d5\\u05ea \\u05d7\\u05d9\\u05d9\\u05dd]"
+  ],
+  "baseline_failed": [
+    "test/test_ai_math_generation.py::test_rendered_math_modes_compile_with_pdflatex",
+    "test/test_ai_table_generation.py::test_generated_table_compiles_with_pdflatex",
+    "test/test_auto_fit_service.py::test_real_tex_profile_can_recover_a_small_second_page",
+    "test/test_cjk_latex.py::test_luahbtex_cjk_compile_uses_hosted_font_when_available",
+    "test/test_compile_settings.py::TestDraftGraphicsInjection::test_real_draft_compile_skips_a_missing_image",
+    "test/test_cover_letter_signature.py::test_materialized_signature_compiles_with_pdftex",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[en]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[fr]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[pl]",
+    "test/test_europecv.py::test_representative_locale_compiles_with_lualatex[el]",
+    "test/test_europecv.py::test_compiled_pdf_extraction_contains_standard_and_candidate_text",
+    "test/test_latex_worker.py::TestLatexCompilationSuccess::test_real_auto_fit_probe_reports_the_candidate_page_count",
+    "test/test_multilingual_latex.py::test_luahbtex_mixed_cjk_rtl_compile_and_text_extraction",
+    "test/test_rtl_latex.py::test_lualatex_rtl_compile_and_pdf_text_layer[ar-Noto Naskh Arabic-\\u0627\\u0644\\u0633\\u064a\\u0631\\u0629 \\u0627\\u0644\\u0630\\u0627\\u062a\\u064a\\u0629-\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea]",
+    "test/test_rtl_latex.py::test_lualatex_rtl_compile_and_pdf_text_layer[he-Noto Sans Hebrew-\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629-\\u05e7\\u05d5\\u05e8\\u05d5\\u05ea \\u05d7\\u05d9\\u05d9\\u05dd]"
+  ],
+  "same_failure_set": true,
+  "baseline_exit_code": 1
+}

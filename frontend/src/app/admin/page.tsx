@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   apiClient,
   type AdminEntitlementsState,
   type AdminUser,
   type UserRole,
+  type EntitlementRole,
 } from '@/lib/api-client'
+import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock } from '@/lib/admin-entitlements'
@@ -26,7 +28,7 @@ const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compi
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'flags', label: 'Feature Flags' },
-  { id: 'matrix', label: 'Features × Plans' },
+  { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
   { id: 'users', label: 'Users & Roles' },
 ]
@@ -39,19 +41,25 @@ function Switch({
   disabled,
   busy,
   label,
+  description,
 }: {
   enabled: boolean
   onClick: () => void
   disabled?: boolean
   busy?: boolean
   label: string
+  description?: string
 }) {
+  const descriptionId = useId()
   return (
+    <>
     <button
       type="button"
       role="switch"
       aria-checked={enabled}
       aria-label={label}
+      aria-describedby={description ? descriptionId : undefined}
+      aria-busy={busy || undefined}
       onClick={onClick}
       disabled={disabled || busy}
       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -66,6 +74,8 @@ function Switch({
         }`}
       />
     </button>
+    {description && <span id={descriptionId} className="sr-only">{description}</span>}
+    </>
   )
 }
 
@@ -146,7 +156,7 @@ function MatrixTab() {
   const [query, setQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [kindFilter, setKindFilter] = useState('all')
-  const [planView, setPlanView] = useState<'families' | 'skus'>('families')
+  const [planView, setPlanView] = useState<'families' | 'skus' | 'roles'>('families')
   const pendingRef = useRef(createEntitlementWriteLock())
   const [state, setState] = useState<AdminEntitlementsState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -213,72 +223,49 @@ function MatrixTab() {
     return cats.map((cat) => ({ category: cat, features: byCat.get(cat)! }))
   }, [state, query, categoryFilter, kindFilter])
 
-  // Functional patch helpers so every write builds off the *latest* state,
-  // never a value captured in the handler's closure. This is what prevents
-  // concurrent toggles from clobbering each other.
-  const patchKillSwitch = useCallback((cur: AdminEntitlementsState | null, featureKey: string, value: boolean) =>
-    patchEntitlementCell(cur, 'global', featureKey, value), [])
-  const patchMatrixCell = useCallback((cur: AdminEntitlementsState | null, family: string, featureKey: string, value: boolean) =>
-    patchEntitlementCell(cur, family, featureKey, value), [])
-
-  const toggleGlobal = useCallback(
-    async (featureKey: string, next: boolean) => {
-      const cellId = `global:${featureKey}`
-      if (!pendingRef.current.acquire(cellId)) return
-      // optimistic — functional so it merges with any other in-flight change
-      setState((cur) => patchKillSwitch(cur, featureKey, next))
-      markBusy(cellId)
+  // Scope-prefixed keys distinguish role cells from similarly named plan cells.
+  // Only merge the written cell: independent in-flight writes can finish in any order.
+  const toggle = useCallback(async (scope: string, featureKey: string, next: boolean) => {
+    const cellId = `${scope}:${featureKey}`
+    if (!pendingRef.current.acquire(cellId)) return
+    setState((cur) => patchEntitlementCell(cur, scope, featureKey, next))
+    markBusy(cellId)
+    const readCell = (fresh: AdminEntitlementsState) => scope === 'global'
+      ? fresh.kill_switches[featureKey]
+      : scope.startsWith('role:') ? fresh.role_matrix?.[scope.slice(5)]?.[featureKey]
+        : fresh.matrix[scope]?.[featureKey]
+    try {
+      const fresh = scope === 'global'
+        ? await apiClient.updateKillSwitch(featureKey, next, !next)
+        : scope.startsWith('role:')
+          ? await apiClient.updateRoleCell(scope.slice(5) as EntitlementRole, featureKey, next, !next)
+          : await apiClient.updateMatrixCell(scope, featureKey, next, !next)
+      if (mounted.current) setState((cur) => patchEntitlementCell(cur, scope, featureKey, readCell(fresh) === true))
+    } catch (err) {
+      if (!mounted.current) return
+      // A timeout can occur after a successful write. Re-read authoritative state
+      // instead of assuming the old permission is still stored.
       try {
-        const fresh = await apiClient.updateKillSwitch(featureKey, next)
-        if (!mounted.current) return
-        // Apply only the authoritative value for *this* cell, keeping any other
-        // in-flight optimistic edits rather than overwriting the whole grid.
-        setState((cur) => patchKillSwitch(cur, featureKey, fresh.kill_switches[featureKey] ?? next))
+        const fresh = await apiClient.getAdminEntitlements()
+        if (mounted.current) setState((cur) => patchEntitlementCell(cur, scope, featureKey, readCell(fresh) === true))
+        toast.error(err instanceof Error && err.message.includes('409')
+          ? 'This permission changed elsewhere. The switch was refreshed; review it before retrying.'
+          : 'The update could not be confirmed. The switch was refreshed from the server.')
       } catch {
-        if (!mounted.current) return
-        // Roll back only this cell, functionally, so a concurrent toggle's
-        // optimistic change survives.
-        setState((cur) => patchKillSwitch(cur, featureKey, !next))
-        toast.error('Failed to update kill-switch')
-      } finally {
-        pendingRef.current.release(cellId)
-        clearBusy(cellId)
-        window.dispatchEvent(new Event('latexy:entitlements-updated'))
+        if (mounted.current) setError('Could not verify the saved permission. Reload this page before making more changes.')
       }
-    },
-    [patchKillSwitch, markBusy, clearBusy],
-  )
-
-  const toggleCell = useCallback(
-    async (family: string, featureKey: string, next: boolean) => {
-      const cellId = `${family}:${featureKey}`
-      if (!pendingRef.current.acquire(cellId)) return
-      setState((cur) => patchMatrixCell(cur, family, featureKey, next))
-      markBusy(cellId)
-      try {
-        const fresh = await apiClient.updateMatrixCell(family, featureKey, next)
-        if (!mounted.current) return
-        setState((cur) =>
-          patchMatrixCell(cur, family, featureKey, fresh.matrix[family]?.[featureKey] ?? next),
-        )
-      } catch {
-        if (!mounted.current) return
-        setState((cur) => patchMatrixCell(cur, family, featureKey, !next))
-        toast.error('Failed to update plan access')
-      } finally {
-        pendingRef.current.release(cellId)
-        clearBusy(cellId)
-        window.dispatchEvent(new Event('latexy:entitlements-updated'))
-      }
-    },
-    [patchMatrixCell, markBusy, clearBusy],
-  )
+    } finally {
+      pendingRef.current.release(cellId)
+      if (mounted.current) clearBusy(cellId)
+      window.dispatchEvent(new Event('latexy:entitlements-updated'))
+    }
+  }, [markBusy, clearBusy])
 
   if (loading) return <RowsSkeleton rows={8} />
   if (error) return <InlineError message={error} />
   if (!state) return null
 
-  const families = planView === 'skus' ? (state.plan_keys ?? state.plan_families) : state.plan_families
+  const families = planView === 'roles' ? (state.roles ?? []) : planView === 'skus' ? (state.plan_keys ?? state.plan_families) : state.plan_families
   const categories = [...new Set(state.registry.map((feature) => feature.category))]
   const visibleCount = grouped.reduce((total, group) => total + group.features.length, 0)
 
@@ -287,7 +274,7 @@ function MatrixTab() {
       <div className="space-y-4 border-b border-line p-4">
         <div>
           <h2 className="font-semibold text-fg">Capability inventory</h2>
-          <p className="mt-1 text-xs text-fg-3">Control individual capabilities and parent feature groups. Parent restrictions always apply to their children.</p>
+          <p className="mt-1 text-xs text-fg-3">Control individual capabilities and parent feature groups. Global, plan and account-role restrictions all apply. Parent restrictions always apply to their children.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <input type="search" aria-label="Search capabilities" placeholder="Search features, IDs, or descriptions…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-48 flex-1 rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg" />
@@ -301,11 +288,13 @@ function MatrixTab() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p role="status" className="text-xs text-fg-3">{visibleCount} of {state.registry.length} capabilities · {state.registry.filter((feature) => feature.inventory_id).length} audited features</p>
-          <div className="flex gap-2" role="group" aria-label="Plan control scope">
+          <div className="flex gap-2" role="group" aria-label="Permission control scope">
             <button type="button" aria-pressed={planView === 'families'} onClick={() => setPlanView('families')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'families' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Family defaults</button>
             <button type="button" aria-pressed={planView === 'skus'} onClick={() => setPlanView('skus')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'skus' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Individual plans</button>
+            {state.roles?.length ? <button type="button" aria-pressed={planView === 'roles'} onClick={() => setPlanView('roles')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'roles' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Account roles</button> : null}
           </div>
         </div>
+        {planView === 'roles' && <p className="text-xs text-fg-3">Anonymous visitors, users, support and admins have separate restrictions. Admins do not bypass product permissions. Document and workspace owner/editor/viewer permissions remain separate. Plan restrictions also still apply.</p>}
         {planView === 'skus' && <p className="text-xs text-fg-3">Individual plan switches add restrictions to family defaults. Turning a plan on cannot override a disabled family, parent, or global switch.</p>}
       </div>
       <div className="max-h-[70vh] overflow-auto">
@@ -339,16 +328,17 @@ function MatrixTab() {
                 state={state}
                 families={families}
                 busyCells={busyCells}
-                onToggleGlobal={toggleGlobal}
-                onToggleCell={toggleCell}
+                roleView={planView === 'roles'}
+                onToggleGlobal={(key, next) => toggle('global', key, next)}
+                onToggleCell={(scope, key, next) => toggle(scope, key, next)}
               />
             ))}
           </tbody>
         </table>
       </div>
       <p className="border-t border-line px-4 py-3 text-[11px] text-fg-3">
-        Switches show stored permissions; effective access also depends on parent and family permissions.
-        A global switch off disables a capability for every plan. Security, recovery and baseline data access stay available.
+        Switches show stored permissions; effective access also depends on parent, family and account-role permissions.
+        A global switch off disables a capability for every plan and role. Security, recovery and baseline data access stay available.
       </p>
     </div>
   )
@@ -361,6 +351,7 @@ function FragmentGroup({
   state,
   families,
   busyCells,
+  roleView,
   onToggleGlobal,
   onToggleCell,
 }: {
@@ -370,6 +361,7 @@ function FragmentGroup({
   state: AdminEntitlementsState
   families: string[]
   busyCells: ReadonlySet<string>
+  roleView: boolean
   onToggleGlobal: (featureKey: string, next: boolean) => void
   onToggleCell: (family: string, featureKey: string, next: boolean) => void
 }) {
@@ -429,8 +421,9 @@ function FragmentGroup({
 
             {/* Per-plan cells */}
             {families.map((fam) => {
-              const cellOn = state.matrix[fam]?.[feat.key] === true
-              const blocker = entitlementBlocker(state, feat, fam)
+              const scope = roleView ? `role:${fam}` : fam
+              const cellOn = (roleView ? state.role_matrix?.[fam]?.[feat.key] : state.matrix[fam]?.[feat.key]) === true
+              const blocker = entitlementBlocker(state, feat, roleView ? undefined : fam, roleView ? fam : undefined)
               if (!feat.gateable) {
                 return (
                   <td key={fam} className="px-3 py-3 text-center">
@@ -440,12 +433,13 @@ function FragmentGroup({
               }
               return (
                 <td key={fam} className="px-3 py-3 text-center">
-                  <div title={blocker ?? 'Effective access: enabled'} className="inline-flex min-h-[40px] flex-col items-center justify-center gap-1 px-1">
+                  <div title={blocker ?? 'Allowed by this scope; other plan and role restrictions still apply'} className="inline-flex min-h-[40px] flex-col items-center justify-center gap-1 px-1">
                     <Switch
                       enabled={cellOn}
-                      busy={busyCells.has(`${fam}:${feat.key}`)}
-                      onClick={() => onToggleCell(fam, feat.key, !cellOn)}
-                      label={`${feat.label} for ${fam}`}
+                      busy={busyCells.has(`${scope}:${feat.key}`)}
+                      onClick={() => onToggleCell(scope, feat.key, !cellOn)}
+                      label={`${feat.label} for ${roleView ? 'role ' : ''}${fam}`}
+                      description={blocker ?? 'Allowed by this scope; other plan and role restrictions still apply'}
                     />
                     {blocker && cellOn && <span className="text-[9px] text-warn">Inherited off</span>}
                   </div>
@@ -526,6 +520,8 @@ function UsersTab() {
       const updated = await apiClient.updateUserRole(user.id, role)
       setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null)
       toast.success(`${updated.email} is now ${updated.role}`)
+      window.dispatchEvent(new Event('latexy:account-role-updated'))
+      window.dispatchEvent(new Event('latexy:entitlements-updated'))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('409') || msg.includes('last_admin')) {
@@ -676,39 +672,23 @@ function InlineError({ message }: { message: string }) {
 // ── Page shell ────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const { role, loading, error, refresh, scopeKey } = useAccountRole()
+  if (loading) return <div role="status" className="flex min-h-[60vh] items-center justify-center">Checking admin access…</div>
+  if (error) return <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
+    <p role="alert" className="text-sm text-err">{error}</p>
+    <button type="button" onClick={refresh} className="rounded-md border border-line px-4 py-2 text-sm">Retry</button>
+  </div>
+  if (role !== 'admin') return <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+    <p className="text-lg font-semibold text-fg-2">Not authorized</p>
+    <p className="text-sm text-fg-3">Admin access required. Ask an administrator to grant you the admin role.</p>
+  </div>
+  // Changing identity remounts every private tab before it can display old data.
+  return <AuthorizedAdminPage key={scopeKey} />
+}
+
+function AuthorizedAdminPage() {
   const [tab, setTab] = useState<TabId>('matrix')
-  const [forbidden, setForbidden] = useState(false)
-  const [probeError, setProbeError] = useState<string | null>(null)
-  const [checking, setChecking] = useState(true)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
-
-  // Probe authorization once via the flags endpoint (already admin-gated).
-  const checkAuthorization = useCallback(() => {
-    setChecking(true)
-    setForbidden(false)
-    setProbeError(null)
-    apiClient
-      .getAdminFeatureFlags()
-      .then(() => setForbidden(false))
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (
-          msg.includes('401') ||
-          msg.includes('403') ||
-          msg.includes('Unauthorized') ||
-          msg.includes('Forbidden')
-        ) {
-          setForbidden(true)
-        } else {
-          setProbeError(msg || 'Unable to verify admin access')
-        }
-      })
-      .finally(() => setChecking(false))
-  }, [])
-
-  useEffect(() => {
-    checkAuthorization()
-  }, [checkAuthorization])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
@@ -719,40 +699,6 @@ export default function AdminPage() {
     tabRefs.current[next]?.focus()
   }
 
-  if (checking) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
-      </div>
-    )
-  }
-
-  if (forbidden) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
-        <p className="text-lg font-semibold text-fg-2">Not authorized</p>
-        <p className="text-sm text-fg-3">
-          Admin access required. Ask an administrator to grant you the admin role.
-        </p>
-      </div>
-    )
-  }
-
-  if (probeError) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-lg font-semibold text-fg-2">Could not verify admin access</p>
-        <p role="alert" className="max-w-lg text-sm text-err">{probeError}</p>
-        <button
-          type="button"
-          onClick={checkAuthorization}
-          className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm font-medium text-fg hover:bg-surface-2"
-        >
-          Retry
-        </button>
-      </div>
-    )
-  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12">

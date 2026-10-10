@@ -305,6 +305,8 @@ function BuilderResumeForm({
   authUnverified: boolean
 }) {
   const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const ownerId = session.user.id
 
   const [loading, setLoading] = useState(true)
@@ -529,6 +531,7 @@ function BuilderResumeForm({
   }
 
   const forceReattach = async () => {
+    if (!canRef.current('b09')) return
     if (!isCurrentRequest()) return
     const revision = editRevision.current
     const requestId = ++saveRequestId.current
@@ -638,10 +641,10 @@ function BuilderResumeForm({
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+            <CapabilityGate feature="b09"><button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
-            </button>
+            </button></CapabilityGate>
           </div>
         </section>
       ) : null}

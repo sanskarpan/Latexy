@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import TypeAdapter, ValidationError
 
 from ..services.entitlement_service import entitlement_service
 from .auth_middleware import get_current_user_optional
@@ -46,6 +47,7 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         "deep_analyze_resume": ("d20",), "semantic_match_resumes": ("d21",),
         "simulate_ats": ("d22",), "keyword_density": ("d23",),
         "get_ats_benchmark": ("d24",),
+        "get_industry_keywords": ("d19",),
     },
     "format_routes": {
         "detect_file_format": ("b06",), "validate_file_format": ("b06",),
@@ -111,7 +113,10 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         "add_resume_to_workspace": ("f08",),
         "create_recruiter_note": ("f09",), "update_recruiter_note": ("f09",),
     },
-    "comment_routes": {"add_comment": ("f06",), "update_comment": ("f06",)},
+    "comment_routes": {
+        "add_comment": ("f06",), "update_comment": ("f06",),
+        "list_comment_participants": ("f06",),
+    },
     "suggestion_routes": {"decide_suggestion": ("f07",)},
     "element_version_routes": {
         "create_element_version": ("c23",), "fork_element_version": ("c23", "b11"),
@@ -181,12 +186,197 @@ DYNAMIC_ENDPOINTS = frozenset({
     ("tracker_workflow_routes", "update_alert"),
     ("ws_routes", "create_websocket_ticket"),
     ("ats_routes", "score_resume_ats"), ("ats_routes", "quick_score_ats"),
+    ("ats_routes", "deep_analyze_resume"), ("ats_routes", "get_ats_recommendations"),
     ("routes", "optimize_resume"), ("routes", "optimize_and_compile_resume"),
     ("routes", "compile_latex_anonymous"),
     ("portfolio_routes", "setup_portfolio"),
     ("resume_routes", "update_resume_tags"), ("resume_routes", "update_collaborator_role"),
     ("workspace_routes", "update_member_role"),
 })
+
+
+# Explicit exemptions: core operations, data recovery, metadata discovery,
+# provider callbacks (which cannot redeem tokens), and separately-authorized
+# resource/admin handlers. Any new first-party HTTP handler must be classified
+# here or in the gate maps; an omitted policy must never silently allow use.
+PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
+    "admin_routes": frozenset({
+        "get_public_feature_flags", "get_admin_feature_flags", "update_feature_flag",
+        "get_entitlements", "update_kill_switch", "update_matrix_cell",
+        "update_role_matrix_cell", "list_users", "update_user_role",
+    }),
+    "ai_routes": frozenset({
+        "list_bullet_variants", "delete_bullet_variant_set", "list_personas",
+    }),
+    "analytics_routes": frozenset({
+        "track_event", "get_user_analytics", "get_system_analytics",
+        "get_conversion_funnel", "track_compilation", "track_optimization",
+        "track_page_view", "track_feature_usage", "get_analytics_dashboard",
+    }),
+    "application_routes": frozenset({
+        "list_submissions", "get_submission",
+    }),
+    "ats_routes": frozenset({
+        "get_supported_industries", "get_industry_profiles", "get_locale_profiles",
+        "list_ats_profiles",
+    }),
+    "byok_routes": frozenset({
+        "get_user_api_keys", "delete_api_key", "get_supported_providers",
+        "get_usage_stats", "get_system_health", "get_provider_models",
+        "get_provider_capabilities",
+    }),
+    "career_routes": frozenset({
+        "seed_career_graph",
+        "list_career_analyses", "get_career_analysis", "search_career_roles",
+        "search_esco_skills",
+    }),
+    "comment_routes": frozenset({
+        "list_comments", "delete_comment", "resolve_comment",
+    }),
+    "cover_letter_routes": frozenset({
+        "list_cover_letters", "get_cover_letter_stats", "get_cover_letter",
+        "delete_cover_letter", "list_resume_cover_letters",
+    }),
+    "developer_routes": frozenset({
+        "list_developer_keys", "get_developer_usage", "revoke_developer_key",
+    }),
+    "document_delivery_routes": frozenset({
+        "email_compiled_document_status",
+    }),
+    "dropbox_routes": frozenset({
+        "dropbox_callback", "dropbox_status", "dropbox_disconnect",
+        "disable_dropbox_sync", "get_resume_dropbox_status",
+    }),
+    "element_version_routes": frozenset({
+        "list_element_versions", "restore_element_version",
+    }),
+    "export_routes": frozenset({
+        "list_export_formats",
+    }),
+    "format_routes": frozenset({
+        "get_supported_formats", "get_format_info",
+    }),
+    "github_routes": frozenset({
+        "github_callback", "github_status", "github_disconnect",
+        "disable_github_sync", "get_github_import_result", "get_resume_github_status",
+    }),
+    "google_drive_routes": frozenset({
+        "google_drive_callback", "google_drive_status", "google_drive_disconnect",
+    }),
+    "interview_routes": frozenset({
+        "list_resume_interview_prep",
+        "get_interview_prep", "delete_interview_prep",
+    }),
+    "job_routes": frozenset({
+        "get_batch_status", "get_job_state", "get_job_result",
+        "get_job_stream", "cancel_job", "list_jobs",
+        "jobs_health", "trigger_cleanup",
+    }),
+    "macro_routes": frozenset({
+        "list_macros", "delete_macro",
+    }),
+    "mendeley_routes": frozenset({
+        "mendeley_callback", "mendeley_status", "mendeley_disconnect",
+    }),
+    "plan_catalog_routes": frozenset({
+        "get_plan_catalog", "update_plan_catalog", "update_plan_quota",
+    }),
+    "portfolio_routes": frozenset({
+        "check_username", "resolve_domain", "contact_portfolio_owner",
+        "get_portfolio",
+    }),
+    "public_api_routes": frozenset({
+        "compile_v1", "optimize_v1", "ats_score_v1",
+        "get_job_v1", "download_job_pdf_v1",
+    }),
+    "referral_routes": frozenset({
+        "referral_status",
+    }),
+    "resume_routes": frozenset({
+        "get_resume_stats", "list_resumes", "get_error_history",
+        "get_builder_resume", "get_resume", "delete_resume",
+        "unpin_resume", "unarchive_resume", "get_variant_visibility",
+        "list_variants", "diff_with_parent", "record_optimization",
+        "get_optimization_history", "get_score_history", "restore_optimization",
+        "list_checkpoints", "get_checkpoint_content", "delete_checkpoint",
+        "revoke_share_link", "list_collaborators", "remove_collaborator",
+    }),
+    "review_routes": frozenset({
+        "list_public_review_comments", "add_public_review_comment", "list_authenticated_review_comments",
+        "resolve_authenticated_review_comment",
+    }),
+    "routes": frozenset({
+        "get_me", "update_me_preferences", "get_entitlements_for_user",
+        "health_check", "livez", "readyz",
+        "metrics", "compile_latex_endpoint", "download_pdf",
+        "download_synctex", "get_compilation_logs", "get_trial_status",
+        "track_usage", "get_subscription_plans", "create_subscription",
+        "verify_student_subscription", "validate_coupon", "get_current_subscription",
+        "cancel_subscription", "razorpay_webhook", "get_shared_resume",
+    }),
+    "settings_routes": frozenset({
+        "get_notification_prefs", "update_notification_prefs",
+    }),
+    "snippet_routes": frozenset({
+        "seed_official_snippets",
+        "list_snippets", "get_snippet", "delete_snippet",
+        "uninstall_snippet",
+    }),
+    "suggestion_routes": frozenset({
+        "get_suggestion_decision",
+    }),
+    "team_routes": frozenset({
+        "list_team_seats", "preview_team_seat", "remove_team_seat",
+    }),
+    "telemetry_routes": frozenset({
+        "ingest_frontend_telemetry",
+    }),
+    "template_routes": frozenset({
+        "create_template", "update_template", "activate_template",
+        "deactivate_template", "delete_template",
+    }),
+    "tenant_routes": frozenset({
+        "current_context", "resolve_tenant_host", "create_tenant",
+        "list_my_tenants", "create_cohort", "list_cohorts",
+        "list_cohort_submissions", "update_tenant", "list_members",
+        "invite_member", "accept_invitation", "remove_member",
+        "leave_tenant", "tenant_stats", "verify_domain",
+    }),
+    "tracker_routes": frozenset({
+        "list_applications", "get_tracker_stats", "get_application",
+        "delete_application",
+    }),
+    "tracker_workflow_routes": frozenset({
+        "list_saved_jobs", "delete_saved_job", "bulk_delete_saved_jobs",
+        "list_alerts", "list_stale_applications", "delete_alert",
+        "list_reminders", "delete_reminder", "list_interviews",
+        "delete_interview", "export_interview_calendar", "list_companies",
+        "delete_company", "list_contacts", "delete_contact",
+    }),
+    "workspace_routes": frozenset({
+        "list_workspaces", "get_workspace", "delete_workspace",
+        "remove_member", "remove_resume_from_workspace", "list_workspace_resumes",
+        "download_workspace_resume", "list_recruiter_notes", "delete_recruiter_note",
+    }),
+    "zotero_routes": frozenset({
+        "zotero_callback", "zotero_status", "zotero_disconnect",
+        "clear_bibtex",
+    }),
+}
+
+_BOOL_ADAPTER = TypeAdapter(bool)
+
+
+def _payload_bool(value: Any) -> bool | None:
+    """Use the same boolean coercion as the endpoint's Pydantic model.
+
+    JSON strings/numbers accepted by Pydantic must not evade a true-only gate.
+    Invalid values remain the endpoint's validation error, never a permission.
+    """
+    try:
+        return _BOOL_ADAPTER.validate_python(value)
+    except ValidationError:
+        return None
 
 
 def payload_capabilities(module: str, name: str, body: dict, params: dict, query: dict) -> tuple[str, ...]:
@@ -215,17 +405,20 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
     if module == "resume_routes" and name in {"create_resume", "update_resume"}:
         if body.get("document_type") == "presentation":
             keys.append("c14")
-        if body.get("portfolio_visible") is True:
+        if _payload_bool(body.get("portfolio_visible")) is True:
             keys.append("g12")
         if body.get("tags"):
             keys.append("b02")
     if (module, name) == ("resume_routes", "create_share_link"):
         # Revocation has its own DELETE route and is deliberately always-on.
-        keys.append("f01")
-        if body.get("anonymous") or body.get("regenerate_anonymous"):
+        if set(body) != {"review_comments"} or _payload_bool(body.get("review_comments")) is not False:
+            keys.append("f01")
+        if _payload_bool(body.get("anonymous")) is True or _payload_bool(body.get("regenerate_anonymous")) is True:
             keys.append("f02")
-        if body.get("review_comments") is True:
+        if _payload_bool(body.get("review_comments")) is True:
             keys.append("f03")
+    if (module, name) == ("resume_routes", "update_builder_resume") and _payload_bool(body.get("force_reattach")) is True:
+        keys.append("b09")
     if module == "export_routes" and name in {"export_resume", "export_content"}:
         fmt = params.get("fmt")
         if fmt in {"svg", "jpeg"}:
@@ -238,15 +431,15 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
             keys.append("h01")
     if (module, name) == ("tracker_workflow_routes", "update_alert"):
         # A paused alert is a revocation; changing/activating it is paid use.
-        if body != {"active": False}:
+        if set(body) != {"active"} or _payload_bool(body.get("active")) is not False:
             keys.append("e06")
     if (module, name) == ("ws_routes", "create_websocket_ticket") and body.get("purpose") == "collab":
         keys.append("f05")
-    if (module, name) == ("portfolio_routes", "setup_portfolio") and body.get("portfolio_enabled") is not False:
+    if (module, name) == ("portfolio_routes", "setup_portfolio") and _payload_bool(body.get("portfolio_enabled")) is not False:
         keys.append("g12")
     if (module, name) == ("resume_routes", "update_resume_tags") and body.get("tags") != []:
         keys.append("b02")
-    if (module, name) == ("resume_routes", "update_collaborator_role") and body.get("role") != "viewer":
+    if (module, name) == ("resume_routes", "update_collaborator_role") and body.get("role") not in ("viewer", "commenter"):
         keys.append("f04")
     if (module, name) == ("workspace_routes", "update_member_role") and body.get("role") != "viewer":
         keys.append("f08")
@@ -274,7 +467,7 @@ def _route_gate(module: str, name: str):
             keys += ("a09",)
         if (module, name) in DYNAMIC_ENDPOINTS:
             body = {}
-            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
             if not content_type or content_type == "application/json" or content_type.endswith("+json"):
                 try:
                     parsed = await request.json()
@@ -294,7 +487,10 @@ class CapabilityRouter(APIRouter):
 
     def add_api_route(self, path: str, endpoint, **kwargs) -> None:
         module, name = endpoint.__module__.rsplit(".", 1)[-1], endpoint.__name__
-        if name in ROUTE_CAPABILITIES.get(module, {}) or (module, name) in DYNAMIC_ENDPOINTS:
+        classified_gate = name in ROUTE_CAPABILITIES.get(module, {}) or (module, name) in DYNAMIC_ENDPOINTS
+        if endpoint.__module__.startswith("app.api.") and not classified_gate and name not in PASSTHROUGH_ENDPOINTS.get(module, ()):
+            raise RuntimeError(f"Unclassified capability policy for {module}.{name}")
+        if classified_gate:
             gate = _route_gate(module, name)
             dependencies = list(kwargs.pop("dependencies", None) or [])
             if not any(dependency.dependency is gate for dependency in dependencies):

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import literal, select, union_all
+from sqlalchemy import String, cast, func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import (
@@ -28,6 +28,7 @@ from ..core.config import (
 )
 from ..core.errors import error_body
 from ..core.feature_registry import (
+    CAPABILITY_ROLES,
     FEATURE_REGISTRY,
     PLAN_FAMILIES,
     PLAN_KEYS,
@@ -38,7 +39,7 @@ from ..core.feature_registry import (
     is_gateable,
 )
 from ..core.logging import get_logger
-from ..database.models import FeatureFlag, PlanFeature, User
+from ..database.models import FeatureFlag, PlanFeature, RoleFeature, User
 
 logger = get_logger(__name__)
 
@@ -93,20 +94,24 @@ def _snapshot_query(keys: tuple[str, ...] | None = None):
     # One statement gives kill switches and grants the same committed snapshot.
     switches = select(literal("kill"), FeatureFlag.key, literal(""), FeatureFlag.enabled)
     grants = select(literal("matrix"), PlanFeature.feature_key, PlanFeature.plan_family, PlanFeature.enabled)
+    roles = select(literal("role"), RoleFeature.feature_key, RoleFeature.role, RoleFeature.enabled)
     if keys is not None:
+        roles = roles.where(RoleFeature.feature_key.in_(keys))
         switches = switches.where(FeatureFlag.key.in_(keys))
         grants = grants.where(PlanFeature.feature_key.in_(keys))
-    return union_all(switches, grants)
+    return union_all(switches, grants, roles)
 
 
 def _blob_from_rows(rows) -> dict:
-    blob = {"kill": {}, "matrix": {p: {} for p in PLAN_MATRIX_KEYS}}
+    blob = {"kill": {}, "matrix": {p: {} for p in PLAN_MATRIX_KEYS}, "roles": {r: {} for r in CAPABILITY_ROLES}}
     for kind, key, plan, enabled in rows:
         if not is_gateable(key):
             continue
         if kind == "kill":
             blob["kill"][key] = enabled is True
-        elif plan in blob["matrix"]:
+        elif kind == "role" and plan in blob["roles"]:
+            blob["roles"][plan][key] = enabled is True
+        elif kind == "matrix" and plan in blob["matrix"]:
             blob["matrix"][plan][key] = enabled is True
     return blob
 
@@ -196,7 +201,7 @@ class EntitlementService:
     # ---------------------------------------------------------------- #
 
     def _empty_blob(self) -> dict:
-        return {"kill": {}, "matrix": {p: {} for p in PLAN_MATRIX_KEYS}}
+        return {"kill": {}, "matrix": {p: {} for p in PLAN_MATRIX_KEYS}, "roles": {r: {} for r in CAPABILITY_ROLES}}
 
     async def _rebuild_redis_blob(self) -> dict:
         """Compatibility name: read the authoritative DB snapshot, never Redis.
@@ -213,6 +218,33 @@ class EntitlementService:
     async def _get_blob(self) -> dict:
         return await self._rebuild_redis_blob()
 
+    async def _subject_snapshot(self, user_ids: tuple[str, ...], keys: tuple[str, ...] | None = None):
+        """Read current subjects and all relevant restrictions in one SQL snapshot."""
+        from ..database.connection import get_async_db_session
+
+        identities = select(
+            literal("identity"), cast(User.id, String),
+            cast(func.json_build_array(User.role, User.subscription_plan), String), literal(True),
+        ).where(User.id.in_(user_ids))
+        statement = union_all(*_snapshot_query(keys).selects, identities)
+        async with get_async_db_session() as db:
+            rows = (await db.execute(statement)).all()
+        subjects = {key: tuple(json.loads(value)) for kind, key, value, _ in rows if kind == "identity"}
+        if set(subjects) != set(user_ids):
+            raise LookupError("Entitlement owner no longer exists")
+        return subjects, _blob_from_rows(rows)
+
+    async def _snapshot_for_user(self, user: Any):
+        # ORM instances can outlive a role/plan change; their ID is authoritative,
+        # never the attributes retained by a request, task or identity cache.
+        user_id = user if isinstance(user, str) else getattr(user, "id", None)
+        if isinstance(user_id, str) and user_id:
+            subjects, blob = await self._subject_snapshot((user_id,))
+            role, plan = subjects[user_id]
+            return role, plan, blob
+        role, plan = await self._resolve_user_role_plan(user)
+        return role, plan, await self._get_blob()
+
     async def has_feature(self, key: str, *, user: Any, db: AsyncSession | None = None) -> bool:
         """Resolve one capability without touching the caller's transaction.
 
@@ -225,10 +257,23 @@ class EntitlementService:
         if not feature.gateable:
             return True
         try:
-            _, plan = await self._resolve_user_role_plan(user)
-            return self._decide(await self._get_blob(), key, plan)
+            role, plan, blob = await self._snapshot_for_user(user)
+            return self._decide(blob, key, plan, role)
         except Exception:
             logger.warning("entitlement_service.has_feature(%s) unavailable", key, exc_info=True)
+            return False
+
+    async def has_feature_for_plan(self, key: str, *, user: Any, plan: str) -> bool:
+        """Check a new offer with the current purchaser role and target SKU.
+
+        This does not change the user's subscription or make its current free
+        family a prerequisite for buying a permitted paid offer.
+        """
+        try:
+            role, _, blob = await self._snapshot_for_user(user)
+            return self._decide(blob, key, plan, role)
+        except Exception:
+            logger.warning("Target-plan entitlement unavailable", exc_info=True)
             return False
 
     async def users_have_feature(self, key: str, user_ids: tuple[str, ...]) -> bool:
@@ -246,27 +291,22 @@ class EntitlementService:
         if not ids or any(not isinstance(user_id, str) or not user_id for user_id in ids):
             return False
         try:
-            from ..database.connection import get_async_db_session
-
             keys = tuple(item.key for item in feature_ancestry(key) if item.gateable)
-            async with get_async_db_session() as db:
-                users = (await db.execute(select(User.id, User.subscription_plan).where(User.id.in_(ids)))).all()
-                if {str(user_id) for user_id, _ in users} != ids:
-                    return False
-                rows = (await db.execute(_snapshot_query(keys))).all()
-            blob = _blob_from_rows(rows)
-            return all(self._decide(blob, key, plan) for _, plan in users)
+            subjects, blob = await self._subject_snapshot(tuple(ids), keys)
+            return all(self._decide(blob, key, plan, role) for role, plan in subjects.values())
         except Exception:
             logger.warning("Batch entitlement authorization unavailable", exc_info=True)
             return False
 
-    def _decide(self, blob: dict, key: str, plan: Optional[str]) -> bool:
-        """Apply global, family, SKU and ancestor restrictions (all must allow)."""
+    def _decide(self, blob: dict, key: str, plan: Optional[str], role: Optional[str] = "anonymous") -> bool:
+        """Intersect global, account-role, family, SKU and every ancestor grant."""
         feature = get_feature(key)
         if feature is None:
             return False
         if not feature.gateable:
             return True
+        if role not in CAPABILITY_ROLES:
+            return False
         normalized = (plan or "free").strip().lower()
         sku = PLAN_SKU_ALIASES.get(normalized, normalized)
         if sku not in PLAN_KEYS:
@@ -276,6 +316,8 @@ class EntitlementService:
             for item in feature_ancestry(key):
                 if not item.gateable:
                     continue
+                if blob["roles"].get(role, {}).get(item.key) is not True:
+                    return False
                 if blob["kill"].get(item.key) is not True:
                     return False
                 if blob["matrix"].get(family, {}).get(item.key) is not True:
@@ -295,7 +337,7 @@ class EntitlementService:
         caller's request transaction is untouched.
         """
         if user is None:
-            return None, None
+            return "anonymous", None
 
         # ORM object (or anything exposing the attributes).
         role = getattr(user, "role", None)
@@ -334,56 +376,97 @@ class EntitlementService:
             "kill_switches": {k: blob["kill"].get(k) is True for k in keys},
             "matrix": {p: {k: blob["matrix"].get(p, {}).get(k) is True for k in keys}
                        for p in PLAN_MATRIX_KEYS},
+            "roles": list(CAPABILITY_ROLES),
+            "role_matrix": {r: {k: blob["roles"].get(r, {}).get(k) is True for k in keys}
+                            for r in CAPABILITY_ROLES},
             "plan_families": list(PLAN_FAMILIES),
             "plan_keys": list(PLAN_KEYS),
             "plan_family_by_key": {p: resolve_plan_family(p) for p in PLAN_KEYS},
         }
 
-    async def set_kill_switch(self, key: str, enabled: bool, db: AsyncSession) -> None:
-        """Atomically upsert an explicit product switch in the shared source."""
+    async def _write_cell(
+        self, model: Any, identity: dict, values: dict, db: AsyncSession,
+        *, expected_enabled: bool | None = None,
+    ) -> None:
+        """Serialize a cell and optionally reject stale admin intent.
+
+        Separate cells do not overwrite each other. The advisory lock also
+        covers creation of a missing, fail-closed grant. Legacy API callers
+        without a comparison retain explicit last-writer-wins compatibility.
+        """
         from sqlalchemy.dialects.postgresql import insert
 
-        feature = get_feature(key)
-        if feature is None or not feature.gateable:
-            raise KeyError(f"Unknown or non-gateable feature: {key!r}")
-        stmt = insert(FeatureFlag).values(
-            key=key, enabled=enabled, label=feature.label, description=feature.description,
-        ).on_conflict_do_update(
-            index_elements=[FeatureFlag.key], set_={"enabled": enabled, "updated_at": datetime.now(timezone.utc)},
+        lock_key = f"capability:{model.__tablename__}:" + ":".join(str(v) for v in identity.values())
+        await db.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0))))
+        if expected_enabled is not None:
+            current = await db.scalar(select(model.enabled).filter_by(**identity))
+            if (current is True) is not expected_enabled:
+                await db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=error_body(
+                        "capability_conflict",
+                        "This control changed since you loaded it. Refresh and review the current setting.",
+                        None,
+                    ),
+                )
+        stmt = insert(model).values(**identity, **values).on_conflict_do_update(
+            index_elements=[getattr(model, column) for column in identity],
+            set_={"enabled": values["enabled"], "updated_at": datetime.now(timezone.utc)},
         )
         await db.execute(stmt)
         await db.commit()
         _clear_cache()
 
-    async def set_matrix_cell(self, family: str, key: str, enabled: bool, db: AsyncSession) -> None:
-        """Restrict a family or concrete SKU; child/SKU grants never override denial."""
-        from sqlalchemy.dialects.postgresql import insert
+    async def set_kill_switch(
+        self, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+    ) -> None:
+        """Atomically upsert an explicit product switch in the shared source."""
+        feature = get_feature(key)
+        if feature is None or not feature.gateable:
+            raise KeyError(f"Unknown or non-gateable feature: {key!r}")
+        await self._write_cell(
+            FeatureFlag, {"key": key},
+            {"enabled": enabled, "label": feature.label, "description": feature.description}, db,
+            expected_enabled=expected_enabled,
+        )
 
+    async def set_matrix_cell(
+        self, family: str, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+    ) -> None:
+        """Restrict a family or concrete SKU; child/SKU grants never override denial."""
         if family not in PLAN_MATRIX_KEYS:
             raise KeyError(f"Unknown plan family or SKU: {family!r}")
         if not is_gateable(key):
             raise KeyError(f"Unknown or non-gateable feature: {key!r}")
-        stmt = insert(PlanFeature).values(
-            plan_family=family, feature_key=key, enabled=enabled,
-        ).on_conflict_do_update(
-            index_elements=[PlanFeature.plan_family, PlanFeature.feature_key],
-            set_={"enabled": enabled, "updated_at": datetime.now(timezone.utc)},
+        await self._write_cell(
+            PlanFeature, {"plan_family": family, "feature_key": key}, {"enabled": enabled}, db,
+            expected_enabled=expected_enabled,
         )
-        await db.execute(stmt)
-        await db.commit()
-        _clear_cache()
+
+    async def set_role_cell(
+        self, role: str, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+    ) -> None:
+        """Role restrictions narrow product use without granting administrative authority."""
+        if role not in CAPABILITY_ROLES:
+            raise KeyError(f"Unknown account role/context: {role!r}")
+        if not is_gateable(key):
+            raise KeyError(f"Unknown or non-gateable feature: {key!r}")
+        await self._write_cell(
+            RoleFeature, {"role": role, "feature_key": key}, {"enabled": enabled}, db,
+            expected_enabled=expected_enabled,
+        )
 
     async def effective_snapshot(self, user: Any, db: AsyncSession | None = None) -> dict:
         """Return grants plus availability without disguising an outage as a plan limit."""
         available = True
         try:
-            _, plan = await self._resolve_user_role_plan(user)
-            blob = await self._get_blob()
+            role, plan, blob = await self._snapshot_for_user(user)
         except Exception:
             logger.warning("entitlement_service.effective_features unavailable", exc_info=True)
-            blob, plan, available = self._empty_blob(), None, False
+            blob, role, plan, available = self._empty_blob(), None, None, False
         return {
-            "features": {f.key: self._decide(blob, f.key, plan) for f in FEATURE_REGISTRY},
+            "features": {f.key: self._decide(blob, f.key, plan, role) for f in FEATURE_REGISTRY},
             "available": available,
         }
 
@@ -673,7 +756,7 @@ class EntitlementService:
     #  Sync access (Celery workers)                                    #
     # ---------------------------------------------------------------- #
 
-    def sync_has_feature(self, key: str, plan_family: str) -> bool:
+    def sync_has_feature(self, key: str, plan_family: str, *, user_id: str | None = None) -> bool:
         """Worker authorization uses the same DB source, never an old Redis grant."""
         feature = get_feature(key)
         if feature is None:
@@ -681,12 +764,14 @@ class EntitlementService:
         if not feature.gateable:
             return True
         try:
-            return self._decide(self._sync_get_blob(), key, plan_family)
+            blob = self._sync_get_blob(user_id=user_id) if user_id else self._sync_get_blob()
+            role, plan = blob["identity"] if user_id else ("anonymous", plan_family)
+            return self._decide(blob, key, plan, role)
         except Exception:
             logger.warning("sync_has_feature(%s) unavailable", key, exc_info=True)
             return False
 
-    def _sync_get_blob(self) -> dict:
+    def _sync_get_blob(self, *, user_id: str | None = None) -> dict:
         import psycopg2
         from sqlalchemy.engine import make_url
 
@@ -704,12 +789,23 @@ class EntitlementService:
             options="-c statement_timeout=2000 -c default_transaction_read_only=on",
         )
         try:
+            connection.set_session(isolation_level="REPEATABLE READ", readonly=True)
             with connection.cursor() as cursor:
+                identity = None
+                if user_id is not None:
+                    cursor.execute("SELECT role, subscription_plan FROM users WHERE id = %s", (user_id,))
+                    identity = cursor.fetchone()
+                    if identity is None:
+                        raise LookupError("Entitlement owner no longer exists")
                 cursor.execute(
                     "SELECT 'kill', key, '', enabled FROM feature_flags "
-                    "UNION ALL SELECT 'matrix', feature_key, plan_family, enabled FROM plan_features"
+                    "UNION ALL SELECT 'matrix', feature_key, plan_family, enabled FROM plan_features "
+                    "UNION ALL SELECT 'role', feature_key, role, enabled FROM role_features"
                 )
-                return _blob_from_rows(cursor.fetchall())
+                blob = _blob_from_rows(cursor.fetchall())
+                if identity is not None:
+                    blob["identity"] = identity
+                return blob
         finally:
             connection.close()
 

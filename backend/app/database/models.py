@@ -925,6 +925,22 @@ class PlanFeature(Base):
     )
 
 
+class RoleFeature(Base):
+    """Optional product restrictions by authenticated account role/context."""
+
+    __tablename__ = "role_features"
+
+    role: Mapped[str] = mapped_column(String(20), primary_key=True)
+    feature_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint("role IN ('anonymous', 'user', 'support', 'admin')", name="ck_capability_role"),
+    )
+
+
 class JobApplication(Base):
     """Job application tracker entry."""
 

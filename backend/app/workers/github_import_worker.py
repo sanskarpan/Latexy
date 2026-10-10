@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 async def _resolve_import_credentials(
     user_id: str,
     session_factory=None,
+    *, allow_byok: bool = True,
 ) -> tuple[Optional[str], Optional[str]]:
     """Decrypt current credentials only inside the worker execution boundary."""
     from sqlalchemy import select
@@ -65,6 +66,8 @@ async def _resolve_import_credentials(
             if not encrypted_github_token:
                 return None, None
             github_token = encryption_service.decrypt(encrypted_github_token)
+            if not allow_byok:
+                return github_token, None
 
             byok_result = await db.execute(
                 select(UserAPIKey.encrypted_key)
@@ -138,6 +141,7 @@ def import_github_projects_task(
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
     quota_refund: Optional[Dict[str, Any]] = None,
+    allow_byok: bool = True,
 ) -> Dict[str, Any]:
     """Import + summarize a user's top public GitHub projects.
 
@@ -221,7 +225,7 @@ def import_github_projects_task(
     # GitHub's secondary rate limits.
     client = None
     try:
-        github_token, api_key = asyncio.run(_resolve_import_credentials(user_id))
+        github_token, api_key = asyncio.run(_resolve_import_credentials(user_id, allow_byok=allow_byok))
         if not github_token:
             stored = _store_result(
                 job_id,
@@ -456,12 +460,14 @@ def submit_github_import(
     user_id: str,
     user_plan: str = "free",
     quota_refund: Optional[Dict[str, Any]] = None,
+    allow_byok: bool = True,
 ) -> str:
     """Enqueue import_github_projects_task on the llm queue (or Modal spawn)."""
     priority = get_task_priority(user_plan)
     payload: Dict[str, Any] = {
         "job_id": job_id,
         "user_id": user_id,
+        "allow_byok": allow_byok,
     }
     if quota_refund is not None:
         payload["quota_refund"] = quota_refund

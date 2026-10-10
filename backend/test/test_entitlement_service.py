@@ -36,7 +36,7 @@ async def _reset():
 
 # ── User-like helpers ────────────────────────────────────────────────────────
 
-def _user(role: str | None = None, plan: str | None = "free"):
+def _user(role: str | None = "user", plan: str | None = "free"):
     """A minimal user-like object exposing role + subscription_plan."""
     return SimpleNamespace(role=role, subscription_plan=plan)
 
@@ -120,7 +120,7 @@ class TestEffectiveFeaturesAndState:
 
     async def test_get_state_shape(self, db_session: AsyncSession):
         state = await entitlement_service.get_state(db_session)
-        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families", "plan_keys", "plan_family_by_key"}
+        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families", "plan_keys", "plan_family_by_key", "roles", "role_matrix"}
         assert state["plan_families"] == list(PLAN_FAMILIES)
 
         gateable = set(gateable_keys())

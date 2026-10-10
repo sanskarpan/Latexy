@@ -324,6 +324,12 @@ def submit_auto_save_checkpoint(
     the user already paid for.
     """
     try:
+        from ..services.entitlement_service import entitlement_service
+
+        # This optional sub-task is a new admission, separate from fulfilling
+        # the compile. Already-queued checkpoints still run to completion.
+        if not entitlement_service.sync_has_feature("c22", "free", user_id=user_id):
+            return
         if os.environ.get("DEPLOY_TARGET") == "modal":
             from ..core.modal_dispatch import spawn
             spawn("run_auto_save_task", {

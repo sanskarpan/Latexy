@@ -936,6 +936,7 @@ export default function WorkspacePage() {
           <CapabilityGate feature="b03"><button
             onClick={() => setProjectSearchOpen(true)}
             title="Search resume content — full text (⌘⇧F)"
+            aria-label="Search resume content"
             className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-3 py-2 text-xs flex items-center gap-1.5"
           >
             <Search className="w-3.5 h-3.5" />

@@ -36,6 +36,7 @@ async function setup(page: Page) {
     session: { id: 'catalog-session', userId: 'catalog-admin', token: 'catalog-token' },
     user: { id: 'catalog-admin', email: 'admin@example.com', name: 'Catalog Admin' },
   } }))
+  await page.route('**/me', (route) => route.fulfill({ json: { id: 'catalog-admin', role: 'admin', preferences: {} } }))
   await page.route('**/config/feature-flags', (route) => route.fulfill({ json: { billing: true, upgrade_ctas: true } }))
   await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: {}, plan_family: 'free' } }))
   await page.route('**/admin/feature-flags', (route) => route.fulfill({ json: [] }))

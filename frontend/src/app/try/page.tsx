@@ -405,6 +405,7 @@ export default function TryPage() {
   }, [resolvedSession?.user?.id, renderedPdfJobId])
 
   const runCompile = async (mode: 'compile' | 'combined') => {
+    if (!resolvedSession && !canRef.current('a09')) return
     if (mode === 'combined' && (!canRef.current('a09') || !canRef.current('d01'))) return
     if (isProcessing || isSubmitting) return
     const currentContent = editorRef.current?.getValue() || latexContent
@@ -1200,17 +1201,18 @@ export default function TryPage() {
             : <><Loader2 size={10} className="animate-spin" /> Saving…</>}
         </span>
 
-        <div className="ml-0 flex items-center sm:ml-2">
+        {(resolvedSession || can('a09')) && <div className="ml-0 flex items-center sm:ml-2">
           <button
             onClick={() => runCompile('compile')}
-            disabled={isSubmitting || isProcessing}
+            disabled={(!resolvedSession && !can('a09')) || isSubmitting || isProcessing}
+            aria-description={!resolvedSession && !can('a09') ? 'Anonymous compilation is unavailable. Your source and existing PDF remain available.' : undefined}
             aria-label="Recompile"
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-2 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5"
           >
             {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
             <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}</span>
           </button>
-        </div>
+        </div>}
         <CapabilityGate feature="c06"><button
           onClick={toggleAutoCompile}
           title="Auto-compile on change"

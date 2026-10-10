@@ -16,6 +16,10 @@ interface EntitlementsContextValue {
   refresh: () => void
 }
 
+export const ENTITLEMENT_REFRESH_MS = 30_000
+export const ENTITLEMENT_REQUEST_TIMEOUT_MS = 8_000
+export const ENTITLEMENT_MAX_AGE_MS = ENTITLEMENT_REFRESH_MS + ENTITLEMENT_REQUEST_TIMEOUT_MS
+
 const EMPTY_FEATURES: Record<string, boolean> = Object.freeze({})
 const EntitlementsContext = createContext<EntitlementsContextValue>({
   features: EMPTY_FEATURES,
@@ -28,7 +32,8 @@ const EntitlementsContext = createContext<EntitlementsContextValue>({
 
 type Snapshot = {
   identity: string
-  generation: number
+  invalidation: number
+  verifiedAt: number
   features: Record<string, boolean>
   error: string | null
 }
@@ -36,7 +41,7 @@ type Snapshot = {
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending, error: sessionError } = useSession()
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
-  const [generation, setGeneration] = useState(0)
+  const [generation, setGeneration] = useState({ request: 0, invalidation: 0 })
   const identity = session?.user?.id ? `user:${session.user.id}` : 'anonymous'
   const identityReady = !isPending && !sessionError
   const scopeRef = useRef({ identity, ready: identityReady, epoch: 0 })
@@ -44,42 +49,60 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     scopeRef.current = { identity, ready: identityReady, epoch: scopeRef.current.epoch + 1 }
   }
   const scopedIdentity = `${identity}:${scopeRef.current.epoch}`
-  const refresh = useCallback(() => setGeneration((n) => n + 1), [])
+  const refresh = useCallback(() => setGeneration((n) => ({ request: n.request + 1, invalidation: n.invalidation + 1 })), [])
+  const backgroundRefresh = useCallback(() => setGeneration((n) => ({ ...n, request: n.request + 1 })), [])
 
   useEffect(() => {
     if (!identityReady) return
     let active = true
-    // This endpoint uses optional authentication and returns free-plan controls
-    // for anonymous visitors too. Never infer availability from sign-in status.
-    apiClient.getEntitlements().then((data) => {
+    const controller = new AbortController()
+    const deny = (error: string) => {
+      if (!active) return
+      active = false
+      controller.abort()
+      setSnapshot({ identity: scopedIdentity, invalidation: generation.invalidation,
+        verifiedAt: Date.now(), features: EMPTY_FEATURES, error })
+    }
+    const timeout = window.setTimeout(() => deny('Feature availability check timed out'), ENTITLEMENT_REQUEST_TIMEOUT_MS)
+    // Same-identity background refresh preserves verified grants only for the
+    // bounded freshness window. Explicit invalidation never preserves them.
+    apiClient.getEntitlements(controller.signal).then((data) => {
       const features = parseEffectiveFeatures(data?.features)
-      if (active) setSnapshot({ identity: scopedIdentity, generation, features, error: null })
+      if (active) setSnapshot({ identity: scopedIdentity, invalidation: generation.invalidation,
+        verifiedAt: Date.now(), features, error: null })
     }).catch((err: unknown) => {
-      if (active) setSnapshot({
-        identity: scopedIdentity, generation, features: EMPTY_FEATURES,
-        error: err instanceof Error ? err.message : 'Could not load feature availability',
-      })
-    })
-    return () => { active = false }
+      deny(err instanceof Error ? err.message : 'Could not load feature availability')
+    }).finally(() => window.clearTimeout(timeout))
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout) }
   }, [scopedIdentity, identityReady, generation])
 
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
-    window.addEventListener('focus', refresh)
+    const onVisible = () => { if (document.visibilityState === 'visible') backgroundRefresh() }
+    window.addEventListener('focus', backgroundRefresh)
     window.addEventListener('latexy:entitlements-updated', refresh)
     document.addEventListener('visibilitychange', onVisible)
-    const timer = window.setInterval(onVisible, 30_000)
+    const timer = window.setInterval(onVisible, ENTITLEMENT_REFRESH_MS)
     return () => {
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener('focus', backgroundRefresh)
       window.removeEventListener('latexy:entitlements-updated', refresh)
       document.removeEventListener('visibilitychange', onVisible)
       window.clearInterval(timer)
     }
-  }, [refresh])
+  }, [refresh, backgroundRefresh])
+
+  useEffect(() => {
+    if (!snapshot || snapshot.error) return
+    const timeout = window.setTimeout(() => {
+      setSnapshot((current) => current === snapshot ? { ...current, features: EMPTY_FEATURES,
+        error: 'Feature availability expired. Please retry.' } : current)
+    }, Math.max(0, snapshot.verifiedAt + ENTITLEMENT_MAX_AGE_MS - Date.now()))
+    return () => window.clearTimeout(timeout)
+  }, [snapshot])
 
   // Invalidate during render, before an effect runs: account A's grants must
   // never be visible for even one frame after switching to account B/signing out.
-  const current = identityReady && snapshot?.identity === scopedIdentity && snapshot.generation === generation
+  const current = identityReady && snapshot?.identity === scopedIdentity && snapshot.invalidation === generation.invalidation
+    && (snapshot.error || Date.now() - snapshot.verifiedAt < ENTITLEMENT_MAX_AGE_MS)
     ? snapshot : null
   const features = current?.features ?? EMPTY_FEATURES
   const error = sessionError ? 'Could not verify your session' : current?.error ?? null

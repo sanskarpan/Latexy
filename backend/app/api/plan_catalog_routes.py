@@ -30,7 +30,7 @@ class PlanCatalogUpdate(BaseModel):
 async def get_plan_catalog(db: AsyncSession = Depends(get_db), _: str = Depends(require_admin)) -> dict:
     billing_enabled = await feature_flag_service.get_flag("billing", db)
     return {
-        "plans": await plan_catalog_service.list_plans(db, provider_available=payment_service.is_available() and billing_enabled, public=False),
+        "plans": await plan_catalog_service.list_plans(db, provider_available=payment_service.is_available() and billing_enabled, public=False, user_id=_),
         "editable_fields": sorted(["name", "description", "visible", "purchase_enabled", "display_order"]),
         "pricing_policy": "Prices, currency, billing intervals, provider IDs and SKU families are immutable here. Price changes require an operator-reviewed new configured SKU/version. Existing subscriptions, renewals and refunds are unchanged.",
         "quota_policy": "Compile, optimization and AI-assist limits apply to new admissions for everyone on this exact SKU, including existing subscribers. Changes keep the current usage and reset window; they never reset counters or refunds. Developer API daily limits remain operator-configured. Boolean capability access is managed in the entitlement matrix.",

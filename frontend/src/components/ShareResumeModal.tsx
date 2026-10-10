@@ -375,8 +375,8 @@ export default function ShareResumeModal({
 
         {/* Body */}
         <div className="px-5 py-5">
-          {!shareData ? (
-            // No link yet — always show the generate UI
+          {!shareData && !can('f01') ? <p role="status" className="text-sm text-fg-3">New sharing is currently unavailable. Your saved document remains private.</p> : !shareData ? (
+            // New actions are shown only with their current capability.
             <div className="space-y-4">
               <p className="text-sm text-fg-2">
                 Generate a public link so anyone can view the compiled PDF — no login needed.
@@ -395,7 +395,7 @@ export default function ShareResumeModal({
                     <p className="text-[10px] text-fg-3">Let viewers leave pseudonymous sticky feedback</p>
                   </div>
                 </div>
-                <button
+                {can('f01') && can('f03') && <button
                   type="button"
                   role="switch"
                   aria-label="Allow review comments"
@@ -404,7 +404,7 @@ export default function ShareResumeModal({
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${reviewComments ? 'bg-accent' : 'bg-surface-2'}`}
                  aria-description={reviewComments !== true && (!can('f01') || !can('f03')) ? 'Unavailable for your current plan or feature settings' : undefined} disabled={reviewComments !== true && (!can('f01') || !can('f03'))}>
                   <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${reviewComments ? 'translate-x-4' : 'translate-x-0'}`} />
-                {reviewComments !== true && (!can('f01') || !can('f03')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+                {reviewComments !== true && (!can('f01') || !can('f03')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
               </div>
 
               {/* Anonymous mode toggle */}
@@ -416,7 +416,7 @@ export default function ShareResumeModal({
                     <p className="text-[10px] text-fg-3">Hides name, email, phone &amp; social profiles</p>
                   </div>
                 </div>
-                <button
+                {can('f01') && can('f02') && <button
                   type="button"
                   role="switch"
                   aria-label="Share anonymously"
@@ -431,10 +431,10 @@ export default function ShareResumeModal({
                       anonymous ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
-                {!anonymous && (!can('f01') || !can('f02')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+                {!anonymous && (!can('f01') || !can('f02')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
               </div>
 
-              <button
+              {mayGenerate(false) && <button
                 onClick={() => void handleGenerate(false)}
                 disabled={!mayGenerate(false) || (isGenerating)}
                 className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2.5 text-sm font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50"
@@ -444,7 +444,7 @@ export default function ShareResumeModal({
                 ) : (
                   <><Link size={13} /> Generate shareable link</>
                 )}
-              {!mayGenerate(false) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+              {!mayGenerate(false) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
             </div>
           ) : tab === 'share' ? (
             // Share tab
@@ -462,7 +462,7 @@ export default function ShareResumeModal({
                     <p className="text-[12px] font-medium text-fg-2">Anonymous Mode</p>
                     <p className="text-[10px] text-fg-3">Hides detected identity and contact details</p>
                   </div>
-                  <button
+                  {can('f01') && can('f02') && <button
                     type="button"
                     role="switch"
                     aria-label="Share anonymously"
@@ -476,14 +476,14 @@ export default function ShareResumeModal({
                     <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
                       anonymous ? 'translate-x-4' : 'translate-x-0'
                     }`} />
-                  {!anonymous && (!can('f01') || !can('f02')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+                  {!anonymous && (!can('f01') || !can('f02')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
                 </div>
                 {shareData.anonymous && !anonymous && (
                   <p className="mt-2 text-[10px] text-err">
                     Turning this off exposes the original PDF at the existing link.
                   </p>
                 )}
-                {anonymous !== shareData.anonymous && (
+                {anonymous !== shareData.anonymous && mayGenerate(false) && (
                   <button
                     type="button"
                     onClick={() => void handleGenerate(false)}
@@ -494,7 +494,7 @@ export default function ShareResumeModal({
                     Update link privacy
                   {!mayGenerate(false) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
                 )}
-                {shareData.anonymous && anonymous === shareData.anonymous && (
+                {shareData.anonymous && anonymous === shareData.anonymous && mayGenerate(true) && (
                   <button
                     type="button"
                     onClick={() => void handleGenerate(true)}
@@ -512,7 +512,7 @@ export default function ShareResumeModal({
                     <p className="text-[12px] font-medium text-fg-2">Allow review comments</p>
                     <p className="text-[10px] text-fg-3">Viewers can leave pseudonymous feedback on this link</p>
                   </div>
-                  <button
+                  {can('f01') && can('f03') && <button
                     type="button"
                     role="switch"
                     aria-label="Allow review comments"
@@ -522,9 +522,9 @@ export default function ShareResumeModal({
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${reviewComments ? 'bg-accent' : 'bg-surface'}`}
                    aria-description={reviewComments !== true && (!can('f01') || !can('f03')) ? 'Unavailable for your current plan or feature settings' : undefined}>
                     <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${reviewComments ? 'translate-x-4' : 'translate-x-0'}`} />
-                  {reviewComments !== true && (!can('f01') || !can('f03')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+                  {reviewComments !== true && (!can('f01') || !can('f03')) && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
                 </div>
-                {reviewComments !== null && reviewComments !== shareData.review_comments && (
+                {reviewComments !== null && reviewComments !== shareData.review_comments && mayGenerate(false, reviewComments ?? undefined) && (
                   <button
                     type="button"
                     onClick={() => void handleGenerate(false, reviewComments)}

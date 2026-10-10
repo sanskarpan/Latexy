@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Download } from 'lucide-react'
@@ -12,7 +13,7 @@ import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { clearAllDrafts, clearAllDraftsExcept } from '@/lib/offline-drafts'
 import { clearCompileQueue } from '@/lib/compile-queue'
 import { clearAllOfflineCompiledPdfs, clearOfflineCompiledPdfsExcept, forgetOfflinePdfOwner, rememberOfflinePdfOwner } from '@/lib/offline-pdfs'
-import { apiClient } from '@/lib/api-client'
+import { useAccountRole } from '@/hooks/useAccountRole'
 import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import LocaleSwitcher from '@/components/LocaleSwitcher'
@@ -63,7 +64,8 @@ export default function GlobalHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { role: accountRole } = useAccountRole()
+  const isAdmin = accountRole === 'admin'
   const [tenantBrand, setTenantBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
   // framer-motion honours the OS "reduce motion" preference (the CSS floor in
@@ -107,24 +109,6 @@ export default function GlobalHeader() {
     return () => window.removeEventListener('latexy:tenant-theme', readBrand)
   }, [])
 
-  useEffect(() => {
-    if (!effectiveUserId) {
-      setIsAdmin(false)
-      return
-    }
-    let active = true
-    apiClient.getMe().then(
-      (account) => {
-        if (active) setIsAdmin(account.role === 'admin')
-      },
-      () => {
-        if (active) setIsAdmin(false)
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [effectiveUserId])
 
   // Close the account menu on Escape and return focus to its trigger.
   useEffect(() => {
@@ -408,12 +392,12 @@ export default function GlobalHeader() {
               <Link href="/login" className="font-ui text-sm font-medium text-fg-2 transition hover:text-fg">
                 {t('nav.logIn')}
               </Link>
-              <Link
+              <CapabilityGate feature="a09"><Link
                 href="/try"
                 className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 {t('nav.tryFree')}
-              </Link>
+              </Link></CapabilityGate>
             </>
           )}
         </div>
@@ -487,13 +471,13 @@ export default function GlobalHeader() {
                   >
                     {t('nav.logIn')}
                   </Link>
-                  <Link
+                  <CapabilityGate feature="a09"><Link
                     href="/try"
                     className="rounded-[var(--radius-md)] bg-accent py-2.5 text-center font-ui text-sm font-semibold text-accent-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     {t('nav.tryFree')}
-                  </Link>
+                  </Link></CapabilityGate>
                 </div>
               )}
 

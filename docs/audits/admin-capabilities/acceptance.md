@@ -1,6 +1,8 @@
 # Admin capability and plan controls: review acceptance
 
-Status: **draft implementation; browser and provider acceptance remain open**.
+Status: **draft implementation; exact-head browser and provider acceptance remain open**.
+
+See the [2026-10-10 role, UI and service review](role-review.md) for the additional defects found after the previously green head, explicit role controls and current verification boundaries. Historical counts below do not cover the new revision.
 
 Base: `bdee48926ce0e2e6c9c5e2b281d2ab07c4355b98` (main, checked 2026-10-09).
 

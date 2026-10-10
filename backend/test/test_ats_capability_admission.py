@@ -23,7 +23,7 @@ def test_combined_profile_decision_overwrites_input_and_survives_later_switch(en
     captured = dispatch.call_args.kwargs["kwargs"]["metadata"]
     assert captured["_ats_generic_only"] is not enabled
     assert original["_ats_generic_only"] is enabled  # No mutation of caller-owned metadata.
-    snapshot.assert_called_once_with("d19", "pro_annual")
+    snapshot.assert_called_once_with("d19", "pro_annual", user_id=None)
 
     # The worker consumes the captured choice even if an administrator changes
     # the flag while this task is sitting in the queue. No live provider used.

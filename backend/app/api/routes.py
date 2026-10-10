@@ -1355,11 +1355,12 @@ class CancelSubscriptionResponse(BaseModel):
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
 async def get_subscription_plans(
     db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Get available subscription plans."""
     try:
         feature_enabled = await feature_flag_service.get_flag("billing", db)
-        plans = await payment_service.get_subscription_plans(db, feature_enabled=feature_enabled)
+        plans = await payment_service.get_subscription_plans(db, feature_enabled=feature_enabled, user_id=user_id)
         return SubscriptionPlanResponse(
             plans=plans,
             billing=BillingStatusResponse(**payment_service.get_status(feature_enabled=feature_enabled)),
@@ -1396,7 +1397,7 @@ async def create_subscription(
         from ..services.plan_catalog_service import plan_catalog_service
 
         concrete_sku = payment_service._resolve_concrete_plan_id(request_data.planId, request_data.billingPeriod)
-        await plan_catalog_service.require_new_purchase(db, concrete_sku)
+        await plan_catalog_service.require_new_purchase(db, concrete_sku, user_id=user_id)
 
         result = await payment_service.create_subscription(
             db=db,
@@ -1444,7 +1445,7 @@ async def verify_student_subscription(
     """Activate a student plan after email verification."""
     from ..services.plan_catalog_service import plan_catalog_service
 
-    await plan_catalog_service.require_new_purchase(db, "student")
+    await plan_catalog_service.require_sale_available(db, "student")
     result = await payment_service.verify_student_subscription(db, token)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "Verification failed")

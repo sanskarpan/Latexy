@@ -104,3 +104,32 @@ describe('admin writes and recovery exports', () => {
     expect(exportCapabilities('google_drive')).toEqual(['g06'])
   })
 })
+
+
+describe('account role matrix', () => {
+  it('intersects role ancestry with plan restrictions without any admin bypass', () => {
+    const data = state()
+    data.roles = ['anonymous', 'user', 'support', 'admin']
+    data.role_matrix = Object.fromEntries(data.roles.map((role) => [role, { editor_ai: true, d06: true }]))
+    for (const role of data.roles) {
+      expect(entitlementBlocker(data, child, 'pro', role)).toBeNull()
+      data.role_matrix[role].editor_ai = false
+      expect(entitlementBlocker(data, child, 'pro', role)).toBe(`Editor AI: disabled for role ${role}`)
+      data.role_matrix[role].editor_ai = true
+    }
+    data.matrix.pro.d06 = false
+    expect(entitlementBlocker(data, child, 'pro', 'admin')).toBe('Writing assistant: disabled for pro')
+    expect(entitlementBlocker(data, child, undefined, 'reader')).toBe('Writing assistant: disabled for role reader')
+  })
+  it('isolates role updates from global and plan updates in either response order', () => {
+    let data = state()
+    data = patchEntitlementCell(data, 'role:admin', 'd06', false)!
+    data = patchEntitlementCell(data, 'pro', 'd06', false)!
+    data = patchEntitlementCell(data, 'role:user', 'd06', true)!
+    expect(data.role_matrix?.admin.d06).toBe(false)
+    expect(data.role_matrix?.user.d06).toBe(true)
+    expect(data.kill_switches.d06).toBe(true)
+    expect(data.matrix.pro.d06).toBe(false)
+    expect(data.matrix['role:admin']).toBeUndefined()
+  })
+})

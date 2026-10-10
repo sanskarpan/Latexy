@@ -34,6 +34,7 @@ from ..database.models import (
 )
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.rate_limiting import client_ip_id
 from ..services.entitlement_service import entitlement_service
 from ..utils.uuid_guard import ensure_uuid
@@ -167,10 +168,17 @@ async def _review_resume(token: str, db: AsyncSession) -> tuple[Resume, str]:
     resume = result.scalar_one_or_none()
     if not resume or not bool((resume.resume_settings or {}).get("share_review_comments", False)):
         raise _not_found()
-    for key in ("f01", "f03"):
+    await _require_public_review_capabilities(resume)
+    return resume, _token_hash(token)
+
+
+async def _require_public_review_capabilities(resume: Resume) -> None:
+    keys = ("f01", "f03")
+    if (resume.resume_settings or {}).get("share_anonymous"):
+        keys += ("f02",)
+    for key in keys:
         if not await entitlement_service.has_feature(key, user=resume.user_id):
             raise _not_found()
-    return resume, _token_hash(token)
 
 
 def _reviewer_identity(request: Request, response: Response, token: str) -> str:
@@ -292,6 +300,7 @@ async def add_public_review_comment(
     ):
         raise _not_found()
     resume = locked_resume
+    await _require_public_review_capabilities(resume)
     count = await db.scalar(
         select(func.count(ResumeReviewComment.id)).where(
             ResumeReviewComment.resume_id == resume.id,
@@ -345,10 +354,12 @@ async def _authenticated_review_resume(resume_id: str, user_id: str, db: AsyncSe
         )
     )
     if collab in {"editor", "commenter", "viewer"}:
+        await enforce_capabilities(("f04", "f03"), user_id)
+        await enforce_capabilities(("f04", "f03"), resume.user_id)
         return resume
 
     workspace_rows = await db.execute(
-        select(WorkspaceMember.role, Workspace.tenant_id)
+        select(WorkspaceMember.role, Workspace.tenant_id, Workspace.owner_id)
         .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
         .join(WorkspaceResume, WorkspaceResume.workspace_id == Workspace.id)
         .where(
@@ -356,13 +367,14 @@ async def _authenticated_review_resume(resume_id: str, user_id: str, db: AsyncSe
             WorkspaceMember.user_id == user_id,
         )
     )
-    for role, tenant_id in workspace_rows.all():
-        if role in {"owner", "editor"}:
-            return resume
+    for role, tenant_id, workspace_owner_id in workspace_rows.all():
         # In a tenant-backed cohort, viewers may only review their own
         # submission. The owner case was handled above; do not infer access
         # from TenantMember membership alone.
-        if role == "viewer" and tenant_id is None:
+        if role in {"owner", "editor"} or (role == "viewer" and tenant_id is None):
+            await enforce_capabilities(("f08", "f03"), user_id)
+            await enforce_capabilities(("f08",), workspace_owner_id)
+            await enforce_capabilities(("f03",), resume.user_id)
             return resume
 
     raise HTTPException(status_code=403, detail="You do not have access to this resume")
@@ -402,9 +414,19 @@ async def _assert_can_resolve_review_comment(resume_id: str, user_id: str, db: A
         )
         .with_for_update()
     )
-    if (collaborator and collaborator.role == "editor") or (
-        workspace_membership and workspace_membership.role in {"owner", "editor"}
-    ):
+    if collaborator and collaborator.role == "editor":
+        await enforce_capabilities(("f04", "f03"), user_id)
+        await enforce_capabilities(("f04", "f03"), resume.user_id)
+        return resume
+    if workspace_membership and workspace_membership.role in {"owner", "editor"}:
+        workspace_owner_id = await db.scalar(select(Workspace.owner_id).where(
+            Workspace.id == workspace_membership.workspace_id,
+        ))
+        if not workspace_owner_id:
+            raise HTTPException(status_code=403, detail="Workspace access is unavailable")
+        await enforce_capabilities(("f08", "f03"), user_id)
+        await enforce_capabilities(("f08",), workspace_owner_id)
+        await enforce_capabilities(("f03",), resume.user_id)
         return resume
     raise HTTPException(status_code=403, detail="Only the owner or an editor can resolve review comments")
 

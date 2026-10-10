@@ -8,7 +8,6 @@ authorities. Disabling a SKU does not revoke an existing entitlement.
 from __future__ import annotations
 
 from copy import deepcopy
-from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException
@@ -78,13 +77,18 @@ class PlanCatalogService:
         return {key: getattr(row, key) for key in (*EDITABLE_FIELDS, "sku", "version")}
 
     async def list_plans(
-        self, db: AsyncSession | None, *, provider_available: bool, public: bool = True
+        self, db: AsyncSession | None, *, provider_available: bool, public: bool = True, user_id: str | None = None
     ) -> dict[str, dict]:
         # Optional db only preserves the existing offline service-inspection
         # interface. HTTP handlers always supply a DB; DB errors fail closed.
         rows = await self._rows(db) if db is not None else {}
         state = await entitlement_service.get_state(db) if db is not None else None
         quota_overrides = await quota_policy_service.catalog_overrides(db) if db is not None else {}
+        role = "anonymous"
+        blob = {"kill": state["kill_switches"], "matrix": state["matrix"], "roles": state["role_matrix"]} if state else None
+        if user_id and state is not None:
+            subjects, blob = await entitlement_service._subject_snapshot((user_id,))
+            role, _ = subjects[user_id]
         plans = {}
         for sku in settings.SUBSCRIPTION_PLANS:
             config = get_plan_config(sku)
@@ -101,9 +105,8 @@ class PlanCatalogService:
                 continue
             capabilities = {}
             if state is not None:
-                blob = {"kill": state["kill_switches"], "matrix": state["matrix"]}
                 capabilities = {
-                    feature["key"]: entitlement_service._decide(blob, feature["key"], sku)
+                    feature["key"]: entitlement_service._decide(blob, feature["key"], sku, role)
                     for feature in state["registry"]
                 }
             features = deepcopy(config["features"])
@@ -118,7 +121,8 @@ class PlanCatalogService:
                 features["optimizations"] = "Unavailable"
             if not capabilities.get("ai_writing", True):
                 features["ai_assists"] = "Unavailable"
-            purchasable = bool(presentation["purchase_enabled"] and configured and (sku == "free" or provider_available))
+            role_offer_allowed = state is None or sku not in {"student", "team"} or capabilities.get("i02") is True
+            purchasable = bool(presentation["purchase_enabled"] and configured and role_offer_allowed and (sku == "free" or provider_available))
             plan = {
                 **config, **presentation, "id": sku, "features": features,
                 "capabilities": capabilities,
@@ -127,7 +131,7 @@ class PlanCatalogService:
                 "purchasable": purchasable,
                 "configured": configured,
                 "unavailable_reason": (
-                    None if purchasable else "Sales paused" if not presentation["purchase_enabled"]
+                    None if purchasable else "Unavailable for this account" if not role_offer_allowed else "Sales paused" if not presentation["purchase_enabled"]
                     else "Not configured" if not configured else "Billing unavailable"
                 ),
             }
@@ -143,7 +147,7 @@ class PlanCatalogService:
             plans[sku] = plan
         return dict(sorted(plans.items(), key=lambda item: (item[1]["display_order"], item[0])))
 
-    async def current_subscription_display(self, plan_id: str | None) -> dict:
+    async def current_subscription_display(self, plan_id: str | None, *, user_id: str | None = None) -> dict:
         """Shared current copy without making billing recovery depend on this DB.
 
         Reads use a dedicated session: a catalog failure cannot invalidate the
@@ -154,7 +158,7 @@ class PlanCatalogService:
         config = get_plan_config(sku)
         try:
             async with get_async_db_session() as db:
-                plans = await self.list_plans(db, provider_available=False, public=False)
+                plans = await self.list_plans(db, provider_available=False, public=False, user_id=user_id)
             plan = plans[sku]
             return {"name": plan["name"], "features": plan["features"]}
         except Exception:
@@ -166,16 +170,20 @@ class PlanCatalogService:
             })
             return {"name": config.get("name", "Unknown"), "features": features}
 
-    async def require_new_purchase(self, db: AsyncSession, sku: str) -> None:
-        """Check sale availability only. Never used for renewals or cancellation."""
+    async def require_sale_available(self, db: AsyncSession, sku: str) -> None:
+        """Merchandising-only check before resolving a one-time token owner."""
         if sku not in settings.SUBSCRIPTION_PLANS:
             raise HTTPException(status_code=400, detail="Invalid plan selected")
         result = await db.execute(select(PlanCatalog).where(PlanCatalog.sku == sku))
         row = result.scalar_one_or_none()
         if row is not None and not row.purchase_enabled:
             raise HTTPException(status_code=409, detail="This plan is no longer available for new purchases. Your existing subscription is unchanged.")
-        if sku in {"student", "team"} and not await entitlement_service.has_feature(
-            "i02", user=SimpleNamespace(role="user", subscription_plan=sku),
+
+    async def require_new_purchase(self, db: AsyncSession, sku: str, *, user_id: str | None = None) -> None:
+        """New sale only; target SKU and current purchaser account role intersect."""
+        await self.require_sale_available(db, sku)
+        if sku in {"student", "team"} and not await entitlement_service.has_feature_for_plan(
+            "i02", user=user_id, plan=sku,
         ):
             # Purchase availability belongs to the target SKU. The purchaser's
             # current free family must not block upgrading to an allowed offer.

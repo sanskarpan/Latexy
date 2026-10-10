@@ -24,6 +24,7 @@ async function harness(kind: 'share' | 'byok' | 'developer', existingShare = fal
   const refs: Array<{ current: unknown }> = []
   let refIndex = 0
   const api = { createShareLink: vi.fn(), revokeShareLink: vi.fn().mockResolvedValue(undefined), createDeveloperKey: vi.fn() }
+  let allowed = false
   const fetch = vi.fn()
   vi.stubGlobal('fetch', fetch)
   vi.doMock('react', async (importOriginal) => {
@@ -47,7 +48,7 @@ async function harness(kind: 'share' | 'byok' | 'developer', existingShare = fal
       },
     }
   })
-  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => false }) }))
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => allowed }) }))
   vi.doMock('@/hooks/useRequireAuth', () => ({ useRequireAuth: () => ({ session: { user: { id: 'owner' }, session: { token: 'mock-session' } }, isPending: false, error: null }) }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: api }))
   vi.doMock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -56,6 +57,7 @@ async function harness(kind: 'share' | 'byok' | 'developer', existingShare = fal
       : (await import('@/app/developer/page')).default
   return {
     api, fetch,
+    allow: (next: boolean) => { allowed = next },
     render: () => {
       index = 0; refIndex = 0
       return (Component as (props: unknown) => unknown)({ ownerId: 'owner', resumeId: 'resume', resumeTitle: 'test', onClose: () => {}, ...(existingShare ? { initialShareToken: 'token', initialShareUrl: 'https://example.test/r/token' } : {}) })
@@ -70,9 +72,10 @@ afterEach(() => {
 describe('denied new-action buttons keep management available', () => {
   it('blocks share generation in both button and handler, while existing links can still be revoked', async () => {
     const fresh = await harness('share')
+    expect(elements(fresh.render()).some((node) => node.type === 'button' && text(node).includes('Generate shareable link'))).toBe(false)
+    fresh.allow(true)
     const generate = button(fresh.render(), 'Generate shareable link')
-    expect(generate.props.disabled).toBe(true)
-    expect(generate.props['aria-description']).toContain('Unavailable')
+    fresh.allow(false)
     await (generate.props.onClick as () => Promise<void>)()
     expect(fresh.api.createShareLink).not.toHaveBeenCalled()
     const existing = await harness('share', true)
@@ -86,17 +89,19 @@ describe('denied new-action buttons keep management available', () => {
   })
   it('blocks a BYOK save even if a form was already open before revocation', async () => {
     const h = await harness('byok')
+    expect(elements(h.render()).some((node) => node.type === 'button' && (node.props.onClick as { name?: string })?.name === 'addAPIKey')).toBe(false)
+    h.allow(true)
     const save = elements(h.render()).find((node) => node.type === 'button' && (node.props.onClick as { name?: string })?.name === 'addAPIKey')!
-    expect(save.props.disabled).toBe(true)
-    expect(save.props['aria-description']).toContain('Unavailable')
+    h.allow(false)
     await (save.props.onClick as () => Promise<void>)()
     expect(h.fetch).not.toHaveBeenCalled()
   })
   it('blocks developer key creation in the button and handler', async () => {
     const h = await harness('developer')
+    expect(elements(h.render()).some((node) => node.type === 'button' && (node.props.onClick as { name?: string })?.name === 'handleCreateKey')).toBe(false)
+    h.allow(true)
     const create = elements(h.render()).find((node) => node.type === 'button' && (node.props.onClick as { name?: string })?.name === 'handleCreateKey')!
-    expect(create.props.disabled).toBe(true)
-    expect(create.props['aria-description']).toContain('Unavailable')
+    h.allow(false)
     await (create.props.onClick as () => Promise<void>)()
     expect(h.api.createDeveloperKey).not.toHaveBeenCalled()
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   apiClient,
@@ -12,6 +12,7 @@ import {
   type UserAnalyticsTimeseriesResponse,
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { ActivityAreaChart, FeatureUsageBars, StatusDonutChart } from '@/components/analytics/MetricCharts'
 import { JobQueue } from '@/components/JobQueue'
@@ -25,6 +26,14 @@ const ranges = [
 
 export default function DashboardPage() {
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const { can } = useEntitlements()
+  const analyticsEnabled = can('h06')
+  const analyticsEnabledRef = useRef(analyticsEnabled)
+  analyticsEnabledRef.current = analyticsEnabled
+  const analyticsGenerationRef = useRef(0)
+  const [jobsLoading, setJobsLoading] = useState(true)
+  const [jobsError, setJobsError] = useState<string | null>(null)
+  const [jobsReloadNonce, setJobsReloadNonce] = useState(0)
   const [selectedRange, setSelectedRange] = useState(30)
   const [analytics, setAnalytics] = useState<UserAnalyticsResponse | null>(null)
   const [timeseries, setTimeseries] = useState<UserAnalyticsTimeseriesResponse | null>(null)
@@ -39,36 +48,62 @@ export default function DashboardPage() {
   const [selectedJobResultError, setSelectedJobResultError] = useState<string | null>(null)
 
   const fetchDashboardData = useCallback(async () => {
-    if (!session) return
+    if (!session || !analyticsEnabledRef.current) return
+    const generation = ++analyticsGenerationRef.current
     setLoading(true)
     setError(null)
     try {
-      const [analyticsData, timeseriesData, statsData, jobsData, clStatsData] = await Promise.all([
+      const [analyticsData, timeseriesData, statsData, clStatsData] = await Promise.all([
         apiClient.getMyAnalytics(selectedRange),
         apiClient.getMyAnalyticsTimeseries(selectedRange),
         apiClient.getResumeStats(),
-        apiClient.listJobs(),
         apiClient.getCoverLetterStats().catch(() => ({ total: 0 })),
       ])
 
+      if (!analyticsEnabledRef.current || analyticsGenerationRef.current !== generation) return
       setAnalytics(analyticsData)
       setTimeseries(timeseriesData)
       setStats(statsData)
       setClStats(clStatsData)
-      setRecentJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
     } catch (err) {
+      if (!analyticsEnabledRef.current || analyticsGenerationRef.current !== generation) return
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to fetch dashboard data', err)
       }
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data')
     } finally {
-      setLoading(false)
+      if (analyticsGenerationRef.current === generation) setLoading(false)
     }
   }, [session, selectedRange])
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [fetchDashboardData])
+    if (analyticsEnabled) void fetchDashboardData()
+    else {
+      setAnalytics(null)
+      setTimeseries(null)
+      setStats(null)
+      setClStats(null)
+      setError(null)
+      setLoading(false)
+    }
+    return () => { analyticsGenerationRef.current += 1 }
+  }, [analyticsEnabled, fetchDashboardData])
+
+  // Job recovery is independent of optional analytics and its failures.
+  useEffect(() => {
+    if (!session) return
+    let active = true
+    setJobsLoading(true)
+    setJobsError(null)
+    apiClient.listJobs().then((data) => {
+      if (active) setRecentJobs([...(data.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
+    }).catch((err) => {
+      if (active) setJobsError(err instanceof Error ? err.message : 'Failed to load recent runs')
+    }).finally(() => {
+      if (active) setJobsLoading(false)
+    })
+    return () => { active = false }
+  }, [session, jobsReloadNonce])
 
   useEffect(() => {
     if (!selectedJob) return
@@ -200,10 +235,10 @@ export default function DashboardPage() {
     return (
       <div className="content-shell">
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-3xl p-8 text-center">
-          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Analytics</p>
-          <h1 className="mt-2 text-3xl font-semibold text-fg">Usage Intelligence Dashboard</h1>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Dashboard</p>
+          <h1 className="mt-2 text-3xl font-semibold text-fg">Run Dashboard</h1>
           <p className="mx-auto mt-3 max-w-xl text-fg-2">
-            Signed-in users get pipeline analytics, feature usage charts, and run-performance signals over configurable time windows.
+            Sign in to review your saved runs and results.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <Link href="/login" className="rounded-[var(--radius-md)] bg-accent px-6 py-2.5 text-sm font-semibold text-accent-fg hover:brightness-110">
@@ -223,11 +258,11 @@ export default function DashboardPage() {
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Dashboard</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Usage Intelligence</h1>
-          <p className="mt-1 text-sm text-fg-2">Detailed analytics for your personal resume optimization workflow.</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">{analyticsEnabled ? 'Usage Intelligence' : 'Run Dashboard'}</h1>
+          <p className="mt-1 text-sm text-fg-2">{analyticsEnabled ? 'Detailed analytics for your personal resume optimization workflow.' : 'Review your existing runs and results.'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {ranges.map((range) => (
+          {analyticsEnabled && ranges.map((range) => (
             <button
               key={range.days}
               onClick={() => setSelectedRange(range.days)}
@@ -248,7 +283,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {error && !loading && (
+      {analyticsEnabled && error && !loading && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/30 bg-err/10 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-err">Couldn&apos;t load dashboard data</p>
@@ -263,7 +298,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {analyticsEnabled && <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {loading ? (
           Array.from({ length: 5 }).map((_, index) => <div key={index} className="rounded-[var(--radius-lg)] border border-line bg-surface h-28 animate-pulse" />)
         ) : error ? (
@@ -280,10 +315,11 @@ export default function DashboardPage() {
               </article>
             ))
         )}
-      </section>
+      </section>}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <section className="space-y-6">
+          {analyticsEnabled && <>
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
@@ -317,13 +353,14 @@ export default function DashboardPage() {
             )}
           </article>
 
+          </>}
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <JobQueue maxJobs={10} showFilters={false} showSearch={false} />
           </article>
         </section>
 
         <aside className="space-y-6">
-          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+          {analyticsEnabled && <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">
                 {isStatusSeriesFallback ? 'Status of Last 10 Runs' : 'Run Status Distribution'}
@@ -346,7 +383,7 @@ export default function DashboardPage() {
                 <StatusDonutChart data={statusSeries} totalLabel={isStatusSeriesFallback ? 'LAST 10' : 'RUNS'} />
               )}
             </div>
-          </article>
+          </article>}
 
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="mb-3 flex items-center justify-between">
@@ -355,11 +392,16 @@ export default function DashboardPage() {
                 Full history
               </Link>
             </div>
-            {loading ? (
+            {jobsLoading ? (
               <div className="space-y-2">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div key={index} className="h-14 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
                 ))}
+              </div>
+            ) : jobsError ? (
+              <div role="alert" className="space-y-2 text-sm text-err">
+                <p>{jobsError}</p>
+                <button onClick={() => setJobsReloadNonce((value) => value + 1)} className="underline">Retry recent runs</button>
               </div>
             ) : recentJobs.length === 0 ? (
               <p className="text-sm text-fg-3">No recent jobs recorded.</p>

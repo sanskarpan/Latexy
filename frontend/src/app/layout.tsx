@@ -15,6 +15,7 @@ import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 import { EntitlementsProvider } from '@/contexts/EntitlementsContext'
 import CapabilityRouteBoundary from '@/components/CapabilityRouteBoundary'
+import AccountContentBoundary from '@/components/AccountContentBoundary'
 import CapabilityStatusNotice from '@/components/CapabilityStatusNotice'
 import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
@@ -99,7 +100,7 @@ export default async function RootLayout({
               <GlobalHeader />
               <CapabilityStatusNotice />
               <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
-                <CapabilityRouteBoundary>{children}</CapabilityRouteBoundary>
+                <AccountContentBoundary><CapabilityRouteBoundary>{children}</CapabilityRouteBoundary></AccountContentBoundary>
               </main>
               <MarketingFooter />
             </div>
