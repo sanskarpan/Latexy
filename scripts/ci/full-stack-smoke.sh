@@ -33,7 +33,9 @@ export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-http://localhost:${FRONTEND_P
 export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:${BACKEND_PORT}}"
 export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL:-ws://localhost:${BACKEND_PORT}}"
 export CORS_ORIGINS="${CORS_ORIGINS:-[\"http://localhost:${FRONTEND_PORT}\",\"http://127.0.0.1:${FRONTEND_PORT}\"]}"
-export ENVIRONMENT="${ENVIRONMENT:-staging}"
+# Production/staging intentionally reject credentialed loopback CORS. This
+# launcher owns only isolated local services, so never inherit deployment mode.
+export ENVIRONMENT="test"
 # This is a local-service smoke, never a remote Modal workload. Environment
 # variables take precedence over deployment settings in a developer's .env.
 export DEPLOY_TARGET="local"

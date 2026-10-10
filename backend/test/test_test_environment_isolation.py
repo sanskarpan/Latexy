@@ -52,7 +52,7 @@ print(json.dumps({
     ("script", "boundary", "expected_environment"),
     [
         ("scripts/dev.sh", "# PID file", "development"),
-        ("scripts/ci/full-stack-smoke.sh", 'backend_pid=""', "production"),
+        ("scripts/ci/full-stack-smoke.sh", 'backend_pid=""', "test"),
     ],
 )
 def test_local_launchers_override_inherited_modal_dispatch(script, boundary, expected_environment):
@@ -104,3 +104,22 @@ def test_full_stack_rejects_nonisolated_database_before_startup(database):
     assert process.returncode != 0
     assert "unsafe-startup" not in process.stdout
     assert "loopback *_test database" in process.stderr
+
+
+def test_full_stack_allows_only_its_local_test_cors_without_relaxing_production():
+    repository = Path(__file__).resolve().parents[2]
+    prefix = (repository / "scripts/ci/full-stack-smoke.sh").read_text().split('backend_pid=""', 1)[0]
+    probe = """
+from app.core.config import settings
+assert settings.ENVIRONMENT == 'test'
+assert 'http://localhost:5180' in settings.effective_cors_origins()
+for environment in ('production', 'staging'):
+    settings.ENVIRONMENT = environment
+    assert not any('localhost' in origin or '127.0.0.1' in origin for origin in settings.effective_cors_origins())
+print('local test CORS works; deployed filtering remains intact')
+"""
+    process = subprocess.run(["bash", "-c", 'source /dev/stdin; "$1" -c "$2"', "smoke", sys.executable, probe],
+                             input=prefix, cwd=repository / "backend", capture_output=True, text=True, timeout=10,
+                             env=dict(os.environ, ENVIRONMENT="staging", DATABASE_URL="postgresql://localhost/latexy_test",
+                                      CORS_ORIGINS='["http://localhost:5180","http://127.0.0.1:5180"]'), check=True)
+    assert 'deployed filtering remains intact' in process.stdout

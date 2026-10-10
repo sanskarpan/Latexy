@@ -14,6 +14,15 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   const flags = await request.get(`${apiBase}/config/feature-flags`)
   expect(flags.ok()).toBeTruthy()
 
+  const frontendOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5180'}`
+  const preflight = await request.fetch(`${apiBase}/config/entitlements`, {
+    method: 'OPTIONS',
+    headers: { Origin: frontendOrigin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization' },
+  })
+  expect(preflight.ok(), 'Local browser API CORS preflight must succeed before checking UI').toBeTruthy()
+  expect(preflight.headers()['access-control-allow-origin']).toBe(frontendOrigin)
+  expect(preflight.headers()['access-control-allow-credentials']).toBe('true')
+
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('link', { name: 'Start compiling →' })).toBeVisible()
 
