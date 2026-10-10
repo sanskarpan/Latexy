@@ -162,6 +162,14 @@ rollout browser cases are included in the production-browser CI gate. Local
 browser execution remains blocked by this executor's known Node host-network
 interface limitation; those cases require the authoritative CI result.
 
+CodeQL on `4f0e5836` passed and automatically resolved preflight alert 377. Its
+large-diff scan also reported two medium `js/bad-code-sanitization` findings in
+process-lifecycle test bodies already present on main `c21bcc20` (lines 232/271
+there, 241/285 on the candidate). The follow-up keeps those child programs
+constant and passes temporary paths/module URLs through argv instead of source
+interpolation. All eight lifecycle/cache tests and the full frontend unit suite
+pass without weakening their assertions or suppressing the rule.
+
 ## Still requires provider or deployment acceptance
 
 These are not certified by synthetic tests or a merge:

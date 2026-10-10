@@ -237,16 +237,19 @@ describe('Playwright Next cache isolation', () => {
     const readyFile = join(root, 'descendant-ready')
     const descendantCode = [
       'const fs = require(\'node:fs\')',
-      `fs.writeFileSync(${JSON.stringify(readyFile)}, 'ready')`,
-      `process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(marker)}, 'stopped'); process.exit(0) })`,
+      'const [readyFile, marker] = process.argv.slice(1)',
+      "fs.writeFileSync(readyFile, 'ready')",
+      "process.on('SIGTERM', () => { fs.writeFileSync(marker, 'stopped'); process.exit(0) })",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const launcherCode = [
       'const { spawn } = require(\'node:child_process\')',
-      `const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendantCode)}], { stdio: 'ignore' }); require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid))`,
+      'const [descendantCode, readyFile, marker, pidFile] = process.argv.slice(1)',
+      "const child = spawn(process.execPath, ['-e', descendantCode, readyFile, marker], { stdio: 'ignore' }); require('node:fs').writeFileSync(pidFile, String(child.pid))",
       'setInterval(() => {}, 1000)',
     ].join(';')
-    const launcher = spawn(process.execPath, ['-e', launcherCode], {
+    // Keep filesystem paths as argv data, never part of the child program.
+    const launcher = spawn(process.execPath, ['-e', launcherCode, descendantCode, readyFile, marker, pidFile], {
       detached: true,
       stdio: 'ignore',
     })
@@ -281,16 +284,18 @@ describe('Playwright Next cache isolation', () => {
     ).href
     const monitoredCode = [
       "import { writeFileSync } from 'node:fs'",
-      `import { watchParent } from ${JSON.stringify(launcherModule)}`,
-      `watchParent(() => { writeFileSync(${JSON.stringify(marker)}, 'gone'); process.exit(0) })`,
+      'const [launcherModule, marker] = process.argv.slice(1)',
+      'const { watchParent } = await import(launcherModule)',
+      "watchParent(() => { writeFileSync(marker, 'gone'); process.exit(0) })",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const parentCode = [
       "const { spawn } = require('node:child_process')",
-      `spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(monitoredCode)}], { stdio: 'ignore' })`,
+      'const [monitoredCode, launcherModule, marker] = process.argv.slice(1)',
+      "spawn(process.execPath, ['--input-type=module', '-e', monitoredCode, launcherModule, marker], { stdio: 'ignore' })",
       'setTimeout(() => process.exit(0), 500)',
     ].join(';')
-    const parent = spawn(process.execPath, ['-e', parentCode], {
+    const parent = spawn(process.execPath, ['-e', parentCode, monitoredCode, launcherModule, marker], {
       detached: true,
       stdio: 'ignore',
     })
