@@ -135,14 +135,15 @@ function scanDocument(source: string): ScannedDocument {
     if (unsupported) {
       unsupportedBlocks++
       ignoredEnvironment = unsupported
-      ignoredDepth = 1
+      ignoredDepth = 0
+      // Count the opening marker below exactly once, including nested starts
+      // on this line, so a complete one-line opaque block can close.
       // Handle a complete unsupported environment written on one line too.
       const escapedName = unsupported.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const delimiter = new RegExp(`\\\\(begin|end)\\{${escapedName}\\}`, 'g')
-      let depth = 1
       for (const match of text.matchAll(delimiter)) {
-        if (match[1] === 'begin') depth++
-        else if (--depth === 0) { ignoredEnvironment = null; ignoredDepth = 0; break }
+        if (match[1] === 'begin') ignoredDepth++
+        else if (--ignoredDepth === 0) { ignoredEnvironment = null; break }
       }
       lines.push(line)
       offset += rawLine.length + 1

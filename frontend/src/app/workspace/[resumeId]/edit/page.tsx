@@ -1010,7 +1010,7 @@ export default function ResumeEditPage() {
   })
   const latestLatexContentRef = useRef(latexContent)
   latestLatexContentRef.current = latexContent
-  const visualPanels: RightTab[] = ['preview', 'ai', 'interview', 'layout']
+  const visualPanels: RightTab[] = ['preview', 'ai', 'comments', 'interview', 'layout']
   useEffect(() => {
     if (editorMode === 'wysiwyg' && !visualPanels.includes(rightTab)) setRightTab('preview')
     // The list is static and deliberately excludes panels that show source snippets.
@@ -4012,7 +4012,7 @@ export default function ResumeEditPage() {
                 setOptLevel={setOptLevel}
                 onRun={runAiOptimize}
                 stagedLatex={stagedAiLatex}
-                onApply={handleApplyOptimization}
+                onApply={() => handleApplyOptimization()}
                 onDiscard={handleDiscardOptimization}
                 onReview={handleReviewOptimization}
                 onApplyAnyway={handleApplyAnyway}
@@ -4074,7 +4074,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {editorMode === 'source' && rightTab === 'comments' && (
+            {rightTab === 'comments' && (
               <CommentsPanel
                 resumeId={resumeId}
                 canComment={collabRole !== 'viewer'}

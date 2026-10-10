@@ -186,7 +186,32 @@ The repair passed 225 affected backend tests, including 32 new real-PostgreSQL
 cases, and a 698-test combined billing/rollout/builder regression run (overlapping
 counts). Independent frozen-source review found no blocker. The preceding
 `b18edf50` passed all 14 CI jobs, Vercel and CodeQL with zero new alerts; that
-result does not replace the source-repair publication's exact-head CI.
+result does not replace the source-repair publication's exact-head CI. The
+source-repair head `2124361f` subsequently passed all 14 CI jobs, Vercel and
+CodeQL with zero new alerts (CI run `38081400377`).
+
+The final bounded compiler/cache audit found that the builder PDF hook silently
+mapped a saved XeLaTeX preference to LuaLaTeX. It now preserves all three admitted
+compilers without changing defaults or backend policy. Its cache identity also
+includes exactly the seven saved compile settings forwarded by job submission:
+main file, packages, latexmk flags, TeX Live version, BibTeX, halt-on-error and
+draft mode. Unrelated metadata still reuses the preview. Compiler/settings-only
+regressions and independent source review pass; all 1,385 frontend unit tests,
+TypeScript and full ESLint passed before the final UI regressions below.
+
+The same bounded UI review repaired three existing regressions: the AI Apply
+button no longer forwards its click event as reviewed source; one-line opaque
+LaTeX environments close correctly so following editable prose remains visible;
+and Comments remain available in Visual mode, including existing comment deep
+links and viewer restrictions. Main `c21bcc20` exposes the Comments menu, deep
+link and panel without a mode restriction; this restores that behavior. Tests
+exercise the actual page callbacks/menu/render expressions and preserve opaque
+source bytes. Independent final source review found no remaining blocker in
+this bounded bundle. All 1,393 frontend tests across 200 files, nonincremental
+TypeScript and full ESLint passed on the final UI candidate. The canonical
+production build and artifact validation also passed using a bounded 1.5 GB
+Node heap; an earlier 2 GB attempt compiled but was killed during its type phase.
+Exact published-head CI, browser and CodeQL checks remain the release gates.
 
 ## Still requires provider or deployment acceptance
 

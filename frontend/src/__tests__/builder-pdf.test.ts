@@ -67,6 +67,40 @@ describe('guided builder PDF completion', () => {
     expect(fixture.api.downloadPdf).toHaveBeenCalledWith('job-owned', expect.any(AbortSignal))
     expect(fixture.download).toHaveBeenCalledWith(expect.any(Blob), 'Alex résumé.pdf')
   })
+  it.each(['pdflatex', 'xelatex', 'lualatex'])('preserves the saved %s compiler', async (compiler) => {
+    const hook = setup(vi.fn().mockResolvedValue({ resume: { ...saved.resume, metadata: { compiler } } }))
+    await hook.previewPdf()
+    expect(fixture.api.compileLatex).toHaveBeenCalledWith({ latex_content: 'saved source', resume_id: 'resume-owned', compiler })
+  })
+  it('recompiles when only the saved compiler changes', async () => {
+    const prepare = vi.fn().mockResolvedValue(saved)
+    const hook = setup(prepare)
+    await hook.previewPdf()
+    prepare.mockResolvedValue({ resume: { ...saved.resume, metadata: { compiler: 'xelatex' } } })
+    await hook.previewPdf()
+    expect(fixture.api.compileLatex).toHaveBeenCalledTimes(2)
+    expect(fixture.api.compileLatex).toHaveBeenLastCalledWith({ latex_content: 'saved source', resume_id: 'resume-owned', compiler: 'xelatex' })
+  })
+  it.each([
+    ['main_file', 'document.tex'], ['extra_packages', ['amsmath']],
+    ['latexmk_flags', ['--synctex=1']], ['texlive_version', '2024'],
+    ['bibtex', true], ['halt_on_error', false], ['draft_mode', true],
+  ])('recompiles when the saved %s compile setting changes', async (key, value) => {
+    const prepare = vi.fn().mockResolvedValue(saved)
+    const hook = setup(prepare)
+    await hook.previewPdf()
+    prepare.mockResolvedValue({ resume: { ...saved.resume, metadata: { ...saved.resume.metadata, [key as string]: value } } })
+    await hook.previewPdf()
+    expect(fixture.api.compileLatex).toHaveBeenCalledTimes(2)
+  })
+  it('reuses the PDF when only unrelated saved metadata changes', async () => {
+    const prepare = vi.fn().mockResolvedValue(saved)
+    const hook = setup(prepare)
+    await hook.previewPdf()
+    prepare.mockResolvedValue({ resume: { ...saved.resume, metadata: { ...saved.resume.metadata, last_persona: 'experienced' } } })
+    await hook.previewPdf()
+    expect(fixture.api.compileLatex).toHaveBeenCalledTimes(1)
+  })
   it('reuses a preview only for the same saved version and content', async () => {
     const hook = setup()
     await hook.previewPdf()

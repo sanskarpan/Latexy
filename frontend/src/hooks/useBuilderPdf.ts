@@ -18,7 +18,7 @@ export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
   const controllerRef = useRef<AbortController | null>(null)
   const urlRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
-  const cachedRef = useRef<{ version: number | null | undefined; latex: string; blob: Blob } | null>(null)
+  const cachedRef = useRef<{ version: number | null | undefined; latex: string; settingsKey: string; blob: Blob } | null>(null)
 
   const clearPreview = useCallback(() => {
     controllerRef.current?.abort()
@@ -54,14 +54,22 @@ export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
       if (!saved || saved.resume.id !== resumeId || !saved.resume.latex_content.trim()) {
         throw new Error('Save your resume before creating the PDF.')
       }
-      if (cachedRef.current && cachedRef.current.version === saved.resume.structured_version && cachedRef.current.latex === saved.resume.latex_content) {
+      const requestedCompiler = saved.resume.metadata?.compiler
+      const compiler = requestedCompiler === 'pdflatex' || requestedCompiler === 'xelatex' ? requestedCompiler : 'lualatex'
+      // Mirror the saved compile settings admitted by job_routes.submit_job.
+      // Unrelated sharing/persona metadata must not invalidate the PDF cache.
+      const settingsKey = JSON.stringify([compiler, ...[
+        'main_file', 'extra_packages', 'latexmk_flags', 'texlive_version',
+        'bibtex', 'halt_on_error', 'draft_mode',
+      ].map(key => saved.resume.metadata?.[key] ?? null)])
+      if (cachedRef.current && cachedRef.current.settingsKey === settingsKey && cachedRef.current.version === saved.resume.structured_version && cachedRef.current.latex === saved.resume.latex_content) {
         if (download) downloadBlob(cachedRef.current.blob, `${saved.resume.title || 'resume'}.pdf`)
         return
       }
       const submission = await apiClient.compileLatex({
         latex_content: saved.resume.latex_content,
         resume_id: resumeId,
-        compiler: saved.resume.metadata?.compiler === 'pdflatex' ? 'pdflatex' : 'lualatex',
+        compiler,
       })
       assertCurrent()
       if (!submission.success || !submission.job_id) throw new Error('PDF generation could not be started. Please retry.')
@@ -87,7 +95,7 @@ export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
           if (urlRef.current) URL.revokeObjectURL(urlRef.current)
           urlRef.current = URL.createObjectURL(blob)
           setPdfUrl(urlRef.current)
-          cachedRef.current = { version: saved.resume.structured_version, latex: saved.resume.latex_content, blob }
+          cachedRef.current = { version: saved.resume.structured_version, latex: saved.resume.latex_content, settingsKey, blob }
           if (download) downloadBlob(blob, `${saved.resume.title || 'resume'}.pdf`)
           return
         }

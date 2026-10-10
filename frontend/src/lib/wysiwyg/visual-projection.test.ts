@@ -119,4 +119,33 @@ describe('non-destructive visual resume editing', () => {
     const heading = projectVisualResume(source).fields.find((field) => field.kind === 'heading')!
     expect(addVisualSectionContent(source, heading).source).toBe(source)
   })
+
+  it.each(['tabular', 'customlayout'])('resumes editable prose after a one-line opaque %s environment', (environment) => {
+    const opaque = String.raw`\begin{${environment}}{l}Keep \textbf{opaque} bytes\end{${environment}}`
+    const source = String.raw`\begin{document}
+${opaque}
+\section*{Experience}
+Visible prose
+\end{document}`
+    const projection = projectVisualResume(source)
+    const field = projection.fields.find(candidate => candidate.value === 'Visible prose')!
+    expect(field).toBeDefined()
+    expect(projection.fields.some(candidate => candidate.value.includes('opaque'))).toBe(false)
+    expect(updateVisualField(source, field, 'Updated prose')).toBe(source.replace('Visible prose', 'Updated prose'))
+    expect(updateVisualField(source, field, 'Updated prose')).toContain(opaque)
+  })
+
+  it('tracks nested starts on an opaque opening line until every matching end', () => {
+    const source = String.raw`\begin{document}
+\begin{customlayout}\begin{customlayout}Hidden
+\end{customlayout}
+Still hidden
+\end{customlayout}
+\section{Experience}
+Visible prose
+\end{document}`
+    const projection = projectVisualResume(source)
+    expect(projection.fields.some(field => field.value.includes('hidden'))).toBe(false)
+    expect(projection.fields.some(field => field.value === 'Visible prose')).toBe(true)
+  })
 })
