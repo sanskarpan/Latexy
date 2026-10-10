@@ -72,3 +72,15 @@ Artifact `11679760663`, SHA-256 `6e308b8ac1c3f02b0277550acfd439a2e7847b2b21de7e2
 These are fixture repairs, not production changes or a browser pass. Exact final-head CI must run the expanded contracts, including the later admission and deployment-preflight corrections.
 
 Final local combined tree: **1,328 frontend units in 195 files**, full TypeScript/ESLint, full backend Ruff and diff checks passed. The **162-test** backend/deployment selection remains applicable; **145 browser cases** collect. Both final fixture corrections and the source-review corrections received independent review with no remaining concrete code blocker. Browser runtime and actual Modal VM certification remain unverified locally.
+
+## Firefox logout-reload follow-up
+
+Head `f159de85c017742ac5ba816285cc02432963a1fb` completed [CI run 38079656330](https://github.com/sanskarpan/Latexy/actions/runs/38079656330) with **141 passed, one failed, three skipped** quality cases in **9.5 minutes**. All engine, rollout-fallback, field/structure/import and account-incarnation cases passed across the five projects. The remaining desktop Firefox account-navigation case passed its functional assertions but recorded `NS_BINDING_ABORTED` in its final runtime-error assertion on both attempts. Later explicit browser and hydration steps were skipped, so this head is not browser-complete. Other CI jobs, all CodeQL analyses and Vercel passed.
+
+Evidence: artifact `11679917710`, SHA-256 `cdd3b2164c67be4686a7bc7b2f986f46b3ad82ffb74ea53610d9e486ff39db14`.
+
+The retry trace shows the sign-out POST and first guest-session read both returning 200. The fixture then calls `page.reload` approximately 18 ms after that guest response completes, while the newly navigated landing page is still fetching. The page error follows approximately 34 ms after the reload, alongside canceled tenant resolution and RSC prefetches. The post-reload guest session also returns 200. Source review found existing handling for the tenant/RSC cancellations; next-pwa's navigation start-URL cache work is another overlapping operation, but the stackless error does not establish its exact producer.
+
+The fixture now verifies guest controls on the first landing page and waits for that navigation's network settlement before deliberately reloading to test session persistence. It repeats the guest assertions after reload. The empty runtime-error assertion remains unchanged; no error is filtered, no fixed sleep is added, and product PWA behavior is unchanged. A focused source contract verifies this ordering. This is a controlled fixture-sequencing correction, not evidence that all rapid production navigation/PWA cases are error-free. Exact-head CI must establish the correction and execute the still-pending later browser steps.
+
+The corrected tree passes **1,330 frontend units in 196 files**, full ESLint, nonincremental TypeScript, and diff checks; **145 quality cases in eight files** collect. The persistence assertion requires a strictly newer guest-session response than the count captured immediately before reload. Browser execution remains CI-only in this environment.

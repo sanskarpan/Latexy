@@ -150,6 +150,14 @@ async function waitForHeaderSession(page: Page, fixture: Awaited<ReturnType<type
   }))
 }
 
+async function expectGuestAccountNavigation(page: Page) {
+  await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeVisible()
+  await page.getByRole('button', { name: 'Open navigation menu' }).click()
+  await expect(page.getByRole('link', { name: 'Log In', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Try Free', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toHaveCount(0)
+}
+
 test.describe('mobile account navigation', () => {
   test.afterEach(async ({ page }, testInfo) => {
     const diagnostics = diagnosticsByPage.get(page)
@@ -217,16 +225,19 @@ test.describe('mobile account navigation', () => {
     expect(signOutMethods).toEqual(['POST'])
     await expect(page).toHaveURL(/\/$/, { timeout: 90_000 })
     await expect.poll(() => fixture.getGuestSessionReads()).toBeGreaterThan(0)
-    // A full reload proves the mock sign-out changed the backing session view;
-    // wait for its unauthenticated response and hydration before opening.
-    await page.reload({ waitUntil: 'networkidle' })
-    await expect.poll(() => fixture.getGuestSessionReads()).toBeGreaterThan(1)
     await waitForHeaderSession(page, fixture)
-    await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeVisible()
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
-    await expect(page.getByRole('link', { name: 'Log In', exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Try Free', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toHaveCount(0)
+    await expectGuestAccountNavigation(page)
+    // The session mock's response count precedes hydration and startup
+    // prefetches. Do not interrupt that first guest document with our own
+    // persistence reload, which can surface Firefox NS_BINDING_ABORTED.
+    await page.waitForLoadState('networkidle')
+    // A full reload proves the mock sign-out changed the backing session view;
+    // independently verify the new document's session and guest controls.
+    const guestSessionReadsBeforeReload = fixture.getGuestSessionReads()
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect.poll(() => fixture.getGuestSessionReads()).toBeGreaterThan(guestSessionReadsBeforeReload)
+    await waitForHeaderSession(page, fixture)
+    await expectGuestAccountNavigation(page)
     expect(signOutCalls).toBe(1)
   })
 
