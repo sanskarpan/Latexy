@@ -84,12 +84,22 @@ OIDC_CLIENT_ID=latexy
 OIDC_CLIENT_SECRET=replace-with-provider-secret
 ```
 
-`OIDC_ISSUER` is optional when discovery publishes the issuer. Register this
-exact callback URL at the identity provider:
+`OIDC_ISSUER` is optional; when set, it must exactly match the discovered issuer.
+Discovery must publish its issuer, signing algorithms, and JWKS endpoint so
+identity tokens can be verified. Choose a distinct provider ID; `google`,
+`github`, and `credential` are reserved. Register this exact callback URL at the
+identity provider:
 
 ```text
 https://your-latexy-host.example/api/auth/oauth2/callback/university_sso
 ```
+
+Latexy preserves this registered callback URL when upgrading to Better Auth
+1.7, translating it internally to the core social callback. Existing providers
+do not need a redirect-URI change. Signing out remains local to Latexy and does
+not log the user out of their institutional account. Start a new sign-in after
+an upgrade; pending OAuth state from the previous version may have expired or
+use an older storage format.
 
 Authorization remains separate from authentication: an SSO login creates or
 finds the Latexy account, while an email-bound tenant/cohort invitation grants

@@ -234,7 +234,21 @@ async def github_complete(
     if not ticket:
         raise HTTPException(status_code=400, detail="Missing GitHub completion ticket")
 
-    completion = await cache_manager.pop(f"gh:complete:{ticket}")
+    # Reject a wrong-account request without destroying the rightful owner's
+    # one-time completion. Recheck after GETDEL so concurrent legitimate
+    # completions still cannot exchange the same code twice.
+    ticket_key = f"gh:complete:{ticket}"
+    pending = await cache_manager.get(ticket_key)
+    if not isinstance(pending, dict):
+        raise HTTPException(status_code=400, detail="GitHub completion ticket is invalid or expired")
+    intended_user_id = str(pending.get("user_id") or "")
+    if not intended_user_id or not str(pending.get("code") or ""):
+        raise HTTPException(status_code=400, detail="GitHub completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user GitHub OAuth completion")
+        raise HTTPException(status_code=403, detail="GitHub connection belongs to a different user")
+
+    completion = await cache_manager.pop(ticket_key)
     if not isinstance(completion, dict):
         raise HTTPException(status_code=400, detail="GitHub completion ticket is invalid or expired")
 

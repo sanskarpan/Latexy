@@ -24,6 +24,7 @@ Evidence: GitHub artifact `11580060459`, `playwright-quality-report`, SHA-256 `9
 
 - Targeted launcher/fixture unit tests: **16 passed**.
 - Changed-file ESLint, full TypeScript check, and `git diff --check` passed before publication.
+- Current main `c21bcc20f7060b09269375f1b1f8f0b4f8229bae` then merged without conflicts, preserving dependency/auth upgrade #1859 and owner fixes #1851, #1858, and #1861. The integrated tree passed **1,273 frontend unit tests in 191 files**, full frontend ESLint, and the **57-test** DB-free engine/storage/dispatch selection; full backend Ruff also passed. Existing Markdown line-break whitespace imported unchanged from main is outside the fixture diff.
 - Local browser execution did **not** reach test assertions: Chromium's process-singleton socket failed with `Operation not permitted`, including an approved escalated retry. This environment failure is not a product failure or a browser pass. No security settings were changed.
 - Exact published-head Linux browser CI remains the acceptance authority for these repairs. Record its terminal result in the PR before marking the gate complete.
 - All browser APIs, auth, PDFs, and engine responses in these contracts are synthetic fixtures. They do not measure production queueing, cold starts, provider execution, storage latency, or real action-to-PDF paint. The production latency acceptance plan in `latency-instrumentation-2026-10-10.md` remains open.

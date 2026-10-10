@@ -3957,8 +3957,8 @@ class ApiClient {
   //  Dropbox Integration (Feature 77)                               //
   // ---------------------------------------------------------------- //
 
-  async getDropboxStatus(): Promise<DropboxStatusResponse> {
-    return this.request<DropboxStatusResponse>('/dropbox/status')
+  async getDropboxStatus(accountContext?: AccountPreferenceRequestContext): Promise<DropboxStatusResponse> {
+    return this.request<DropboxStatusResponse>('/dropbox/status', {}, accountContext)
   }
 
   async startDropboxOAuth(): Promise<OAuthStartResponse> {
@@ -4038,8 +4038,8 @@ class ApiClient {
   //  Zotero Integration (Feature 42)                                 //
   // ---------------------------------------------------------------- //
 
-  async getZoteroStatus(): Promise<ZoteroStatusResponse> {
-    return this.request<ZoteroStatusResponse>('/zotero/status')
+  async getZoteroStatus(accountContext?: AccountPreferenceRequestContext): Promise<ZoteroStatusResponse> {
+    return this.request<ZoteroStatusResponse>('/zotero/status', {}, accountContext)
   }
 
   async startZoteroOAuth(): Promise<OAuthStartResponse> {
@@ -4072,8 +4072,8 @@ class ApiClient {
   //  Mendeley Integration (Feature 42)                               //
   // ---------------------------------------------------------------- //
 
-  async getMendeleyStatus(): Promise<MendeleyStatusResponse> {
-    return this.request<MendeleyStatusResponse>('/mendeley/status')
+  async getMendeleyStatus(accountContext?: AccountPreferenceRequestContext): Promise<MendeleyStatusResponse> {
+    return this.request<MendeleyStatusResponse>('/mendeley/status', {}, accountContext)
   }
 
   async startMendeleyOAuth(): Promise<OAuthStartResponse> {
