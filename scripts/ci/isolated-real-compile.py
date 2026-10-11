@@ -26,7 +26,8 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_KEYS = {"PATH", "LANG", "LC_ALL", "TERM", "CI", "PNPM_HOME", "COREPACK_HOME", "PLAYWRIGHT_BROWSERS_PATH"}
@@ -42,6 +43,66 @@ CONTAINER_STATE_FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
     '"exit_code":{{json .State.ExitCode}},"oom_killed":{{json .State.OOMKilled}},'
     '"error":{{json .State.Error}},"networks":{{json .NetworkSettings.Networks}},'
     '"ports":{{json .NetworkSettings.Ports}}}')
+BROWSER_PREFLIGHT_HEADERS = ('content-type', 'authorization', 'x-device-fingerprint', 'x-request-id', 'traceparent')
+
+
+def verify_browser_cors(api_origin: str, frontend_origin: str, *, timeout: float = 40) -> dict:
+    """Positive Origin requests only; no admission, credential or quota bypass."""
+    for origin in (api_origin, frontend_origin):
+        target = urlsplit(origin)
+        try:
+            port = target.port
+        except ValueError:
+            raise RuntimeError('Invalid owned browser origin') from None
+        if (target.scheme != 'http' or target.hostname != '127.0.0.1' or not port
+                or target.path or target.query or target.fragment or target.username or target.password):
+            raise RuntimeError('CORS readiness requires exact loopback origins')
+    deadline = time.monotonic() + timeout
+    outcomes = []
+    checks = [('/public/engine/capabilities', None, ()),
+              ('/public/engine/capabilities', 'GET', ('x-request-id', 'traceparent')),
+              ('/public/engine/document', 'POST', BROWSER_PREFLIGHT_HEADERS),
+              ('/jobs/submit', 'POST', BROWSER_PREFLIGHT_HEADERS),
+              # CORS middleware answers OPTIONS before artifact resolution;
+              # this checks header/method support, never artifact access.
+              ('/download/00000000-0000-0000-0000-000000000000/preview/' + '0' * 64,
+               'GET', ('x-device-fingerprint', 'x-request-id', 'traceparent'))]
+    for path, preflight_method, requested_headers in checks:
+        headers = {'Origin': frontend_origin}
+        if preflight_method:
+            headers.update({'Access-Control-Request-Method': preflight_method,
+                            'Access-Control-Request-Headers': ','.join(requested_headers)})
+        request = Request(api_origin + path, headers=headers, method='OPTIONS' if preflight_method else 'GET')
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('Owned browser CORS readiness exceeded its deadline')
+        with urlopen(request, timeout=min(10, remaining)) as response:
+            if (response.status != 200 or response.headers.get('Access-Control-Allow-Origin') != frontend_origin
+                    or response.headers.get('Access-Control-Allow-Credentials', '').lower() != 'true'
+                    or 'origin' not in {part.strip().lower() for part in response.headers.get('Vary', '').split(',')}):
+                raise RuntimeError('Owned API does not allow this exact browser Origin')
+            body = response.read(64 * 1024 + 1)
+            if len(body) > 64 * 1024:
+                raise RuntimeError('Owned browser CORS readiness response exceeded its bound')
+            if preflight_method:
+                allowed_methods = {part.strip().upper() for part in response.headers.get('Access-Control-Allow-Methods', '').split(',')}
+                allowed_headers = {part.strip().lower() for part in response.headers.get('Access-Control-Allow-Headers', '').split(',')}
+                if preflight_method not in allowed_methods or not set(requested_headers).issubset(allowed_headers):
+                    raise RuntimeError('Owned API preflight does not allow the browser method/headers')
+            else:
+                try:
+                    value = json.loads(body)
+                except (ValueError, UnicodeDecodeError):
+                    raise RuntimeError('Owned API browser capability is unavailable') from None
+                if (response.headers.get_content_type() != 'application/json' or not isinstance(value, dict)
+                        or type(value.get('resume_engine_version')) is not int or value['resume_engine_version'] != 1):
+                    raise RuntimeError('Owned API browser capability is unavailable')
+                exposed = {part.strip().lower() for part in response.headers.get('Access-Control-Expose-Headers', '').split(',')}
+                if not {'retry-after', 'x-request-id'}.issubset(exposed):
+                    raise RuntimeError('Owned API does not expose browser retry/correlation headers')
+        outcomes.append({'path': path, 'method': 'OPTIONS' if preflight_method else 'GET', 'status': 200})
+    return {'success': True, 'exact_origin_allowed': True, 'credentials_allowed': True,
+            'preflight_count': 4, 'checks': outcomes}
 
 
 def owned_internal_address(container: dict, network: dict, *, name: str, network_name: str, run_id: str) -> str:
@@ -484,7 +545,9 @@ class Harness:
         frontend_port = self.frontend_reservation.getsockname()[1]
         frontend_origin = f"http://127.0.0.1:{frontend_port}"
         self.app_environment = {
-            "LATEXY_ISOLATED_CI": "1", "ENVIRONMENT": "staging", "DEBUG": "false", "DEPLOY_TARGET": "local",
+            # This disposable Linux fixture uses existing local-origin CORS
+            # semantics; production/staging deliberately reject loopback.
+            "LATEXY_ISOLATED_CI": "1", "ENVIRONMENT": "development", "DEBUG": "false", "DEPLOY_TARGET": "local",
             "LATEXY_RENDER_BACKEND": "native", "DATABASE_URL": "postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test",
             "TEST_DATABASE_URL": "postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test",
             "REDIS_URL": "redis://redis:6379/0", "REDIS_CACHE_URL": "redis://redis:6379/1",
@@ -548,6 +611,12 @@ print('Fresh private artifact bucket ready')
             except (OSError, ValueError):
                 return False
         wait_until_ready(healthy, lambda: self.alive(api) and self.alive(worker), 90)
+        # Fail before real jobs/frontend compilation if the browser cannot read
+        # capabilities or preflight normal JSON/fingerprint/trace requests.
+        cors = verify_browser_cors(api_origin, frontend_origin, timeout=self.phase_timeout(40))
+        cors.update(runtime_environment=self.app_environment['ENVIRONMENT'], debug=self.app_environment['DEBUG'] == 'true')
+        (self.evidence / 'browser-cors-readiness.json').write_text(json.dumps(cors, indent=2) + '\n')
+        self.provenance['runtime_environment'] = self.app_environment['ENVIRONMENT']
         for fixture in ("minimal", "hindi"):
             self.docker("exec", api, "python", "scripts/ci/local-job-smoke.py", "--base-url", "http://127.0.0.1:8030",
                         "--fixture", fixture, "--verify-isolated-storage", "--output", f"/evidence/real-job-{fixture}.json", timeout=180)

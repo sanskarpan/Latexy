@@ -60,4 +60,15 @@ describe('credential-free real preview harness', () => {
     expect(benchmark).toContain('functional samples do not support percentile claims')
     expect(benchmark).toContain('if (report.failures.length) process.exitCode = 1')
   })
+
+  it('keeps exact artifact and keyboard selection checks for wrapped semantic hit targets', () => {
+    const spec = readFileSync(new URL('../../e2e/real-preview/compile-preview.spec.ts', import.meta.url), 'utf8')
+    expect(spec).toContain('expect(semanticFieldHitTarget(page, expectedBullet)).toBeVisible()')
+    expect(spec).toContain('await semanticFieldHitTarget(page, originalBullet).focus()')
+    expect(spec).toContain("await page.keyboard.press('Enter')")
+    expect(spec).toContain("getByLabel('Experience · bullet')).toHaveValue(originalBullet)")
+    expect(spec).toContain('expect(digest(pdf.body)).toBe(artifact.pdf_sha256)')
+    expect(spec).toContain('expect(geometry.source_sha256).toBe(artifact.source_sha256)')
+    expect(spec).not.toMatch(/\.route\(|routeWebSocket\(/)
+  })
 })

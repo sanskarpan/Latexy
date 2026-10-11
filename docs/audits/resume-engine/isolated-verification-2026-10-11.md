@@ -182,6 +182,50 @@ original failure has no trace. This is retained as unresolved hydration evidence
 not reported as clean first-attempt browser acceptance. The Settings-only
 failure diagnostic correctly did not run because that case passed.
 
+The [fourth CI execution, 38116203352](https://github.com/sanskarpan/Latexy/actions/runs/38116203352),
+on head `b5a92858`, passed both complete API/broker/worker/storage smoke cases:
+the pdfLaTeX fixture produced a one-page **31,223-byte** PDF with one geometry
+box, and the Hindi LuaLaTeX fixture produced a one-page **35,909-byte** PDF.
+Both verified exact immutable preview/export bytes, source/PDF hashes,
+SyncTeX, geometry, private object storage, durable PostgreSQL/Redis identity and
+normal trial accounting. The Hindi fixture has no editable geometry boxes;
+it is an international-text compilation fixture, not editable-overlay proof.
+All **11** deterministic provider-failure ledger cases and both direct Lua
+fixtures also passed, with no failed/skipped required case.
+
+Its [artifact 11694310460](https://github.com/sanskarpan/Latexy/actions/runs/38116203352/artifacts/11694310460)
+was downloaded and verified against SHA-256
+`e3cd5434378595b0fd62236a07fb04496881a4754edca62d1d397621bb1cb3f2`.
+It records actual merge-ref checkout `d682249178d9aff40ee2f67c8ea818088662ebf8`,
+candidate image `sha256:4b35b069cba490a416408333513b7267db7ecdf091f2fbbe0bc8a17a68e9d5f3`,
+renderer assets `e8f15ae16a39ecd2034a3cede8c9e532bf9ff00d0af9223bae9033d6f0894581`,
+and successful cleanup.
+
+The real production-built browser reached `/try`, but no compilation was
+admitted: the harness used `ENVIRONMENT=staging`, whose existing backend CORS
+policy deliberately strips loopback origins. Its direct HTTP helpers did not
+exercise browser Origin handling. The browser therefore could not read engine
+capabilities and correctly left Resume mode unavailable. The corrected local
+harness uses the supported development CORS path with `DEBUG=false`, strong
+fresh signing/encryption values and disabled billing/email/providers. It checks
+one actual Origin capability GET and four normal browser OPTIONS contracts
+before admitting jobs or building the browser, without credentials or quota
+changes. Backend production CORS, capability guards and network isolation remain
+unchanged. This local environment also exposes development documentation and
+invite-preview branches; it does not claim production-policy equivalence.
+**43** dependency-free guards and **97** deployment-manifest contracts pass.
+The browser helper also binds observational state reads to the exact admitted
+fingerprint and handles multiple line overlays for one exact semantic field;
+its PDF/source/geometry identity and keyboard selection assertions remain.
+**11** focused frontend tests, full TypeScript, focused lint and discovery of
+exactly one browser case pass. The actual two-sample browser proof remains open
+until a corrected run passes.
+
+The fourth run's other **14 CI jobs passed**, including clean ordinary browser
+results: **142 passed / three intentional skips**, **82/82 explicit owner/editor
+cases with zero retries**, and **one hydration case passed**. Neither prior
+intermittent React 418 reproduced; those historical observations are retained.
+
 The new `test_converter_failure_ledger_integration.py` passed **11 cases, no
 skips, in 3.89 seconds** with warnings treated as errors against disposable
 PostgreSQL/Redis. Its final run also removed the optional `TEST_REDIS_*`

@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from email.message import Message
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -66,7 +67,129 @@ def compile_fixture():
     return job_id, envelope, pdf, geometry
 
 
+def cors_response(origin='http://127.0.0.1:23456', *, status=200, headers=None, body=b'{"resume_engine_version":1}'):
+    """A realistic header/body reader only; never starts an HTTP service."""
+    response = MagicMock(status=status)
+    response.__enter__.return_value = response
+    response.read.return_value = body
+    response.headers = Message()
+    fields = {'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true',
+        'Vary': 'Accept-Encoding, Origin', 'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-Fingerprint, X-Request-ID, traceparent',
+        'Access-Control-Expose-Headers': 'Retry-After, X-Request-ID'}
+    fields.update(headers or {})
+    for name, value in fields.items():
+        if value is not None:
+            response.headers[name] = value
+    return response
+
+
 class HarnessGuards(unittest.TestCase):
+    def test_browser_cors_positive_contract_reads_capability_and_four_real_preflights(self):
+        api, frontend = 'http://127.0.0.1:12345', 'http://127.0.0.1:23456'
+        responses = [cors_response() for _ in range(5)]
+        with patch.object(harness, 'urlopen', side_effect=responses) as opened:
+            proof = harness.verify_browser_cors(api, frontend, timeout=40)
+        self.assertIs(proof['success'], True)
+        self.assertEqual(proof['preflight_count'], 4)
+        self.assertEqual(len(proof['checks']), 5)
+        requests = [call.args[0] for call in opened.call_args_list]
+        self.assertEqual([request.get_method() for request in requests], ['GET', 'OPTIONS', 'OPTIONS', 'OPTIONS', 'OPTIONS'])
+        self.assertEqual([request.full_url for request in requests[:4]], [api + path for path in (
+            '/public/engine/capabilities', '/public/engine/capabilities', '/public/engine/document', '/jobs/submit')])
+        self.assertTrue(requests[-1].full_url.startswith(api + '/download/00000000-0000-0000-0000-000000000000/preview/'))
+        self.assertEqual({request.get_header('Origin') for request in requests}, {frontend})
+        self.assertEqual(requests[1].get_header('Access-control-request-method'), 'GET')
+        self.assertEqual(set(requests[1].get_header('Access-control-request-headers').split(',')), {'x-request-id', 'traceparent'})
+        for request in requests[2:4]:
+            self.assertEqual(request.get_header('Access-control-request-method'), 'POST')
+            self.assertEqual(set(request.get_header('Access-control-request-headers').split(',')),
+                             {'content-type', 'authorization', 'x-device-fingerprint', 'x-request-id', 'traceparent'})
+        self.assertEqual(set(requests[-1].get_header('Access-control-request-headers').split(',')),
+                         {'x-device-fingerprint', 'x-request-id', 'traceparent'})
+        self.assertTrue(all(request.data is None for request in requests))
+        self.assertTrue(all(0 < call.kwargs['timeout'] <= 10 for call in opened.call_args_list))
+        for response in responses:
+            response.read.assert_called_once_with(64 * 1024 + 1)
+
+    def test_browser_cors_rejects_missing_wildcard_or_wrong_origin_and_credentials(self):
+        invalid = ({'Access-Control-Allow-Origin': None}, {'Access-Control-Allow-Origin': '*'},
+            {'Access-Control-Allow-Origin': 'http://127.0.0.1:9999'}, {'Access-Control-Allow-Credentials': None},
+            {'Access-Control-Allow-Credentials': 'false'}, {'Vary': None}, {'Vary': 'Accept-Encoding'})
+        for headers in invalid:
+            with (self.subTest(headers=headers), patch.object(harness, 'urlopen', return_value=cors_response(headers=headers)) as opened,
+                  self.assertRaisesRegex(RuntimeError, 'exact browser Origin')):
+                harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+            opened.assert_called_once()
+        with (patch.object(harness, 'urlopen', return_value=cors_response(status=201)), self.assertRaises(RuntimeError)):
+            harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+
+    def test_browser_cors_capability_fails_closed_on_bad_protocol_mime_or_hidden_headers(self):
+        for body in (b'', b'not-json', b'[]', b'null', b'{}', b'{"resume_engine_version":true}',
+                     b'{"resume_engine_version":"1"}', b'{"resume_engine_version":2}', b'\xff'):
+            with (self.subTest(body=body), patch.object(harness, 'urlopen', return_value=cors_response(body=body)),
+                  self.assertRaisesRegex(RuntimeError, 'capability is unavailable')):
+                harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+        for headers in ({'Content-Type': 'text/html'}, {'Content-Type': None},
+                        {'Access-Control-Expose-Headers': None}, {'Access-Control-Expose-Headers': 'X-Request-ID'}):
+            with (self.subTest(headers=headers), patch.object(harness, 'urlopen', return_value=cors_response(headers=headers)),
+                  self.assertRaises(RuntimeError)):
+                harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+
+    def test_browser_cors_each_preflight_requires_current_browser_method_and_headers(self):
+        cases = ((1, {'Access-Control-Allow-Headers': 'X-Request-ID'}),
+            (2, {'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-ID, traceparent'}),
+            (3, {'Access-Control-Allow-Methods': 'GET, OPTIONS'}),
+            (4, {'Access-Control-Allow-Headers': 'X-Request-ID, traceparent'}))
+        for index, headers in cases:
+            responses = [cors_response() for _ in range(index)] + [cors_response(headers=headers)]
+            with (self.subTest(index=index), patch.object(harness, 'urlopen', side_effect=responses) as opened,
+                  self.assertRaisesRegex(RuntimeError, 'preflight')):
+                harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+            self.assertEqual(opened.call_count, index + 1)
+
+    def test_browser_cors_is_bounded_and_refuses_nonliteral_loopback_before_io(self):
+        invalid = ('https://127.0.0.1:1', 'http://localhost:1', 'http://example.com:1', 'http://127.0.0.1',
+            'http://name:secret@127.0.0.1:1', 'http://127.0.0.1:1/path', 'http://127.0.0.1:1?query',
+            'http://127.0.0.1:1#fragment', 'http://127.0.0.1:0', 'http://127.0.0.1:abc')
+        with patch.object(harness, 'urlopen') as opened:
+            for origin in invalid:
+                for api, frontend in ((origin, 'http://127.0.0.1:23456'), ('http://127.0.0.1:12345', origin)):
+                    with self.subTest(api=api, frontend=frontend), self.assertRaises(RuntimeError):
+                        harness.verify_browser_cors(api, frontend)
+            with self.assertRaisesRegex(RuntimeError, 'deadline'):
+                harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456', timeout=0)
+            opened.assert_not_called()
+        with (patch.object(harness, 'urlopen', return_value=cors_response(body=b'x' * (64 * 1024 + 1))),
+              self.assertRaisesRegex(RuntimeError, 'response exceeded its bound')):
+            harness.verify_browser_cors('http://127.0.0.1:12345', 'http://127.0.0.1:23456')
+
+    def test_disposable_development_cors_uses_existing_policy_without_relaxing_production(self):
+        config = HERE.parents[1] / 'backend/app/core/config.py'
+        settings = next(node for node in ast.parse(config.read_text()).body if isinstance(node, ast.ClassDef) and node.name == 'Settings')
+        names = {'normalized_environment', 'is_production_like', 'effective_cors_origins'}
+        functions = [node for node in settings.body if isinstance(node, ast.FunctionDef) and node.name in names]
+        namespace = {'List': list}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(config), 'exec'), namespace)  # noqa: S102 -- pure existing CORS policy, no settings/env import
+        policy = type('PureCorsPolicy', (), {name: namespace[name] for name in names})()
+        policy.CORS_ORIGINS = ['http://127.0.0.1:23456', 'https://synthetic.invalid']
+        policy.ENVIRONMENT = 'development'
+        self.assertEqual(policy.effective_cors_origins(), policy.CORS_ORIGINS)
+        for environment in ('staging', 'production'):
+            policy.ENVIRONMENT = environment
+            self.assertEqual(policy.effective_cors_origins(), ['https://synthetic.invalid'])
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertIn('"ENVIRONMENT": "development", "DEBUG": "false"', prepare)
+        self.assertIn('"BILLING_MODE": "disabled", "EMAIL_ENABLED": "false"', prepare)
+        self.assertIn('"OPENAI_API_KEY": "", "OPENAI_BASE_URL": ""', prepare)
+        self.assertIn('"LATEXY_RENDER_BACKEND": "native"', prepare)
+        self.assertNotIn('"RATE_LIMIT_ENABLED"', prepare)
+        self.assertNotIn('"ALLOW_LOCAL_LATEX_ENGINE"', prepare)
+        self.assertLess(prepare.index('self.relay_port(api, 8030)'), prepare.index('verify_browser_cors(api_origin, frontend_origin'))
+        self.assertLess(prepare.index('verify_browser_cors(api_origin, frontend_origin'), prepare.index('for fixture in ("minimal", "hindi")'))
+        self.assertIn('browser-cors-readiness.json', prepare)
+
     def test_clean_environment_drops_credentials_and_operator_paths(self):
         with patch.dict(os.environ, {'PATH': '/bin', 'DATABASE_URL': 'remote', 'OPENAI_API_KEY': 'operator',
             'DOCKER_HOST': 'tcp://remote', 'DOCKER_CONFIG': '/operator', 'HOME': '/operator',

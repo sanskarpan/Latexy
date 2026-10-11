@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { FIRST_USE_ENGINE_RESUME_TEMPLATE } from '../../src/lib/first-use-resume'
 import { parseSynctex, synctexHasMappableSource } from '../../src/lib/synctex-parser'
 import { firstEditableBullet, guestCooldownMilliseconds, localHttpOrigin } from '../../scripts/real-preview-contract.mjs'
-import { digest, extractReceivedPdfText, isAdmissionRequest, normalizedText, observeRealPreview } from './observe-real-preview'
+import { digest, extractReceivedPdfText, isAdmissionRequest, normalizedText, observeRealPreview, semanticFieldHitTarget } from './observe-real-preview'
 
 const apiOrigin = localHttpOrigin(process.env.REAL_PREVIEW_API_URL)
 const originalBullet = firstEditableBullet(FIRST_USE_ENGINE_RESUME_TEMPLATE)
@@ -68,7 +68,9 @@ async function assertRenderedArtifact(page: Page, observed: Observed, admissionI
     return false
   })
   expect(canvasPainted).toBe(true)
-  await expect(page.getByRole('button', { name: `Edit resume field: ${expectedBullet}`, exact: true })).toBeVisible()
+  // A semantic field can wrap into multiple verified line boxes, each with
+  // the same exact label. Every match still belongs to the checked artifact.
+  await expect(semanticFieldHitTarget(page, expectedBullet)).toBeVisible()
   await observed.settle()
   return { source_sha256: artifact.source_sha256, pdf_sha256: artifact.pdf_sha256,
     artifact_id: artifact.artifact_id, pdf_bytes: pdf.body.length, page_count: artifact.page_count,
@@ -114,7 +116,7 @@ test('normal guest compiles the shipped source and renders only the latest exact
     samples.push(await assertRenderedArtifact(page, observed, 0, FIRST_USE_ENGINE_RESUME_TEMPLATE, originalBullet))
 
     // The geometry control is a real PDF hit target, including keyboard use.
-    await page.getByRole('button', { name: `Edit resume field: ${originalBullet}`, exact: true }).focus()
+    await semanticFieldHitTarget(page, originalBullet).focus()
     await page.keyboard.press('Enter')
     await expect(page.getByLabel('Experience · bullet')).toHaveValue(originalBullet)
     await page.getByRole('button', { name: 'Source', exact: true }).click()

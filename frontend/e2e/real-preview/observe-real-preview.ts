@@ -13,6 +13,11 @@ export const digest = (value: string | Buffer) => createHash('sha256').update(va
 export const normalizedText = (value: string) => value.replace(/\s+/g, ' ').trim()
 const runFile = promisify(execFile)
 
+/** Wrapped fields have several exact-label line boxes for the same node. */
+export function semanticFieldHitTarget(page: Page, text: string) {
+  return page.getByRole('button', { name: `Edit resume field: ${text}`, exact: true }).first()
+}
+
 export type Admission = {
   source: string; fingerprint: string; jobType: string; status: number; jobId: string
 }
@@ -83,7 +88,11 @@ export function observeRealPreview(page: Page, apiOrigin: string) {
     // An API read confirms durable completion without feeding fabricated state
     // into the frontend or depending on a transient progress-strip label.
     async completedState(jobId: string) {
-      const response = await page.request.get(`${apiOrigin}/jobs/${encodeURIComponent(jobId)}/state`)
+      const admission = admissions.find(value => value.jobId === jobId)
+      if (!admission?.fingerprint) throw new Error('Job state requires its observed guest admission identity')
+      const response = await page.request.get(`${apiOrigin}/jobs/${encodeURIComponent(jobId)}/state`, {
+        headers: { 'X-Device-Fingerprint': admission.fingerprint }, timeout: 15_000,
+      })
       if (!response.ok()) throw new Error('The real job state could not be read')
       const body = await response.json()
       return body.status as string
