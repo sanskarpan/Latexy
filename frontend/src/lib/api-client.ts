@@ -2125,11 +2125,14 @@ class ApiClient {
 
   async restoreOptimization(
     resumeId: string,
-    optId: string
+    optId: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<{ success: boolean; latex_content: string }> {
-    return this.request(`/resumes/${encodeURIComponent(resumeId)}/restore-optimization/${encodeURIComponent(optId)}`, {
-      method: 'POST',
-    })
+    return this.request(
+      `/resumes/${encodeURIComponent(resumeId)}/restore-optimization/${encodeURIComponent(optId)}`,
+      { method: 'POST' },
+      accountContext,
+    )
   }
 
   async recordOptimization(
@@ -2820,10 +2823,13 @@ class ApiClient {
 
   async getCheckpointContent(
     resumeId: string,
-    checkpointId: string
+    checkpointId: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<CheckpointContentResponse> {
     return this.request<CheckpointContentResponse>(
-      `/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}/content`
+      `/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}/content`,
+      {},
+      accountContext,
     )
   }
 

@@ -6,7 +6,8 @@ const SOURCE = '\\documentclass{article}\n\\begin{document}\nSearchable text. Se
 
 test.use({ serviceWorkers: 'block' })
 test('native find palette, selection shortcuts and stale actions respect capability revocation', async ({ page }) => {
-  let features: Record<string, boolean> = {}
+  const core = { c01: true, c05: true, compile: true }
+  let features: Record<string, boolean> = core
   await page.addInitScript(() => { localStorage.setItem('latexy_auto_compile', 'false'); localStorage.setItem('latexy_onboarding_completed', 'true') })
   await page.route('**/*', async route => {
     const url = new URL(route.request().url()); const path = url.pathname
@@ -37,13 +38,13 @@ test('native find palette, selection shortcuts and stale actions respect capabil
   await page.evaluate(() => (window as any).__latexyMonacoEditor.getAction('actions.find').run())
   await expect(page.locator('.find-widget.visible')).toHaveCount(0)
 
-  features = { c03: true }
+  features = { ...core, c03: true }
   await page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
   await expect.poll(async () => (await visibleFindActions()).length).toBeGreaterThan(0)
   await page.evaluate(() => (window as any).__latexyMonacoEditor.getAction('actions.find').run())
   await expect(page.locator('.find-widget.visible')).toBeVisible()
 
-  features = {}
+  features = { ...core }
   await page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
   await expect(page.locator('.find-widget.visible')).toHaveCount(0)
   await expect.poll(visibleFindActions).toEqual([])

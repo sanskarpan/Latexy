@@ -162,6 +162,47 @@ export function createEditorParentValueGuard(initialValue: string) {
   }
 }
 
+/** Synchronize trusted controlled-parent source without exposing editor mutation APIs. */
+export function syncControlledEditorModel(options: {
+  model: { getValue: () => string; setValue: (value: string) => void } | null | undefined
+  parentValue: string
+  valueGuard: ReturnType<typeof createEditorParentValueGuard>
+  collaborationBound: boolean
+}) {
+  const { model, parentValue, valueGuard, collaborationBound } = options
+  if (!model || collaborationBound) return false
+  if (!valueGuard.shouldApplyParentValue(model.getValue(), parentValue)) return false
+  model.setValue(parentValue)
+  return true
+}
+
+/** The imperative editor API can write only while both authorization layers allow editing. */
+export function setEditorModelValueFromImperativeApi(options: {
+  model: { setValue: (value: string) => void } | null | undefined
+  value: string
+  readOnly: boolean
+  collabReadOnly: boolean
+}) {
+  const { model, value, readOnly, collabReadOnly } = options
+  if (!model || readOnly || collabReadOnly) return false
+  model.setValue(value)
+  return true
+}
+
+export function forwardMonacoModelChange(options: {
+  value: string
+  parentSync: boolean
+  recordLocalValue: (value: string) => void
+  onChange: (value: string) => void
+  trackLocalValue: boolean
+}) {
+  const { value, parentSync, recordLocalValue, onChange, trackLocalValue } = options
+  if (parentSync) return false
+  if (trackLocalValue) recordLocalValue(value)
+  onChange(value)
+  return true
+}
+
 /** Apply one PDF-to-source highlight and safely clean it up on model changes. */
 export function applyLatexEditorSyncHighlight(options: {
   editor: any
@@ -940,8 +981,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     useImperativeHandle(ref, () => ({
       setValue(content: string, opts?: { reveal?: boolean }) {
         const model = editorRef.current?.getModel()
-        if (!model) return
-        model.setValue(content)
+        if (!setEditorModelValueFromImperativeApi({
+          model,
+          value: content,
+          readOnly: readOnlyRef.current,
+          collabReadOnly: collabReadOnlyRef.current,
+        })) return
         // Streaming updates pass reveal:false so the viewport stays put instead
         // of yanking to the last line on every token.
         if (opts?.reveal !== false) {
@@ -958,6 +1003,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editorRef.current.focus()
       },
       applyFix(line: number, correctedCode: string) {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
         const editor = editorRef.current
         const monaco = monacoRef.current
         if (!editor || !monaco) return
@@ -972,6 +1018,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         onChange(editor.getValue())
       },
       applyRewrite(startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
         const editor = editorRef.current
         const monaco = monacoRef.current
         if (!editor || !monaco) return
@@ -983,6 +1030,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editor.focus()
       },
       applySuggestionResult(expectedContent: string, resultContent: string) {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return false
         const editor = editorRef.current
         if (!editor) return false
         const yText = suggestionYTextRef.current
@@ -1007,6 +1055,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         return true
       },
       applyMultipleRewrites(edits) {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
         const editor = editorRef.current
         const monaco = monacoRef.current
         if (!editor || !monaco) return
@@ -1023,6 +1072,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editor.focus()
       },
       insertAtCursor(text: string) {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return false
         const editor = editorRef.current
         const monaco = monacoRef.current
         if (!editor || !monaco) return false
@@ -1054,14 +1104,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       markAutoCompileCompiled(content: string) {
         autoCompileSchedulerRef.current?.markCompiled(content)
       },
-      acceptTrackedChange: (id: string) => { trackChangesRef.current?.acceptChange(id) },
+      acceptTrackedChange: (id: string) => {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
+        trackChangesRef.current?.acceptChange(id)
+      },
       rejectTrackedChange: (id: string) => {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
         if (trackChangesRef.current?.rejectChange(id) === false) {
           toast.error('This change overlaps newer edits and could not be rejected safely')
         }
       },
-      acceptAllTrackedChanges: () => { trackChangesRef.current?.acceptAll() },
+      acceptAllTrackedChanges: () => {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
+        trackChangesRef.current?.acceptAll()
+      },
       rejectAllTrackedChanges: () => {
+        if (readOnlyRef.current || collabReadOnlyRef.current) return
         if (trackChangesRef.current?.rejectAll() === false) {
           toast.error('Some changes overlap newer edits and were left pending')
         }
@@ -1297,22 +1355,25 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editorRef.current, monacoRef.current])
 
-    // Keep the Monaco model in sync with fetched resume content until the
-    // collaborative Y.js document has completed its initial sync and binding.
+    // Keep Monaco in sync with the controlled parent value. This is also the
+    // trusted path for showing server-restored source while editor mutation
+    // APIs stay read-only. Collaboration takes ownership after binding.
     useEffect(() => {
-      if (!collabEnabled || bindingRef.current) return
       const editor = editorRef.current
       const model = editor?.getModel()
       if (!model) return
-      const modelValue = model.getValue()
-      if (!parentValueGuardRef.current.shouldApplyParentValue(modelValue, value)) return
       syncingParentValueRef.current = true
       try {
-        model.setValue(value)
+        syncControlledEditorModel({
+          model,
+          parentValue: value,
+          valueGuard: parentValueGuardRef.current,
+          collaborationBound: Boolean(collabEnabled && bindingRef.current),
+        })
       } finally {
         syncingParentValueRef.current = false
       }
-    }, [collabEnabled, value])
+    }, [collabEnabled, value, editorReadyVersion])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -2271,10 +2332,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               {...(collabEnabled ? { defaultValue: value } : { value })}
               onChange={(v) => {
                 const nextValue = v || ''
-                if (collabEnabled && !bindingRef.current && !syncingParentValueRef.current) {
-                  parentValueGuardRef.current.recordLocalValue(nextValue)
-                }
-                onChange(nextValue)
+                forwardMonacoModelChange({
+                  value: nextValue,
+                  parentSync: syncingParentValueRef.current,
+                  trackLocalValue: !collabEnabled || !bindingRef.current,
+                  recordLocalValue: (localValue) => parentValueGuardRef.current.recordLocalValue(localValue),
+                  onChange,
+                })
               }}
               onMount={handleEditorDidMount}
               options={{
@@ -2347,7 +2411,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[12px] uppercase tracking-[0.12em]">
           <span className="text-fg-3">
             {readOnly
-              ? 'Read-only — job running'
+              ? 'Read-only'
               : collabReadOnly
                 ? 'Read-only — no edit access'
                 : 'LaTeX editor'}

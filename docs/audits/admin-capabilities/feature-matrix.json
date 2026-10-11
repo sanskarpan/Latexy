@@ -448,6 +448,7 @@
       ],
       "clientControls": [
         "frontend/src/app/not-found.tsx",
+        "frontend/src/app/pricing/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
@@ -529,9 +530,18 @@
         "backend/app/api/template_routes.py:use_template (before creating a resume)"
       ],
       "clientControls": [
+        "frontend/src/app/pricing/page.tsx",
+        "frontend/src/app/templates/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/builder/new/page.tsx",
+        "frontend/src/app/workspace/history/page.tsx",
+        "frontend/src/app/workspace/merge/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
-        "frontend/src/app/workspace/page.tsx"
+        "frontend/src/app/workspace/page.tsx",
+        "frontend/src/components/marketing/MarketingFooter.tsx",
+        "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -1384,10 +1394,13 @@
       "baselineReason": null,
       "serverHandlers": [
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
+        "backend/app/api/resume_routes.py:create_builder_resume",
         "backend/app/api/resume_routes.py:update_builder_resume",
         "backend/app/api/resume_routes.py:update_builder_resume_v1",
+        "backend/app/api/resume_routes.py:create_resume",
         "backend/app/api/resume_routes.py:update_resume",
         "backend/app/api/resume_routes.py:update_variant_visibility",
+        "backend/app/api/resume_routes.py:fork_resume",
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
         "backend/app/api/resume_routes.py:merge_resumes",
@@ -1397,6 +1410,7 @@
         "backend/app/api/routes.py:optimize_and_compile_resume",
         "backend/app/api/optimize_routes.py:apply_changes_endpoint",
         "backend/app/api/cover_letter_routes.py:update_cover_letter",
+        "backend/app/api/template_routes.py:use_template",
         "backend/app/api/template_routes.py:create_template",
         "backend/app/api/template_routes.py:update_template",
         "backend/app/api/github_routes.py:pull_from_github"
@@ -1406,12 +1420,23 @@
         "backend/app/services/collab_manager.py:handle_collab_message (before Yjs source persistence and relay)"
       ],
       "clientControls": [
+        "frontend/src/app/pricing/page.tsx",
+        "frontend/src/app/templates/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
-        "frontend/src/app/workspace/builder/new/page.tsx"
+        "frontend/src/app/workspace/builder/new/page.tsx",
+        "frontend/src/app/workspace/history/page.tsx",
+        "frontend/src/app/workspace/merge/page.tsx",
+        "frontend/src/app/workspace/new/page.tsx",
+        "frontend/src/app/workspace/page.tsx",
+        "frontend/src/components/CompareModal.tsx",
+        "frontend/src/components/DiffViewerModal.tsx",
+        "frontend/src/components/marketing/MarketingFooter.tsx",
+        "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -1671,8 +1696,7 @@
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
-        "frontend/src/components/CompareModal.tsx",
-        "frontend/src/components/QuickTailorModal.tsx"
+        "frontend/src/components/CompareModal.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -7332,7 +7356,8 @@
         "backend/app/services/plan_catalog_service.py:require_new_purchase (new target-SKU checkout and token-owner Student verification)"
       ],
       "clientControls": [
-        "frontend/src/app/billing/page.tsx"
+        "frontend/src/app/billing/page.tsx",
+        "frontend/src/app/pricing/page.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",

@@ -13,6 +13,27 @@ describe('authenticated secondary-panel recovery', () => {
     expect(collaborators).toContain('onClick={() => void loadCollaborators()}')
   })
 
+  it('restores saved checkpoints through the owner recovery endpoint and ignores stale documents', () => {
+    const history = source('../components/VersionHistoryPanel.tsx')
+    expect(history).toContain('apiClient.restoreOptimization(requestResumeId, entry.id, {')
+    expect(history).toContain('onRestore(result.latex_content)')
+    expect(history).toContain('resumeIdRef.current !== requestResumeId')
+    expect(history).toContain('ownerIdRef.current !== requestOwnerId')
+    expect(history).toContain('authToken: requestToken')
+    expect(history).toContain('restoreGenerationRef.current === restoreGeneration')
+    expect(history).toContain('setEntries([])')
+    expect(history).toContain('setSelected(new Set())')
+    expect(history).toContain('restoreInFlightRef.current')
+    expect(history).toContain('if (!result.success) throw new Error')
+  })
+
+  it('supports account-bound checkpoint content reads', () => {
+    const client = source('../lib/api-client.ts')
+    expect(client).toContain('async getCheckpointContent(')
+    expect(client).toContain('accountContext?: AccountPreferenceRequestContext')
+    expect(client).toContain('accountContext,\n    )')
+  })
+
   it('binds snippet requests to the entered query and rejects stale responses', () => {
     const snippets = source('../components/SnippetMarketplace.tsx')
     expect(snippets).toContain('async (reset = false, requestedQuery = query)')

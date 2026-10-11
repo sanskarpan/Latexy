@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyLatexEditorSyncHighlight, createEditorParentValueGuard, installLatexEditorRuntimeBindings } from '@/components/LaTeXEditor'
+import { applyLatexEditorSyncHighlight, createEditorParentValueGuard, forwardMonacoModelChange, installLatexEditorRuntimeBindings, setEditorModelValueFromImperativeApi, syncControlledEditorModel } from '@/components/LaTeXEditor'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -68,6 +68,61 @@ describe('LaTeX editor runtime bindings', () => {
     guard.observeParentValue('REST-authoritative')
     expect(guard.shouldApplyParentValue('A-local-2', 'REST-authoritative')).toBe(true)
     guard.clear()
+  })
+
+  it('shows an authoritative parent recovery value in read-only Monaco without accepting stale echoes', () => {
+    const valueGuard = createEditorParentValueGuard('saved source')
+    let modelValue = 'newer local edit'
+    const onChange = vi.fn()
+    const model = {
+      getValue: () => modelValue,
+      // Monaco model synchronization remains available even when the Editor
+      // itself is read-only; the imperative LaTeXEditor mutation APIs are
+      // separately guarded by the live capability.
+      setValue: (value: string) => { modelValue = value },
+    }
+    valueGuard.recordLocalValue(modelValue)
+
+    expect(syncControlledEditorModel({ model, parentValue: 'saved source', valueGuard, collaborationBound: false })).toBe(false)
+    expect(modelValue).toBe('newer local edit')
+
+    valueGuard.observeParentValue('recovered saved source')
+    expect(syncControlledEditorModel({ model, parentValue: 'recovered saved source', valueGuard, collaborationBound: false })).toBe(true)
+    expect(modelValue).toBe('recovered saved source')
+    expect(onChange).not.toHaveBeenCalled()
+    expect(forwardMonacoModelChange({
+      value: modelValue, parentSync: true,
+      recordLocalValue: valueGuard.recordLocalValue, onChange, trackLocalValue: true,
+    })).toBe(false)
+    expect(onChange).not.toHaveBeenCalled()
+
+    // A remote Y.js model update must still reach the parent, even when this
+    // participant is read-only, so viewer state reflects the shared source.
+    expect(forwardMonacoModelChange({
+      value: 'remote collaborative update', parentSync: false,
+      recordLocalValue: valueGuard.recordLocalValue, onChange, trackLocalValue: false,
+    })).toBe(true)
+    expect(onChange).toHaveBeenCalledWith('remote collaborative update')
+
+    // The same read-only model still rejects the imperative product-edit path.
+    const setValue = vi.fn((value: string) => { modelValue = value })
+    expect(setEditorModelValueFromImperativeApi({
+      model: { setValue }, value: 'unapproved local mutation', readOnly: true, collabReadOnly: false,
+    })).toBe(false)
+    expect(setValue).not.toHaveBeenCalled()
+    expect(modelValue).toBe('recovered saved source')
+  })
+
+  it('leaves the bound collaborative model under Y.js ownership', () => {
+    const valueGuard = createEditorParentValueGuard('initial source')
+    let modelValue = 'collaborative source'
+    const model = { getValue: () => modelValue, setValue: (value: string) => { modelValue = value } }
+    valueGuard.observeParentValue('late parent echo')
+
+    expect(syncControlledEditorModel({ model, parentValue: 'late parent echo', valueGuard, collaborationBound: true })).toBe(false)
+    expect(modelValue).toBe('collaborative source')
+    expect(syncControlledEditorModel({ model, parentValue: 'late parent echo', valueGuard, collaborationBound: false })).toBe(true)
+    expect(modelValue).toBe('late parent echo')
   })
 
   it('installs after mount, honors live props, repeats modifier sync, and disposes every listener', () => {

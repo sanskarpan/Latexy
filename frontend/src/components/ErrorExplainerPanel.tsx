@@ -10,7 +10,7 @@ interface ErrorExplainerPanelProps {
   data: ExplainErrorResponse | null
   errorLine: number | null
   onClose: () => void
-  onApplyFix: () => void
+  onApplyFix?: () => void
 }
 
 export default function ErrorExplainerPanel({
@@ -99,13 +99,13 @@ export default function ErrorExplainerPanel({
                   <pre className="flex-1 overflow-auto rounded-[var(--radius-md)] border border-line bg-surface-2 p-2 text-[11px] text-fg-2">
                     {data.corrected_code}
                   </pre>
-                  <button
+                  {onApplyFix && <button
                     onClick={onApplyFix}
                     disabled={!isOpen}
                     className="rounded-[var(--radius-md)] bg-ok/20 py-1.5 text-[11px] font-semibold text-ok ring-1 ring-ok/30 transition hover:bg-ok/30"
                   >
                     Apply Fix
-                  </button>
+                  </button>}
                 </div>
               )}
             </div>

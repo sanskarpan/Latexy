@@ -16,10 +16,16 @@ interface Props {
   onDone?: (forkId: string) => void
 }
 
+export const QUICK_TAILOR_CAPABILITIES = ['d04', 'd01', 'd18', 'c05', 'b01', 'c01'] as const
+
 export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDone }: Props) {
   const { can } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
+  const hasQuickTailorAccess = useCallback(
+    () => QUICK_TAILOR_CAPABILITIES.every((feature) => canRef.current(feature)),
+    [],
+  )
   const router = useRouter()
   const [step, setStep] = useState<Step>('form')
   const [jobDescription, setJobDescription] = useState('')
@@ -49,7 +55,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   }, [state.status, state.error, jobId, step, forkId, onDone])
 
   const handleSubmit = useCallback(async () => {
-    if (!canRef.current('c05')) return
+    if (!hasQuickTailorAccess()) return
     if (jobDescription.trim().length < 10) return
     setIsSubmitting(true)
     setErrorMessage(null)
@@ -60,6 +66,8 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         role_title: roleTitle.trim() || undefined,
       }
       const res = await apiClient.quickTailorResume(resumeId, req)
+      // Successful admission remains recoverable if permissions are revoked
+      // while the request is in flight. Only starting/retrying requires grants.
       setForkId(res.fork_id)
       setJobId(res.job_id)
       setStep('progress')
@@ -69,7 +77,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
     } finally {
       setIsSubmitting(false)
     }
-  }, [resumeId, jobDescription, companyName, roleTitle])
+  }, [hasQuickTailorAccess, resumeId, jobDescription, companyName, roleTitle])
 
   const handleCancel = useCallback(() => {
     cancel()
@@ -77,12 +85,13 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   }, [cancel, onClose])
 
   const handleTryAgain = useCallback(() => {
+    if (!hasQuickTailorAccess()) return
     reset()
     setStep('form')
     setJobId(null)
     setForkId(null)
     setErrorMessage(null)
-  }, [reset])
+  }, [hasQuickTailorAccess, reset])
 
   const handleDismiss = useCallback(() => {
     // Dismissal only closes the progress view. The explicit Cancel button is
@@ -130,7 +139,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         </p>
 
         {/* Step 1: Form */}
-        {step === 'form' && can('c05') && (
+        {step === 'form' && hasQuickTailorAccess() && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -197,6 +206,12 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
                 Start Tailoring
               </button>
             </div>
+          </div>
+        )}
+
+        {step === 'form' && !hasQuickTailorAccess() && (
+          <div role="status" className="rounded-[var(--radius-md)] border border-line bg-surface p-4 text-xs text-fg-3">
+            Quick Tailor is unavailable while one or more required features are turned off.
           </div>
         )}
 
@@ -278,7 +293,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
               >
                 Close
               </button>
-              {can('c05') && <button
+              {hasQuickTailorAccess() && <button
                 onClick={handleTryAgain}
                 className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
               >

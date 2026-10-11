@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy import case, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,6 +161,11 @@ class PaymentService:
             if result.get("success"):
                 await redis.delete(f"student_plan_verify:{token}")
             return result
+        except HTTPException:
+            # Preserve the typed admission denial and the verification token.
+            # A temporary product restriction is not a malformed verification.
+            await db.rollback()
+            raise
         except Exception as exc:
             logger.error("Student billing verification failed", extra={"error_type": type(exc).__name__})
             await db.rollback()

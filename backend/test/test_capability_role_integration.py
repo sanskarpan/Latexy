@@ -182,6 +182,7 @@ async def test_target_offer_uses_current_role_and_role_off_stops_new_checkout(cl
 
 
 async def test_student_verification_uses_recorded_owner_role_before_provider_and_keeps_token(client, db_session, monkeypatch):
+    import hashlib
     import json
     from unittest.mock import AsyncMock
     from uuid import uuid4
@@ -204,6 +205,14 @@ async def test_student_verification_uses_recorded_owner_role_before_provider_and
         assert denied.status_code == 403, denied.text
         provider.assert_not_awaited()
         assert await redis.get(key)
-        assert await redis.get(f"latexy:student-verify:{token}") is None
+        lock_key = f"latexy:student-verify:{hashlib.sha256(token.encode()).hexdigest()}"
+        assert await redis.get(lock_key) is None
+        # A temporary capability denial must not turn the next attempt into a
+        # stale "already in progress" response or consume the verification.
+        retry = await client.get(f"/subscription/student/verify/{token}")
+        assert retry.status_code == 403, retry.text
+        provider.assert_not_awaited()
+        assert await redis.get(key)
+        assert await redis.get(lock_key) is None
     finally:
         await redis.delete(key)

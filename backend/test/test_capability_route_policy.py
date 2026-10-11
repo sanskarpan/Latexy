@@ -205,6 +205,24 @@ async def test_new_resume_tenant_and_domain_admissions_fail_closed(method, path,
     db.commit.assert_not_awaited()
 
 
+@pytest.mark.parametrize("path,body", [
+    ("/resumes/", {"title": "New resume", "latex_content": r"\\documentclass{article}"}),
+    ("/resumes/builder", {"title": "Builder resume", "template_id": USER_ID}),
+    ("/resumes/{resume_id}/fork", {"title": "Resume copy"}),
+    ("/templates/{template_id}/use", {}),
+])
+async def test_new_source_bearing_resume_admissions_require_c01(path, body, policy_app):
+    app, db = policy_app
+    entitlement_service.has_feature.side_effect = lambda candidate, **kwargs: candidate != "c01"
+    path = path.replace("{resume_id}", USER_ID).replace("{template_id}", USER_ID)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(path, json=body)
+    assert response.status_code == 403, response.text
+    assert "c01" in response.text
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
 def test_optimization_history_write_is_gated_but_restore_remains_recovery():
     routes = _routes()
     record = routes[("resume_routes", "record_optimization")]

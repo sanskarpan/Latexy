@@ -12,6 +12,9 @@ const tryPage = read('../app/try/page.tsx')
 const editorPage = read('../app/workspace/[resumeId]/edit/page.tsx')
 const builderPage = read('../app/workspace/builder/[resumeId]/page.tsx')
 const newBuilderPage = read('../app/workspace/builder/new/page.tsx')
+const newResumePage = read('../app/workspace/new/page.tsx')
+const workspacePage = read('../app/workspace/page.tsx')
+const templateCard = read('../components/TemplateCard.tsx')
 const elementHistory = read('../components/ElementVersionHistoryPanel.tsx')
 
 // Execute the real handler body, rather than testing a parallel policy copy.
@@ -32,11 +35,78 @@ function action(source: ts.SourceFile, name: string, context: Record<string, unk
 }
 
 describe('workspace optional-action regressions', () => {
+  it('tracks an owned admitted optimization after revocation but blocks applying its source', async () => {
+    let resolveAdmission!: (value: { success: boolean; job_id: string }) => void
+    const optimizeAndCompile = vi.fn(() => new Promise(resolve => { resolveAdmission = resolve }))
+    const can = vi.fn(() => true)
+    const setAiJobId = vi.fn()
+    const handler = action(editorPage, 'runAiOptimize', {
+      canRef: { current: can }, offlinePdfOwnerId: 'owner-a', resumeId: 'resume-a',
+      offlinePdfIdentityRef: { current: { generation: 1 } }, isCurrentOfflinePdfIdentity: () => true,
+      editorRef: { current: { getValue: () => 'source' } }, latexContent: 'source',
+      aiBaselineRef: { current: null }, setStagedAiLatex: vi.fn(), setCompareData: vi.fn(),
+      setIsAiSubmitting: vi.fn(), apiClient: { optimizeAndCompile }, jobDescription: '',
+      optLevel: 'balanced', targetSections: [], customInstructions: '', model: 'gpt-4o-mini',
+      compiler: 'pdflatex', userInitiatedJobRef: { current: false }, setAiJobId,
+      setLastStartedJobKind: vi.fn(), toast: { success: vi.fn(), error: vi.fn() }, editorMode: 'source',
+    })
+    const submission = handler()
+    can.mockReturnValue(false)
+    resolveAdmission({ success: true, job_id: 'admitted-job' })
+    await submission
+    expect(setAiJobId).toHaveBeenCalledExactlyOnceWith('admitted-job')
+    const apply = action(editorPage, 'applyOptimizationCandidate', { canRef: { current: can } })
+    expect(apply('proposed source', false)).toBe(false)
+  })
+
+  it('blocks blank/import/template creation when either core creation grant is off and hides the CTA', async () => {
+    const createResume = vi.fn()
+    await action(newResumePage, 'handleCreate', {
+      canRef: { current: (feature: string) => feature !== 'c01' },
+      apiClient: { createResume },
+    })()
+    expect(createResume).not.toHaveBeenCalled()
+    await action(newResumePage, 'handleCreate', {
+      canRef: { current: (feature: string) => feature !== 'b01' },
+      apiClient: { createResume },
+    })()
+    expect(createResume).not.toHaveBeenCalled()
+    expect(newResumePage.getFullText()).toContain("can('b01') &&\n    can('c01')")
+    expect(templateCard.getFullText()).toContain('{allowUse && onSelect && <button')
+  })
+
+  it('blocks guided builder resume creation when source edit or new-resume creation is disabled', async () => {
+    const createBuilderResume = vi.fn()
+    for (const denied of ['b01', 'c01']) {
+      await action(newBuilderPage, 'handleCreate', {
+        canRef: { current: (feature: string) => feature !== denied },
+        apiClient: { createBuilderResume },
+      })()
+    }
+    expect(createBuilderResume).not.toHaveBeenCalled()
+    expect(newBuilderPage.getFullText()).toContain("!canRef.current('b01') || !canRef.current('c01') || !canRef.current('b08')")
+  })
+
+  it('blocks workspace fork before API access unless fork, creation, and content editing are granted', async () => {
+    const forkResume = vi.fn()
+    await action(workspacePage, 'handleFork', {
+      canRef: { current: (feature: string) => feature !== 'c01' },
+      apiClient: { forkResume },
+    })('resume-id', 'Copy')
+    expect(forkResume).not.toHaveBeenCalled()
+    expect(workspacePage.getFullText()).toContain("!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')")
+  })
+
   it.each([
     ['runOptimization', 'd01'],
+    ['runOptimization', 'd18'],
+    ['runOptimization', 'c01'],
+    ['runOptimization', 'c05'],
     ['handleIndustryOverride', 'd19'],
     ['handleLocaleOverride', 'd19'],
     ['handleCreateVariant', 'b11'],
+    ['handleCreateVariant', 'b01'],
+    ['handleCreateVariant', 'c01'],
     ['handleExplainError', 'd13'],
     ['handleTrimToOnePage', 'c12'],
     ['handleScrapeUrl', 'e11'],
@@ -127,7 +197,7 @@ describe('workspace optional-action regressions', () => {
     expect(editor).toContain("['d06', 'd07', 'd10'].some(can) ? onWritingAssistantAction : undefined")
     expect(editor).toContain('monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompileRef.current?.()')
     expect(editor).toContain('monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current?.()')
-    expect(editorPage.getFullText()).toContain("{['d06', 'd07', 'd10'].some(can) && <WritingAssistantWidget")
+    expect(editorPage.getFullText()).toContain("canEditDocument && ['d06', 'd07', 'd10'].some(can) && <WritingAssistantWidget")
   })
 
   it('blocks cover-letter generation and automatic compilation while retaining admitted manual compilation', async () => {
@@ -168,6 +238,32 @@ describe('workspace optional-action regressions', () => {
     const compileContent = vi.fn()
     await action(optimize, 'handleEditorCompile', { editorRef: { current: { getValue: () => 'source' } }, compileContent })()
     expect(compileContent).toHaveBeenCalledWith('source')
+  })
+
+  it('admits optimizer variants only while fork, resume creation, and source editing are enabled', async () => {
+    const forkResume = vi.fn().mockResolvedValue({ id: 'variant-id' })
+    const setForkPopoverOpen = vi.fn()
+    const setForkTitleInput = vi.fn()
+    const push = vi.fn()
+    await action(optimize, 'handleCreateVariant', {
+      canRef: { current: (feature: string) => ['b11', 'b01', 'c01'].includes(feature) },
+      isForkingResume: false, setIsForkingResume: vi.fn(), setForkPopoverOpen, setForkTitleInput,
+      forkTitleInput: 'Copy', resumeId: 'resume-id', apiClient: { forkResume },
+      router: { push }, toast: { error: vi.fn() },
+    })()
+    expect(forkResume).toHaveBeenCalledOnce()
+    expect(setForkPopoverOpen).toHaveBeenCalledWith(false)
+    expect(push).toHaveBeenCalledWith('/workspace/variant-id/edit')
+    expect(optimize.getFullText()).toContain("!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')")
+    expect(optimize.getFullText()).toContain("{can('b11') && can('b01') && can('c01') && <>")
+  })
+
+  it('requires ATS, optimization, source-edit, and compilation grants for optimizer admission', async () => {
+    await action(optimize, 'runOptimization', {
+      canRef: { current: (feature: string) => feature !== 'd18' },
+    })()
+    expect(optimize.getFullText()).toContain("!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c01') || !canRef.current('c05')")
+    expect(optimize.getFullText()).toContain("can('d01') && can('d18') && can('c01') && can('c05')")
   })
 
   it.each([false, true])('routes a newly created linked variant using the current b12 grant (%s)', async (linkedModeAllowed) => {

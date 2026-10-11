@@ -18,7 +18,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import ProjectSearchModal from '@/components/ProjectSearchModal'
 import AddApplicationModal from '@/components/AddApplicationModal'
-import QuickTailorModal from '@/components/QuickTailorModal'
+import QuickTailorModal, { QUICK_TAILOR_CAPABILITIES } from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 import GenerateReferencesModal from '@/components/GenerateReferencesModal'
 import ApplyModal from '@/components/ApplyModal'
@@ -67,6 +67,8 @@ export default function WorkspacePage() {
   const { can } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
+  const canCreateNewDocument = can('b01') && can('c01')
+  const canStartQuickTailor = QUICK_TAILOR_CAPABILITIES.every((feature) => can(feature))
   const { t } = useI18n()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const router = useRouter()
@@ -405,10 +407,11 @@ export default function WorkspacePage() {
   }, [])
 
   const handleFork = useCallback(async (resumeId: string, title: string) => {
-    if (!canRef.current('b11')) return
+    if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return
     setIsForking(true)
     try {
       const newResume = await apiClient.forkResume(resumeId, title || undefined)
+      if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return
       setForkModalResumeId(null)
       setForkTitle('')
       router.push(`/workspace/${newResume.id}/edit`)
@@ -740,15 +743,19 @@ export default function WorkspacePage() {
             className="fixed inset-0 z-40 cursor-default"
           />
           <div className="absolute right-0 top-10 z-50 w-56 rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)]">
-            <CapabilityGate feature="d04"><button onClick={() => { setOpenCardMenu(null); setQuickTailorResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            {canStartQuickTailor && <button onClick={() => {
+              if (!QUICK_TAILOR_CAPABILITIES.every((feature) => canRef.current(feature))) return
+              setOpenCardMenu(null)
+              setQuickTailorResume(resume)
+            }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Zap size={13} className="text-fg-3" /> Tailor to a job
-            </button></CapabilityGate>
+            </button>}
             <Link href={`/workspace/${resume.id}/cover-letter`} onClick={() => setOpenCardMenu(null)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <FileText size={13} className="text-fg-3" /> Cover letter
             </Link>
-            <CapabilityGate feature="b11"><button onClick={() => { setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+            {canCreateNewDocument && can('b11') && <CapabilityGate feature="b11"><button onClick={() => { if (!canRef.current('b01') || !canRef.current('c01') || !canRef.current('b11')) return; setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <GitFork size={13} className="text-fg-3" /> Fork a variant
-            </button></CapabilityGate>
+            </button></CapabilityGate>}
             {isVariant && resume.parent_resume_id && (
               <button onClick={() => { setOpenCardMenu(null); handleCompareWithParent(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
                 <GitMerge size={13} className="text-fg-3" /> Compare with parent
@@ -1036,7 +1043,7 @@ export default function WorkspacePage() {
             <span className="hidden sm:inline">Merge</span>
           </Link></CapabilityGate>
 
-          {can('b01') && <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+          {canCreateNewDocument && <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
             {t('workspace.newResume')}
           </Link>}
         </div>
@@ -1137,7 +1144,7 @@ export default function WorkspacePage() {
               <p className="mt-2 text-sm text-fg-2">
                 {searchQuery ? t('workspace.noSearchResults', { query: searchQuery }) : t('workspace.createFirst')}
               </p>
-              {!searchQuery && can('b01') && (
+              {!searchQuery && canCreateNewDocument && (
                 <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 mt-5 px-4 py-2 text-xs">
                   {t('workspace.createResume')}
                 </Link>
@@ -1571,7 +1578,7 @@ export default function WorkspacePage() {
       </div>
 
       {/* Fork modal */}
-      {forkModalResumeId && (
+      {forkModalResumeId && canCreateNewDocument && can('b11') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={() => setForkModalResumeId(null)}>
           <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">

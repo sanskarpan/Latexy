@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Merge, Check, Loader2, FileText } from 'luci
 import { toast } from 'sonner'
 import { apiClient, type ResumeResponse } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import SessionLoadError from '@/components/SessionLoadError'
 
 function parseLatexSections(latex: string): string[] {
@@ -19,6 +20,9 @@ function parseLatexSections(latex: string): string[] {
 
 export default function MergeResumesPage() {
   const { session, isPending, error: sessionError } = useRequireAuth()
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
@@ -82,6 +86,7 @@ export default function MergeResumesPage() {
   // Run merge API call once when entering step 3
   useEffect(() => {
     if (step !== 3) return
+    if (!canRef.current('b01') || !canRef.current('c01')) return
     if (mergeCalledRef.current) return
     mergeCalledRef.current = true
 
@@ -109,10 +114,12 @@ export default function MergeResumesPage() {
   }
 
   function goToStep2() {
+    if (!canRef.current('b01') || !canRef.current('c01')) return
     setStep(2)
   }
 
   function goToStep3() {
+    if (!canRef.current('b01') || !canRef.current('c01')) return
     setStep(3)
   }
 
@@ -138,6 +145,16 @@ export default function MergeResumesPage() {
   if (sessionError && !session) return <SessionLoadError area="Resume merge" />
 
   if (!session) return null
+
+  if (!can('b01') || !can('c01')) {
+    return (
+      <div className="content-shell py-16 text-center">
+        <h1 className="text-lg font-semibold text-fg">Creating a merged résumé is unavailable</h1>
+        <p className="mt-2 text-sm text-fg-2">Check feature settings to create a new résumé.</p>
+        <Link href="/workspace" className="mt-5 inline-block rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back to Workspace</Link>
+      </div>
+    )
+  }
 
   return (
     <div className="content-shell space-y-6">

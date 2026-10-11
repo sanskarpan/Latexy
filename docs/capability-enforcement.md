@@ -45,7 +45,8 @@ at registration, so production and isolated router tests share the policy.
 Resource-dependent decisions (public ownership, specialty templates, structured
 imports, API-key scope and provider-key use) are checked in the relevant route
 or service after its normal resource/identity validation. New creation requires
-`b01`; source/content writes require `c01`; new compilation requires `c05` and
+`b01`; initial source writes (including builder creation, template copies and
+forks) also require `c01`. Source/content edits require `c01`; new compilation requires `c05` and
 its `compile` parent. These apply to indirect writes and compile submissions,
 including builder saves, accepted suggestions, imports, generic jobs, developer
 API requests and export preparation. The source is not parsed to guess which

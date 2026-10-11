@@ -104,16 +104,19 @@ describe('optional route entry controls render OFF and ON', () => {
     expect(renderExpression(expression)).toContain('Saved source title')
   })
 
-  it('independently hides onboarding Template and Studio actions, retaining import and completion', () => {
+  it('hides onboarding creation actions without core grants and retains skip exploration', () => {
     const ready = find(onboarding, (node) => ts.isObjectLiteralExpression(node) && node.properties.some((property) => ts.isPropertyAssignment(property) && property.name.getText(onboarding) === 'id' && property.initializer.getText(onboarding) === "'get-started'"))[0] as ts.ObjectLiteralExpression
     const content = ready.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(onboarding) === 'content') as ts.PropertyAssignment
     const render = () => renderExpression(content.initializer)
     const denied = render()
     expect(denied).not.toContain('href="/templates"')
     expect(denied).not.toContain('href="/try"')
-    expect(denied).toContain('href="/workspace/new"')
-    expect(denied).toContain('onboarding.createFirst')
+    expect(denied).not.toContain('href="/workspace/new"')
+    expect(denied).not.toContain('onboarding.createFirst')
     expect(denied).toContain('onboarding.skipExplore')
+    state.grants.add('b01'); state.grants.add('c01')
+    expect(render()).toContain('href="/workspace/new"')
+    expect(render()).toContain('onboarding.createFirst')
     state.grants.add('b04')
     expect(render()).toContain('href="/templates"')
     expect(render()).not.toContain('href="/try"')

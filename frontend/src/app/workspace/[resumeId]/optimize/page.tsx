@@ -383,7 +383,7 @@ export default function OptimizationSuitePage() {
   }, [activeJobKind, stream.status, requestPermission])
 
   const runOptimization = async (fromScoreReport = false) => {
-    if (!canRef.current('d01') || !canRef.current('c01') || !canRef.current('c05')) return
+    if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c01') || !canRef.current('c05')) return
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
@@ -576,7 +576,7 @@ export default function OptimizationSuitePage() {
   }, [resumeId])
 
   const handleCreateVariant = useCallback(async () => {
-    if (!canRef.current('b11')) return
+    if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return
     if (isForkingResume) return
     setIsForkingResume(true)
     try {
@@ -727,16 +727,15 @@ export default function OptimizationSuitePage() {
         </div>
         <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:shrink-0">
           <div className="relative">
-            <CapabilityGate feature="b11"><button
-              disabled={!can('b11')}
-              aria-description={!can('b11') ? 'Variant creation is unavailable for your current plan or feature settings.' : undefined}
-              onClick={() => { if (!canRef.current('b11')) return; setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
-              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
-            >
-              <GitFork size={12} />
-              Variant
-            </button></CapabilityGate>
-            {forkPopoverOpen && (
+            {can('b11') && can('b01') && can('c01') && <>
+              <CapabilityGate feature="b11"><button
+                onClick={() => { if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return; setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
+              >
+                <GitFork size={12} />
+                Variant
+              </button></CapabilityGate>
+              {forkPopoverOpen && (
               <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-[var(--radius-md)] border border-line bg-bg p-3 shadow-[var(--shadow-2)]">
                 <input
                   type="text"
@@ -749,12 +748,13 @@ export default function OptimizationSuitePage() {
                 />
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button>
-                  <CapabilityGate feature="b11"><button onClick={handleCreateVariant} disabled={!can('b11') || isForkingResume} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:brightness-110 disabled:opacity-50">
+                  <CapabilityGate feature="b11"><button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:brightness-110 disabled:opacity-50">
                     {isForkingResume ? 'Creating...' : 'Create'}
                   </button></CapabilityGate>
                 </div>
               </div>
-            )}
+              )}
+            </>}
           </div>
           <ContrastToggle />
           <ModeToggle />
@@ -891,13 +891,15 @@ export default function OptimizationSuitePage() {
             <div className="mt-3">
               <CapabilityGate feature="d02"><GuidedIntakePanel value={intake} onChange={setIntake} /></CapabilityGate>
             </div>
-            <button
-              onClick={() => void runOptimization()}
-              disabled={isProcessing || isSubmitting}
-              className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
-            </button>
+            {can('d01') && can('d18') && can('c01') && can('c05') && (
+              <button
+                onClick={() => void runOptimization()}
+                disabled={isProcessing || isSubmitting}
+                className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
+              </button>
+            )}
             {can('d02') && !intakeIsEmpty(intake) && (
               <p className="mt-2 text-[10px] leading-relaxed text-fg-3">
                 The AI will follow your direction —
@@ -1209,7 +1211,7 @@ export default function OptimizationSuitePage() {
                   scoreThreshold={industryOverrideResult?.score_threshold ?? stream.atsDetails?.score_threshold}
                   calibrationStatement={industryOverrideResult?.calibration_statement ?? stream.atsDetails?.calibration_statement}
                   onLocaleOverride={can('d18') && can('d19') ? handleLocaleOverride : undefined}
-                  onOptimize={() => void runOptimization(true)}
+                  onOptimize={can('d01') && can('d18') && can('c01') && can('c05') ? () => void runOptimization(true) : undefined}
                   isOptimizing={isProcessing || isSubmitting}
                 />
               </motion.section>

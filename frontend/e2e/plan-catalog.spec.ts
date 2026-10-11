@@ -38,22 +38,25 @@ async function setup(page: Page) {
   } }))
   await page.route('**/me', (route) => route.fulfill({ json: { id: 'catalog-admin', role: 'admin', preferences: {} } }))
   await page.route('**/config/feature-flags', (route) => route.fulfill({ json: { billing: true, upgrade_ctas: true } }))
-  await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: {}, plan_family: 'free' } }))
+  await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: { i01: true }, plan_family: 'free' } }))
+  await page.route('**/subscription/current', (route) => route.fulfill({ json: {
+    userId: 'catalog-admin', planId: 'free', planName: 'Free', status: 'active', features: {},
+  } }))
   await page.route('**/admin/feature-flags', (route) => route.fulfill({ json: [] }))
 }
 
-test('public pricing loads current catalog, retries errors and respects annual sale pause', async ({ page }) => {
+test('billing loads current catalog, retries errors and respects annual sale pause', async ({ page }) => {
   await setup(page)
-  let calls = 0
+  let outage = true
   await page.route('**/subscription/plans', (route) => {
-    calls += 1
-    return calls === 1 ? route.fulfill({ status: 503, json: { detail: 'Temporary pricing outage' } }) : route.fulfill({ json: {
+    return outage ? route.fulfill({ status: 503, json: { detail: 'Temporary pricing outage' } }) : route.fulfill({ json: {
       plans: makeCatalog().plans,
-      billing: { feature_enabled: true, mode: 'enabled', available: true, message: 'Billing available' },
+      billing: { provider: 'dodo', feature_enabled: true, mode: 'enabled', available: true, message: 'Billing available' },
     } })
   })
-  await page.goto('/pricing')
+  await page.goto('/billing')
   await expect(page.getByRole('alert').filter({ hasText: 'Temporary pricing outage' })).toBeVisible()
+  outage = false
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toBeVisible()
   await expect(page.getByText('10 / day').first()).toBeVisible()

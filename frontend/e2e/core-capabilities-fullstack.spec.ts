@@ -78,7 +78,7 @@ async function toggleGlobalInAdmin(page: Page, key: string, label: string, enabl
 
 test('core creation, source edits and compilation can be paused without losing existing-source recovery', async ({ browser }, testInfo) => {
   const database = isolatedDatabase()
-  const frontend = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5180'}`
+  const frontend = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5181'}`
   const backend = process.env.PLAYWRIGHT_BACKEND_URL ?? 'http://127.0.0.1:8030'
   const adminContext = await browser.newContext({ baseURL: frontend })
   const actorContext = await browser.newContext({ baseURL: frontend, viewport: { width: 1440, height: 1000 } })
@@ -141,6 +141,20 @@ test('core creation, source edits and compilation can be paused without losing e
     await actorPage.goto(`/workspace/${resume.id}/edit`)
     await expect(actorPage.getByRole('button', { name: 'Save', exact: true }).first()).toBeEnabled({ timeout: 45_000 })
     await expect(actorPage.getByRole('button', { name: 'Compile', exact: true }).first()).toBeVisible({ timeout: 45_000 })
+
+    // An initial caller-supplied source is a content write too. Granting new
+    // document creation alone must not override an editing denial.
+    await toggleGlobalInAdmin(adminPage, 'c01', 'Source and content editing', false)
+    const deniedInitialSource = await actorContext.request.post(`${backend}/resumes/`, {
+      headers: actor.headers,
+      data: { title: 'Denied initial source', latex_content: source },
+    })
+    expect(deniedInitialSource.status(), await deniedInitialSource.text()).toBe(403)
+    await actorPage.goto('/workspace/new')
+    await actorPage.reload()
+    await expect(actorPage.getByRole('button', { name: 'Start from Blank', exact: true })).toHaveCount(0)
+    await expect(actorPage.getByRole('button', { name: 'Create Resume', exact: true })).toHaveCount(0)
+    await toggleGlobalInAdmin(adminPage, 'c01', 'Source and content editing', true)
 
     // Use the real admin inventory switches; requests travel through the
     // running Next app and FastAPI, and all API denials come from backend gates.

@@ -239,9 +239,12 @@ export default function CompareModal({
           </div>
 
           <div className="flex items-center gap-2">
-            {onRestore && (
+            {onRestore && can('c01') && (
               <button
-                onClick={() => onRestore(originalLatex)}
+                onClick={() => {
+                  if (!canRef.current('c01')) return
+                  onRestore(originalLatex)
+                }}
                 className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg"
               >
                 <RotateCcw size={12} />

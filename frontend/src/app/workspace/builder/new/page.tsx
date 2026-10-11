@@ -119,7 +119,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
   const effectiveMetrics = seedMetrics ?? deriveBuilderMetrics(structured)
 
   const handleSeedUpload = async (file: File | null) => {
-    if (!canRef.current('b06')) return
+    if (!canRef.current('b06') || !canRef.current('b01') || !canRef.current('c01')) return
     if (!file) return
     if ((/\.json$/i.test(file.name) || file.type === 'application/json') && !canRef.current('b07')) {
       toast.error('Structured resume import is unavailable for your current plan or feature settings.')
@@ -133,9 +133,9 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
     setUploadIssues([])
     try {
       await ensureCompatible()
-      if (!isCurrentRequest()) return
+      if (!isCurrentRequest() || !canRef.current('b01') || !canRef.current('c01')) return
       const seeded = await apiClient.seedBuilderFromUpload(file)
-      if (!isCurrentRequest()) return
+      if (!isCurrentRequest() || !canRef.current('b01') || !canRef.current('c01')) return
       setStructured(cloneStructuredResume(seeded.structured_content))
       setSeedMetrics(seeded.metrics)
       if (!title.trim()) {
@@ -176,7 +176,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
     setCreating(true)
     try {
       await ensureCompatible()
-      if (!isCurrentRequest()) return
+      if (!isCurrentRequest() || !canRef.current('b01') || !canRef.current('c01')) return
       const created = await apiClient.createBuilderResume({
         title: title.trim(),
         template_id: selectedTemplateId,
@@ -208,6 +208,16 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
             <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (!can('b01') || !can('c01')) {
+    return (
+      <div className="content-shell py-16 text-center">
+        <h1 className="text-lg font-semibold text-fg">New résumé creation is unavailable</h1>
+        <p className="mt-2 text-sm text-fg-2">Check feature settings to create a new résumé.</p>
+        <Link href="/workspace" className="mt-5 inline-block rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back to Workspace</Link>
       </div>
     )
   }

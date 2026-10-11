@@ -19,12 +19,21 @@ The owner explicitly confirmed that **new core résumé creation, content/source
 7. The integration inventory still labelled newly merged PR groups as unmerged. Coverage must follow reachable code, rather than an unchanged feature count.
 8. Combined quick-tailor, batch-tailor and academic conversion dispatched compilation without the new compilation gate. Secondary optimize, cover-letter and comparison preview controls also needed that gate.
 9. Resolving Settings conflicts dropped main's protection against callback-ticket redispatch across account-boundary remounts. Existing ownership regressions must pass after capability controls are layered onto the merged implementation.
+10. Real browser compilation exposed a delivery retry gap: Retry fetched only the offline cache rather than the currently owned, completed PDF job. Retry must not admit another compilation and must discard stale owner/document/job responses.
+11. Quick Tailor checked only part of its combined admission dependencies. Its workspace entry and stale modal submission must require all six permissions (`d04`, `d01`, `d18`, `c05`, `b01`, `c01`). AI optimization similarly needs source editing and document-processing permissions as well as compilation.
+12. Monaco's imperative insert/fix methods and design/linter/generated-source controls could mutate local source while editing was disabled. Source mutation callbacks need current permission guards in addition to hidden buttons and the editor's read-only setting.
+13. Student verification translated a typed capability denial into a generic verification error. It must preserve the 403 admission denial, retain the verification token and release the verification lock without contacting the payment provider.
+14. Browser fixtures still assumed that missing permissions grant manual compilation, and a live-catalog test targeted main's static marketing `/pricing` route. Fixtures must explicitly grant core work, test policy-outage denial and exercise the live catalog on `/billing`.
+15. Checkpoint recovery used local arbitrary-source callbacks instead of the authenticated stored-version endpoint. Recovery must restore the server-owned checkpoint, reject stale account/document responses, and update the visible read-only source without reopening arbitrary editor mutations.
+16. Revocation during a successful admission response discarded already-admitted job identities. Starting and retrying remain gated; the same owner's admitted job must retain progress/results, while applying new source remains subject to current editing access.
 
 ## Verification discipline
 
 Work uses an isolated managed checkout. Local runtime verification uses dedicated loopback PostgreSQL/Redis services and synthetic accounts, with model, email and payment providers disabled. Original application data and services are preserved. Global, role, family, exact-SKU and parent denials must remain effective; missing/failed policy reads must not grant new work.
 
 Verification results and remaining limits will be recorded after the integrated implementation is frozen. Inventory/policy combinations are distinct from individually exercised browser or provider workflows. Earlier screenshots, counts and CI results remain historical evidence.
+
+The integration follow-up passed 348 focused backend tests for route/role denials, Student-token/lock preservation, Modal preflight and test isolation, plus 61 real-engine/cache/output-boundary and generated-inventory tests. The earlier complete backend run had 6,254 passes and five failures: two CJK cold-cache timeouts, two stale preflight fixtures and a matrix changed during collection. The hosted font preparation and current-head fixtures resolved those failures in focused reruns; a fresh complete backend run is required before merge. Frontend verification is repeated after the final recovery review.
 
 ## Database verification
 

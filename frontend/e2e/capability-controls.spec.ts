@@ -65,7 +65,8 @@ test('admin searches all audited features and explains immutable and individual-
 })
 
 test('editor gates optional keyboard and toolbar features while preserving source and manual compile', async ({ page }, testInfo) => {
-  const f = await fixture(page); f.setFeatures({})
+  const core = { c01: true, c05: true, compile: true }
+  const f = await fixture(page); f.setFeatures(core)
   await page.goto(`/workspace/${ID}/edit`)
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue()), { timeout: 60_000 }).toBe(SOURCE)
   await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
@@ -74,7 +75,7 @@ test('editor gates optional keyboard and toolbar features while preserving sourc
   await expect(page.getByRole('button', { name: 'LaTeX search presets' })).toHaveCount(0)
   await page.evaluate(() => (window as any).__latexyMonacoEditor.focus()); await page.keyboard.press('Control+f')
   await expect(page.locator('.find-widget.visible')).toHaveCount(0)
-  f.setFeatures({ c03: true, c04: true, c06: true }); await f.refresh()
+  f.setFeatures({ ...core, c03: true, c04: true, c06: true }); await f.refresh()
   await expect(page.getByRole('button', { name: 'LaTeX search presets' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Editor keybindings' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Auto-compile on change', exact: true })).toBeVisible()
@@ -83,6 +84,7 @@ test('editor gates optional keyboard and toolbar features while preserving sourc
   f.fail(); await f.refresh()
   await expect(page.getByRole('button', { name: 'Auto-compile on change', exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => (window as any).__latexyMonacoEditor.getValue())).toBe(SOURCE)
-  await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Compile', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('capability-editor.png'), fullPage: true })
 })
