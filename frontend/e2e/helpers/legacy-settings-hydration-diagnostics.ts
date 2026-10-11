@@ -16,7 +16,7 @@ const HOST_TAGS = 'a abbr address area article aside audio b base bdi bdo blockq
 const TYPE_CATEGORIES = ['function', 'symbol', 'object', 'other', 'none', 'other-host']
 const ID_CATEGORIES = ['main-content', 'stream-boundary', 'other', 'none']
 const NODE_NAMES = [...HOST_TAGS, '#text', '#comment', '#document', '#document-fragment']
-const BOUNDARY_KINDS = ['suspense-start', 'suspense-end', 'suspense-pending', 'suspense-client-render', 'other-comment']
+const BOUNDARY_KINDS = ['suspense-start', 'suspense-end', 'suspense-pending', 'suspense-streaming', 'suspense-client-render', 'other-comment']
 
 // Read only structural categories. No function names or arbitrary prop values.
 // The returned CDP value is independently rebuilt below, never attached raw.
@@ -28,11 +28,11 @@ const STRUCTURAL_CAPTURE = `(() => {
     if (!value) return null;
     const name = value.nodeName;
     const comment = value.nodeType === 8 ? value.nodeValue : null;
-    return { nodeType: value.nodeType, nodeName: typeof name === 'string' && (tags.has(name.toLowerCase()) || ['#text', '#comment', '#document', '#document-fragment'].includes(name)) ? name.toLowerCase() : 'other-node', idCategory: id(value.id), boundaryCommentKind: value.nodeType !== 8 ? null : comment === '$' ? 'suspense-start' : comment === '/$' ? 'suspense-end' : comment === '$?' ? 'suspense-pending' : comment === '$!' ? 'suspense-client-render' : 'other-comment' };
+    return { nodeType: value.nodeType, nodeName: typeof name === 'string' && (tags.has(name.toLowerCase()) || ['#text', '#comment', '#document', '#document-fragment'].includes(name)) ? name.toLowerCase() : 'other-node', idCategory: id(value.id), boundaryCommentKind: value.nodeType !== 8 ? null : comment === '$' ? 'suspense-start' : comment === '/$' ? 'suspense-end' : comment === '$?' ? 'suspense-pending' : comment === '$~' ? 'suspense-streaming' : comment === '$!' ? 'suspense-client-render' : 'other-comment' };
   };
   const fibers = [];
   for (let fiber = e; fiber && fibers.length < ${MAX_FIBERS}; fiber = fiber.return) fibers.push({ tag: fiber.tag, type: type(fiber.type) });
-  return { expected: { type: type(e.type), idCategory: id(e.pendingProps && e.pendingProps.id) }, candidate: node(rN), parent: node(rN && rN.parentNode), next: node(rN && rN.nextSibling), parentFiberTag: type(rP && rP.type), fibers };
+  return { expected: { type: type(e.type), idCategory: id(e.pendingProps && e.pendingProps.id) }, candidate: node(rN), parent: node(rN && rN.parentNode), next: node(rN && rN.nextSibling), parentFiberTag: type(rP && rP.type), hydrationParentIsExpected: rP === e, alternatePresent: Boolean(e.alternate), fibers };
 })()`
 
 type NodeKind = { nodeType: number | null; nodeName: string; idCategory: string; boundaryCommentKind: string | null }
@@ -42,7 +42,15 @@ type StructuralCapture = {
   parent: NodeKind | null
   next: NodeKind | null
   parentFiberTag: string
+  hydrationParentIsExpected: boolean
+  alternatePresent: boolean
   fibers: Array<{ tag: number | null; type: string }>
+}
+export type MainDocumentObservation = {
+  expectedDocuments: number
+  successfulAppDocuments: number
+  successfulSyntheticOpeners: number
+  syntheticOpenerOnly: boolean
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -64,11 +72,14 @@ function nodeKind(value: unknown): NodeKind | null {
 function structuralCapture(value: unknown): StructuralCapture | null {
   const capture = record(value)
   const expected = record(capture?.expected)
-  if (!capture || !expected || !Array.isArray(capture.fibers) || capture.fibers.length > MAX_FIBERS) return null
+  if (!capture || !expected || !Array.isArray(capture.fibers) || capture.fibers.length > MAX_FIBERS
+    || typeof capture.hydrationParentIsExpected !== 'boolean' || typeof capture.alternatePresent !== 'boolean') return null
   return {
     expected: { type: hostType(expected.type), idCategory: member(expected.idCategory, ID_CATEGORIES, 'other') },
     candidate: nodeKind(capture.candidate), parent: nodeKind(capture.parent), next: nodeKind(capture.next),
     parentFiberTag: hostType(capture.parentFiberTag),
+    hydrationParentIsExpected: capture.hydrationParentIsExpected,
+    alternatePresent: capture.alternatePresent,
     fibers: capture.fibers.map(value => {
       const fiber = record(value)
       return { tag: typeof fiber?.tag === 'number' && Number.isInteger(fiber.tag) && fiber.tag >= 0 && fiber.tag <= 31 ? fiber.tag : null, type: hostType(fiber?.type) }
@@ -90,10 +101,12 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   const verifiedScripts = new Set<string>()
   const resolvedScripts = new Set<string>()
   const scriptChecks = new Map<string, Promise<boolean>>()
+  const scriptContexts = new Map<string, number>()
   const activePauses = new Set<Promise<void>>()
   let session: CDPSession | null = null
   let breakpointId: string | null = null
   let pinnedURL = ''
+  let mainFrameId = ''
   let disposed = false
   let detached = false
   let breakpointRemoved = false
@@ -102,6 +115,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   let pauseGeneration = 0
   let resuming: Promise<void> | null = null
   const fail = (code: string) => { if (failures.size < 16) failures.add(code) }
+  const verifiedDocuments = () => new Set([...verifiedScripts].filter(id => resolvedScripts.has(id)).map(id => scriptContexts.get(id))).size
   // Chrome can advance the first statement to Error(), six columns later.
   // This range stays within the reviewed rD statement of the exact hash pin.
   const locationMatches = (location: { lineNumber: number; columnNumber?: number }) => location.lineNumber === 0
@@ -188,7 +202,13 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   const resolvedEvent = (cdp: CDPSession) => cdp.on<'Debugger.breakpointResolved'>
   type ResolvedEvent = Parameters<Parameters<ReturnType<typeof resolvedEvent>>[1]>[0]
   function onParsed(event: ParsedEvent) {
-    if (!disposed && event.url === pinnedURL && !scriptChecks.has(event.scriptId)) scriptChecks.set(event.scriptId, verifyScript(event.scriptId))
+    if (disposed || event.url !== pinnedURL || scriptChecks.has(event.scriptId)) return
+    const context = record(event.executionContextAuxData)
+    if (context?.frameId !== mainFrameId || context.isDefault !== true
+      || (context.type !== undefined && context.type !== 'default')) return
+    if (!Number.isInteger(event.executionContextId) || event.executionContextId <= 0) { fail('script-context-unavailable'); return }
+    scriptContexts.set(event.scriptId, event.executionContextId)
+    scriptChecks.set(event.scriptId, verifyScript(event.scriptId))
   }
   function onResolved(event: ResolvedEvent) {
     if (disposed || event.breakpointId !== breakpointId) return
@@ -271,6 +291,9 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
       session.on('Debugger.breakpointResolved', onResolved)
       session.on('Debugger.resumed', onResumed)
       session.on('close', onSessionClose)
+      const { frameTree } = await deadline(session.send('Page.getFrameTree'), SETUP_TIMEOUT_MS)
+      if (!frameTree.frame.id) throw new Error('Diagnostic main frame unavailable')
+      mainFrameId = frameTree.frame.id
       await deadline(session.send('Debugger.enable', { maxScriptsCacheSize: LEGACY_SETTINGS_REACT_BYTES }), SETUP_TIMEOUT_MS)
       await deadline(session.send('Debugger.setPauseOnExceptions', { state: 'none' }), SETUP_TIMEOUT_MS)
       const setting = session.send('Debugger.setBreakpointByUrl', { url: pinnedURL, ...CLAIM_LOCATION })
@@ -294,33 +317,41 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   } catch { fail('diagnostic-install-unavailable'); await dispose() }
 
   return {
-    async verifyReady(expectedScripts: number) {
+    async verifyReady(expectedDocuments: number) {
       try {
         await deadline((async () => {
-          while (!failures.size && !disposed && [...verifiedScripts].filter(id => resolvedScripts.has(id)).length < expectedScripts) await new Promise(resolve => setTimeout(resolve, 10))
+          while (!failures.size && !disposed && verifiedDocuments() < expectedDocuments) await new Promise(resolve => setTimeout(resolve, 10))
         })(), VERIFY_TIMEOUT_MS)
       } catch { fail('diagnostic-verification-unavailable') }
-      if (failures.size || !breakpointId || [...verifiedScripts].filter(id => resolvedScripts.has(id)).length < expectedScripts) throw new Error('Original-case Settings hydration diagnostic could not be verified')
+      if (failures.size || !breakpointId || verifiedDocuments() < expectedDocuments) throw new Error('Original-case owner-isolation hydration diagnostic could not be verified')
     },
     dispose,
-    async finish(testInfo: TestInfo, originalFailure: boolean) {
+    async finish(testInfo: TestInfo, originalFailure: boolean, observation?: MainDocumentObservation) {
       // Cleanup/attachment failures must never replace a behavior assertion.
       try { await dispose() } catch { fail('diagnostic-cleanup-unavailable') }
-      if (!breakpointId || ![...verifiedScripts].some(id => resolvedScripts.has(id))) fail('diagnostic-proof-unavailable')
+      const excluded = observation?.syntheticOpenerOnly === true && observation.expectedDocuments === 0
+        && observation.successfulAppDocuments === 0 && observation.successfulSyntheticOpeners > 0 && verifiedScripts.size === 0
+      const requiredDocuments = observation ? Math.max(observation.expectedDocuments, observation.successfulAppDocuments) : 1
+      if (observation && (observation.syntheticOpenerOnly ? !excluded : observation.successfulAppDocuments < observation.expectedDocuments)) fail('main-document-observation-unavailable')
+      if (!excluded && (!breakpointId || verifiedDocuments() < requiredDocuments)) fail('diagnostic-proof-unavailable')
       try {
         await deadline(testInfo.attach('settings-hydration-structural-diagnostic', {
           body: Buffer.from(JSON.stringify({
             scope: failures.has('target-closed-by-diagnostic')
               ? 'diagnostic recovery closed a paused target; no evidence of the original React throw'
-              : 'original-case CDP observation; production response unchanged',
-            observation_status: failures.size ? 'unavailable' : captures.length ? 'structural-pause-captured' : 'no-matching-pause-observed',
+              : 'original-case main-page-only CDP observation; production response unchanged; popup hydration capture outside scope',
+            observation_status: failures.size ? 'unavailable' : excluded ? 'outside-scope-synthetic-opener-only' : captures.length ? 'structural-pause-captured' : 'no-matching-pause-observed',
+            expected_main_documents: observation ? requiredDocuments : null,
+            successful_main_app_documents: observation?.successfulAppDocuments ?? null,
+            successful_synthetic_openers: observation?.successfulSyntheticOpeners ?? null,
+            verified_documents: verifiedDocuments(),
             verified_scripts: verifiedScripts.size,
             resolved_scripts: [...verifiedScripts].filter(id => resolvedScripts.has(id)).length,
             capture_attempts: captureAttempts, failures: [...failures], captures,
           }, null, 2) + '\n'), contentType: 'application/json',
         }), VERIFY_TIMEOUT_MS)
       } catch { fail('diagnostic-attachment-unavailable') }
-      if (!originalFailure && (failures.size || !breakpointId || ![...verifiedScripts].some(id => resolvedScripts.has(id)))) throw new Error('Original-case Settings hydration diagnostic was unavailable')
+      if (!originalFailure && (failures.size || (!excluded && (!breakpointId || !verifiedDocuments())))) throw new Error('Original-case owner-isolation hydration diagnostic was unavailable')
     },
   }
 }

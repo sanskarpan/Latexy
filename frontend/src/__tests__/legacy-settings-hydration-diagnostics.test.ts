@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
-import type { Page, TestInfo } from '@playwright/test'
+import type { Page, Response, TestInfo } from '@playwright/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installLegacySettingsHydrationDiagnostics, LEGACY_SETTINGS_REACT_BYTES, LEGACY_SETTINGS_REACT_CHUNK, LEGACY_SETTINGS_REACT_SHA256 } from '../../e2e/helpers/legacy-settings-hydration-diagnostics'
+
+import { mainDocumentKind, runOwnerIsolationHydrationFixture } from '../../e2e/helpers/owner-isolation-hydration-fixture'
 
 vi.mock('node:crypto', () => ({ createHash: vi.fn() }))
 const BASE = new URL('http://127.0.0.1:5184')
@@ -14,7 +16,8 @@ const validCapture = () => ({
   candidate: { nodeType: 8, nodeName: '#comment', idCategory: 'none', boundaryCommentKind: 'suspense-pending' },
   parent: { nodeType: 1, nodeName: 'main', idCategory: 'main-content', boundaryCommentKind: null },
   next: { nodeType: 1, nodeName: 'div', idCategory: 'none', boundaryCommentKind: null },
-  parentFiberTag: 'main', fibers: [{ tag: 5, type: 'main' }, { tag: 0, type: 'function' }],
+  parentFiberTag: 'main', hydrationParentIsExpected: true, alternatePresent: false,
+  fibers: [{ tag: 5, type: 'main' }, { tag: 0, type: 'function' }],
 })
 type Handler = (params: Record<string, unknown>) => Promise<unknown>
 class FakeCDP extends EventEmitter {
@@ -22,6 +25,7 @@ class FakeCDP extends EventEmitter {
   send = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
     const handler = this.handlers.get(method)
     if (handler) return handler(params)
+    if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main-frame' } } }
     if (method === 'Debugger.setBreakpointByUrl') return { breakpointId: OWN, locations: [] }
     if (method === 'Debugger.getScriptSource') return { scriptSource: source }
     if (method === 'Debugger.evaluateOnCallFrame') return { result: { type: 'object', value: validCapture() } }
@@ -33,14 +37,15 @@ function fake() {
   const cdp = new FakeCDP()
   const connect = vi.fn(async () => cdp)
   const close = vi.fn(async () => {})
-  const page = { context: () => ({ newCDPSession: connect }), close } as unknown as Page
+  const frame = {}
+  const page = Object.assign(new EventEmitter(), { context: () => ({ newCDPSession: connect }), close, mainFrame: () => frame }) as unknown as Page
   const attachments: string[] = []
   const attach = vi.fn(async (_name: string, options: { body: Buffer }) => { attachments.push(options.body.toString()) })
-  const info = { attach } as unknown as TestInfo
+  const info = { attach, status: 'passed' } as unknown as TestInfo
   return { cdp, page, connect, close, info, attach, attachments }
 }
 function parsed(cdp: FakeCDP, scriptId = 'script-1', url = new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href) {
-  cdp.emit('Debugger.scriptParsed', { scriptId, url })
+  cdp.emit('Debugger.scriptParsed', { scriptId, url, executionContextId: scriptId === 'script-2' ? 2 : 1, executionContextAuxData: { frameId: 'main-frame', isDefault: true } })
   cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35061 } })
 }
 function pause(cdp: FakeCDP, overrides: Record<string, unknown> = {}) {
@@ -55,28 +60,42 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done })
   return { promise, resolve }
 }
-function report(test: ReturnType<typeof fake>) { return JSON.parse(test.attachments[0]) as { captures: unknown[]; failures: string[]; verified_scripts: number; resolved_scripts: number; capture_attempts: number; observation_status: string; scope: string } }
+function htmlResponse(page: Page, url = new URL('/workspace', BASE).href, overrides: { status?: number; contentType?: string; navigation?: boolean; resourceType?: string; frame?: unknown } = {}): Response {
+  return {
+    request: () => ({ isNavigationRequest: () => overrides.navigation ?? true, resourceType: () => overrides.resourceType ?? 'document', frame: () => overrides.frame ?? page.mainFrame() }),
+    url: () => url, status: () => overrides.status ?? 200,
+    headers: () => ({ 'content-type': overrides.contentType ?? 'text/html; charset=utf-8' }),
+  } as unknown as Response
+}
+function respond(page: Page, response: Response) { (page as unknown as EventEmitter).emit('response', response) }
+function report(test: ReturnType<typeof fake>) { return JSON.parse(test.attachments[0]) as { captures: unknown[]; failures: string[]; verified_scripts: number; resolved_scripts: number; capture_attempts: number; verified_documents: number; expected_main_documents: number; successful_main_app_documents: number; observation_status: string; scope: string } }
 
 describe('original-case CDP Settings hydration diagnostic', () => {
   const digest = vi.fn()
   const update = vi.fn()
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubEnv('PLAYWRIGHT_SERVER_MODE', 'production')
     digest.mockReturnValue(LEGACY_SETTINGS_REACT_SHA256)
     update.mockReturnValue({ digest })
     vi.mocked(createHash).mockReturnValue({ update } as unknown as ReturnType<typeof createHash>)
   })
-  afterEach(() => { vi.useRealTimers() })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs() })
 
   it('observes the exact original case before navigation and preserves every behavior gate', () => {
     const fixture = readFileSync(new URL('../../e2e/settings-legacy-callback-owner-isolation.spec.ts', import.meta.url), 'utf8')
     const target = fixture.slice(fixture.indexOf("test('same-owner GitHub legacy callback succeeds after the session token rotates'"), fixture.indexOf("test('already-dispatched GitHub legacy verification survives"))
-    expect(target.indexOf('installLegacySettingsHydrationDiagnostics(page, appBaseUrl())')).toBeLessThan(target.indexOf('await page.goto'))
+    expect(fixture).toContain("import { test } from './helpers/owner-isolation-hydration-fixture'")
+    expect(target.indexOf('ownerIsolationHydration.requireDocuments(2)')).toBeLessThan(target.indexOf('await page.goto'))
     expect(target).not.toContain('process.env.LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS')
     expect(target).toContain('await assertFixtureClean(fixture)')
-    expect(target).toContain('await diagnostics.verifyReady(2)')
-    expect(target).toContain('throw error')
-    expect(target).toContain('finally {\n      await diagnostics.finish(testInfo, originalFailure)')
+    expect(target).not.toContain('installLegacySettingsHydrationDiagnostics')
+    expect(target).not.toContain('finally')
+    const shared = readFileSync(new URL('../../e2e/helpers/owner-isolation-hydration-fixture.ts', import.meta.url), 'utf8')
+    expect(shared.indexOf('installLegacySettingsHydrationDiagnostics(page, baseURL)')).toBeLessThan(shared.indexOf('await runTestBody(control)'))
+    expect(shared).toContain('{ auto: true }')
+    expect(shared).toContain('throw error')
+    expect(shared).toContain('await diagnostics.finish(testInfo, originalFailure')
     for (const gate of ['status-github-a-1', 'AliceInitialGitHub', 'ROTATED_TOKEN_A', 'status-github-a-2', 'AliceRotatedGitHub', 'legacy-github-a', 'AliceLegacyGitHub', 'GitHub account connected successfully!', "tokenVersion: 'rotated-a'"]) expect(target).toContain(gate)
     expect(fixture).toContain('expect(fixture.pageErrors).toEqual([])')
     const helper = readFileSync(new URL('../../e2e/helpers/legacy-settings-hydration-diagnostics.ts', import.meta.url), 'utf8')
@@ -88,7 +107,8 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   it('verifies parsed source and owned resolution, captures structural data, then resumes/removes/detaches', async () => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    expect(test.cdp.send.mock.calls.slice(0, 3)).toEqual([
+    expect(test.cdp.send.mock.calls.slice(0, 4)).toEqual([
+      ['Page.getFrameTree'],
       ['Debugger.enable', { maxScriptsCacheSize: 173025 }],
       ['Debugger.setPauseOnExceptions', { state: 'none' }],
       ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35055 }],
@@ -514,4 +534,239 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(test.attachments[0]).not.toContain('SECRET')
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it('shares one automatic primary-page observer across all cases in both test families', () => {
+    const settings = readFileSync(new URL('../../e2e/settings-legacy-callback-owner-isolation.spec.ts', import.meta.url), 'utf8')
+    const onboarding = readFileSync(new URL('../../e2e/onboarding-owner-isolation.spec.ts', import.meta.url), 'utf8')
+    for (const fixture of [settings, onboarding]) {
+      expect(fixture).toContain("import { test } from './helpers/owner-isolation-hydration-fixture'")
+      expect(fixture).not.toContain('installLegacySettingsHydrationDiagnostics')
+      expect(fixture).not.toContain('diagnostics.finish')
+      expect(fixture).not.toContain('HYDRATION_DIAGNOSTICS')
+    }
+    expect(settings.match(/ownerIsolationHydration.requireDocuments\(2\)/g)).toHaveLength(1)
+    expect(onboarding.match(/ownerIsolationHydration.requireDocuments\(2\)/g)).toHaveLength(1)
+    expect(settings.match(/ownerIsolationHydration.expectSyntheticOpenerOnly\(\)/g)).toHaveLength(7)
+    expect(onboarding).not.toContain('expectSyntheticOpenerOnly')
+    const guard = onboarding.slice(onboarding.indexOf("test('fixture rejects external lookalikes"))
+    expect(guard).toContain("await page.goto('/workspace'")
+    expect(guard).toContain('expect(state.pageErrors).toEqual([])')
+  })
+
+  it('counts successful owned main-frame HTML documents, never SPA/subframe/API/redirect traffic', () => {
+    const test = fake()
+    expect(mainDocumentKind(test.page, htmlResponse(test.page), BASE)).toBe('app')
+    expect(mainDocumentKind(test.page, htmlResponse(test.page, new URL('/settings?github=connected', BASE).href), BASE)).toBe('app')
+    expect(mainDocumentKind(test.page, htmlResponse(test.page, new URL('/__legacy-callback-test-opener?callback=zotero', BASE).href), BASE)).toBe('synthetic-opener')
+    for (const response of [
+      htmlResponse(test.page, new URL('/api/auth/get-session', BASE).href),
+      htmlResponse(test.page, new URL('/settings', 'http://localhost:5184').href),
+      htmlResponse(test.page, undefined, { frame: {} }),
+      htmlResponse(test.page, undefined, { navigation: false }),
+      htmlResponse(test.page, undefined, { resourceType: 'fetch' }),
+      htmlResponse(test.page, undefined, { status: 302 }),
+      htmlResponse(test.page, undefined, { status: 500 }),
+      htmlResponse(test.page, undefined, { contentType: 'application/json' }),
+    ]) expect(mainDocumentKind(test.page, response, BASE)).toBeNull()
+  })
+
+  it('installs before the shared test body and verifies one primary document on teardown', async () => {
+    const test = fake()
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.setBreakpointByUrl', expect.any(Object))
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp)
+    })
+    expect(report(test)).toMatchObject({ expected_main_documents: 1, successful_main_app_documents: 1, verified_documents: 1, failures: [] })
+    expect(test.cdp.detach).toHaveBeenCalledOnce()
+    expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
+  })
+
+  it.each([undefined, 'development'])('leaves development behavior unchanged without production proof: %s', async mode => {
+    vi.stubEnv('PLAYWRIGHT_SERVER_MODE', mode)
+    const test = fake()
+    const body = vi.fn(async (control: { requireDocuments: (minimum: 1 | 2) => void; expectSyntheticOpenerOnly: () => void }) => {
+      control.requireDocuments(2)
+      control.expectSyntheticOpenerOnly()
+    })
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, body)
+    expect(body).toHaveBeenCalledOnce()
+    expect(test.connect).not.toHaveBeenCalled()
+    expect(test.cdp.send).not.toHaveBeenCalled()
+    expect(test.attach).not.toHaveBeenCalled()
+    expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
+  })
+
+  it('never bypasses a missing production observer after a successful app navigation', async () => {
+    const test = fake()
+    test.connect.mockRejectedValue(new Error('SECRET-production-CDP'))
+    await expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {
+      respond(test.page, htmlResponse(test.page))
+    })).rejects.toThrow('could not be verified')
+    expect(report(test).observation_status).toBe('unavailable')
+    expect(report(test).failures).toContain('diagnostic-install-unavailable')
+    expect(test.attachments[0]).not.toContain('SECRET')
+  })
+
+  it('requires two distinct default-main-frame contexts for the two-document cases', async () => {
+    const test = fake()
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async control => {
+      control.requireDocuments(2)
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp)
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp, 'script-2')
+    })
+    expect(report(test)).toMatchObject({ expected_main_documents: 2, successful_main_app_documents: 2, verified_documents: 2 })
+  })
+
+  it('does not turn a duplicate parse in one context into two verified documents', async () => {
+    vi.useFakeTimers()
+    const test = fake()
+    const running = expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async control => {
+      control.requireDocuments(2)
+      respond(test.page, htmlResponse(test.page))
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp)
+      parsed(test.cdp, 'duplicate-in-same-context')
+    })).rejects.toThrow('could not be verified')
+    await vi.advanceTimersByTimeAsync(2001)
+    await running
+    expect(report(test).verified_scripts).toBe(2)
+    expect(report(test).verified_documents).toBe(1)
+    expect(report(test).observation_status).toBe('unavailable')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cannot substitute iframe or isolated-world React parses for a missing main document', async () => {
+    vi.useFakeTimers()
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
+    parsed(test.cdp)
+    for (const [scriptId, context] of [
+      ['iframe-script', { frameId: 'child-frame', isDefault: true }],
+      ['isolated-script', { frameId: 'main-frame', isDefault: false, type: 'isolated' }],
+      ['contradictory-world', { frameId: 'main-frame', isDefault: false, type: 'default' }],
+    ] as const) {
+      test.cdp.emit('Debugger.scriptParsed', { scriptId, url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, executionContextId: 2, executionContextAuxData: context })
+      test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35061 } })
+    }
+    const verifying = expect(diagnostics.verifyReady(2)).rejects.toThrow('could not be verified')
+    await vi.advanceTimersByTimeAsync(2001)
+    await verifying
+    await diagnostics.finish(test.info, true)
+    expect(report(test).verified_documents).toBe(1)
+    expect(test.cdp.send.mock.calls.filter(([method]) => method === 'Debugger.getScriptSource')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('rejects missing app document responses despite a verified React script', async () => {
+    const test = fake()
+    await expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => { parsed(test.cdp) })).rejects.toThrow('Required main app documents')
+    expect(report(test).failures).toContain('main-document-observation-unavailable')
+    expect(report(test).observation_status).toBe('unavailable')
+  })
+
+  it('reports explicit synthetic-opener-only scope without hydration or popup evidence', async () => {
+    const test = fake()
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async control => {
+      control.expectSyntheticOpenerOnly()
+      respond(test.page, htmlResponse(test.page, new URL('/__legacy-callback-test-opener?callback=zotero', BASE).href))
+    })
+    expect(report(test)).toMatchObject({ expected_main_documents: 0, successful_main_app_documents: 0, verified_documents: 0, failures: [], captures: [], observation_status: 'outside-scope-synthetic-opener-only' })
+    expect(report(test).scope).toContain('popup hydration capture outside scope')
+  })
+
+  it('never uses synthetic-opener scope to excuse app navigation or an absent opener', async () => {
+    for (const appNavigation of [false, true]) {
+      const test = fake()
+      await expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async control => {
+        control.expectSyntheticOpenerOnly()
+        if (appNavigation) {
+          respond(test.page, htmlResponse(test.page))
+          parsed(test.cdp)
+        }
+      })).rejects.toThrow('Synthetic-opener-only hydration scope')
+      expect(report(test).failures).toContain('main-document-observation-unavailable')
+      expect(report(test).observation_status).toBe('unavailable')
+    }
+  })
+
+  it('preserves original shared-fixture assertion errors when cleanup/attachment also fail', async () => {
+    const test = fake()
+    const original = new Error('original shared-fixture assertion')
+    test.cdp.handlers.set('Debugger.removeBreakpoint', async () => { throw new Error('SECRET-cleanup') })
+    test.attach.mockRejectedValue(new Error('SECRET-attachment'))
+    await expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => { throw original })).rejects.toBe(original)
+    expect(test.cdp.detach).toHaveBeenCalledOnce()
+    expect(test.attach).toHaveBeenCalledOnce()
+  })
+
+  it('honors Playwright failed status even if use() resolves during fixture teardown', async () => {
+    const test = fake()
+    test.info.status = 'failed'
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {})
+    expect(report(test).observation_status).toBe('unavailable')
+    expect(test.cdp.detach).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('reports failed two-document cases unavailable with only one verified generation (explicit: %s)', async explicit => {
+    const test = fake()
+    test.info.status = 'failed'
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async control => {
+      if (explicit) control.requireDocuments(2)
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp)
+      await flush()
+      respond(test.page, htmlResponse(test.page))
+    })
+    expect(report(test)).toMatchObject({ expected_main_documents: 2, successful_main_app_documents: 2, verified_documents: 1, observation_status: 'unavailable' })
+    expect(report(test).failures).toContain('diagnostic-proof-unavailable')
+    expect(test.cdp.detach).toHaveBeenCalledOnce()
+  })
+
+  it('classifies exact $~ structurally, redacts arbitrary comments, and captures identity flags', async () => {
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
+    parsed(test.cdp)
+    pause(test.cdp)
+    await flush()
+    const expression = test.cdp.send.mock.calls.find(([method]) => method === 'Debugger.evaluateOnCallFrame')?.[1]?.expression as string
+    const evaluate = new Function('e', 'rN', 'rP', `return ${expression}`)
+    const fiber = { type: 'main', tag: 5, pendingProps: { id: 'main-content' }, alternate: { private: 'SECRET-alternate' }, return: null }
+    const result = evaluate(fiber, { nodeType: 8, nodeName: '#comment', nodeValue: '$~' }, fiber)
+    expect(result.candidate.boundaryCommentKind).toBe('suspense-streaming')
+    expect(result.hydrationParentIsExpected).toBe(true)
+    expect(result.alternatePresent).toBe(true)
+    expect(result.fibers[0].tag).toBe(5)
+    const different = evaluate({ ...fiber, alternate: null }, { nodeType: 8, nodeName: '#comment', nodeValue: '$~SECRET-comment' }, fiber)
+    expect(different.candidate.boundaryCommentKind).toBe('other-comment')
+    expect(different.hydrationParentIsExpected).toBe(false)
+    expect(different.alternatePresent).toBe(false)
+    expect(JSON.stringify([result, different])).not.toContain('SECRET')
+    test.cdp.handlers.set('Debugger.evaluateOnCallFrame', async () => ({ result: { value: { ...result, rawComment: 'SECRET-comment' } } }))
+    pause(test.cdp)
+    await flush()
+    await diagnostics.finish(test.info, true)
+    expect(report(test).captures[1]).toMatchObject({ candidate: { boundaryCommentKind: 'suspense-streaming' }, hydrationParentIsExpected: true, alternatePresent: true })
+    expect(test.attachments[0]).not.toContain('SECRET')
+  })
+
+  it.each([undefined, null, 0, 1, 'true', 'SECRET-identity'])('rejects non-boolean identity flags: %s', async value => {
+    for (const field of ['hydrationParentIsExpected', 'alternatePresent']) {
+      const test = fake()
+      test.cdp.handlers.set('Debugger.evaluateOnCallFrame', async () => ({ result: { value: { ...validCapture(), [field]: value } } }))
+      const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
+      parsed(test.cdp)
+      pause(test.cdp)
+      await flush()
+      await diagnostics.finish(test.info, true)
+      expect(report(test).captures).toEqual([])
+      expect(report(test).failures).toContain('structural-result-unavailable')
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+      expect(test.attachments[0]).not.toContain('SECRET')
+    }
+  })
+
 })
