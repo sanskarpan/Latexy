@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { installLegacySettingsHydrationDiagnostics } from './helpers/legacy-settings-hydration-diagnostics'
 
 const SESSION = {
   a: {
@@ -747,26 +748,37 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('same-owner GitHub legacy callback succeeds after the session token rotates', async ({ page, context }) => {
+  test('same-owner GitHub legacy callback succeeds after the session token rotates', async ({ page, context }, testInfo) => {
     const fixture = await installFixture(context, page, 'github', { legacyACallNumber: 4 })
-    await page.goto('/settings', { waitUntil: 'domcontentloaded' })
-    await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-1')
-    await expect(page.getByText('AliceInitialGitHub', { exact: true })).toBeVisible()
+    // The ordinary required run is unchanged. Only a separate failure-only CI
+    // replay opts into structural diagnostics; never treat it as acceptance.
+    const diagnostics = process.env.LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS === '1'
+      ? await installLegacySettingsHydrationDiagnostics(page) : null
+    try {
+      await page.goto('/settings', { waitUntil: 'domcontentloaded' })
+      if (diagnostics) await diagnostics.verifyHookLoaded(1)
+      await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-1')
+      await expect(page.getByText('AliceInitialGitHub', { exact: true })).toBeVisible()
 
-    await refreshSession(page, fixture, 'a', ROTATED_TOKEN_A)
-    await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-2')
-    await expect(page.getByText('AliceRotatedGitHub', { exact: true })).toBeVisible()
+      await refreshSession(page, fixture, 'a', ROTATED_TOKEN_A)
+      await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-2')
+      await expect(page.getByText('AliceRotatedGitHub', { exact: true })).toBeVisible()
 
-    await page.goto('/settings?github=connected', { waitUntil: 'domcontentloaded' })
-    await expect.poll(() => bodyReads(page, fixture)).toContain('legacy-github-a')
-    await expect(page.getByText('AliceLegacyGitHub', { exact: true })).toBeVisible()
-    await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toBeVisible()
-    expect(fixture.providerRequests.find(({ call }) => call === 4)).toMatchObject({
-      provider: 'github',
-      owner: 'a',
-      tokenVersion: 'rotated-a',
-    })
-    await assertFixtureClean(fixture)
+      if (diagnostics) await diagnostics.checkpoint()
+      await page.goto('/settings?github=connected', { waitUntil: 'domcontentloaded' })
+      if (diagnostics) await diagnostics.verifyHookLoaded(2)
+      await expect.poll(() => bodyReads(page, fixture)).toContain('legacy-github-a')
+      await expect(page.getByText('AliceLegacyGitHub', { exact: true })).toBeVisible()
+      await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toBeVisible()
+      expect(fixture.providerRequests.find(({ call }) => call === 4)).toMatchObject({
+        provider: 'github',
+        owner: 'a',
+        tokenVersion: 'rotated-a',
+      })
+      await assertFixtureClean(fixture)
+    } finally {
+      if (diagnostics) await diagnostics.attach(testInfo)
+    }
   })
 
   test('already-dispatched GitHub legacy verification survives same-owner token rotation without replay', async ({ page, context }) => {

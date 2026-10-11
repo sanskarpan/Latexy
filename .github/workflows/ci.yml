@@ -444,6 +444,7 @@ jobs:
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality
       - name: Verify guided builder, compile cadence and source-PDF synchronization
+        id: editor-owner-regressions
         env:
           PLAYWRIGHT_PORT: "5183"
           PLAYWRIGHT_SERVER_MODE: production
@@ -461,6 +462,28 @@ jobs:
           e2e/settings-legacy-callback-owner-isolation.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
+      - name: Diagnose the failed Settings hydration callback
+        if: ${{ failure() && steps.editor-owner-regressions.outcome == 'failure' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/trace.zip') != '' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/error-context.md') != '' }}
+        timeout-minutes: 15
+        env:
+          LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS: "1"
+          PLAYWRIGHT_PORT: "5184"
+          PLAYWRIGHT_SERVER_MODE: production
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results/settings-hydration-diagnostic/results.xml
+        # Failure-only evidence, never acceptance or a retry of the required
+        # matrix. Keep the original failed outcome and artifacts untouched.
+        run: |
+          set -euo pipefail
+          original="test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/error-context.md"
+          if ! grep -Fq 'Minified React error #418' "$original"; then
+            echo "Original failure was not React #418; no hydration diagnostic replay."
+            exit 0
+          fi
+          pnpm exec playwright test e2e/settings-legacy-callback-owner-isolation.spec.ts \
+            --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,junit \
+            --grep 'same-owner GitHub legacy callback succeeds after the session token rotates$' \
+            --output=test-results/settings-hydration-diagnostic
+          python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/settings-hydration-diagnostic/results.xml').getroot().iter('testcase')); failed=len(cases)!=1 or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Diagnostic replay was empty, skipped or failed' if failed else 0)"
       - name: Verify Better Auth hydration snapshot contract
         env:
           # The baseline expected-error mode is a local diagnostic only; CI runs
@@ -480,6 +503,7 @@ jobs:
             frontend/test-results/quality
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
+            frontend/test-results/settings-hydration-diagnostic
           if-no-files-found: warn
           retention-days: 14
 

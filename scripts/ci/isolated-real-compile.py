@@ -10,13 +10,18 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import ipaddress
 import json
 import os
+import re
+import select
 import shutil
 import signal
 import socket
+import socketserver
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -31,6 +36,152 @@ SERVICE_IMAGES = {
 }
 MINIO_SOURCE_COMMIT = "9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a"
 MINIO_MODULE_VERSION = "v0.0.0-20251015172955-9e49d5e7a648"
+CONTAINER_STATE_FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
+    '"run":{{json (index .Config.Labels "latexy.ci.run")}},'
+    '"status":{{json .State.Status}},"running":{{json .State.Running}},'
+    '"exit_code":{{json .State.ExitCode}},"oom_killed":{{json .State.OOMKilled}},'
+    '"error":{{json .State.Error}},"networks":{{json .NetworkSettings.Networks}},'
+    '"ports":{{json .NetworkSettings.Ports}}}')
+
+
+def owned_internal_address(container: dict, network: dict, *, name: str, network_name: str, run_id: str) -> str:
+    """Accept only the running exact-owned endpoint in its private bridge."""
+    try:
+        ports = container['ports']
+        if ports is not None and not isinstance(ports, dict):
+            raise ValueError('port metadata')
+        if (container['name'] != '/' + name or container['run'] != run_id
+                or container['running'] is not True or container['status'] != 'running'
+                or network['Name'] != network_name or network['Driver'] != 'bridge'
+                or network['Scope'] != 'local' or network['Internal'] is not True
+                or network['Labels'].get('latexy.ci.run') != run_id
+                or set(container['networks']) != {network_name}
+                or any((ports or {}).values())
+                or network.get('Options', {}).get('com.docker.network.bridge.gateway_mode_ipv4') == 'isolated'):
+            raise ValueError('endpoint identity')
+        endpoint = container['networks'][network_name]
+        member = network['Containers'][container['id']]
+        address = ipaddress.IPv4Address(endpoint['IPAddress'])
+        interface = ipaddress.IPv4Interface(member['IPv4Address'])
+        subnets = [ipaddress.ip_network(config['Subnet']) for config in network['IPAM']['Config']]
+        if (endpoint['NetworkID'] != network['Id'] or member['Name'] != name
+                or endpoint['EndpointID'] != member['EndpointID'] or address != interface.ip
+                or interface.network not in subnets or not interface.network.is_private
+                or not address.is_private or address.is_loopback or address.is_link_local
+                or address.is_multicast or address.is_reserved or address.is_unspecified
+                or address in (interface.network.network_address, interface.network.broadcast_address)
+                or any(str(address) == config.get('Gateway') for config in network['IPAM']['Config'])):
+            raise ValueError('endpoint address')
+        return str(address)
+    except (KeyError, TypeError, ValueError, AttributeError) as error:
+        raise RuntimeError('Relay target was not an exact-owned running private endpoint') from error
+
+
+def relay_streams(client: socket.socket, upstream: socket.socket, stop: threading.Event, deadline: float) -> None:
+    """Forward opaque bytes in both directions, retaining TCP half-close."""
+    peers = {client: upstream, upstream: client}
+    for connection in peers:
+        connection.settimeout(5)
+    while peers and not stop.is_set() and time.monotonic() < deadline:
+        ready, _, _ = select.select(list(peers), [], [], 0.25)
+        for connection in ready:
+            target = peers[connection]
+            data = connection.recv(64 * 1024)
+            if data:
+                target.sendall(data)
+            else:
+                target.shutdown(socket.SHUT_WR)
+                del peers[connection]
+
+
+class FixedTargetRelay(socketserver.ThreadingTCPServer):
+    """One owned ephemeral loopback socket, never a configurable proxy."""
+    daemon_threads = True
+    block_on_close = False
+    request_queue_size = 64
+
+    def __init__(self, address: str, port: int, deadline: float):
+        ip = ipaddress.IPv4Address(address)
+        if (not ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+                or ip.is_reserved or ip.is_unspecified or port not in (8030, 5432)):
+            raise RuntimeError('Invalid fixed private relay target')
+        self.target = (str(ip), port)
+        self.deadline = deadline
+        self.stop_event = threading.Event()
+        self.connections: set[socket.socket] = set()
+        self.lock = threading.Lock()
+        self.workers_done = threading.Condition(self.lock)
+        self.workers: set[threading.Thread] = set()
+        self.slots = threading.BoundedSemaphore(64)
+        relay = self
+
+        class Handler(socketserver.BaseRequestHandler):
+            def handle(self):
+                if not relay.slots.acquire(blocking=False):
+                    return
+                upstream = None
+                with relay.lock:
+                    relay.workers.add(threading.current_thread())
+                    relay.connections.add(self.request)
+                try:
+                    if relay.stop_event.is_set() or time.monotonic() >= relay.deadline:
+                        return
+                    upstream = socket.create_connection(relay.target, timeout=5)
+                    with relay.lock:
+                        if relay.stop_event.is_set():
+                            return
+                        relay.connections.update((self.request, upstream))
+                    relay_streams(self.request, upstream, relay.stop_event, relay.deadline)
+                except (OSError, ValueError):
+                    # Readiness/protocol clients surface failures; no byte logs.
+                    pass
+                finally:
+                    with relay.lock:
+                        relay.connections.discard(self.request)
+                        relay.connections.discard(upstream)
+                        if upstream is not None:
+                            try:
+                                upstream.close()
+                            except OSError:
+                                pass
+                        relay.workers.discard(threading.current_thread())
+                        relay.workers_done.notify_all()
+                    relay.slots.release()
+
+        super().__init__(('127.0.0.1', 0), Handler)
+        self.thread = threading.Thread(target=self.serve_forever, kwargs={'poll_interval': 0.1}, daemon=True)
+        try:
+            self.thread.start()
+        except RuntimeError:
+            self.server_close()
+            raise
+
+    def close(self) -> None:
+        self.stop_event.set()
+        with self.lock:
+            for connection in self.connections:
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    connection.close()
+                except OSError:
+                    pass
+        self.shutdown()
+        self.server_close()
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            raise RuntimeError('Owned loopback relay did not stop')
+        # A connection in create_connection has a five-second timeout and sees
+        # stop_event before forwarding. Wait only for these owned handlers.
+        deadline = time.monotonic() + 6
+        with self.workers_done:
+            while self.workers:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError('Owned relay connection did not stop')
+                self.workers_done.wait(timeout=remaining)
 
 
 def clean_environment(home: Path) -> dict[str, str]:
@@ -149,6 +300,7 @@ class Harness:
         self.frontend_log = None
         self.app_environment: dict[str, str] = {}
         self.frontend_reservation = None
+        self.relays: list[FixedTargetRelay] = []
         self.provenance: dict[str, str] = {}
         self.deadline = time.monotonic() + 45 * 60
         self.cleaning = False
@@ -166,8 +318,20 @@ class Harness:
                                 stdout=subprocess.PIPE if capture else None,
                                 stderr=subprocess.PIPE if capture else None, text=True, check=False)
         if result.returncode:
-            raise RuntimeError(f"Owned CI command failed ({arguments[0]}; exit {result.returncode})")
+            detail = ': ' + self.sanitize_diagnostic(result.stderr, limit=2048) if capture and result.stderr else ''
+            raise RuntimeError(f"Owned CI command failed ({arguments[0]}; exit {result.returncode})" + detail)
         return result.stdout.strip() if capture else None
+
+    def sanitize_diagnostic(self, value: str, *, limit: int = 8192) -> str:
+        for key, secret in self.app_environment.items():
+            if secret and any(marker in key for marker in ('SECRET', 'PASSWORD', 'ACCESS_KEY', 'ENCRYPTION')):
+                value = value.replace(secret, '[redacted]')
+        value = re.sub(r'(?i)([a-z][a-z0-9+.-]*://)[^\s/@]+@', r'\1[redacted]@', value)
+        value = re.sub(r'(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]+=*', r'\1[redacted]', value)
+        value = re.sub(r'(?i)(\b(?:authorization|cookie|password|token|secret|api[_-]?key)\b\s*[:=]\s*)[^\s,;]+',
+                       r'\1[redacted]', value)
+        value = re.sub(r'(https?://[^\s?#]+)[?#][^\s]*', r'\1?[redacted]', value)
+        return value[-limit:]
 
     def docker(self, *arguments: str, timeout: float = 60, capture: bool = False):
         return self.command(["docker", *arguments], timeout=timeout, capture=capture)
@@ -183,11 +347,59 @@ class Harness:
                     "--network", self.network, "--network-alias", role, *options, image, *command)
         return name
 
-    def published_port(self, name: str, port: int) -> int:
-        value = self.docker("port", name, f"{port}/tcp", capture=True)
-        if not value.startswith("127.0.0.1:") or "\n" in value:
-            raise RuntimeError("Owned service was not published exclusively on loopback")
-        return int(value.rsplit(":", 1)[1])
+    def relay_port(self, name: str, port: int) -> int:
+        # Docker omits --publish for internal-only networks. The Linux host can
+        # reach their bridge IP directly (Docker's documented internal mode).
+        # Keep backend egress blocked; relay only these two exact-owned targets.
+        if name not in self.names or (name, port) not in (
+                (self.prefix + '-api', 8030), (self.prefix + '-postgres', 5432)):
+            raise RuntimeError('Relay target is not a registered API/Postgres fixture')
+        container = json.loads(self.docker('inspect', '--format', CONTAINER_STATE_FORMAT, name,
+                                           timeout=10, capture=True))
+        network = json.loads(self.docker('network', 'inspect', '--format', '{{json .}}', self.network,
+                                         timeout=10, capture=True))
+        address = owned_internal_address(container, network, name=name, network_name=self.network, run_id=self.run_id)
+        relay = FixedTargetRelay(address, port, self.deadline)
+        self.relays.append(relay)
+        return relay.server_address[1]
+
+    def collect_failure_diagnostics(self) -> None:
+        """Bounded filtered inspect/tail of our containers before removal."""
+        deadline = time.monotonic() + 45
+        entries = []
+        for name in self.names:
+            if name not in {self.prefix + '-' + role for role in ('api', 'worker', 'postgres', 'redis', 'storage')}:
+                continue
+            entry = {'name': name}
+            entries.append(entry)
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    entry['diagnostic_error'] = 'diagnostic deadline'
+                    break
+                result = subprocess.run(['docker', 'inspect', '--format', CONTAINER_STATE_FORMAT, name],
+                    env=self.environment, cwd=self.root, timeout=min(5, remaining),
+                    capture_output=True, text=True, check=False)
+                if result.returncode:
+                    entry['diagnostic_error'] = self.sanitize_diagnostic(result.stderr, limit=1024)
+                    continue
+                state = json.loads(result.stdout)
+                if state.get('name') != '/' + name or state.get('run') != self.run_id:
+                    entry['diagnostic_error'] = 'container ownership did not match; logs refused'
+                    continue
+                entry['state'] = {key: state[key] for key in ('id', 'name', 'run', 'status', 'running',
+                                                           'exit_code', 'oom_killed', 'networks', 'ports')}
+                entry['state']['error'] = self.sanitize_diagnostic(str(state.get('error', '')), limit=1024)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    entry['diagnostic_error'] = 'diagnostic deadline'
+                    break
+                logs = subprocess.run(['docker', 'logs', '--tail', '60', name], env=self.environment,
+                    cwd=self.root, timeout=min(5, remaining), capture_output=True, text=True, check=False)
+                entry['startup_tail'] = self.sanitize_diagnostic(logs.stdout + logs.stderr)
+            except (OSError, subprocess.TimeoutExpired, ValueError, KeyError) as error:
+                entry['diagnostic_error'] = type(error).__name__
+        (self.evidence / 'owned-container-diagnostics.json').write_text(json.dumps(entries, indent=2) + '\n')
 
     def app_options(self) -> list[str]:
         options = ["--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "512",
@@ -247,12 +459,14 @@ class Harness:
         self.network_created = True
         self.docker("network", "create", "--internal", "--label", "latexy.ci.run=" + self.run_id, self.network)
         postgres = self.start("postgres", SERVICE_IMAGES["postgres"],
-            ["--publish", "127.0.0.1::5432", "--env", "POSTGRES_USER=postgres",
+            ["--env", "POSTGRES_USER=postgres",
              "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "--env", "POSTGRES_DB=latexy_ci_test",
              "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,size=512m"], [])
         redis = self.start("redis", SERVICE_IMAGES["redis"], [], ["redis-server", "--save", "", "--appendonly", "no"])
         access = "ci-" + uuid.uuid4().hex
         secret = uuid.uuid4().hex + uuid.uuid4().hex
+        # Redact even an early storage-start failure, before full app setup.
+        self.app_environment.update(MINIO_ACCESS_KEY=access, MINIO_SECRET_KEY=secret)
         storage = self.start("storage", self.storage_image,
             ["--env", "MINIO_ROOT_USER=" + access, "--env", "MINIO_ROOT_PASSWORD=" + secret,
              "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256",
@@ -321,11 +535,11 @@ print('Fresh private artifact bucket ready')
         self.qa(["python", "scripts/certify_resume_templates.py", "--samples", "1", "--timeout", "40",
                  "--fixture", "ats_safe/ats_clean.tex", "--fixture", "ats_safe/hindi_professional.tex",
                  "--output", "/evidence/required-template-certification.json"], timeout=180)
-        api = self.start("api", self.image, [*self.app_options(), "--publish", "127.0.0.1::8030"], [])
+        api = self.start("api", self.image, self.app_options(), [])
         worker = self.start("worker", self.image, self.app_options(),
             ["celery", "-A", "app.core.celery_app", "worker", "--queues", "latex", "--concurrency", "1",
              "--loglevel", "WARNING", "--without-gossip", "--without-mingle", "--hostname", "isolated@%h"])
-        api_origin = "http://127.0.0.1:" + str(self.published_port(api, 8030))
+        api_origin = "http://127.0.0.1:" + str(self.relay_port(api, 8030))
         def healthy():
             try:
                 with urlopen(api_origin + "/health", timeout=5) as response:
@@ -337,7 +551,7 @@ print('Fresh private artifact bucket ready')
         for fixture in ("minimal", "hindi"):
             self.docker("exec", api, "python", "scripts/ci/local-job-smoke.py", "--base-url", "http://127.0.0.1:8030",
                         "--fixture", fixture, "--verify-isolated-storage", "--output", f"/evidence/real-job-{fixture}.json", timeout=180)
-        postgres_origin = f"postgresql://postgres@127.0.0.1:{self.published_port(postgres, 5432)}/latexy_ci_test"
+        postgres_origin = f"postgresql://postgres@127.0.0.1:{self.relay_port(postgres, 5432)}/latexy_ci_test"
         self.environment.update({
             "REAL_PREVIEW_BASE_URL": frontend_origin, "REAL_PREVIEW_API_URL": api_origin,
             "CI_ISOLATED_EVIDENCE_DIR": str(self.evidence), "PLAYWRIGHT_PORT": str(frontend_port),
@@ -386,6 +600,11 @@ print('Fresh private artifact bucket ready')
                 failures.append("frontend")
         if self.frontend_log:
             self.frontend_log.close()
+        for relay in reversed(self.relays):
+            try:
+                relay.close()
+            except (RuntimeError, OSError):
+                failures.append('loopback-relay')
         for name in reversed(self.names):
             try:
                 self.docker("rm", "--force", "--volumes", name, timeout=30, capture=True)
@@ -436,6 +655,12 @@ def main() -> None:
             harness.browser(api, frontend)
             passed = True
         finally:
+            if not passed:
+                try:
+                    harness.collect_failure_diagnostics()
+                except (OSError, RuntimeError, ValueError, TypeError):
+                    # Diagnostics cannot prevent exact-owned cleanup.
+                    harness.provenance['diagnostics_error'] = 'diagnostic collection failed'
             failures = harness.cleanup()
             (evidence / "isolated-run.json").write_text(json.dumps({
                 "scope": "candidate Linux real runtime functional proof; excludes Modal certification and timing SLO",

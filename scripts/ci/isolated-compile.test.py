@@ -1,12 +1,16 @@
 """Dependency-free harness guards. No services, TeX, browser, or probes run."""
 import argparse
 import ast
+import copy
 import importlib.util
 import inspect
 import json
 import os
+import socket
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -75,6 +79,214 @@ class HarnessGuards(unittest.TestCase):
             harness.wait_until_ready(lambda: True, lambda: False, 1)
         harness.wait_until_ready(lambda: True, lambda: True, 1)
 
+    def test_internal_endpoint_requires_exact_ownership_network_and_private_address(self):
+        container = {'id': 'owned-container', 'name': '/owned-api', 'run': 'run', 'running': True,
+            'status': 'running', 'ports': {'8030/tcp': None}, 'networks': {'owned-network': {
+                'NetworkID': 'network-id', 'EndpointID': 'endpoint-id', 'IPAddress': '172.18.0.2'}}}
+        network = {'Id': 'network-id', 'Name': 'owned-network', 'Driver': 'bridge', 'Scope': 'local',
+            'Internal': True, 'Labels': {'latexy.ci.run': 'run'}, 'IPAM': {'Config': [
+                {'Subnet': '172.18.0.0/16', 'Gateway': '172.18.0.1'}]}, 'Containers': {'owned-container': {
+                    'Name': 'owned-api', 'EndpointID': 'endpoint-id', 'IPv4Address': '172.18.0.2/16'}}}
+        def validate(c=container, n=network):
+            return harness.owned_internal_address(c, n, name='owned-api', network_name='owned-network', run_id='run')
+        self.assertEqual(validate(), '172.18.0.2')
+        # Docker can serialize no host bindings as either null or an empty map.
+        self.assertEqual(validate({**container, 'ports': None}), '172.18.0.2')
+        self.assertEqual(validate({**container, 'ports': {}}), '172.18.0.2')
+        for updates in ({'run': 'other'}, {'name': '/other'}, {'running': False}, {'status': 'exited'},
+                        {'ports': {'8030/tcp': [{'HostIp': '0.0.0.0', 'HostPort': '8030'}]}},
+                        {'networks': {**container['networks'], 'egress': {}}}, {'id': 'other-container'},
+                        {'ports': []}, {'ports': 'not-a-map'}):
+            with self.assertRaises(RuntimeError):
+                validate({**container, **updates})
+        for updates in ({'Internal': False}, {'Name': 'other'}, {'Driver': 'host'}, {'Scope': 'swarm'},
+                        {'Labels': {}}, {'Id': 'other-network'}, {'Containers': {}},
+                        {'Options': {'com.docker.network.bridge.gateway_mode_ipv4': 'isolated'}},
+                        {'IPAM': {'Config': [{'Subnet': '10.0.0.0/8'}]}}):
+            with self.assertRaises(RuntimeError):
+                validate(n={**network, **updates})
+        for address in ('127.0.0.1', '169.254.1.2', '0.0.0.0', '224.0.0.1', '8.8.8.8',
+                        '172.18.0.0', '172.18.255.255', '172.18.0.1'):
+            bad = copy.deepcopy(container)
+            bad['networks']['owned-network']['IPAddress'] = address
+            with self.assertRaises(RuntimeError):
+                validate(bad)
+
+    def test_relay_forwards_opaque_duplex_bytes_and_half_close_using_only_socketpairs(self):
+        client, client_side = socket.socketpair()
+        upstream_side, upstream = socket.socketpair()
+        sockets = (client, client_side, upstream_side, upstream)
+        for connection in sockets:
+            connection.settimeout(2)
+        stop = threading.Event()
+        errors = []
+        def forward():
+            try:
+                harness.relay_streams(client_side, upstream_side, stop, time.monotonic() + 3)
+            except (OSError, ValueError, KeyError) as error:
+                errors.append(error)
+        thread = threading.Thread(target=forward, daemon=True)
+        thread.start()
+        try:
+            request = b'GET /api/ws HTTP/1.1\r\nUpgrade: websocket\r\n\r\n\x00\xff\x80'
+            client.sendall(request)
+            self.assertEqual(upstream.recv(4096), request)
+            response = b'HTTP/1.1 101 Switching Protocols\r\n\r\n\x82\x00\xff'
+            upstream.sendall(response)
+            self.assertEqual(client.recv(4096), response)
+            client.shutdown(socket.SHUT_WR)
+            self.assertEqual(upstream.recv(1), b'')
+            # A response after one-direction EOF must still reach the client.
+            upstream.sendall(b'final\x00bytes')
+            self.assertEqual(client.recv(4096), b'final\x00bytes')
+            upstream.shutdown(socket.SHUT_WR)
+            self.assertEqual(client.recv(1), b'')
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+        finally:
+            stop.set()
+            for connection in sockets:
+                connection.close()
+            thread.join(timeout=2)
+
+    def test_relay_constructor_has_no_generic_external_destination_or_listener_reuse(self):
+        for address, port in (('8.8.8.8', 8030), ('127.0.0.1', 8030), ('169.254.1.2', 5432),
+                              ('172.18.0.2', 80), ('172.18.0.2', 9000)):
+            with self.assertRaises(RuntimeError):
+                harness.FixedTargetRelay(address, port, time.monotonic() + 1)
+        self.assertFalse(harness.FixedTargetRelay.allow_reuse_address)
+        self.assertIn("super().__init__(('127.0.0.1', 0), Handler)", inspect.getsource(harness.FixedTargetRelay.__init__))
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertNotIn('--publish', prepare)
+        self.assertIn('"--internal"', prepare)
+        self.assertNotIn('published_port', prepare)
+
+    def test_relay_streams_stop_at_deadline_or_owned_stop_signal(self):
+        client, upstream = MagicMock(), MagicMock()
+        stop = threading.Event()
+        with patch.object(harness.select, 'select') as select:
+            harness.relay_streams(client, upstream, stop, time.monotonic() - 1)
+            select.assert_not_called()
+            stop.set()
+            harness.relay_streams(client, upstream, stop, time.monotonic() + 10)
+            select.assert_not_called()
+
+    def test_relay_close_closes_owned_active_sockets_even_after_shutdown_error(self):
+        relay = object.__new__(harness.FixedTargetRelay)
+        relay.stop_event = threading.Event()
+        relay.lock = threading.Lock()
+        relay.workers_done = threading.Condition(relay.lock)
+        relay.workers = set()
+        connection = MagicMock()
+        connection.shutdown.side_effect = OSError('already shut down')
+        relay.connections = {connection}
+        relay.shutdown = MagicMock()
+        relay.server_close = MagicMock()
+        relay.thread = MagicMock()
+        relay.thread.is_alive.return_value = False
+        relay.close()
+        self.assertTrue(relay.stop_event.is_set())
+        connection.close.assert_called_once()
+        relay.shutdown.assert_called_once()
+        relay.server_close.assert_called_once()
+        relay.thread.join.assert_called_once_with(timeout=5)
+
+    def test_relay_creation_refuses_unknown_resources_before_any_inspection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
+            instance.names = [instance.prefix + '-api', instance.prefix + '-storage']
+            instance.docker = MagicMock()
+            for name, port in (('other-api', 8030), (instance.prefix + '-storage', 9000),
+                               (instance.prefix + '-api', 5432)):
+                with self.assertRaises(RuntimeError):
+                    instance.relay_port(name, port)
+            instance.docker.assert_not_called()
+
+    def test_relay_creation_inspects_only_own_target_and_registers_exact_bound_socket(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
+            name = instance.prefix + '-api'
+            instance.names = [name]
+            instance.docker = MagicMock(side_effect=['{}', '{}'])
+            relay = MagicMock(server_address=('127.0.0.1', 12345))
+            with (patch.object(harness, 'owned_internal_address', return_value='172.18.0.2') as validate,
+                  patch.object(harness, 'FixedTargetRelay', return_value=relay) as create):
+                self.assertEqual(instance.relay_port(name, 8030), 12345)
+            validate.assert_called_once_with({}, {}, name=name, network_name=instance.network, run_id=instance.run_id)
+            create.assert_called_once_with('172.18.0.2', 8030, instance.deadline)
+            self.assertEqual(instance.relays, [relay])
+            self.assertEqual(instance.docker.call_args_list[0].args,
+                             ('inspect', '--format', harness.CONTAINER_STATE_FORMAT, name))
+            self.assertEqual(instance.docker.call_args_list[1].args,
+                             ('network', 'inspect', '--format', '{{json .}}', instance.network))
+
+    def test_sanitized_diagnostics_keep_errors_without_fixture_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
+            instance.app_environment = {'MINIO_SECRET_KEY': 'synthetic-secret', 'MINIO_ACCESS_KEY': 'synthetic-user',
+                'JWT_SECRET_KEY': 'synthetic-jwt', 'API_KEY_ENCRYPTION_KEY': 'synthetic-fernet'}
+            value = ('failure synthetic-secret synthetic-user synthetic-jwt synthetic-fernet '
+                'postgresql://fixture:pass@postgres/db Authorization: Bearer token123 '
+                'http://api/path?token=querysecret')
+            sanitized = instance.sanitize_diagnostic(value)
+            for secret in ('synthetic-secret', 'synthetic-user', 'synthetic-jwt', 'synthetic-fernet',
+                           'fixture:pass', 'token123', 'querysecret'):
+                self.assertNotIn(secret, sanitized)
+            self.assertIn('failure', sanitized)
+            self.assertEqual(instance.sanitize_diagnostic('12345678', limit=3), '678')
+            self.assertNotIn('.Config.Env', harness.CONTAINER_STATE_FORMAT)
+
+    def test_failure_diagnostics_run_before_cleanup_refuse_unowned_and_remain_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.names = [instance.prefix + '-api', 'unrelated-container']
+            result = subprocess.CompletedProcess([], 0, json.dumps({'name': '/' + instance.names[0], 'run': 'other'}), '')
+            with patch.object(harness.subprocess, 'run', return_value=result) as run:
+                instance.collect_failure_diagnostics()
+            run.assert_called_once()
+            self.assertLessEqual(run.call_args.kwargs['timeout'], 5)
+            self.assertEqual(run.call_args.args[0][-1], instance.names[0])
+            evidence = json.loads((work / 'owned-container-diagnostics.json').read_text())
+            self.assertEqual(len(evidence), 1)
+            self.assertIn('logs refused', evidence[0]['diagnostic_error'])
+        main = inspect.getsource(harness.main)
+        self.assertLess(main.index('harness.collect_failure_diagnostics()'), main.index('harness.cleanup()'))
+
+    def test_failure_diagnostics_capture_only_filtered_own_state_and_redacted_startup_tail(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            name = instance.prefix + '-api'
+            instance.names = [name]
+            instance.app_environment = {'JWT_SECRET_KEY': 'synthetic-secret'}
+            state = {'id': 'fixture', 'name': '/' + name, 'run': instance.run_id, 'status': 'exited',
+                'running': False, 'exit_code': 1, 'oom_killed': False, 'networks': {}, 'ports': {},
+                'error': 'failure synthetic-secret'}
+            results = [subprocess.CompletedProcess([], 0, json.dumps(state), ''),
+                       subprocess.CompletedProcess([], 0, 'Startup failure synthetic-secret', '')]
+            with patch.object(harness.subprocess, 'run', side_effect=results) as run:
+                instance.collect_failure_diagnostics()
+            self.assertEqual(run.call_args_list[1].args[0], ['docker', 'logs', '--tail', '60', name])
+            evidence = (work / 'owned-container-diagnostics.json').read_text()
+            self.assertNotIn('synthetic-secret', evidence)
+            self.assertIn('Startup failure', evidence)
+            self.assertEqual(json.loads(evidence)[0]['state']['exit_code'], 1)
+
+    def test_cleanup_closes_owned_relays_and_keeps_removing_containers_after_relay_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
+            instance.names = [instance.prefix + '-api']
+            good, failed = MagicMock(), MagicMock()
+            failed.close.side_effect = RuntimeError('synthetic')
+            instance.relays = [good, failed]
+            instance.docker = MagicMock()
+            self.assertEqual(instance.cleanup(), ['loopback-relay'])
+            good.close.assert_called_once()
+            failed.close.assert_called_once()
+            instance.docker.assert_called_once_with('rm', '--force', '--volumes', instance.names[0], timeout=30, capture=True)
+
     def test_cleanup_targets_only_registered_owned_resources(self):
         with tempfile.TemporaryDirectory() as temporary:
             instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
@@ -125,6 +337,8 @@ class HarnessGuards(unittest.TestCase):
         self.assertNotIn('storage', harness.SERVICE_IMAGES)
         prepare = inspect.getsource(harness.Harness.prepare)
         self.assertLess(prepare.index('self.prepare_storage_image()'), prepare.index('self.image_attempted = True'))
+        self.assertLess(prepare.index('self.app_environment.update(MINIO_ACCESS_KEY=access, MINIO_SECRET_KEY=secret)'),
+                        prepare.index('storage = self.start('))
 
     def test_owned_storage_build_context_and_provenance_have_no_application_data(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -106,7 +106,49 @@ produces an owned, non-root fixture image before the expensive candidate image
 build; the evidence records its recipe, source and actual image identity.
 No private registry login or third-party prebuilt image is substituted. The
 overall 45-minute harness deadline, private network, fresh data and exact-owned
-cleanup remain enforced. This recipe still requires actual CI execution.
+cleanup remain enforced.
+
+The [second CI execution, 38112962998](https://github.com/sanskarpan/Latexy/actions/runs/38112962998),
+on head `58f205bf`, built both images and passed private bucket creation,
+migrations, **all 11 real-ledger cases with zero failures/errors/skips**, and
+both actual LuaLaTeX template fixtures with zero glyph/font warnings. The
+downloaded [artifact 11691799799](https://github.com/sanskarpan/Latexy/actions/runs/38112962998/artifacts/11691799799)
+matches SHA-256 `6d4f4de4cbde09ddb0f91fad089c177b3c0ca00d7cedafd35a9b37da2368854b`.
+It records actual merge-ref checkout `27fa4dea500209a6b860d5d045b76d2ddda568a8`,
+candidate image `sha256:c3a5a474e9dfd8bc4ceb00663e59d1bf69139737e723bdb68251343122c0cdd4`,
+renderer assets `92acced6b3d7da59623032c79d0ccdefc9d1a3da860523868a2197f8b0cf85e7`,
+and successful cleanup. The English and Hindi direct two-pass fixture totals
+were **1.783 seconds** and **2.985 seconds** respectively; two samples do not
+establish percentile or application latency acceptance.
+
+That run stopped before real API/worker submissions or browser execution because
+Docker does not publish requested host ports for containers attached exclusively
+to an internal bridge. The fixture must preserve its internal network rather than
+give backend services an external route. Docker documents host access to the
+internal bridge's container addresses in its
+[port-publishing guide](https://docs.docker.com/engine/network/port-publishing/).
+The correction uses ephemeral loopback-only TCP relays to the exact inspected,
+run-owned API and PostgreSQL endpoints. It forwards the real protocol bytes,
+retains backend egress isolation, adds no external network or host configuration,
+and closes its own listeners/connections during cleanup. Bounded redacted
+own-container diagnostics are retained on failure. **31** dependency-free guards
+pass with warnings treated as errors, including duplex/half-close, target
+ownership, deadlines and cleanup. The corrected host access path still requires
+actual CI verification.
+
+The second run's separate ordinary browser gate also retained one intermittent
+React hydration error in the existing Settings token-rotation case. All owner
+and callback checks completed; the trace places the error during the second
+navigation, before its callback/status requests. No application/frontend runtime
+code changed between the preceding passing run and this failure, and the exact
+hydration cause is not yet established. A bounded failure-only replay of this
+single synthetic case collects structural diagnostics if the same error recurs.
+It preserves the original failed gate, zero-page-error and owner assertions,
+zero retries and original artifacts. Instrumented replay output is diagnostic
+evidence, never a replacement for the ordinary unmodified-bundle acceptance run.
+The correction passes **97** deployment-manifest contracts; the optional
+diagnostic has **six** focused unit regressions for its pinned hook, ordinary-case
+opt-in, bounded capture, delivery ordering, timeout and origin restrictions.
 
 The new `test_converter_failure_ledger_integration.py` passed **11 cases, no
 skips, in 3.89 seconds** with warnings treated as errors against disposable

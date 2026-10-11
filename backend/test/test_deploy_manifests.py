@@ -441,6 +441,9 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert "--workers=1" in step["run"]
     assert "--output=test-results/editor-compile-sync" in step["run"]
     assert "if" not in step  # Normal success chaining: no softened failure gate.
+    assert step["id"] == "editor-owner-regressions"
+    assert step.get("continue-on-error", "false") == "false"
+    assert "LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS" not in step["env"]
     hydration = next(
         step for step in job["steps"]
         if step.get("name") == "Verify Better Auth hydration snapshot contract"
@@ -457,6 +460,44 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert artifact["if"] == "${{ !cancelled() }}"
     assert "frontend/test-results/editor-compile-sync" in artifact["with"]["path"]
     assert "frontend/test-results/hydration-session-store" in artifact["with"]["path"]
+
+
+def test_settings_hydration_diagnostic_is_failure_only_and_preserves_original_browser_gate():
+    workflow = yaml.load(_read(".github/workflows/ci.yml"), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["cross-browser-quality"]["steps"]
+    original = next(step for step in steps if step.get("id") == "editor-owner-regressions")
+    diagnostic = next(step for step in steps if step.get("name") == "Diagnose the failed Settings hydration callback")
+    assert steps.index(diagnostic) == steps.index(original) + 1
+    failure_path = ("frontend/test-results/editor-compile-sync/"
+                    "settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/")
+    assert diagnostic["if"] == (
+        "${{ failure() && steps.editor-owner-regressions.outcome == 'failure' && "
+        f"hashFiles('{failure_path}trace.zip') != '' && "
+        f"hashFiles('{failure_path}error-context.md') != '' " + "}}"
+    )
+    assert diagnostic["timeout-minutes"] == "15"
+    assert diagnostic.get("continue-on-error", "false") == "false"
+    assert diagnostic["env"] == {
+        "LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS": "1",
+        "PLAYWRIGHT_PORT": "5184",
+        "PLAYWRIGHT_SERVER_MODE": "production",
+        "PLAYWRIGHT_JUNIT_OUTPUT_FILE": "test-results/settings-hydration-diagnostic/results.xml",
+    }
+    command = diagnostic["run"]
+    assert "set -euo pipefail" in command
+    assert "grep -Fq 'Minified React error #418'" in command
+    assert 'original="' + failure_path.removeprefix("frontend/") + 'error-context.md"' in command
+    assert "playwright test e2e/settings-legacy-callback-owner-isolation.spec.ts" in command
+    assert "--grep 'same-owner GitHub legacy callback succeeds after the session token rotates$'" in command
+    assert "--project=chromium --workers=1 --retries=0 --trace=on --reporter=line,junit" in command
+    assert "--output=test-results/settings-hydration-diagnostic" in command
+    assert "failed=len(cases)!=1" in command
+    assert "('skipped','failure','error')" in command
+    assert "--repeat-each" not in command and "--update-snapshots" not in command and "|| true" not in command
+    assert "if" not in original and original.get("continue-on-error", "false") == "false"
+    artifact = next(step for step in steps if step.get("name") == "Upload browser quality evidence")
+    assert artifact["if"] == "${{ !cancelled() }}"
+    assert "frontend/test-results/settings-hydration-diagnostic" in artifact["with"]["path"]
 
 
 @pytest.mark.parametrize(
