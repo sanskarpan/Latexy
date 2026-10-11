@@ -82,7 +82,6 @@ export default function TryPage() {
   const studioAllowed = can('a09')
   const contentEditAllowed = can('c01')
   const compileAllowed = can('c05')
-  const syncAllowed = can('c10')
   const visualEditorAllowed = can('b10')
   const flags = useFeatureFlags()
   const [hydrated, setHydrated] = useState(false)
@@ -97,6 +96,7 @@ export default function TryPage() {
   const [preferredEditorMode, setEditorMode] = useState<'pdf' | 'source'>('pdf')
   const resolvedSession = hydrated ? session : null
   const studioActionAllowed = Boolean(resolvedSession || studioAllowed)
+  const syncAllowed = can('c10') && studioActionAllowed
   const visualModeAvailable = visualEditorAllowed && contentEditAllowed && studioActionAllowed
   const engineMode = engineEditorMode(preferredEditorMode, engineCapability.status, engineCapability.sourceFallback)
   // A denied visual capability exposes the preserved source immediately, while
@@ -1265,7 +1265,7 @@ export default function TryPage() {
           syncLine={syncFromLine}
           syncRequestId={syncFromRequestId}
           onSyncToPdf={syncAllowed ? (line) => {
-            if (!canRef.current('c10')) return
+            if (!canRef.current('c10') || (!resolvedSession && !canRef.current('a09'))) return
             setCursorLine(line)
             setSourceSyncLine(line)
             setSourceSyncRequestId((value) => value + 1)
@@ -1344,6 +1344,7 @@ export default function TryPage() {
           pdfUrl={pdfUrl}
           isLoading={isProcessing}
           onDownload={handleDownload}
+          syncEnabled={syncAllowed}
           jobId={syncAllowed ? renderedPdfJobId : undefined}
           latexContent={latexContent}
           onPdfSelectionChange={setPdfSelection}

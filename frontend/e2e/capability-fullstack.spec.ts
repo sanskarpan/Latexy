@@ -111,7 +111,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await guestPage.goto('/try')
     await expect(guestPage.locator('.monaco-editor').first()).toBeVisible({ timeout: 45_000 })
     await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toHaveCount(0)
-    await expect(guestPage.locator('button[aria-label="Auto-compile on change"]')).toHaveCount(0)
+    await expect(guestPage.getByRole('button', { name: 'Automatically update the PDF after edits', exact: true })).toHaveCount(0)
     await expect(guestPage.locator('[aria-label="Source and PDF synchronization"]')).toHaveCount(0)
     await expect(guestPage.getByText('ATS —', { exact: true })).toHaveCount(0)
     const guestDenied = await guestContext.request.post(`${backend}/jobs/submit`, {

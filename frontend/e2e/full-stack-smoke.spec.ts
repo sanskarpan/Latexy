@@ -47,5 +47,5 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   await expect(page.locator('.monaco-editor')).toHaveCount(0)
   await sourceMode.click()
   await page.waitForSelector('.monaco-editor', { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: /recompile/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
 })

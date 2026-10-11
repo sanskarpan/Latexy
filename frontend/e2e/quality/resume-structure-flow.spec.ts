@@ -109,7 +109,7 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
   try {
     await page.goto(`/workspace/${resumeId}/edit`)
-    await expect(page.getByText('Structured resume', { exact: true })).toBeVisible()
+    await expect(page.locator('header').getByText('Structured resume', { exact: true })).toBeVisible()
     expect(jobs.size).toBe(0)
   } finally {
     releaseEntitlements()

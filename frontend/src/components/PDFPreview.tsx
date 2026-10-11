@@ -38,6 +38,8 @@ interface PDFPreviewProps {
   onDownload?: () => void
   /** Job ID used to fetch synctex data for bidirectional sync */
   jobId?: string | null
+  /** Additional caller admission; cannot grant sync when C10 is denied. */
+  syncEnabled?: boolean
   /** Called when user Ctrl+clicks a position in the PDF → give back source line */
   onSyncToSource?: (line: number) => void
   /** Optional selected PDF coordinate for a divider/side-panel action. */
@@ -135,6 +137,7 @@ export default function PDFPreview({
   isLoading,
   onDownload,
   jobId,
+  syncEnabled = true,
   onSyncToSource,
   onPdfSelectionChange,
   onSyncReadyChange,
@@ -159,7 +162,7 @@ export default function PDFPreview({
   usePreloadPdfRenderer()
 
   const { can } = useEntitlements()
-  const syncAllowed = can('c10')
+  const syncAllowed = can('c10') && syncEnabled
   const inspectionAllowed = can('c11')
   const [numPages, setNumPages] = useState(0)
   const synctexJobId = artifactIdentity?.jobId ?? jobId
@@ -403,7 +406,7 @@ export default function PDFPreview({
     }
     setSyncHint(false)
     clearFlashOverlays()
-  }, [clearFlashOverlays, jobId, pdfUrl, sourceFileName])
+  }, [clearFlashOverlays, jobId, pdfUrl, sourceFileName, syncAllowed])
 
   // Fetch and parse synctex when jobId changes.
   useEffect(() => {

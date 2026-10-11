@@ -140,6 +140,14 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('saved initial preview entitlement readiness and admission', () => {
+  it('waits for the loaded header title rather than an unrelated structured-mode badge', () => {
+    const fixture = readFileSync(new URL('../../e2e/quality/resume-structure-flow.spec.ts', import.meta.url), 'utf8')
+    expect(fixture).toContain("page.locator('header').getByText('Structured resume', { exact: true })")
+    expect(fixture).not.toContain("page.getByText('Structured resume', { exact: true })")
+    expect(fixture).toContain('expect(jobs.size).toBe(0)')
+    expect(fixture).toContain('expect(jobs.size).toBe(1)')
+  })
+
   it('loads source before grants and admits exactly once, immediately after c05 resolves without c06', async () => {
     const h = harness()
     await h.load(); h.effect()
