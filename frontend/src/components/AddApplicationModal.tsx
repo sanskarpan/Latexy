@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type CreateApplicationRequest, type JobApplication, type ResumeResponse } from '@/lib/api-client'
@@ -35,6 +36,7 @@ export default function AddApplicationModal({
   prefillResumeTitle,
   prefillCapture,
 }: AddApplicationModalProps) {
+  const { can } = useEntitlements()
   const [companyName, setCompanyName] = useState(prefillCapture?.company ?? '')
   const [roleTitle, setRoleTitle] = useState(prefillCapture?.title ?? '')
   const [status, setStatus] = useState('applied')
@@ -118,6 +120,7 @@ export default function AddApplicationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!can('e05')) return
     if (!companyName.trim() || !roleTitle.trim()) return
 
     setIsSubmitting(true)
@@ -171,6 +174,7 @@ export default function AddApplicationModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="min-h-0 space-y-4 overflow-y-auto p-5">
+          {!can('e05') && <p className="text-xs text-fg-3">Adding applications is unavailable for your current plan or feature settings.</p>}
           {prefillCapture && (
             <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft px-3 py-2 text-xs leading-relaxed text-fg-2">
               Imported from the browser extension. Review every field before saving;
@@ -332,10 +336,11 @@ export default function AddApplicationModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !companyName.trim() || !roleTitle.trim()}
+              disabled={!can('e05') || (isSubmitting || !companyName.trim() || !roleTitle.trim())}
               className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:opacity-50"
-            >
+             aria-description={!can('e05') ? 'Unavailable for your current plan or feature settings' : undefined}>
               {isSubmitting ? 'Adding…' : 'Add Application'}
+              {!can('e05') && <span className="ml-1 text-[10px]">(Unavailable)</span>}
             </button>
           </div>
         </form>

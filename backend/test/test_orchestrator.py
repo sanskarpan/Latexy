@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.celery_app import celery_app
+from app.workers.latex_worker import CompilationPersistenceOutcome
 from app.workers.orchestrator import (
     _run_ats_stage,
     optimize_and_compile_task,
@@ -332,7 +333,13 @@ class TestOrchestratorFullPipeline:
                 return_value=False,
             )
 
+        # Popen/Path below do not produce real artifacts. Keep these stage
+        # orchestration tests explicit about that boundary rather than asking
+        # durable persistence to succeed with a nonexistent resume.pdf. Real
+        # storage/finalization failures are covered by their dedicated suites.
         with (
+            patch("app.workers.orchestrator.cache_compile_output", return_value=b"%PDF-unit-stage"),
+            patch("app.workers.orchestrator.reconcile_compilation_record", return_value=CompilationPersistenceOutcome.SUCCESS),
             patch("app.workers.orchestrator.openai.OpenAI") as mock_openai_cls,
             patch("app.workers.orchestrator.subprocess.Popen", return_value=mock_proc),
             patch("pathlib.Path.mkdir"),
@@ -484,6 +491,8 @@ class TestOrchestratorPageCount:
             patch("app.workers.orchestrator.openai.OpenAI") as mock_openai_cls,
             patch("app.workers.orchestrator.subprocess.Popen", return_value=mock_proc),
             patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("app.workers.orchestrator.cache_compile_output", return_value=b"%PDF-unit-page-count"),
+            patch("app.workers.orchestrator.reconcile_compilation_record", return_value=CompilationPersistenceOutcome.SUCCESS),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             patch("pathlib.Path.exists", return_value=True),

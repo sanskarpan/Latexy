@@ -9,10 +9,11 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..core.logging import get_logger
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature_optional
 from ..middleware.rate_limiting import client_ip_id
 from ..services.external_budget_service import enforce_external_budget

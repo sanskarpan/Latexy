@@ -18,12 +18,13 @@ const DEFAULT_STYLE = { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-l
 
 interface TemplateCardProps {
   template: TemplateResponse
-  onSelect: (id: string) => void
+  onSelect?: (id: string) => void
   onPreview: (id: string) => void
   disabled?: boolean
+  allowUse?: boolean
 }
 
-export default function TemplateCard({ template, onSelect, onPreview, disabled }: TemplateCardProps) {
+export default function TemplateCard({ template, onSelect, onPreview, disabled, allowUse = true }: TemplateCardProps) {
   const style = DEFAULT_STYLE
   const [imgFailed, setImgFailed] = useState(false)
 
@@ -88,13 +89,13 @@ export default function TemplateCard({ template, onSelect, onPreview, disabled }
         </span>
 
         {/* Use Template button */}
-        <button
+        {allowUse && onSelect && <button
           onClick={() => onSelect(template.id)}
           disabled={disabled}
           className="mt-auto w-full rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Use Template
-        </button>
+        </button>}
       </div>
     </div>
   )

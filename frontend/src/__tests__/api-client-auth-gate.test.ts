@@ -133,6 +133,19 @@ describe('ApiClient auth-ready gate', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test('binds checkpoint recovery to the captured owner context', async () => {
+    const fetchMock = mockFetch()
+    const client = await loadBrowserApiClient()
+    client.setAuthToken('checkpoint-owner-a')
+    const pending = client.restoreOptimization('resume-a', 'checkpoint-a', {
+      authToken: 'checkpoint-owner-a',
+      isCurrent: () => false,
+    })
+
+    await expect(pending).rejects.toThrow('Account request context changed before dispatch')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('falls through unauthenticated if the session never resolves', async () => {
     const fetchMock = mockFetch()
     const client = await loadBrowserApiClient()

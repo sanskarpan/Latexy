@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from scripts.dodo_billing_preflight import EXPECTED_HEAD
+
 MODAL_APP = Path(__file__).resolve().parents[1] / "modal_app.py"
 
 
@@ -50,7 +52,7 @@ def diagnostic_payload(*, production=True, status="ready", blockers=None, change
     environment.update(env_override or {})
     report, _ = configuration_report(*configuration_inputs(environment))
     report.update(status=status, blockers=blockers or [], database={
-        "status": "read_only_complete", "alembic_revisions": ["0068"],
+        "status": "read_only_complete", "alembic_revisions": [EXPECTED_HEAD],
         "schema_classification": "current_dodo_head", "counts": {
             "paid_pointer_users": 0, "historical_paid_pointer_users": 0, "historical_team_owners": 0,
             "active_seats_inheriting_historical_owners": 0, "historical_live_mandate_users": 0,
@@ -89,7 +91,7 @@ def test_preflight_wrapper_reports_context_without_deploy_or_mutation(monkeypatc
         "image_id": "im-synthetic",
         "image_role": "candidate_migration_preflight",
         "source_revision_reported": "a" * 40,
-        "expected_repository_head": "0068",
+        "expected_repository_head": EXPECTED_HEAD,
         "purpose": "report",
         "source_files_sha256": report["execution_context"]["source_files_sha256"],
     }

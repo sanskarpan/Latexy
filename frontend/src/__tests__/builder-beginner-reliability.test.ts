@@ -54,6 +54,7 @@ function saveHarness() {
     draftRef: { current: { title: 'My résumé', template_id: 'template-1', structured_content: { basics: { name: 'First' } } } },
     editRevision: { current: 1 }, savedVersionRef: { current: 1 }, savedBuilderRef: { current: null },
     savedLatexRef: { current: '' },
+    canRef: { current: () => true },
     resumeId: 'resume-1', apiClient: { updateBuilderResume },
     setSaving: vi.fn(), setTemplateFamily: vi.fn(), setBuilderStatus: vi.fn(),
     setDirty: vi.fn(), setSaveError: vi.fn(), setSaveConflict: vi.fn(),

@@ -33,6 +33,7 @@ import {
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useBuilderPdf } from '@/hooks/useBuilderPdf'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import {
   cloneStructuredResume,
   createBuilderId,
@@ -335,6 +336,10 @@ function BuilderResumeForm({
   session: BuilderSession
   authUnverified: boolean
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const contentEditAllowed = can('c01')
   const ownerId = session.user.id
   const { ensureCompatible, isCompatible, available } = useBuilderCapability()
 
@@ -471,6 +476,7 @@ function BuilderResumeForm({
   // All callers share one queue. A second edit waits for the prior write and
   // uses its returned version, preventing an older PATCH from arriving last.
   const flushSave = useCallback(async (): Promise<BuilderResumeResponse | null> => {
+    if (!canRef.current('c01') && dirtyRef.current) throw new Error('Editing résumé content is unavailable right now. Your saved source remains available.')
     if (saveFlightRef.current) return saveFlightRef.current
     const saveLatest = async () => {
       if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Please wait for your session to be verified.')
@@ -554,6 +560,7 @@ function BuilderResumeForm({
   }, [dirty])
 
   const mutateStructured = (mutator: (draft: StructuredResume) => void) => {
+    if (!canRef.current('c01')) return
     setStructured(prev => {
       const next = cloneStructuredResume(prev)
       mutator(next)
@@ -612,14 +619,15 @@ function BuilderResumeForm({
   }
 
   const forceReattach = async () => {
-    if (!isCurrentRequest()) return
+    const canReattachNow = () => canRef.current('c01') && canRef.current('b08')
+    if (!canReattachNow() || !isCurrentRequest()) return
     if (!window.confirm('Replace the advanced editor version with the details shown in this builder?')) return
     const revision = editRevision.current
     const requestId = ++saveRequestId.current
     setSaving(true)
     try {
       await ensureCompatible()
-      if (!isCurrentRequest()) return
+      if (!canReattachNow() || !isCurrentRequest()) return
       const updated = await apiClient.updateBuilderResume(resumeId, {
         title,
         template_id: selectedTemplateId,
@@ -628,7 +636,7 @@ function BuilderResumeForm({
         expected_structured_version: savedVersionRef.current,
         expected_latex_content: savedLatexRef.current,
       })
-      if (!isCurrentRequest() || requestId !== saveRequestId.current) return
+      if (!canReattachNow() || !isCurrentRequest() || requestId !== saveRequestId.current) return
       setTemplateFamily(updated.template_family)
       savedVersionRef.current = updated.resume.structured_version ?? savedVersionRef.current + 1
       savedBuilderRef.current = updated
@@ -700,9 +708,9 @@ function BuilderResumeForm({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating || loading || authUnverified || saveConflict || builderStatus === 'detached'} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">
+          {can('c05') && <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating || loading || authUnverified || saveConflict || builderStatus === 'detached'} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">
             {isGenerating ? 'Preparing PDF…' : 'Preview PDF'}
-          </button>
+          </button>}
           <ExportDropdown resumeId={resumeId} guidedBuilder disabled={!available} variant="toolbar" onPdfExport={downloadPdf} beforeExport={async format => {
             await flushSave()
             if (['svg', 'jpeg', 'email', 'google_drive'].includes(format)) await previewPdf()
@@ -726,7 +734,7 @@ function BuilderResumeForm({
 
       {pdfError && <section role="alert" className="rounded-[var(--radius-lg)] border border-err/30 bg-err/10 p-5">
         <p className="text-sm text-err">{pdfError}</p>
-        <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating} className="mt-3 text-sm font-semibold text-fg underline">Try PDF preview again</button>
+        {can('c05') && <button type="button" onClick={() => { void previewPdf().catch(() => {}) }} disabled={isGenerating} className="mt-3 text-sm font-semibold text-fg underline">Try PDF preview again</button>}
       </section>}
       {pdfUrl && <section aria-label="Final PDF preview" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -770,10 +778,10 @@ function BuilderResumeForm({
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+            {contentEditAllowed && can('b08') && <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
-            </button>
+            </button>}
           </div>
         </section>
       ) : null}
@@ -813,6 +821,9 @@ function BuilderResumeForm({
         </Card>
       </section>
 
+      {!contentEditAllowed && <section role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 text-sm text-fg-2">
+        Editing guided résumé fields is unavailable. Your saved résumé and PDF recovery remain available in the source editor.
+      </section>}
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[240px_minmax(0,1fr)_420px]">
         <aside className="space-y-4 xl:col-span-2 2xl:col-span-1">
           <Card className="2xl:sticky 2xl:top-24">
@@ -872,7 +883,7 @@ function BuilderResumeForm({
           </Card>
         </aside>
 
-        <div className="space-y-6">
+        {contentEditAllowed && <div className="space-y-6">
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             <div className="grid gap-4">
               <div className="grid gap-4">
@@ -884,6 +895,7 @@ function BuilderResumeForm({
                     value={title}
                     maxLength={255}
                     onChange={event => {
+                      if (!canRef.current('c01')) return
                       setTitle(event.target.value)
                       editRevision.current += 1
                       dirtyRef.current = true
@@ -897,7 +909,9 @@ function BuilderResumeForm({
                   <select
                     id="builder-template-select"
                     value={selectedTemplateId}
+                    disabled={!contentEditAllowed}
                     onChange={event => {
+                      if (!canRef.current('c01')) return
                       setSelectedTemplateId(event.target.value)
                       editRevision.current += 1
                       dirtyRef.current = true
@@ -1631,7 +1645,7 @@ function BuilderResumeForm({
               </button>
             </div>
           </section>
-        </div>
+        </div>}
 
         <div className="space-y-6">
           <BuilderPreview

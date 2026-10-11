@@ -16,7 +16,12 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('react', () => ({ default: mocks.react, ...mocks.react }))
+vi.mock('react', () => ({
+  default: mocks.react,
+  ...mocks.react,
+  createContext: (defaultValue: unknown) => ({ _defaultValue: defaultValue, Provider: 'Context.Provider' }),
+  useContext: (context: { _defaultValue: unknown }) => context._defaultValue,
+}))
 vi.mock('framer-motion', () => ({
   AnimatePresence: 'AnimatePresence',
   motion: { div: 'div' },
@@ -149,6 +154,7 @@ function createHarness(initialScope: Scope | undefined): Harness {
 }
 
 beforeAll(async () => {
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }));
   ({ useOnboarding } = await import('@/components/onboarding/OnboardingFlow'))
 })
 
@@ -166,6 +172,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.doUnmock('@/contexts/EntitlementsContext')
 })
 
 describe('useOnboarding runtime lifecycle', () => {

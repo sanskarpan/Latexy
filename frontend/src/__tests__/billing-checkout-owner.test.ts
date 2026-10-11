@@ -30,6 +30,8 @@ async function harness(billingEnabled = true, provider: 'dodo' | null = 'dodo') 
   const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() }
   vi.doMock('react', () => ({
     Suspense: 'Suspense', useMemo: (fn: () => unknown) => fn(), useCallback: (fn: unknown) => fn,
+    createContext: (defaultValue: unknown) => ({ _defaultValue: defaultValue, Provider: 'Context.Provider' }),
+    useContext: (context: { _defaultValue: unknown }) => context._defaultValue,
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
     useRef: (value: unknown) => { const i = index++; return refs[i] ??= { current: value } },
     useState: (value: unknown) => {
@@ -41,6 +43,13 @@ async function harness(billingEnabled = true, provider: 'dodo' | null = 'dodo') 
   vi.doMock('next/link', () => ({ default: 'Link' }))
   vi.doMock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams('checkout=return') }))
   vi.doMock('@/contexts/FeatureFlagsContext', () => ({ useFeatureFlags: () => ({ billing: billingEnabled }) }))
+  // These checkout-owner scenarios isolate request ownership and provider
+  // availability; current product grants are explicitly enabled in the fixture.
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({
+    can: () => true,
+    features: { i01: true, i02: true },
+    loaded: true,
+  }) }))
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: session, isPending: false, error: null }) }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: api }))
   vi.doMock('sonner', () => ({ toast }))
@@ -57,7 +66,7 @@ async function harness(billingEnabled = true, provider: 'dodo' | null = 'dodo') 
 }
 afterEach(() => {
   vi.unstubAllGlobals()
-  for (const name of ['react', 'react/jsx-runtime', 'next/link', 'next/navigation', '@/contexts/FeatureFlagsContext', '@/lib/auth-client', '@/lib/api-client', 'sonner', '@/components/billing/PricingCard', '@/components/billing/SubscriptionManager']) vi.doUnmock(name)
+  for (const name of ['react', 'react/jsx-runtime', 'next/link', 'next/navigation', '@/contexts/FeatureFlagsContext', '@/contexts/EntitlementsContext', '@/lib/auth-client', '@/lib/api-client', 'sonner', '@/components/billing/PricingCard', '@/components/billing/SubscriptionManager']) vi.doUnmock(name)
   vi.resetModules()
 })
 

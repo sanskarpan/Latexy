@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, ShieldCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/lib/auth-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
@@ -34,6 +35,10 @@ type TemplateUseRequest = {
 
 export default function TemplatesPage() {
   const router = useRouter()
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const canCreateNewDocument = can('b01') && can('c01')
   const { data: session, isPending: sessionPending, error: sessionError } = useSession()
   const lastKnownSessionRef = useRef<typeof session>(null)
   if (session) {
@@ -165,6 +170,7 @@ export default function TemplatesPage() {
   }, [])
 
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
+    if (!canRef.current('b01') || !canRef.current('c01')) return false
     if (sessionPending) return false
     if (usingTemplateId) {
       if (usingTemplateId !== id) toast('Another template is already being created')
@@ -198,7 +204,7 @@ export default function TemplatesPage() {
         locale = requested
       }
       const result = await apiClient.useTemplate(id, undefined, locale)
-      if (!isCurrentTemplateUseOwner(request) ||
+      if (!canRef.current('b01') || !canRef.current('c01') || !isCurrentTemplateUseOwner(request) ||
         (request.preview && (previewIdentityRef.current.templateId !== request.preview.templateId ||
           previewIdentityRef.current.generation !== request.preview.generation))) {
         return false
@@ -359,9 +365,10 @@ export default function TemplatesPage() {
                   <div key={template.id} className="relative">
                     <TemplateCard
                       template={template}
-                      onSelect={handleUseTemplate}
+                      onSelect={canCreateNewDocument ? handleUseTemplate : undefined}
                       onPreview={handlePreview}
                       disabled={usingTemplateId === template.id}
+                      allowUse={canCreateNewDocument}
                     />
                     {usingTemplateId === template.id && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius-lg)] bg-bg/80">
@@ -383,6 +390,7 @@ export default function TemplatesPage() {
         templateId={previewTemplateId}
         onUse={handleUseFromPreview}
         onClose={handleClosePreview}
+        allowUse={canCreateNewDocument}
       />
     </>
   )

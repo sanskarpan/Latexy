@@ -825,6 +825,8 @@ def billing_preflight(
     import re
     import subprocess
 
+    from scripts.dodo_billing_preflight import EXPECTED_HEAD, public_report, rollout_assessment
+
     def safe_identifier(value: str) -> str:
         return value if re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value) else "unavailable"
 
@@ -835,7 +837,7 @@ def billing_preflight(
         "image_id": safe_identifier(os.environ.get("MODAL_IMAGE_ID", "")),
         "image_role": "candidate_migration_preflight",
         "source_revision_reported": source_revision if re.fullmatch(r"[0-9a-f]{40}", source_revision) else "invalid",
-        "expected_repository_head": "0068",
+        "expected_repository_head": EXPECTED_HEAD,
         "purpose": "rollout" if purpose == "rollout" else "report" if purpose == "report" else "invalid",
     }
     if (
@@ -848,8 +850,6 @@ def billing_preflight(
         raise RuntimeError("Billing preflight refused mismatched execution context")
 
     try:
-        from scripts.dodo_billing_preflight import public_report, rollout_assessment
-
         fingerprint = hashlib.sha256()
         files = [Path("/backend/app/core/config.py"), Path("/backend/scripts/dodo_billing_preflight.py")]
         files.extend(sorted(Path("/backend/alembic/versions").glob("*.py")))

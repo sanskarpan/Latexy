@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import User, UserMacro
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.macro_scripting import MAX_OPERATIONS, MacroScriptError, execute_script, parse_script
 from ..utils.uuid_guard import ensure_uuid

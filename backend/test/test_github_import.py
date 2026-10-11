@@ -276,7 +276,7 @@ def test_submission_payload_contains_identifiers_not_credentials(monkeypatch):
 
     function_name, payload = spawn.call_args.args
     assert function_name == "run_github_import_task"
-    assert payload == {"job_id": "job-1", "user_id": "user-1"}
+    assert payload == {"job_id": "job-1", "user_id": "user-1", "allow_byok": True}
     assert "github_token" not in payload
     assert "api_key" not in payload
 
@@ -289,7 +289,7 @@ def test_celery_submission_payload_contains_no_credentials(monkeypatch):
         submit_github_import("job-2", "user-2", user_plan="free")
 
     payload = apply_async.call_args.kwargs["kwargs"]
-    assert payload == {"job_id": "job-2", "user_id": "user-2"}
+    assert payload == {"job_id": "job-2", "user_id": "user-2", "allow_byok": True}
     assert "github_token" not in payload
     assert "api_key" not in payload
 
@@ -406,12 +406,13 @@ class TestImportEndpoints:
 
         captured = {}
 
-        def _fake_submit(*, job_id, user_id, user_plan="free", quota_refund=None):
+        def _fake_submit(*, job_id, user_id, user_plan="free", quota_refund=None, allow_byok=True):
             captured.update(
                 job_id=job_id,
                 user_id=user_id,
                 user_plan=user_plan,
                 quota_refund=quota_refund,
+                allow_byok=allow_byok,
             )
             return job_id
 
@@ -421,7 +422,8 @@ class TestImportEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert "job_id" in body and body["job_id"]
-        assert set(captured) == {"job_id", "user_id", "user_plan", "quota_refund"}
+        assert set(captured) == {"job_id", "user_id", "user_plan", "quota_refund", "allow_byok"}
+        assert captured["allow_byok"] is True
         assert captured["job_id"] == body["job_id"]
         assert captured["quota_refund"]["dimension"] == "ai_assists"
         assert captured["quota_refund"]["user_id"] == user_id

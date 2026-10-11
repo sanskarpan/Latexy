@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { apiClient, type JobStateResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 type StatusFilter = 'all' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
@@ -11,6 +12,7 @@ type StatusFilter = 'all' | 'queued' | 'processing' | 'completed' | 'failed' | '
 const statusFilters: StatusFilter[] = ['all', 'queued', 'processing', 'completed', 'failed', 'cancelled']
 
 export default function WorkspaceHistoryPage() {
+  const { can } = useEntitlements()
   const { data: session, isPending: sessionLoading, error: sessionError } = useSession()
   const lastKnownSessionRef = useRef<typeof session>(null)
   if (session) {
@@ -97,9 +99,9 @@ export default function WorkspaceHistoryPage() {
           <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Workspace
           </Link>
-          <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110">
+          {can('b01') && can('c01') && <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110">
             New Resume
-          </Link>
+          </Link>}
         </div>
       </section>
 

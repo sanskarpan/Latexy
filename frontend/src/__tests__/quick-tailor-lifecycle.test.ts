@@ -59,6 +59,7 @@ async function loadHarness() {
   vi.resetModules()
   let activeInstance: InstanceState | null = null
   const streamStates = new Map<string, { status: string; error?: string }>()
+  const grantedFeatures = new Set(['d04', 'd01', 'd18', 'c05', 'b01', 'c01'])
   const quickTailorResume = vi.fn()
   const cancel = vi.fn()
   const reset = vi.fn()
@@ -77,6 +78,13 @@ async function loadHarness() {
 
   vi.doMock('react', () => ({
     useCallback: (callback: unknown) => callback,
+    useRef: (initial: unknown) => {
+      if (!activeInstance) throw new Error('ref read outside render')
+      const instance = activeInstance
+      const index = instance.hookIndex++
+      if (!(index in instance.states)) instance.states[index] = { current: initial }
+      return instance.states[index]
+    },
     useEffect: (effect: () => void | (() => void)) => {
       if (!activeInstance) throw new Error('effect registered outside render')
       activeInstance.pendingEffects.push(effect)
@@ -114,6 +122,9 @@ async function loadHarness() {
     }),
   }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: { quickTailorResume } }))
+  vi.doMock('@/contexts/EntitlementsContext', () => ({
+    useEntitlements: () => ({ can: (feature: string) => grantedFeatures.has(feature) }),
+  }))
 
   const QuickTailorModal = (await import('../components/QuickTailorModal')).default
 
@@ -151,7 +162,7 @@ async function loadHarness() {
     }
   }
 
-  return { createInstance, quickTailorResume, streamStates, cancel }
+  return { createInstance, quickTailorResume, streamStates, cancel, grantedFeatures }
 }
 
 afterEach(() => {
@@ -163,6 +174,7 @@ afterEach(() => {
     'next/navigation',
     '@/hooks/useJobStream',
     '@/lib/api-client',
+    '@/contexts/EntitlementsContext',
   ]) vi.doUnmock(moduleName)
   vi.resetModules()
 })
@@ -211,5 +223,45 @@ describe('Quick Tailor deferred lifecycle', () => {
     expect(onDoneA).not.toHaveBeenCalled()
     expect(onDoneB).not.toHaveBeenCalled()
     expect(harness.cancel).not.toHaveBeenCalled()
+  })
+
+  it('hides the new tailoring action when any required capability is off', async () => {
+    const harness = await loadHarness()
+    harness.grantedFeatures.delete('b01')
+    const instance = harness.createInstance({
+      resumeId: 'resume-a', resumeTitle: 'Resume A', onClose: vi.fn(),
+    })
+    const view = instance.render()
+    expect(findButton(view, 'Start Tailoring')).toBeNull()
+    expect(textContent(view)).toContain('one or more required features are turned off')
+  })
+
+  it('tracks already-admitted work if required access is revoked while submitting', async () => {
+    const harness = await loadHarness()
+    let resolveStart!: (value: { fork_id: string; job_id: string }) => void
+    harness.quickTailorResume.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveStart = resolve }),
+    )
+    const instance = harness.createInstance({
+      resumeId: 'resume-a', resumeTitle: 'Resume A', onClose: vi.fn(),
+    })
+    const initial = instance.render()
+    const description = findByProp(initial, 'placeholder', 'Paste the full job description here...')
+    expect(description).not.toBeNull()
+    ;(description!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'A long enough job description' } })
+    const submit = findButton(instance.render(), 'Start Tailoring')
+    expect(submit).not.toBeNull()
+    const submission = (submit!.props.onClick as () => Promise<void>)()
+    harness.grantedFeatures.delete('d18')
+    resolveStart({ fork_id: 'fork-a', job_id: 'job-a' })
+    await submission
+
+    const after = instance.render()
+    expect(textContent(after)).toContain('This typically takes 30–90 seconds')
+    harness.streamStates.set('job-a', { status: 'failed', error: 'Synthetic failure' })
+    instance.render()
+    instance.flushEffects()
+    expect(textContent(instance.render())).toContain('Synthetic failure')
+    expect(findButton(instance.render(), 'Try Again')).toBeNull()
   })
 })

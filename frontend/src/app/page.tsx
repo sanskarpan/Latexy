@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Check, FileText, Sparkles } from 'lucide-react'
 import ResumeStory from '@/components/marketing/ResumeStory'
+import CapabilityGate from '@/components/CapabilityGate'
 import { siteUrl } from '@/lib/site-url'
 import {
     MarketingCTA,
@@ -81,13 +82,13 @@ export default function LandingPage() {
                     </p>
                     <div className="mt-8 flex flex-wrap gap-3">
                         <MarketingCTA />
-                        <Link
+                        <CapabilityGate feature="b04"><Link
                             href="/templates"
                             className="inline-flex min-h-12 items-center gap-2 rounded-[var(--radius-md)] border border-line-2 px-5 font-semibold transition hover:border-accent hover:text-accent-strong"
                         >
                             Explore templates
                             <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                        </Link>
+                        </Link></CapabilityGate>
                     </div>
                     <p className="mt-4 text-sm text-fg-3">
                         Try without an account · No card needed · Limited guest usage

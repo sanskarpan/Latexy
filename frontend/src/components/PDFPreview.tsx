@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import { useState, useCallback, useRef, useEffect, useMemo, type MutableRefObject } from 'react'
 import dynamic from 'next/dynamic'
 import { AlertTriangle, FileText, Download, Share2, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun, Flame } from 'lucide-react'
@@ -136,6 +139,9 @@ export default function PDFPreview({
   offlineError,
   onRetryOffline,
 }: PDFPreviewProps) {
+  const { can } = useEntitlements()
+  const syncAllowed = can('c10')
+  const inspectionAllowed = can('c11')
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [currentPage, setCurrentPage] = useState(1)
@@ -143,17 +149,22 @@ export default function PDFPreview({
   const [synctexReady, setSynctexReady] = useState(false)
   const [syncHint, setSyncHint] = useState(false)
   const [containerWidth, setContainerWidth] = useState(0)
-  const [darkPdf, setDarkPdf] = useState(() => {
+  const [darkPdfPreference, setDarkPdf] = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('latexy_pdf_dark') === '1'
   })
-  const [showHeatmap, setShowHeatmap] = useState(false)
-  const [printPreview, setPrintPreview] = useState(() => {
+  const [showHeatmapPreference, setShowHeatmap] = useState(false)
+  const [printPreviewPreference, setPrintPreview] = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('latexy_print_preview') === '1'
   })
 
+  const darkPdf = inspectionAllowed && darkPdfPreference
+  const showHeatmap = inspectionAllowed && showHeatmapPreference
+  const printPreview = inspectionAllowed && printPreviewPreference
+
   const togglePrintPreview = () => {
+    if (!inspectionAllowed) return
     setPrintPreview((prev) => {
       const next = !prev
       localStorage.setItem('latexy_print_preview', next ? '1' : '0')
@@ -168,6 +179,7 @@ export default function PDFPreview({
   }, [printPreview, latexContent])
 
   const toggleDarkPdf = () => {
+    if (!inspectionAllowed) return
     setDarkPdf((prev) => {
       const next = !prev
       localStorage.setItem('latexy_pdf_dark', next ? '1' : '0')
@@ -367,7 +379,7 @@ export default function PDFPreview({
     setRenderError(false)
     synctexDataRef.current = null
     synctexTextRef.current = null
-    if (!jobId) {
+    if (!syncAllowed || !jobId) {
       guard.reset()
       return
     }
@@ -387,11 +399,11 @@ export default function PDFPreview({
       controller.abort()
       guard.invalidate(token)
     }
-  }, [jobId, pdfUrl, sourceFileName, parseCurrentSynctex])
+  }, [syncAllowed, jobId, pdfUrl, sourceFileName, parseCurrentSynctex])
 
   // Forward sync: source line → scroll PDF to the matching page
   useEffect(() => {
-    if (!syncFromLine || !synctexReady || !synctexDataRef.current) return
+    if (!syncAllowed || !syncFromLine || !synctexReady || !synctexDataRef.current) return
     const block = synctexForward(synctexDataRef.current, syncFromLine, sourceFileName)
     if (!block) return
 
@@ -413,7 +425,7 @@ export default function PDFPreview({
       width: Math.max(block.width * scaleX, 40),
       height: Math.max(block.height * scaleY, 8),
     })
-  }, [pageDimsVersion, sourceFileName, syncFromLine, syncFromRequestId, synctexReady])
+  }, [syncAllowed, pageDimsVersion, sourceFileName, syncFromLine, syncFromRequestId, synctexReady])
 
   function flashOverlay(
     pageEl: HTMLElement,
@@ -454,6 +466,7 @@ export default function PDFPreview({
   }
 
   const resolvePdfLocation = useCallback((e: React.MouseEvent<HTMLDivElement>, pageNumber: number) => {
+    if (!syncAllowed) return null
     const dims = pageDimsRef.current[pageNumber]
     if (!dims || !synctexDataRef.current) return null
     const rect = e.currentTarget.getBoundingClientRect()
@@ -465,7 +478,7 @@ export default function PDFPreview({
     const pdfY = dims.naturalHeight - (e.clientY - rect.top) / scaleY
     const result = synctexReverse(synctexDataRef.current, pageNumber, pdfX, pdfY, sourceFileName)
     return { pdfX, pdfY, result }
-  }, [sourceFileName])
+  }, [syncAllowed, sourceFileName])
 
   // A regular click only records the selected PDF location. It never scrolls
   // or navigates; Ctrl/Cmd-click retains the explicit source-jump action.
@@ -624,7 +637,7 @@ export default function PDFPreview({
 
         {/* Heatmap + Dark preview + Download */}
         <div className="flex items-center gap-0.5">
-          <button
+          <CapabilityGate feature="c11"><button
             onClick={() => setShowHeatmap((p) => !p)}
             title="Shows predicted areas recruiters focus on (based on eye-tracking research)"
             className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-surface-2 ${
@@ -632,8 +645,8 @@ export default function PDFPreview({
             }`}
           >
             <Flame size={12} /> Heatmap
-          </button>
-          <button
+          </button></CapabilityGate>
+          <CapabilityGate feature="c11"><button
             onClick={toggleDarkPdf}
             aria-label={darkPdf ? 'Light PDF preview' : 'Dark PDF preview'}
             title={darkPdf ? 'Switch to light preview' : 'Switch to dark preview'}
@@ -642,8 +655,8 @@ export default function PDFPreview({
             }`}
           >
             {darkPdf ? <Sun size={12} /> : <Moon size={12} />}
-          </button>
-          <button
+          </button></CapabilityGate>
+          <CapabilityGate feature="c11"><button
             onClick={togglePrintPreview}
             aria-label={printPreview ? 'Exit print preview' : 'B&W print preview'}
             title={printPreview ? 'Exit B&W print preview' : 'Preview as B&W printed page'}
@@ -653,7 +666,7 @@ export default function PDFPreview({
           >
             <Printer size={12} />
             {printPreview ? 'B&W' : 'Print'}
-          </button>
+          </button></CapabilityGate>
           {isOfflinePreview && (
             <span className="px-2 py-1 text-[10px] font-medium text-warn" aria-label="Offline saved PDF">Offline saved PDF</span>
           )}

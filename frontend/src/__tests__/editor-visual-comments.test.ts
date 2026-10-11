@@ -8,7 +8,7 @@ const ast = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true
 const expressions: Record<string, string> = {}
 let menuFilter = '', renderGuard = '', redirectEffect = ''
 function visit(node: ts.Node) {
-  if (ts.isVariableDeclaration(node) && ['visualPanels', 'visibleRightTab'].includes(node.name.getText(ast))) {
+  if (ts.isVariableDeclaration(node) && ['visualPanels', 'visibleRightTab', 'RIGHT_TAB_CAPABILITIES'].includes(node.name.getText(ast))) {
     expressions[node.name.getText(ast)] = node.initializer!.getText(ast)
   }
   if (ts.isCallExpression(node)) {
@@ -33,7 +33,7 @@ function evaluate(expression: string, context: Record<string, unknown>) {
 }
 
 describe('Comments remain reachable in persisted Visual mode', () => {
-  const context = () => ({ editorMode: 'wysiwyg', rightTab: 'comments', visibleRightTab: 'comments', visualPanels: evaluate(expressions.visualPanels, {}) })
+  const context = () => ({ editorMode: 'wysiwyg', rightTab: 'comments', visibleRightTab: 'comments', visualPanels: evaluate(expressions.visualPanels, {}), RIGHT_TAB_CAPABILITIES: evaluate(expressions.RIGHT_TAB_CAPABILITIES, {}) })
   it('preserves a comment deep link instead of redirecting to the PDF', () => {
     const values = context()
     expect(values.visualPanels).toContain('comments')

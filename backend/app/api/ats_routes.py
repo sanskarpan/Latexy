@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature, require_feature_optional
 from ..middleware.rate_limiting import client_ip_id
 from ..services.api_key_service import api_key_service
@@ -236,6 +237,11 @@ async def score_resume_ats(
             resolved_profile_key = "generic"
             async_profile_key = None
 
+        effective_industry = request.industry
+        if not await entitlement_service.has_feature("d19", user=user_id):
+            effective_industry = "generic"
+            resolved_profile_key = async_profile_key = "generic"
+
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
@@ -268,7 +274,7 @@ async def score_resume_ats(
                     latex_content=request.latex_content,
                     job_id=job_id,
                     job_description=request.job_description,
-                    industry=request.industry,
+                    industry=effective_industry,
                     industry_profile_key=async_profile_key,
                     locale_key=request.locale,
                     user_id=user_id,
@@ -315,7 +321,7 @@ async def score_resume_ats(
             result = await ats_scoring_service.score_resume(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
-                industry=request.industry,
+                industry=effective_industry,
                 industry_profile_key=resolved_profile_key,
                 locale_key=request.locale,
             )
@@ -909,6 +915,8 @@ async def deep_analyze_resume(
     if user_id:
         try:
             api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except HTTPException:
+            raise
         except Exception:
             pass  # Fall back to platform key
 

@@ -13,9 +13,25 @@ window.addEventListener('message', async (event) => {
   }
   if (message.type !== 'LXY_CAPTURE_REQUEST') return
 
+  let ownerId = null
+  let allowed = false
+  try {
+    const response = await fetch('/api/extension/entitlements', {
+      credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000),
+    })
+    const entitlement = response.ok ? await response.json() : null
+    ownerId = entitlement?.owner_id
+    allowed = entitlement?.available === true && entitlement?.capture_available === true && typeof ownerId === 'string' && Boolean(ownerId)
+  } catch { /* Availability failures deny new handoffs; acknowledgements still clear data. */ }
+  if (!allowed) {
+    window.postMessage({ source: 'latexy-extension', type: 'LXY_CAPTURE_RESPONSE', captureId: message.captureId,
+      capture: null, error: 'Job Companion is unavailable or your session could not be verified.' }, window.location.origin)
+    return
+  }
+
   const stored = (await chrome.storage.local.get(key))[key]
-  const valid = stored && Number(stored.expiresAt) > Date.now()
-  if (stored && !valid) await chrome.storage.local.remove(key)
+  const valid = stored && stored.ownerId === ownerId && Number(stored.expiresAt) > Date.now()
+  if (stored && Number(stored.expiresAt) <= Date.now()) await chrome.storage.local.remove(key)
   window.postMessage(
     {
       source: 'latexy-extension',

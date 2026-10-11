@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Compilation, DocumentEmailDelivery, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..middleware.rate_limiting import client_ip_id
 from ..services.document_delivery_service import (
@@ -263,7 +264,6 @@ async def email_compiled_document(
 
 @router.get(
     "/{resume_id}/email/status",
-    dependencies=[Depends(require_feature("exports"))],
 )
 async def email_compiled_document_status(
     resume_id: str,

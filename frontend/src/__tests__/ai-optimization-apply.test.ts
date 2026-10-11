@@ -54,8 +54,17 @@ describe('AI optimization apply boundaries', () => {
   it('still forwards the reviewed text from the Visual review modal', () => {
     const applyOptimizationCandidate = vi.fn(() => false)
     const handleApplyOptimization = applyCallback({ stagedAiLatex: 'staged resume text', applyOptimizationCandidate })
-    const onApply = evaluate(jsxProp('VisualChangeReviewModal', 'onApply'), { stagedAiLatex: 'staged resume text', handleApplyOptimization })
+    const onApply = evaluate(jsxProp('VisualChangeReviewModal', 'onApply'), { stagedAiLatex: 'staged resume text', canEditDocument: true, handleApplyOptimization })
     onApply('user-reviewed resume text')
     expect(applyOptimizationCandidate).toHaveBeenCalledExactlyOnceWith('user-reviewed resume text', false)
+  })
+
+  it('removes the Visual review apply action when editing is disabled', () => {
+    const handleApplyOptimization = vi.fn()
+    const onApply = evaluate(jsxProp('VisualChangeReviewModal', 'onApply'), {
+      stagedAiLatex: 'staged resume text', canEditDocument: false, handleApplyOptimization,
+    })
+    expect(onApply).toBeUndefined()
+    expect(handleApplyOptimization).not.toHaveBeenCalled()
   })
 })

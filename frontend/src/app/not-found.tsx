@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 
 /**
  * Themed 404 (redesign). Replaces Next's unstyled default. Renders inside the
@@ -31,12 +32,12 @@ export default function NotFound() {
         >
           Back home
         </Link>
-        <Link
+        <CapabilityGate feature="a09"><Link
           href="/try"
           className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
         >
           Open the studio
-        </Link>
+        </Link></CapabilityGate>
       </div>
     </div>
   )

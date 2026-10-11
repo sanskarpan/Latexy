@@ -1,6 +1,7 @@
 """Feature flag service — runtime control of platform restrictions.
 
-Two access modes:
+Product capabilities delegate to entitlement_service and bypass all caches.
+The following legacy access modes apply only to the six operational flags:
 - Async get_flag(key, db): DB-backed with 60s in-memory TTL cache. Used by FastAPI routes.
 - Sync sync_get_flag(key): reads Redis key latexy:feature_flags:{key} ("1"/"0").
   Used by Celery workers. Falls back to True if Redis unavailable or key absent.
@@ -17,6 +18,7 @@ from typing import Dict, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.feature_registry import feature_ancestry, get_feature
 from ..database.models import FeatureFlag
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ _cache: Dict[str, Tuple[bool, float]] = {}
 _CACHE_TTL = 60  # seconds
 
 REDIS_KEY_PREFIX = "latexy:feature_flags:"
+OPERATIONAL_FLAGS = frozenset({"trial_limits", "deep_analysis_trial", "compile_timeouts", "task_priority", "billing", "upgrade_ctas"})
 
 
 class FeatureFlagService:
@@ -35,6 +38,18 @@ class FeatureFlagService:
 
     async def get_flag(self, key: str, db: AsyncSession) -> bool:
         """Return whether the flag is enabled. Uses in-memory TTL cache."""
+        feature = get_feature(key)
+        if feature is not None:
+            if not feature.gateable:
+                return True
+            from .entitlement_service import entitlement_service
+            try:
+                blob = await entitlement_service._get_blob()
+                return all(blob["kill"].get(item.key) is True for item in feature_ancestry(key) if item.gateable)
+            except Exception:
+                return False
+        if key not in OPERATIONAL_FLAGS:
+            return False
         now = time.monotonic()
         cached = _cache.get(key)
         if cached and cached[1] > now:
@@ -63,6 +78,16 @@ class FeatureFlagService:
 
     async def update_flag(self, key: str, enabled: bool, db: AsyncSession) -> FeatureFlag:
         """Update a flag in DB, push to Redis, and clear in-memory cache."""
+        feature = get_feature(key)
+        if feature is not None:
+            if not feature.gateable:
+                raise KeyError(f"Always-on capability: {key!r}")
+            from .entitlement_service import entitlement_service
+            await entitlement_service.set_kill_switch(key, enabled, db)
+            result = await db.execute(select(FeatureFlag).where(FeatureFlag.key == key))
+            flag = result.scalar_one()
+            await db.refresh(flag)
+            return flag
         result = await db.execute(
             select(FeatureFlag).where(FeatureFlag.key == key)
         )
@@ -93,6 +118,18 @@ class FeatureFlagService:
         back to a fresh sync connection using settings.REDIS_URL so callers
         outside Celery workers (e.g. FastAPI route helpers) also get live values.
         """
+        feature = get_feature(key)
+        if feature is not None:
+            if not feature.gateable:
+                return True
+            from .entitlement_service import entitlement_service
+            try:
+                blob = entitlement_service._sync_get_blob()
+                return all(blob["kill"].get(item.key) is True for item in feature_ancestry(key) if item.gateable)
+            except Exception:
+                return False
+        if key not in OPERATIONAL_FLAGS:
+            return False
         redis_key = f"{REDIS_KEY_PREFIX}{key}"
 
         # 1. Worker-local client (Celery context)

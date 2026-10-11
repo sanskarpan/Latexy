@@ -24,6 +24,7 @@ function harness(beforeExport: (format: string) => Promise<void>, options: { gui
   const loading = vi.fn()
   const handle = runInNewContext(`${ts.transpileModule(handler, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}\nhandleExport`, {
     disabled: options.disabled ?? false, guidedBuilder: options.guidedBuilder ?? false,
+    canExport: () => true,
     isExporting: false, resumeId: 'owned', latexContent: undefined, visualOnly: false,
     beforeExport, onPdfExport: pdf, apiClient: api, Error,
     setIsOpen: vi.fn(), setLoading: loading, setExportError: errors, setDriveNeedsConnection: vi.fn(),

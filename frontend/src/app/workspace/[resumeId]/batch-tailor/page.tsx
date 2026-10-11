@@ -9,6 +9,7 @@ import {
   Plus, Trash2, XCircle, Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import {
   apiClient,
   type BatchJobItem,
@@ -73,6 +74,9 @@ export default function BatchTailorPage() {
   const params = useParams()
   const resumeId = params.resumeId as string
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
 
   const [rows, setRows] = useState<RowData[]>([emptyRow()])
   const [submitting, setSubmitting] = useState(false)
@@ -116,6 +120,7 @@ export default function BatchTailorPage() {
   // ---------------------------------------------------------------- //
 
   async function handleSubmit() {
+    if (!canRef.current('c05')) return
     const filled = rows.filter(r => r.company_name.trim() && r.role_title.trim() && r.job_description.trim())
     if (filled.length === 0) {
       toast.error('Fill in at least one complete job entry')
@@ -220,7 +225,7 @@ export default function BatchTailorPage() {
         </div>
 
         {/* Input form — shown before submission */}
-        {!batchId && (
+        {!batchId && can('c05') && (
           <div className="space-y-4">
             <AnimatePresence initial={false}>
               {rows.map((row, idx) => (
@@ -323,6 +328,7 @@ export default function BatchTailorPage() {
             </div>
           </div>
         )}
+        {!batchId && !can('c05') && <p className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-sm text-fg-3">New tailoring runs are unavailable. Existing résumé variants remain available in your library.</p>}
 
         {/* Progress board — shown after submission */}
         {batchId && batchStatus && (

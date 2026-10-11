@@ -8,13 +8,15 @@ import type { editor } from 'monaco-editor'
 import { toast } from 'sonner'
 import type { CheckpointEntry } from '@/lib/api-client'
 import { apiClient } from '@/lib/api-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useSession } from '@/lib/auth-client'
 
 interface DiffViewerModalProps {
   resumeId: string
   checkpointA: CheckpointEntry | null   // older (left)
   checkpointB: CheckpointEntry | null   // newer (right) — null = current resume
   currentLatex?: string                 // used when checkpointB is null
-  onRestore: (latex: string) => void
+  onRestore?: (latex: string) => void
   onClose: () => void
   // Parent-diff mode (variant comparison)
   parentLatex?: string
@@ -96,6 +98,11 @@ export default function DiffViewerModal({
   variantLatex,
   variantTitle,
 }: DiffViewerModalProps) {
+  const { data: session } = useSession()
+  const ownerId = session?.user?.id ?? null
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const isParentDiffMode = parentLatex !== undefined
   const [leftLatex, setLeftLatex] = useState<string | null>(null)
   const [rightLatex, setRightLatex] = useState<string | null>(null)
@@ -105,12 +112,50 @@ export default function DiffViewerModal({
   const [error, setError] = useState(false)
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  // confirmRestore holds the latex string to restore once user confirms
-  const [confirmRestore, setConfirmRestore] = useState<string | null>(null)
+  const [isRestoring, setIsRestoring] = useState(false)
+  // Keep the checkpoint identity so confirmation uses the trusted recovery
+  // endpoint; raw parent/variant comparisons remain ordinary c01-gated edits.
+  const [confirmRestore, setConfirmRestore] = useState<{ latex: string; checkpointId: string | null } | null>(null)
 
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const mountedRef = useRef(true)
+  const resumeIdRef = useRef(resumeId)
+  resumeIdRef.current = resumeId
+  const ownerIdRef = useRef(ownerId)
+  ownerIdRef.current = ownerId
+  const restoreInFlightRef = useRef(false)
+  const restoreGenerationRef = useRef(0)
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useLayoutEffect(() => {
+    restoreGenerationRef.current += 1
+    setConfirmRestore(null)
+    setIsRestoring(false)
+    restoreInFlightRef.current = false
+    setLeftLatex(null)
+    setRightLatex(null)
+    setLeftLabel('')
+    setRightLabel('')
+    setLoading(true)
+    setError(false)
+    setDiffStats(null)
+  }, [
+    resumeId,
+    ownerId,
+    checkpointA?.id,
+    checkpointB?.id,
+    isParentDiffMode,
+    parentLatex,
+    parentTitle,
+    variantLatex,
+    variantTitle,
+  ])
 
   // Clean up diff editor models before React unmounts the component
   useEffect(() => {
@@ -143,11 +188,30 @@ export default function DiffViewerModal({
     setLoading(true)
     setError(false)
     setDiffStats(null)
+    const requestResumeId = resumeId
+    const requestOwnerId = ownerId
+    const requestToken = apiClient.getAuthToken()
+    const requestGeneration = restoreGenerationRef.current
+    if (!requestOwnerId || !requestToken) {
+      setError(true)
+      setLoading(false)
+      return
+    }
+    const isCurrentRequest = () => !cancelled
+      && mountedRef.current
+      && restoreGenerationRef.current === requestGeneration
+      && resumeIdRef.current === requestResumeId
+      && ownerIdRef.current === requestOwnerId
+      && apiClient.getAuthToken() === requestToken
+    const accountContext = {
+      authToken: requestToken,
+      isCurrent: isCurrentRequest,
+    }
     const promises: Promise<void>[] = []
 
     promises.push(
-      apiClient.getCheckpointContent(resumeId, checkpointA.id).then((data) => {
-        if (cancelled) return
+      apiClient.getCheckpointContent(requestResumeId, checkpointA.id, accountContext).then((data) => {
+        if (!isCurrentRequest()) return
         setLeftLatex(data.optimized_latex)
         setLeftLabel(makeLabel(checkpointA))
       })
@@ -155,8 +219,8 @@ export default function DiffViewerModal({
 
     if (checkpointB) {
       promises.push(
-        apiClient.getCheckpointContent(resumeId, checkpointB.id).then((data) => {
-          if (cancelled) return
+        apiClient.getCheckpointContent(requestResumeId, checkpointB.id, accountContext).then((data) => {
+          if (!isCurrentRequest()) return
           setRightLatex(data.optimized_latex)
           setRightLabel(makeLabel(checkpointB))
         })
@@ -168,17 +232,28 @@ export default function DiffViewerModal({
 
     Promise.all(promises)
       .catch(() => {
-        if (!cancelled) {
+        if (isCurrentRequest()) {
           setError(true)
           toast.error('Failed to load version content')
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (isCurrentRequest()) setLoading(false)
       })
 
     return () => { cancelled = true }
-  }, [checkpointA, checkpointB, resumeId, currentLatex, isParentDiffMode, parentLatex, parentTitle, variantLatex, variantTitle])
+  }, [
+    checkpointA,
+    checkpointB,
+    resumeId,
+    ownerId,
+    currentLatex,
+    isParentDiffMode,
+    parentLatex,
+    parentTitle,
+    variantLatex,
+    variantTitle,
+  ])
 
   // Close on Escape (but not when confirm dialog is open)
   useLayoutEffect(() => {
@@ -196,20 +271,74 @@ export default function DiffViewerModal({
   }, [confirmRestore])
 
   const handleRestoreLeft = useCallback(() => {
-    if (leftLatex) setConfirmRestore(leftLatex)
-  }, [leftLatex])
+    if (!leftLatex || (isParentDiffMode && !canRef.current('c01'))) return
+    setConfirmRestore({ latex: leftLatex, checkpointId: isParentDiffMode ? null : checkpointA?.id ?? null })
+  }, [leftLatex, isParentDiffMode, checkpointA])
 
   const handleRestoreRight = useCallback(() => {
-    if (rightLatex) setConfirmRestore(rightLatex)
-  }, [rightLatex])
+    if (!rightLatex || (isParentDiffMode && !canRef.current('c01'))) return
+    setConfirmRestore({ latex: rightLatex, checkpointId: isParentDiffMode ? null : checkpointB?.id ?? null })
+  }, [rightLatex, isParentDiffMode, checkpointB])
 
-  const confirmAndRestore = useCallback(() => {
-    if (confirmRestore !== null) {
-      onRestore(confirmRestore)
+  const confirmAndRestore = useCallback(async () => {
+    if (!confirmRestore || !onRestore || restoreInFlightRef.current) return
+    const requestResumeId = resumeId
+    const requestOwnerId = ownerId
+    const requestToken = apiClient.getAuthToken()
+    const restoreGeneration = restoreGenerationRef.current
+    if (confirmRestore.checkpointId && (!requestOwnerId || !requestToken)) {
+      toast.error('Failed to restore version')
+      return
+    }
+    restoreInFlightRef.current = true
+    setIsRestoring(true)
+    try {
+      let latex = confirmRestore.latex
+      if (confirmRestore.checkpointId) {
+        const result = await apiClient.restoreOptimization(requestResumeId, confirmRestore.checkpointId, {
+          authToken: requestToken!,
+          isCurrent: () => mountedRef.current
+            && restoreGenerationRef.current === restoreGeneration
+            && resumeIdRef.current === requestResumeId
+            && ownerIdRef.current === requestOwnerId,
+        })
+        if (!result.success) throw new Error('Restore was not accepted')
+        latex = result.latex_content
+      } else if (!canRef.current('c01')) {
+        return
+      }
+      if (
+        !mountedRef.current
+        || restoreGenerationRef.current !== restoreGeneration
+        || resumeIdRef.current !== requestResumeId
+        || ownerIdRef.current !== requestOwnerId
+        || (requestToken !== null && apiClient.getAuthToken() !== requestToken)
+      ) return
+      onRestore(latex)
       setConfirmRestore(null)
       toast.success('Version restored')
+    } catch {
+      if (
+        mountedRef.current
+        && restoreGenerationRef.current === restoreGeneration
+        && resumeIdRef.current === requestResumeId
+        && ownerIdRef.current === requestOwnerId
+        && apiClient.getAuthToken() === requestToken
+      ) {
+        toast.error('Failed to restore version')
+      }
+    } finally {
+      if (restoreGenerationRef.current === restoreGeneration) {
+        restoreInFlightRef.current = false
+      }
+      if (
+        mountedRef.current
+        && restoreGenerationRef.current === restoreGeneration
+        && resumeIdRef.current === requestResumeId
+        && ownerIdRef.current === requestOwnerId
+      ) setIsRestoring(false)
     }
-  }, [confirmRestore, onRestore])
+  }, [confirmRestore, onRestore, resumeId, ownerId])
 
   const computeDiffStats = useCallback((ed: editor.IStandaloneDiffEditor) => {
     const changes = ed.getLineChanges()
@@ -250,22 +379,26 @@ export default function DiffViewerModal({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleRestoreLeft}
-              disabled={!leftLatex}
-              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
-            >
-              <RotateCcw size={12} />
-              {isParentDiffMode ? 'Restore to Parent' : 'Restore Left'}
-            </button>
-            <button
-              onClick={handleRestoreRight}
-              disabled={!rightLatex || (!checkpointB && !isParentDiffMode)}
-              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
-            >
-              <RotateCcw size={12} />
-              {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
-            </button>
+            {(!isParentDiffMode || can('c01')) && onRestore && (
+              <>
+                <button
+                  onClick={handleRestoreLeft}
+                  disabled={!leftLatex}
+                  className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
+                >
+                  <RotateCcw size={12} />
+                  {isParentDiffMode ? 'Restore to Parent' : 'Restore Left'}
+                </button>
+                <button
+                  onClick={handleRestoreRight}
+                  disabled={!rightLatex || (!checkpointB && !isParentDiffMode)}
+                  className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
+                >
+                  <RotateCcw size={12} />
+                  {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() => setIsFullscreen((v) => !v)}
@@ -331,13 +464,15 @@ export default function DiffViewerModal({
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button
-                    onClick={() => setConfirmRestore(null)}
+                    onClick={() => { if (!isRestoring) setConfirmRestore(null) }}
+                    disabled={isRestoring}
                     className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={confirmAndRestore}
+                    onClick={() => void confirmAndRestore()}
+                    disabled={isRestoring}
                     className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
                   >
                     Restore

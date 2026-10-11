@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { Check } from 'lucide-react'
+import CapabilityGate from '@/components/CapabilityGate'
 
 /**
  * Public pricing page — Typeset marketing (redesign, PRD 2026-08-03).
@@ -14,6 +16,13 @@ export const metadata: Metadata = {
   description: 'Start free, then pick the plan that fits — or bring your own key.',
   alternates: { canonical: '/pricing' },
   openGraph: { title: 'Find the résumé plan that fits | Latexy', description: 'Start with the guest editor and explore plans for your job search.', url: '/pricing', type: 'website' },
+}
+
+function TierActionGate({ free, children }: { free: boolean; children: ReactNode }) {
+  if (free) {
+    return <CapabilityGate feature="a09"><CapabilityGate feature="b01"><CapabilityGate feature="c01">{children}</CapabilityGate></CapabilityGate></CapabilityGate>
+  }
+  return <CapabilityGate feature="i01">{children}</CapabilityGate>
 }
 
 type Tier = {
@@ -92,16 +101,18 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href={t.cta.href}
-                className={`mt-6 inline-flex items-center justify-center rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm font-semibold transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
-                  t.featured
-                    ? 'bg-accent text-accent-fg hover:brightness-110'
-                    : 'border border-line-2 text-fg hover:border-accent hover:text-accent-strong'
-                }`}
-              >
-                {t.cta.label}
-              </Link>
+              <TierActionGate free={t.id === 'free'}>
+                <Link
+                  href={t.cta.href}
+                  className={`mt-6 inline-flex items-center justify-center rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm font-semibold transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
+                    t.featured
+                      ? 'bg-accent text-accent-fg hover:brightness-110'
+                      : 'border border-line-2 text-fg hover:border-accent hover:text-accent-strong'
+                  }`}
+                >
+                  {t.cta.label}
+                </Link>
+              </TierActionGate>
             </div>
           ))}
         </div>

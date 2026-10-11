@@ -16,11 +16,12 @@ See docs/prd/2026-08-02-input-driven-optimization.md.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..core.logging import get_logger
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.resume_diff_service import (
     ChangeHunk,
     apply_changes,

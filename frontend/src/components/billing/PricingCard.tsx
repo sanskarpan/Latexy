@@ -1,27 +1,6 @@
 'use client'
 
-interface PricingPlan {
-  id: string
-  name: string
-  price: number
-  currency: string
-  interval: string
-  purchase_type?: 'one_time' | 'subscription'
-  billing_period?: string
-  discount_percent?: number
-  monthly_equivalent_price?: number
-  max_seats?: number
-  requires_student_verification?: boolean
-  features: {
-    compilations: number | string
-    optimizations: number | string
-    historyRetention: number
-    prioritySupport: boolean
-    apiAccess: boolean
-    customModels?: boolean
-    teamSeats?: number
-  }
-}
+import { apiAllowance, formatCatalogPrice, type CatalogPlan as PricingPlan } from '@/lib/plan-catalog'
 
 interface PricingCardProps {
   plan: PricingPlan
@@ -42,7 +21,7 @@ export default function PricingCard({
 }: PricingCardProps) {
   const formatPrice = (price: number) => {
     if (price === 0) return 'Free'
-    return `₹${(price / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+    return formatCatalogPrice(price, plan.currency)
   }
 
   const formatValue = (value: string | number) => {
@@ -55,7 +34,7 @@ export default function PricingCard({
 
   return (
     <article className={`relative rounded-[var(--radius-lg)] border border-line bg-surface p-5 ${isPopular ? 'bg-accent-soft' : ''}`}>
-      <div className="absolute right-4 top-4 flex gap-2">
+      <div className="mb-2 flex flex-wrap justify-end gap-2">
         {plan.discount_percent ? (
           <span className="rounded-full border border-ok/30 bg-ok/10 px-2 py-1 text-[10px] uppercase tracking-wider text-ok">
             Save {plan.discount_percent}%
@@ -69,7 +48,8 @@ export default function PricingCard({
       </div>
 
       <div className="mb-5">
-        <h3 className="text-xl font-semibold text-fg">{plan.name}</h3>
+        <h3 className="break-words text-xl font-semibold text-fg">{plan.name}</h3>
+        {plan.description && <p className="mt-1 break-words text-sm text-fg-2">{plan.description}</p>}
         <p className="mt-2 text-3xl font-semibold text-fg">{formatPrice(plan.price)}</p>
         <p className="text-sm text-fg-2">
           {plan.id === 'free'
@@ -100,7 +80,8 @@ export default function PricingCard({
           value={plan.features.historyRetention === 0 ? 'None' : `${plan.features.historyRetention} days`}
         />
         <FeatureRow label="Priority support" value={yesNo(plan.features.prioritySupport)} />
-        <FeatureRow label="API access" value={yesNo(plan.features.apiAccess)} />
+        <FeatureRow label="API requests" value={apiAllowance(plan)} />
+        {plan.features.ai_assists !== undefined && <FeatureRow label="AI assists" value={formatValue(plan.features.ai_assists)} />}
         {typeof plan.features.customModels === 'boolean' && (
           <FeatureRow label="Custom models" value={yesNo(plan.features.customModels)} />
         )}
@@ -109,16 +90,27 @@ export default function PricingCard({
         )}
       </div>
 
+      {plan.capabilities && plan.capability_labels && (
+        <details className="mt-4 border-t border-line pt-3 text-sm">
+          <summary className="cursor-pointer text-fg-2">Included capabilities</summary>
+          <ul className="mt-2 space-y-1 text-fg-2">
+            {Object.entries(plan.capabilities).filter(([key, enabled]) => enabled && plan.capability_labels?.[key]).map(([key]) => (
+              <li key={key}>{plan.capability_labels?.[key]}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <button
         onClick={() => onSelectPlan(plan.id)}
-        disabled={isLoading || disabled}
+        disabled={isLoading || disabled || plan.purchasable === false}
         className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           isPopular
             ? 'bg-accent text-accent-fg hover:brightness-110'
             : 'border border-line-2 bg-surface-2 text-fg hover:bg-surface'
         }`}
       >
-        {isLoading ? 'Processing...' : disabled ? disabledLabel : 'Select Plan'}
+        {isLoading ? 'Processing...' : disabled ? disabledLabel : plan.purchasable === false ? plan.unavailable_reason || 'Unavailable' : 'Select Plan'}
       </button>
     </article>
   )

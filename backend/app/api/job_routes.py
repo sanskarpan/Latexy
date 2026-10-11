@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ from ..middleware.auth_middleware import (
     get_current_user_required,
     require_admin,
 )
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.cover_letter_signature_service import (
@@ -642,7 +643,7 @@ async def submit_job(
                     detail=f"Unsupported compiler '{request.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
                 )
             compiler = request.compiler
-        if safe_meta.get("resume_id") and user_id:
+        if safe_meta.get("resume_id") and user_id and await entitlement_service.has_feature("c07", user=user_id):
             # Look up resume's stored compiler preference and compile settings
             from sqlalchemy import select as sa_select
 
@@ -1231,7 +1232,10 @@ async def create_batch_tailor(
             await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
             await _mark_dispatch_started(job_id)
             pending_dispatch_attempted = True
-            fork_settings = dict(fork.resume_settings or {})
+            fork_settings = (
+                dict(fork.resume_settings or {})
+                if await entitlement_service.has_feature("c07", user=user_id) else {}
+            )
             compile_settings = {
                 key: fork_settings[key]
                 for key in (

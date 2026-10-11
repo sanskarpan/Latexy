@@ -6,6 +6,7 @@
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
 import type { ATSDeepAnalysis } from './event-types'
+import type { AdminPlanCatalogResponse, CatalogPlanUpdate, CatalogQuotaUpdate } from './plan-catalog'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -240,6 +241,8 @@ export interface CurrentSubscriptionResponse {
     historyRetention: number
     prioritySupport: boolean
     apiAccess: boolean
+    apiDailyLimit?: number
+    availabilityUnknown?: boolean
     customModels?: boolean
   }
   subscriptionId?: string
@@ -740,6 +743,9 @@ export interface EntitlementFeatureDef {
   category: string
   gateable: boolean
   description?: string | null
+  parent_key?: string | null
+  inventory_id?: string | null
+  always_on_reason?: string | null
 }
 
 /** Full admin entitlements state from GET /admin/entitlements. */
@@ -748,9 +754,14 @@ export interface AdminEntitlementsState {
   kill_switches: Record<string, boolean>
   matrix: Record<string, Record<string, boolean>>
   plan_families: string[]
+  plan_keys?: string[]
+  plan_family_by_key?: Record<string, string>
+  roles?: EntitlementRole[]
+  role_matrix?: Record<string, Record<string, boolean>>
 }
 
 export type UserRole = 'user' | 'support' | 'admin'
+export type EntitlementRole = 'anonymous' | UserRole
 
 export interface AdminUser {
   id: string
@@ -2114,11 +2125,14 @@ class ApiClient {
 
   async restoreOptimization(
     resumeId: string,
-    optId: string
+    optId: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<{ success: boolean; latex_content: string }> {
-    return this.request(`/resumes/${encodeURIComponent(resumeId)}/restore-optimization/${encodeURIComponent(optId)}`, {
-      method: 'POST',
-    })
+    return this.request(
+      `/resumes/${encodeURIComponent(resumeId)}/restore-optimization/${encodeURIComponent(optId)}`,
+      { method: 'POST' },
+      accountContext,
+    )
   }
 
   async recordOptimization(
@@ -2211,6 +2225,24 @@ class ApiClient {
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
+  }
+
+  async getAdminPlanCatalog(): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>('/admin/plan-catalog')
+  }
+
+  async updateAdminPlanQuota(sku: string, dimension: string, update: CatalogQuotaUpdate): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>(`/admin/plan-catalog/${encodeURIComponent(sku)}/quotas/${encodeURIComponent(dimension)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
+  }
+
+  async updateAdminPlanCatalog(sku: string, update: CatalogPlanUpdate): Promise<AdminPlanCatalogResponse> {
+    return this.request<AdminPlanCatalogResponse>(`/admin/plan-catalog/${encodeURIComponent(sku)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
   }
 
   async getSubscriptionPlans(): Promise<{
@@ -2791,10 +2823,13 @@ class ApiClient {
 
   async getCheckpointContent(
     resumeId: string,
-    checkpointId: string
+    checkpointId: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<CheckpointContentResponse> {
     return this.request<CheckpointContentResponse>(
-      `/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}/content`
+      `/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}/content`,
+      {},
+      accountContext,
     )
   }
 
@@ -3382,8 +3417,8 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   /** Per-user effective feature map (auth optional; anonymous → free map). */
-  async getEntitlements(): Promise<EntitlementsResponse> {
-    return this.request<EntitlementsResponse>('/config/entitlements')
+  async getEntitlements(signal?: AbortSignal): Promise<EntitlementsResponse> {
+    return this.request<EntitlementsResponse>('/config/entitlements', { cache: 'no-store', signal })
   }
 
   /** Full admin entitlements state: registry, kill-switches, matrix, plan families. */
@@ -3392,10 +3427,10 @@ class ApiClient {
   }
 
   /** Toggle a feature's global kill-switch. Returns fresh state. */
-  async updateKillSwitch(key: string, enabled: boolean): Promise<AdminEntitlementsState> {
+  async updateKillSwitch(key: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>(
       `/admin/entitlements/kill-switch/${encodeURIComponent(key)}`,
-      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+      { method: 'PATCH', body: JSON.stringify({ enabled, expected_enabled: expectedEnabled }) },
     )
   }
 
@@ -3404,6 +3439,7 @@ class ApiClient {
     planFamily: string,
     featureKey: string,
     enabled: boolean,
+    expectedEnabled?: boolean,
   ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>('/admin/entitlements/matrix', {
       method: 'PATCH',
@@ -3411,7 +3447,16 @@ class ApiClient {
         plan_family: planFamily,
         feature_key: featureKey,
         enabled,
+        expected_enabled: expectedEnabled,
       }),
+    })
+  }
+
+  /** Account roles restrict access independently of plans and document permissions. */
+  async updateRoleCell(role: EntitlementRole, featureKey: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
+    return this.request<AdminEntitlementsState>('/admin/entitlements/roles', {
+      method: 'PATCH',
+      body: JSON.stringify({ role, feature_key: featureKey, enabled, expected_enabled: expectedEnabled }),
     })
   }
 

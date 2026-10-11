@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_plan_quota
-from app.core.feature_registry import FEATURE_REGISTRY, PLAN_FAMILIES, gateable_keys
+from app.core.feature_registry import FEATURE_REGISTRY, PLAN_FAMILIES, PLAN_MATRIX_KEYS, gateable_keys
 from app.database.models import User
 from app.services.entitlement_service import (
     REDIS_BLOB_KEY,
@@ -39,7 +39,7 @@ async def _reset():
 
 # ── User-like helpers ────────────────────────────────────────────────────────
 
-def _user(role: str | None = None, plan: str | None = "free"):
+def _user(role: str | None = "user", plan: str | None = "free"):
     """A minimal user-like object exposing role + subscription_plan."""
     return SimpleNamespace(role=role, subscription_plan=plan)
 
@@ -51,21 +51,21 @@ FREE_USER = None  # sentinel replaced per-test via _user()
 
 class TestHasFeatureTrivial:
 
-    async def test_non_gateable_key_always_true(self):
-        assert await entitlement_service.has_feature("compile", user=_user(plan="free")) is True
+    async def test_security_invariant_key_remains_always_on(self):
+        assert await entitlement_service.has_feature("a01", user=_user(plan="free")) is True
 
-    async def test_unknown_key_always_true(self):
-        assert await entitlement_service.has_feature("no_such_feature", user=_user()) is True
+    async def test_unknown_key_denied(self):
+        assert await entitlement_service.has_feature("no_such_feature", user=_user()) is False
 
-    async def test_admin_role_true_even_when_disabled(self, db_session: AsyncSession):
+    async def test_admin_role_does_not_bypass_disabled_product(self, db_session: AsyncSession):
         await entitlement_service.set_kill_switch("cover_letters", False, db_session)
         admin = _user(role="admin", plan="free")
-        assert await entitlement_service.has_feature("cover_letters", user=admin) is True
+        assert await entitlement_service.has_feature("cover_letters", user=admin) is False
 
-    async def test_support_role_true_even_when_disabled(self, db_session: AsyncSession):
+    async def test_support_role_does_not_bypass_disabled_product(self, db_session: AsyncSession):
         await entitlement_service.set_kill_switch("cover_letters", False, db_session)
         support = _user(role="support", plan="free")
-        assert await entitlement_service.has_feature("cover_letters", user=support) is True
+        assert await entitlement_service.has_feature("cover_letters", user=support) is False
 
     async def test_anonymous_uses_free_family(self, db_session: AsyncSession):
         # Disable cover_letters only for the free family → anonymous (None) blocked.
@@ -111,7 +111,7 @@ class TestEffectiveFeaturesAndState:
         eff = await entitlement_service.effective_features(free)
         assert set(eff.keys()) == {f.key for f in FEATURE_REGISTRY}
         assert len(eff) == len(FEATURE_REGISTRY)
-        # Non-gateable always True.
+        # Compilation is now an optional, globally gateable product action.
         assert eff["compile"] is True
 
     async def test_effective_features_reflect_disable(self, db_session: AsyncSession):
@@ -119,7 +119,7 @@ class TestEffectiveFeaturesAndState:
         free = _user(plan="free")
         eff = await entitlement_service.effective_features(free)
         assert eff["cover_letters"] is False
-        assert eff["compile"] is True  # non-gateable unaffected
+        assert eff["compile"] is True  # an unrelated feature toggle does not affect compilation
 
     @pytest.mark.parametrize("ending_status", ["past_due", "cancel_scheduled"])
     async def test_billing_status_gates_paid_features_and_quota_after_grace(
@@ -198,11 +198,31 @@ class TestEffectiveFeaturesAndState:
         ), {"sub_id": subscription_id})
         await db_session.commit()
         assert await entitlement_service.has_feature("cover_letters", user=user_id) is False
+
+    @pytest.mark.parametrize("role", ["admin", "support"])
+    async def test_admin_roles_lose_product_plan_when_dodo_subscription_is_cancelled(
+        self, db_session: AsyncSession, role: str,
+    ):
+        user_id, subscription_id = str(uuid.uuid4()), str(uuid.uuid4())
         await db_session.execute(text(
-            "UPDATE users SET subscription_id=NULL WHERE id=:user_id"
+            "INSERT INTO users (id, email, name, role, email_verified, subscription_plan, subscription_status, "
+            "subscription_id, trial_used) VALUES (:id, :email, 'Privileged cancelled account', :role, true, 'pro', 'active', :sub_id, false)"
+        ), {"id": user_id, "email": f"cancelled_{user_id.replace('-', '')}@example.com",
+            "role": role, "sub_id": subscription_id})
+        await db_session.execute(text(
+            "INSERT INTO subscriptions (id, user_id, provider, plan_id, status, current_period_end) "
+            "VALUES (:id, :user_id, 'dodo', 'pro', 'cancelled', :period_end)"
+        ), {"id": subscription_id, "user_id": user_id,
+            "period_end": datetime.now(timezone.utc) - timedelta(days=1)})
+        await db_session.commit()
+        await entitlement_service.set_matrix_cell("free", "e01", False, db_session)
+
+        assert await entitlement_service.has_feature("e01", user=user_id) is False
+        await db_session.execute(text(
+            "UPDATE users SET subscription_id=NULL, subscription_status='cancelled' WHERE id=:user_id"
         ), {"user_id": user_id})
         await db_session.commit()
-        assert await entitlement_service.has_feature("cover_letters", user=user_id) is False
+        assert await entitlement_service.has_feature("e01", user=user_id) is False
 
     @pytest.mark.parametrize("ending_status", ["past_due", "cancel_scheduled"])
     async def test_team_member_access_tracks_owner_subscription_without_revoking_seat(
@@ -280,7 +300,7 @@ class TestEffectiveFeaturesAndState:
 
     async def test_get_state_shape(self, db_session: AsyncSession):
         state = await entitlement_service.get_state(db_session)
-        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families"}
+        assert set(state.keys()) == {"registry", "kill_switches", "matrix", "plan_families", "plan_keys", "plan_family_by_key", "roles", "role_matrix"}
         assert state["plan_families"] == list(PLAN_FAMILIES)
 
         gateable = set(gateable_keys())
@@ -289,14 +309,14 @@ class TestEffectiveFeaturesAndState:
         assert all(v is True for v in state["kill_switches"].values())
 
         # matrix: family → gateable-key → bool.
-        assert set(state["matrix"].keys()) == set(PLAN_FAMILIES)
+        assert set(state["matrix"].keys()) == set(PLAN_MATRIX_KEYS)
         for family in PLAN_FAMILIES:
             assert set(state["matrix"][family].keys()) == gateable
 
         # registry entries carry the expected fields.
         assert len(state["registry"]) == len(FEATURE_REGISTRY)
         sample = state["registry"][0]
-        assert set(sample.keys()) == {"key", "label", "category", "gateable"}
+        assert set(sample.keys()) == {"key", "label", "category", "gateable", "description", "parent_key", "inventory_id", "always_on_reason"}
 
 
 # ── sync_has_feature (worker path via Redis blob) ────────────────────────────
@@ -321,8 +341,8 @@ class TestSyncHasFeature:
     async def test_sync_non_gateable_always_true(self):
         assert entitlement_service.sync_has_feature("compile", "free") is True
 
-    async def test_sync_fail_open_when_blob_missing(self):
-        # Delete the Redis blob so there is nothing to read → fail open (True).
+    async def test_sync_ignores_missing_redis_and_reads_database(self):
+        # Redis cannot grant or deny access; authoritative DB grants remain available.
         import redis as _redis
 
         from app.core.config import settings

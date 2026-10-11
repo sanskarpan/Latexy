@@ -41,9 +41,9 @@ const CATEGORY_BG: Record<string, string> = {
 interface ProofreadPanelProps {
   resumeLatex: string
   /** Called with one issue to apply a single fix */
-  onApplyFix: (issue: ProofreadIssue) => void
+  onApplyFix?: (issue: ProofreadIssue) => void
   /** Called with all fixable issues for bulk auto-fix */
-  onApplyAllFixes: (issues: ProofreadIssue[]) => void
+  onApplyAllFixes?: (issues: ProofreadIssue[]) => void
   /** Called after proofread completes so parent can update Monaco decorations */
   onProofreadComplete?: (issues: ProofreadIssue[]) => void
 }
@@ -190,7 +190,7 @@ export default function ProofreadPanel({
           )}
 
           {/* Auto-fix all button */}
-          {safeFixIssues.length > 0 && (
+          {safeFixIssues.length > 0 && onApplyAllFixes && (
             <button
               onClick={() => {
                 onApplyAllFixes(safeFixIssues)
@@ -260,7 +260,7 @@ export default function ProofreadPanel({
                       </p>
 
                       {/* Apply fix button */}
-                      {issue.suggested_text && (
+                      {issue.suggested_text && onApplyFix && (
                         <button
                           onClick={() => {
                             onApplyFix(issue)

@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Bookmark, Clock, Sparkles, Trash2, GitCompareArrows } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CheckpointEntry } from '@/lib/api-client'
 import { apiClient } from '@/lib/api-client'
+import { useSession } from '@/lib/auth-client'
 
 // ------------------------------------------------------------------ //
 //  Types                                                               //
@@ -85,6 +86,8 @@ export default function VersionHistoryPanel({
   onBeforeAfter,
   refreshKey = 0,
 }: VersionHistoryPanelProps) {
+  const { data: session } = useSession()
+  const ownerId = session?.user?.id ?? null
   const [entries, setEntries] = useState<CheckpointEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -92,10 +95,34 @@ export default function VersionHistoryPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [beforeAfterId, setBeforeAfterId] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const resumeIdRef = useRef(resumeId)
+  resumeIdRef.current = resumeId
+  const ownerIdRef = useRef(ownerId)
+  ownerIdRef.current = ownerId
+  const restoreGenerationRef = useRef(0)
+  const restoreInFlightRef = useRef(false)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useLayoutEffect(() => {
+    restoreGenerationRef.current += 1
+    restoreInFlightRef.current = false
+    setEntries([])
+    setSelected(new Set())
+    setLoading(true)
+    setLoadError(null)
+    setBeforeAfterId(null)
+    setRestoringId(null)
+  }, [resumeId, ownerId])
 
   // Fetch entries
   useEffect(() => {
     let cancelled = false
+    setRestoringId(null)
     setLoading(true)
     setLoadError(null)
     apiClient
@@ -112,7 +139,7 @@ export default function VersionHistoryPanel({
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [resumeId, refreshKey, retryKey])
+  }, [resumeId, refreshKey, retryKey, ownerId])
 
   // Toggle selection (max 2)
   const toggleSelect = useCallback((id: string) => {
@@ -132,21 +159,59 @@ export default function VersionHistoryPanel({
     })
   }, [])
 
-  // Restore handler — fetches content without mutating the DB
+  // Restore through the trusted checkpoint recovery endpoint. Unlike editor
+  // writes, this remains available when source editing is disabled.
   const handleRestore = useCallback(
     async (entry: CheckpointEntry) => {
+      if (restoreInFlightRef.current) return
+      restoreInFlightRef.current = true
+      const restoreGeneration = restoreGenerationRef.current
+      const requestResumeId = resumeId
+      const requestOwnerId = ownerId
+      const requestToken = apiClient.getAuthToken()
       setRestoringId(entry.id)
       try {
-        const result = await apiClient.getCheckpointContent(resumeId, entry.id)
-        onRestore(result.optimized_latex)
+        if (!requestOwnerId || !requestToken) throw new Error('The signed-in account is unavailable')
+        const result = await apiClient.restoreOptimization(requestResumeId, entry.id, {
+          authToken: requestToken,
+          isCurrent: () => mountedRef.current
+            && restoreGenerationRef.current === restoreGeneration
+            && resumeIdRef.current === requestResumeId
+            && ownerIdRef.current === requestOwnerId,
+        })
+        if (!result.success) throw new Error('Restore was not accepted')
+        if (
+          !mountedRef.current
+          || restoreGenerationRef.current !== restoreGeneration
+          || resumeIdRef.current !== requestResumeId
+          || ownerIdRef.current !== requestOwnerId
+          || apiClient.getAuthToken() !== requestToken
+        ) return
+        onRestore(result.latex_content)
         toast.success('Version restored')
       } catch {
-        toast.error('Failed to restore version')
+        if (
+          mountedRef.current
+          && restoreGenerationRef.current === restoreGeneration
+          && resumeIdRef.current === requestResumeId
+          && ownerIdRef.current === requestOwnerId
+          && apiClient.getAuthToken() === requestToken
+        ) {
+          toast.error('Failed to restore version')
+        }
       } finally {
-        setRestoringId(null)
+        if (
+          mountedRef.current
+          && restoreGenerationRef.current === restoreGeneration
+          && resumeIdRef.current === requestResumeId
+          && ownerIdRef.current === requestOwnerId
+        ) {
+          restoreInFlightRef.current = false
+          setRestoringId(null)
+        }
       }
     },
-    [resumeId, onRestore]
+    [resumeId, ownerId, onRestore]
   )
 
   // Delete handler

@@ -442,6 +442,7 @@ def optimize_and_compile_task(
             job_id=job_id,
             latex_content=optimized_latex,
             job_description=job_description,
+            force_generic=bool((metadata or {}).get("_ats_generic_only", False)),
         )
         _ats_scoring_seconds = time.monotonic() - _ats_start
         _reporting_start = time.monotonic()
@@ -1194,6 +1195,13 @@ def _run_latex_stage(
                 raise
             finally:
                 watchdog_reason = watchdog.stop()
+                # Popen's stdout is a BufferedReader owned by this function.
+                # Close it on success, timeout, cancellation, parser failure,
+                # and external soft-time-limit paths to avoid leaking one file
+                # descriptor per compilation worker invocation.
+                close_stdout = getattr(proc.stdout, "close", None)
+                if callable(close_stdout):
+                    close_stdout()
 
             if watchdog_reason == "cancelled":
                 cleanup_docker_container(container_name)
@@ -1284,6 +1292,7 @@ def _run_ats_stage(
     job_id: str,
     latex_content: str,
     job_description: Optional[str],
+    force_generic: bool = False,
 ) -> tuple[float, Dict]:
     """
     Run ATS scoring (pure-Python async) and return (score, details).
@@ -1295,6 +1304,7 @@ def _run_ats_stage(
             ats_scoring_service.score_resume(
                 latex_content=latex_content,
                 job_description=job_description,
+                industry="generic" if force_generic else None,
             )
         )
         ats_details = {
@@ -1341,6 +1351,16 @@ def submit_optimize_and_compile(
     quota_refund: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
+    from ..services.entitlement_service import entitlement_service
+
+    # Snapshot this optional sub-capability at admission. Never trust a
+    # caller-supplied false flag, and never retroactively change admitted work.
+    metadata = {
+        **(metadata or {}),
+        "_ats_generic_only": not entitlement_service.sync_has_feature("d19", user_plan, user_id=user_id),
+    }
+    if compile_settings and not entitlement_service.sync_has_feature("c07", user_plan, user_id=user_id):
+        compile_settings = None
     if priority is None:
         priority = get_task_priority(user_plan)
 

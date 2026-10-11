@@ -20,7 +20,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0068"
+EXPECTED_HEAD = "0072_capability_roles"
+DODO_MAINLINE_REVISIONS = {
+    "0065", "0066", "0067", "0068", "0069_capability_catalog",
+    "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
+}
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
 # https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
@@ -55,7 +59,9 @@ ENV_KEYS = {
 }
 PAID_PLANS = (*PRODUCT_KEYS, "basic_monthly", "pro_monthly", "byok_monthly", "student_monthly", "team_monthly")
 TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_optimization_runs",
-          "render_artifact_manifests", "billing_webhook_events", "payment_refunds", "payments", "coupon_redemptions")
+          "render_artifact_manifests", "billing_webhook_events", "payment_refunds", "payments", "coupon_redemptions",
+          "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
+          "plan_quota_overrides", "plan_quota_revisions", "role_features")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "provider_subscription_id",
@@ -68,6 +74,23 @@ CURRENT_BILLING_COLUMNS = {
     "payment_refunds": {"id", "payment_id", "provider", "provider_refund_id", "amount", "currency", "status", "reason", "created_at"},
     "coupon_redemptions": {"id", "coupon_id", "user_id", "subscription_id", "status", "redeemed_at"},
     "team_seats": {"owner_user_id", "member_user_id", "status"},
+}
+CAPABILITY_SCHEMA_COLUMNS = {
+    "0069_capability_catalog": {
+        "feature_flags": {"key", "enabled", "label", "description", "updated_at"},
+        "plan_features": {"plan_family", "feature_key", "enabled", "updated_at"},
+    },
+    "0070_plan_catalog": {
+        "plan_catalog": {"sku", "name", "description", "visible", "purchase_enabled", "display_order", "version", "updated_by", "updated_at"},
+        "plan_catalog_revisions": {"sku", "version", "snapshot", "changed_by", "created_at"},
+    },
+    "0071_plan_quotas": {
+        "plan_quota_overrides": {"sku", "dimension", "limit_value", "version", "updated_by", "updated_at"},
+        "plan_quota_revisions": {"sku", "dimension", "limit_value", "version", "changed_by", "created_at"},
+    },
+    "0072_capability_roles": {
+        "role_features": {"role", "feature_key", "enabled", "updated_at"},
+    },
 }
 
 
@@ -240,18 +263,25 @@ def classify_schema(revisions: list[str], columns: dict[str, set[str]], known: s
         if engine and not any_dodo_schema:
             return "known_mainline_pre_dodo"
         return "ambiguous_0061_requires_review"
-    if revision in {"0065", "0066", "0067", "0068"}:
+    if revision in DODO_MAINLINE_REVISIONS:
         if not dodo or not engine:
             return "schema_revision_mismatch_requires_review"
         required_columns = {table: set(names) for table, names in CURRENT_BILLING_COLUMNS.items()}
-        if revision < "0068":
+        if revision in {"0065", "0066", "0067"}:
             required_columns["billing_webhook_events"].discard("event_resource_id")
-        if revision < "0067":
+        if revision in {"0065", "0066"}:
             required_columns["coupon_redemptions"] -= {"subscription_id", "status"}
-        if revision < "0066":
+        if revision == "0065":
             required_columns["subscriptions"].discard("quoted_tax_inclusive")
         if not all(required <= columns.get(table, set()) for table, required in required_columns.items()):
             return "schema_revision_mismatch_requires_review"
+        capability_revisions = tuple(CAPABILITY_SCHEMA_COLUMNS)
+        if revision in capability_revisions:
+            through_revision = capability_revisions.index(revision)
+            for capability_revision in capability_revisions[:through_revision + 1]:
+                if any(not required <= columns.get(table, set())
+                       for table, required in CAPABILITY_SCHEMA_COLUMNS[capability_revision].items()):
+                    return "schema_revision_mismatch_requires_review"
         return "current_dodo_head" if revision == EXPECTED_HEAD else "known_mainline_dodo_upgrade_required"
     engine_expected = revision in {"0060", "0062", "0063", "0064"}
     engine_present = "resume_optimization_runs" in columns if revision == "0060" else engine
@@ -537,8 +567,8 @@ def rollout_assessment(report: Mapping[str, Any], *, allow_configured_live: bool
             reasons.append("rollout_database_revision_unverified")
         elif (
             (schema == "current_dodo_head" and revisions[0] != EXPECTED_HEAD)
-            or (schema == "known_mainline_dodo_upgrade_required" and revisions[0] not in {"0065", "0066", "0067"})
-            or (schema == "known_mainline_pre_dodo" and revisions[0] in {"0065", "0066", "0067", "0068"})
+            or (schema == "known_mainline_dodo_upgrade_required" and revisions[0] not in DODO_MAINLINE_REVISIONS - {EXPECTED_HEAD})
+            or (schema == "known_mainline_pre_dodo" and revisions[0] in DODO_MAINLINE_REVISIONS)
         ):
             reasons.append("rollout_database_revision_unverified")
         if schema not in {"known_mainline_pre_dodo", "known_mainline_dodo_upgrade_required", "current_dodo_head"}:

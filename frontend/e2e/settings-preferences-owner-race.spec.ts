@@ -222,10 +222,17 @@ async function installSettingsFixture(page: Page, mode: Mode, holdA = false, fai
       body: JSON.stringify({ connected: false }),
     }))
   }
-  await page.route((url) => ['/config/feature-flags', '/config/entitlements'].includes(url.pathname), (route) => route.fulfill({
+  await page.route((url) => url.pathname === '/config/feature-flags', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: '{}',
+  }))
+  // A valid denied map keeps this owner-race fixture focused on preferences,
+  // rather than introducing a separate transport-error Retry control.
+  await page.route((url) => url.pathname === '/config/entitlements', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ features: {} }),
   }))
   await page.route((url) => url.pathname === '/tenants/resolve-host', (route) => route.fulfill({
     status: 200,

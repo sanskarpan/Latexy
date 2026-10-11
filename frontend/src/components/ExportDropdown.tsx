@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { exportCapabilities } from '@/lib/capability-ui-policy'
+
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Palette, Image, Mail, Cloud } from 'lucide-react'
@@ -63,6 +66,8 @@ export default function ExportDropdown({
   guidedBuilder = false,
   disabled = false,
 }: ExportDropdownProps) {
+  const { can } = useEntitlements()
+  const canExport = (format: string) => exportCapabilities(format).every(can)
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
   const [exportError, setExportError] = useState<{ format: ExportFormatKey; message: string } | null>(null)
@@ -82,6 +87,7 @@ export default function ExportDropdown({
 
   const isExporting = loading !== null
   const visibleFormats = visualOnly ? EXPORT_FORMATS.filter(format => ['pdf', 'docx', 'txt'].includes(format.key)) : EXPORT_FORMATS
+  const availableFormats = visibleFormats.filter(format => canExport(format.key))
 
   function openDropdown() {
     if (isExporting || disabled) return
@@ -112,6 +118,7 @@ export default function ExportDropdown({
   }
 
   async function handleExport(format: ExportFormatKey) {
+    if (!canExport(format)) return
     // Prevent concurrent exports
     if (isExporting || disabled) return
 
@@ -322,12 +329,12 @@ export default function ExportDropdown({
               </p>
             </div>
             <div className="pb-1.5">
-              {visibleFormats.map((fmt, idx) => {
+              {availableFormats.map((fmt, idx) => {
                 const Icon = fmt.icon
                 const isLoading = loading === fmt.key
                 const isDesignExport = fmt.key === 'canva' || fmt.key === 'figma'
                 // Separator before design exports
-                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(visibleFormats[idx - 1].key)
+                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(availableFormats[idx - 1].key)
                 return (
                   <div key={fmt.key}>
                     {showSeparator && (

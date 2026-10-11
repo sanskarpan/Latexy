@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import openai
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -30,6 +30,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..database.models import BulletVariantSet, Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature, require_feature_optional
 from ..middleware.rate_limiting import client_ip_id
 from ..services.bullet_metric_service import replace_unverified_metrics
@@ -137,6 +138,8 @@ async def _resolve_ai_api_key(
             byok = await api_key_service.get_user_provider(db, user_id, "openai")
             if byok:
                 return ResolvedAIKey(byok, True)
+        except HTTPException:
+            raise
         except Exception:
             pass
     if settings.OPENAI_API_KEY:

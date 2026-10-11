@@ -12,8 +12,8 @@ interface LinterPanelProps {
   enabled: boolean
   onToggleEnabled: (enabled: boolean) => void
   onJumpToLine: (line: number) => void
-  onApplyFix: (issue: LintIssue) => void
-  onAutoFixAll: () => void
+  onApplyFix?: (issue: LintIssue) => void
+  onAutoFixAll?: () => void
   /** Plain text extracted from the compiled PDF by pdftotext (ATS pre-flight Layer 2) */
   extractedPdfText?: string | null
   pageCount?: number | null
@@ -95,7 +95,7 @@ export default function LinterPanel({
           )}
         </div>
 
-        {view === 'issues' && enabled && fixableCount > 0 && (
+        {view === 'issues' && enabled && fixableCount > 0 && onAutoFixAll && (
           <button
             onClick={onAutoFixAll}
             className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
@@ -187,7 +187,7 @@ function IssueGroup({
   issues: LintIssue[]
   color: 'amber' | 'blue'
   onJumpToLine: (line: number) => void
-  onApplyFix: (issue: LintIssue) => void
+  onApplyFix?: (issue: LintIssue) => void
 }) {
   const colorMap = {
     amber: {
@@ -225,7 +225,7 @@ function IssueGroup({
                 >
                   line {issue.line}
                 </button>
-                {issue.fixable && (
+                {issue.fixable && onApplyFix && (
                   <button
                     onClick={() => onApplyFix(issue)}
                     className="flex items-center gap-0.5 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2 ring-1 ring-line transition hover:bg-accent-soft hover:text-accent-strong hover:ring-accent"

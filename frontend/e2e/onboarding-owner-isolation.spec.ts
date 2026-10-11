@@ -234,7 +234,7 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
       '/jobs/': { jobs: [] },
       '/resumes/stats': { total_resumes: 0, total_templates: 0, last_updated: null, avg_ats_score: null, best_ats_score: null, optimized_count: 0 },
       '/subscription/plans': { success: true, plans: { free: { compilations: 10, optimizations: 3 } } },
-      '/config/feature-flags': {}, '/config/entitlements': { features: {} },
+      '/config/feature-flags': {}, '/config/entitlements': { features: { a06: true } },
       '/tenants/resolve-host': { tenant: null },
       '/settings/notifications': { job_completed: true, job_failed: true, share_viewed: false, weekly_digest: false, tracker_updates: true, comment_mentions: true },
       '/github/status': { connected: false }, '/zotero/status': { connected: false },

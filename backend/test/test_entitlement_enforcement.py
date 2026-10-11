@@ -124,13 +124,14 @@ async def test_disabled_matrix_returns_feature_disabled_403(
 
 # ── (c) Admin role bypasses the disabled feature ─────────────────────────────
 
-async def test_admin_role_bypasses_disabled_feature(
+async def test_admin_product_access_is_gated_but_control_plane_remains_available(
     client: AsyncClient, db_session: AsyncSession
 ):
     user_id, _ = await _create_user(db_session, role="admin", plan="free")
     token = await _create_session(db_session, user_id)
 
-    # Disable via kill-switch (global) — admin must still pass the gate.
+    # Administrators do not bypass product permissions, but must retain the
+    # control plane needed to reverse a mistaken product configuration.
     await entitlement_service.set_kill_switch("cover_letters", False, db_session)
 
     resp = await client.post(
@@ -139,6 +140,7 @@ async def test_admin_role_bypasses_disabled_feature(
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    # Admin bypasses entitlement → gate passes → 404 (resume missing), not 403.
-    assert resp.status_code != 403
-    assert resp.status_code == 404
+    assert resp.status_code == 403
+    assert "feature_disabled" in resp.text
+    control = await client.get("/admin/entitlements", headers={"Authorization": f"Bearer {token}"})
+    assert control.status_code == 200

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import JobApplication, Resume, ResumeElementVersion
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix="/resumes", tags=["resume-element-versions"])

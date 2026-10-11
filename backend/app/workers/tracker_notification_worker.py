@@ -18,6 +18,7 @@ from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..database.models import ApplicationReminder, JobAlert, JobApplication, User
 from ..services.email_service import email_service
+from ..services.entitlement_service import entitlement_service
 from ..utils.db_url import normalize_database_url
 
 logger = logging.getLogger(__name__)
@@ -334,6 +335,11 @@ async def deliver_tracker_notifications(
         )
     ).all()
     for alert, user in alert_rows:
+        # Each recurrence is a new admission. Preserve the due interval while
+        # disabled so re-enabling resumes it without creating another alert.
+        # Explicit one-shot reminders above are already-admitted fulfillment.
+        if not await entitlement_service.has_feature("e06", user=user.id):
+            continue
         if await _claim_row(session, alert, current) is None:
             continue
         prefs = user.email_notifications or {}

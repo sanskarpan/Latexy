@@ -31,6 +31,7 @@ interface TemplatePreviewModalProps {
    *  modal can show an in-flight state and only close on completion. */
   onUse: (id: string) => TemplateUseResult | Promise<TemplateUseResult>
   onClose: () => void
+  allowUse?: boolean
 }
 
 // ------------------------------------------------------------------ //
@@ -41,6 +42,7 @@ export default function TemplatePreviewModal({
   templateId,
   onUse,
   onClose,
+  allowUse = true,
 }: TemplatePreviewModalProps) {
   const [template, setTemplate] = useState<TemplateDetailResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -88,7 +90,7 @@ export default function TemplatePreviewModal({
   }
 
   const handleUse = async () => {
-    if (!template || using) return
+    if (!allowUse || !template || using) return
     const requestLifetime = previewLifetimeRef.current
     const requestTemplateId = template.id
     setUsing(true)
@@ -393,7 +395,7 @@ export default function TemplatePreviewModal({
               >
                 Cancel
               </button>
-              <button
+              {allowUse && <button
                 onClick={handleUse}
                 disabled={using}
                 aria-busy={using}
@@ -407,7 +409,7 @@ export default function TemplatePreviewModal({
                 ) : (
                   'Use This Template'
                 )}
-              </button>
+              </button>}
             </div>
           </div>
         )}

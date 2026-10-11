@@ -1,47 +1,49 @@
-"""Regression guard: every gateable feature key must be enforced on a route.
+"""Catalog coverage across server operations and explicitly client-only tools.
 
-The audit found gateable features in the registry that had NO
-``require_feature`` / ``require_feature_optional`` reference on any API route,
-so admins could disable them and the endpoint would still run (silent
-non-enforcement). This test scans ``app/api/*.py`` for those dependency
-references and asserts that every ``gateable_keys()`` entry appears at least
-once. If a new gateable feature is added to the registry without wiring an
-enforcement dependency, this test FAILS and names the unwired keys.
+Real router deny/allow tests live in test_capability_route_policy.py. This guard
+also catches entries without any declared enforcement point; client-only editor
+controls must not be disguised as meaningless API gates.
 """
-
 from __future__ import annotations
 
-import glob
-import os
 import re
+from pathlib import Path
 
-from app.core.feature_registry import gateable_keys
+from app.core.feature_registry import FEATURE_REGISTRY, feature_ancestry
+from app.middleware.capability_router import ROUTE_CAPABILITIES
 
-# Matches require_feature("key") and require_feature_optional("key").
-_REF_RE = re.compile(r'require_feature(?:_optional)?\(\s*["\']([a-z_]+)["\']\s*\)')
-
-_API_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "app",
-    "api",
-)
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def _wired_keys() -> set[str]:
-    wired: set[str] = set()
-    for path in glob.glob(os.path.join(_API_DIR, "*.py")):
-        with open(path, encoding="utf-8") as fh:
-            for match in _REF_RE.finditer(fh.read()):
-                wired.add(match.group(1))
-    return wired
+def test_every_gateable_key_has_server_or_client_enforcement():
+    wired = {
+        key for handlers in ROUTE_CAPABILITIES.values()
+        for keys in handlers.values() for key in keys
+    }
+    # Owner/content-dependent gates live next to the resource they validate.
+    sources = [
+        *ROOT.glob("backend/app/api/*.py"),
+        ROOT / "backend/app/middleware/capability_router.py",
+        ROOT / "backend/app/services/api_key_service.py",
+    ]
+    for path in sources:
+        text = path.read_text()
+        wired.update(re.findall(r'''require_feature(?:_optional)?\(\s*["']([a-z_]+)["']''', text))
+        wired.update(re.findall(r'''["']([a-i]\d\d)["']''', text))
 
+    # Each client-only entry names real enforcement source files. The browser
+    # extension lives outside frontend/src and uses a repository-relative path.
+    policy = (ROOT / "frontend/src/lib/capability-ui-policy.ts").read_text()
+    for key, paths in re.findall(r"^\s*([a-i]\d\d):\s*\[(.*)\],?$", policy, re.MULTILINE):
+        source_paths = re.findall(r"'([^']+)'", paths)
+        assert source_paths, key
+        for relative in source_paths:
+            path = ROOT / "frontend/src" / relative
+            assert path.is_file(), (key, relative)
+        wired.add(key)
 
-def test_every_gateable_key_is_enforced_on_a_route() -> None:
-    wired = _wired_keys()
-    missing = sorted(k for k in gateable_keys() if k not in wired)
-    assert not missing, (
-        "Gateable feature keys with NO require_feature/"
-        "require_feature_optional enforcement on any app/api route: "
-        f"{missing}. Wire an enforcement dependency on the primary entry "
-        "route, or mark the feature gateable=False in the registry."
-    )
+    # A gated inventory child enforces its legacy coarse family too.
+    for key in tuple(wired):
+        wired.update(feature.key for feature in feature_ancestry(key))
+    missing = sorted(feature.key for feature in FEATURE_REGISTRY if feature.gateable and feature.key not in wired)
+    assert not missing, f"Capabilities without an enforcement point: {missing}"

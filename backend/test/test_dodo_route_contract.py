@@ -50,11 +50,15 @@ def _request(payload: bytes, headers: dict[str, str]) -> Request:
 
 
 async def test_create_response_remains_hosted_checkout_with_server_identity(monkeypatch):
+    from app.services.plan_catalog_service import plan_catalog_service
+
     create = AsyncMock(return_value={
         "success": True, "checkout_type": "hosted", "subscription_id": "sub_test",
         "checkout_session_id": "checkout_test", "short_url": "https://checkout.example.test/owned",
     })
     monkeypatch.setattr(routes.payment_service, "create_subscription", create)
+    require_purchase = AsyncMock()
+    monkeypatch.setattr(plan_catalog_service, "require_new_purchase", require_purchase)
     monkeypatch.setattr(routes.feature_flag_service, "get_flag", AsyncMock(return_value=True))
     row = SimpleNamespace(email="owner@example.com", name="Owner")
     db = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(one_or_none=Mock(return_value=row))))
@@ -69,6 +73,7 @@ async def test_create_response_remains_hosted_checkout_with_server_identity(monk
     }
     assert create.await_args.kwargs["customer_email"] == "owner@example.com"
     assert create.await_args.kwargs["customer_name"] == "Owner"
+    require_purchase.assert_awaited_once_with(db, "basic", user_id="owner-id")
 
 
 async def test_existing_dodo_cancellation_ignores_new_sales_feature_flag(monkeypatch):
