@@ -63,8 +63,8 @@ test('a delayed guest field patch cannot apply after the account changes with th
   const errors = await mockGuest(page)
   let signedIn = false
   let sessionReads = 0
-  let submissions = 0
-  let patchReceived = false
+  const submissions: Array<{ latex_content: string }> = []
+  const patches: Array<Parameters<typeof applyGuestBulletPatch>[0]> = []
   let releasePatch!: () => void
   const heldPatch = new Promise<void>(resolve => { releasePatch = resolve })
   await mockEngineRoute(page, '**/api/auth/get-session', route => {
@@ -74,30 +74,69 @@ test('a delayed guest field patch cannot apply after the account changes with th
   })
   await mockEngineRoute(page, '**/public/engine/document/patch', async route => {
     const body = route.request().postDataJSON()
-    patchReceived = true
-    await heldPatch
+    const index = patches.push(body)
+    if (index === 1) await heldPatch
     await fulfillEngineResponse(route, { json: applyGuestBulletPatch(body) })
   })
-  await mockEngineRoute(page, '**/jobs/submit', route => { submissions++; return fulfillEngineResponse(route, { json: { success: true, job_id: 'unexpected', message: 'Queued' } }) })
-  await page.goto('/try')
-  await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
-  await page.getByLabel('Experience · bullet').fill(editedBullet(8))
-  await page.getByRole('button', { name: 'Save field', exact: true }).click()
-  await expect.poll(() => patchReceived).toBe(true)
-  const previousReads = sessionReads
-  signedIn = true
-  // Better Auth's actual cross-tab session notification path refreshes the
-  // session without remounting the editor or changing its source content.
-  await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', {
-    key: 'better-auth.message', newValue: JSON.stringify({ event: 'session', data: { trigger: 'updateUser' } }),
-  })))
-  await expect.poll(() => sessionReads).toBeGreaterThan(previousReads)
-  await expect(page.locator('a[title="Dashboard"]')).toBeVisible()
-  releasePatch()
-  await expect(page.getByRole('alert').filter({ hasText: 'This field could not be saved' })).toBeVisible()
-  await expect(page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true })).toBeVisible()
-  expect(submissions).toBe(0)
-  expect(errors).toEqual([])
+  await mockEngineRoute(page, '**/jobs/submit', route => {
+    submissions.push(route.request().postDataJSON())
+    return fulfillEngineResponse(route, { json: { success: true, job_id: 'current-field-preview', message: 'Queued' } })
+  })
+  await mockEngineRoute(page, '**/jobs/current-field-preview/state', route => fulfillEngineResponse(route, { json: {
+    status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000,
+  } }))
+  try {
+    await page.goto('/try')
+    const originalField = page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true })
+    const fieldInput = page.getByLabel('Experience · bullet')
+    const fieldError = page.getByRole('alert').filter({ hasText: 'This field could not be saved' })
+    await originalField.click()
+    await fieldInput.fill(editedBullet(8))
+    await page.getByRole('button', { name: 'Save field', exact: true }).click()
+    await expect.poll(() => patches.length).toBe(1)
+    const originalSource = patches[0].latex_content
+    const previousReads = sessionReads
+    signedIn = true
+    // The real cross-tab notification confirms a new owner. The numeric
+    // AccountContentBoundary epoch remounts the page and discards its old form.
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', {
+      key: 'better-auth.message', newValue: JSON.stringify({ event: 'session', data: { trigger: 'updateUser' } }),
+    })))
+    await expect.poll(() => sessionReads).toBeGreaterThan(previousReads)
+    await expect(page.locator('a[title="Dashboard"]')).toBeVisible()
+    await expect(fieldInput).toHaveCount(0)
+    await expect(originalField).toBeVisible()
+    await expect(originalField).toBeEnabled()
+    await originalField.click()
+    await expect(fieldInput).toHaveValue(GUEST_ORIGINAL_BULLET)
+    await fieldInput.fill(editedBullet(9))
+
+    const oldResponse = page.waitForResponse(response => response.url().endsWith('/public/engine/document/patch'))
+    releasePatch()
+    const deliveredOldResponse = await oldResponse
+    expect(await deliveredOldResponse.finished()).toBeNull()
+    expect((await deliveredOldResponse.json()).latex_content).toBe(originalSource.replace(GUEST_ORIGINAL_BULLET, editedBullet(8)))
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(fieldInput).toHaveValue(editedBullet(9))
+    await expect(originalField).toBeVisible()
+    await expect(fieldError).toHaveCount(0)
+    await expect(page.getByRole('button', { name: `Experience · bullet ${editedBullet(8)}`, exact: true })).toHaveCount(0)
+    expect(submissions).toHaveLength(0)
+    expect(patches).toHaveLength(1)
+
+    // Current-owner recovery must use the untouched original source and node
+    // revisions, then preview only this owner's edit rather than the old patch.
+    await page.getByRole('button', { name: 'Save field', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    expect(patches).toHaveLength(2)
+    expect(patches[1]).toEqual({ ...patches[0], patches: [{ ...patches[0].patches[0], text: editedBullet(9) }] })
+    expect(submissions[0].latex_content).toBe(originalSource.replace(GUEST_ORIGINAL_BULLET, editedBullet(9)))
+    await expect(page.getByRole('button', { name: `Experience · bullet ${editedBullet(9)}`, exact: true })).toBeVisible()
+    await expect(fieldError).toHaveCount(0)
+    expect(errors).toEqual([])
+  } finally {
+    releasePatch()
+  }
 })
 
 for (const { trigger, roundTrip } of [

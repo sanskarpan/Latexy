@@ -9,6 +9,7 @@ from sqlalchemy.pool import NullPool
 from app.api.resume_engine_routes import DocumentPatch, patch_document
 from app.api.resume_routes import ResumeUpdate, update_resume
 from app.core.config import settings
+from app.database.connection import close_db
 from app.database.models import Resume, User
 from app.services.resume_engine.document import digest
 from app.services.resume_engine.imported_identity_db import ensure_imported_projection
@@ -25,7 +26,12 @@ def run(operation):
         try:
             return await operation(sessions)
         finally:
-            await engine.dispose()
+            # API callbacks can lazily create a separate entitlement pool.
+            # Dispose it while this asyncio.run loop still owns its transports.
+            try:
+                await close_db()
+            finally:
+                await engine.dispose()
     return asyncio.run(invoke())
 
 

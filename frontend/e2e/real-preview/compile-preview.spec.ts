@@ -109,9 +109,9 @@ test('normal guest compiles the shipped source and renders only the latest exact
     expect(await session.json()).toBeNull()
     await expect(page.getByRole('button', { name: `Experience · bullet ${originalBullet}`, exact: true })).toBeVisible({ timeout: 60_000 })
     await expect(page.locator('.monaco-editor')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Auto-compile on change', exact: true }).first()).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: 'Automatically update the PDF after edits', exact: true }).first()).toHaveAttribute('aria-pressed', 'false')
     const admissionRequest = page.waitForRequest(request => isAdmissionRequest(request, apiOrigin))
-    await page.getByRole('button', { name: 'Update PDF', exact: true }).click()
+    await page.getByRole('button', { name: 'Update PDF preview', exact: true }).click()
     await admissionRequest
     samples.push(await assertRenderedArtifact(page, observed, 0, FIRST_USE_ENGINE_RESUME_TEMPLATE, originalBullet))
 
@@ -139,7 +139,7 @@ test('normal guest compiles the shipped source and renders only the latest exact
     // No flag overrides, quota resets, fingerprint rotation or DB time edits.
     // Two admissions remain within the normal three-use fresh-guest allowance.
     await page.waitForTimeout(cooldownMilliseconds)
-    await page.getByRole('button', { name: 'Update PDF', exact: true }).click()
+    await page.getByRole('button', { name: 'Update PDF preview', exact: true }).click()
     samples.push(await assertRenderedArtifact(page, observed, 1, finalSource, finalBullet))
     expect(observed.admissions[1].fingerprint === fingerprint).toBe(true)
     expect(samples[1].source_sha256).not.toBe(samples[0].source_sha256)

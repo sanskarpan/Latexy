@@ -1626,11 +1626,11 @@ class ApiClient {
   //  Job submission                                                   //
   // ---------------------------------------------------------------- //
 
-  async submitJob(req: JobSubmitRequest): Promise<JobSubmitResponse> {
+  async submitJob(req: JobSubmitRequest, accountContext?: AccountPreferenceRequestContext): Promise<JobSubmitResponse> {
     const response = await this.request<JobSubmitResponse>('/jobs/submit', {
       method: 'POST',
       body: JSON.stringify(req),
-    })
+    }, accountContext)
     if (typeof window !== 'undefined') {
       trackBusinessEvent('job_submit', '/jobs/submit', { jobType: req.job_type })
     }
@@ -2140,7 +2140,7 @@ class ApiClient {
     user_plan?: string
     resume_id?: string
     compiler?: LatexCompiler
-  }): Promise<JobSubmitResponse> {
+  }, accountContext?: AccountPreferenceRequestContext): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'latex_compilation',
       latex_content: body.latex_content,
@@ -2148,7 +2148,7 @@ class ApiClient {
       user_plan: body.user_plan,
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
       compiler: body.compiler,
-    })
+    }, accountContext)
   }
 
   async autoFitResume(body: {

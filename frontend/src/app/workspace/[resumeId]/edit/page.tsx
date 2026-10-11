@@ -782,7 +782,7 @@ function AIPanel({
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function ResumeEditPage() {
-  const { can, loaded: entitlementsLoaded } = useEntitlements()
+  const { can, loaded: entitlementsLoaded, loading: entitlementsLoading } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
   const params = useParams()
@@ -791,6 +791,14 @@ export default function ResumeEditPage() {
   const flags = useFeatureFlags()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  // Renew during render so an old A cannot become current after A → B → A.
+  const initialPreviewIdentityRef = useRef({ ownerId: sessionUserId, resumeId, consumed: false })
+  if (initialPreviewIdentityRef.current.ownerId !== sessionUserId || initialPreviewIdentityRef.current.resumeId !== resumeId) {
+    initialPreviewIdentityRef.current = { ownerId: sessionUserId, resumeId, consumed: false }
+  }
+  const [initialPreviewRequest, setInitialPreviewRequest] = useState<{
+    identity: typeof initialPreviewIdentityRef.current; generation: number; source: string; compiler: LatexCompiler
+  } | null>(null)
   const dictionaryScope = {
     ownerId: sessionUserId,
     authToken: sessionData?.session?.token ?? null,
@@ -1017,6 +1025,8 @@ export default function ResumeEditPage() {
 
   // Compiler preference (stored in resume metadata)
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+  const initialPreviewCompilerRef = useRef(compiler)
+  initialPreviewCompilerRef.current = compiler
   // Compile settings modal (Feature 38)
   const [compileSettingsOpen, setCompileSettingsOpen] = useState(false)
   const [compileSettings, setCompileSettings] = useState<CompileSettings>({ compiler: 'pdflatex' })
@@ -1824,6 +1834,7 @@ export default function ResumeEditPage() {
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
+    const initialPreviewIdentity = initialPreviewIdentityRef.current
     const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
 
     if (!sessionData) {
@@ -1956,15 +1967,13 @@ export default function ResumeEditPage() {
           })
         }
 
-        // Auto-compile on load so user sees PDF immediately
-        if (canRef.current('c05') && effectiveLatex && effectiveLatex.length >= 100) {
-          try {
-            const initCompiler = (data.metadata?.compiler as LatexCompiler | undefined) ?? 'pdflatex'
-            const r = await apiClient.compileLatex({ latex_content: effectiveLatex, resume_id: resumeId, compiler: initCompiler })
-            if (isActive() && r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
-          } catch {
-            // Silent — user can compile manually
-          }
+        // Loading source and resolving grants are independent. Preserve one
+        // bootstrap demand until availability settles instead of sampling a
+        // fail-closed c05 before its response has arrived.
+        if (initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
+          && effectiveLatex && effectiveLatex.length >= 100) {
+          setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
+            source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })
         }
       } catch (error) {
         if (isActive()) {
@@ -3084,6 +3093,45 @@ export default function ResumeEditPage() {
     enabled: can('c05') && can('c06') && (autoCompile || (engineSupported && editorMode === 'pdf')) && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady, blocked: isAnyRunning || isSubmitting || isAiSubmitting,
     jobId: compileJobId, status: compileStream.status, submit: async (source) => await handleAutoCompile(source) ?? null,
   })
+
+  useEffect(() => {
+    const request = initialPreviewRequest
+    if (!request || request.identity !== initialPreviewIdentityRef.current || request.identity.consumed
+      || !sessionUserId || isLoading || sessionLoading || entitlementsLoading
+      || !isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)) return
+    // A settled denial/failure, newer work, or any attempted admission consumes
+    // this demand. Regrants, background polls and an ambiguous ACK cannot replay it.
+    request.identity.consumed = true
+    const currentSource = editorMode === 'source' ? editorRef.current?.getValue() ?? latexContent : latexContent
+    if (!entitlementsLoaded || !can('c05') || !isOnline || request.source !== currentSource || request.compiler !== compiler
+      || currentCheckpointRecoveryPreview || compileJobId || aiJobId || isAnyRunning || isSubmitting || isAiSubmitting) return
+    const authToken = apiClient.getAuthToken()
+    if (!authToken) return
+    const isActive = () => initialPreviewIdentityRef.current === request.identity
+      && isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)
+    void queuePreview.submitManual(request.source, async () => {
+      if (!isActive() || !canRef.current('c05') || sourceAtRenderRef.current !== request.source || initialPreviewCompilerRef.current !== request.compiler) return null
+      setIsSubmitting(true)
+      try {
+        const response = await apiClient.compileLatex({ latex_content: request.source, resume_id: resumeId, compiler: request.compiler }, {
+          authToken, isCurrent: () => isActive() && canRef.current('c05') && sourceAtRenderRef.current === request.source
+            && initialPreviewCompilerRef.current === request.compiler,
+        })
+        if (!isActive() || !response.success || !response.job_id) return null
+        editorRef.current?.markAutoCompileCompiled?.(request.source)
+        setCompileJobId(response.job_id)
+        setLastStartedJobKind('compile')
+        return response.job_id
+      } catch {
+        // Silent, once only. A manual click remains available for recovery.
+        return null
+      } finally {
+        if (isActive()) setIsSubmitting(false)
+      }
+    })
+  }, [initialPreviewRequest, sessionUserId, resumeId, isLoading, sessionLoading, entitlementsLoading, entitlementsLoaded,
+    can, isCurrentOfflinePdfIdentity, editorMode, latexContent, compiler, currentCheckpointRecoveryPreview,
+    compileJobId, aiJobId, isAnyRunning, isSubmitting, isAiSubmitting, isOnline, queuePreview])
 
   // Visual edits share the same durable admission fence and latest-revision queue
   // as Source and Resume edits, including work already pending across mode changes.

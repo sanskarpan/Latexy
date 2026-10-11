@@ -54,6 +54,14 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
   }
   await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: { session: { token: 'contract-owner-token' }, user: { id: 'structure-owner', email: 'owner@example.com', name: 'Owner' } } }))
   await mockEngineAncillaryApi(page, 'structure-owner', { b10: true, c06: true })
+  // Complete source loading before releasing the unchanged grants. Initial
+  // preview admission must not depend on which HTTP response wins the race.
+  let releaseEntitlements!: () => void
+  const entitlementsReady = new Promise<void>((resolve) => { releaseEntitlements = resolve })
+  await mockEngineRoute(page, '**/config/entitlements', async route => {
+    await entitlementsReady
+    await route.fallback()
+  })
   await mockEngineRoute(page, '**/macros', route => fulfillEngineResponse(route, { json: [] }))
   await mockEngineRoute(page, `**/resumes/${resumeId}`, route => fulfillEngineResponse(route, { json: { id: resumeId, user_id: 'structure-owner', title: 'Structured resume', latex_content: source(), document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
   await mockEngineRoute(page, `**/resumes/${resumeId}/engine/import`, route => fulfillEngineResponse(route, { status: 404, json: { detail: 'No original upload' } }))
@@ -99,8 +107,15 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
       pages: [{ page: 1, width: 612, height: 792, rotation: 0 }], boxes: job.document.nodes.map((node) => ({ ...node, page: 1, x: 40, y: 30 + lines.indexOf(node.text) * 20, width: node.text.length * 6, height: 14 })) } })
   })
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
-  await page.goto(`/workspace/${resumeId}/edit`)
+  try {
+    await page.goto(`/workspace/${resumeId}/edit`)
+    await expect(page.getByText('Structured resume', { exact: true })).toBeVisible()
+    expect(jobs.size).toBe(0)
+  } finally {
+    releaseEntitlements()
+  }
   await expect.poll(() => jobs.size).toBeGreaterThan(0)
+  expect(jobs.size).toBe(1)
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await page.getByRole('button', { name: 'Edit resume field: Experience', exact: true }).click()
   await page.getByLabel('experience · section heading', { exact: true }).fill('Professional Experience')

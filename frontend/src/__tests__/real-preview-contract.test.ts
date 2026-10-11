@@ -63,6 +63,13 @@ describe('credential-free real preview harness', () => {
 
   it('keeps exact artifact and keyboard selection checks for wrapped semantic hit targets', () => {
     const spec = readFileSync(new URL('../../e2e/real-preview/compile-preview.spec.ts', import.meta.url), 'utf8')
+    const studio = readFileSync(new URL('../app/try/page.tsx', import.meta.url), 'utf8')
+    for (const label of ['Automatically update the PDF after edits', 'Update PDF preview']) {
+      expect(studio).toContain(`aria-label="${label}"`)
+      expect(spec).toContain(`name: '${label}', exact: true`)
+    }
+    expect(spec).not.toContain("name: 'Auto-compile on change'")
+    expect(spec).not.toContain("name: 'Update PDF',")
     expect(spec).toContain('expect(semanticFieldHitTarget(page, expectedBullet)).toBeVisible()')
     expect(spec).toContain('await semanticFieldHitTarget(page, originalBullet).focus()')
     expect(spec).toContain("await page.keyboard.press('Enter')")
