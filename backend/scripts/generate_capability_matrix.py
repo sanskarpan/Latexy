@@ -21,7 +21,7 @@ DYNAMIC = {
     "c01": ["middleware/capability_router.py:ROUTE_CAPABILITIES (source/metadata/builder writes, optimization history recording, accepted suggestions, GitHub pull)", "services/collab_manager.py:handle_collab_message (before Yjs source persistence and relay)"],
     "c05": ["middleware/capability_router.py:payload_capabilities (generic compile, combined, auto-fit and anonymous share)", "api/resume_routes.py:create_share_link (before redacted PDF submission)", "api/public_api_routes.py:require_developer_operation (compile admission)"],
     "i01": ["services/plan_catalog_service.py:require_new_purchase (new target-SKU checkout and token-owner Student verification)"],
-    "a09": ["middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark and premium raw export)"],
+    "a09": ["middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark, semantic projection/field editing and premium raw export)"],
     "b02": ["middleware/capability_router.py:payload_capabilities (nonempty tags in source create/update; explicit tag changes; clearing tags exempt)"],
     "b05": ["api/template_routes.py:list_categories/list_templates (filter specialty catalog)", "api/template_routes.py:_template_asset_access/get_template/use_template (academic/regional/presentation)", "api/resume_routes.py:_get_builder_template (specialty selection)"],
     "b07": ["api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)"],
@@ -33,6 +33,7 @@ DYNAMIC = {
     "c16": ["api/routes.py:update_me_preferences (normalized dictionary additions require current owner policy; unchanged words and removals remain available)"],
     "d01": ["middleware/capability_router.py:payload_capabilities (llm_optimization/combined)", "api/public_api_routes.py:require_developer_operation/_authorize (optimize)"],
     "d02": ["middleware/capability_router.py:payload_capabilities (guided industry/seniority/tone/emphasize/downplay)"],
+    "d03": ["middleware/capability_router.py:payload_capabilities (semantic candidate acceptance; reject-only recovery exempt)"],
     "d18": ["middleware/capability_router.py:payload_capabilities (ATS and combined jobs)", "api/public_api_routes.py:require_developer_operation/_authorize (ATS)"],
     "d19": ["middleware/capability_router.py:payload_capabilities (explicit industry/locale profile)", "api/public_api_routes.py:ats_score_v1 (industry)", "api/ats_routes.py:score_resume_ats (generic fallback)", "workers/ats_worker.py:submit_ats_scoring (generic admission snapshot)", "workers/orchestrator.py:submit_optimize_and_compile/_run_ats_stage (server-owned generic-only snapshot survives queue delay)"],
     "d21": ["api/resume_routes.py:create_resume/update_resume/fork_resume (only enqueue embeddings when enabled)"],
@@ -56,6 +57,8 @@ DYNAMIC = {
 
 FOCUSED_TESTS = {
     "b01": ["test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation"],
+    "b10": ["test_engine_capability_admission.py::test_denied_engine_admission_precedes_database_and_dispatch (guest/saved fields and structure)"],
+    "d03": ["test_engine_capability_admission.py::test_candidate_rejection_is_recovery_but_acceptance_is_a_source_write", "test_engine_capability_admission.py::test_candidate_rejection_does_not_query_capabilities"],
     "c01": ["test_capability_route_policy.py::test_optimization_history_write_is_gated_but_restore_remains_recovery", "test_capability_route_policy.py::test_existing_optimization_restore_succeeds_while_source_edit_is_disabled"],
     "c05": ["test_capability_route_policy.py::test_global_compile_off_blocks_every_new_compile_admission", "test_capability_route_policy.py::test_developer_api_compile_uses_owner_capability_gate"],
     "i01": ["test_plan_catalog.py::test_purchase_capability_disables_new_checkout_without_hiding_billing_recovery"],

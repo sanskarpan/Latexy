@@ -17,6 +17,27 @@ describe('builder content progress and preview', () => {
     expect(deriveBuilderMetrics(doc).page_estimate).toBe(1)
     expect(deriveBuilderPreview(doc, 'minimal').sections).toEqual([])
   })
+  it('preserves custom titles while omitting empty and hidden sections', () => {
+    const doc = document()
+    doc.experience[0].title = 'Associate'
+    doc.education[0].institution = 'Example University'
+    doc.projects[0].name = 'Hidden project'
+    doc.hidden_sections = ['projects']
+    doc.section_titles = {
+      experience: '  Work History  ',
+      education: '   ',
+      skills: 'Expertise',
+      projects: 'Selected Projects',
+    }
+
+    const preview = deriveBuilderPreview(doc, 'minimal')
+    expect(preview.sections.map(({ key, title }) => ({ key, title }))).toEqual([
+      { key: 'experience', title: 'Work History' },
+      { key: 'education', title: 'Education' },
+    ])
+    expect(preview.sections.every(section => section.items.length > 0)).toBe(true)
+    expect(deriveBuilderMetrics(doc).completeness_score).toBe(40)
+  })
   it('excludes hidden content from progress, warnings and estimated pages', () => {
     const doc = document()
     doc.basics.name = 'Alex'

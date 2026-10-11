@@ -15,6 +15,7 @@ import {
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
 import { useJobStream } from '@/hooks/useJobStream'
+import { usePreviewScheduler } from '@/hooks/usePreviewScheduler'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import CapabilityGate from '@/components/CapabilityGate'
@@ -453,8 +454,8 @@ export default function CoverLetterPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (!canRef.current('c05') || !canRef.current('c06')) return
-    if (isProcessing || isSubmitting) return
+    if (!canRef.current('c05') || !canRef.current('c06')) return null
+    if (isProcessing || isSubmitting) return null
     setIsSubmitting(true)
     const requestResumeId = resumeId
     const requestUserId = sessionUserId
@@ -462,9 +463,10 @@ export default function CoverLetterPage() {
     try {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
-      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
+      return response.job_id
     } catch {
       // Silent
     } finally {
@@ -565,6 +567,12 @@ export default function CoverLetterPage() {
     // selected even though persistence itself succeeded earlier.
     return isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)
   }
+
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:${activeCoverLetterId}`, enabled: can('c05') && can('c06') && autoCompile,
+    blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
+
 
   if (sessionLoading || isLoading) {
     return (
@@ -918,7 +926,7 @@ export default function CoverLetterPage() {
               <div className="min-h-0 flex-1 bg-bg">
                 <LaTeXEditor
                   ref={editorRef}
-                  value=""
+                  value={editorContent}
                   onChange={(value) => {
                     if (!canRef.current('e01') || !canRef.current('c01')) return
                     setEditorContent(value)
@@ -926,10 +934,11 @@ export default function CoverLetterPage() {
                   }}
                   readOnly={!can('e01') || !can('c01') || isProcessing}
                   onCompile={can('c05') ? compileCurrentContent : undefined}
-                  onAutoCompile={handleAutoCompile}
+                  onAutoCompile={can('c05') && can('c06') && autoCompile ? queuePreview : undefined}
                   autoCompileEnabled={can('c05') && can('c06') && autoCompile}
-                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileBusy={false}
                   autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}:${activeCoverLetterId ?? 'none'}`}
+                  autoCompileDebounceMs={0}
                   hideEmptyAction
                 />
               </div>

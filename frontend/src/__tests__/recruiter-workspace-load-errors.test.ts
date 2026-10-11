@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const RECRUITER_SOURCE = readFileSync(
   new URL('../app/workspaces/[workspaceId]/recruiter/page.tsx', import.meta.url),
   'utf8',
-)
+).replace(/\r\n/g, '\n')
 
 describe('recruiter-workspace loading failures', () => {
   it('does not leave signed-out visitors on a permanent loading spinner', () => {

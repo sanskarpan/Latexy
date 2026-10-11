@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const MERGE_SOURCE = readFileSync(
   new URL('../app/workspace/merge/page.tsx', import.meta.url),
   'utf8',
-)
+).replace(/\r\n/g, '\n')
 
 describe('merge-resume selector failures', () => {
   it('uses complete pagination and separates outage from an empty account', () => {

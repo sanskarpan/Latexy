@@ -1,0 +1,116 @@
+diff --git a/dist/compiled/react-dom/cjs/react-dom-client.development.js b/dist/compiled/react-dom/cjs/react-dom-client.development.js
+--- a/dist/compiled/react-dom/cjs/react-dom-client.development.js
++++ b/dist/compiled/react-dom/cjs/react-dom-client.development.js
+@@ -4678,6 +4678,17 @@
+     function resetHydrationState() {
+       nextHydratableInstance = hydrationParentFiber = null;
+       didSuspendOrErrorDEV = isHydrating = !1;
++    }
++    function popHydrationStateOnInterruptedWork(fiber) {
++      if (fiber !== hydrationParentFiber) return;
++      if (!isHydrating) {
++        popToNextHostParent(fiber);
++        isHydrating = !0;
++        return;
++      }
++      popToNextHostParent(fiber);
++      if (5 === fiber.tag && null !== fiber.stateNode)
++        nextHydratableInstance = fiber.stateNode;
+     }
+     function upgradeHydrationErrorsToRecoverable() {
+       var queuedErrors = hydrationErrors;
+@@ -15776,6 +15787,7 @@
+           break;
+         case 5:
+           resetHooksOnUnwind(unitOfWork);
++          popHydrationStateOnInterruptedWork(unitOfWork);
+         default:
+           unwindInterruptedWork(current, unitOfWork),
+             (unitOfWork = workInProgress =
+diff --git a/dist/compiled/react-dom/cjs/react-dom-client.production.js b/dist/compiled/react-dom/cjs/react-dom-client.production.js
+--- a/dist/compiled/react-dom/cjs/react-dom-client.production.js
++++ b/dist/compiled/react-dom/cjs/react-dom-client.production.js
+@@ -2879,6 +2879,17 @@
+ function resetHydrationState() {
+   nextHydratableInstance = hydrationParentFiber = null;
+   isHydrating = !1;
++}
++function popHydrationStateOnInterruptedWork(fiber) {
++  if (fiber !== hydrationParentFiber) return;
++  if (!isHydrating) {
++    popToNextHostParent(fiber);
++    isHydrating = !0;
++    return;
++  }
++  popToNextHostParent(fiber);
++  if (5 === fiber.tag && null !== fiber.stateNode)
++    nextHydratableInstance = fiber.stateNode;
+ }
+ function upgradeHydrationErrorsToRecoverable() {
+   var queuedErrors = hydrationErrors;
+@@ -11210,6 +11221,7 @@
+       break;
+     case 5:
+       resetHooksOnUnwind(next);
++      popHydrationStateOnInterruptedWork(next);
+     default:
+       unwindInterruptedWork(current, next),
+         (next = workInProgress =
+diff --git a/dist/compiled/react-dom/cjs/react-dom-profiling.development.js b/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
+--- a/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
++++ b/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
+@@ -4686,6 +4686,17 @@
+     function resetHydrationState() {
+       nextHydratableInstance = hydrationParentFiber = null;
+       didSuspendOrErrorDEV = isHydrating = !1;
++    }
++    function popHydrationStateOnInterruptedWork(fiber) {
++      if (fiber !== hydrationParentFiber) return;
++      if (!isHydrating) {
++        popToNextHostParent(fiber);
++        isHydrating = !0;
++        return;
++      }
++      popToNextHostParent(fiber);
++      if (5 === fiber.tag && null !== fiber.stateNode)
++        nextHydratableInstance = fiber.stateNode;
+     }
+     function upgradeHydrationErrorsToRecoverable() {
+       var queuedErrors = hydrationErrors;
+@@ -15784,6 +15795,7 @@
+           break;
+         case 5:
+           resetHooksOnUnwind(unitOfWork);
++          popHydrationStateOnInterruptedWork(unitOfWork);
+         default:
+           unwindInterruptedWork(current, unitOfWork),
+             (unitOfWork = workInProgress =
+diff --git a/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js b/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
+--- a/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
++++ b/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
+@@ -2973,6 +2973,17 @@
+ function resetHydrationState() {
+   nextHydratableInstance = hydrationParentFiber = null;
+   isHydrating = !1;
++}
++function popHydrationStateOnInterruptedWork(fiber) {
++  if (fiber !== hydrationParentFiber) return;
++  if (!isHydrating) {
++    popToNextHostParent(fiber);
++    isHydrating = !0;
++    return;
++  }
++  popToNextHostParent(fiber);
++  if (5 === fiber.tag && null !== fiber.stateNode)
++    nextHydratableInstance = fiber.stateNode;
+ }
+ function upgradeHydrationErrorsToRecoverable() {
+   var queuedErrors = hydrationErrors;
+@@ -11814,6 +11825,7 @@
+       break;
+     case 5:
+       resetHooksOnUnwind(next);
++      popHydrationStateOnInterruptedWork(next);
+     default:
+       unwindInterruptedWork(current, next),
+         (next = workInProgress =

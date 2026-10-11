@@ -342,7 +342,7 @@ export interface LaTeXEditorRef {
   rejectAllTrackedChanges: () => void
 }
 
-interface LaTeXEditorProps {
+export interface LaTeXEditorProps {
   value: string
   onChange: (value: string) => void
   /** Expose the live Monaco instance to integrations such as macro playback. */
@@ -368,6 +368,7 @@ interface LaTeXEditorProps {
   autoCompileBusy?: boolean
   /** Identity of the current editor document; changing it drops stale queued content. */
   autoCompileDocumentKey?: string | null
+  autoCompileDebounceMs?: number
   /** Hide the "Insert Sample Resume" empty-state button (e.g. on cover letter pages) */
   hideEmptyAction?: boolean
   /** Live ATS quick-score value (null = not scored yet) */
@@ -717,7 +718,7 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileDebounceMs, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const { can } = useEntitlements()
@@ -1410,6 +1411,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const autoCompileScheduler = createAutoCompileScheduler({
         enabled: can('c06') && autoCompileEnabled && !readOnly && !collabReadOnly,
         busy: autoCompileBusy,
+        // Engine pages coalesce revisions outside Monaco; preserve the legacy
+        // quiet/cadence defaults for callers without an explicit debounce.
+        debounceMs: autoCompileDebounceMs,
+        minIntervalMs: autoCompileDebounceMs === undefined ? undefined : 0,
         onDispatch: (content) => { if (canRef.current('c06')) autoCompileRef.current?.(content) },
       })
       autoCompileSchedulerRef.current?.dispose()

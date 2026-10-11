@@ -97,10 +97,14 @@ def test_import_maps_supported_json_resume_fields_without_flattening():
         "bullets": ["Reduced p95 latency by 40%"],
         "bullet_ids": ["work-acme-bullet-0"],
         "technologies": ["Python", "Kubernetes"],
+        "technology_ids": ["work-acme-technology-bullet-0", "work-acme-technology-bullet-1"],
     }
     # Legacy JSON Resume imports receive stable element IDs so later edits can
     # retain bullet history without changing the imported content.
     assert structured["experience"][0]["bullet_ids"] == ["work-acme-bullet-0"]
+    imported_again, _ = json_resume_interchange_service.from_json_resume(JSON_RESUME)
+    assert imported_again["experience"][0]["technology_ids"] == structured["experience"][0]["technology_ids"]
+    assert len(set(structured["experience"][0]["technology_ids"])) == len(structured["experience"][0]["technologies"])
     assert structured["education"][0]["field"] == "Computer Science"
     assert structured["projects"][0]["role"] == "Lead"
     assert structured["certifications"][0]["date"] == "2024-02-10"

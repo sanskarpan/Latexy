@@ -410,6 +410,19 @@ def test_latex_image_contains_the_offline_europecv_locale_contract():
     assert {"texlive-latex-extra", "texlive-lang-european", "texlive-lang-greek"} <= latex
 
 
+def test_europecv_system_font_is_explicit_in_every_renderer_image():
+    """fontspec resolves Heros through fontconfig, not just TeX's font files."""
+    template = (BACKEND / "app/data/templates/regional/europecv.tex").read_text(encoding="utf-8")
+    assert r"\setmainfont{TeX Gyre Heros}" in template
+    images = _modal_apt_packages()
+    for image in ("texlive_image", "api_image", "latex_image"):
+        assert "fonts-texgyre" in images[image], f"{image} lacks EuropeCV's system font"
+    for filename in ("Dockerfile", "Dockerfile.prod"):
+        assert re.search(r"^\s*fonts-texgyre\s+\\$", (BACKEND / filename).read_text(), re.MULTILINE), (
+            f"{filename} lacks EuropeCV's explicit system-font package"
+        )
+
+
 def test_multilingual_adapter_packages_are_explicit_not_transitive_assumptions():
     """Pin the Debian ownership of every generated adapter in all images."""
     latex = _modal_apt_packages().get("latex_image", set())
@@ -452,7 +465,23 @@ def test_modal_latex_image_prewarms_the_same_closed_mixed_font_contract():
     for fragment in required:
         assert fragment in modal, f"Modal cache probe is missing {fragment!r}"
         assert fragment in local, f"Local cache probe is missing {fragment!r}"
-    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)" in modal
+    tree = _parse(MODAL_APP)
+    image = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == "texlive_image" for target in node.targets))
+    calls = []
+    while isinstance(image, ast.Call) and isinstance(image.func, ast.Attribute):
+        calls.append((image.func.attr, [ast.unparse(arg) for arg in image.args]))
+        image = image.func.value
+    calls.reverse()
+    warm = next(i for i, (method, args) in enumerate(calls)
+                if method == "run_commands" and args == ["_INSTALL_ATKINSON", "_WARM_TEX_CACHE_COMMAND"])
+    final = next(i for i, (method, args) in enumerate(calls)
+                 if method == "run_commands" and args == ["'python3 /opt/latexy-format-build/scripts/build_trusted_render_formats.py'", "_WRITE_RENDERER_FINGERPRINT_COMMAND"])
+    assert warm < final
+    between = calls[warm + 1:final]
+    assert any(method == "add_local_file" and "build_trusted_render_formats.py" in " ".join(args) for method, args in between)
+    assert any(method == "add_local_file" and "managed_preamble.py" in " ".join(args) for method, args in between)
+    assert "write_renderer_fingerprint.py" in modal
     assert modal.index("fc-cache --force --system-only") < modal.index("lualatex -no-shell-escape")
     assert local.index("fc-cache --force --system-only") < local.index("lualatex -no-shell-escape")
 
@@ -563,6 +592,11 @@ def test_local_engine_gate_across_real_topologies(monkeypatch, topology, env, cg
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(latex_service.settings, "DEPLOY_TARGET", env.get("DEPLOY_TARGET", "local"))
     monkeypatch.setattr(latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False)
+    # Running this test in Docker must not override the modeled bare-host case.
+    original_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda path: False if str(path) in {
+        "/.dockerenv", "/run/.containerenv",
+    } else original_exists(path))
     monkeypatch.setattr(Path, "read_text", lambda self, **kw: cgroup, raising=False)
     # Model the selected topology even when pytest itself runs inside Docker.
     original_exists = Path.exists

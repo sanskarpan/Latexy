@@ -13,13 +13,18 @@ export default defineConfig({
     reporter: process.env.CI
         ? [['list'], ['html', { outputFolder: 'playwright-quality-report', open: 'never' }]]
         : 'list',
-    // Cold Next.js route compilation is shared by several engines in CI.
+    // Exercise the deployed bundle; PDF.js cannot evaluate in Next 15's
+    // Webpack development eval wrapper. Keep interaction failures bounded.
     timeout: 120_000,
     expect: { timeout: 12_000 },
     outputDir: 'test-results/quality',
 
     use: {
         baseURL: `http://localhost:${PORT}`,
+        // These contracts mock HTTP APIs. A claimed production PWA worker
+        // bypasses page.route in WebKit; the dedicated PWA spec tests its lifecycle.
+        serviceWorkers: 'block',
+        actionTimeout: 12_000,
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
     },
@@ -53,10 +58,10 @@ export default defineConfig({
     ],
 
     webServer: {
-        command: `node scripts/playwright-server.mjs --port ${PORT}`,
+        command: `node scripts/playwright-server.mjs --port ${PORT} --mode production`,
         url: `http://localhost:${PORT}`,
         reuseExistingServer,
-        timeout: 900_000,
+        timeout: 1_800_000,
         gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
         env: {
             // Keep unmocked sockets away from the Next HTTP port; quality

@@ -4,12 +4,13 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import _insert_session
 from httpx import AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import CoverLetter, Resume
+
+from .conftest import _insert_session
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 

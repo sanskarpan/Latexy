@@ -1,0 +1,50 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Latexy
+Dashboard
+Workspace
+Tracker
+Templates
+Studio
+Language
+English
+हिन्दी
+मराठी
+తెలుగు
+ਪੰਜਾਬੀ
+বাংলা
+L
+Latency
+
+WORKSPACE
+
+Resume Library
+
+Create, edit, and optimize resumes from a single workspace.
+
+Search content ⌘⇧F
+Run History
+Match to Job
+Export
+Merge
+New Resume
+SORT
+Recently updated
+Name A–Z
+Freshness
+Match score
+GRID
+LIST
+Loading
+ORGANIZE
+
+Add tags to resumes to filter here.
+
+View Archived
+RECENT ACTIVITY
+Loading
+Loading recent runs…
+WORKFLOW TIP
+
+Use Fork to create role-specific variants of a resume. Edit each variant independently, then compare with the parent to review changes.

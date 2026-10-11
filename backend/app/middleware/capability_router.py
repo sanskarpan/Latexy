@@ -74,6 +74,19 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         # called after an AI job; history reads/restores remain recovery paths.
         "record_optimization": ("c01",),
     },
+    "resume_engine_routes": {
+        "project_guest": (),
+        "patch_guest": ("b10", "c01"),
+        "patch_document": ("b10", "c01"),
+        # This endpoint calls submit_job directly, so it cannot inherit the
+        # dependencies registered on /jobs/submit.
+        "optimize_document": ("d01", "d18", "c05", "c01"),
+    },
+    "resume_structure_routes": {"reorder_document": ("b10", "c01")},
+    "pdf_import_routes": {
+        "import_pdf": ("b06", "b08"),
+        "adapt_import": ("b06", "b08", "b04", "b01", "c01"),
+    },
     "job_routes": {
         "compile_watermarked": ("c05", "c13"), "create_batch_tailor": ("d05", "d01", "d18", "c05", "b01", "c01"),
     },
@@ -199,6 +212,7 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 DYNAMIC_ENDPOINTS = frozenset({
+    ("resume_engine_routes", "decide_run"),
     ("job_routes", "submit_job"),
     ("resume_routes", "create_resume"), ("resume_routes", "update_resume"),
     ("resume_routes", "update_builder_resume"), ("resume_routes", "create_share_link"),
@@ -228,6 +242,15 @@ DYNAMIC_ENDPOINTS = frozenset({
 # resource/admin handlers. Any new first-party HTTP handler must be classified
 # here or in the gate maps; an omitted policy must never silently allow use.
 PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
+    "resume_engine_routes": frozenset({
+        "engine_capabilities", "engine_providers", "get_document", "get_run",
+    }),
+    "pdf_import_routes": frozenset({
+        "get_import", "original_pdf", "discard_import", "resume_import",
+    }),
+    "render_artifact_routes": frozenset({
+        "preview_pdf", "preview_geometry", "preview_synctex",
+    }),
     "admin_routes": frozenset({
         "get_public_feature_flags", "get_admin_feature_flags", "update_feature_flag",
         "get_entitlements", "update_kill_switch", "update_matrix_cell",
@@ -408,6 +431,10 @@ def _payload_bool(value: Any) -> bool | None:
 def payload_capabilities(module: str, name: str, body: dict, params: dict, query: dict) -> tuple[str, ...]:
     """Pure selector: easy to audit and test without invoking a provider."""
     keys: list[str] = []
+    if (module, name) == ("resume_engine_routes", "decide_run") and body.get("accept_patch_ids"):
+        # Rejecting an existing candidate is recovery. Accepting changes is a
+        # new source mutation and uses the same per-change review capability.
+        keys.extend(("d03", "c01"))
     if (module, name) == ("job_routes", "submit_job"):
         job_type = body.get("job_type")
         if not isinstance(job_type, str):
@@ -509,6 +536,8 @@ def _route_gate(module: str, name: str):
             or (module, name) in {
                 ("routes", "compile_latex_anonymous"), ("job_routes", "submit_job"),
                 ("job_routes", "compile_watermarked"),
+                ("resume_engine_routes", "project_guest"),
+                ("resume_engine_routes", "patch_guest"),
             }
             or ((module, name) == ("export_routes", "export_content") and request.path_params.get("fmt") != "tex")
         ):

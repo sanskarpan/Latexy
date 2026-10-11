@@ -4,17 +4,17 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from _entitlement_reset import reset_entitlements_baseline
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from fastapi import HTTPException
 from sqlalchemy import delete, insert, select, update
-from test_admin_control_plane_api import _admin_headers, _create_session, _create_user
 
 from app.core.feature_registry import CAPABILITY_ROLES, gateable_keys
 from app.database.connection import get_async_db_session
 from app.database.models import RoleFeature, User
 from app.services.entitlement_service import entitlement_service
+from test._entitlement_reset import reset_entitlements_baseline
+from test.test_admin_control_plane_api import _admin_headers, _create_session, _create_user
 
 
 @pytest.fixture(autouse=True)

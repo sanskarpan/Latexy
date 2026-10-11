@@ -11,6 +11,11 @@ export type EventType =
   | 'job.failed'
   | 'job.cancelled'
   | 'job.pdf_extracted'
+  | 'artifact.ready'
+  | 'context.ready'
+  | 'section.ready'
+  | 'patch.ready'
+  | 'review.ready'
   | 'llm.token'
   | 'llm.complete'
   | 'log.line'
@@ -25,6 +30,32 @@ export interface BaseEvent {
   timestamp: number
   sequence: number
   type: EventType
+}
+
+/** Preview readiness does not accept an AI proposal or complete a job. */
+export interface RenderArtifact {
+  artifact_id: string
+  source_sha256: string
+  content_revision?: number | null
+  document_id?: string | null
+  branch: 'draft' | 'candidate'
+  owner_epoch: number
+  compiler: string
+  settings_sha256: string
+  pdf_sha256: string
+  pdf_size: number
+  page_count: number
+  preview_url: string
+  geometry_url?: string | null
+}
+
+export interface ArtifactReadyEvent extends BaseEvent, RenderArtifact { type: 'artifact.ready' }
+
+export interface SemanticReadyEvent extends BaseEvent {
+  type: 'context.ready' | 'section.ready' | 'patch.ready' | 'review.ready'
+  run_id: string; document_id: string; content_revision: number; source_sha256: string; branch: 'candidate'
+  patch?: import('./resume-engine-types').SemanticPatch; provisional?: boolean
+  final_patch_ids?: string[]; rejected_patch_ids?: string[]; warnings?: string[]; missing_evidence?: string[]
 }
 
 // ------------------------------------------------------------------ //
@@ -214,6 +245,8 @@ export interface DocumentConvertCompleteEvent extends BaseEvent {
 // ------------------------------------------------------------------ //
 
 export type AnyEvent =
+  | SemanticReadyEvent
+  | ArtifactReadyEvent
   | JobQueuedEvent
   | JobStartedEvent
   | JobProgressEvent

@@ -14,6 +14,7 @@ import { apiClient, type AcademicCVReport, type CheckpointEntry, type DiffWithPa
 import CompilerSelector from '@/components/CompilerSelector'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import { useJobStream } from '@/hooks/useJobStream'
+import { usePreviewScheduler } from '@/hooks/usePreviewScheduler'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
@@ -503,24 +504,32 @@ export default function OptimizationSuitePage() {
   }
 
   const compileContent = useCallback(async (content: string) => {
-    if (!canRef.current('c05') || isProcessing || isSubmitting) return
+    if (!canRef.current('c05') || isProcessing || isSubmitting) return null
+    const requestIdentity = { ...personaIdentityRef.current }
+    const requestOwnerId = sessionUserId
+    const isCurrentRequest = () => mountedRef.current &&
+      personaIdentityRef.current.key === requestIdentity.key &&
+      personaIdentityRef.current.generation === requestIdentity.generation &&
+      liveSessionUserIdRef.current === requestOwnerId
     setIsSubmitting(true)
     try {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      if (!isCurrentRequest()) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
       setActiveJobKind('compile')
+      return response.job_id
     } catch {
       // Silent fail
     } finally {
-      setIsSubmitting(false)
+      if (isCurrentRequest()) setIsSubmitting(false)
     }
-  }, [compiler, isProcessing, isSubmitting, resumeId])
+  }, [compiler, isProcessing, isSubmitting, resumeId, sessionUserId])
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (!canRef.current('c05') || !canRef.current('d01') || !canRef.current('c06')) return
-    await compileContent(content)
+    if (!canRef.current('c05') || !canRef.current('d01') || !canRef.current('c06')) return null
+    return await compileContent(content)
   }, [compileContent])
 
   const handleEditorCompile = useCallback(() => {
@@ -687,6 +696,12 @@ export default function OptimizationSuitePage() {
       setIsScraping(false)
     }
   }, [jobUrl, isScraping])
+
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:optimize`, enabled: can('c05') && can('d01') && can('c06') && autoCompile,
+    blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
+    submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
+
 
   if (isLoading) {
     return (
@@ -1023,10 +1038,11 @@ export default function OptimizationSuitePage() {
                   readOnly={!can('c01') || isProcessing}
                   logLines={stream.logLines}
                   onCompile={can('c05') ? handleEditorCompile : undefined}
-                  onAutoCompile={handleAutoCompile}
+                  onAutoCompile={can('c05') && can('d01') && can('c06') && autoCompile ? queuePreview : undefined}
                   autoCompileEnabled={can('c05') && can('d01') && can('c06') && autoCompile}
-                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileBusy={false}
                   autoCompileDocumentKey={personaIdentityKey}
+                  autoCompileDebounceMs={0}
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
                   onExplainError={handleExplainError}

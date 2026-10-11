@@ -11,10 +11,9 @@ export function qualityOrigins() {
 
 /** Cross-origin fixtures must match the credentialed API client's CORS contract.
  * OPTIONS is a preflight, never an application read or mutation. */
-export function fulfillQualityJson(route: Route, data: unknown, status = 200) {
-  const request = route.request()
-  const requestHeaders = request.headers()
-  const headers = {
+export function qualityCorsHeaders(route: Route) {
+  const requestHeaders = route.request().headers()
+  return {
     'access-control-allow-origin': requestHeaders.origin ?? qualityOrigins().appOrigin,
     'access-control-allow-credentials': 'true',
     'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
@@ -22,8 +21,11 @@ export function fulfillQualityJson(route: Route, data: unknown, status = 200) {
     'content-type': 'application/json',
     vary: 'Origin',
   }
-  const responseStatus = request.method() === 'OPTIONS' ? 204 : status
-  return route.fulfill({ status: responseStatus, headers, body: responseStatus === 204 ? '' : JSON.stringify(data) })
+}
+
+export function fulfillQualityJson(route: Route, data: unknown, status = 200) {
+  const responseStatus = route.request().method() === 'OPTIONS' ? 204 : status
+  return route.fulfill({ status: responseStatus, headers: qualityCorsHeaders(route), body: responseStatus === 204 ? '' : JSON.stringify(data) })
 }
 
 /** Exercise public templates/import deliberately; keep background generation off.

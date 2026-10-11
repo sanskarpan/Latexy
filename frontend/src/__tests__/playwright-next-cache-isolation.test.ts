@@ -79,6 +79,15 @@ describe('Playwright Next cache isolation', () => {
     expect(FULL_STACK_SMOKE).toContain('PLAYWRIGHT_API_URL="http://127.0.0.1:${BACKEND_PORT}"')
   })
 
+  it('checks cross-browser PDFs in the production bundle with bounded interactions', () => {
+    expect(QUALITY_CONFIG).toContain('node scripts/playwright-server.mjs --port ${PORT} --mode production')
+    expect(QUALITY_CONFIG).toContain('actionTimeout: 12_000')
+    expect(QUALITY_CONFIG).toContain('timeout: 1_800_000')
+    expect(QUALITY_CONFIG).toContain("serviceWorkers: 'block'")
+    expect(PLAYWRIGHT_CONFIG).not.toContain("serviceWorkers: 'block'")
+    expect(NEXT_CONFIG).toContain("disable: process.env.NODE_ENV === 'development'")
+  })
+
   it('does not inherit ambient credentials into the disposable server', () => {
     const pathKeys = process.platform === 'win32' ? ['PATH'] : ['PATH', 'Path']
     const keys = [
@@ -236,20 +245,20 @@ describe('Playwright Next cache isolation', () => {
     const pidFile = join(root, 'descendant-pid')
     const readyFile = join(root, 'descendant-ready')
     const descendantCode = [
-      'const fs = require(\'node:fs\')',
-      'const [readyFile, marker] = process.argv.slice(1)',
+      "const fs = require('node:fs')",
+      'const [marker, readyFile] = process.argv.slice(1)',
       "fs.writeFileSync(readyFile, 'ready')",
       "process.on('SIGTERM', () => { fs.writeFileSync(marker, 'stopped'); process.exit(0) })",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const launcherCode = [
-      'const { spawn } = require(\'node:child_process\')',
-      'const [descendantCode, readyFile, marker, pidFile] = process.argv.slice(1)',
-      "const child = spawn(process.execPath, ['-e', descendantCode, readyFile, marker], { stdio: 'ignore' }); require('node:fs').writeFileSync(pidFile, String(child.pid))",
+      "const { spawn } = require('node:child_process')",
+      'const [descendantCode, marker, pidFile, readyFile] = process.argv.slice(1)',
+      "const child = spawn(process.execPath, ['-e', descendantCode, marker, readyFile], { stdio: 'ignore' })",
+      "require('node:fs').writeFileSync(pidFile, String(child.pid))",
       'setInterval(() => {}, 1000)',
     ].join(';')
-    // Keep filesystem paths as argv data, never part of the child program.
-    const launcher = spawn(process.execPath, ['-e', launcherCode, descendantCode, readyFile, marker, pidFile], {
+    const launcher = spawn(process.execPath, ['-e', launcherCode, descendantCode, marker, pidFile, readyFile], {
       detached: true,
       stdio: 'ignore',
     })
@@ -279,28 +288,35 @@ describe('Playwright Next cache isolation', () => {
 
     const root = await mkdtemp(join(tmpdir(), 'latexy-playwright-parent-'))
     const marker = join(root, 'parent-gone')
+    const ready = join(root, 'monitor-ready')
     const launcherModule = pathToFileURL(
       join(process.cwd(), 'scripts', 'playwright-server.mjs'),
     ).href
     const monitoredCode = [
       "import { writeFileSync } from 'node:fs'",
-      'const [launcherModule, marker] = process.argv.slice(1)',
+      'const [launcherModule, marker, ready] = process.argv.slice(1)',
       'const { watchParent } = await import(launcherModule)',
       "watchParent(() => { writeFileSync(marker, 'gone'); process.exit(0) })",
+      "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)',
     ].join(';')
     const parentCode = [
       "const { spawn } = require('node:child_process')",
-      'const [monitoredCode, launcherModule, marker] = process.argv.slice(1)',
-      "spawn(process.execPath, ['--input-type=module', '-e', monitoredCode, launcherModule, marker], { stdio: 'ignore' })",
-      'setTimeout(() => process.exit(0), 500)',
+      'const [monitoredCode, launcherModule, marker, ready] = process.argv.slice(1)',
+      "spawn(process.execPath, ['--input-type=module', '-e', monitoredCode, launcherModule, marker, ready], { stdio: 'ignore', detached: process.platform === 'win32', windowsHide: true })",
+      "setInterval(() => { if (require('node:fs').existsSync(ready)) process.exit(0) }, 25)",
     ].join(';')
-    const parent = spawn(process.execPath, ['-e', parentCode, monitoredCode, launcherModule, marker], {
+    const parent = spawn(process.execPath, ['-e', parentCode, monitoredCode, launcherModule, marker, ready], {
       detached: true,
       stdio: 'ignore',
     })
 
     try {
+      // Exit only after the descendant has actually installed its monitor.
+      // Cold module imports need not finish within an arbitrary 500 ms.
+      await expect
+        .poll(async () => readFile(ready, 'utf8').catch(() => ''), { timeout: 5_000 })
+        .toBe('ready')
       await expect
         .poll(async () => readFile(marker, 'utf8').catch(() => ''), { timeout: 5_000 })
         .toBe('gone')

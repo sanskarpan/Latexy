@@ -1,0 +1,325 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 12,
+  "fixtures": [
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "3936ed91441df939cff7765938b8dfd6e687f97aa39b770a245cd05cc9c36e86",
+      "prepared_sha256": "3936ed91441df939cff7765938b8dfd6e687f97aa39b770a245cd05cc9c36e86",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [],
+          "success": false,
+          "error": "TimeoutExpired",
+          "total_seconds": 62.33987801799958
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            31.90331121700001,
+            21.15093658299884
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 127396,
+          "page_count": 1,
+          "text_sha256": "0c199ce26989ebf0bfd90a59f33f7aaa0ac8076acbc157a8e1b6974595e6f1ce",
+          "overfull_boxes": 4,
+          "rerun_requested": false,
+          "total_seconds": 55.062988260004204
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_metropolis.tex",
+      "category": "presentation",
+      "source_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "prepared_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [],
+          "success": false,
+          "error": "TimeoutExpired",
+          "total_seconds": 60.31062193099933
+        },
+        {
+          "index": 1,
+          "passes_seconds": [],
+          "success": false,
+          "error": "TimeoutExpired",
+          "total_seconds": 60.53282670699991
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_pitch.tex",
+      "category": "presentation",
+      "source_sha256": "3760c56086a5f9ded4d36d57fecbe7cb5f79f9705b73249d1eb8bb73137ad633",
+      "prepared_sha256": "3760c56086a5f9ded4d36d57fecbe7cb5f79f9705b73249d1eb8bb73137ad633",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            16.798917911997705,
+            14.063789357998758
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169."
+          ],
+          "pdf_bytes": 155749,
+          "page_count": 9,
+          "text_sha256": "526f715298fba295b6dfb5c4cac42b05eae2518198d1a077b6ec85382f6575ac",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 32.52372160600498
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            18.186333261000982,
+            18.99341246500262
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169."
+          ],
+          "pdf_bytes": 155749,
+          "page_count": 9,
+          "text_sha256": "526f715298fba295b6dfb5c4cac42b05eae2518198d1a077b6ec85382f6575ac",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 38.179861108001205
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_research.tex",
+      "category": "presentation",
+      "source_sha256": "8106c97a128eaeea3a7f8587e5ee683cb8b2df6e4736295a81347de50e384fbd",
+      "prepared_sha256": "8106c97a128eaeea3a7f8587e5ee683cb8b2df6e4736295a81347de50e384fbd",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            32.09257808999973,
+            24.41553158700117
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60."
+          ],
+          "pdf_bytes": 138168,
+          "page_count": 8,
+          "text_sha256": "7801ba4a7686c53945b7935bcaae9d7ce191dbff1e610ab7084820802eb02833",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 57.23319324399927
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            23.17727057600132,
+            14.776599603006616
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60."
+          ],
+          "pdf_bytes": 138168,
+          "page_count": 8,
+          "text_sha256": "7801ba4a7686c53945b7935bcaae9d7ce191dbff1e610ab7084820802eb02833",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 38.250179762006155
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_warsaw.tex",
+      "category": "presentation",
+      "source_sha256": "c6f6648aa9a7053f53cc7e0a3d319553de1ab282521de9f29994114775496fa7",
+      "prepared_sha256": "c6f6648aa9a7053f53cc7e0a3d319553de1ab282521de9f29994114775496fa7",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            12.203804789998685,
+            15.793607431005512
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <12> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 158."
+          ],
+          "pdf_bytes": 236151,
+          "page_count": 11,
+          "text_sha256": "c4f842773bae4d60104837f23929f0109547bd9d241561cae197f4e354e2d0f3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 28.33784742900025
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            11.907537970000703,
+            18.447806543998013
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <12> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 158."
+          ],
+          "pdf_bytes": 236151,
+          "page_count": 11,
+          "text_sha256": "c4f842773bae4d60104837f23929f0109547bd9d241561cae197f4e354e2d0f3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 30.731983263001894
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/europecv.tex",
+      "category": "regional",
+      "source_sha256": "fa39273d2ce930013b5739aa1640e9bf2964a1a504c8ece23fde3ea7b28e4aec",
+      "prepared_sha256": "30d4f523e65a23e9391cc078f50cfae1329f8d019571b348acab9156430f33c4",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.871873001000495,
+            3.0488788510047016
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 12830,
+          "page_count": 1,
+          "text_sha256": "b5cb340a666e2ed2d008b71aad24f9e7666e68dd93817a28c4af9b91560b4a04",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.020758569000463
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.548627435004164,
+            3.617173739003192
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 12830,
+          "page_count": 1,
+          "text_sha256": "b5cb340a666e2ed2d008b71aad24f9e7666e68dd93817a28c4af9b91560b4a04",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.231432995002251
+        }
+      ],
+      "certified": true
+    }
+  ],
+  "resume_p50_seconds": 7.231432995002251,
+  "resume_p95_seconds": 8.020758569000463,
+  "certified_count": 4,
+  "fixture_count": 6
+}

@@ -82,3 +82,24 @@ test('getJobResult retains explicit output-unavailable markers on an unsuccessfu
     error_code: 'output_unavailable', omitted_output_fields: ['cover_letter_latex'],
   })
 })
+
+
+test('legacy browser fallback fixture retains its PDF through the actual result-envelope parser', async () => {
+  const { readFileSync } = await import('node:fs')
+  const fixture = readFileSync(new URL('../../e2e/quality/engine-rollout-fallback.spec.ts', import.meta.url), 'utf8')
+  // Keep this old-backend fixture tied to the transport envelope, not the
+  // flattened client result that would silently drop the PDF identity.
+  expect(fixture).toContain("result: { job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1 }")
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    success: true, job_id: 'legacy-rollout-pdf',
+    result: { job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1 },
+  }), { headers: { 'Content-Type': 'application/json' } })))
+  vi.stubGlobal('window', { location: { href: 'http://localhost/' } })
+  vi.stubGlobal('document', { cookie: '' })
+  vi.resetModules()
+  const { apiClient } = await import('../lib/api-client')
+  apiClient.markAuthResolved()
+  await expect(apiClient.getJobResult('legacy-rollout-pdf')).resolves.toMatchObject({
+    success: true, job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1,
+  })
+})

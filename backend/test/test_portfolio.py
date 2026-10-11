@@ -39,13 +39,14 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import _insert_session
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.portfolio_routes import _PORTFOLIO_APP_HOSTNAME
 from app.services.portfolio_generator import PortfolioGenerator
+
+from .conftest import _insert_session
 
 # ── Shared constants ───────────────────────────────────────────────────────────
 

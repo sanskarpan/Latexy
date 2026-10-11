@@ -1,0 +1,84 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Latexy
+Dashboard
+Workspace
+Tracker
+Templates
+Studio
+Language
+English
+हिन्दी
+मराठी
+తెలుగు
+ਪੰਜਾਬੀ
+বাংলা
+L
+Latency
+
+WORKSPACE
+
+Resume Library
+
+Create, edit, and optimize resumes from a single workspace.
+
+Search content ⌘⇧F
+Run History
+Match to Job
+Export
+Merge
+New Resume
+SORT
+Recently updated
+Name A–Z
+Freshness
+Match score
+GRID
+LIST
+No resumes found
+
+Create your first resume to start your pipeline.
+
+Create Resume
+ORGANIZE
+
+Add tags to resumes to filter here.
+
+View Archived
+RECENT ACTIVITY
+
+No recent runs yet.
+
+WORKFLOW TIP
+
+Use Fork to create role-specific variants of a resume. Edit each variant independently, then compare with the parent to review changes.
+
+GETTING STARTED
+
+Welcome to Latexy
+Skip
+
+GETTING STARTED
+
+Résumés, typeset.
+
+Latexy pairs LaTeX-grade typesetting with AI tailoring, so every resume you send is precise, parse-clean, and matched to the role.
+
+Typeset in LaTeX
+
+Pixel-perfect, professional formatting.
+
+Document checks
+
+Review structure, readability, and job-description keyword coverage.
+
+AI tailoring
+
+Match any job description in seconds.
+
+Back
+
+1 / 4
+
+Next

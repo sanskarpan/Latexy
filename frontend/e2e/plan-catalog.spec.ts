@@ -47,18 +47,50 @@ async function setup(page: Page) {
 
 test('billing loads current catalog, retries errors and respects annual sale pause', async ({ page }) => {
   await setup(page)
-  let outage = true
-  await page.route('**/subscription/plans', (route) => {
-    return outage ? route.fulfill({ status: 503, json: { detail: 'Temporary pricing outage' } }) : route.fulfill({ json: {
+  let outageRequests = 0
+  let recoveredRequests = 0
+  await page.addInitScript(() => {
+    // Observe the real UI action before React dispatches its fetch. Automatic
+    // session/entitlement refetches must not end the outage before this click.
+    document.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest('button') : null
+      const card = button?.closest('[role="alert"]')
+      if (!event.isTrusted || button?.textContent?.trim() !== 'Try again'
+        || !card?.textContent?.includes("Couldn't load billing info")
+        || !card.textContent.includes('Temporary pricing outage')) return
+      const scope = window as Window & { __pricingRetryDispatches?: number }
+      scope.__pricingRetryDispatches = (scope.__pricingRetryDispatches ?? 0) + 1
+    }, true)
+  })
+  await page.route('**/subscription/plans', async (route) => {
+    const retryDispatches = await page.evaluate(() => (window as Window & { __pricingRetryDispatches?: number }).__pricingRetryDispatches ?? 0)
+    if (!retryDispatches) {
+      outageRequests++
+      return route.fulfill({ status: 503, json: { detail: 'Temporary pricing outage' } })
+    }
+    expect(route.request().headers().authorization).toBe('Bearer catalog-token')
+    recoveredRequests++
+    return route.fulfill({ json: {
       plans: makeCatalog().plans,
       billing: { provider: 'dodo', feature_enabled: true, mode: 'enabled', available: true, message: 'Billing available' },
     } })
   })
+  const sessionResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/get-session' && response.status() === 200)
+  const entitlementResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/config/entitlements'
+    && response.request().headers().authorization === 'Bearer catalog-token' && response.status() === 200)
   await page.goto('/billing')
-  await expect(page.getByRole('alert').filter({ hasText: 'Temporary pricing outage' })).toBeVisible()
-  outage = false
-  await page.getByRole('button', { name: 'Try again' }).click()
+  expect((await (await sessionResponse).json()).user.id).toBe('catalog-admin')
+  expect((await (await entitlementResponse).json()).features.i01).toBe(true)
+  await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible()
+  const pricingError = page.getByRole('alert').filter({ hasText: "Couldn't load billing info" }).filter({ hasText: 'Temporary pricing outage' })
+  await expect(pricingError).toBeVisible()
+  expect(outageRequests).toBeGreaterThan(0)
+  expect(recoveredRequests).toBe(0)
+  const retryResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/subscription/plans' && response.status() === 200)
+  await Promise.all([pricingError.getByRole('button', { name: 'Try again', exact: true }).click(), retryResponse])
   await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { __pricingRetryDispatches?: number }).__pricingRetryDispatches ?? 0)).toBe(1)
+  expect(recoveredRequests).toBe(1)
   await expect(page.getByText('10 / day').first()).toBeVisible()
   await page.getByRole('group', { name: 'Billing period' }).getByRole('button', { name: /^Annual\b/ }).click()
   await expect(page.getByRole('heading', { name: 'Pro Annual' })).toBeVisible()

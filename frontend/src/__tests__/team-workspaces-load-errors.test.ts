@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const WORKSPACES_SOURCE = readFileSync(
   new URL('../app/workspaces/page.tsx', import.meta.url),
   'utf8',
-)
+).replace(/\r\n/g, '\n')
 
 describe('team-workspace load failures', () => {
   it('shows retry and suppresses the no-workspaces onboarding state', () => {

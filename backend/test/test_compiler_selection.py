@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -164,8 +165,9 @@ class TestCompileLatexTaskCompilerParam:
     """
 
     @pytest.fixture(autouse=True)
-    def _docker_capability_probe(self):
-        """Keep the capability subprocess separate from the Popen command spy."""
+    def _docker_capability_probe(self, monkeypatch):
+        """Use a deterministic server-owned renderer, independent of host Docker."""
+        monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
         with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
             yield
 
@@ -195,13 +197,14 @@ class TestCompileLatexTaskCompilerParam:
         job_id = str(uuid.uuid4())
 
         with (
+            TemporaryDirectory() as directory,
+            patch("app.workers.latex_worker.settings.TEMP_DIR", directory),
             patch("app.workers.latex_worker.subprocess.Popen", side_effect=fake_popen),
             patch("app.workers.latex_worker.publish_event"),
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
             patch("app.workers.latex_worker.latex_service.validate_latex_content", return_value=True),
             # Prevent real filesystem operations
-            patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
             # pdf_file.exists() → False so task goes to failure path (fine, Popen already called)
             patch("pathlib.Path.exists", return_value=False),

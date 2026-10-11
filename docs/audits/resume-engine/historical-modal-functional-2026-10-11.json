@@ -1,0 +1,51 @@
+{
+  "utc_date": "2026-10-11",
+  "scope": "historical-image ordinary functional smoke",
+  "image_id": "im-1fho7eMXjj9Z60ziS7Kf6J",
+  "compiler": "LuaHBTeX 1.15.0 (TeX Live 2022/Debian)",
+  "cases": [
+    {"language": "English", "exit_code": 0, "valid_pdf": true, "expected_text_present": true, "missing_glyph_count": 0, "font_warning_count": 0, "compile_seconds": 1.919730429, "passed": true},
+    {"language": "Hindi", "exit_code": 0, "valid_pdf": true, "expected_text_present": true, "missing_glyph_count": 0, "font_warning_count": 0, "compile_seconds": 0.611757065, "passed": true},
+    {"language": "CJK", "exit_code": 0, "valid_pdf": true, "expected_text_present": true, "missing_glyph_count": 0, "font_warning_count": 0, "compile_seconds": 3.122398611, "passed": true}
+  ],
+  "renderer_marker_present": false,
+  "renderer_assets_fingerprint": null,
+  "bounds": {
+    "maximum_lifetime_seconds": 300,
+    "cpu_request_cores": 1,
+    "cpu_limit_cores": 2,
+    "memory_request_mib": 1024,
+    "memory_limit_mib": 2048,
+    "resource_limits_and_timeout_confirmed_by_server": true,
+    "network_blocked": true,
+    "gpu_attached": false,
+    "secrets_attached": false,
+    "mounts_attached": false,
+    "oidc_enabled": false,
+    "ports_exposed": false,
+    "snapshots_enabled": false,
+    "vm_runtime_requested": true,
+    "request_guard_checks_passed": true
+  },
+  "execution": {
+    "sandbox_create_attempts": 1,
+    "image_build_rpc_attempts": 0,
+    "compute_retries": 0,
+    "remote_program_seconds": 5.76118022,
+    "started_to_finished_seconds": 6.254600048,
+    "created_to_finished_seconds": 8.045332909,
+    "diagnostic_output_bytes": 74169
+  },
+  "cleanup": {
+    "terminate_with_wait_completed": true,
+    "poll_exit_code": 0,
+    "server_finished_metadata_confirmed": true
+  },
+  "limitations": [
+    "Historical image only; does not certify PR 1833's candidate image.",
+    "One fixed synthetic document per language; no latency distribution or visual acceptance.",
+    "Direct compilation excludes the candidate renderer bridge and confinement checks.",
+    "Previous CJK failure was not reproduced; its original cause remains unresolved.",
+    "Absent renderer marker prevents asset fingerprint comparison."
+  ]
+}

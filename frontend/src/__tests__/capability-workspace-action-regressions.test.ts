@@ -122,12 +122,42 @@ describe('workspace optional-action regressions', () => {
     const returnToShared = action(editorPage, 'handleReturnToSharedEditor', {
       canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
       editorRef: { current: { getValue: () => 'new peer source', setValue } },
-      latestLatexContentRef: { current: 'old source' }, setLatexContent, setCheckpointRecoveryPreview,
+      sourceAtRenderRef: { current: 'old source' }, setLatexContent, setCheckpointRecoveryPreview,
     })
     returnToShared()
     expect(setValue).not.toHaveBeenCalled()
     expect(setLatexContent).toHaveBeenCalledExactlyOnceWith('new peer source')
     expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it.each([undefined, ''])('returns from recovery with a missing or empty shared model (%s)', (source) => {
+    const setValue = vi.fn()
+    const setLatexContent = vi.fn()
+    const setCheckpointRecoveryPreview = vi.fn()
+    const returnToShared = action(editorPage, 'handleReturnToSharedEditor', {
+      canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
+      editorRef: { current: { getValue: () => source, setValue } },
+      sourceAtRenderRef: { current: 'latest controlled source' }, setLatexContent, setCheckpointRecoveryPreview,
+    })
+    returnToShared()
+    expect(setValue).not.toHaveBeenCalled()
+    expect(setLatexContent).toHaveBeenCalledExactlyOnceWith(source ?? 'latest controlled source')
+    expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it('keeps recovery visible and leaves source untouched when returning to shared editing is denied', () => {
+    const getValue = vi.fn()
+    const setLatexContent = vi.fn()
+    const setCheckpointRecoveryPreview = vi.fn()
+    const returnToShared = action(editorPage, 'handleReturnToSharedEditor', {
+      canRef: { current: () => false }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
+      editorRef: { current: { getValue } }, sourceAtRenderRef: { current: 'latest controlled source' },
+      setLatexContent, setCheckpointRecoveryPreview,
+    })
+    returnToShared()
+    expect(getValue).not.toHaveBeenCalled()
+    expect(setLatexContent).not.toHaveBeenCalled()
+    expect(setCheckpointRecoveryPreview).not.toHaveBeenCalled()
   })
 
   it('does not start source optimization from a hidden shared model during read-only recovery', async () => {

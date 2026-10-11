@@ -1,0 +1,64 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+
+COVER LETTER
+
+AI Cover Letter Generator
+
+Generate a tailored cover letter for "Latency QA 2026-10-08" — matching your resume's style.
+
+Back to Editor
+COVER LETTER
+JOB DESCRIPTION
+required
+
+0 chars
+
+DETAILS (OPTIONAL)
+TONE
+Formal
+Conversational
+Enthusiastic
+LENGTH
+3 Paragraphs
+4 Paragraphs
+Detailed
+Generate Cover Letter
+SIGNATURE
+
+Type, draw, or upload a signature. Review local conventions before using one.
+
+Type
+Draw
+Upload
+Printed name
+Add signature
+LIVE LOGS
+No log output yet
+
+COVER LETTER LATEX
+
+Auto
+Compile PDF
+LaTeX Presets
+Loading...
+
+EMPTY DOCUMENT
+
+Content will appear here once generated.
+
+LATEX EDITOR
+Editor keybindings
+Standard
+Vim
+Emacs
+AUTO
+0 CHARS
+⌘↵ COMPILE · ⌘⇧H PRESETS
+
+OUTPUT PREVIEW
+
+Your PDF will appear here
+
+Compile to render a live preview

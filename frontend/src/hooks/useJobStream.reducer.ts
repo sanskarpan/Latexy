@@ -3,7 +3,7 @@
  * Extracted so it can be unit-tested in a node environment.
  */
 
-import type { AnyEvent, ATSDeepAnalysis, ATSDetails } from '@/lib/event-types'
+import type { AnyEvent, ATSDeepAnalysis, ATSDetails, ArtifactReadyEvent } from '@/lib/event-types'
 
 // ------------------------------------------------------------------ //
 //  State shape                                                        //
@@ -35,6 +35,11 @@ export interface JobStreamState {
   deepAnalysis: ATSDeepAnalysis | null
   changesMade: Array<{ section: string; change_type: string; reason: string }>
   pdfJobId: string | null
+  artifact: ArtifactReadyEvent | null
+  semanticPatches: import('@/lib/resume-engine-types').SemanticPatch[]
+  semanticReviewFinal: boolean
+  semanticSourceHash: string | null
+  semanticRevision: number | null
   compilationTime: number | null
   optimizationTime: number | null
   tokensUsed: number | null
@@ -62,6 +67,11 @@ export const initialState: JobStreamState = {
   deepAnalysis: null,
   changesMade: [],
   pdfJobId: null,
+  artifact: null,
+  semanticPatches: [],
+  semanticReviewFinal: false,
+  semanticSourceHash: null,
+  semanticRevision: null,
   compilationTime: null,
   optimizationTime: null,
   tokensUsed: null,
@@ -132,6 +142,26 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
   }
 
   switch (event.type) {
+    case 'context.ready':
+    case 'section.ready':
+    case 'patch.ready':
+    case 'review.ready': {
+      if (state.status === 'cancelled' || state.status === 'failed' || event.branch !== 'candidate'
+          || (state.semanticSourceHash && (state.semanticSourceHash !== event.source_sha256 || state.semanticRevision !== event.content_revision))) return state
+      if (state.semanticReviewFinal && event.provisional) return state
+      let patches = state.semanticPatches
+      if (event.patch && !patches.some((patch) => patch.patch_id === event.patch?.patch_id) && patches.length < 100) patches = [...patches, event.patch]
+      if (event.type === 'review.ready' && event.final_patch_ids) patches = patches.filter((patch) => event.final_patch_ids!.includes(patch.patch_id))
+      return { ...state, semanticPatches: patches, semanticReviewFinal: state.semanticReviewFinal || event.type === 'review.ready',
+        semanticSourceHash: event.source_sha256, semanticRevision: event.content_revision }
+    }
+    case 'artifact.ready':
+      // Cancellation/failure and older attempt replay cannot resurrect a
+      // preview. Accepted/candidate identity remains separate from completion.
+      if (state.status === 'cancelled' || state.status === 'failed'
+          || (state.artifact && event.owner_epoch < state.artifact.owner_epoch)) return state
+      if (state.artifact?.artifact_id === event.artifact_id) return state
+      return { ...state, artifact: event, pageCount: event.page_count }
     case 'job.queued':
       return { ...state, status: 'queued', stage: '', percent: 0, extractedPdfText: null, pageCount: null }
 

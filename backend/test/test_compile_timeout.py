@@ -22,8 +22,9 @@ from app.workers.orchestrator import submit_optimize_and_compile
 
 
 @pytest.fixture(autouse=True)
-def _docker_capability_probe():
+def _docker_capability_probe(monkeypatch):
     """Do not route global subprocess doubles through the Docker probe."""
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     with (
         patch("app.workers.latex_worker.docker_engine_available", return_value=False),
         patch("app.workers.orchestrator.docker_engine_available", return_value=False),
@@ -189,6 +190,9 @@ class TestCompileLatexTaskTimeout:
 
             def read(self, size: int) -> bytes:
                 raise SoftTimeLimitExceeded()
+
+            def close(self) -> None:
+                pass
 
         with (
             patch("app.workers.latex_worker.latex_service.validate_latex_content", return_value=True),

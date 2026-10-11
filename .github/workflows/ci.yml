@@ -207,7 +207,7 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y --no-install-recommends
           texlive-latex-extra texlive-fonts-recommended cm-super
-          texlive-science texlive-luatex fonts-lohit-deva fonts-noto-core poppler-utils
+          texlive-science texlive-luatex fonts-lohit-deva fonts-noto-core fonts-texgyre poppler-utils
       - name: Verify every seeded template's extracted PDF contract
         run: bash scripts/verify-template-extraction.sh
 
@@ -316,7 +316,7 @@ jobs:
           node ../scripts/ci/audit-dependencies.mjs
       - name: Upload dependency audit summary
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: latexy-dependency-audit-summary
           path: ${{ runner.temp }}/latexy-dependency-audit-summary.json
@@ -451,8 +451,9 @@ jobs:
           --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
-        run: pnpm test:quality
+        run: pnpm test:quality --retries=0
       - name: Verify guided builder, compile cadence and source-PDF synchronization
+        id: editor-owner-regressions
         env:
           PLAYWRIGHT_PORT: "5183"
           PLAYWRIGHT_SERVER_MODE: production
@@ -470,15 +471,45 @@ jobs:
           e2e/settings-legacy-callback-owner-isolation.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
-      - name: Verify Better Auth hydration snapshot contract
+      - name: Diagnose the failed Settings hydration callback
+        if: ${{ failure() && steps.editor-owner-regressions.outcome == 'failure' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/trace.zip') != '' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/error-context.md') != '' }}
+        timeout-minutes: 15
+        env:
+          LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS: "1"
+          PLAYWRIGHT_PORT: "5184"
+          PLAYWRIGHT_SERVER_MODE: production
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results/settings-hydration-diagnostic/results.xml
+        # Failure-only evidence, never acceptance or a retry of the required
+        # matrix. Keep the original failed outcome and artifacts untouched.
+        run: |
+          set -euo pipefail
+          original="test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/error-context.md"
+          if ! grep -Fq 'Minified React error #418' "$original"; then
+            echo "Original failure was not React #418; no hydration diagnostic replay."
+            exit 0
+          fi
+          pnpm exec playwright test e2e/settings-legacy-callback-owner-isolation.spec.ts \
+            --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,junit \
+            --grep 'same-owner GitHub legacy callback succeeds after the session token rotates$' \
+            --output=test-results/settings-hydration-diagnostic
+          python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/settings-hydration-diagnostic/results.xml').getroot().iter('testcase')); failed=len(cases)!=1 or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Diagnostic replay was empty, skipped or failed' if failed else 0)"
+      - name: Verify Better Auth snapshot and vendored host replay contracts
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
         env:
           # The baseline expected-error mode is a local diagnostic only; CI runs
           # the gated candidate and must never silently switch to that mode.
           HYDRATION_AUTH_CLIENT_BASELINE: "0"
-        run: >-
-          pnpm exec playwright test e2e/hydration-session-store.opt-in.ts
-          --config=playwright.hydration.config.ts --workers=1 --retries=0
-          --trace=on --reporter=line --output=test-results/hydration-session-store
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results/hydration-session-store/results.xml
+        # The original owner/quality outcome remains required. This synthetic
+        # causal proof runs even after that failure, without retrying or masking it.
+        run: |
+          set -euo pipefail
+          rm -f test-results/hydration-session-store/results.xml
+          pnpm exec playwright test e2e/hydration-session-store.opt-in.ts e2e/hydration-host-replay.opt-in.ts \
+            --config=playwright.hydration.config.ts --workers=1 --retries=0 \
+            --trace=on --reporter=line,junit --output=test-results/hydration-session-store
+          python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/hydration-session-store/results.xml').getroot().iter('testcase')); expected={'real Better Auth SSR snapshot stays stable for a late consumer and refreshes safely','pinned Next host replay reproduces #418 and the upstream cursor backport preserves SSR nodes'}; failed=len(cases)!=2 or {c.get('name') for c in cases}!=expected or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Hydration proof was empty, partial, skipped or failed' if failed else 0)"
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -490,6 +521,7 @@ jobs:
             frontend/test-results/admin-capabilities
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
+            frontend/test-results/settings-hydration-diagnostic
           if-no-files-found: warn
           retention-days: 14
 
@@ -629,6 +661,59 @@ jobs:
         with:
           name: playwright-full-stack-report
           path: frontend/test-results/full-stack
+          if-no-files-found: warn
+          retention-days: 14
+
+  real-compile-preview:
+    name: Isolated Real Compile and Preview
+    needs: classify-changes
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.templates == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Deliberately no repository/environment secrets. The launcher creates
+    # ephemeral synthetic signing/storage values and fresh service data.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          activate-environment: true
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Test isolation, readiness, cleanup and fail-closed evidence guards
+        run: python scripts/ci/isolated-compile.test.py -v
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install PDF text extraction and managed Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-real-compile-browsers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pnpm --dir frontend exec playwright install --with-deps chromium
+      - name: Verify actual worker artifacts and latest-source browser preview
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-real-compile-browsers
+        # The production Dockerfile owns TeX/font/format assets. The proof runs
+        # native TeX with unchanged Linux confinement inside a nonroot image,
+        # not Docker-in-Docker; it is not Modal VM certification or an SLO.
+        run: >-
+          python scripts/ci/isolated-real-compile.py --confirm-isolated-ci-run
+          --evidence-dir "${{ runner.temp }}/latexy-real-compile-evidence"
+      - name: Upload isolated functional evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: latexy-real-compile-evidence
+          path: ${{ runner.temp }}/latexy-real-compile-evidence
           if-no-files-found: warn
           retention-days: 14
 

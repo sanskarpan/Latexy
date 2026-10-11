@@ -105,7 +105,10 @@ def no_real_minio():
 
     Tests that exercise the prune patch storage_service themselves.
     """
-    with patch("app.services.storage_service.list_objects", return_value=[]):
+    with (
+        patch("app.services.storage_service.list_objects", return_value=[]),
+        patch("app.workers.cleanup_worker._prune_render_artifacts", return_value={"scanned": 0, "deleted": 0, "protected": 0}),
+    ):
         yield
 
 

@@ -1,0 +1,520 @@
+{
+  "measured_at_utc": "2026-10-08T18:03:30.585Z",
+  "scope": "Read-only UI routes for the authorized synthetic account; heading readiness is not completion of all actions",
+  "pages": [
+    {
+      "name": "library",
+      "path": "/workspace",
+      "status": 200,
+      "heading_ms": 3817,
+      "heading": "Resume Library",
+      "final_path": "/workspace"
+    },
+    {
+      "name": "cover-letter",
+      "path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/cover-letter",
+      "status": 200,
+      "heading_ms": 3563,
+      "heading": "AI Cover Letter Generator",
+      "final_path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/cover-letter"
+    },
+    {
+      "name": "career",
+      "path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/career",
+      "status": 200,
+      "heading_ms": 790,
+      "heading": "Career Path Visualization",
+      "final_path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/career"
+    },
+    {
+      "name": "optimization",
+      "path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/optimize",
+      "status": 200,
+      "heading_ms": 6135,
+      "heading": "Targeted Optimization",
+      "final_path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/optimize"
+    },
+    {
+      "name": "tracker",
+      "path": "/tracker",
+      "status": 200,
+      "heading_ms": 1928,
+      "heading": "Job Applications",
+      "final_path": "/tracker"
+    },
+    {
+      "name": "settings",
+      "path": "/settings",
+      "status": 200,
+      "heading_ms": 1098,
+      "heading": "Settings",
+      "final_path": "/settings"
+    },
+    {
+      "name": "billing",
+      "path": "/billing",
+      "status": 200,
+      "heading_ms": 514,
+      "heading": "Pricing & Billing",
+      "final_path": "/billing"
+    },
+    {
+      "name": "guided-builder",
+      "path": "/workspace/builder/new",
+      "status": 200,
+      "heading_ms": 2323,
+      "heading": "Build from structured content",
+      "final_path": "/workspace/builder/new"
+    }
+  ],
+  "http": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1313,
+      "observed_at_utc": "2026-10-08T18:03:39.277Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 462,
+      "observed_at_utc": "2026-10-08T18:03:40.897Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1149,
+      "observed_at_utc": "2026-10-08T18:03:41.619Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 1212,
+      "observed_at_utc": "2026-10-08T18:03:41.680Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 1260,
+      "observed_at_utc": "2026-10-08T18:03:41.735Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 958,
+      "observed_at_utc": "2026-10-08T18:03:41.863Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 929,
+      "observed_at_utc": "2026-10-08T18:03:41.892Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1025,
+      "observed_at_utc": "2026-10-08T18:03:41.932Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1918,
+      "observed_at_utc": "2026-10-08T18:03:42.825Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/cover-letters/resume/e703ee03-1486-4539-a0fb-1b4d9f397288",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 2025,
+      "observed_at_utc": "2026-10-08T18:03:42.932Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/e703ee03-1486-4539-a0fb-1b4d9f397288",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 2034,
+      "observed_at_utc": "2026-10-08T18:03:42.941Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/entitlements",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 2228,
+      "observed_at_utc": "2026-10-08T18:03:43.135Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 162,
+      "observed_at_utc": "2026-10-08T18:03:44.281Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 220,
+      "observed_at_utc": "2026-10-08T18:03:45.319Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 401,
+      "observed_at_utc": "2026-10-08T18:03:45.535Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 482,
+      "observed_at_utc": "2026-10-08T18:03:45.616Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 537,
+      "observed_at_utc": "2026-10-08T18:03:45.867Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 502,
+      "observed_at_utc": "2026-10-08T18:03:45.879Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 762,
+      "observed_at_utc": "2026-10-08T18:03:45.896Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 781,
+      "observed_at_utc": "2026-10-08T18:03:46.109Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/e703ee03-1486-4539-a0fb-1b4d9f397288",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 915,
+      "observed_at_utc": "2026-10-08T18:03:46.244Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/entitlements",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1481,
+      "observed_at_utc": "2026-10-08T18:03:46.811Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1656,
+      "observed_at_utc": "2026-10-08T18:03:46.986Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/e703ee03-1486-4539-a0fb-1b4d9f397288/academic-cv-report",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1449,
+      "observed_at_utc": "2026-10-08T18:03:47.700Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/jobs/submit",
+      "method": "POST",
+      "status": 200,
+      "headers_ms": 4132,
+      "observed_at_utc": "2026-10-08T18:03:50.389Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 521,
+      "observed_at_utc": "2026-10-08T18:03:50.971Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 492,
+      "observed_at_utc": "2026-10-08T18:03:51.993Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 499,
+      "observed_at_utc": "2026-10-08T18:03:52.014Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 510,
+      "observed_at_utc": "2026-10-08T18:03:52.027Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 696,
+      "observed_at_utc": "2026-10-08T18:03:52.197Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1405,
+      "observed_at_utc": "2026-10-08T18:03:52.850Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 543,
+      "observed_at_utc": "2026-10-08T18:03:53.407Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 894,
+      "observed_at_utc": "2026-10-08T18:03:53.757Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tracker/applications",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1219,
+      "observed_at_utc": "2026-10-08T18:03:54.082Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/entitlements",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1536,
+      "observed_at_utc": "2026-10-08T18:03:54.399Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tracker/stale-applications",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1634,
+      "observed_at_utc": "2026-10-08T18:03:54.497Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1643,
+      "observed_at_utc": "2026-10-08T18:03:54.507Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 189,
+      "observed_at_utc": "2026-10-08T18:03:55.333Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 503,
+      "observed_at_utc": "2026-10-08T18:03:55.666Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 502,
+      "observed_at_utc": "2026-10-08T18:03:55.666Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 504,
+      "observed_at_utc": "2026-10-08T18:03:55.668Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 649,
+      "observed_at_utc": "2026-10-08T18:03:55.812Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 269,
+      "observed_at_utc": "2026-10-08T18:03:56.439Z"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/api/auth/get-session",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 267,
+      "observed_at_utc": "2026-10-08T18:03:57.109Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 500,
+      "observed_at_utc": "2026-10-08T18:03:57.382Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 515,
+      "observed_at_utc": "2026-10-08T18:03:57.409Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/telemetry/frontend",
+      "method": "POST",
+      "status": 202,
+      "headers_ms": 518,
+      "observed_at_utc": "2026-10-08T18:03:57.410Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/feature-flags",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 795,
+      "observed_at_utc": "2026-10-08T18:03:57.678Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/tenants/resolve-host",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 547,
+      "observed_at_utc": "2026-10-08T18:03:57.678Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 857,
+      "observed_at_utc": "2026-10-08T18:03:57.988Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/resumes/builder/templates",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1229,
+      "observed_at_utc": "2026-10-08T18:03:58.360Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/config/entitlements",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1434,
+      "observed_at_utc": "2026-10-08T18:03:58.565Z"
+    },
+    {
+      "origin": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run",
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "headers_ms": 1648,
+      "observed_at_utc": "2026-10-08T18:03:58.779Z"
+    }
+  ],
+  "failures": [
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/try",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/workspace/e703ee03-1486-4539-a0fb-1b4d9f397288/edit",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/resources",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "origin": "https://latexy.xyz",
+      "path": "/platform",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "console_errors": [],
+  "audit_scope_correction": "UI navigation may automatically compile normal previews. Heading capture is not completion of all feature actions. Original measured timings are unchanged."
+}

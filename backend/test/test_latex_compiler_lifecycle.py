@@ -22,7 +22,7 @@ def _compiler() -> LaTeXCompiler:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method_name", ["_compile_local", "_compile_with_docker"])
-async def test_timeout_kills_and_reaps_subprocess(method_name: str) -> None:
+async def test_timeout_kills_and_reaps_subprocess(method_name: str, tmp_path: Path) -> None:
     process = MagicMock()
     process.returncode = None
     process.communicate = MagicMock(return_value=asyncio.Future())
@@ -32,7 +32,7 @@ async def test_timeout_kills_and_reaps_subprocess(method_name: str) -> None:
         patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)),
         patch("asyncio.wait_for", AsyncMock(side_effect=asyncio.TimeoutError)),
     ):
-        result = await getattr(_compiler(), method_name)(Path("/tmp/job"), 1)
+        result = await getattr(_compiler(), method_name)(tmp_path, 1)
 
     assert result == (False, "Compilation timeout after 1 seconds")
     process.kill.assert_called_once_with()
@@ -41,7 +41,7 @@ async def test_timeout_kills_and_reaps_subprocess(method_name: str) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method_name", ["_compile_local", "_compile_with_docker"])
-async def test_cancellation_kills_and_reaps_subprocess(method_name: str) -> None:
+async def test_cancellation_kills_and_reaps_subprocess(method_name: str, tmp_path: Path) -> None:
     process = MagicMock()
     process.returncode = None
     process.communicate = MagicMock(return_value=asyncio.Future())
@@ -52,7 +52,7 @@ async def test_cancellation_kills_and_reaps_subprocess(method_name: str) -> None
         patch("asyncio.wait_for", AsyncMock(side_effect=asyncio.CancelledError)),
         pytest.raises(asyncio.CancelledError),
     ):
-        await getattr(_compiler(), method_name)(Path("/tmp/job"), 1)
+        await getattr(_compiler(), method_name)(tmp_path, 1)
 
     process.kill.assert_called_once_with()
     process.wait.assert_awaited_once_with()

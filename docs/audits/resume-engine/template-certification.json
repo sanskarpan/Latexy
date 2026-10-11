@@ -1,0 +1,2268 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 122,
+  "fixtures": [
+    {
+      "fixture": "academic/phd_applicant.tex",
+      "category": "academic",
+      "source_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "prepared_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5252933000010671
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5258754980022786
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5679848650033819
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5686988570014364
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "academic/postdoc.tex",
+      "category": "academic",
+      "source_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "prepared_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5687344750040211
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5695728650025558
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.6189752719947137
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.61959154199576
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "academic/professor.tex",
+      "category": "academic",
+      "source_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "prepared_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5184486250000191
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.51995194999472
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4678317869984312
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.46834359299828066
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "academic/research_cv.tex",
+      "category": "academic",
+      "source_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "prepared_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.417726109000796
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4182087529989076
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4182527550001396
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4187810619987431
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "academic/stem_grad.tex",
+      "category": "academic",
+      "source_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "prepared_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.36770477700338233
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36843297900486505
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4687111020029988
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4695848789997399
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "ats_safe/ats_clean.tex",
+      "category": "ats_safe",
+      "source_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "prepared_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5698008050021599
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5710993180036894
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.41888139200455043
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4195766630000435
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "ats_safe/ats_modern.tex",
+      "category": "ats_safe",
+      "source_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "prepared_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5691255109995836
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5698127360010403
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4686425510008121
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4698022789962124
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "ats_safe/ats_plain.tex",
+      "category": "ats_safe",
+      "source_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "prepared_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.46980603900010465
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.47067831399908755
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.3670747400028631
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3676183899951866
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "ats_safe/ats_standard.tex",
+      "category": "ats_safe",
+      "source_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "prepared_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.36859737100166967
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36927684499823954
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5191485239993199
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5197071859947755
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "ats_safe/hindi_professional.tex",
+      "category": "ats_safe",
+      "source_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "prepared_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4188538030066411
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4196454079938121
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5688627459967392
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5696856959984871
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "creative/art_director.tex",
+      "category": "creative",
+      "source_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "prepared_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5188115700002527
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.519369032997929
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5182248659984907
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5195253109995974
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "creative/copywriter.tex",
+      "category": "creative",
+      "source_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "prepared_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.467744865003624
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.468538824999996
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.518196249002358
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5186779249997926
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "creative/product_designer.tex",
+      "category": "creative",
+      "source_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "prepared_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.36878847499610856
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36973483600013424
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4694658719963627
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4705863050039625
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "creative/ux_designer.tex",
+      "category": "creative",
+      "source_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "prepared_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.46887286599667277
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4694017849978991
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.41748181900038617
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41784447000100045
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "executive/board_advisor.tex",
+      "category": "executive",
+      "source_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "prepared_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.36765624200052116
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36798482300218893
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.3674044599974877
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36781620900001144
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "executive/cxo.tex",
+      "category": "executive",
+      "source_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "prepared_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.41802875599387335
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41892286599613726
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.46918921700125793
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4698362859999179
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "executive/executive_classic.tex",
+      "category": "executive",
+      "source_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "prepared_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.418630056999973
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4191011129951221
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.36778813699493185
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3684694999974454
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "executive/vp_director.tex",
+      "category": "executive",
+      "source_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "prepared_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4195492099970579
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41991588899691124
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.36847117800061824
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3694117350023589
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "finance/accounting.tex",
+      "category": "finance",
+      "source_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "prepared_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4184653969932697
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41905135400156723
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.46827260999998543
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4692182959988713
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "finance/fintech.tex",
+      "category": "finance",
+      "source_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "prepared_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4680063389969291
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.46880390299338615
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.3693098840012681
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3701393290029955
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "finance/investment_banking.tex",
+      "category": "finance",
+      "source_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "prepared_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.3173373690005974
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.31798172300477745
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4183177480008453
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41873172399937175
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "finance/quant.tex",
+      "category": "finance",
+      "source_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "prepared_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4180590879986994
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4194845400052145
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.3682166020007571
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3698737379963859
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "graduate/bootcamp.tex",
+      "category": "graduate",
+      "source_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "prepared_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5691663079996943
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5698248069966212
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.46810771000309614
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.469003165999311
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "graduate/career_changer.tex",
+      "category": "graduate",
+      "source_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "prepared_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.41892465900309617
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.41944240799784893
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.3687706810014788
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.3694476939999731
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "graduate/mba.tex",
+      "category": "graduate",
+      "source_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "prepared_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.41749327699653804
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4179124500005855
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.36744518500199774
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.36800726799992844
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "graduate/new_grad.tex",
+      "category": "graduate",
+      "source_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "prepared_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.41743095299898414
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4183136790015851
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4182251910024206
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4185802780048107
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "legal/attorney.tex",
+      "category": "legal",
+      "source_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "prepared_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5705597580017638
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5711276619986165
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5683217910045641
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5692520519951358
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "legal/corporate_counsel.tex",
+      "category": "legal",
+      "source_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "prepared_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4681626019955729
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.46894798400171567
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5190530690015294
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5197393880007439
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "legal/law_clerk.tex",
+      "category": "legal",
+      "source_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "prepared_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.41747166899585864
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4179948200035142
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5187023889957345
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5194208129978506
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "legal/paralegal.tex",
+      "category": "legal",
+      "source_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "prepared_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5719495640005334
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5728401100059273
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7190105859990581
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7199839439999778
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "marketing/brand_manager.tex",
+      "category": "marketing",
+      "source_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "prepared_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.46796792399982223
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.46841609699913533
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5184602829976939
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5192545089958003
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "marketing/content_strategist.tex",
+      "category": "marketing",
+      "source_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "prepared_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4689230090007186
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.46951517600246007
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.417203076001897
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4177786440050113
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "marketing/growth_marketer.tex",
+      "category": "marketing",
+      "source_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "prepared_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.4694784220046131
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4708842320033
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5681923690062831
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5693896369994036
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "marketing/pmm.tex",
+      "category": "marketing",
+      "source_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "prepared_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6213587099991855
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6228053579980042
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.2523586269962834
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.253396726999199
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "medical/biotech.tex",
+      "category": "medical",
+      "source_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "prepared_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.4803322550069424
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.4817995709963725
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.2321930830003112
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.2337134600020363
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "medical/clinical_research.tex",
+      "category": "medical",
+      "source_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "prepared_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3003764169989154
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.3015465249991394
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9745860840048408
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.9769977929972811
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "medical/nursing.tex",
+      "category": "medical",
+      "source_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "prepared_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9751350600054138
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.9763696669979254
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7196617730005528
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7206044569975347
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "medical/physician.tex",
+      "category": "medical",
+      "source_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "prepared_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.7201225329990848
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7249179649952566
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8739440380013548
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.8749461500046891
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "minimal/classic.tex",
+      "category": "minimal",
+      "source_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "prepared_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.7201274839972029
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7213256470058695
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.6196312399988528
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.620663103996776
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "b06b3bce5f5c29e483e58fcc94c0ab3e459c2f2c72d89ef89cb7fa26ec7af477",
+      "prepared_sha256": "b06b3bce5f5c29e483e58fcc94c0ab3e459c2f2c72d89ef89cb7fa26ec7af477",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6188487309991615
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6196681549990899
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.61807952500385
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6194839939998928
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "minimal/modern_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "prepared_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5186309420023463
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5198618270005682
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5682318399994983
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5694480519960052
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "minimal/ultra_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "prepared_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5684333399985917
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.569386626004416
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5690343999958714
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5699052179988939
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_madrid.tex",
+      "category": "presentation",
+      "source_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "prepared_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5188622319983551
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5194052489969181
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5179356600056053
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.518609495004057
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_metropolis.tex",
+      "category": "presentation",
+      "source_sha256": "5472f79de162a47963d8d65f8dc547807d4dcbdf4727991664286d9496c5b92b",
+      "prepared_sha256": "5472f79de162a47963d8d65f8dc547807d4dcbdf4727991664286d9496c5b92b",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5181016940041445
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5193535129947122
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5192696259982768
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5200845409999602
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_pitch.tex",
+      "category": "presentation",
+      "source_sha256": "343f190f19cb3824a6c9d2724bb46aaf8641b7e21c5d7ea3fc71ca51bb90a034",
+      "prepared_sha256": "343f190f19cb3824a6c9d2724bb46aaf8641b7e21c5d7ea3fc71ca51bb90a034",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.8723335640024743
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.8733617050020257
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7198850240019965
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7208254610013682
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_research.tex",
+      "category": "presentation",
+      "source_sha256": "20826b57e333824431abca93735c660e8c710fd65152c6821ea02bf6979d8091",
+      "prepared_sha256": "20826b57e333824431abca93735c660e8c710fd65152c6821ea02bf6979d8091",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9734648509984254
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.9756507929996587
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9767751399995177
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.9776650389976567
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_warsaw.tex",
+      "category": "presentation",
+      "source_sha256": "99eacbdeac74b1fc549a9a482ba083d9d30a049a81a0b9e3ddbedd3a50252151",
+      "prepared_sha256": "99eacbdeac74b1fc549a9a482ba083d9d30a049a81a0b9e3ddbedd3a50252151",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6186596129991813
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.619644595994032
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7187294820032548
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7195687200000975
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "regional/europecv.tex",
+      "category": "regional",
+      "source_sha256": "ea26ffb599d21af916fff020db03c94cff8b2c5d52bbeee4a9d68259ce54ea8d",
+      "prepared_sha256": "d28544e163bebec596496666338038fcb6d491a2fb3803a41852c92f90790b83",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1318911720009055
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.13343637700018
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1321233359994949
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.1331677779962774
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "regional/india_government_psu_application.tex",
+      "category": "regional",
+      "source_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "prepared_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.2813895889994456
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.2826786549994722
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3911768770049093
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.3931746079979348
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "regional/india_professional_biodata.tex",
+      "category": "regional",
+      "source_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "prepared_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.920947739003168
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.9223167540039867
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.824694756993267
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 2.8265772279992234
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "regional/polish_cv_rodo.tex",
+      "category": "regional",
+      "source_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "prepared_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.8521616779980832
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.8539074820000678
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.4244839470047737
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.4255094009931781
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/data_scientist.tex",
+      "category": "software_engineering",
+      "source_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "prepared_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.028159091998532
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.0299298760000966
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5684630579999066
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5690395130004617
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/devops.tex",
+      "category": "software_engineering",
+      "source_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "prepared_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.517657740994764
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5182642100044177
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5777434219999122
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.578692103998037
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/fullstack.tex",
+      "category": "software_engineering",
+      "source_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "prepared_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5681121070010704
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5687706419994356
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.6196262860030401
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6205848219979089
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/ml_engineer.tex",
+      "category": "software_engineering",
+      "source_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "prepared_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.7202046590027749
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7209960280015366
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5682980810015579
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5687756150000496
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/swe_clean.tex",
+      "category": "software_engineering",
+      "source_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "prepared_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6182128479995299
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6188718649937073
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5180413460038835
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5187459709995892
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/swe_technical.tex",
+      "category": "software_engineering",
+      "source_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "prepared_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5723956869987887
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5735970469977474
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.4674763160001021
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.4680148859988549
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "two_column/two_col_classic.tex",
+      "category": "two_column",
+      "source_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "prepared_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5178205279953545
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5192909829929704
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7216991759996745
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7225055829985649
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "two_column/two_col_creative.tex",
+      "category": "two_column",
+      "source_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "prepared_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6208138770016376
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6216915699988022
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.518285829006345
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5191419420007151
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "two_column/two_col_modern.tex",
+      "category": "two_column",
+      "source_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "prepared_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6200548029955826
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6210064769984456
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5176264609981445
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5182857280015014
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "two_column/two_col_sidebar.tex",
+      "category": "two_column",
+      "source_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "prepared_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.5178434469999047
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.5186425669962773
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.5688589499986847
+          ],
+          "success": false,
+          "diagnostics": [
+            "l.1 ",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.570112841000082
+        }
+      ],
+      "certified": false
+    }
+  ],
+  "resume_p50_seconds": null,
+  "resume_p95_seconds": null,
+  "certified_count": 0,
+  "fixture_count": 61
+}

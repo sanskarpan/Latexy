@@ -1,0 +1,311 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Latexy
+Dashboard
+Workspace
+Tracker
+Templates
+Studio
+Language
+English
+हिन्दी
+मराठी
+తెలుగు
+ਪੰਜਾਬੀ
+বাংলা
+L
+Latency
+
+WORKSPACE
+
+Create Resume
+
+Choose a template or import an existing file.
+
+Back to Workspace
+RESUME TITLE
+
+RECOMMENDED
+
+Guided Builder
+
+Use the new structured builder if you want live preview, section forms, template swapping, and a safer path than starting directly in LaTeX.
+
+Open Guided Builder
+Use Template
+
+Pick from 50+ LaTeX templates, ready to edit.
+
+Import File
+
+Upload PDF, Word, Markdown, LaTeX, or more.
+
+Import from LinkedIn
+
+Export your LinkedIn profile as PDF and import it.
+
+Import Builder Export
+
+Bring in Reactive Resume or JSON Resume data, plus PDF and Word exports from Rezi, Teal, and similar tools.
+
+Start from Blank
+All (61)
+Software Engineering (6)
+Finance (4)
+Academic / Research (5)
+Creative & Design (4)
+Minimal / Clean (4)
+ATS-Safe (5)
+Two-Column (4)
+Executive (4)
+Marketing & Sales (4)
+Medical / Healthcare (4)
+Legal (4)
+Graduate / Entry-Level (4)
+Regional Formats (4)
+Presentations (5)
+Preview
+Phd Applicant
+ACADEMIC / RESEARCH
+Use Template
+Preview
+Postdoc
+ACADEMIC / RESEARCH
+Use Template
+Preview
+Professor
+ACADEMIC / RESEARCH
+Use Template
+Preview
+Research Cv
+ACADEMIC / RESEARCH
+Use Template
+Preview
+Stem Grad
+ACADEMIC / RESEARCH
+Use Template
+Preview
+Ats Clean
+ATS-SAFE
+Use Template
+Preview
+Ats Modern
+ATS-SAFE
+Use Template
+Preview
+Ats Plain
+ATS-SAFE
+Use Template
+Preview
+Ats Standard
+ATS-SAFE
+Use Template
+Preview
+Hindi Professional
+ATS-SAFE
+Use Template
+Preview
+Art Director
+CREATIVE & DESIGN
+Use Template
+Preview
+Copywriter
+CREATIVE & DESIGN
+Use Template
+Preview
+Product Designer
+CREATIVE & DESIGN
+Use Template
+Preview
+Ux Designer
+CREATIVE & DESIGN
+Use Template
+Preview
+Board Advisor
+EXECUTIVE
+Use Template
+Preview
+Cxo
+EXECUTIVE
+Use Template
+Preview
+Executive Classic
+EXECUTIVE
+Use Template
+Preview
+Vp Director
+EXECUTIVE
+Use Template
+Preview
+Accounting
+FINANCE
+Use Template
+Preview
+Fintech
+FINANCE
+Use Template
+Preview
+Investment Banking
+FINANCE
+Use Template
+Preview
+Quant
+FINANCE
+Use Template
+Preview
+Bootcamp
+GRADUATE / ENTRY-LEVEL
+Use Template
+Preview
+Career Changer
+GRADUATE / ENTRY-LEVEL
+Use Template
+Preview
+Mba
+GRADUATE / ENTRY-LEVEL
+Use Template
+Preview
+New Grad
+GRADUATE / ENTRY-LEVEL
+Use Template
+Preview
+Attorney
+LEGAL
+Use Template
+Preview
+Corporate Counsel
+LEGAL
+Use Template
+Preview
+Law Clerk
+LEGAL
+Use Template
+Preview
+Paralegal
+LEGAL
+Use Template
+Preview
+Brand Manager
+MARKETING & SALES
+Use Template
+Preview
+Content Strategist
+MARKETING & SALES
+Use Template
+Preview
+Growth Marketer
+MARKETING & SALES
+Use Template
+Preview
+Pmm
+MARKETING & SALES
+Use Template
+Preview
+Biotech
+MEDICAL / HEALTHCARE
+Use Template
+Preview
+Clinical Research
+MEDICAL / HEALTHCARE
+Use Template
+Preview
+Nursing
+MEDICAL / HEALTHCARE
+Use Template
+Preview
+Physician
+MEDICAL / HEALTHCARE
+Use Template
+Preview
+Classic
+MINIMAL / CLEAN
+Use Template
+Preview
+Clean Simple
+MINIMAL / CLEAN
+Use Template
+Preview
+Modern Minimal
+MINIMAL / CLEAN
+Use Template
+Preview
+Ultra Minimal
+MINIMAL / CLEAN
+Use Template
+Preview
+Beamer Madrid
+PRESENTATIONS
+Use Template
+Preview
+Beamer Metropolis
+PRESENTATIONS
+Use Template
+Preview
+Beamer Pitch
+PRESENTATIONS
+Use Template
+Preview
+Beamer Research
+PRESENTATIONS
+Use Template
+Preview
+Beamer Warsaw
+PRESENTATIONS
+Use Template
+Preview
+Europecv
+REGIONAL FORMATS
+Use Template
+Preview
+India Government Psu Application
+REGIONAL FORMATS
+Use Template
+Preview
+India Professional Biodata
+REGIONAL FORMATS
+Use Template
+Preview
+Polish Cv Rodo
+REGIONAL FORMATS
+Use Template
+Preview
+Data Scientist
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Devops
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Fullstack
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Ml Engineer
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Swe Clean
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Swe Technical
+SOFTWARE ENGINEERING
+Use Template
+Preview
+Two Col Classic
+TWO-COLUMN
+Use Template
+Preview
+Two Col Creative
+TWO-COLUMN
+Use Template
+Preview
+Two Col Modern
+TWO-COLUMN
+Use Template
+Preview
+Two Col Sidebar
+TWO-COLUMN
+Use Template

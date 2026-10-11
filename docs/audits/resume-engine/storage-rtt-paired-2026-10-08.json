@@ -1,0 +1,1153 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-08T16:16:32.298761+00:00",
+  "source_commit": "36de1a5100ac35e3eb961227f49d61d228edce74",
+  "baseline_storage_sha256": "e8669235b69363afb180259b620acf6b5af95fca6c463701335c09493788d326",
+  "candidate_storage_sha256": "576b15432a8e75308d3abf40740f0f2cc8e795d27eb6278348d9cb01509fc36a",
+  "simulated_per_request_rtt_ms": 40.0,
+  "scope": "Real isolated S3, actual bounded downloads; audited serial vs actual concurrent size-check loop",
+  "limitations": [
+    "Injected delay is not measured production RTT",
+    "Excludes PG locks, TeX, admission and browser",
+    "All size checks finish before releasing caller locks; sizes alone do not replace digest verification"
+  ],
+  "method": "30 alternating pairs per operation; same objects/client/process; no warmup samples",
+  "samples": [
+    {
+      "pair": 0,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 103.20217900152784,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 0,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 46.48790999999619,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 0,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 189.3420820015308,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 0,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 69.27726800131495,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 1,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 46.412521001911955,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 1,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 95.31617399989045,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 1,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 71.35577099688817,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 1,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 187.82049599758466,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 2,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 90.7537669991143,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 2,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 47.252136002498446,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 2,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 174.6607179993589,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 2,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 50.3309720006655,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 3,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.82261100181495,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 3,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.46997399794054,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 3,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 56.53429999802029,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 3,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 184.0198549980414,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 4,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 98.2372979997308,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 4,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.85135699744569,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 4,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 183.36577499940176,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 4,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 57.976322998001706,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 5,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 47.489512002357515,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 5,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 95.0924569988274,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 5,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 64.71505000081379,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 5,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 176.0599280023598,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 6,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 88.59765000306652,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 6,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 47.58971000046586,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 6,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 179.6133780007949,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 6,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 56.82372899900656,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 7,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.065419999242295,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 7,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.86934999807272,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 7,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 57.88505600139615,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 7,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 176.50030799995875,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 8,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 91.06646799773443,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 8,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.79228199852514,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 8,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 176.48400800317177,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 8,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.51336699863896,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 9,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.50102299961145,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 9,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.57450000121025,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 9,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 56.30727199968533,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 9,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 194.53980899925227,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 10,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 91.41256399743725,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 10,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.44673099715146,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 10,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 177.43793100089533,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 10,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.84173899842426,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 11,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.69756199978292,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 11,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 88.09591299723252,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 11,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 69.94119399678311,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 11,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 175.46996800228953,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 12,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 92.04552099981811,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 12,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.868234999943525,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 12,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 180.9855930005142,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 12,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 59.01713599814684,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 13,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 47.33418899922981,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 13,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 108.51603799892473,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 13,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 64.57851799859782,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 13,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 186.13199899846222,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 14,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 89.337762001378,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 14,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.176129002153175,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 14,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 179.57883200142533,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 14,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 59.55252099738573,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 15,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.92827300055069,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 15,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 88.7477049982408,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 15,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 54.08123600136605,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 15,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 175.72068000299623,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 16,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 88.03843100031372,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 16,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 46.63071499817306,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 16,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 180.30344099679496,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 16,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 56.425779999699444,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 17,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.29787600040436,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 17,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 93.42386299977079,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 17,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 62.51374800194753,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 17,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 183.56097099967883,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 18,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 92.32448000329896,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 18,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.95580499860807,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 18,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 181.4762560024974,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 18,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 56.470512001396855,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 19,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.2745969996613,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 19,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 86.06205899923225,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 19,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 52.09949699928984,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 19,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 176.6133240016643,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 20,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 89.39952600121615,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 20,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 47.05825999917579,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 20,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 175.37400900255307,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 20,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.506160999357235,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 21,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.600114000582835,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 21,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.91676299733808,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 21,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.187677000503754,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 21,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 178.24814100094954,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 22,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 95.01668499797233,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 22,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.841194001288386,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 22,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 190.01038299757056,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 22,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 65.69658499938669,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 23,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.31642399888369,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 23,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 90.25179099990055,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 23,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 61.023139001918025,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 23,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 185.8241640002234,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 24,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 91.96359400084475,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 24,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 45.153314000344835,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 24,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 179.94903100043302,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 24,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 61.517181999079185,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 25,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.855854997673305,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 25,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.45624799848883,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 25,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 57.41856899840059,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 25,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 179.75463300172123,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 26,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 93.23543199934647,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 26,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 44.37553899697377,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 26,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 174.0697379973426,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 26,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.13861700092093,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 27,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 46.186610001313966,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 27,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 87.05596899744705,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 27,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 58.736876999319065,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 27,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 177.5945410008717,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 28,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 89.26421499927528,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 28,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.261782000627136,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 28,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 184.24882799808984,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 28,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 63.49960200168425,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 29,
+      "operation": "download",
+      "condition": "candidate",
+      "elapsed_ms": 43.391793999035144,
+      "requests": {
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 29,
+      "operation": "download",
+      "condition": "baseline",
+      "elapsed_ms": 88.84748199852766,
+      "requests": {
+        "head_object": 1,
+        "get_object": 1
+      }
+    },
+    {
+      "pair": 29,
+      "operation": "publication_size_checks",
+      "condition": "candidate",
+      "elapsed_ms": 55.59602599896607,
+      "requests": {
+        "head_object": 4
+      }
+    },
+    {
+      "pair": 29,
+      "operation": "publication_size_checks",
+      "condition": "baseline",
+      "elapsed_ms": 177.647980999609,
+      "requests": {
+        "head_object": 4
+      }
+    }
+  ],
+  "aggregates": {
+    "download": {
+      "baseline": {
+        "samples": 30,
+        "p50_ms": 89.82565850055835,
+        "p95_ms": 103.20217900152784
+      },
+      "candidate": {
+        "samples": 30,
+        "p50_ms": 45.054559499476454,
+        "p95_ms": 47.489512002357515
+      }
+    },
+    "publication_size_checks": {
+      "baseline": {
+        "samples": 30,
+        "p50_ms": 179.68400550125807,
+        "p95_ms": 190.01038299757056
+      },
+      "candidate": {
+        "samples": 30,
+        "p50_ms": 57.65181249989837,
+        "p95_ms": 69.94119399678311
+      }
+    }
+  }
+}

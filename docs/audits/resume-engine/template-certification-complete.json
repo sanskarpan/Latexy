@@ -1,0 +1,2862 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 122,
+  "fixtures": [
+    {
+      "fixture": "academic/phd_applicant.tex",
+      "category": "academic",
+      "source_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "prepared_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.7307929800008424,
+            2.5005126259929966
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 115305,
+          "page_count": 2,
+          "text_sha256": "56b8993b89b09e3888db7ea076c35f203e79bb37ec2819692ec34a766fedfe3a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.668453160003992
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.299789051001426,
+            1.8865155199891888
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 115305,
+          "page_count": 2,
+          "text_sha256": "56b8993b89b09e3888db7ea076c35f203e79bb37ec2819692ec34a766fedfe3a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.041877386000124
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/postdoc.tex",
+      "category": "academic",
+      "source_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "prepared_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.3426411989930784,
+            2.206598616001429
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 114814,
+          "page_count": 2,
+          "text_sha256": "023a5a754f32711d9c4c68f842fa33ab693d133ac4e0a8f5cc831adfddd82c2b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.654654220008524
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.143538845004514,
+            2.1409566490037832
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 114814,
+          "page_count": 2,
+          "text_sha256": "023a5a754f32711d9c4c68f842fa33ab693d133ac4e0a8f5cc831adfddd82c2b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.287454839999555
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/professor.tex",
+      "category": "academic",
+      "source_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "prepared_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.432102560007479,
+            4.820727322003222
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 113882,
+          "page_count": 2,
+          "text_sha256": "18f20c5e47538cc09947700867f407fc15076b6fb2b53ba600bd2f559330efad",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.52674255099555
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.899402690003626,
+            6.69493547201273
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 113882,
+          "page_count": 2,
+          "text_sha256": "18f20c5e47538cc09947700867f407fc15076b6fb2b53ba600bd2f559330efad",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 15.934365512002842
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/research_cv.tex",
+      "category": "academic",
+      "source_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "prepared_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            5.836951110992231,
+            6.0406707570073195
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 115124,
+          "page_count": 2,
+          "text_sha256": "ff2339e3c72489786d114630f8f9b5c74ddd95ced8f4e0aa80b63d077038219a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.152168986998731
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            7.952003126003547,
+            6.390981653996278
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 115124,
+          "page_count": 2,
+          "text_sha256": "ff2339e3c72489786d114630f8f9b5c74ddd95ced8f4e0aa80b63d077038219a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 16.418174381004064
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/stem_grad.tex",
+      "category": "academic",
+      "source_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "prepared_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            13.577219771992532,
+            6.288319597006193
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 114170,
+          "page_count": 1,
+          "text_sha256": "b0d60a37b94b82a688d56dc020f87b298d2aa7e59970ee5cf74299a29aa63877",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 20.15778185900126
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.370021474009263,
+            6.216179690993158
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 114170,
+          "page_count": 1,
+          "text_sha256": "b0d60a37b94b82a688d56dc020f87b298d2aa7e59970ee5cf74299a29aa63877",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 15.945918853001785
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_clean.tex",
+      "category": "ats_safe",
+      "source_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "prepared_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            6.705795936999493,
+            9.57444288500119
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105280,
+          "page_count": 1,
+          "text_sha256": "9d626a1d2030fd53d9a4e6eb1b5f5c9e473fd8a340a335fa288071f50fd58645",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 16.47748447699996
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.428482267001527,
+            12.362524607000523
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105280,
+          "page_count": 1,
+          "text_sha256": "9d626a1d2030fd53d9a4e6eb1b5f5c9e473fd8a340a335fa288071f50fd58645",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 21.077792775002308
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_modern.tex",
+      "category": "ats_safe",
+      "source_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "prepared_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            5.055344165011775,
+            3.7790440659882734
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 104404,
+          "page_count": 1,
+          "text_sha256": "2c3d55a3586a70a566a25428236c8fc243a4709a3e283640ec77ff7b43040d07",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.101452728995355
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.9376826460065786,
+            3.2445623539970256
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 104404,
+          "page_count": 1,
+          "text_sha256": "2c3d55a3586a70a566a25428236c8fc243a4709a3e283640ec77ff7b43040d07",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.657205907002208
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_plain.tex",
+      "category": "ats_safe",
+      "source_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "prepared_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            5.421274446998723,
+            4.434261515998514
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 39496,
+          "page_count": 2,
+          "text_sha256": "af3ab832ec91e0548402f67e45625e0ed5b36d6c1c509ab45a95846f064a7ef2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.94241257700196
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            5.218232200000784,
+            5.327897092007333
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 39496,
+          "page_count": 2,
+          "text_sha256": "af3ab832ec91e0548402f67e45625e0ed5b36d6c1c509ab45a95846f064a7ef2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.831059664997156
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_standard.tex",
+      "category": "ats_safe",
+      "source_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "prepared_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            8.008714737006812,
+            6.237947056986741
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 104501,
+          "page_count": 2,
+          "text_sha256": "431822daa753ba2761fb50f743a0a18be6ef2537ebfce4014089a539b1d31537",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 14.71902447901084
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.438134138006717,
+            8.041861778998282
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 104501,
+          "page_count": 2,
+          "text_sha256": "431822daa753ba2761fb50f743a0a18be6ef2537ebfce4014089a539b1d31537",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 16.385733410992543
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/hindi_professional.tex",
+      "category": "ats_safe",
+      "source_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "prepared_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            6.435438350003096,
+            3.103223291996983
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 35909,
+          "page_count": 1,
+          "text_sha256": "e3f3bf75e1535ec2b4461cc8d8428c6d93050af07b07b18e40c43543da739f85",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.634728659002576
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.0955981930019334,
+            2.098269562004134
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 35909,
+          "page_count": 1,
+          "text_sha256": "e3f3bf75e1535ec2b4461cc8d8428c6d93050af07b07b18e40c43543da739f85",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.728343283990398
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/art_director.tex",
+      "category": "creative",
+      "source_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "prepared_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.345839695990435,
+            3.684049164992757
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 122133,
+          "page_count": 1,
+          "text_sha256": "4a06171f8449421fe12c8c9f1e8a39869f43daa893b0d5a6af83211c60c4d334",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.146760742005426
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.350831553005264,
+            2.723137096996652
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 122133,
+          "page_count": 1,
+          "text_sha256": "4a06171f8449421fe12c8c9f1e8a39869f43daa893b0d5a6af83211c60c4d334",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.805942482998944
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/copywriter.tex",
+      "category": "creative",
+      "source_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "prepared_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.3746914859948447,
+            2.2144148360093823
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 129768,
+          "page_count": 1,
+          "text_sha256": "f7d2868390c95f60c1d6e9521f68290212b2c8c27a9c421f6f5cf600c099026d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.687826410998241
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.1774262550025014,
+            1.8374851510016015
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 129768,
+          "page_count": 1,
+          "text_sha256": "f7d2868390c95f60c1d6e9521f68290212b2c8c27a9c421f6f5cf600c099026d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.930769577011233
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/product_designer.tex",
+      "category": "creative",
+      "source_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "prepared_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.553486663993681,
+            2.043615945993224
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 130179,
+          "page_count": 1,
+          "text_sha256": "d6c318b35a63a1c8e90a31aaf3aa89bc1555e5d78f35abf2636be256004bce51",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.697471573992516
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.156764168990776,
+            1.9912070570135256
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 130179,
+          "page_count": 1,
+          "text_sha256": "d6c318b35a63a1c8e90a31aaf3aa89bc1555e5d78f35abf2636be256004bce51",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.050193864997709
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/ux_designer.tex",
+      "category": "creative",
+      "source_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "prepared_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.2987994980067015,
+            2.9038093269919045
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 139262,
+          "page_count": 1,
+          "text_sha256": "95507c70b3b9a0f0d001b573b1586a1d692e789f313d9a8240947279a62f0357",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.307831963000353
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.84053107399086,
+            1.6876869160041679
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 139262,
+          "page_count": 1,
+          "text_sha256": "95507c70b3b9a0f0d001b573b1586a1d692e789f313d9a8240947279a62f0357",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.403823111002566
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/board_advisor.tex",
+      "category": "executive",
+      "source_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "prepared_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6936572240083478,
+            1.8360620110033778
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 121808,
+          "page_count": 2,
+          "text_sha256": "5f85c54a69290c353863fb42b4a16cfbf0582e382ea96fc481fa98768af57599",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.6293818929989357
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.0960426780075068,
+            3.0668370870116632
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 121808,
+          "page_count": 2,
+          "text_sha256": "5f85c54a69290c353863fb42b4a16cfbf0582e382ea96fc481fa98768af57599",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.860183183001936
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/cxo.tex",
+      "category": "executive",
+      "source_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "prepared_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.9788639030011836,
+            4.511445106996689
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 119001,
+          "page_count": 1,
+          "text_sha256": "ea28a8a86e120251002aa77325833c7476ea9a98fc10502f15a96d366f8583d0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.593949155998416
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.6038098800054286,
+            2.136956602000282
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 119001,
+          "page_count": 1,
+          "text_sha256": "ea28a8a86e120251002aa77325833c7476ea9a98fc10502f15a96d366f8583d0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.479403289995389
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/executive_classic.tex",
+      "category": "executive",
+      "source_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "prepared_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.3477433730004122,
+            2.589870133990189
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 141742,
+          "page_count": 1,
+          "text_sha256": "870111943f84a513a77b006cce14e9333c61babb6f1480a5dec88fbd4e265c19",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.099452025999199
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.734851728004287,
+            3.4620621590001974
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 141742,
+          "page_count": 1,
+          "text_sha256": "870111943f84a513a77b006cce14e9333c61babb6f1480a5dec88fbd4e265c19",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.05698584500351
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/vp_director.tex",
+      "category": "executive",
+      "source_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "prepared_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.637986917994567,
+            4.872711962001631
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 117283,
+          "page_count": 1,
+          "text_sha256": "4cbe1e8b8a5eddf8b9d34fc4b8ca8c46718ea762485e8053eff777a87d89ab95",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.747848405997502
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.994522054010304,
+            2.544466976003605
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 117283,
+          "page_count": 1,
+          "text_sha256": "4cbe1e8b8a5eddf8b9d34fc4b8ca8c46718ea762485e8053eff777a87d89ab95",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 10.637710640003206
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/accounting.tex",
+      "category": "finance",
+      "source_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "prepared_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.3714580639934866,
+            2.417821078997804
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 110187,
+          "page_count": 1,
+          "text_sha256": "4387c01852c6e36c426ed5279bb871c001e324910280bd6b1602cb5754e45bef",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.889483818988083
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.9454393630003324,
+            2.247065767995082
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 110187,
+          "page_count": 1,
+          "text_sha256": "4387c01852c6e36c426ed5279bb871c001e324910280bd6b1602cb5754e45bef",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.263539161998779
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/fintech.tex",
+      "category": "finance",
+      "source_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "prepared_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6909670220047701,
+            1.587691820008331
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132369,
+          "page_count": 1,
+          "text_sha256": "869fe4daab01b1b9a3f6b2d91a4beb90c0a34d3c238cbe22e8e643d11582c6b0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.3411736210109666
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.400998944998719,
+            3.1228905220050365
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132369,
+          "page_count": 1,
+          "text_sha256": "869fe4daab01b1b9a3f6b2d91a4beb90c0a34d3c238cbe22e8e643d11582c6b0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.725673660999746
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/investment_banking.tex",
+      "category": "finance",
+      "source_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "prepared_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.567406565998681,
+            2.297945496000466
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 117990,
+          "page_count": 1,
+          "text_sha256": "8870ccf7e6386f3669931ce9ca9978cbb6b5fd2107a4d224a495fcda3511a561",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.972471703003976
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.0939454850013135,
+            2.596887512001558
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 117990,
+          "page_count": 1,
+          "text_sha256": "8870ccf7e6386f3669931ce9ca9978cbb6b5fd2107a4d224a495fcda3511a561",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.705227213999024
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/quant.tex",
+      "category": "finance",
+      "source_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "prepared_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.395469923998462,
+            2.0404204450023826
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 131480,
+          "page_count": 1,
+          "text_sha256": "04f6d52d8494af34ae7cfbb6118a7794b3c0ae6ad4f24db3c64cc0b11bb74f86",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.536404486003448
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.39495129599527,
+            3.209115321005811
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 131480,
+          "page_count": 1,
+          "text_sha256": "04f6d52d8494af34ae7cfbb6118a7794b3c0ae6ad4f24db3c64cc0b11bb74f86",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.6036730089981575
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/bootcamp.tex",
+      "category": "graduate",
+      "source_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "prepared_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.0954269179928815,
+            2.192759890007437
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 124028,
+          "page_count": 1,
+          "text_sha256": "70720ffe49df2126a8a6e661466455bf8bb26bd3807d3b38b5489e5dd28df7c9",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.388328533997992
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.495623816997977,
+            2.248208082994097
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 124028,
+          "page_count": 1,
+          "text_sha256": "70720ffe49df2126a8a6e661466455bf8bb26bd3807d3b38b5489e5dd28df7c9",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.715875107998727
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/career_changer.tex",
+      "category": "graduate",
+      "source_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "prepared_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.203143229999114,
+            3.815088441988337
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 134502,
+          "page_count": 1,
+          "text_sha256": "a5905d303bb73bda8dd955cdb77b85255448a546fc529de88cccf043da373d4b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.12868187300046
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            4.424024821011699,
+            3.2576068690104876
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 134502,
+          "page_count": 1,
+          "text_sha256": "a5905d303bb73bda8dd955cdb77b85255448a546fc529de88cccf043da373d4b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.724003146999166
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/mba.tex",
+      "category": "graduate",
+      "source_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "prepared_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.4553223269904265,
+            3.2607982310000807
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 112105,
+          "page_count": 1,
+          "text_sha256": "b5f939004d06c5b27df31a2e2f3c50e6b6144b7c78264460cca8e05dfdf69ca5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.8419766160077415
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.1148892839992186,
+            2.6417331339907832
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 112105,
+          "page_count": 1,
+          "text_sha256": "b5f939004d06c5b27df31a2e2f3c50e6b6144b7c78264460cca8e05dfdf69ca5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.238464827998541
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/new_grad.tex",
+      "category": "graduate",
+      "source_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "prepared_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            5.6785874769993825,
+            5.556714702994213
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133373,
+          "page_count": 1,
+          "text_sha256": "098fffcdf96123f55a056ca2be497bc183a74e3c7960411fed5de1e8d669dabb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 11.423996919998899
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            5.828387458008365,
+            3.2524228989932453
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133373,
+          "page_count": 1,
+          "text_sha256": "098fffcdf96123f55a056ca2be497bc183a74e3c7960411fed5de1e8d669dabb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 10.144376184005523
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/attorney.tex",
+      "category": "legal",
+      "source_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "prepared_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.307295464008348,
+            1.480937353000627
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 110774,
+          "page_count": 1,
+          "text_sha256": "367bdd00bb399786797b563a3b44687f752bbd54aa39b9cf036506b42a35cebf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.8410143240034813
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.2319974120036932,
+            1.5406535740039544
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 110774,
+          "page_count": 1,
+          "text_sha256": "367bdd00bb399786797b563a3b44687f752bbd54aa39b9cf036506b42a35cebf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.529399042003206
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/corporate_counsel.tex",
+      "category": "legal",
+      "source_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "prepared_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3435950040002353,
+            1.5318678510084283
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108596,
+          "page_count": 1,
+          "text_sha256": "cc4b210bb76bf6dc8b3ea8b39a87f1fa7842253b10502744686801ebe1cc066c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.9462338330049533
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.8991770769935101,
+            1.5905935449991375
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108596,
+          "page_count": 1,
+          "text_sha256": "cc4b210bb76bf6dc8b3ea8b39a87f1fa7842253b10502744686801ebe1cc066c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.12861069299106
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/law_clerk.tex",
+      "category": "legal",
+      "source_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "prepared_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3395315550005762,
+            1.6380582810088526
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 113143,
+          "page_count": 1,
+          "text_sha256": "20fed745db5df4190a5acee3ceb4bb65ea2d237f66464fe6fd3ca5d2d6edad06",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.038293760997476
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.4913710310065653,
+            1.4912197079975158
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 113143,
+          "page_count": 1,
+          "text_sha256": "20fed745db5df4190a5acee3ceb4bb65ea2d237f66464fe6fd3ca5d2d6edad06",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.6416274039947893
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/paralegal.tex",
+      "category": "legal",
+      "source_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "prepared_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.7884228379989509,
+            1.7904119180020643
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108676,
+          "page_count": 1,
+          "text_sha256": "3aafcda41b20f639c5f97e9ed689f3bd627268f9173ac9f802a761e7f285f4bd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.687591086010798
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.49848291699891,
+            1.9850980089977384
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108676,
+          "page_count": 1,
+          "text_sha256": "3aafcda41b20f639c5f97e9ed689f3bd627268f9173ac9f802a761e7f285f4bd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.384921916003805
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/brand_manager.tex",
+      "category": "marketing",
+      "source_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "prepared_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.5362762620061403,
+            2.0340483889885945
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108421,
+          "page_count": 1,
+          "text_sha256": "fc7a779e26f1abc668b4edc6f0470b58e6ec4a172b9fd82d8fa526bfdf0b7ccf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.6670546630048193
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.6985629789996892,
+            1.642174481996335
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108421,
+          "page_count": 1,
+          "text_sha256": "fc7a779e26f1abc668b4edc6f0470b58e6ec4a172b9fd82d8fa526bfdf0b7ccf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.366321473993594
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/content_strategist.tex",
+      "category": "marketing",
+      "source_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "prepared_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.6024775539990515,
+            2.3636659769981634
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132055,
+          "page_count": 1,
+          "text_sha256": "433957a90211be8a03ca8e9eade9c4e93aef641e3ea5c8424a6103f0223ee89e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.0737635959958425
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            7.3735241390095325,
+            4.92825444600021
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132055,
+          "page_count": 1,
+          "text_sha256": "433957a90211be8a03ca8e9eade9c4e93aef641e3ea5c8424a6103f0223ee89e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 13.536126979000983
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/growth_marketer.tex",
+      "category": "marketing",
+      "source_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "prepared_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            5.251809549998143,
+            5.3239165889972355
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 129334,
+          "page_count": 1,
+          "text_sha256": "059a5d4a98d2a50ea59b065cf9c8e1fcfd00761f97ff72c64718c3076e6c93f0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 10.805917694000527
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            8.57493432398769,
+            3.5164516099903267
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 129334,
+          "page_count": 1,
+          "text_sha256": "059a5d4a98d2a50ea59b065cf9c8e1fcfd00761f97ff72c64718c3076e6c93f0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 13.151637761999154
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/pmm.tex",
+      "category": "marketing",
+      "source_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "prepared_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.6061554640036775,
+            2.6042015040002298
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 131737,
+          "page_count": 1,
+          "text_sha256": "f735270483d1562280fd32b51a4d1584114c6d934a4ed276c21f8c736e4fe629",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.315781188997789
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.471282717990107,
+            2.698823195998557
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 131737,
+          "page_count": 1,
+          "text_sha256": "f735270483d1562280fd32b51a4d1584114c6d934a4ed276c21f8c736e4fe629",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.576957213008427
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/biotech.tex",
+      "category": "medical",
+      "source_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "prepared_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.255788520007627,
+            3.2276369590108516
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133951,
+          "page_count": 1,
+          "text_sha256": "6c60732868394f1d566e8fe1d3b2489b7158886162841f1a411254dc67b0c3f4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.662568090003333
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.879653682000935,
+            6.76791156399122
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133951,
+          "page_count": 1,
+          "text_sha256": "6c60732868394f1d566e8fe1d3b2489b7158886162841f1a411254dc67b0c3f4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 15.147810017995653
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/clinical_research.tex",
+      "category": "medical",
+      "source_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "prepared_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            7.928211039994494,
+            16.1399575349933
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 111782,
+          "page_count": 1,
+          "text_sha256": "9e007107f02c4dcb6f38a69f22677656f2cbf9acaf03d99bd7560d52d7ac5fdb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 24.271329330003937
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.7547193609934766,
+            3.3121641739999177
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 111782,
+          "page_count": 1,
+          "text_sha256": "9e007107f02c4dcb6f38a69f22677656f2cbf9acaf03d99bd7560d52d7ac5fdb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.450426147988765
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/nursing.tex",
+      "category": "medical",
+      "source_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "prepared_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.120887634999235,
+            5.035368800003198
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 109983,
+          "page_count": 1,
+          "text_sha256": "85745deab39500f16766432e3da6019b9dfaa12a9badbc85693825ba024bd76d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.266751148010371
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.598102799995104,
+            1.989203542994801
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 109983,
+          "page_count": 1,
+          "text_sha256": "85745deab39500f16766432e3da6019b9dfaa12a9badbc85693825ba024bd76d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.494465426003444
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/physician.tex",
+      "category": "medical",
+      "source_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "prepared_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.9955551320017548,
+            2.6492254879995016
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 111678,
+          "page_count": 1,
+          "text_sha256": "f441134b8847c527348bf7d352b3c1063455765be5c3429f4f404161a1ccd025",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.817019458001596
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.8770390179997776,
+            2.855194976000348
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 111678,
+          "page_count": 1,
+          "text_sha256": "f441134b8847c527348bf7d352b3c1063455765be5c3429f4f404161a1ccd025",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.833269715003553
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/classic.tex",
+      "category": "minimal",
+      "source_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "prepared_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.6003679529967485,
+            3.278159642999526
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 137119,
+          "page_count": 1,
+          "text_sha256": "e868ae33874e90463a445b7450128651801d3a8ee04abf953b60808b670139cf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.153213988000061
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.819800511992071,
+            4.574556284002028
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 137119,
+          "page_count": 1,
+          "text_sha256": "e868ae33874e90463a445b7450128651801d3a8ee04abf953b60808b670139cf",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.309182905999478
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "edbae050bfdac72bfa3fb0cb9eb9349584d04af98f27ed5d0bed2cc506f4b314",
+      "prepared_sha256": "edbae050bfdac72bfa3fb0cb9eb9349584d04af98f27ed5d0bed2cc506f4b314",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.745494859002065,
+            3.459524075995432
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 127355,
+          "page_count": 1,
+          "text_sha256": "6783dcd2e2488024d5db89c29697d9ab103fe76a75a52f7996d8c4dae9ac080a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.361204004002502
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.521911778996582,
+            13.066417743990314
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 127355,
+          "page_count": 1,
+          "text_sha256": "6783dcd2e2488024d5db89c29697d9ab103fe76a75a52f7996d8c4dae9ac080a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 17.934420320001664
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/modern_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "prepared_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.509711132006487,
+            16.292892835001112
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105558,
+          "page_count": 1,
+          "text_sha256": "c0c9edaeeda2324b0ee5b97d15e145b5dac800dcdc1ece28bcd629c4c0f88b03",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 21.120560957991984
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.323089632001938,
+            4.999410491989693
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105558,
+          "page_count": 1,
+          "text_sha256": "c0c9edaeeda2324b0ee5b97d15e145b5dac800dcdc1ece28bcd629c4c0f88b03",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.577232381998328
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/ultra_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "prepared_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.837395644004573,
+            4.096959622998838
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 98002,
+          "page_count": 1,
+          "text_sha256": "31701b3206b99737c88b8ed8263c4f1f319f78bc2b97de247dbacfb633ce5e8c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.151987700999598
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.230221916004666,
+            2.9660061680042418
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 98002,
+          "page_count": 1,
+          "text_sha256": "31701b3206b99737c88b8ed8263c4f1f319f78bc2b97de247dbacfb633ce5e8c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 8.102800948006916
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_madrid.tex",
+      "category": "presentation",
+      "source_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "prepared_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            11.054203106003115,
+            11.536937322991434
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71."
+          ],
+          "pdf_bytes": 168257,
+          "page_count": 8,
+          "text_sha256": "ced949e4242c1d68073728fe9493f89748b6be5c1d9fb39720a672b7abd757dd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 24.048614404993714
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            12.947053797004628,
+            8.273285738003324
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 71."
+          ],
+          "pdf_bytes": 168257,
+          "page_count": 8,
+          "text_sha256": "ced949e4242c1d68073728fe9493f89748b6be5c1d9fb39720a672b7abd757dd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 22.15737548499601
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_metropolis.tex",
+      "category": "presentation",
+      "source_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "prepared_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            95.27674658200704,
+            17.814218624000205
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 33642,
+          "page_count": 12,
+          "text_sha256": "48dd39359bc02fad581f6c755b0183d8fc9ef2c829bcf67ef2e4912f7a902f1f",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 113.64462852600263
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            69.12865189000149,
+            9.348210776995984
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 33642,
+          "page_count": 12,
+          "text_sha256": "48dd39359bc02fad581f6c755b0183d8fc9ef2c829bcf67ef2e4912f7a902f1f",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 79.89728335599648
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_pitch.tex",
+      "category": "presentation",
+      "source_sha256": "3760c56086a5f9ded4d36d57fecbe7cb5f79f9705b73249d1eb8bb73137ad633",
+      "prepared_sha256": "3760c56086a5f9ded4d36d57fecbe7cb5f79f9705b73249d1eb8bb73137ad633",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.732743200002005,
+            4.151463513990166
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169."
+          ],
+          "pdf_bytes": 155749,
+          "page_count": 9,
+          "text_sha256": "526f715298fba295b6dfb5c4cac42b05eae2518198d1a077b6ec85382f6575ac",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.106951530993683
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            8.185776931000873,
+            10.175595783992321
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 98.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 169."
+          ],
+          "pdf_bytes": 155749,
+          "page_count": 9,
+          "text_sha256": "526f715298fba295b6dfb5c4cac42b05eae2518198d1a077b6ec85382f6575ac",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 19.06083329800458
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_research.tex",
+      "category": "presentation",
+      "source_sha256": "8106c97a128eaeea3a7f8587e5ee683cb8b2df6e4736295a81347de50e384fbd",
+      "prepared_sha256": "8106c97a128eaeea3a7f8587e5ee683cb8b2df6e4736295a81347de50e384fbd",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            6.625003912005923,
+            6.055613903008634
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60."
+          ],
+          "pdf_bytes": 138168,
+          "page_count": 8,
+          "text_sha256": "7801ba4a7686c53945b7935bcaae9d7ce191dbff1e610ab7084820802eb02833",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.903242636995856
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            7.840736711004865,
+            6.495816613998613
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 60."
+          ],
+          "pdf_bytes": 138168,
+          "page_count": 8,
+          "text_sha256": "7801ba4a7686c53945b7935bcaae9d7ce191dbff1e610ab7084820802eb02833",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 15.014619060995756
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_warsaw.tex",
+      "category": "presentation",
+      "source_sha256": "c6f6648aa9a7053f53cc7e0a3d319553de1ab282521de9f29994114775496fa7",
+      "prepared_sha256": "c6f6648aa9a7053f53cc7e0a3d319553de1ab282521de9f29994114775496fa7",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            6.077096483990317,
+            6.212660771998344
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <12> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 158."
+          ],
+          "pdf_bytes": 236151,
+          "page_count": 11,
+          "text_sha256": "c4f842773bae4d60104837f23929f0109547bd9d241561cae197f4e354e2d0f3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.558731846002047
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.60139949900622,
+            10.740371136998874
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10.95> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <8> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <6> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 41.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <10> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <7> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 95.",
+            "LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <12> not available",
+            "(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 158."
+          ],
+          "pdf_bytes": 236151,
+          "page_count": 11,
+          "text_sha256": "c4f842773bae4d60104837f23929f0109547bd9d241561cae197f4e354e2d0f3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 18.079246773995692
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/europecv.tex",
+      "category": "regional",
+      "source_sha256": "fa39273d2ce930013b5739aa1640e9bf2964a1a504c8ece23fde3ea7b28e4aec",
+      "prepared_sha256": "30d4f523e65a23e9391cc078f50cfae1329f8d019571b348acab9156430f33c4",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            8.967234009003732,
+            3.661921522987541
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 12830,
+          "page_count": 1,
+          "text_sha256": "b5cb340a666e2ed2d008b71aad24f9e7666e68dd93817a28c4af9b91560b4a04",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 12.734180850995472
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            5.636894625000423,
+            3.450173759003519
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 12830,
+          "page_count": 1,
+          "text_sha256": "b5cb340a666e2ed2d008b71aad24f9e7666e68dd93817a28c4af9b91560b4a04",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.840716031991178
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/india_government_psu_application.tex",
+      "category": "regional",
+      "source_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "prepared_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.6112399239937076,
+            3.162802847000421
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 21805,
+          "page_count": 1,
+          "text_sha256": "d0a9c24a02145762d71754016110b76eb58e7284cd865130d83eae681c41b36f",
+          "overfull_boxes": 2,
+          "rerun_requested": false,
+          "total_seconds": 6.897022418997949
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            6.52518892599619,
+            6.277843494011904
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 21805,
+          "page_count": 1,
+          "text_sha256": "d0a9c24a02145762d71754016110b76eb58e7284cd865130d83eae681c41b36f",
+          "overfull_boxes": 2,
+          "rerun_requested": false,
+          "total_seconds": 14.273192588996608
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/india_professional_biodata.tex",
+      "category": "regional",
+      "source_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "prepared_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            6.088352400998701,
+            3.46174122398952
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 19736,
+          "page_count": 1,
+          "text_sha256": "f36ae303ad6645f934c0b29be8ac9df2ce41c6ecbc2ddf95d5bf5598bd52001e",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 9.720377496996662
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            9.90965886900085,
+            7.346064395009307
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 19736,
+          "page_count": 1,
+          "text_sha256": "f36ae303ad6645f934c0b29be8ac9df2ce41c6ecbc2ddf95d5bf5598bd52001e",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 19.339116317001753
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/polish_cv_rodo.tex",
+      "category": "regional",
+      "source_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "prepared_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            10.438493340989226,
+            19.624808039006894
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <17.28> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 21.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <12> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 28.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <10.95> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 34.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <10> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 59."
+          ],
+          "pdf_bytes": 20956,
+          "page_count": 1,
+          "text_sha256": "a362ea9681a714f80813d7539cb9d6a59a649b37142a0e43b01a1a7a14a4b947",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 30.240947501995834
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            9.788343634994817,
+            5.333396824004012
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <17.28> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 21.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <12> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 28.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <10.95> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 34.",
+            "LaTeX Font Info:    Font shape `TU/LatinModernRoman(0)/bx/n' in size <10> not available",
+            "(Font)              Font shape `TU/LatinModernRoman(0)/b/n' tried instead on input line 59."
+          ],
+          "pdf_bytes": 20956,
+          "page_count": 1,
+          "text_sha256": "a362ea9681a714f80813d7539cb9d6a59a649b37142a0e43b01a1a7a14a4b947",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 16.348390523999115
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/data_scientist.tex",
+      "category": "software_engineering",
+      "source_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "prepared_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            9.507504966008128,
+            4.279299084999366
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132844,
+          "page_count": 1,
+          "text_sha256": "0e0eaef7d2ceaf5a490b0f1447896caffa87569d3f2cefde9b9c913b639f7d5f",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 13.931155262995162
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            7.792871984987869,
+            25.540149748005206
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132844,
+          "page_count": 1,
+          "text_sha256": "0e0eaef7d2ceaf5a490b0f1447896caffa87569d3f2cefde9b9c913b639f7d5f",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 35.18612950098759
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/devops.tex",
+      "category": "software_engineering",
+      "source_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "prepared_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            12.61120389601274,
+            4.310581198005821
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133711,
+          "page_count": 2,
+          "text_sha256": "04781d4760c57b27af13773e1fae5527b84f32128117c16d6679e4807f9b7fe4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 17.102655017006327
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.1579123310075374,
+            2.2404011269973125
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 133711,
+          "page_count": 2,
+          "text_sha256": "04781d4760c57b27af13773e1fae5527b84f32128117c16d6679e4807f9b7fe4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.25837573800527
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/fullstack.tex",
+      "category": "software_engineering",
+      "source_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "prepared_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.364912908989936,
+            2.0927635870029917
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132434,
+          "page_count": 1,
+          "text_sha256": "99649612bb9668c7d4a159dc934efcd5ec448cdc57e3b8de332fe64fde2e34ad",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.567097906998242
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.999285146011971,
+            2.341484449993004
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 132434,
+          "page_count": 1,
+          "text_sha256": "99649612bb9668c7d4a159dc934efcd5ec448cdc57e3b8de332fe64fde2e34ad",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.439995420994819
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/ml_engineer.tex",
+      "category": "software_engineering",
+      "source_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "prepared_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.80541843699757,
+            1.8939509780029766
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 135250,
+          "page_count": 2,
+          "text_sha256": "ce689f21aa836e498c9009b9e961be8a94db030c48ee46210858f6a9bb688023",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.761522272005095
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.7935930020030355,
+            1.633173276000889
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 135250,
+          "page_count": 2,
+          "text_sha256": "ce689f21aa836e498c9009b9e961be8a94db030c48ee46210858f6a9bb688023",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.178109186002985
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/swe_clean.tex",
+      "category": "software_engineering",
+      "source_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "prepared_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.0992541769956006,
+            1.9927032100094948
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105302,
+          "page_count": 1,
+          "text_sha256": "fc941040990915eed6a86b33d99a80988f0d63a1cd235780dab4d539f222560a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.1866378449922195
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.8483368669985794,
+            1.7363195390062174
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 105302,
+          "page_count": 1,
+          "text_sha256": "fc941040990915eed6a86b33d99a80988f0d63a1cd235780dab4d539f222560a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.6343942700041225
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/swe_technical.tex",
+      "category": "software_engineering",
+      "source_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "prepared_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.0305638239951804,
+            1.5855584109958727
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 134785,
+          "page_count": 2,
+          "text_sha256": "f5394a58ecc29f6689d7cf4b5772ed3c3f33e5edfb06929fa63d936ea17a1b1a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.717444924986921
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.491002620998188,
+            1.9364485170081025
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 134785,
+          "page_count": 2,
+          "text_sha256": "f5394a58ecc29f6689d7cf4b5772ed3c3f33e5edfb06929fa63d936ea17a1b1a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.2895273710018955
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_classic.tex",
+      "category": "two_column",
+      "source_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "prepared_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6462185520067578,
+            1.790833757011569
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 109607,
+          "page_count": 1,
+          "text_sha256": "50af48ccbae5ed21b9964ff6db4564857df114b81ccd251142aa7e6c70e8139e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.4993531060026726
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.5911679239943624,
+            2.0403285369975492
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 109607,
+          "page_count": 1,
+          "text_sha256": "50af48ccbae5ed21b9964ff6db4564857df114b81ccd251142aa7e6c70e8139e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.391461840001284
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_creative.tex",
+      "category": "two_column",
+      "source_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "prepared_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.3416836539981887,
+            1.9343642960011493
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 135630,
+          "page_count": 1,
+          "text_sha256": "2f401e6a9e5a427ab3447549928835c6c42a5caf76630799bb01d8e82af207a3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.329904666999937
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.2467286989995046,
+            2.5405572810122976
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 135630,
+          "page_count": 1,
+          "text_sha256": "2f401e6a9e5a427ab3447549928835c6c42a5caf76630799bb01d8e82af207a3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.565926794995903
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_modern.tex",
+      "category": "two_column",
+      "source_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "prepared_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.0979975539958104,
+            5.31159704500169
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108440,
+          "page_count": 1,
+          "text_sha256": "7bbccf0cd7e644c7a3c82dfd4c665bab063f992584ce76381f1f3436e2df3ffb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.4774119640060235
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.4619425920100184,
+            2.0848153109982377
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 108440,
+          "page_count": 1,
+          "text_sha256": "7bbccf0cd7e644c7a3c82dfd4c665bab063f992584ce76381f1f3436e2df3ffb",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.544893521000631
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_sidebar.tex",
+      "category": "two_column",
+      "source_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "prepared_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.6089156470115995,
+            2.953745546998107
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 106821,
+          "page_count": 1,
+          "text_sha256": "cb987301f83c9bb930b5e1d2458d497d9d1c448269841c5f20a506d113b791aa",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.684784946002765
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.5781766590080224,
+            4.185666156001389
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 106821,
+          "page_count": 1,
+          "text_sha256": "cb987301f83c9bb930b5e1d2458d497d9d1c448269841c5f20a506d113b791aa",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 9.611364163996768
+        }
+      ],
+      "certified": true
+    }
+  ],
+  "resume_p50_seconds": 6.725673660999746,
+  "resume_p95_seconds": 20.15778185900126,
+  "certified_count": 61,
+  "fixture_count": 61
+}

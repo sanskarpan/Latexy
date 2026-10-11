@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "scope": "trusted static English managed builder; TeX process+convergence only; no production shipping",
+  "source_sha256": "cdd4a6d58032584057c44b07133dd7a19e386c9c147a901569a9ab718175d580",
+  "preamble_sha256": "133fa17c2e0c3f595f3c59139106608a933c1857f11351a590af32aad93de2b1",
+  "renderer_fingerprint": "engine_assets_fingerprint:d50065510d953251a32735c8072e676702e9cc71bdc93441c545836251d338b6",
+  "samples": [
+    {
+      "pair": 0,
+      "condition": "default",
+      "elapsed_seconds": 3.0026735559949884,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 0,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.8936222040065331,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 1,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.691099239003961,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 1,
+      "condition": "default",
+      "elapsed_seconds": 2.2480907429999206,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 2,
+      "condition": "default",
+      "elapsed_seconds": 2.142629134003073,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 2,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.4936571500002174,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 3,
+      "condition": "preloaded",
+      "elapsed_seconds": 2.0901009680019342,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 3,
+      "condition": "default",
+      "elapsed_seconds": 1.9418081379990326,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 4,
+      "condition": "default",
+      "elapsed_seconds": 1.7414475940022385,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 4,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.088995275000343,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 5,
+      "condition": "preloaded",
+      "elapsed_seconds": 2.0012024180032313,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 5,
+      "condition": "default",
+      "elapsed_seconds": 2.246072093999828,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 6,
+      "condition": "default",
+      "elapsed_seconds": 1.692428269998345,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 6,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.1892149370032712,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 7,
+      "condition": "preloaded",
+      "elapsed_seconds": 1.7531094730002224,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 7,
+      "condition": "default",
+      "elapsed_seconds": 4.366652734999661,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 8,
+      "condition": "default",
+      "elapsed_seconds": 2.4505931389940088,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 8,
+      "condition": "preloaded",
+      "elapsed_seconds": 2.393948494005599,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 9,
+      "condition": "preloaded",
+      "elapsed_seconds": 3.552942497000913,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    },
+    {
+      "pair": 9,
+      "condition": "default",
+      "elapsed_seconds": 3.103505892002431,
+      "passes": 2,
+      "page_count": 1,
+      "text_sha256": "4ec6558950f886122c4119f0c3cc2186dcbff0e1830a1b64ae8757a27f915e18",
+      "pixel_sha256": "66ddfb6ba6e626806e991cc9fbe246fffef0d6c86c149b325fbc54ea0dc75120",
+      "synctex_source_line": 13,
+      "synctex_view_coordinates": [
+        "1",
+        "46.799553",
+        "62.026722",
+        "518.400879",
+        "15.227169"
+      ],
+      "synctex_has_expected_input": true
+    }
+  ],
+  "format_build_seconds": 1.2765898069992545,
+  "format_size": 3466226,
+  "format_sha256": "de4f173eb1c19fb6617d15585c5e638e4a986a64a04d66f367df2773aad4f63d",
+  "warmup_equal_text": true,
+  "warmup_equal_pixels": true,
+  "warmup_equal_synctex_coordinates": true,
+  "aggregates": {
+    "default": {
+      "samples": 10,
+      "p50_seconds": 2.2470814184998744,
+      "p95_seconds": 4.366652734999661,
+      "min_seconds": 1.692428269998345,
+      "max_seconds": 4.366652734999661
+    },
+    "preloaded": {
+      "samples": 10,
+      "p50_seconds": 1.8233658385033777,
+      "p95_seconds": 3.552942497000913,
+      "min_seconds": 1.088995275000343,
+      "max_seconds": 3.552942497000913
+    }
+  },
+  "supported": true,
+  "host_load": "root full backend suite running concurrently; exploratory paired result not controlled production benchmark"
+}

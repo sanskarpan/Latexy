@@ -32,7 +32,7 @@ function policy(preference = true, extra: Record<string, unknown> = {}) {
   const scope: Record<string, unknown> = {
     can: (key: string) => grants.has(key), autoCompilePreference: preference,
     resolvedSession: null,
-    hydrated: true, entitlementsLoaded: true, visualEditorAllowed: grants.has('b10'), editorMode: 'source', pdfOpen: true, split: 50, mobilePane: 'editor', isDesktop: true,
+    hydrated: true, entitlementsLoaded: true, engineMode: 'source', visualEditorAllowed: grants.has('b10'), editorMode: 'source', pdfOpen: true, split: 50, mobilePane: 'editor', isDesktop: true,
     handleSplitKey: vi.fn(), setSourceSyncLine: vi.fn(), setSourceSyncRequestId: vi.fn(),
     canEditDocument: grants.has('c01'),
     handleExplainError: vi.fn(), setExplainerLine: vi.fn(), setDeepPanelOpen: vi.fn(),
@@ -147,16 +147,52 @@ describe('Studio composite admission controls', () => {
     expect(runCompile).toHaveBeenCalledWith('compile')
   })
 
-  it('hides SyncTeX affordances and new data fetch while retaining local source inspection', () => {
+  it.each(['a09', 'c10'])('hides SyncTeX affordances and new data fetch when %s alone is OFF', (denied) => {
+    grants.add(denied === 'a09' ? 'c10' : 'a09')
     const scope = policy()
     expect(render(guarded(divider), scope)).toBe('')
     expect(execute(attribute('LaTeXEditor', 'onSyncToPdf'), scope)).toBeUndefined()
     expect(execute(attribute('PDFPreview', 'onSyncToSource'), scope)).toBeUndefined()
     expect(execute(attribute('PDFPreview', 'jobId'), { ...scope, renderedPdfJobId: 'existing-job' })).toBeUndefined()
+    expect(execute(attribute('PDFPreview', 'syncEnabled'), scope)).toBe(false)
+    expect(execute(attribute('PDFPreview', 'pdfUrl'), { ...scope, pdfUrl: 'blob:existing-pdf' })).toBe('blob:existing-pdf')
+    const displayedArtifact = { job_id: 'existing-job', artifact_id: 'existing-artifact' }
+    expect(execute(attribute('PDFPreview', 'artifactIdentity'), { ...scope, displayedArtifact, trialStatus: { fingerprint: 'existing-fingerprint' } })).toEqual({ jobId: 'existing-job', artifactId: 'existing-artifact', fingerprint: 'existing-fingerprint' })
     const jumpToSourceLine = vi.fn()
     expect(execute(attribute('PDFPreview', 'onJumpToLine'), { ...scope, jumpToSourceLine })).toBeUndefined()
+    grants.add(denied)
+    const restored = policy()
+    expect(render(guarded(divider), restored)).toContain('aria-label="Source and PDF synchronization"')
+    expect(execute(attribute('PDFPreview', 'syncEnabled'), restored)).toBe(true)
+  })
+
+  it('keeps authenticated SyncTeX admission when anonymous Studio is OFF, while honoring independent C10 denial', () => {
+    grants.add('c10')
+    const resolvedSession = { user: { id: 'owner' } }
+    const scope = policy(true, { resolvedSession })
+    expect(render(guarded(divider), scope)).toContain('aria-label="Source and PDF synchronization"')
+    expect(execute(attribute('PDFPreview', 'syncEnabled'), scope)).toBe(true)
+    grants.delete('c10')
+    const denied = policy(true, { resolvedSession })
+    expect(render(guarded(divider), denied)).toBe('')
+    expect(execute(attribute('PDFPreview', 'syncEnabled'), denied)).toBe(false)
+  })
+
+  it.each(['a09', 'c10'])('blocks a retained source Ctrl-click callback after %s revocation and restores it on regrant', (denied) => {
     grants.add('a09'); grants.add('c10')
-    expect(render(guarded(divider), policy())).toContain('aria-label="Source and PDF synchronization"')
+    const setCursorLine = vi.fn(), setSourceSyncLine = vi.fn(), setSourceSyncRequestId = vi.fn()
+    const onSyncToPdf = execute(attribute('LaTeXEditor', 'onSyncToPdf'), {
+      ...policy(), canRef: { current: (key: string) => grants.has(key) },
+      setCursorLine, setSourceSyncLine, setSourceSyncRequestId,
+    }) as (line: number) => void
+    grants.delete(denied)
+    onSyncToPdf(4)
+    for (const setter of [setCursorLine, setSourceSyncLine, setSourceSyncRequestId]) expect(setter).not.toHaveBeenCalled()
+    grants.add(denied)
+    onSyncToPdf(4)
+    expect(setCursorLine).toHaveBeenCalledWith(4)
+    expect(setSourceSyncLine).toHaveBeenCalledWith(4)
+    expect(setSourceSyncRequestId).toHaveBeenCalledOnce()
   })
 
   it('omits Explain Error and new ATS navigation without Studio admission', () => {
@@ -224,34 +260,16 @@ describe('Studio composite admission controls', () => {
     expect(execute(attribute('LaTeXEditor', 'atsScoreLoading'), { ...scope, quickATSLoading: true })).toBe(true)
   })
 
-  it('waits for verified entitlements before falling back from visual mode', () => {
-    const effect = find(page, (node) => ts.isCallExpression(node)
-      && node.expression.getText(page) === 'useEffect'
-      && node.arguments[0]?.getText(page).includes('shouldFallbackFromDeniedVisualMode') === true)[0] as ts.CallExpression
-    const shouldFallback = (args: { editorMode: string; visualModeAvailable: boolean; entitlementsLoaded: boolean; hydrated: boolean }) =>
+  it('waits for verified entitlements before deriving a source fallback without overwriting the preferred engine mode', () => {
+    const fallback = (args: { engineMode: string; visualModeAvailable: boolean; entitlementsLoaded: boolean; hydrated: boolean }) =>
       execute(initializer('shouldFallbackFromDeniedVisualMode'), args)
-    const applyFallback = (shouldApply: boolean, setEditorMode: (mode: string) => void) =>
-      (execute(effect.arguments[0], { shouldFallbackFromDeniedVisualMode: shouldApply, setEditorMode }) as () => void)()
-
-    const duringLoading = vi.fn()
-    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: false, hydrated: true }), duringLoading)
-    expect(duringLoading).not.toHaveBeenCalled()
-
-    const afterGrant = vi.fn()
-    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: true, entitlementsLoaded: true, hydrated: true }), afterGrant)
-    expect(afterGrant).not.toHaveBeenCalled()
-
-    const afterLoadedRevocation = vi.fn()
-    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true }), afterLoadedRevocation)
-    expect(afterLoadedRevocation).toHaveBeenCalledWith('source')
-
-    const explicitSource = vi.fn()
-    applyFallback(shouldFallback({ editorMode: 'source', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true }), explicitSource)
-    expect(explicitSource).not.toHaveBeenCalled()
-
-    const awaitingSession = vi.fn()
-    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: true, hydrated: false }), awaitingSession)
-    expect(awaitingSession).not.toHaveBeenCalled()
+    expect(fallback({ engineMode: 'pdf', visualModeAvailable: false, entitlementsLoaded: false, hydrated: true })).toBe(false)
+    expect(fallback({ engineMode: 'pdf', visualModeAvailable: true, entitlementsLoaded: true, hydrated: true })).toBe(false)
+    expect(fallback({ engineMode: 'pdf', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true })).toBe(true)
+    expect(fallback({ engineMode: 'source', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true })).toBe(false)
+    expect(fallback({ engineMode: 'pdf', visualModeAvailable: false, entitlementsLoaded: true, hydrated: false })).toBe(false)
+    expect(execute(initializer('editorMode'), { shouldFallbackFromDeniedVisualMode: true, engineMode: 'pdf' })).toBe('source')
+    expect(execute(initializer('editorMode'), { shouldFallbackFromDeniedVisualMode: false, engineMode: 'pdf' })).toBe('pdf')
   })
 
   it('hides both trim actions and passes composite admission to already-open dialogs', () => {

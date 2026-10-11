@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -72,29 +71,10 @@ def test_is_available_rechecks_local_engine_when_docker_disappears():
 
 
 @pytest.mark.asyncio
-async def test_docker_timeout_removes_exact_named_container():
+async def test_docker_timeout_removes_exact_named_container(tmp_path):
     compiler = _compiler()
-    process = MagicMock(returncode=None)
-    process.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
-    process.kill = MagicMock()
-    process.wait = AsyncMock()
-    with (
-        patch(
-            "app.services.latex_compiler.asyncio.create_subprocess_exec",
-            new=AsyncMock(return_value=process),
-        ),
-        patch("app.services.latex_service.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run,
-    ):
-        result = await compiler._compile_with_docker(Path("job-123"), timeout=1)
-
-    assert result[0] is False
-    container = docker_container_name("job-123", "legacy")
-    assert any(call.args[0] == ["docker", "rm", "-f", container] for call in run.call_args_list)
-
-
-@pytest.mark.asyncio
-async def test_docker_cancellation_removes_exact_named_container():
-    compiler = _compiler()
+    work_dir = tmp_path / "job-123"
+    work_dir.mkdir()
     process = MagicMock(returncode=None)
     process.stdout = _EmptyPipe()
     process.stderr = _EmptyPipe()
@@ -104,16 +84,52 @@ async def test_docker_cancellation_removes_exact_named_container():
         patch(
             "app.services.latex_compiler.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=process),
-        ),
+        ) as spawn,
+        patch(
+            "app.services.latex_compiler.capture_process_output_bounded",
+            new=AsyncMock(side_effect=asyncio.TimeoutError),
+        ) as capture,
+        patch("app.services.latex_service.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run,
+    ):
+        result = await compiler._compile_with_docker(work_dir, timeout=1)
+
+    assert result == (False, "Compilation timeout after 1 seconds")
+    spawn.assert_awaited_once()
+    capture.assert_awaited_once_with(process)
+    process.kill.assert_called_once()
+    process.wait.assert_awaited_once()
+    container = docker_container_name("job-123", "legacy")
+    assert any(call.args[0] == ["docker", "rm", "-f", container] for call in run.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_docker_cancellation_removes_exact_named_container(tmp_path):
+    compiler = _compiler()
+    work_dir = tmp_path / "job-456"
+    work_dir.mkdir()
+    process = MagicMock(returncode=None)
+    process.stdout = _EmptyPipe()
+    process.stderr = _EmptyPipe()
+    process.kill = MagicMock()
+    process.wait = AsyncMock()
+    with (
+        patch(
+            "app.services.latex_compiler.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=process),
+        ) as spawn,
         patch(
             "app.services.latex_compiler.capture_process_output_bounded",
             new=AsyncMock(side_effect=asyncio.CancelledError),
-        ),
+        ) as capture,
         patch("app.services.latex_service.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run,
     ):
         with pytest.raises(asyncio.CancelledError):
-            await compiler._compile_with_docker(Path("job-456"), timeout=1)
+            await compiler._compile_with_docker(work_dir, timeout=1)
 
+    spawn.assert_awaited_once()
+    capture.assert_awaited_once_with(process)
+    process.kill.assert_called_once()
+    process.wait.assert_awaited_once()
     container = docker_container_name("job-456", "legacy")
     assert any(call.args[0] == ["docker", "rm", "-f", container] for call in run.call_args_list)
 

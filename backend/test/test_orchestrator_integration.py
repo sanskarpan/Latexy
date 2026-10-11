@@ -16,8 +16,9 @@ from httpx import AsyncClient
 
 
 @pytest.fixture(autouse=True)
-def _docker_capability_probe():
-    """Default to local execution; Docker-specific cases opt in explicitly."""
+def _docker_capability_probe(monkeypatch):
+    """Default to the server's native test descriptor; Docker cases opt in."""
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     with patch("app.workers.orchestrator.docker_engine_available", return_value=False):
         yield
 
@@ -126,6 +127,7 @@ class TestDockerFallback:
             patch("app.workers.orchestrator.publish_event"),
             patch("app.workers.orchestrator.is_cancelled", return_value=False),
             patch("app.workers.orchestrator.settings") as mock_settings,
+            patch.dict("os.environ", {"LATEXY_RENDER_BACKEND": "docker"}),
         ):
             mock_settings.TEMP_DIR = tmp_path
             mock_settings.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"

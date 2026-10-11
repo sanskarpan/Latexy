@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scope": "Overlapping isolated local suites; source and exclusions in release-audit-2026-10-08.md",
+  "reports": [
+    {
+      "file": "latency-storage-tests-20261008.xml",
+      "sha256": "e12ec4da1f99d30aae2b94ade24ccba88cb5a35c9f338a1ee6582fd6727e4651",
+      "tests": 76,
+      "passed": 75,
+      "failed": [],
+      "errors": [],
+      "skipped": [
+        "test.test_bounded_io::test_windows_same_handle_read_survives_post_open_path_replacement"
+      ],
+      "suite_seconds": 16.29
+    },
+    {
+      "file": "latency-realstorage-tests-20261008.xml",
+      "sha256": "09714a0877a679cbb62da81a80bd35db71a8d14deaea51a0709343ef60c1d366",
+      "tests": 3,
+      "passed": 3,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 13.18
+    }
+  ]
+}

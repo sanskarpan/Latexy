@@ -1,0 +1,2390 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 122,
+  "fixtures": [
+    {
+      "fixture": "academic/phd_applicant.tex",
+      "category": "academic",
+      "source_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "prepared_sha256": "d515468998e90d9e632560a8ddb24a7a9c9950012effa84d3f221ca9e23f4e87",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.0811473239955376,
+            1.0213763770007063
+          ],
+          "success": true,
+          "pdf_bytes": 76952,
+          "page_count": 2,
+          "text_sha256": "b33a0d6a7f9671ed08d2885837176581fb692a52b3e5e4e13d5656ca54384218",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 3.2055166339996504
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.262826108999434,
+            2.406713932999992
+          ],
+          "success": true,
+          "pdf_bytes": 76952,
+          "page_count": 2,
+          "text_sha256": "b33a0d6a7f9671ed08d2885837176581fb692a52b3e5e4e13d5656ca54384218",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 4.779740793004748
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/postdoc.tex",
+      "category": "academic",
+      "source_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "prepared_sha256": "cbe6e938e3059e7c579adfeb000320656fc22f1b5c7b295dbbc7f820d135ae04",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3384347960018204,
+            1.3234052379993955
+          ],
+          "success": true,
+          "pdf_bytes": 79577,
+          "page_count": 2,
+          "text_sha256": "690fab46dd932bd4a1fc8484326bb58132fe4435817e00e93b647dfc21687641",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.757316531999095
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.326833331004309,
+            1.7744526879978366
+          ],
+          "success": true,
+          "pdf_bytes": 79577,
+          "page_count": 2,
+          "text_sha256": "690fab46dd932bd4a1fc8484326bb58132fe4435817e00e93b647dfc21687641",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.2838895419990877
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/professor.tex",
+      "category": "academic",
+      "source_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "prepared_sha256": "6adb49990ebf5d053a49361e697704d877bb6148c10329fff32ff9b309178e35",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3286970410044887,
+            1.2725050929948338
+          ],
+          "success": true,
+          "pdf_bytes": 57216,
+          "page_count": 2,
+          "text_sha256": "b73e1800d64915579cac122c94a2d62c88caa5e6190743026d1c05c9a7722529",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.7066466530013713
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3788111110043246,
+            1.6252291729979333
+          ],
+          "success": true,
+          "pdf_bytes": 57216,
+          "page_count": 2,
+          "text_sha256": "b73e1800d64915579cac122c94a2d62c88caa5e6190743026d1c05c9a7722529",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.098616798997682
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/research_cv.tex",
+      "category": "academic",
+      "source_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "prepared_sha256": "db93846dae33a1bc6837309d3d7fbed4a7b818d0064ec2edfe8e6f00228346bd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.2267823110014433,
+            1.3216372349997982
+          ],
+          "success": true,
+          "pdf_bytes": 76776,
+          "page_count": 2,
+          "text_sha256": "655fec97c0dad04b0e0f5dee88e4348a9d49450f20fe4c4e9934a9ff8c6d04a2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.646491359002539
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.5790372400006163,
+            1.7236412909987848
+          ],
+          "success": true,
+          "pdf_bytes": 76776,
+          "page_count": 2,
+          "text_sha256": "655fec97c0dad04b0e0f5dee88e4348a9d49450f20fe4c4e9934a9ff8c6d04a2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.45893480500672
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "academic/stem_grad.tex",
+      "category": "academic",
+      "source_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "prepared_sha256": "80d748d7f0810d8b02a7c0c5f7ee98c4e2056182f9f0821113df8d7d48c34411",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.5825244369989377,
+            1.3789542080048705
+          ],
+          "success": true,
+          "pdf_bytes": 77693,
+          "page_count": 1,
+          "text_sha256": "73cc2d8e1033cb2a642f0a680969f1f854927b199f37d1a025f49383c66741c4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.0577544379993924
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1744809049996547,
+            2.6788410849985667
+          ],
+          "success": true,
+          "pdf_bytes": 77693,
+          "page_count": 1,
+          "text_sha256": "73cc2d8e1033cb2a642f0a680969f1f854927b199f37d1a025f49383c66741c4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.914585411999724
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_clean.tex",
+      "category": "ats_safe",
+      "source_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "prepared_sha256": "0fca47cd2d97f1be034bd90d2b572beca1f7eab5055f71dadfa137e5c34f9c2f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.481503173999954,
+            1.1704056419985136
+          ],
+          "success": true,
+          "pdf_bytes": 58270,
+          "page_count": 1,
+          "text_sha256": "10de76912f3bcb4e450bcfe7a16766d6efea1540c44d3624f1bd07439cb07515",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.7134777319952263
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.125837412000692,
+            1.3236699510016479
+          ],
+          "success": true,
+          "pdf_bytes": 58270,
+          "page_count": 1,
+          "text_sha256": "10de76912f3bcb4e450bcfe7a16766d6efea1540c44d3624f1bd07439cb07515",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.5123902800041833
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_modern.tex",
+      "category": "ats_safe",
+      "source_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "prepared_sha256": "d27e0d255987fb3309a887fc8dfa80928e715e20877a73767edd6681e3885f1e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1276087809965247,
+            1.1208774830010952
+          ],
+          "success": true,
+          "pdf_bytes": 68693,
+          "page_count": 1,
+          "text_sha256": "2c5d6bee1e826c0cb01f5ca6993c03d0c65aa3488f338a0e1ab2a82df8ca4fdc",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3126302340024267
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1734114729988505,
+            1.1710609039946576
+          ],
+          "success": true,
+          "pdf_bytes": 68693,
+          "page_count": 1,
+          "text_sha256": "2c5d6bee1e826c0cb01f5ca6993c03d0c65aa3488f338a0e1ab2a82df8ca4fdc",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.4079249690039433
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_plain.tex",
+      "category": "ats_safe",
+      "source_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "prepared_sha256": "412fe803e986dec44333a27ad882f78a1c4185eeedee720c99be2590b477565f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.5273568199991132,
+            2.029137889003323
+          ],
+          "success": true,
+          "pdf_bytes": 52200,
+          "page_count": 2,
+          "text_sha256": "fc79c3d44bf21047a13729e9fd610d6a3f35b0d0d17ce405ca53a42d220be7fc",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.6232529639964923
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.8394975350020104,
+            1.5241543960000854
+          ],
+          "success": true,
+          "pdf_bytes": 52200,
+          "page_count": 2,
+          "text_sha256": "fc79c3d44bf21047a13729e9fd610d6a3f35b0d0d17ce405ca53a42d220be7fc",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.4676135500048986
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/ats_standard.tex",
+      "category": "ats_safe",
+      "source_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "prepared_sha256": "f5c74b1e93fbb79f33cd3314f5dbf82a023546a7e1f144286dedd4a389fe538b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.7974792509994586,
+            2.0848517609992996
+          ],
+          "success": true,
+          "pdf_bytes": 75164,
+          "page_count": 2,
+          "text_sha256": "23d01707b6c5bab7f119044c4811ba172c688db6aa7d4cab5557c35533c19f1d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.138533958001062
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.332571001999895,
+            1.878170780997607
+          ],
+          "success": true,
+          "pdf_bytes": 75164,
+          "page_count": 2,
+          "text_sha256": "23d01707b6c5bab7f119044c4811ba172c688db6aa7d4cab5557c35533c19f1d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.311243337004271
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "ats_safe/hindi_professional.tex",
+      "category": "ats_safe",
+      "source_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "prepared_sha256": "866a47c87e75085b3ff8c9a16209fd2c7f546ff4313bc9371b111370e489b433",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6245622269998421
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10.95=[lmroman10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6252707560051931
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.6237968419954996
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10.95=[lmroman10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6249316600005841
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "creative/art_director.tex",
+      "category": "creative",
+      "source_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "prepared_sha256": "94064f128795bcf13d7cd9ea4399868a613c426fe5e0c7a3135e4d962b74481e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.3770849610009464,
+            1.3239207549995626
+          ],
+          "success": true,
+          "pdf_bytes": 75313,
+          "page_count": 1,
+          "text_sha256": "8c635751197b4dd44ca801e30cd71c44d4e8a6df6aa8485e678ee98baf2472e0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.8199654989948613
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.8332700030005071,
+            1.5785762219966273
+          ],
+          "success": true,
+          "pdf_bytes": 75313,
+          "page_count": 1,
+          "text_sha256": "8c635751197b4dd44ca801e30cd71c44d4e8a6df6aa8485e678ee98baf2472e0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.512043884002196
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/copywriter.tex",
+      "category": "creative",
+      "source_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "prepared_sha256": "da3c95ba94ace35f6355550b0e037db69f7fcdf14acec17fff602ba96d689ef5",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.4319065630043042,
+            1.6745187050037202
+          ],
+          "success": true,
+          "pdf_bytes": 71061,
+          "page_count": 1,
+          "text_sha256": "3ae9d00cd9686401c1731de37e6a099247f890193156106cddd65b828cb133c1",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.1718897680038936
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.2745455109979957,
+            1.1211545260011917
+          ],
+          "success": true,
+          "pdf_bytes": 71061,
+          "page_count": 1,
+          "text_sha256": "3ae9d00cd9686401c1731de37e6a099247f890193156106cddd65b828cb133c1",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.4944163670006674
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/product_designer.tex",
+      "category": "creative",
+      "source_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "prepared_sha256": "b9b4a4d2e4737f5ed372415e93aa5868caef11ca21eb0489ec0d2b3914b3bc0a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.5876698909996776,
+            1.2734016180038452
+          ],
+          "success": true,
+          "pdf_bytes": 75610,
+          "page_count": 1,
+          "text_sha256": "2db2c32acab89faabdbc764ce849f1f0831e4c611150c18656d26bab87bb66be",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.919026322000718
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1270175210011075,
+            1.222261258000799
+          ],
+          "success": true,
+          "pdf_bytes": 75610,
+          "page_count": 1,
+          "text_sha256": "2db2c32acab89faabdbc764ce849f1f0831e4c611150c18656d26bab87bb66be",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.413924341999518
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "creative/ux_designer.tex",
+      "category": "creative",
+      "source_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "prepared_sha256": "5cc78751f2e40723a8407f986812dcfecbe60bdb0a5a6c2539733a2dd2777d8d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.612126578002062,
+            1.4747209130000556
+          ],
+          "success": true,
+          "pdf_bytes": 83387,
+          "page_count": 1,
+          "text_sha256": "4ba0eb7b6828c22ebeea6ff8c82bd1120706b5a8c669f8fa77fe0729216ce577",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.206498444000317
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.9182555799998227,
+            1.526248886002577
+          ],
+          "success": true,
+          "pdf_bytes": 83387,
+          "page_count": 1,
+          "text_sha256": "4ba0eb7b6828c22ebeea6ff8c82bd1120706b5a8c669f8fa77fe0729216ce577",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.5742016750009498
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/board_advisor.tex",
+      "category": "executive",
+      "source_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "prepared_sha256": "54d82a45f265f6d97d6f20f801576ecb74a24735c36d0e01ba217b61e12f6d85",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1760545290017035,
+            1.324030871001014
+          ],
+          "success": true,
+          "pdf_bytes": 83332,
+          "page_count": 2,
+          "text_sha256": "44fd853ae7be4241089d7fe757f41dae7d105565aab0bb43ac325c3ec78f7d67",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.561032271994918
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3251923089992488,
+            1.4732529100001557
+          ],
+          "success": true,
+          "pdf_bytes": 83332,
+          "page_count": 2,
+          "text_sha256": "44fd853ae7be4241089d7fe757f41dae7d105565aab0bb43ac325c3ec78f7d67",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.872384326001338
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/cxo.tex",
+      "category": "executive",
+      "source_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "prepared_sha256": "75598a863c40c222d542b75eabd427452d46608769ee7197952fe9abb1f16a7e",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.2248854569988907,
+            1.0710475509986281
+          ],
+          "success": true,
+          "pdf_bytes": 83264,
+          "page_count": 1,
+          "text_sha256": "6952c79a1a7a54c8399c2bea33891b21d0d84a76536f53e8a969574aca45e23d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.40658211200207
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.533365588999004,
+            1.5747420819971012
+          ],
+          "success": true,
+          "pdf_bytes": 83264,
+          "page_count": 1,
+          "text_sha256": "6952c79a1a7a54c8399c2bea33891b21d0d84a76536f53e8a969574aca45e23d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.2258299039967824
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/executive_classic.tex",
+      "category": "executive",
+      "source_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "prepared_sha256": "99e4fc811a161d0b83d0480ce9d6167152ebbf6d6f598aa9370a1efcc6427bff",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.4808196440062602,
+            1.4257709790035733
+          ],
+          "success": true,
+          "pdf_bytes": 81623,
+          "page_count": 1,
+          "text_sha256": "54ce804c00cc92755dd801e33866d0f3152d0981ea482815888868b38ff8b7cd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.026320401993871
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.0764920619985787,
+            1.2219191679978394
+          ],
+          "success": true,
+          "pdf_bytes": 81623,
+          "page_count": 1,
+          "text_sha256": "54ce804c00cc92755dd801e33866d0f3152d0981ea482815888868b38ff8b7cd",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3964819499960868
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "executive/vp_director.tex",
+      "category": "executive",
+      "source_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "prepared_sha256": "f76434ee44c1f58cba472992d52276e52d5f926e1ed31b7b8061430f56310162",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.5570341929997085,
+            1.4751100610010326
+          ],
+          "success": true,
+          "pdf_bytes": 82570,
+          "page_count": 1,
+          "text_sha256": "86dd556a360984729edc995df419e3a087dee92eede38d9e4faa80dad30736f0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.097263240000757
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.4373314900003606,
+            1.4795638809955562
+          ],
+          "success": true,
+          "pdf_bytes": 82570,
+          "page_count": 1,
+          "text_sha256": "86dd556a360984729edc995df419e3a087dee92eede38d9e4faa80dad30736f0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.0956885350024095
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/accounting.tex",
+      "category": "finance",
+      "source_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "prepared_sha256": "af266945f549a0ad6fc496cf622597202152d18a02e5957b8b87af6e177b0039",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.7362178100011079,
+            1.4328843890034477
+          ],
+          "success": true,
+          "pdf_bytes": 76201,
+          "page_count": 1,
+          "text_sha256": "92139e6ae0b56d8bd518419220533206e44d1177f0ec1d16ae3d990d5474f2e1",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.2680500099959318
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.5298004590003984,
+            1.6289320179930655
+          ],
+          "success": true,
+          "pdf_bytes": 76201,
+          "page_count": 1,
+          "text_sha256": "92139e6ae0b56d8bd518419220533206e44d1177f0ec1d16ae3d990d5474f2e1",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.2921360969994566
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/fintech.tex",
+      "category": "finance",
+      "source_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "prepared_sha256": "1292187685cd6e967a2c5a91b2606ec5024e4aaff010797a2fcfe85ef71b0174",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.8374682429930544,
+            1.699521973998344
+          ],
+          "success": true,
+          "pdf_bytes": 75826,
+          "page_count": 1,
+          "text_sha256": "f27a7001aaa638b3ff179551c389805716418ebab188ed074aeba787f5847474",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.5979150500061223
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1241990909984452,
+            1.0723029780056095
+          ],
+          "success": true,
+          "pdf_bytes": 75826,
+          "page_count": 1,
+          "text_sha256": "f27a7001aaa638b3ff179551c389805716418ebab188ed074aeba787f5847474",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.2540199020004366
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/investment_banking.tex",
+      "category": "finance",
+      "source_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "prepared_sha256": "da86043e35f3ea3f8fe4960be1c6dbb2de599844b7c35ea0db53f256a46516de",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9798263369957567,
+            0.8699722860037582
+          ],
+          "success": true,
+          "pdf_bytes": 75050,
+          "page_count": 1,
+          "text_sha256": "f8615c7d9419e36314f6a73ed0ae85f3aa0cf134dcb845aacdc29cd5265feab0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9049160169961397
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.201072039999417,
+            1.0206374219997087
+          ],
+          "success": true,
+          "pdf_bytes": 75050,
+          "page_count": 1,
+          "text_sha256": "f8615c7d9419e36314f6a73ed0ae85f3aa0cf134dcb845aacdc29cd5265feab0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3184159399970667
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "finance/quant.tex",
+      "category": "finance",
+      "source_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "prepared_sha256": "aa6a0392981db649e9ce58a1b6d98a08b9ef6a471dad0303a89a1b64ec3043bc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.225363302997721,
+            1.323431939999864
+          ],
+          "success": true,
+          "pdf_bytes": 75991,
+          "page_count": 1,
+          "text_sha256": "16b42425e5a6e103bcfc40499d21592af2a72fccb12471d7097f980b86c10c31",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.642784447998565
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.122600725000666,
+            0.9699323959939647
+          ],
+          "success": true,
+          "pdf_bytes": 75991,
+          "page_count": 1,
+          "text_sha256": "16b42425e5a6e103bcfc40499d21592af2a72fccb12471d7097f980b86c10c31",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.1543066219965112
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/bootcamp.tex",
+      "category": "graduate",
+      "source_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "prepared_sha256": "863325f0b3c080c10caa6e83ada30b59682c4baf5090cb373d4e07b50c9672d2",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.8249411090000649,
+            1.27137859800132
+          ],
+          "success": true,
+          "pdf_bytes": 76047,
+          "page_count": 1,
+          "text_sha256": "b849fe8b606c36a56691898fbd2f3ac0d4bac9d345b66818d8a48f77a3e328c2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.198018613999011
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.686494102999859,
+            1.3771337200014386
+          ],
+          "success": true,
+          "pdf_bytes": 76047,
+          "page_count": 1,
+          "text_sha256": "b849fe8b606c36a56691898fbd2f3ac0d4bac9d345b66818d8a48f77a3e328c2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.180274960999668
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/career_changer.tex",
+      "category": "graduate",
+      "source_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "prepared_sha256": "223145a5cbf8244bc4686857b684c70817dc7377b555e47a7b4233abedff3bec",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.2741836330023943,
+            1.3731907530018361
+          ],
+          "success": true,
+          "pdf_bytes": 78245,
+          "page_count": 1,
+          "text_sha256": "c7e310509c667491c66235acb1d8140e3ccff9543fb325d29fda592af3c8df44",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.712373978996766
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3796147630055202,
+            2.838257342998986
+          ],
+          "success": true,
+          "pdf_bytes": 78245,
+          "page_count": 1,
+          "text_sha256": "c7e310509c667491c66235acb1d8140e3ccff9543fb325d29fda592af3c8df44",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.32467122500384
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/mba.tex",
+      "category": "graduate",
+      "source_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "prepared_sha256": "bd2856ca8031f5d48270f81a6769d056b2b7b2ee3e8bc5513ed277c74ca70f6b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.0490570569963893,
+            1.7333124220022
+          ],
+          "success": true,
+          "pdf_bytes": 72399,
+          "page_count": 1,
+          "text_sha256": "8d2a3deb1c93dbb57326ceda80e4be5052c843f987d147efefc1ee1977fadd1b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.8779313190025277
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9779965330017149,
+            1.2226448569999775
+          ],
+          "success": true,
+          "pdf_bytes": 72399,
+          "page_count": 1,
+          "text_sha256": "8d2a3deb1c93dbb57326ceda80e4be5052c843f987d147efefc1ee1977fadd1b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.257266143002198
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "graduate/new_grad.tex",
+      "category": "graduate",
+      "source_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "prepared_sha256": "e2292decb286b5aad6f7234720214b1c0fc390ee5d9f4e3398be3d201961e560",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.1468163910030853,
+            1.7312897459996748
+          ],
+          "success": true,
+          "pdf_bytes": 71173,
+          "page_count": 1,
+          "text_sha256": "8e4277f0bbf6f5d233adde5c368b10bb629cba162eb2684ebe778db6698d024e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.230450529001246
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7713925720017869,
+            0.8206035149996751
+          ],
+          "success": true,
+          "pdf_bytes": 71173,
+          "page_count": 1,
+          "text_sha256": "8e4277f0bbf6f5d233adde5c368b10bb629cba162eb2684ebe778db6698d024e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9905443910029135
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/attorney.tex",
+      "category": "legal",
+      "source_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "prepared_sha256": "b0414f3859a9661f9ef28177a5d5672a72dc474204872ae59461d53e8b354bfc",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.4892929240013473,
+            1.6872561780037358
+          ],
+          "success": true,
+          "pdf_bytes": 70676,
+          "page_count": 1,
+          "text_sha256": "089c74fcb4803c5cbcfe91162793f8e3ba5128a619e5376db7b81215cf271578",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.317292649000592
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.4341225839962135,
+            1.6231500400026562
+          ],
+          "success": true,
+          "pdf_bytes": 70676,
+          "page_count": 1,
+          "text_sha256": "089c74fcb4803c5cbcfe91162793f8e3ba5128a619e5376db7b81215cf271578",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.160038349000388
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/corporate_counsel.tex",
+      "category": "legal",
+      "source_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "prepared_sha256": "4121fb4e5a9d148c4f8cd34ca8c9d965773bf1128be6afb454f40792a04d7360",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6300379110034555,
+            2.1276017609998235
+          ],
+          "success": true,
+          "pdf_bytes": 74454,
+          "page_count": 1,
+          "text_sha256": "df6fd845e8afcc7c54e6aa8b77756797a3022ce934006a5ddcf7f02d23923875",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.911772861996724
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.9791025310041732,
+            2.0264671330005513
+          ],
+          "success": true,
+          "pdf_bytes": 74454,
+          "page_count": 1,
+          "text_sha256": "df6fd845e8afcc7c54e6aa8b77756797a3022ce934006a5ddcf7f02d23923875",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.181452183001966
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/law_clerk.tex",
+      "category": "legal",
+      "source_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "prepared_sha256": "a7dd4d7fc8de189ad84f419496742999a121da3bbd9cf0c8e7cdbe72237bfdd8",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            4.05074392700044,
+            2.0363153489961405
+          ],
+          "success": true,
+          "pdf_bytes": 76494,
+          "page_count": 1,
+          "text_sha256": "e85533813df002a342689733463e05e89f9b6990d851fd9257f55ee4145cac0c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.25060051100445
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.7933645599987358,
+            1.4224392489995807
+          ],
+          "success": true,
+          "pdf_bytes": 76494,
+          "page_count": 1,
+          "text_sha256": "e85533813df002a342689733463e05e89f9b6990d851fd9257f55ee4145cac0c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.3219104140007403
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "legal/paralegal.tex",
+      "category": "legal",
+      "source_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "prepared_sha256": "58b8517ade78209784aaf17cebe24fc514e1bb224aadaa1bb16167fe4b235e93",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6346530800001347,
+            1.6919952450043638
+          ],
+          "success": true,
+          "pdf_bytes": 76146,
+          "page_count": 1,
+          "text_sha256": "4ae898f55d6a78cabd23f20b4a69c4f101bc931c986adb5f5e5ab7ee2ae4227d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.424943849000556
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.12574798699643,
+            0.919552843006386
+          ],
+          "success": true,
+          "pdf_bytes": 76146,
+          "page_count": 1,
+          "text_sha256": "4ae898f55d6a78cabd23f20b4a69c4f101bc931c986adb5f5e5ab7ee2ae4227d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.102972808999766
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/brand_manager.tex",
+      "category": "marketing",
+      "source_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "prepared_sha256": "aae75d74b952d3c2f059a0fc42683bf77d9e7a184586d7d2e4fddc39024b625b",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9231884159962647,
+            0.9190955859958194
+          ],
+          "success": true,
+          "pdf_bytes": 76441,
+          "page_count": 1,
+          "text_sha256": "e3f086ae608ccf6baeb8498c7eb3779c445d58c11760253b3941ef2723715cf5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.899713705999602
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9736014259979129,
+            0.8203967160006869
+          ],
+          "success": true,
+          "pdf_bytes": 76441,
+          "page_count": 1,
+          "text_sha256": "e3f086ae608ccf6baeb8498c7eb3779c445d58c11760253b3941ef2723715cf5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.859113102000265
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/content_strategist.tex",
+      "category": "marketing",
+      "source_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "prepared_sha256": "4411dcdff83348f51e7150c80798e5dd9fc50a3556eefb8267df9870c4e1cc56",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.030619780998677,
+            1.374533756999881
+          ],
+          "success": true,
+          "pdf_bytes": 77385,
+          "page_count": 1,
+          "text_sha256": "58f66c566e40326b744b4d8752b79dc6c21a3356694c0f203dc3c9f2d1b40fc8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.60404321399983
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.230184181004006,
+            1.0703702710015932
+          ],
+          "success": true,
+          "pdf_bytes": 77385,
+          "page_count": 1,
+          "text_sha256": "58f66c566e40326b744b4d8752b79dc6c21a3356694c0f203dc3c9f2d1b40fc8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3540448600033415
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/growth_marketer.tex",
+      "category": "marketing",
+      "source_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "prepared_sha256": "0ff277d4dad1e85bc3f7e97bdabb628052c301381c6be0d92a23a94e00fccaa9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.974963327003934,
+            0.9710158719972242
+          ],
+          "success": true,
+          "pdf_bytes": 71027,
+          "page_count": 1,
+          "text_sha256": "571e6bfa8aa8cc1bd633cb66600f09bc50f4c62ee6aeac8b02dcec95506ae242",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.0052760420003324
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8289700479945168,
+            0.9207877059961902
+          ],
+          "success": true,
+          "pdf_bytes": 71027,
+          "page_count": 1,
+          "text_sha256": "571e6bfa8aa8cc1bd633cb66600f09bc50f4c62ee6aeac8b02dcec95506ae242",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.8071079419969465
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "marketing/pmm.tex",
+      "category": "marketing",
+      "source_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "prepared_sha256": "284aa23d376a75e7b6f482bfa8079deb72b5b678132484e2cb948129ad2371e9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.772740808002709,
+            0.7187429119949229
+          ],
+          "success": true,
+          "pdf_bytes": 75902,
+          "page_count": 1,
+          "text_sha256": "55aa1f226ee693c74cb0d26e693e44a8a775229dcd592299184effcdfad7b9b0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.5429755229997681
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.822701399003563,
+            0.9704422439972404
+          ],
+          "success": true,
+          "pdf_bytes": 75902,
+          "page_count": 1,
+          "text_sha256": "55aa1f226ee693c74cb0d26e693e44a8a775229dcd592299184effcdfad7b9b0",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.8528235349949682
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/biotech.tex",
+      "category": "medical",
+      "source_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "prepared_sha256": "f358f977e9ebe9de39604883a722ab3eec28034e6cf604153a11dcd97c8d448c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1292844390045502,
+            1.477095146998181
+          ],
+          "success": true,
+          "pdf_bytes": 77777,
+          "page_count": 1,
+          "text_sha256": "4ae65e6971ea15d80efc9e02b69a1a3d56fb25a0ed2598599062d8adc22b3cf5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.796464548999211
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3616026639938354,
+            1.1210214519960573
+          ],
+          "success": true,
+          "pdf_bytes": 77777,
+          "page_count": 1,
+          "text_sha256": "4ae65e6971ea15d80efc9e02b69a1a3d56fb25a0ed2598599062d8adc22b3cf5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.5469124789960915
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/clinical_research.tex",
+      "category": "medical",
+      "source_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "prepared_sha256": "4fae4e11d01b07319f406a76ce7646ffeeb5c8d2cc195291764d9d6b5eea182c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.6344247060042107,
+            1.3246292210023967
+          ],
+          "success": true,
+          "pdf_bytes": 76135,
+          "page_count": 1,
+          "text_sha256": "9415caf6490078bd0e1d3eabe3020ae0d9c5459e5a3e9d208bd6a6de0fd018e9",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.0656154280004557
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.5300196090029203,
+            1.529896190004365
+          ],
+          "success": true,
+          "pdf_bytes": 76135,
+          "page_count": 1,
+          "text_sha256": "9415caf6490078bd0e1d3eabe3020ae0d9c5459e5a3e9d208bd6a6de0fd018e9",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 3.1684344759996748
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/nursing.tex",
+      "category": "medical",
+      "source_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "prepared_sha256": "28f6d1706af6b0f9943c21048eeeece036493ebaf2f46b1ae8a2e9a693b4a146",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.0770902570002363,
+            1.0698359950038139
+          ],
+          "success": true,
+          "pdf_bytes": 76477,
+          "page_count": 1,
+          "text_sha256": "508d771f4b05103a4aa71d4ece47de78a8077895dc96326795f7a9be5f22077b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.2414869939966593
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1250077019940363,
+            0.9711389279982541
+          ],
+          "success": true,
+          "pdf_bytes": 76477,
+          "page_count": 1,
+          "text_sha256": "508d771f4b05103a4aa71d4ece47de78a8077895dc96326795f7a9be5f22077b",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.1932440859964117
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "medical/physician.tex",
+      "category": "medical",
+      "source_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "prepared_sha256": "8ef35e2ba9989319b2ce205f40a618d2b950ee6088fb6ba639aaacba270dc59f",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.0255768159986474,
+            0.8692878790025134
+          ],
+          "success": true,
+          "pdf_bytes": 77391,
+          "page_count": 1,
+          "text_sha256": "479058448789975c8e3bbefca11730d71564d7faf3fed99becadea74ebf273c2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9486545379986637
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.0742520200001309,
+            0.8698620770010166
+          ],
+          "success": true,
+          "pdf_bytes": 77391,
+          "page_count": 1,
+          "text_sha256": "479058448789975c8e3bbefca11730d71564d7faf3fed99becadea74ebf273c2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.004102844002773
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/classic.tex",
+      "category": "minimal",
+      "source_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "prepared_sha256": "483d26b8e7dc52ca4f332cd7c6659733cf01ff822dd8d6358fa99238b3241ada",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9258968689973699,
+            0.9696482759973151
+          ],
+          "success": true,
+          "pdf_bytes": 76301,
+          "page_count": 1,
+          "text_sha256": "447001f59a86e6dd66d43091e665a2bf66f624a79acb402ae63efac6f2ac722c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9488812480049091
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8740832050025347,
+            0.8185519740000018
+          ],
+          "success": true,
+          "pdf_bytes": 76301,
+          "page_count": 1,
+          "text_sha256": "447001f59a86e6dd66d43091e665a2bf66f624a79acb402ae63efac6f2ac722c",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.7545128479978302
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "b06b3bce5f5c29e483e58fcc94c0ab3e459c2f2c72d89ef89cb7fa26ec7af477",
+      "prepared_sha256": "b06b3bce5f5c29e483e58fcc94c0ab3e459c2f2c72d89ef89cb7fa26ec7af477",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9231358670003829,
+            0.8691324510000413
+          ],
+          "success": true,
+          "pdf_bytes": 61226,
+          "page_count": 1,
+          "text_sha256": "c81102dc588609c5cc84c2ed3fe05357c39a51827309c47c4120ba1e51a03dcf",
+          "overfull_boxes": 4,
+          "rerun_requested": false,
+          "total_seconds": 1.850301770005899
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9726949850009987,
+            0.9697364669991657
+          ],
+          "success": true,
+          "pdf_bytes": 61226,
+          "page_count": 1,
+          "text_sha256": "c81102dc588609c5cc84c2ed3fe05357c39a51827309c47c4120ba1e51a03dcf",
+          "overfull_boxes": 4,
+          "rerun_requested": false,
+          "total_seconds": 2.002291648997925
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/modern_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "prepared_sha256": "ebedc8407b25994d0a2ad4417323c55be163a8694b8911255825533f2530e13a",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1244881670063478,
+            1.1717996720035444
+          ],
+          "success": true,
+          "pdf_bytes": 73344,
+          "page_count": 1,
+          "text_sha256": "aa40d26fbf718bf4214c0326544f8b0b55a5ee59d67454a56977debd190377f7",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.393675081002584
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3823737720013014,
+            1.4276626049977494
+          ],
+          "success": true,
+          "pdf_bytes": 73344,
+          "page_count": 1,
+          "text_sha256": "aa40d26fbf718bf4214c0326544f8b0b55a5ee59d67454a56977debd190377f7",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.8759776470033103
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "minimal/ultra_minimal.tex",
+      "category": "minimal",
+      "source_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "prepared_sha256": "438570d691bc19b9a176d075e2eae4d69c70bd1510769a6d4f20856a357fdecd",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.125318389000313,
+            1.1723860599959153
+          ],
+          "success": true,
+          "pdf_bytes": 59464,
+          "page_count": 1,
+          "text_sha256": "7639b9b2099ad15c79cc6ef3b8d688ebfa487cf917f881e0dab0ce415504b926",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3552007879989105
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.1251187640009448,
+            1.0714462559990352
+          ],
+          "success": true,
+          "pdf_bytes": 59464,
+          "page_count": 1,
+          "text_sha256": "7639b9b2099ad15c79cc6ef3b8d688ebfa487cf917f881e0dab0ce415504b926",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.2871452090039384
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_madrid.tex",
+      "category": "presentation",
+      "source_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "prepared_sha256": "83f34400ee458133a627e1ee2ff6605a1eee7ebe8d17bd2b57eb6a3615d4fb85",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            3.804696036000678,
+            2.5293155210019904
+          ],
+          "success": true,
+          "pdf_bytes": 145095,
+          "page_count": 8,
+          "text_sha256": "9129c7173d05b17360500ffbd5d04e1b4f5369b5f6d2f69fb21f7644a9e8971d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.421619478998764
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.528765971001121,
+            2.2276662170042982
+          ],
+          "success": true,
+          "pdf_bytes": 145095,
+          "page_count": 8,
+          "text_sha256": "9129c7173d05b17360500ffbd5d04e1b4f5369b5f6d2f69fb21f7644a9e8971d",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 4.851231172004191
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_metropolis.tex",
+      "category": "presentation",
+      "source_sha256": "5472f79de162a47963d8d65f8dc547807d4dcbdf4727991664286d9496c5b92b",
+      "prepared_sha256": "5472f79de162a47963d8d65f8dc547807d4dcbdf4727991664286d9496c5b92b",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.77745097099978
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmss/m/n/10.95=[lmsans10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.778802569002437
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.7315277119996608
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmss/m/n/10.95=[lmsans10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.732938675006153
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "presentation/beamer_pitch.tex",
+      "category": "presentation",
+      "source_sha256": "343f190f19cb3824a6c9d2724bb46aaf8641b7e21c5d7ea3fc71ca51bb90a034",
+      "prepared_sha256": "343f190f19cb3824a6c9d2724bb46aaf8641b7e21c5d7ea3fc71ca51bb90a034",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.9831807800001116,
+            2.526837596997211
+          ],
+          "success": true,
+          "pdf_bytes": 131101,
+          "page_count": 9,
+          "text_sha256": "6b096ac722868199b8566fe999a0dbe6b2fe29cab5773b31c87447040bc0a2ed",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.610954046998813
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.832163810999191,
+            2.827852205002273
+          ],
+          "success": true,
+          "pdf_bytes": 131101,
+          "page_count": 9,
+          "text_sha256": "6b096ac722868199b8566fe999a0dbe6b2fe29cab5773b31c87447040bc0a2ed",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.813289983998402
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_research.tex",
+      "category": "presentation",
+      "source_sha256": "20826b57e333824431abca93735c660e8c710fd65152c6821ea02bf6979d8091",
+      "prepared_sha256": "20826b57e333824431abca93735c660e8c710fd65152c6821ea02bf6979d8091",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.5319362340014777,
+            2.6823251159948995
+          ],
+          "success": true,
+          "pdf_bytes": 148834,
+          "page_count": 8,
+          "text_sha256": "059e5faeb20c7d0c2ff0cafd303e8432878289a8b2f425759c987dee43175cf8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.36331675999827
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            3.235244834002515,
+            2.5766301049952745
+          ],
+          "success": true,
+          "pdf_bytes": 148834,
+          "page_count": 8,
+          "text_sha256": "059e5faeb20c7d0c2ff0cafd303e8432878289a8b2f425759c987dee43175cf8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 5.911469425998803
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_warsaw.tex",
+      "category": "presentation",
+      "source_sha256": "99eacbdeac74b1fc549a9a482ba083d9d30a049a81a0b9e3ddbedd3a50252151",
+      "prepared_sha256": "99eacbdeac74b1fc549a9a482ba083d9d30a049a81a0b9e3ddbedd3a50252151",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            2.831942279000941,
+            3.2809946080014925
+          ],
+          "success": true,
+          "pdf_bytes": 227216,
+          "page_count": 11,
+          "text_sha256": "047d250250128a0ec674a46602191e031ac94fff3af803c78e6b36437e63f3b3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 6.272480813000584
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            2.5824324159984826,
+            4.590526240004692
+          ],
+          "success": true,
+          "pdf_bytes": 227216,
+          "page_count": 11,
+          "text_sha256": "047d250250128a0ec674a46602191e031ac94fff3af803c78e6b36437e63f3b3",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 7.436674128999584
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/europecv.tex",
+      "category": "regional",
+      "source_sha256": "ea26ffb599d21af916fff020db03c94cff8b2c5d52bbeee4a9d68259ce54ea8d",
+      "prepared_sha256": "d28544e163bebec596496666338038fcb6d491a2fb3803a41852c92f90790b83",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.748865408997517
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10=[lmroman10-regular]:+tlig; at 10pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 1.7501369289966533
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8273067599948263
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10=[lmroman10-regular]:+tlig; at 10pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.8279221240009065
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "regional/india_government_psu_application.tex",
+      "category": "regional",
+      "source_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "prepared_sha256": "22993c1fec4bc8ce51c0a2999d91e2216650354367bfb03bfbac6a5caa112b21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.0769661230006022,
+            0.9753020990028745
+          ],
+          "success": true,
+          "pdf_bytes": 68818,
+          "page_count": 1,
+          "text_sha256": "721f989c986afec6b37b60f195ad69d08284528b72aaca2144abd5c901001c9a",
+          "overfull_boxes": 2,
+          "rerun_requested": false,
+          "total_seconds": 2.113491933007026
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8715030630046385,
+            1.2233865860034712
+          ],
+          "success": true,
+          "pdf_bytes": 68818,
+          "page_count": 1,
+          "text_sha256": "721f989c986afec6b37b60f195ad69d08284528b72aaca2144abd5c901001c9a",
+          "overfull_boxes": 2,
+          "rerun_requested": false,
+          "total_seconds": 2.1586946030001855
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/india_professional_biodata.tex",
+      "category": "regional",
+      "source_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "prepared_sha256": "7131f08420b2e7e46783c4760a2913d6a0aed17344fe3c0c219d95de6d3a13c3",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.1256476319977082,
+            0.8703680609978619
+          ],
+          "success": true,
+          "pdf_bytes": 65076,
+          "page_count": 1,
+          "text_sha256": "ea9704c17076d31d25656eb672280c46198f6e0356a224dd338d31c695f4e6e7",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 2.0547203770038323
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8721834690004471,
+            1.3234694179991493
+          ],
+          "success": true,
+          "pdf_bytes": 65076,
+          "page_count": 1,
+          "text_sha256": "ea9704c17076d31d25656eb672280c46198f6e0356a224dd338d31c695f4e6e7",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 2.2917663190019084
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "regional/polish_cv_rodo.tex",
+      "category": "regional",
+      "source_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "prepared_sha256": "f2a95052123384c241beae1c8cf597c759d21d59d86fc87ec61f2ad91c7e9621",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.7299515739941853
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10.95=[lmroman10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.7308593830020982
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.6314579239988234
+          ],
+          "success": false,
+          "diagnostics": [
+            "! Font \\TU/lmr/m/n/10.95=[lmroman10-regular]:+tlig; at 10.95pt not loadable: metric data not found or bad.",
+            "l.116 ...lt\\familydefault\\seriesdefault\\shapedefault",
+            "!  ==> Fatal error occurred, no output PDF file produced!"
+          ],
+          "error": "tex_pass_1_exit_1",
+          "total_seconds": 0.6319377920008264
+        }
+      ],
+      "certified": false
+    },
+    {
+      "fixture": "software_engineering/data_scientist.tex",
+      "category": "software_engineering",
+      "source_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "prepared_sha256": "adef4468ed8a48d36c5f13f337d338d095d7851b32ab8ecddd0ef64828438587",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.073723448003875,
+            0.8194180940045044
+          ],
+          "success": true,
+          "pdf_bytes": 77861,
+          "page_count": 1,
+          "text_sha256": "fed086af1b8b68f8805637c7620280b0bfefbc813f646557d1ae0c522abc1380",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9506662179992418
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8233353910036385,
+            0.8690666500042425
+          ],
+          "success": true,
+          "pdf_bytes": 77861,
+          "page_count": 1,
+          "text_sha256": "fed086af1b8b68f8805637c7620280b0bfefbc813f646557d1ae0c522abc1380",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.7487315539983683
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/devops.tex",
+      "category": "software_engineering",
+      "source_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "prepared_sha256": "4208ddef5980581f218186928ba79d34347dcd7bda42e5d97dd49631f6feedd9",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.8739525880009751,
+            0.9699529929930577
+          ],
+          "success": true,
+          "pdf_bytes": 74809,
+          "page_count": 1,
+          "text_sha256": "64bb78e2dcc70ec85fda8129da279995784aca99f5a4bd5e18b0611d87e0fb79",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9025107979978202
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7204986270007794,
+            1.0206098839989863
+          ],
+          "success": true,
+          "pdf_bytes": 74809,
+          "page_count": 1,
+          "text_sha256": "64bb78e2dcc70ec85fda8129da279995784aca99f5a4bd5e18b0611d87e0fb79",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.796582811002736
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/fullstack.tex",
+      "category": "software_engineering",
+      "source_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "prepared_sha256": "1fbda5a0a1a7925f1558af563afbfc8a1acd55b93f013451daa4637c8a378200",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.8710756509972271,
+            1.0201300269982312
+          ],
+          "success": true,
+          "pdf_bytes": 76835,
+          "page_count": 1,
+          "text_sha256": "54f28bbf1789fac67a44cac7b328c3536c785b1a9673bb526f228576341b45e4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9451280669964035
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.8723298469994916,
+            0.9197468839993235
+          ],
+          "success": true,
+          "pdf_bytes": 76835,
+          "page_count": 1,
+          "text_sha256": "54f28bbf1789fac67a44cac7b328c3536c785b1a9673bb526f228576341b45e4",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.8540362510029809
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/ml_engineer.tex",
+      "category": "software_engineering",
+      "source_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "prepared_sha256": "1d738640e92f1e862d94140a03ce106413279d8fe054a13af12de1a6ef9a558c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.7214817720014253,
+            1.121750600002997
+          ],
+          "success": true,
+          "pdf_bytes": 77863,
+          "page_count": 2,
+          "text_sha256": "1e20f6dd6a5c6ee18a12af270ca08f7e982c7f30f9656c460ead42389ffab19e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.8992236160047469
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.024984373994812,
+            0.7690436800039606
+          ],
+          "success": true,
+          "pdf_bytes": 77863,
+          "page_count": 2,
+          "text_sha256": "1e20f6dd6a5c6ee18a12af270ca08f7e982c7f30f9656c460ead42389ffab19e",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.887054396000167
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/swe_clean.tex",
+      "category": "software_engineering",
+      "source_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "prepared_sha256": "8af6b799c617e7cca9af14ee957332dde77a57b627a9f2fbc0636d3f9c2132ce",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.6722880819943384,
+            0.7687442929964163
+          ],
+          "success": true,
+          "pdf_bytes": 61377,
+          "page_count": 1,
+          "text_sha256": "979f2aac9f0e8eded6d9d5e407957e63eb2376fdce600ccec9b0ab387a8837e2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.4968702960031806
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.7713990320044104,
+            0.8198289379943162
+          ],
+          "success": true,
+          "pdf_bytes": 61377,
+          "page_count": 1,
+          "text_sha256": "979f2aac9f0e8eded6d9d5e407957e63eb2376fdce600ccec9b0ab387a8837e2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.6467351069950382
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "software_engineering/swe_technical.tex",
+      "category": "software_engineering",
+      "source_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "prepared_sha256": "8db3e9d0710e3e24bcead13c118f95729b7fd97b572174458a73cc429e09f87d",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9725673220018507,
+            0.9706972029962344
+          ],
+          "success": true,
+          "pdf_bytes": 72923,
+          "page_count": 2,
+          "text_sha256": "7b53a0df204ff466be8dbbb24cbcc01af6535e9d7a4be611bc24573132943b6a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.99939922500198
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.0232165889974567,
+            1.2225577749995864
+          ],
+          "success": true,
+          "pdf_bytes": 72923,
+          "page_count": 2,
+          "text_sha256": "7b53a0df204ff466be8dbbb24cbcc01af6535e9d7a4be611bc24573132943b6a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.3061953260039445
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_classic.tex",
+      "category": "two_column",
+      "source_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "prepared_sha256": "cd4e9342eb33a18b6773b629182f1a82d6fe3e02097fc0a1fb633c9e0aa89a37",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.4269398570031626,
+            1.273064034001436
+          ],
+          "success": true,
+          "pdf_bytes": 85342,
+          "page_count": 1,
+          "text_sha256": "2355bf4e3d1100417e8f42cfa8a5ab01f5a024f88fe7f9a9bec5f5b4fc67c4f5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.7593827949967817
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.021719270000176,
+            0.8708042619982734
+          ],
+          "success": true,
+          "pdf_bytes": 85342,
+          "page_count": 1,
+          "text_sha256": "2355bf4e3d1100417e8f42cfa8a5ab01f5a024f88fe7f9a9bec5f5b4fc67c4f5",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.9513504370042938
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_creative.tex",
+      "category": "two_column",
+      "source_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "prepared_sha256": "ac64c15ac0c0589e06ef5faf14fdaa4a4e959e229caf53ece84579fc3f5b080c",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.8750674759940011,
+            1.0707657630046015
+          ],
+          "success": true,
+          "pdf_bytes": 94944,
+          "page_count": 1,
+          "text_sha256": "fb8795e9e9cd665ff14d8d5dc5069fa385b17503ee806a781059a658d448dbf8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.995850645005703
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            0.9720020579989068,
+            0.8204286629988928
+          ],
+          "success": true,
+          "pdf_bytes": 94944,
+          "page_count": 1,
+          "text_sha256": "fb8795e9e9cd665ff14d8d5dc5069fa385b17503ee806a781059a658d448dbf8",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 1.8845474010013277
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_modern.tex",
+      "category": "two_column",
+      "source_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "prepared_sha256": "1ac777f590d90ade225ad0b9b5d770cd42dc49fd07c50eb38f5c8386b0813c21",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            1.0242320480028866,
+            0.9195910630005528
+          ],
+          "success": true,
+          "pdf_bytes": 73720,
+          "page_count": 1,
+          "text_sha256": "beba9e86e2e61b21b149b2fb047d62e52700ae90dcfa1e1bd9c0cdd41f547dc2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.017195084998093
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.0280659530035337,
+            1.0711894720006967
+          ],
+          "success": true,
+          "pdf_bytes": 73720,
+          "page_count": 1,
+          "text_sha256": "beba9e86e2e61b21b149b2fb047d62e52700ae90dcfa1e1bd9c0cdd41f547dc2",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.162761824001791
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "two_column/two_col_sidebar.tex",
+      "category": "two_column",
+      "source_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "prepared_sha256": "52362fb3c83b536e97765888b460148c94fbe63de85453d96a05f94742a5e8a1",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            0.9216963930011843,
+            1.5233777469984489
+          ],
+          "success": true,
+          "pdf_bytes": 61941,
+          "page_count": 1,
+          "text_sha256": "d643d7859e044ad4baf1713f0e1c7a110b8c4e25313a7962c0c0715b9ffb79be",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.5386132830026327
+        },
+        {
+          "index": 1,
+          "passes_seconds": [
+            1.3258158820026438,
+            1.2716879479994532
+          ],
+          "success": true,
+          "pdf_bytes": 61941,
+          "page_count": 1,
+          "text_sha256": "d643d7859e044ad4baf1713f0e1c7a110b8c4e25313a7962c0c0715b9ffb79be",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 2.6600416859946563
+        }
+      ],
+      "certified": true
+    }
+  ],
+  "resume_p50_seconds": 2.4944163670006674,
+  "resume_p95_seconds": 4.311243337004271,
+  "certified_count": 57,
+  "fixture_count": 61
+}

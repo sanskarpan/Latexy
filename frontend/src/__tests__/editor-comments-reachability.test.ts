@@ -21,8 +21,9 @@ describe('editor comments reachability', () => {
 
   it('offers comments in the right-panel menu and renders the selected panel', () => {
     expect(source).toContain("{ id: 'comments', label: 'Comments', icon: MessageSquare }")
-    expect(source).toContain("rightTab === 'comments'")
+    expect(source).toContain("visibleRightTab === 'comments'")
     expect(source).toContain("<CommentsPanel")
+    expect(source).toContain("['preview', 'ai', 'comments', 'interview'].includes(rightTab)")
     expect(source).toContain("highlightCommentId={searchParams.get('comment_id') ?? undefined}")
     expect(source).toContain("canComment={collabRole !== 'viewer'}")
   })

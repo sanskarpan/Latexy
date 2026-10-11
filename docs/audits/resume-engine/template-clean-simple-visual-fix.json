@@ -1,0 +1,39 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 1,
+  "fixtures": [
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "edbae050bfdac72bfa3fb0cb9eb9349584d04af98f27ed5d0bed2cc506f4b314",
+      "prepared_sha256": "edbae050bfdac72bfa3fb0cb9eb9349584d04af98f27ed5d0bed2cc506f4b314",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            9.897057303998736,
+            3.8332389860006515
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 127355,
+          "page_count": 1,
+          "text_sha256": "6783dcd2e2488024d5db89c29697d9ab103fe76a75a52f7996d8c4dae9ac080a",
+          "overfull_boxes": 0,
+          "rerun_requested": false,
+          "total_seconds": 14.964538708998589
+        }
+      ],
+      "certified": true
+    }
+  ],
+  "resume_p50_seconds": 14.964538708998589,
+  "resume_p95_seconds": 14.964538708998589,
+  "certified_count": 1,
+  "fixture_count": 1
+}

@@ -1,0 +1,67 @@
+{
+  "scope": "isolated network-disabled worker; actual TeX two-pass template runs + confinement + extraction; excludes API/Redis/storage/model/browser",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "sample_count": 2,
+  "fixtures": [
+    {
+      "fixture": "minimal/clean_simple.tex",
+      "category": "minimal",
+      "source_sha256": "3936ed91441df939cff7765938b8dfd6e687f97aa39b770a245cd05cc9c36e86",
+      "prepared_sha256": "3936ed91441df939cff7765938b8dfd6e687f97aa39b770a245cd05cc9c36e86",
+      "compiler": "lualatex",
+      "capacity_class": "resume",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            11.67287137400126,
+            3.211583977987175
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 127396,
+          "page_count": 1,
+          "text_sha256": "0c199ce26989ebf0bfd90a59f33f7aaa0ac8076acbc157a8e1b6974595e6f1ce",
+          "overfull_boxes": 4,
+          "rerun_requested": false,
+          "total_seconds": 16.809574351995252
+        }
+      ],
+      "certified": true
+    },
+    {
+      "fixture": "presentation/beamer_metropolis.tex",
+      "category": "presentation",
+      "source_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "prepared_sha256": "d4aceb2a5d1d06fe2b37d22b2c8c86b56b30b5349d43d1f9d910c38ca2cb5a22",
+      "compiler": "lualatex",
+      "capacity_class": "presentation",
+      "samples": [
+        {
+          "index": 0,
+          "passes_seconds": [
+            38.40807307300565,
+            12.624778130004415
+          ],
+          "success": true,
+          "missing_glyphs": 0,
+          "font_substitutions": 0,
+          "font_diagnostics": [],
+          "pdf_bytes": 33642,
+          "page_count": 12,
+          "text_sha256": "48dd39359bc02fad581f6c755b0183d8fc9ef2c829bcf67ef2e4912f7a902f1f",
+          "overfull_boxes": 1,
+          "rerun_requested": false,
+          "total_seconds": 51.56504699400102
+        }
+      ],
+      "certified": true
+    }
+  ],
+  "resume_p50_seconds": 16.809574351995252,
+  "resume_p95_seconds": 16.809574351995252,
+  "certified_count": 2,
+  "fixture_count": 2
+}

@@ -1,0 +1,1054 @@
+{
+  "scope": "Real warm pdflatex in isolated container; fixed simulated Redis transport; no production latency claims",
+  "baseline_commit": "317b9b3d0b1cf05cb4a007dbf179129993d67ba5",
+  "samples_per_condition": 20,
+  "benchmark_order": "Alternating baseline/current order in paired iterations, separately for each RTT",
+  "excluded": [
+    "admission",
+    "dispatch",
+    "durable artifact storage",
+    "scoring",
+    "model generation",
+    "PDF browser paint",
+    "real Redis execution"
+  ],
+  "tex_version": "pdfTeX 3.141592653-2.6-1.40.26 (TeX Live 2025/dev/Debian)",
+  "extra_safe_typeout_log_lines": 100,
+  "fixture_source_sha256": "d63f9e7b4b14e188e1f5f9fec7fde1f18fa1ae51baa24d3995d3fafd1a334413",
+  "conditions": [
+    {
+      "renderer": "baseline",
+      "simulated_rtt_ms": 0.0,
+      "warmups": 2,
+      "p50_seconds": 1.1243897864987957,
+      "p95_seconds": 2.998286513000494,
+      "min_seconds": 0.8578322940011276,
+      "max_seconds": 3.358667492000677,
+      "samples": [
+        {
+          "elapsed_seconds": 1.0070942070015008,
+          "reported_compile_seconds": 1.002411127090454,
+          "transport_requests": 392,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1199430279957596,
+          "reported_compile_seconds": 1.1158573627471924,
+          "transport_requests": 396,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1179360669993912,
+          "reported_compile_seconds": 1.1110215187072754,
+          "transport_requests": 396,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.3483542239991948,
+          "reported_compile_seconds": 1.3439726829528809,
+          "transport_requests": 400,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.7840921640017768,
+          "reported_compile_seconds": 1.7780389785766602,
+          "transport_requests": 408,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1739534470034414,
+          "reported_compile_seconds": 1.1688690185546875,
+          "transport_requests": 396,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8836276279980666,
+          "reported_compile_seconds": 0.8799138069152832,
+          "transport_requests": 390,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0638201740002842,
+          "reported_compile_seconds": 1.0607621669769287,
+          "transport_requests": 394,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8578322940011276,
+          "reported_compile_seconds": 0.8539185523986816,
+          "transport_requests": 390,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.858889621005801,
+          "reported_compile_seconds": 0.8562438488006592,
+          "transport_requests": 390,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0012454589959816,
+          "reported_compile_seconds": 0.9983696937561035,
+          "transport_requests": 392,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.3157732839972596,
+          "reported_compile_seconds": 1.3125154972076416,
+          "transport_requests": 400,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1288365450018318,
+          "reported_compile_seconds": 1.1254501342773438,
+          "transport_requests": 396,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0189169649966061,
+          "reported_compile_seconds": 1.0137758255004883,
+          "transport_requests": 394,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9710404009965714,
+          "reported_compile_seconds": 0.9671685695648193,
+          "transport_requests": 392,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.2797337000010884,
+          "reported_compile_seconds": 1.2761921882629395,
+          "transport_requests": 398,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.8706152829981875,
+          "reported_compile_seconds": 1.8660962581634521,
+          "transport_requests": 410,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.998286513000494,
+          "reported_compile_seconds": 2.9818379878997803,
+          "transport_requests": 432,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.358667492000677,
+          "reported_compile_seconds": 3.3231053352355957,
+          "transport_requests": 438,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.8667332569966675,
+          "reported_compile_seconds": 1.861792802810669,
+          "transport_requests": 408,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "renderer": "buffered",
+      "simulated_rtt_ms": 0.0,
+      "warmups": 2,
+      "p50_seconds": 1.0813197684983606,
+      "p95_seconds": 2.180411189998267,
+      "min_seconds": 0.7883373209988349,
+      "max_seconds": 2.5054753009972046,
+      "samples": [
+        {
+          "elapsed_seconds": 0.7883373209988349,
+          "reported_compile_seconds": 0.7841453552246094,
+          "transport_requests": 17,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9443698020040756,
+          "reported_compile_seconds": 0.9409496784210205,
+          "transport_requests": 21,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9072114959999453,
+          "reported_compile_seconds": 0.8997302055358887,
+          "transport_requests": 19,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.208951081003761,
+          "reported_compile_seconds": 1.204557180404663,
+          "transport_requests": 26,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.732646222000767,
+          "reported_compile_seconds": 1.7256581783294678,
+          "transport_requests": 41,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.3356906920016627,
+          "reported_compile_seconds": 1.3298494815826416,
+          "transport_requests": 33,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.863560903002508,
+          "reported_compile_seconds": 0.8547632694244385,
+          "transport_requests": 19,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9826868849995662,
+          "reported_compile_seconds": 0.9763936996459961,
+          "transport_requests": 22,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0494391089960118,
+          "reported_compile_seconds": 1.0450170040130615,
+          "transport_requests": 24,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8418571870060987,
+          "reported_compile_seconds": 0.8380537033081055,
+          "transport_requests": 19,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8490750060009304,
+          "reported_compile_seconds": 0.8450677394866943,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8119956150039798,
+          "reported_compile_seconds": 0.804434061050415,
+          "transport_requests": 17,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0287803469982464,
+          "reported_compile_seconds": 1.0237553119659424,
+          "transport_requests": 24,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1132004280007095,
+          "reported_compile_seconds": 1.1087214946746826,
+          "transport_requests": 24,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.325163961002545,
+          "reported_compile_seconds": 1.318990707397461,
+          "transport_requests": 30,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.5833638870026334,
+          "reported_compile_seconds": 1.5782723426818848,
+          "transport_requests": 33,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.6056981210058439,
+          "reported_compile_seconds": 1.6007075309753418,
+          "transport_requests": 34,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.5054753009972046,
+          "reported_compile_seconds": 2.5000813007354736,
+          "transport_requests": 50,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.180411189998267,
+          "reported_compile_seconds": 2.172372817993164,
+          "transport_requests": 46,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.7236546049971366,
+          "reported_compile_seconds": 1.7087316513061523,
+          "transport_requests": 39,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "renderer": "baseline",
+      "simulated_rtt_ms": 5.0,
+      "warmups": 2,
+      "p50_seconds": 3.060362461499608,
+      "p95_seconds": 4.510527263999393,
+      "min_seconds": 2.5881296360021224,
+      "max_seconds": 4.950932022002235,
+      "samples": [
+        {
+          "elapsed_seconds": 4.950932022002235,
+          "reported_compile_seconds": 4.946444034576416,
+          "transport_requests": 462,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 4.510527263999393,
+          "reported_compile_seconds": 4.502077102661133,
+          "transport_requests": 454,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.536278478000895,
+          "reported_compile_seconds": 3.5321335792541504,
+          "transport_requests": 436,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.319128636001551,
+          "reported_compile_seconds": 3.3158342838287354,
+          "transport_requests": 432,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.94114279900532,
+          "reported_compile_seconds": 2.937274694442749,
+          "transport_requests": 426,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.221297247997427,
+          "reported_compile_seconds": 3.216667890548706,
+          "transport_requests": 432,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.931453754994436,
+          "reported_compile_seconds": 2.9200522899627686,
+          "transport_requests": 426,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.183256120006263,
+          "reported_compile_seconds": 3.1796059608459473,
+          "transport_requests": 430,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.240741886998876,
+          "reported_compile_seconds": 3.2375218868255615,
+          "transport_requests": 432,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.0413458210023236,
+          "reported_compile_seconds": 3.037198543548584,
+          "transport_requests": 428,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.865962813004444,
+          "reported_compile_seconds": 2.862609624862671,
+          "transport_requests": 424,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.1959068379946984,
+          "reported_compile_seconds": 3.1924166679382324,
+          "transport_requests": 430,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.9466819840017706,
+          "reported_compile_seconds": 2.943436861038208,
+          "transport_requests": 426,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.9826005110007827,
+          "reported_compile_seconds": 2.971163272857666,
+          "transport_requests": 426,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.8260725759973866,
+          "reported_compile_seconds": 2.823885679244995,
+          "transport_requests": 424,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.7987983690036344,
+          "reported_compile_seconds": 2.794250011444092,
+          "transport_requests": 424,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.8874306860016077,
+          "reported_compile_seconds": 2.8843555450439453,
+          "transport_requests": 426,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.1225301699960255,
+          "reported_compile_seconds": 3.1185338497161865,
+          "transport_requests": 430,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 3.079379101996892,
+          "reported_compile_seconds": 3.0757436752319336,
+          "transport_requests": 428,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.5881296360021224,
+          "reported_compile_seconds": 2.5849552154541016,
+          "transport_requests": 420,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "renderer": "buffered",
+      "simulated_rtt_ms": 5.0,
+      "warmups": 2,
+      "p50_seconds": 1.0932688754983246,
+      "p95_seconds": 2.6546714490032173,
+      "min_seconds": 0.7969642950047273,
+      "max_seconds": 2.7335893620038405,
+      "samples": [
+        {
+          "elapsed_seconds": 2.7335893620038405,
+          "reported_compile_seconds": 2.6463756561279297,
+          "transport_requests": 48,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.6546714490032173,
+          "reported_compile_seconds": 2.6207330226898193,
+          "transport_requests": 53,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.477844749999349,
+          "reported_compile_seconds": 2.4698657989501953,
+          "transport_requests": 48,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.8832840269969893,
+          "reported_compile_seconds": 1.8777270317077637,
+          "transport_requests": 36,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.5394897410005797,
+          "reported_compile_seconds": 1.535346269607544,
+          "transport_requests": 30,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.525036329003342,
+          "reported_compile_seconds": 1.5192747116088867,
+          "transport_requests": 30,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.4511574110001675,
+          "reported_compile_seconds": 1.4466323852539062,
+          "transport_requests": 30,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.2342967730000964,
+          "reported_compile_seconds": 1.2291996479034424,
+          "transport_requests": 26,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1348334750000504,
+          "reported_compile_seconds": 1.1276164054870605,
+          "transport_requests": 24,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.948527374996047,
+          "reported_compile_seconds": 0.9450969696044922,
+          "transport_requests": 19,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.7969642950047273,
+          "reported_compile_seconds": 0.7927758693695068,
+          "transport_requests": 18,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9460174470004858,
+          "reported_compile_seconds": 0.9409186840057373,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9498932930000592,
+          "reported_compile_seconds": 0.9453380107879639,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9363453120022314,
+          "reported_compile_seconds": 0.9318923950195312,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8315528660023119,
+          "reported_compile_seconds": 0.8276183605194092,
+          "transport_requests": 18,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9123911529968609,
+          "reported_compile_seconds": 0.9068002700805664,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0517042759965989,
+          "reported_compile_seconds": 1.0469865798950195,
+          "transport_requests": 22,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.1595373540039873,
+          "reported_compile_seconds": 1.1546170711517334,
+          "transport_requests": 24,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.0387878450055723,
+          "reported_compile_seconds": 1.0332403182983398,
+          "transport_requests": 22,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8635489079970284,
+          "reported_compile_seconds": 0.858668327331543,
+          "transport_requests": 17,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "renderer": "baseline",
+      "simulated_rtt_ms": 25.0,
+      "warmups": 2,
+      "p50_seconds": 10.16832714049815,
+      "p95_seconds": 10.65015087100619,
+      "min_seconds": 9.975456692001899,
+      "max_seconds": 10.749316230001568,
+      "samples": [
+        {
+          "elapsed_seconds": 10.313999503996456,
+          "reported_compile_seconds": 10.308817386627197,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.211012335996202,
+          "reported_compile_seconds": 10.204891920089722,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.353266295998765,
+          "reported_compile_seconds": 10.350360631942749,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 9.980711805997998,
+          "reported_compile_seconds": 9.972798347473145,
+          "transport_requests": 506,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.182704691993422,
+          "reported_compile_seconds": 10.177091121673584,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.007288195003639,
+          "reported_compile_seconds": 10.003612041473389,
+          "transport_requests": 506,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 9.979609174995858,
+          "reported_compile_seconds": 9.970496416091919,
+          "transport_requests": 506,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.153949589002877,
+          "reported_compile_seconds": 10.15147876739502,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.325677122003981,
+          "reported_compile_seconds": 10.322041034698486,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.00593471400498,
+          "reported_compile_seconds": 9.99691390991211,
+          "transport_requests": 506,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 9.975456692001899,
+          "reported_compile_seconds": 9.97395396232605,
+          "transport_requests": 506,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.136478761000035,
+          "reported_compile_seconds": 10.126621961593628,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.119628512999043,
+          "reported_compile_seconds": 10.11712646484375,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.266609293998044,
+          "reported_compile_seconds": 10.262387990951538,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.105668987001991,
+          "reported_compile_seconds": 10.096602201461792,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.257792304997565,
+          "reported_compile_seconds": 10.253356456756592,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.113798951999343,
+          "reported_compile_seconds": 10.11042594909668,
+          "transport_requests": 508,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.26989390199742,
+          "reported_compile_seconds": 10.261086702346802,
+          "transport_requests": 510,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.65015087100619,
+          "reported_compile_seconds": 10.64611029624939,
+          "transport_requests": 514,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 10.749316230001568,
+          "reported_compile_seconds": 10.733927249908447,
+          "transport_requests": 516,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "renderer": "buffered",
+      "simulated_rtt_ms": 25.0,
+      "warmups": 2,
+      "p50_seconds": 0.8381935775032616,
+      "p95_seconds": 1.8946759259997634,
+      "min_seconds": 0.5252779529982945,
+      "max_seconds": 2.431810198999301,
+      "samples": [
+        {
+          "elapsed_seconds": 0.9196218490033061,
+          "reported_compile_seconds": 0.9159259796142578,
+          "transport_requests": 16,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8338892560059321,
+          "reported_compile_seconds": 0.8245406150817871,
+          "transport_requests": 14,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.7642152170010377,
+          "reported_compile_seconds": 0.7603302001953125,
+          "transport_requests": 14,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.5286563940026099,
+          "reported_compile_seconds": 0.5270898342132568,
+          "transport_requests": 10,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.5252779529982945,
+          "reported_compile_seconds": 0.5217697620391846,
+          "transport_requests": 10,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.6788701769983163,
+          "reported_compile_seconds": 0.6762046813964844,
+          "transport_requests": 12,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.2231549479984096,
+          "reported_compile_seconds": 1.210536241531372,
+          "transport_requests": 20,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.066961029995582,
+          "reported_compile_seconds": 1.0634663105010986,
+          "transport_requests": 18,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9771849949975149,
+          "reported_compile_seconds": 0.9742047786712646,
+          "transport_requests": 16,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.5400759399999515,
+          "reported_compile_seconds": 0.5375978946685791,
+          "transport_requests": 10,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.6659973899950273,
+          "reported_compile_seconds": 0.6617076396942139,
+          "transport_requests": 12,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9162381190035376,
+          "reported_compile_seconds": 0.9107015132904053,
+          "transport_requests": 16,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.608561583001574,
+          "reported_compile_seconds": 0.6060459613800049,
+          "transport_requests": 12,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9993711810020613,
+          "reported_compile_seconds": 0.9944589138031006,
+          "transport_requests": 16,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.7980599459988298,
+          "reported_compile_seconds": 0.7947349548339844,
+          "transport_requests": 14,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.7920299709949177,
+          "reported_compile_seconds": 0.7890229225158691,
+          "transport_requests": 14,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.9098346879982273,
+          "reported_compile_seconds": 0.9065778255462646,
+          "transport_requests": 16,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 0.8424978990005911,
+          "reported_compile_seconds": 0.8396356105804443,
+          "transport_requests": 14,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 2.431810198999301,
+          "reported_compile_seconds": 2.4260830879211426,
+          "transport_requests": 36,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        },
+        {
+          "elapsed_seconds": 1.8946759259997634,
+          "reported_compile_seconds": 1.8893747329711914,
+          "transport_requests": 28,
+          "log_events": 122,
+          "pdf_bytes": 59595,
+          "pages": 1
+        }
+      ]
+    }
+  ],
+  "hostile_input_rejected_before_spawn": true,
+  "timeout_check": {
+    "success": false,
+    "error": "Compilation timed out after 0s",
+    "elapsed_seconds": 0.17160116100421874
+  },
+  "pdf_text_and_page_count_equal_all_samples": true,
+  "pdf_text_sha256": "034b6b662c02336301d47e2efe552896b4244387162f8de07148f1de5fca7e22"
+}

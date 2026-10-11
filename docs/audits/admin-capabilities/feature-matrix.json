@@ -445,7 +445,7 @@
       "baselineReason": null,
       "serverHandlers": [],
       "dynamicOrServiceGates": [
-        "backend/app/middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark and premium raw export)"
+        "backend/app/middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark, semantic projection/field editing and premium raw export)"
       ],
       "clientControls": [
         "frontend/src/app/not-found.tsx",
@@ -523,6 +523,7 @@
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
         "backend/app/api/resume_routes.py:merge_resumes",
+        "backend/app/api/pdf_import_routes.py:adapt_import",
         "backend/app/api/job_routes.py:create_batch_tailor",
         "backend/app/api/template_routes.py:use_template"
       ],
@@ -540,6 +541,7 @@
         "frontend/src/app/workspace/merge/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/app/workspace/page.tsx",
+        "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
@@ -732,6 +734,7 @@
       "baselineReason": null,
       "serverHandlers": [
         "backend/app/api/resume_routes.py:list_builder_templates",
+        "backend/app/api/pdf_import_routes.py:adapt_import",
         "backend/app/api/template_routes.py:list_categories",
         "backend/app/api/template_routes.py:list_templates",
         "backend/app/api/template_routes.py:get_template",
@@ -750,6 +753,7 @@
         "frontend/src/app/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
+        "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -864,14 +868,17 @@
         "backend/app/api/format_routes.py:validate_file_format",
         "backend/app/api/format_routes.py:parse_for_preview",
         "backend/app/api/format_routes.py:upload_for_conversion",
-        "backend/app/api/resume_routes.py:seed_builder_from_upload"
+        "backend/app/api/resume_routes.py:seed_builder_from_upload",
+        "backend/app/api/pdf_import_routes.py:import_pdf",
+        "backend/app/api/pdf_import_routes.py:adapt_import"
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/builder/new/page.tsx",
-        "frontend/src/app/workspace/new/page.tsx"
+        "frontend/src/app/workspace/new/page.tsx",
+        "frontend/src/components/PdfImportWizard.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -987,7 +994,9 @@
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
         "backend/app/api/resume_routes.py:create_builder_resume",
         "backend/app/api/resume_routes.py:update_builder_resume",
-        "backend/app/api/resume_routes.py:update_builder_resume_v1"
+        "backend/app/api/resume_routes.py:update_builder_resume_v1",
+        "backend/app/api/pdf_import_routes.py:import_pdf",
+        "backend/app/api/pdf_import_routes.py:adapt_import"
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -995,7 +1004,8 @@
         "frontend/src/app/workspace/builder/new/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/app/workspace/variant/[resumeId]/page.tsx",
-        "frontend/src/components/CapabilityRouteBoundary.tsx"
+        "frontend/src/components/CapabilityRouteBoundary.tsx",
+        "frontend/src/components/PdfImportWizard.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -1102,15 +1112,22 @@
       "parentKey": "resume_builder",
       "gateable": true,
       "baselineReason": null,
-      "serverHandlers": [],
+      "serverHandlers": [
+        "backend/app/api/resume_engine_routes.py:patch_guest",
+        "backend/app/api/resume_engine_routes.py:patch_document",
+        "backend/app/api/resume_structure_routes.py:reorder_document"
+      ],
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
       ],
       "verification": {
-        "status": "client_control_wiring; per-capability behavior not exhaustively tested",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_engine_capability_admission.py::test_denied_engine_admission_precedes_database_and_dispatch (guest/saved fields and structure)",
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
@@ -1118,28 +1135,28 @@
             "role": "anonymous",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
             "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -1406,6 +1423,11 @@
         "backend/app/api/resume_routes.py:convert_academic_cv",
         "backend/app/api/resume_routes.py:merge_resumes",
         "backend/app/api/resume_routes.py:record_optimization",
+        "backend/app/api/resume_engine_routes.py:patch_guest",
+        "backend/app/api/resume_engine_routes.py:patch_document",
+        "backend/app/api/resume_engine_routes.py:optimize_document",
+        "backend/app/api/resume_structure_routes.py:reorder_document",
+        "backend/app/api/pdf_import_routes.py:adapt_import",
         "backend/app/api/job_routes.py:create_batch_tailor",
         "backend/app/api/routes.py:optimize_resume",
         "backend/app/api/routes.py:optimize_and_compile_resume",
@@ -1435,6 +1457,10 @@
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/CompareModal.tsx",
         "frontend/src/components/DiffViewerModal.tsx",
+        "frontend/src/components/ImportedOptimizationPanel.tsx",
+        "frontend/src/components/PDFPreview.tsx",
+        "frontend/src/components/PdfImportWizard.tsx",
+        "frontend/src/components/SemanticOptimizationPanel.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
@@ -1679,6 +1705,7 @@
       "serverHandlers": [
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/resume_engine_routes.py:optimize_document",
         "backend/app/api/job_routes.py:compile_watermarked",
         "backend/app/api/job_routes.py:create_batch_tailor",
         "backend/app/api/routes.py:compile_latex_endpoint",
@@ -2926,6 +2953,7 @@
       "serverHandlers": [
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/resume_engine_routes.py:optimize_document",
         "backend/app/api/job_routes.py:create_batch_tailor",
         "backend/app/api/routes.py:optimize_resume",
         "backend/app/api/routes.py:optimize_and_compile_resume"
@@ -3053,14 +3081,21 @@
         "backend/app/api/optimize_routes.py:segment_changes_endpoint",
         "backend/app/api/optimize_routes.py:apply_changes_endpoint"
       ],
-      "dynamicOrServiceGates": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (semantic candidate acceptance; reject-only recovery exempt)"
+      ],
       "clientControls": [
         "frontend/src/app/try/page.tsx",
-        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx"
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
+        "frontend/src/components/ImportedOptimizationPanel.tsx",
+        "frontend/src/components/SemanticOptimizationPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
+          "backend/test/test_engine_capability_admission.py::test_candidate_rejection_is_recovery_but_acceptance_is_a_source_write",
+          "backend/test/test_engine_capability_admission.py::test_candidate_rejection_does_not_query_capabilities",
           "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
@@ -3921,6 +3956,7 @@
         "backend/app/api/ats_routes.py:quick_score_ats",
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/resume_engine_routes.py:optimize_document",
         "backend/app/api/job_routes.py:create_batch_tailor",
         "backend/app/api/routes.py:optimize_resume",
         "backend/app/api/routes.py:optimize_and_compile_resume"
@@ -5061,6 +5097,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx"
       ],
       "verification": {

@@ -1,0 +1,503 @@
+{
+  "scope": "Real isolated S3 conditional PDF/SyncTeX writes; both verified by GET outside measured interval",
+  "candidate_artifacts_sha256": "0ff574ff87a790508f23506ef042ebb94153f0ee531d73f24beb145396eb146a",
+  "simulated_per_request_rtt_ms": 40,
+  "limitations": [
+    "Delay is synthetic",
+    "Excludes geometry, manifest/PG fences, TeX, HTTP and browser paint"
+  ],
+  "samples": [
+    {
+      "pair": 0,
+      "condition": "serial",
+      "elapsed_ms": 448.84298800025135,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 0,
+      "condition": "concurrent",
+      "elapsed_ms": 147.71778299837024,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 1,
+      "condition": "concurrent",
+      "elapsed_ms": 621.4008789975196,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 1,
+      "condition": "serial",
+      "elapsed_ms": 319.5857539976714,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 2,
+      "condition": "serial",
+      "elapsed_ms": 363.8633900009154,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 2,
+      "condition": "concurrent",
+      "elapsed_ms": 304.81379199773073,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 3,
+      "condition": "concurrent",
+      "elapsed_ms": 162.16399900076794,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 3,
+      "condition": "serial",
+      "elapsed_ms": 333.7646960026177,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 4,
+      "condition": "serial",
+      "elapsed_ms": 203.36346800104366,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 4,
+      "condition": "concurrent",
+      "elapsed_ms": 238.34648499905597,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 5,
+      "condition": "concurrent",
+      "elapsed_ms": 205.01313299973845,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 5,
+      "condition": "serial",
+      "elapsed_ms": 577.1538939989114,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 6,
+      "condition": "serial",
+      "elapsed_ms": 320.94994300132385,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 6,
+      "condition": "concurrent",
+      "elapsed_ms": 311.31817100322223,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 7,
+      "condition": "concurrent",
+      "elapsed_ms": 232.47358800290385,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 7,
+      "condition": "serial",
+      "elapsed_ms": 350.94149699943955,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 8,
+      "condition": "serial",
+      "elapsed_ms": 284.1582870023558,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 8,
+      "condition": "concurrent",
+      "elapsed_ms": 158.17382499881205,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 9,
+      "condition": "concurrent",
+      "elapsed_ms": 115.54600399904302,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 9,
+      "condition": "serial",
+      "elapsed_ms": 234.1575029968226,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 10,
+      "condition": "serial",
+      "elapsed_ms": 171.76206399744842,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 10,
+      "condition": "concurrent",
+      "elapsed_ms": 123.21903900010511,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 11,
+      "condition": "concurrent",
+      "elapsed_ms": 141.14136500211316,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 11,
+      "condition": "serial",
+      "elapsed_ms": 179.17216299974825,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 12,
+      "condition": "serial",
+      "elapsed_ms": 315.1177030013059,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 12,
+      "condition": "concurrent",
+      "elapsed_ms": 274.8748859994521,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 13,
+      "condition": "concurrent",
+      "elapsed_ms": 686.6560290000052,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 13,
+      "condition": "serial",
+      "elapsed_ms": 319.17959099882864,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 14,
+      "condition": "serial",
+      "elapsed_ms": 246.14548600220587,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 14,
+      "condition": "concurrent",
+      "elapsed_ms": 280.9907250011747,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 15,
+      "condition": "concurrent",
+      "elapsed_ms": 565.6503999998677,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 15,
+      "condition": "serial",
+      "elapsed_ms": 25891.763671999797,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 16,
+      "condition": "serial",
+      "elapsed_ms": 2131.470670999988,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 16,
+      "condition": "concurrent",
+      "elapsed_ms": 319.1895399977511,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 17,
+      "condition": "concurrent",
+      "elapsed_ms": 147.27552399926935,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 17,
+      "condition": "serial",
+      "elapsed_ms": 217.0814450000762,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 18,
+      "condition": "serial",
+      "elapsed_ms": 197.6634210004704,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 18,
+      "condition": "concurrent",
+      "elapsed_ms": 100.32250700169243,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 19,
+      "condition": "concurrent",
+      "elapsed_ms": 127.98562600073637,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 19,
+      "condition": "serial",
+      "elapsed_ms": 174.034980002034,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 20,
+      "condition": "serial",
+      "elapsed_ms": 417.39101100029075,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 20,
+      "condition": "concurrent",
+      "elapsed_ms": 215.2977240002656,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 21,
+      "condition": "concurrent",
+      "elapsed_ms": 135.45082600103342,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 21,
+      "condition": "serial",
+      "elapsed_ms": 202.05691199953435,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 22,
+      "condition": "serial",
+      "elapsed_ms": 157.19839200028218,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 22,
+      "condition": "concurrent",
+      "elapsed_ms": 115.02749099963694,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 23,
+      "condition": "concurrent",
+      "elapsed_ms": 137.131147999753,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 23,
+      "condition": "serial",
+      "elapsed_ms": 198.9321569999447,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 24,
+      "condition": "serial",
+      "elapsed_ms": 172.40854500050773,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 24,
+      "condition": "concurrent",
+      "elapsed_ms": 160.01642800256377,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 25,
+      "condition": "concurrent",
+      "elapsed_ms": 109.98028999892995,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 25,
+      "condition": "serial",
+      "elapsed_ms": 186.41519399898243,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 26,
+      "condition": "serial",
+      "elapsed_ms": 243.1400979985483,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 26,
+      "condition": "concurrent",
+      "elapsed_ms": 148.95250400149962,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 27,
+      "condition": "concurrent",
+      "elapsed_ms": 222.5922929974331,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 27,
+      "condition": "serial",
+      "elapsed_ms": 566.049989000021,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 28,
+      "condition": "serial",
+      "elapsed_ms": 374.3235949987138,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 28,
+      "condition": "concurrent",
+      "elapsed_ms": 510.4394019981555,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 29,
+      "condition": "concurrent",
+      "elapsed_ms": 122.13610099934158,
+      "requests": {
+        "put_object": 2
+      }
+    },
+    {
+      "pair": 29,
+      "condition": "serial",
+      "elapsed_ms": 404.5460479974281,
+      "requests": {
+        "put_object": 2
+      }
+    }
+  ],
+  "aggregates": {
+    "serial": {
+      "samples": 30,
+      "p50_ms": 299.63799500183086,
+      "p95_ms": 2131.470670999988
+    },
+    "concurrent": {
+      "samples": 30,
+      "p50_ms": 161.09021350166586,
+      "p95_ms": 621.4008789975196
+    }
+  }
+}

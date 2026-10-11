@@ -8,13 +8,13 @@ import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import delete, select
-from test_plan_catalog_integration import headers
 
 from app.core.redis import get_redis_cache_client
 from app.database.connection import get_async_db_session
 from app.database.models import PlanQuotaOverride, PlanQuotaRevision
 from app.services.entitlement_service import _current_period, entitlement_service
 from app.services.quota_policy_service import QuotaPolicyConflict, quota_policy_service, resolve_quota_policy
+from test.test_plan_catalog_integration import headers
 
 
 @pytest.fixture(autouse=True)

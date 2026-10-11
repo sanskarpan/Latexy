@@ -1,0 +1,24 @@
+{
+  "measured_at_utc": "2026-10-08T13:42:46.324Z",
+  "frontend_url": "http://localhost:5361",
+  "backend_url": "http://127.0.0.1:8530",
+  "compiler": null,
+  "build_kind": "production",
+  "source_commit": "3d556b8771ffcb48d0fbe3e547dd29a5df7b989e",
+  "environment": "isolated local CPU Celery, warm seed image, fresh browser context",
+  "scenario": "fresh guest saves a field before first PDF",
+  "limitations": [
+    "production Next and local backend; excludes production deployment/Modal latency",
+    "One functional samples do not support percentile claims",
+    "Host resource contention is uncontrolled"
+  ],
+  "samples": [],
+  "failures": [
+    {
+      "type": "probe",
+      "message": "The operation was aborted due to timeout"
+    }
+  ],
+  "console_errors": [],
+  "quota_cooldown_waits": []
+}

@@ -1,0 +1,76 @@
+{
+  "decision": "Adopt the staged architecture and retain FastAPI plus sandboxed TeX. This branch implements the first validated latency and recovery migration; the full roadmap is not complete.",
+  "branch": "codex/resume-engine",
+  "worktree": "C:/Users/Sansk/.codex/worktrees/resume-engine/Latexy",
+  "main_base_commit": "c1b0122d4f954d851d1bf9772e8b2e2284e73a60",
+  "benchmark_reference": "317b9b3d0b1cf05cb4a007dbf179129993d67ba5",
+  "baseline_equivalence": "Committed orchestrator.py and job_routes.py are unchanged between the proposal reference and the worktree main base, verified with git diff.",
+  "implemented": [
+    "Atomic Redis admission metadata, state, sequence, replay, Pub/Sub and user index in one round trip; existing admission and terminal evidence preserved.",
+    "Bounded shielded async broker submissions in 14 API engine and cleanup paths; existing payload and ACK recovery semantics retained.",
+    "Redis pool reuse by PID, URL and password with periodic health checks; Modal initialization passes its configured password.",
+    "Ordered bounded compiler and model content publication, pipelining unchanged per-event ownership and cancellation Lua gates. Epoch captured before thread handoff; oversized token deltas split without text loss.",
+    "Throttled noisy-loop cancellation reads, independent process watchdog, synchronous read-confinement inspection and terminal flush barriers.",
+    "Exact tenant-scoped rendering cache shared by direct and combined compilation, complete prepared source/settings/image epoch keys, render-only restoration and post-finalization population.",
+    "Atomic fenced per-job optimization requesting/completed checkpoints. Render retries reuse completed LLM output; ambiguous, missing, corrupt or replaced checkpoints prevent automatic repayment.",
+    "Default-off compact literal-bullet optimization: source/node revision checks, linear projection, ordered protected vocabulary and punctuation, Unicode control rejection, conservative macro fallback and byte-preserving application.",
+    "Compact one-request input/output budgets, no SDK retries, pre-header deadline watchdog and cancellation boundaries. Expired output is rejected; transport cancellation is best effort.",
+    "Deterministic original-case JD keyword extraction; ATS scoring failures return unavailable instead of zero.",
+    "Previous PDF remains visible during replacement; pending export and source/PDF sync blocked. Immediate and reconnect REST recovery backs off after initial fast polls.",
+    "PDF_RENDER_PAINT telemetry measures artifact-ready to first-page paint, excluding download and compile, without document identifiers or source."
+  ],
+  "flags": {
+    "RESUME_STAGE_CHECKPOINTS_ENABLED": {
+      "default": true,
+      "scope": "Lifecycle-owned combined jobs; 24-hour Redis recovery, not a durable database stage ledger."
+    },
+    "RESUME_COMPACT_PATCHES_ENABLED": {
+      "default": false,
+      "scope": "Supported literal single-line itemize bullets under simple section headings. Unsupported source uses the legacy optimizer before any compact paid request. No substantive rewrite or semantic factual-proof claim."
+    }
+  },
+  "independent_review_fixes": [
+    "Same-word factual reversals such as revenue from 10 to 20 becoming 20 to 10: ordered relation, number, negation and punctuation guards.",
+    "Quadratic blank-heavy source projection: linear reverse next-nonempty index, with 50,000-line regression coverage.",
+    "Legacy asynchronous ownership epoch drift: freeze once before handoff.",
+    "Unicode visual controls and xparse command/environment ambiguity: reject unsafe nodes and preserve opaque source.",
+    "Per-chunk Redis cancellation overhead: throttle with mandatory boundary checks.",
+    "Header wait outside watchdog: arm before SDK request creation.",
+    "Completed paid stage repeated after rendering failure: fenced exact-context checkpoint recovery.",
+    "Large provider delta exceeding queue bounds: split token payload while preserving exact concatenation."
+  ],
+  "validation": {
+    "backend": "470 tests passed across 18 selected Linux suites: 423 renderer, sandbox, lifecycle, cache, admission, compact, checkpoint and dispatch tests against freshly created isolated Redis/Postgres migrated through 0058, plus 47 observability and legacy LLM streaming tests. Collection count independently verified. No live AI calls.",
+    "frontend": "35 tests passed; TypeScript and targeted ESLint passed.",
+    "python": "Ruff passed on touched source, new tests and benchmark scripts.",
+    "real_tex": "200 paired measured samples plus warmups across ordinary and verbose fixtures. PDF headers, normalized extracted text and page counts matched; hostile input and real infinite TeX loop protections passed. Original blocked-order experiment retained separately.",
+    "unverified": [
+      "Production end-to-end latency, cold-start/region/load tails and browser first paint.",
+      "Live provider quality/cost and all-template/language coverage of experimental compact patches.",
+      "The full product regression suite outside selected engine and dispatch paths."
+    ]
+  },
+  "benchmarks": {
+    "admission": "admission-benchmark.json",
+    "ordinary_render": "render-benchmark.json",
+    "verbose_render": "render-benchmark-verbose.json",
+    "original_blocked_order": "render-benchmark-blocked-order.json",
+    "interpretation": "Local admission component measurement; real warm TeX with explicitly simulated Redis RTT on a shared host. Ordinary zero-RTT medians were mixed. No production or sub-second guarantee."
+  },
+  "remaining_architecture_phases": [
+    "Complete distributed user-action-to-first-paint spans and real deployment baselines.",
+    "Revision-scoped early artifact.ready API/client contract, durable immutable binary manifests, pre-dispatch authorized cache and duplicate-request leases.",
+    "Per-document auxiliary workspaces, certified template pass policies and latest-revision preview scheduling with explicit entitlement policy.",
+    "Persistent semantic document identities, builder adapters, cached factual/job-requirement context and evidence ledger.",
+    "Provider capability adapters, substantive patch quality evaluation, bounded parallel planning, effort/token/cost budgets and durable database stage recovery.",
+    "Exact-PDF semantic overlay editing and accepted/candidate branch contracts.",
+    "Warm capacity/region tuning and alternative renderer experiments after measured target gates."
+  ],
+  "deployment": "Not deployed, merged or pushed. Compact patches remain disabled pending quality/provider benchmarks.",
+  "primary_references": [
+    "https://redis.io/docs/latest/develop/using-commands/pipelining/",
+    "https://modal.com/docs/guide/async",
+    "https://developers.openai.com/api/docs/guides/rate-limits",
+    "https://developers.openai.com/api/docs/guides/flex-processing"
+  ]
+}

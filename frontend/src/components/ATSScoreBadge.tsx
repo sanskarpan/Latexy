@@ -34,7 +34,7 @@ export default function ATSScoreBadge({ score, loading, onClick }: ATSScoreBadge
       type="button"
       onClick={onClick}
       className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[10px] font-medium transition-colors ${colorClass} ${onClick ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
-      title="Live ATS score (updates 10s after last change)"
+      title="Live ATS score"
     >
       ATS {score}
     </button>

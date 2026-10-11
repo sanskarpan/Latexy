@@ -62,7 +62,8 @@ import { downloadBlob } from '@/lib/download'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
-import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
+import LaTeXEditor from '@/components/DeferredLaTeXEditor'
+import type { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SessionLoadError from '@/components/SessionLoadError'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
@@ -83,6 +84,20 @@ import type { ChatTransport } from '@/lib/collab-chat'
 import { boundSuggestionPresence, canCreateSuggestion, canResolveSuggestion, createSuggestion, mergeSuggestionPresence, type Suggestion, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
+import { useArtifactPreview, useSourceHash } from '@/hooks/useArtifactPreview'
+import type { ArtifactReadyEvent } from '@/lib/event-types'
+import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
+import { previewErrorMessage } from '@/lib/preview-errors'
+import { canExportArtifact } from '@/lib/artifact-policy'
+import { editableGeometry } from '@/lib/artifact-geometry'
+import ImportedOptimizationPanel from '@/components/ImportedOptimizationPanel'
+import SemanticOptimizationPanel from '@/components/SemanticOptimizationPanel'
+import ResumeFieldsEditor from '@/components/ResumeFieldsEditor'
+import EngineCapabilityNotice from '@/components/EngineCapabilityNotice'
+import { useEngineCapability } from '@/hooks/useEngineCapability'
+import { engineEditorMode } from '@/lib/engine-capability'
+import ResumeOriginalPdf from '@/components/ResumeOriginalPdf'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
 import ModeToggle from '@/components/theme/ModeToggle'
@@ -105,7 +120,6 @@ import { canEditResume, type ResumeAccessRole } from '@/lib/resume-access'
 import { buildLatexOutline, type LatexOutlineItem } from '@/lib/latex-outline'
 import { visualFeedbackText } from '@/lib/visual-feedback'
 import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
-import { createAutoCompileScheduler } from '@/lib/auto-compile-scheduler'
 const ShareResumeModal = dynamic(() => import('@/components/ShareResumeModal'))
 const DocumentAssistantPanel = dynamic(() => import('@/components/DocumentAssistantPanel'))
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
@@ -768,7 +782,7 @@ function AIPanel({
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function ResumeEditPage() {
-  const { can, loaded: entitlementsLoaded } = useEntitlements()
+  const { can, loaded: entitlementsLoaded, loading: entitlementsLoading } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
   const params = useParams()
@@ -777,6 +791,14 @@ export default function ResumeEditPage() {
   const flags = useFeatureFlags()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  // Renew during render so an old A cannot become current after A → B → A.
+  const initialPreviewIdentityRef = useRef({ ownerId: sessionUserId, resumeId, consumed: false })
+  if (initialPreviewIdentityRef.current.ownerId !== sessionUserId || initialPreviewIdentityRef.current.resumeId !== resumeId) {
+    initialPreviewIdentityRef.current = { ownerId: sessionUserId, resumeId, consumed: false }
+  }
+  const [initialPreviewRequest, setInitialPreviewRequest] = useState<{
+    identity: typeof initialPreviewIdentityRef.current; generation: number; source: string; compiler: LatexCompiler
+  } | null>(null)
   const dictionaryScope = {
     ownerId: sessionUserId,
     authToken: sessionData?.session?.token ?? null,
@@ -787,6 +809,8 @@ export default function ResumeEditPage() {
   // Core state
   const [title, setTitle] = useState('')
   const [latexContent, setLatexContent] = useState('')
+  const sourceAtRenderRef = useRef(latexContent)
+  sourceAtRenderRef.current = latexContent
   const [checkpointRecoveryPreview, setCheckpointRecoveryPreview] = useState<CheckpointRecoveryPreview | null>(null)
   const [bibliographyBibTeX, setBibliographyBibTeX] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -815,6 +839,7 @@ export default function ResumeEditPage() {
   // intentionally separate from activePdfJobId, which is the in-flight fetch
   // de-duplication marker.
   const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
+  const [displayedArtifact, setDisplayedArtifact] = useState<ArtifactReadyEvent | null>(null)
   const [isOfflinePdf, setIsOfflinePdf] = useState(false)
   const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<string>('resume')
@@ -833,14 +858,15 @@ export default function ResumeEditPage() {
   const [userPlan, setUserPlan] = useState<string>('free')
 
   // Layout
+  const aiRecoveryAvailableRef = useRef(false)
   const [rightTab, setRightTabValue] = useState<RightTab>('preview')
   const setRightTab = useCallback((tab: RightTab) => {
     const feature = RIGHT_TAB_CAPABILITIES[tab]
-    if (!feature || canRef.current(feature)) setRightTabValue(tab)
+    if (!feature || canRef.current(feature) || (tab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue(tab)
   }, [])
   useEffect(() => {
     const feature = RIGHT_TAB_CAPABILITIES[rightTab]
-    if (feature && !can(feature)) setRightTabValue('preview')
+    if (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue('preview')
   }, [can, rightTab])
   const rightTabBarRef = useRef<HTMLDivElement>(null)
   const activeRightTabRef = useRef<HTMLButtonElement>(null)
@@ -858,6 +884,7 @@ export default function ResumeEditPage() {
 
   // AI
   const [aiJobId, setAiJobId] = useState<string | null>(null)
+  const [semanticRunId, setSemanticRunId] = useState<string | null>(null)
   const [jobDescription, setJobDescription] = useState('')
   const [optLevel, setOptLevel] = useState<OptLevel>('balanced')
   const [model, setModel] = useState<AIModel>('gpt-4o-mini')
@@ -998,6 +1025,8 @@ export default function ResumeEditPage() {
 
   // Compiler preference (stored in resume metadata)
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+  const initialPreviewCompilerRef = useRef(compiler)
+  initialPreviewCompilerRef.current = compiler
   // Compile settings modal (Feature 38)
   const [compileSettingsOpen, setCompileSettingsOpen] = useState(false)
   const [compileSettings, setCompileSettings] = useState<CompileSettings>({ compiler: 'pdflatex' })
@@ -1029,21 +1058,38 @@ export default function ResumeEditPage() {
   const [dbxSyncing, setDbxSyncing] = useState(false)
   const [dbxTogglingSync, setDbxTogglingSync] = useState(false)
 
-  // Visual editing is a view of the original source; switching never serializes it.
-  const [editorMode, setEditorMode] = useState<'source' | 'wysiwyg'>(() => {
-    if (typeof window === 'undefined') return 'wysiwyg'
-    try {
-      return localStorage.getItem(`latexy_editor_mode_${resumeId}`) === 'source' ? 'source' : 'wysiwyg'
-    } catch { return 'wysiwyg' }
-  })
-  const latestLatexContentRef = useRef(latexContent)
-  latestLatexContentRef.current = latexContent
+  // Resume mode uses the versioned engine; legacy Visual is a source-preserving projection.
+  const engineCapability = useEngineCapability(sessionUserId ?? 'signed-out')
+  const engineSupported = engineCapability.status === 'supported'
+  const [preferredEditorMode, setEditorMode] = useState<'source' | 'wysiwyg' | 'pdf'>('pdf')
+  const engineMode = engineEditorMode(preferredEditorMode, engineCapability.status, engineCapability.sourceFallback)
+  // Entitlement fallback is temporary, just like an unavailable engine. Keep
+  // the user's preferred view so regrant restores it without changing source.
+  const shouldFallbackFromDeniedVisualMode = entitlementsLoaded && (!can('b10') || !can('c01')) && engineMode !== 'source'
+  const editorMode = shouldFallbackFromDeniedVisualMode ? 'source' : engineMode
   const visualPanels: RightTab[] = ['preview', 'ai', 'comments', 'interview', 'layout']
+  const visibleRightTab = (editorMode === 'pdf' && !['preview', 'ai', 'comments', 'interview'].includes(rightTab))
+    || (editorMode === 'wysiwyg' && !visualPanels.includes(rightTab)) ? 'preview' : rightTab
   useEffect(() => {
-    if (editorMode === 'wysiwyg' && !visualPanels.includes(rightTab)) setRightTab('preview')
-    // The list is static and deliberately excludes panels that show source snippets.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorMode, rightTab])
+    if (visibleRightTab !== rightTab) setRightTab(visibleRightTab)
+  }, [visibleRightTab, rightTab, setRightTab])
+  useEffect(() => {
+    if (!sessionUserId) return
+    try { setSemanticRunId(localStorage.getItem(`latexy_semantic_run:${sessionUserId}:${resumeId}`)) } catch {}
+  }, [sessionUserId, resumeId])
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`latexy_editor_mode_${resumeId}`)
+      setEditorMode(saved === 'source' || saved === 'wysiwyg' ? saved : 'pdf')
+    } catch { /* Browser preferences are optional. */ }
+  }, [resumeId])
+  const [engineDocument, setEngineDocument] = useState<ResumeEngineDocument | null>(null)
+  const engineDocumentIdentityRef = useRef<string | null>(null)
+  const [engineGeometry, setEngineGeometry] = useState<ArtifactGeometry | null>(null)
+  const [selectedEngineNode, setSelectedEngineNode] = useState<string | null>(null)
+  const [engineDocumentError, setEngineDocumentError] = useState<string | null>(null)
+
 
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
@@ -1147,6 +1193,7 @@ export default function ResumeEditPage() {
       offlinePdfBlobRef.current = null
       setPdfUrl(null)
       setRenderedPdfJobId(null)
+      setDisplayedArtifact(null)
       setIsOfflinePdf(false)
       setOfflinePdfLoaded(false)
     }
@@ -1159,6 +1206,7 @@ export default function ResumeEditPage() {
       setShareReviewComments(false)
       setCompileJobId(null)
       setAiJobId(null)
+      setSemanticRunId(null)
       setIsSubmitting(false)
       setIsAiSubmitting(false)
       setIsAutoFitSubmitting(false)
@@ -1649,10 +1697,47 @@ export default function ResumeEditPage() {
     offlinePdfIdentityRef.current.ownerId === offlinePdfOwnerId &&
     offlinePdfIdentityRef.current.resumeId === resumeId
   )
+  const aiRecoveryAvailable = ownsRenderedJobState && Boolean(semanticRunId || stagedAiLatex)
+  aiRecoveryAvailableRef.current = aiRecoveryAvailable
   const ownedCompileJobId = ownsRenderedJobState ? compileJobId : null
   const ownedAiJobId = ownsRenderedJobState ? aiJobId : null
   const { state: compileStream } = useJobStream(ownedCompileJobId)
   const { state: aiStream } = useJobStream(ownedAiJobId)
+  const sourceHash = useSourceHash(latexContent)
+  const artifactPreview = useArtifactPreview({
+    artifact: lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact,
+    identity: `${sessionUserId ?? 'signed-out'}:${resumeId}`, onReady: (blob, artifact) => {
+      activePdfJobId.current = artifact.job_id
+      setPreviewBlob(blob)
+      setRenderedPdfJobId(artifact.job_id)
+      setDisplayedArtifact(artifact)
+    },
+  })
+  useEffect(() => {
+    if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
+  }, [artifactPreview.error, editorMode])
+  useEffect(() => {
+    if (!engineSupported || editorMode !== 'pdf' || !sessionUserId) return
+    let stopped = false
+    setEngineDocumentError(null)
+    void apiClient.getEngineDocument(resumeId).then((response) => {
+      if (!stopped) { engineDocumentIdentityRef.current = `${sessionUserId}:${resumeId}`; setEngineDocument(response.document) }
+    }).catch(() => { if (!stopped) setEngineDocumentError('Resume fields could not be loaded. Save your resume and retry.') })
+    return () => { stopped = true }
+  }, [engineSupported, resumeId, sessionUserId, editorMode, sourceHash, displayedArtifact?.artifact_id])
+
+  useEffect(() => {
+    if (!displayedArtifact?.geometry_url || editorMode !== 'pdf') { setEngineGeometry(null); return }
+    let stopped = false
+    const controller = new AbortController()
+    void apiClient.getArtifactGeometry(displayedArtifact.job_id, displayedArtifact.artifact_id, undefined, controller.signal)
+      .then((geometry) => { if (!stopped) setEngineGeometry(geometry) }).catch(() => { if (!stopped) setEngineGeometry(null) })
+    return () => { stopped = true; controller.abort() }
+  }, [displayedArtifact, editorMode])
+  const visibleEngineDocument = engineDocumentIdentityRef.current === `${sessionUserId}:${resumeId}` ? engineDocument : null
+  const verifiedGeometry = editableGeometry(displayedArtifact, engineGeometry, visibleEngineDocument, sourceHash)
+
+
 
   const retryOfflinePdf = useCallback(async () => {
     const ownerAtStart = sessionUserId
@@ -1700,6 +1785,8 @@ export default function ResumeEditPage() {
   ])
 
   const shareOrDownloadPdf = useCallback(async () => {
+    const sourceAtStart = sourceAtRenderRef.current
+    if (displayedArtifact && !canExportArtifact(displayedArtifact, sourceHash, lastStartedJobKind === 'ai' ? aiJobId : compileJobId, lastStartedJobKind === 'ai' ? aiStream.status : compileStream.status, displayedArtifact.job_id)) { setOfflinePdfError('Compile your accepted current resume before sharing this PDF.'); return }
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -1709,7 +1796,7 @@ export default function ResumeEditPage() {
       : null
     try {
       if (!blob && id) blob = await apiClient.downloadPdf(id)
-      if (!isActive()) return
+      if (!isActive() || sourceAtRenderRef.current !== sourceAtStart) return
       if (!blob) throw new Error('No compiled PDF is available yet')
       const filename = `${title.replace(/\s+/g, '_') || 'resume'}.pdf`
       const file = new File([blob], filename, { type: 'application/pdf' })
@@ -1725,12 +1812,12 @@ export default function ResumeEditPage() {
           if (error instanceof DOMException && error.name === 'AbortError') return
         }
       }
-      if (!isActive()) return
+      if (!isActive() || sourceAtRenderRef.current !== sourceAtStart) return
       downloadBlob(blob, filename)
     } catch {
       if (isActive()) setOfflinePdfError('Sharing or downloading the PDF failed. Retry when storage or network access is available.')
     }
-  }, [aiStream.pdfJobId, compileStream.pdfJobId, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, ownedAiJobId, ownedCompileJobId, ownsRenderedJobState, resumeId, title])
+  }, [aiStream.pdfJobId, compileStream.pdfJobId, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, ownedAiJobId, ownedCompileJobId, ownsRenderedJobState, resumeId, title, displayedArtifact, sourceHash, lastStartedJobKind, aiJobId, compileJobId, aiStream.status, compileStream.status])
   // A session/resume switch is rendered before the identity effect below can
   // clear the previous job id. Do not let useJobStream re-subscribe to that
   // old id during the transition render.
@@ -1747,6 +1834,7 @@ export default function ResumeEditPage() {
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
+    const initialPreviewIdentity = initialPreviewIdentityRef.current
     const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
 
     if (!sessionData) {
@@ -1879,15 +1967,13 @@ export default function ResumeEditPage() {
           })
         }
 
-        // Auto-compile on load so user sees PDF immediately
-        if (canRef.current('c05') && effectiveLatex && effectiveLatex.length >= 100) {
-          try {
-            const initCompiler = (data.metadata?.compiler as LatexCompiler | undefined) ?? 'pdflatex'
-            const r = await apiClient.compileLatex({ latex_content: effectiveLatex, resume_id: resumeId, compiler: initCompiler })
-            if (isActive() && r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
-          } catch {
-            // Silent — user can compile manually
-          }
+        // Loading source and resolving grants are independent. Preserve one
+        // bootstrap demand until availability settles instead of sampling a
+        // fail-closed c05 before its response has arrived.
+        if (initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
+          && effectiveLatex && effectiveLatex.length >= 100) {
+          setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
+            source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })
         }
       } catch (error) {
         if (isActive()) {
@@ -1905,10 +1991,10 @@ export default function ResumeEditPage() {
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
   // continue to see the original document throughout the run and review period.
   useEffect(() => {
-    if (aiStream.status === 'completed' && aiStream.streamingLatex) {
+    if (ownedAiJobId !== semanticRunId && aiStream.status === 'completed' && aiStream.streamingLatex) {
       setStagedAiLatex(aiStream.streamingLatex)
     }
-  }, [aiStream.status, aiStream.streamingLatex])
+  }, [aiStream.status, aiStream.streamingLatex, semanticRunId, ownedAiJobId])
 
   // Track compilation completion for analytics
   useEffect(() => {
@@ -1923,7 +2009,8 @@ export default function ResumeEditPage() {
 
   // Load PDF after either job completes
   useEffect(() => {
-    const pdfJobId = compileStream.pdfJobId ?? aiStream.pdfJobId
+    if (lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact) return
+    const pdfJobId = lastStartedJobKind === 'ai' ? aiStream.pdfJobId : compileStream.pdfJobId
     const anyCompleted =
       (compileStream.status === 'completed' && compileStream.pdfJobId) ||
       (aiStream.status === 'completed' && aiStream.pdfJobId)
@@ -1956,8 +2043,8 @@ export default function ResumeEditPage() {
     // compile should not destroy the only usable PDF the user still has; the
     // object URL is swapped and revoked only after the next PDF downloads.
   }, [
-    compileStream.status, compileStream.pdfJobId,
-    aiStream.status, aiStream.pdfJobId,
+    compileStream.status, compileStream.pdfJobId, compileStream.artifact,
+    aiStream.status, aiStream.pdfJobId, aiStream.artifact, lastStartedJobKind,
     isCurrentOfflinePdfIdentity, isOnline, loadOfflinePdf, resumeId, saveCachedPdf, sessionUserId, setPreviewBlob, setRightTab,
   ])
 
@@ -2215,21 +2302,19 @@ export default function ResumeEditPage() {
     }
   }
 
-  const handleToggleEditorMode = useCallback((mode: 'source' | 'wysiwyg') => {
-    if (mode === 'wysiwyg' && !canRef.current('b10')) return
-    if (mode === 'wysiwyg' && !canRef.current('c01')) return
-    if (mode === editorMode) return
+  // Switching views never serializes source or replaces a user's saved preference
+  // with the temporary mode selected by an unsupported engine capability.
+  const handleToggleEditorMode = useCallback((mode: 'source' | 'wysiwyg' | 'pdf') => {
+    if (mode !== 'source' && (!canRef.current('b10') || !canRef.current('c01'))) return
+    if (mode === preferredEditorMode || (mode === 'pdf' && !engineSupported)) return
     if (editorMode === 'source') {
       const source = editorRef.current?.getValue()
       if (source !== undefined) setLatexContent(source)
     }
+    if (mode === 'pdf') setRightTab('preview')
     setEditorMode(mode)
     try { localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode) } catch { /* optional preference */ }
-  }, [editorMode, resumeId])
-
-  useEffect(() => {
-    if (entitlementsLoaded && !can('b10') && editorMode === 'wysiwyg') setEditorMode('source')
-  }, [can, editorMode, entitlementsLoaded])
+  }, [engineSupported, preferredEditorMode, editorMode, resumeId, setRightTab])
 
   const handleSave = async () => {
     const ownerAtStart = offlinePdfOwnerId
@@ -2323,6 +2408,7 @@ export default function ResumeEditPage() {
   const runCompile = async () => {
     if (!canRef.current('c05')) return
     if (isAnyRunning || isSubmitting) return
+    const actionStarted = performance.now()
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -2339,23 +2425,28 @@ export default function ResumeEditPage() {
       }
       return
     }
-    setIsSubmitting(true)
-    autoCompileTriggeredRef.current = false
-    try {
-      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
-      if (!r.success || !r.job_id) throw new Error(r.message)
-      if (!isActive()) return
-      editorRef.current?.markAutoCompileCompiled?.(content)
-      userInitiatedJobRef.current = true
-      setCompileJobId(r.job_id)
-      setLastStartedJobKind('compile')
-      setRightTab(editorMode === 'source' ? 'logs' : 'preview')
-      toast.success(editorMode === 'source' ? 'Compilation started' : 'Preparing your PDF preview')
-    } catch (e) {
-      if (isActive()) toast.error(editorMode === 'source' ? e instanceof Error ? e.message : 'Compile failed' : 'Could not prepare the preview. Please try again.')
-    } finally {
-      if (isActive()) setIsSubmitting(false)
-    }
+    return queuePreview.submitManual(content, async () => {
+      setIsSubmitting(true)
+      autoCompileTriggeredRef.current = false
+      try {
+        const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
+        if (!r.success || !r.job_id) throw new Error(r.message)
+        if (!isActive()) return null
+        editorRef.current?.markAutoCompileCompiled?.(content)
+        userInitiatedJobRef.current = true
+        setCompileJobId(r.job_id)
+        recordPreviewAction(r.job_id, actionStarted)
+        setLastStartedJobKind('compile')
+        setRightTab(editorMode === 'source' ? 'logs' : 'preview')
+        toast.success(editorMode === 'source' ? 'Compilation started' : 'Preparing your PDF preview')
+        return r.job_id
+      } catch (e) {
+        if (isActive()) toast.error(previewErrorMessage(e, editorMode === 'pdf'))
+        return null
+      } finally {
+        if (isActive()) setIsSubmitting(false)
+      }
+    })
   }
 
   // ── 84E: TikZ compile preview ────────────────────────────────────────────────
@@ -2424,7 +2515,7 @@ export default function ResumeEditPage() {
   }
 
   const applyOptimizationCandidate = useCallback((candidate: string, record: boolean) => {
-    if (!canRef.current('c01')) return false
+    if (!canRef.current('d03') || !canRef.current('c01')) return false
     const current = editorRef.current?.getValue() || latexContent
     const baseline = aiBaselineRef.current
     if (baseline != null && current !== baseline) {
@@ -2528,7 +2619,7 @@ export default function ResumeEditPage() {
 
   const handleReturnToSharedEditor = useCallback(() => {
     if (!canRef.current('c01') || !checkpointRecoveryPreviewRef.current) return
-    setLatexContent(editorRef.current?.getValue() ?? latestLatexContentRef.current)
+    setLatexContent(editorRef.current?.getValue() ?? sourceAtRenderRef.current)
     setCheckpointRecoveryPreview(null)
   }, [])
 
@@ -2559,6 +2650,12 @@ export default function ResumeEditPage() {
 
 
   const handleDownload = async () => {
+    const sourceAtStart = sourceAtRenderRef.current
+    if (isAnyRunning) { toast.error("Wait for the updated PDF to finish"); return }
+    if (displayedArtifact && !canExportArtifact(displayedArtifact, sourceHash, lastStartedJobKind === 'ai' ? aiJobId : compileJobId, lastStartedJobKind === 'ai' ? aiStream.status : compileStream.status, displayedArtifact.job_id)) {
+      toast.error('Compile your current resume before downloading. Review AI suggestions before accepting them.')
+      return
+    }
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -2566,8 +2663,9 @@ export default function ResumeEditPage() {
       ? (compileStream.pdfJobId ?? aiStream.pdfJobId ?? activePdfJobId.current ?? ownedCompileJobId ?? ownedAiJobId)
       : null
     try {
-      const blob = id ? await apiClient.downloadPdf(id) : offlinePdfBlobRef.current
-      if (!isActive()) return
+      const blob = artifactPreview.verified && artifactPreview.verified.artifact.artifact_id === displayedArtifact?.artifact_id
+        ? artifactPreview.verified.blob : id ? await apiClient.downloadPdf(id) : offlinePdfBlobRef.current
+      if (!isActive() || sourceAtRenderRef.current !== sourceAtStart) return
       if (!blob) throw new Error('No compiled PDF is available yet')
       downloadBlob(blob, `${title.replace(/\s+/g, '_') || 'resume'}.pdf`)
     } catch {
@@ -2965,16 +3063,17 @@ export default function ResumeEditPage() {
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
-    if (isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return
+    if (isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return null
     setIsSubmitting(true)
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
-      if (!isActive()) return
+      if (!isActive()) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
       autoCompileTriggeredRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
+      return r.job_id
     } catch (e) {
       // Auto-compile fires on a debounce rather than a click, so a hard failure to
       // even submit (network/API error, etc.) needs the same toast.error runCompile's
@@ -2990,37 +3089,99 @@ export default function ResumeEditPage() {
     }
   }, [autoCompileIdentityReady, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId, editorMode])
 
-  const visualAutoCompileSchedulerRef = useRef<ReturnType<typeof createAutoCompileScheduler> | null>(null)
-  const visualAutoCompileDispatchRef = useRef(handleAutoCompile)
-  visualAutoCompileDispatchRef.current = handleAutoCompile
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId ?? 'signed-out'}:${resumeId}:${compiler}`,
+    enabled: can('c05') && can('c06') && (autoCompile || (engineSupported && editorMode === 'pdf')) && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady, blocked: isAnyRunning || isSubmitting || isAiSubmitting,
+    jobId: compileJobId, status: compileStream.status, submit: async (source) => await handleAutoCompile(source) ?? null,
+  })
 
   useEffect(() => {
-    const scheduler = createAutoCompileScheduler({
-      onDispatch: (content) => void visualAutoCompileDispatchRef.current(content),
-      enabled: false,
-      busy: true,
+    const request = initialPreviewRequest
+    if (!request || request.identity !== initialPreviewIdentityRef.current || request.identity.consumed
+      || !sessionUserId || isLoading || sessionLoading || entitlementsLoading
+      || !isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)) return
+    // A settled denial/failure, newer work, or any attempted admission consumes
+    // this demand. Regrants, background polls and an ambiguous ACK cannot replay it.
+    request.identity.consumed = true
+    const currentSource = editorMode === 'source' ? editorRef.current?.getValue() ?? latexContent : latexContent
+    if (!entitlementsLoaded || !can('c05') || !isOnline || request.source !== currentSource || request.compiler !== compiler
+      || currentCheckpointRecoveryPreview || compileJobId || aiJobId || isAnyRunning || isSubmitting || isAiSubmitting) return
+    const authToken = apiClient.getAuthToken()
+    if (!authToken) return
+    const isActive = () => initialPreviewIdentityRef.current === request.identity
+      && isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)
+    void queuePreview.submitManual(request.source, async () => {
+      if (!isActive() || !canRef.current('c05') || sourceAtRenderRef.current !== request.source || initialPreviewCompilerRef.current !== request.compiler) return null
+      setIsSubmitting(true)
+      try {
+        const response = await apiClient.compileLatex({ latex_content: request.source, resume_id: resumeId, compiler: request.compiler }, {
+          authToken, isCurrent: () => isActive() && canRef.current('c05') && sourceAtRenderRef.current === request.source
+            && initialPreviewCompilerRef.current === request.compiler,
+        })
+        if (!isActive() || !response.success || !response.job_id) return null
+        editorRef.current?.markAutoCompileCompiled?.(request.source)
+        setCompileJobId(response.job_id)
+        setLastStartedJobKind('compile')
+        return response.job_id
+      } catch {
+        // Silent, once only. A manual click remains available for recovery.
+        return null
+      } finally {
+        if (isActive()) setIsSubmitting(false)
+      }
     })
-    visualAutoCompileSchedulerRef.current = scheduler
-    return () => {
-      scheduler.dispose()
-      visualAutoCompileSchedulerRef.current = null
-    }
-  }, [])
+  }, [initialPreviewRequest, sessionUserId, resumeId, isLoading, sessionLoading, entitlementsLoading, entitlementsLoaded,
+    can, isCurrentOfflinePdfIdentity, editorMode, latexContent, compiler, currentCheckpointRecoveryPreview,
+    compileJobId, aiJobId, isAnyRunning, isSubmitting, isAiSubmitting, isOnline, queuePreview])
 
-  useEffect(() => {
-    const scheduler = visualAutoCompileSchedulerRef.current
-    if (!scheduler) return
-    scheduler.setDocument(`${offlinePdfOwnerId ?? 'anonymous'}:${resumeId}:visual`)
-    scheduler.markCompiled(latestLatexContentRef.current)
-  }, [offlinePdfOwnerId, resumeId])
+  // Visual edits share the same durable admission fence and latest-revision queue
+  // as Source and Resume edits, including work already pending across mode changes.
+  const handleVisualChange = useCallback((source: string) => {
+    if (!canEditDocument) return
+    setLatexContent(source)
+    if (autoCompile) queuePreview(source)
+  }, [canEditDocument, autoCompile, queuePreview])
 
-  useEffect(() => {
-    const scheduler = visualAutoCompileSchedulerRef.current
-    if (!scheduler) return
-    scheduler.setEnabled(editorMode === 'wysiwyg' && autoCompile && can('c05') && can('c06') && !isLoading && canEditDocument && isOnline && autoCompileIdentityReady)
-    scheduler.setBusy(isAnyRunning || isSubmitting || !canEditDocument || !isOnline || !autoCompileIdentityReady)
-    scheduler.notifyContent(latexContent)
-  }, [editorMode, autoCompile, can, isLoading, canEditDocument, isOnline, autoCompileIdentityReady, isAnyRunning, isSubmitting, latexContent])
+  const saveResumeField = useCallback(async (node: ResumeEngineNode, text: string) => {
+    const actionStarted = performance.now()
+    const sourceAtStart = sourceAtRenderRef.current
+    if (!canRef.current('b10') || !canRef.current('c01') || !engineSupported || !visibleEngineDocument || engineDocumentIdentityRef.current !== `${sessionUserId}:${resumeId}` || visibleEngineDocument.source_sha256 !== sourceHash || !canEditDocument) throw new Error('Stale document')
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const token = apiClient.getAuthToken()
+    if (!token) throw new Error('Session not ready')
+    const result = await apiClient.patchEngineDocument(resumeId, {
+      expected_content_revision: visibleEngineDocument.content_revision, expected_source_sha256: visibleEngineDocument.source_sha256,
+      merge_disjoint: false, patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }],
+    }, { authToken: token, isCurrent: () => canRef.current('b10') && canRef.current('c01') && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) && sourceAtRenderRef.current === sourceAtStart })
+    if (!isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)) return
+    if (sourceAtRenderRef.current !== sourceAtStart) throw new Error('A newer local edit must be saved before applying this field response')
+    setEngineDocument(result.document)
+    setLatexContent(result.latex_content)
+    setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
+    queuePreview(result.latex_content, actionStarted, true)
+  }, [engineSupported, visibleEngineDocument, sourceHash, canEditDocument, resumeId, queuePreview, sessionUserId, offlinePdfOwnerId, isCurrentOfflinePdfIdentity])
+
+  const reorderResumeStructure = useCallback(async (containerId: string, orderedIds: string[]) => {
+    const actionStarted = performance.now()
+    const sourceAtStart = sourceAtRenderRef.current
+    if (!canRef.current('b10') || !canRef.current('c01') || !engineSupported || !visibleEngineDocument || visibleEngineDocument.source_mode !== 'managed'
+      || engineDocumentIdentityRef.current !== `${sessionUserId}:${resumeId}`
+      || visibleEngineDocument.source_sha256 !== sourceHash || !canEditDocument) throw new Error('Stale document')
+    const ownerAtStart = offlinePdfOwnerId
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    const token = apiClient.getAuthToken()
+    if (!token) throw new Error('Session not ready')
+    const result = await apiClient.reorderEngineDocument(resumeId, {
+      expected_content_revision: visibleEngineDocument.content_revision, expected_source_sha256: visibleEngineDocument.source_sha256,
+      container_id: containerId, ordered_ids: orderedIds,
+    }, { authToken: token, isCurrent: () => canRef.current('b10') && canRef.current('c01') && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) && sourceAtRenderRef.current === sourceAtStart })
+    if (!isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)) return
+    if (sourceAtRenderRef.current !== sourceAtStart) throw new Error('A newer local edit must be saved before applying this order')
+    setEngineDocument(result.document)
+    setLatexContent(result.latex_content)
+    setSavedSnapshot((previous) => ({ ...previous, latex: result.latex_content }))
+    queuePreview(result.latex_content, actionStarted, true)
+  }, [engineSupported, visibleEngineDocument, sourceHash, canEditDocument, resumeId, queuePreview, sessionUserId, offlinePdfOwnerId, isCurrentOfflinePdfIdentity])
 
   // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
   // compile is — runCompile switches to the Logs tab on submit so a failure is
@@ -3034,7 +3195,7 @@ export default function ResumeEditPage() {
       const msg = editorMode === 'source' ? compileStream.error || 'Auto-compile failed — open the Logs tab for details' : 'Could not refresh the preview. Your edits are saved in this draft.'
       if (lastAutoCompileErrorRef.current !== msg) {
         lastAutoCompileErrorRef.current = msg
-        toast.error(msg, { description: editorMode === 'source' ? 'Auto-compile failed. Open the Logs tab to see the LaTeX error.' : 'Try updating the preview again, or use Source mode to investigate a custom layout.' })
+        toast.error(previewErrorMessage(msg, editorMode === 'pdf'), { description: editorMode === 'source' ? 'Open the Logs tab for details.' : 'Try again or choose another layout.' })
       }
     } else if (compileStream.status === 'completed') {
       lastAutoCompileErrorRef.current = null
@@ -3086,7 +3247,7 @@ export default function ResumeEditPage() {
       userInitiatedJobRef.current = true
       setCompileJobId(response.job_id)
       setLastStartedJobKind('compile')
-      setRightTab('logs')
+      setRightTab(editorMode === 'source' ? 'logs' : 'preview')
       toast.success(intensity == null ? 'Finding the lightest one-page fit…' : `Testing ${intensity}% fit strength…`)
     } catch (error) {
       if (!isActive()) return
@@ -3094,7 +3255,7 @@ export default function ResumeEditPage() {
       setIsAutoFitSubmitting(false)
       toast.error(error instanceof Error ? error.message : 'Auto-fit could not start')
     }
-  }, [canEditDocument, compiler, isCurrentOfflinePdfIdentity, latexContent, offlinePdfOwnerId, resumeId, setRightTab])
+  }, [canEditDocument, compiler, isCurrentOfflinePdfIdentity, latexContent, offlinePdfOwnerId, resumeId, editorMode, setRightTab])
 
   useEffect(() => {
     const jobId = autoFitJobRef.current
@@ -3223,11 +3384,11 @@ export default function ResumeEditPage() {
   if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null
 
   return (
-    <div data-editor-mode={editorMode === 'wysiwyg' ? 'visual' : 'source'} className="flex h-screen flex-col overflow-hidden bg-bg">
+    <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="flex h-screen flex-col overflow-hidden bg-bg">
 
       {/* ── TOP HEADER ── */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
-        <div className="flex min-w-0 shrink items-center gap-1.5 text-xs">
+        <div className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-1.5 text-xs">
           <Link
             href="/workspace"
             onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
@@ -3264,7 +3425,7 @@ export default function ResumeEditPage() {
           </span>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-none sm:justify-end">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap scrollbar-none [&>*]:shrink-0 [&>*:first-child]:ml-auto">
           {canEditDocument && <CapabilityGate feature="b06"><button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
@@ -3277,7 +3438,7 @@ export default function ResumeEditPage() {
           <ModeToggle />
 
           <ExportDropdown
-            visualOnly={editorMode === 'wysiwyg'}
+            visualOnly={editorMode !== 'source'}
             resumeId={resumeId}
             latexContent={currentCheckpointRecoveryPreview?.source ?? latexContent}
             onPdfExport={handleDownload}
@@ -3567,7 +3728,7 @@ export default function ResumeEditPage() {
 
           {can('c05') && <CapabilityGate feature="c06"><button
             onClick={toggleAutoCompile}
-            title={editorMode === 'source' ? 'Auto-compile on change (2s debounce)' : 'Refresh preview automatically after editing'}
+            title="Refresh the preview automatically after editing"
             aria-label={editorMode === 'source' ? 'Auto-compile on change' : 'Automatic preview'}
             aria-pressed={autoCompile}
             className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
@@ -3698,7 +3859,12 @@ export default function ResumeEditPage() {
               <FileText size={11} className="text-fg-3" />
               {title || 'Untitled'}{editorMode === 'source' ? '.tex' : ''}
             </div>
+            {engineSupported && sessionUserId && <ResumeOriginalPdf key={`${sessionUserId}:${resumeId}`} resumeId={resumeId} ownerId={sessionUserId} />}
             <div className="ml-auto flex items-center gap-0.5 rounded-[var(--radius-md)] bg-surface-2 p-0.5">
+              {can('b10') && can('c01') && <button disabled={!engineSupported} onClick={() => handleToggleEditorMode('pdf')} aria-pressed={editorMode === 'pdf'}
+                className={`rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${editorMode === 'pdf' ? 'bg-surface text-fg' : 'text-fg-3'}`}>
+                Resume
+              </button>}
               <button
                 onClick={() => handleToggleEditorMode('source')}
                 aria-pressed={editorMode === 'source'}
@@ -3711,7 +3877,7 @@ export default function ResumeEditPage() {
                 <Code2 size={10} />
                 Source
               </button>
-              <CapabilityGate feature="b10"><button
+              {can('c01') && <CapabilityGate feature="b10"><button
                 onClick={() => handleToggleEditorMode('wysiwyg')}
                 aria-pressed={editorMode === 'wysiwyg'}
                 className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
@@ -3722,9 +3888,10 @@ export default function ResumeEditPage() {
               >
                 <LayoutTemplate size={10} />
                 Visual
-              </button></CapabilityGate>
+              </button></CapabilityGate>}
             </div>
           </div>
+          <EngineCapabilityNotice capability={engineCapability} />
           {/* Offline status banner (Feature 79F) */}
           <OfflineBanner pendingCount={offlinePendingCount} />
           {academicReport?.is_academic_cv && (
@@ -3828,8 +3995,11 @@ export default function ResumeEditPage() {
             aria-hidden={currentCheckpointRecoveryPreview ? true : undefined}
           >
             {/* WYSIWYG mode (Feature 78) */}
-            {can('b10') && editorMode === 'wysiwyg' ? (
-              <VisualResumeEditor value={latexContent} onChange={handleEditorContentChange} readOnly={!canEditDocument} />
+            {!currentCheckpointRecoveryPreview && can('b10') && editorMode === 'pdf' ? (
+              <ResumeFieldsEditor document={visibleEngineDocument} currentSourceHash={sourceHash} selectedNode={selectedEngineNode}
+                onSelect={setSelectedEngineNode} onSave={saveResumeField} onReorder={can('b10') ? reorderResumeStructure : undefined} readOnly={!canEditDocument || !engineSupported} error={engineCapability.status === 'error' ? 'Resume fields are unavailable. Check the message above, or choose Source.' : engineDocumentError} />
+            ) : !currentCheckpointRecoveryPreview && can('b10') && editorMode === 'wysiwyg' ? (
+              <VisualResumeEditor value={latexContent} onChange={handleVisualChange} readOnly={!canEditDocument} />
             ) : recoveryEditorIsMobile ? (
               /* Mobile: lightweight CodeMirror editor (Feature 79E) */
               <MobileEditor
@@ -3842,7 +4012,7 @@ export default function ResumeEditPage() {
               />
             ) : (
             <LaTeXEditor
-              ref={editorRef}
+              editorRef={editorRef}
               onEditorReady={setMacroEditor}
               value={latexContent}
               onChange={handleEditorContentChange}
@@ -3860,10 +4030,11 @@ export default function ResumeEditPage() {
                 setSourceSyncLine(line)
                 setSourceSyncRequestId((value) => value + 1)
               }}
-              onAutoCompile={handleAutoCompile}
+              onAutoCompile={can('c05') && can('c06') && autoCompile ? queuePreview : undefined}
               autoCompileEnabled={can('c05') && can('c06') && autoCompile && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady}
-              autoCompileBusy={isAnyRunning || isSubmitting || !canEditDocument || !isOnline || !autoCompileIdentityReady}
+              autoCompileBusy={false}
               autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}`}
+              autoCompileDebounceMs={0}
               atsScore={documentType === 'presentation' ? null : quickATSScore}
               atsScoreLoading={documentType === 'presentation' ? false : quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
@@ -3984,13 +4155,13 @@ export default function ResumeEditPage() {
         <div
           className="group relative hidden w-[5px] shrink-0 cursor-col-resize items-center justify-center md:flex"
         >
-          <CapabilityGate feature="c10"><SourcePdfDivider
+          {editorMode === 'source' && <CapabilityGate feature="c10"><SourcePdfDivider
             sourceLine={cursorLine}
             pdfSelection={pdfSelection}
             pdfReady={pdfSyncReady}
             onSourceToPdf={handleSourceToPdf}
             onPdfToSource={handlePdfToSource}
-          /></CapabilityGate>
+          /></CapabilityGate>}
           <div
             role="separator"
             aria-orientation="vertical"
@@ -4042,18 +4213,18 @@ export default function ResumeEditPage() {
                 { id: 'history', label: 'History', icon: History },
                 { id: 'design', label: 'Design', icon: Palette },
               ] as const
-            ).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || visualPanels.includes(id))).map(({ id, label, icon: Icon }) => (
+            ).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!) || (id === 'ai' && aiRecoveryAvailable)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'preview' || id === 'ai' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                ref={rightTab === id ? activeRightTabRef : undefined}
+                ref={visibleRightTab === id ? activeRightTabRef : undefined}
                 onClick={() => setRightTab(id)}
                 className={`relative flex shrink-0 snap-start items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium transition ${
-                  rightTab === id ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
+                  visibleRightTab === id ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <Icon size={11} />
                 {label}
-                {rightTab === id && (
+                {visibleRightTab === id && (
                   <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-accent" />
                 )}
                 {id === 'ai' && isAiRunning && (
@@ -4078,16 +4249,16 @@ export default function ResumeEditPage() {
                 aria-haspopup="menu"
                 aria-expanded={moreTabsOpen}
                 className={`relative flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium transition ${
-                  moreTabIds.includes(rightTab) ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
+                  moreTabIds.includes(visibleRightTab) ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <MoreHorizontal size={11} />
                 More
                 <ChevronDown size={10} />
-                {moreTabIds.includes(rightTab) && (
+                {moreTabIds.includes(visibleRightTab) && (
                   <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-accent" />
                 )}
-                {(lintIssues.length > 0 || trackedChanges.length > 0) && !moreTabIds.includes(rightTab) && (
+                {(lintIssues.length > 0 || trackedChanges.length > 0) && !moreTabIds.includes(visibleRightTab) && (
                   <span className="h-1.5 w-1.5 rounded-full bg-warn" />
                 )}
               </button>
@@ -4118,13 +4289,13 @@ export default function ResumeEditPage() {
                       { id: 'snippets', label: 'Snippets', icon: Package },
                       { id: 'macros', label: 'Macros', icon: Keyboard },
                       { id: 'tikz', label: 'TikZ', icon: Pencil },
-                    ] as const).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || visualPanels.includes(id))).map(({ id, label, icon: Icon }) => (
+                    ] as const).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
                         role="menuitem"
                         onClick={() => { setRightTab(id); setMoreTabsOpen(false) }}
                         className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[11px] font-medium transition hover:bg-surface-2 ${
-                          rightTab === id ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                          visibleRightTab === id ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
                         }`}
                       >
                         <Icon size={12} className="shrink-0 text-fg-3" />
@@ -4177,15 +4348,19 @@ export default function ResumeEditPage() {
 
           {/* Tab content */}
           <div className="min-h-0 flex-1 overflow-hidden">
-            {rightTab === 'preview' && documentType === 'presentation' && can('c14') && (
+            {visibleRightTab === 'preview' && documentType === 'presentation' && can('c14') && (
               <SlideViewer
                 pdfUrl={pdfUrl}
                 isLoading={isAnyRunning}
                 slideCount={compileStream.pageCount ?? aiStream.pageCount}
               />
             )}
-            {rightTab === 'preview' && (documentType !== 'presentation' || !can('c14')) && (
+            {visibleRightTab === 'preview' && (documentType !== 'presentation' || !can('c14')) && (
               <PDFPreview
+                artifactIdentity={displayedArtifact ? { jobId: displayedArtifact.job_id, artifactId: displayedArtifact.artifact_id, fingerprint: undefined } : null}
+            onFirstPaint={() => { const jobId = displayedArtifact?.job_id ?? activePdfJobId.current; if (jobId) recordPreviewFirstPaint(jobId) }}
+            revisionLabel={displayedArtifact?.branch === 'candidate' ? 'AI candidate preview · review and accept suggestions before exporting.'
+              : displayedArtifact && displayedArtifact.source_sha256 !== sourceHash ? 'Previous resume version · updating your current PDF.' : null}
                 pdfUrl={pdfUrl}
                 isLoading={isAnyRunning}
                 onDownload={handleDownload}
@@ -4194,22 +4369,35 @@ export default function ResumeEditPage() {
                 offlineError={offlinePdfError}
                 onRetryOffline={retryOfflinePdf}
                 jobId={renderedPdfJobId}
-                onSyncToSource={handleSyncToSource}
+                onSyncToSource={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? handleSyncToSource : undefined}
                 onPdfSelectionChange={setPdfSelection}
                 onSyncReadyChange={setPdfSyncReady}
-                syncFromLine={sourceSyncLine}
+                syncFromLine={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? sourceSyncLine : null}
                 syncFromRequestId={sourceSyncRequestId}
                 sourceFileName={compileSettings.main_file}
+                semanticGeometry={editorMode === 'pdf' ? verifiedGeometry : null}
+                onSemanticSelect={setSelectedEngineNode}
                 latexContent={latexContent}
                 onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
               />
             )}
 
-            {can('d01') && rightTab === 'ai' && (
-              <AIPanel
-                visualOnly={editorMode === 'wysiwyg'}
-                canStartRun={can('d18') && can('c05') && canEditDocument}
-                canEditDocument={canEditDocument}
+            {(can('d01') || aiRecoveryAvailable) && visibleRightTab === 'ai' && ((editorMode === 'pdf' || semanticRunId) ? (visibleEngineDocument?.source_mode === 'imported' ?
+              <ImportedOptimizationPanel jobDescription={jobDescription} setJobDescription={setJobDescription}
+                disabled={!collabCanEdit || Boolean(currentCheckpointRecoveryPreview) || !collabIsOwner || isAnyRunning} startDisabled={!canEditDocument} running={isAiRunning || isAiSubmitting}
+                candidate={stagedAiLatex != null} changes={aiStream.changesMade}
+                onRun={() => { setSemanticRunId(null); void runAiOptimize() }} onPreview={() => setRightTab('preview')}
+                onApply={() => { if (stagedAiLatex && applyOptimizationCandidate(stagedAiLatex, true)) queuePreview(stagedAiLatex, undefined, true) }} onDiscard={handleDiscardOptimization} /> : engineSupported ? <SemanticOptimizationPanel resumeId={resumeId} identity={`${sessionUserId}:${resumeId}`}
+                document={visibleEngineDocument} currentSourceHash={sourceHash} disabled={!collabCanEdit || Boolean(currentCheckpointRecoveryPreview) || !collabIsOwner || isAnyRunning} startDisabled={!canEditDocument}
+                jobDescription={jobDescription} setJobDescription={setJobDescription} runId={semanticRunId} provisionalPatches={aiJobId === semanticRunId ? aiStream.semanticPatches : []}
+                onStarted={(jobId) => { try { localStorage.setItem(`latexy_semantic_run:${sessionUserId}:${resumeId}`, jobId) } catch {} setSemanticRunId(jobId); setAiJobId(jobId); setLastStartedJobKind('ai'); setStagedAiLatex(null) }}
+                onApplied={(document, source, startedAt) => {
+                  setEngineDocument(document); setLatexContent(source); setSavedSnapshot((previous) => ({ ...previous, latex: source }))
+                  queuePreview(source, startedAt, true)
+                }} /> : <EngineCapabilityNotice capability={engineCapability} />) : <AIPanel
+                visualOnly={editorMode !== 'source'}
+                canStartRun={can('d01') && can('d18') && can('c05') && canEditDocument}
+                canEditDocument={canEditDocument && can('d03')}
                 aiStream={aiStream}
                 isRunning={isAiRunning}
                 isSubmitting={isAiSubmitting}
@@ -4234,7 +4422,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {editorMode === 'source' && rightTab === 'logs' && (
+            {editorMode === 'source' && visibleRightTab === 'logs' && (
               <div className="h-full overflow-auto p-3">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
@@ -4271,7 +4459,7 @@ export default function ResumeEditPage() {
               </div>
             )}
 
-            {editorMode === 'source' && rightTab === 'history' && (
+            {visibleRightTab === 'history' && (
               <VersionHistoryPanel
                 resumeId={resumeId}
                 onRestore={handleHistoryRestore}
@@ -4281,7 +4469,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {rightTab === 'comments' && (
+            {visibleRightTab === 'comments' && (
               <CommentsPanel
                 resumeId={resumeId}
                 canComment={collabRole !== 'viewer'}
@@ -4289,7 +4477,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {editorMode === 'source' && rightTab === 'review' && (
+            {visibleRightTab === 'review' && (
               <ReviewCommentsPanel
                 resumeId={resumeId}
                 pdfUrl={pdfUrl}
@@ -4299,11 +4487,11 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {can('f05') && editorMode === 'source' && rightTab === 'chat' && (
+            {can('f05') && editorMode === 'source' && visibleRightTab === 'chat' && (
               <CollaboratorChat chat={collaboratorChat} />
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'references' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'references' && (
               <ReferencesPanel
                 resumeId={resumeId}
                 onInsertBibTeX={(bibtex) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(bibtex) }}
@@ -4312,14 +4500,14 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'generate' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'generate' && (
               <CapabilityGate feature="d14"><LatexGeneratorPanel
                 documentContext={latexContent}
                 onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
               /></CapabilityGate>
             )}
 
-            {rightTab === 'interview' && (
+            {visibleRightTab === 'interview' && (
               <div className="min-h-0 flex-1 overflow-hidden">
                 <CapabilityGate feature="e02"><InterviewPrepPanel
                   resumeId={resumeId}
@@ -4328,7 +4516,7 @@ export default function ResumeEditPage() {
               </div>
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'design' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'design' && (
               <CapabilityGate feature="c19"><DesignPanel
                 currentLatex={latexContent}
                 onPreambleChange={handleDesignPreambleChange}
@@ -4336,7 +4524,7 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
 
-            {editorMode === 'source' && rightTab === 'proofread' && (
+            {editorMode === 'source' && visibleRightTab === 'proofread' && (
               <CapabilityGate feature="d12"><ProofreadPanel
                 resumeLatex={latexContent}
                 onApplyFix={canEditDocument ? (issue) => {
@@ -4384,7 +4572,7 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'packages' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'packages' && (
               <CapabilityGate feature="c17"><PackageManagerPanel
                 currentLatex={latexContent}
                 onAddPackage={(newLatex, packageName) => {
@@ -4395,7 +4583,7 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
 
-            {editorMode === 'source' && rightTab === 'linter' && (
+            {editorMode === 'source' && visibleRightTab === 'linter' && (
               <CapabilityGate feature="c15"><LinterPanel
                 issues={lintIssues}
                 enabled={linterEnabled}
@@ -4425,13 +4613,13 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'symbols' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'symbols' && (
               <CapabilityGate feature="c18"><SymbolPalette
                 onInsert={(cmd) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(cmd) }}
               /></CapabilityGate>
             )}
 
-            {can('f07') && editorMode === 'source' && rightTab === 'changes' && (
+            {can('f07') && editorMode === 'source' && visibleRightTab === 'changes' && (
               <ChangesPanel
                 changes={trackedChanges}
                 onAccept={(id) => editorRef.current?.acceptTrackedChange(id)}
@@ -4441,7 +4629,7 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {can('f07') && editorMode === 'source' && rightTab === 'suggestions' && (
+            {can('f07') && editorMode === 'source' && visibleRightTab === 'suggestions' && (
               <SuggestionsPanel
                 suggestions={allSuggestions}
                 canSuggest={canSuggest}
@@ -4457,11 +4645,11 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {editorMode === 'source' && rightTab === 'docs' && (
+            {editorMode === 'source' && visibleRightTab === 'docs' && (
               <CapabilityGate feature="c17"><LaTeXDocPanel command={docCommand} /></CapabilityGate>
             )}
 
-            {canEditDocument && rightTab === 'layout' && (
+            {canEditDocument && visibleRightTab === 'layout' && (
               <CapabilityGate feature="c19"><TemplateCustomizerPanel
                 currentLatex={latexContent}
                 onPreambleChange={handleDesignPreambleChange}
@@ -4469,7 +4657,7 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'snippets' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'snippets' && (
               <CapabilityGate feature="c20"><SnippetMarketplace
                 onInsert={(content) => {
                   if (!canRef.current('c01')) return
@@ -4484,13 +4672,13 @@ export default function ResumeEditPage() {
               /></CapabilityGate>
             )}
             {canEditDocument && editorMode === 'source' && <CapabilityGate feature="c21"><MacroLibraryPanel
-              className={rightTab === 'macros' ? undefined : 'hidden'}
+              className={visibleRightTab === 'macros' ? undefined : 'hidden'}
               editor={
                 editorMode === 'source' ? macroEditor : null
               }
             /></CapabilityGate>}
 
-            {canEditDocument && editorMode === 'source' && rightTab === 'tikz' && (
+            {canEditDocument && editorMode === 'source' && visibleRightTab === 'tikz' && (
               <CapabilityGate feature="c18"><TikZEditor
                 onInsert={(code) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(code) }}
                 onPreview={handleTikZPreview}
@@ -4527,7 +4715,7 @@ export default function ResumeEditPage() {
                 {isSaving ? 'Saving…' : 'Save current first'}
               </button>
             </div>
-            <CapabilityGate feature="b06"><MultiFormatUpload visualOnly={editorMode === 'wysiwyg'}
+            <CapabilityGate feature="b06"><MultiFormatUpload visualOnly={editorMode !== 'source'}
               onFileUpload={(content) => {
                 if (!canRef.current('c01')) return
                 if (content) {
@@ -4546,8 +4734,8 @@ export default function ResumeEditPage() {
       )}
 
       <DeepAnalysisPanel
+        visualOnly={editorMode !== 'source'}
         allowNewActions={can('d20') && canEditDocument}
-        visualOnly={editorMode === 'wysiwyg'}
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
@@ -4699,7 +4887,7 @@ export default function ResumeEditPage() {
         <VisualChangeReviewModal
           original={compareData.original}
           proposed={compareData.optimized}
-          onApply={stagedAiLatex && canEditDocument ? handleApplyOptimization : undefined}
+          onApply={stagedAiLatex && canEditDocument && can('d03') ? handleApplyOptimization : undefined}
           onClose={() => setCompareData(null)}
         />
       )}
@@ -4761,7 +4949,7 @@ export default function ResumeEditPage() {
         />
       )}
 
-      <CapabilityGate feature="d08"><DocumentAssistantPanel visualOnly={editorMode === 'wysiwyg'}
+      <CapabilityGate feature="d08"><DocumentAssistantPanel visualOnly={editorMode !== 'source'}
         isOpen={documentAssistantOpen}
         resumeId={resumeId}
         documentLatex={latexContent}

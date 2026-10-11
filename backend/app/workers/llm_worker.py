@@ -22,6 +22,7 @@ from ..services.llm_service import llm_service, parse_delimited_optimization
 from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event, publish_job_result
 from ..workers.job_lifecycle import admit_worker
 from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
+from .buffered_events import BufferedEventPublisher
 from .delimiter_stream import DelimitedStreamFilter
 
 logger = get_logger(__name__)
@@ -128,6 +129,54 @@ def optimize_resume_task(
     total_start = time.perf_counter()
 
     start_time = time.time()
+    if getattr(settings, "RESUME_COMPACT_PATCHES_ENABLED", False) is True:
+        from ..services.resume_engine.document import project_literal_bullets
+        from ..services.resume_engine.optimizer import optimize_snapshot
+        from ..services.resume_engine.patches import CompactOptimizationCancelled, CompactOptimizationError
+
+        snapshot = project_literal_bullets(latex_content)
+        if snapshot.nodes and len(snapshot.nodes) <= 24:
+            platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+            effective_model = model or (
+                settings.OPENAI_MODEL if platform_base or not settings.OPENAI_BASE_URL else "gpt-4o-mini"
+            )
+            publish_event(job_id, "job.progress", {
+                "percent": 10, "stage": "llm_optimization", "message": "Reviewing supported resume bullets",
+            })
+            try:
+                compact = optimize_snapshot(
+                    snapshot, client_factory=openai.OpenAI, api_key=api_key, model=effective_model,
+                    base_url=settings.OPENAI_BASE_URL if platform_base else None,
+                    count_tokens=llm_service.count_tokens, cancelled=lambda: is_cancelled(job_id),
+                    job_description=job_description, direction={"style": optimization_level},
+                )
+                if is_cancelled(job_id):
+                    raise CompactOptimizationCancelled("Optimization cancelled")
+            except CompactOptimizationError as exc:
+                result = {"success": False, "job_id": job_id, "error": str(exc),
+                          "cancelled": isinstance(exc, CompactOptimizationCancelled)}
+                return _terminal_failure(result, {
+                    "stage": "llm_optimization", "error_code": "compact_optimization_error",
+                    "error_message": str(exc), "retryable": False,
+                })
+            publish_event(job_id, "llm.complete", {
+                "full_content": compact.latex, "tokens_total": compact.tokens,
+                "optimization_engine": "literal_patch_v1", "source_revision": compact.source_revision,
+            })
+            result = {"success": True, "job_id": job_id, "optimized_latex": compact.latex,
+                      "changes_made": compact.changes, "optimization_time": compact.duration_seconds,
+                      "tokens_used": compact.tokens, "optimization_engine": "literal_patch_v1",
+                      "source_revision": compact.source_revision}
+            if not publish_job_result(job_id, result):
+                return {"success": False, "job_id": job_id, "error": "Job ownership expired"}
+            completion = publish_event(job_id, "job.completed", {
+                "percent": 100, "pdf_job_id": job_id, "ats_score": None, "ats_details": None,
+                "changes_made": compact.changes, "compilation_time": 0.0,
+                "optimization_time": compact.duration_seconds, "tokens_used": compact.tokens,
+            })
+            if quota_refund and completion:
+                clear_quota_refund_receipt(job_id)
+            return result
     try:
         publish_event(job_id, "job.progress", {
             "percent": 5,
@@ -186,7 +235,7 @@ def optimize_resume_task(
             token_count = 0
             finish_reason: Optional[str] = None
             visible_stream = DelimitedStreamFilter()
-            with traced("llm.provider_call", provider=provider, model=model_name, attempt=attempt):
+            with traced("llm.provider_call", provider=provider, model=model_name, attempt=attempt), BufferedEventPublisher(job_id, publisher=publish_event) as content_events:
                 create_kwargs: Dict[str, Any] = dict(
                     model=model_name,
                     messages=[
@@ -235,10 +284,11 @@ def optimize_resume_task(
                         # retry (rare) republishes from scratch below.
                         visible_delta = visible_stream.feed(delta)
                         if visible_delta:
-                            publish_event(job_id, "llm.token", {"token": visible_delta})
+                            content_events.publish("llm.token", {"token": visible_delta})
 
                         # Check cancellation every 20 tokens to avoid hammering Redis
                         if token_count % 20 == 0 and is_cancelled(job_id):
+                            content_events.flush()
                             return _terminal_failure(
                                 {"success": False, "job_id": job_id, "cancelled": True},
                                 {},

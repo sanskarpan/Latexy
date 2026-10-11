@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "source_ui_commit": "15540528",
+  "build": {
+    "success": true,
+    "raw_log_sha256": "c95aa08cfd684125250129cb89fcaed28fb8a53b420f171849bf39bb40bc6d45",
+    "runtime": "Linux standalone Next 15.5.27, Node 22.23.3, frozen pnpm lockfile",
+    "artifact_validator": "passed",
+    "pages": 40
+  },
+  "browser": {
+    "engine": "installed Windows Chrome via Playwright 1.62.1",
+    "skipped": 0,
+    "retries": 0,
+    "unexpected": 0,
+    "duration_ms": 75207.73800000001,
+    "raw_report_sha256": "813f6be40ef06a76ee842e239061652e594a42908c4d098f924aecf90d3e20ee",
+    "scope": "Nine mocked authentication/API/stream contracts using valid synthetic PDFs; not live paid-provider or cloud acceptance",
+    "flaky": 0,
+    "expected": 9
+  },
+  "asset_heads": [
+    {
+      "path": "/icon.svg",
+      "status": 200,
+      "content_type": "image/svg+xml"
+    },
+    {
+      "path": "/favicon.ico",
+      "status": 200,
+      "content_type": "image/x-icon"
+    },
+    {
+      "path": "/icons/apple-touch-icon.png",
+      "status": 200,
+      "content_type": "image/png"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "content_type": "application/javascript; charset=UTF-8"
+    }
+  ]
+}

@@ -40,13 +40,17 @@ function watchParent(onParentGone) {
   let stopped = false
   const timer = setInterval(() => {
     if (stopped) return
-    let parentAlive = true
-    try {
-      process.kill(expectedParentPid, 0)
-    } catch (error) {
-      parentAlive = error?.code === 'EPERM'
+    let parentGone = process.ppid !== expectedParentPid
+    // Windows retains the original ppid after its parent exits. Probe only
+    // that owned parent; permission errors do not mean it has disappeared.
+    if (!parentGone && process.platform === 'win32') {
+      try {
+        process.kill(expectedParentPid, 0)
+      } catch (error) {
+        parentGone = error?.code === 'ESRCH'
+      }
     }
-    if (process.ppid !== expectedParentPid || !parentAlive) {
+    if (parentGone) {
       stopped = true
       clearInterval(timer)
       onParentGone()

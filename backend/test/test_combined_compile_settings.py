@@ -17,6 +17,10 @@ SOURCE = r"\documentclass{article}\begin{document}Hello\end{document}"
 @pytest.fixture
 def compile_probe(monkeypatch, tmp_path):
     captured = {}
+    # Renderer selection is server-owned and does not follow the mocked
+    # docker_engine_available probe. Choose the test backend explicitly so a
+    # developer's installed Docker CLI cannot select an unavailable daemon.
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "native")
     monkeypatch.setattr(orchestrator.settings, "TEMP_DIR", str(tmp_path))
     monkeypatch.setattr(orchestrator, "assert_local_engine_allowed", lambda *_: None)
     monkeypatch.setattr(orchestrator, "is_cancelled", lambda *_: False)
@@ -33,7 +37,13 @@ def compile_probe(monkeypatch, tmp_path):
         job_dir = tmp_path / "combined-settings"
         captured["command"] = command
         captured["kwargs"] = kwargs
-        captured["files"] = {path.name: path.read_bytes() for path in job_dir.iterdir()}
+        children = list(job_dir.iterdir())
+        # Only the per-job engine cache may be a directory. All input assets
+        # remain regular non-symlink files confined to this job workspace.
+        assert all(not path.is_symlink() for path in children)
+        assert all(path.name == ".tex-cache" for path in children if path.is_dir())
+        captured["files"] = {path.name: path.read_bytes() for path in children if path.is_file()}
+        assert not (tmp_path / "escape.tex").exists()
         return SimpleNamespace(stdout=io.BytesIO(b"! controlled test failure\n"), returncode=1, wait=lambda: None)
 
     monkeypatch.setattr(orchestrator.subprocess, "Popen", spawn)
@@ -42,6 +52,7 @@ def compile_probe(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("docker", [False, True])
 def test_combined_settings_reach_engine_and_keep_artifact_names(compile_probe, monkeypatch, docker):
+    monkeypatch.setenv("LATEXY_RENDER_BACKEND", "docker" if docker else "native")
     monkeypatch.setattr(orchestrator, "docker_engine_available", lambda: docker)
     orchestrator._run_latex_stage(
         "combined-settings", SOURCE, main_file="letter.tex", extra_packages=["xcolor"],

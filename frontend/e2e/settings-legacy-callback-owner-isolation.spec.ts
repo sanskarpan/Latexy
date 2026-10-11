@@ -1,4 +1,5 @@
-import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { expect, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { test } from './helpers/owner-isolation-hydration-fixture'
 
 const SESSION = {
   a: {
@@ -533,7 +534,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('abandoned popup callback stays open and preserves newer navigation', async ({ page, context }) => {
+  test('abandoned popup callback stays open and preserves newer navigation', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true })
     await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -747,8 +749,9 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('same-owner GitHub legacy callback succeeds after the session token rotates', async ({ page, context }) => {
+  test('same-owner GitHub legacy callback succeeds after the session token rotates', async ({ page, context, ownerIsolationHydration }) => {
     const fixture = await installFixture(context, page, 'github', { legacyACallNumber: 4 })
+    ownerIsolationHydration.requireDocuments(2)
     await page.goto('/settings', { waitUntil: 'domcontentloaded' })
     await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-1')
     await expect(page.getByText('AliceInitialGitHub', { exact: true })).toBeVisible()
@@ -790,7 +793,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('verified legacy Zotero popup callback posts same-origin notice and closes only after body consumption', async ({ page, context }) => {
+  test('verified legacy Zotero popup callback posts same-origin notice and closes only after body consumption', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true })
     await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -810,7 +814,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('already-dispatched Zotero popup callback survives same-owner token rotation without replay', async ({ page, context }) => {
+  test('already-dispatched Zotero popup callback survives same-owner token rotation without replay', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true })
     await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -836,7 +841,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('held Zotero popup callback from A has no effect after B status is consumed', async ({ page, context }) => {
+  test('held Zotero popup callback from A has no effect after B status is consumed', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true, holdLegacyB: true })
     await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -874,7 +880,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('failed legacy Zotero verification leaves popup open and sends no success notice', async ({ page, context }) => {
+  test('failed legacy Zotero verification leaves popup open and sends no success notice', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'zotero', { holdLegacyA: true, legacyAOutcome: 'failure' })
     await page.goto('/__legacy-callback-test-opener?callback=zotero', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -894,7 +901,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('verified legacy Mendeley popup callback posts same-origin notice and closes after body consumption', async ({ page, context }) => {
+  test('verified legacy Mendeley popup callback posts same-origin notice and closes after body consumption', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'mendeley', { holdLegacyA: true })
     await page.goto('/__legacy-callback-test-opener?callback=mendeley', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')
@@ -912,7 +920,8 @@ test.describe('legacy Settings provider callback owner isolation', () => {
     await assertFixtureClean(fixture)
   })
 
-  test('failed legacy Mendeley verification keeps popup open without a success notice', async ({ page, context }) => {
+  test('failed legacy Mendeley verification keeps popup open without a success notice', async ({ page, context, ownerIsolationHydration }) => {
+    ownerIsolationHydration.expectSyntheticOpenerOnly()
     const fixture = await installFixture(context, page, 'mendeley', { holdLegacyA: true, legacyAOutcome: 'failure' })
     await page.goto('/__legacy-callback-test-opener?callback=mendeley', { waitUntil: 'domcontentloaded' })
     const popupPromise = context.waitForEvent('page')

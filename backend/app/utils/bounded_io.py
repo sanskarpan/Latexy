@@ -5,15 +5,22 @@ from __future__ import annotations
 import asyncio
 import base64
 import inspect
+import os
+import stat
 import zlib
 from collections import deque
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Mapping
 
 
 class BoundedReadError(ValueError):
     """Raised when a bounded read would exceed its configured limit."""
+
+
+class UntrustedFileError(BoundedReadError):
+    """A generated artifact is a link or a non-regular filesystem object."""
 
 
 # SyncTeX is generated output, but it is still consumed at worker/API trust
@@ -243,16 +250,75 @@ async def read_httpx_response_bounded(response: Any, max_bytes: int) -> bytes:
     return bytes(body)
 
 
+@contextmanager
+def _open_regular_file(path: Path, max_bytes: int):
+    """Open the final file without following links, then inspect that handle."""
+    descriptor = None
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        class HandleInfo(ctypes.Structure):
+            _fields_ = [("attributes", wintypes.DWORD), ("creation", wintypes.FILETIME),
+                        ("access", wintypes.FILETIME), ("write", wintypes.FILETIME),
+                        ("volume", wintypes.DWORD), ("size_high", wintypes.DWORD),
+                        ("size_low", wintypes.DWORD), ("links", wintypes.DWORD),
+                        ("index_high", wintypes.DWORD), ("index_low", wintypes.DWORD)]
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                      wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.POINTER(HandleInfo)]
+        kernel.GetFileInformationByHandle.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        # OPEN_REPARSE_POINT opens the link itself atomically. Check attributes
+        # on this same handle before converting it to a Python file descriptor.
+        handle = kernel.CreateFileW(str(path.absolute()), 0x80000000, 1 | 2 | 4,
+                                    None, 3, 0x00200000 | 0x02000000, None)
+        if handle == wintypes.HANDLE(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            information = HandleInfo()
+            if not kernel.GetFileInformationByHandle(handle, ctypes.byref(information)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if information.attributes & (0x400 | 0x10):
+                raise UntrustedFileError("generated artifact must be a regular file without links")
+            descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+        except BaseException:
+            kernel.CloseHandle(handle)
+            raise
+    else:
+        if not hasattr(os, "O_NOFOLLOW"):
+            raise UntrustedFileError("no-follow artifact reads unavailable")
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
+        except OSError as exc:
+            import errno
+
+            if exc.errno == errno.ELOOP:
+                raise UntrustedFileError("generated artifact must be a regular file without links") from exc
+            raise
+    try:
+        information = os.fstat(descriptor)
+        if not stat.S_ISREG(information.st_mode):
+            raise UntrustedFileError("generated artifact must be a regular file")
+        if information.st_size > max_bytes:
+            raise BoundedReadError("file exceeds byte limit")
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            yield stream
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def read_file_bounded(path: Path, max_bytes: int) -> bytes:
     """Read a regular file only when its size is at most ``max_bytes``."""
     if max_bytes < 0:
         raise ValueError("max_bytes must be non-negative")
-    try:
-        if path.stat().st_size > max_bytes:
-            raise BoundedReadError("file exceeds byte limit")
-    except OSError:
-        raise
-    with path.open("rb") as handle:
+    with _open_regular_file(path, max_bytes) as handle:
         data = handle.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise BoundedReadError("file exceeds byte limit")
@@ -268,16 +334,10 @@ def read_gzip_file_bounded(
     """Incrementally decode a gzip file with compressed and output ceilings."""
     if max_compressed_bytes < 0 or max_decompressed_bytes < 0:
         raise ValueError("gzip limits must be non-negative")
-    try:
-        if path.stat().st_size > max_compressed_bytes:
-            raise BoundedReadError("gzip input exceeds byte limit")
-    except OSError:
-        raise
-
     decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
     output = bytearray()
     compressed = 0
-    with path.open("rb") as handle:
+    with _open_regular_file(path, max_compressed_bytes) as handle:
         while True:
             chunk = handle.read(min(64 * 1024, max_compressed_bytes - compressed + 1))
             if not chunk:

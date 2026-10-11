@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from app.core import tracing
@@ -11,11 +13,29 @@ def _memory_provider():
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 
     exporter = InMemorySpanExporter()
-    provider = TracerProvider()
+    # Privacy assertions need a recorded span regardless of the host
+    # sampling rate. This provider exports only to the in-memory test sink.
+    provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     return provider, exporter
+
+
+@pytest.mark.skipif(not tracing.HAS_OTEL, reason="OpenTelemetry is optional")
+@pytest.mark.parametrize("runtime_sampler", ["always_off", "parentbased_traceidratio"])
+def test_private_provider_records_without_changing_runtime_sampling(monkeypatch, runtime_sampler):
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", runtime_sampler)
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER_ARG", "0.01")
+    runtime_provider = tracing.trace.get_tracer_provider()
+    provider, exporter = _memory_provider()
+    with provider.get_tracer("privacy.fixture").start_as_current_span("privacy.fixture"):
+        pass
+    assert len(exporter.get_finished_spans()) == 1
+    assert os.environ["OTEL_TRACES_SAMPLER"] == runtime_sampler
+    assert os.environ["OTEL_TRACES_SAMPLER_ARG"] == "0.01"
+    assert tracing.trace.get_tracer_provider() is runtime_provider
 
 
 @pytest.mark.skipif(not tracing.HAS_OTEL, reason="OpenTelemetry is optional")

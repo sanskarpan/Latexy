@@ -6,6 +6,7 @@ database doubles. No provider, queue, payment, or production mutation is used.
 
 from __future__ import annotations
 
+from copy import copy
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -32,12 +33,16 @@ USER_ID = "11111111-1111-4111-8111-111111111111"
 
 
 def _routes():
-    def walk(current):
+    def walk(current, prefix=""):
         for route in current.routes:
             if isinstance(route, APIRoute):
-                yield route
+                effective_route = copy(route)
+                effective_route.path = prefix + route.path
+                yield effective_route
             elif hasattr(route, "original_router"):
-                yield from walk(route.original_router)
+                # FastAPI's lazy nested inclusion keeps child paths relative
+                # until request matching. Preserve those prefixes in the audit.
+                yield from walk(route.original_router, prefix + route.include_context.prefix)
 
     return {
         (route.endpoint.__module__.rsplit(".", 1)[-1], route.endpoint.__name__): route

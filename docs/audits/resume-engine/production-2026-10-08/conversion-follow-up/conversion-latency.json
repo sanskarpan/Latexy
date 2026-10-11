@@ -1,0 +1,65 @@
+{
+  "measured_at_utc": "2026-10-08T18:12:53.155Z",
+  "scope": "Follow-up polling of the previously authorized synthetic conversion; no new model request or quota charge",
+  "requests": [
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1922
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1270
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1308
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 1006
+    },
+    {
+      "path": "/jobs/72ddf354-ce48-4830-8211-ad66e5fb095c/state",
+      "status": 200,
+      "elapsed_ms": 957
+    }
+  ],
+  "states": [
+    {
+      "elapsed_ms": 1923,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 5213,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 8537,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 11556,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    },
+    {
+      "elapsed_ms": 14520,
+      "status": "processing",
+      "stage": "document_conversion",
+      "percent": 0
+    }
+  ],
+  "job_id": "72ddf354-ce48-4830-8211-ad66e5fb095c",
+  "error": "Bounded polling ended without a terminal result"
+}

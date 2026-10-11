@@ -124,6 +124,7 @@ async def _get_latest_compiled_pdf(
             Compilation.resume_id == resume_id,
             Compilation.user_id == user_id,
             Compilation.status == "completed",
+            Compilation.artifact_accepted.is_(True),
         )
         .order_by(Compilation.created_at.desc())
         .limit(1)

@@ -69,9 +69,9 @@ describe('editor save reliability', () => {
   })
 
   it('rebuilds the visual document when visual mode was persisted across reload', () => {
-    expect(EDITOR).toContain("localStorage.getItem(`latexy_editor_mode_${resumeId}`) === 'source' ? 'source' : 'wysiwyg'")
+    expect(EDITOR).toContain("setEditorMode(saved === 'source' || saved === 'wysiwyg' ? saved : 'pdf')")
     expect(EDITOR).toContain('localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)')
-    expect(EDITOR).toContain('<VisualResumeEditor value={latexContent} onChange={handleEditorContentChange} readOnly={!canEditDocument} />')
+    expect(EDITOR).toContain('<VisualResumeEditor value={latexContent} onChange={handleVisualChange} readOnly={!canEditDocument} />')
     expect(VISUAL_EDITOR).toContain('useMemo(() => projectVisualResume(value), [value])')
   })
 
@@ -100,10 +100,10 @@ describe('editor save reliability', () => {
   it('hides new AI compile actions when compilation is off and preserves read-only recovery', () => {
     expect(EDITOR).toContain("if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || !canRef.current('c01')) return")
     expect(EDITOR).toContain('<CapabilityGate feature="d01"><CapabilityGate feature="d18"><CapabilityGate feature="c05"><CapabilityGate feature="c01">')
-    expect(EDITOR).toContain('canStartRun={can(\'d18\') && can(\'c05\') && canEditDocument}')
+    expect(EDITOR).toContain('canStartRun={can(\'d01\') && can(\'d18\') && can(\'c05\') && canEditDocument}')
     expect(EDITOR).toContain("const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview")
     expect(EDITOR).toContain("if (!canRef.current('c12') || !canRef.current('c05') || !canRef.current('c01')) return")
-    expect(EDITOR).toContain("if (!canRef.current('c01')) return false")
+    expect(EDITOR).toContain("if (!canRef.current('d03') || !canRef.current('c01')) return false")
     expect(EDITOR).toContain('onApplyFix={canEditDocument ? handleApplyExplainerFix : undefined}')
     expect(EDITOR).toContain("if (!canRef.current('c01')) return\n                if (content)")
     expect(EDITOR).toContain("if (!canRef.current('c01') || !['d06', 'd07', 'd10'].some(feature => canRef.current(feature))) return")
@@ -120,6 +120,17 @@ describe('editor save reliability', () => {
     expect(editorComponent).toContain('applySuggestionResult(expectedContent: string, resultContent: string) {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return false')
     expect(editorComponent).toContain('insertAtCursor(text: string) {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return false')
     expect(editorComponent).toContain('acceptTrackedChange: (id: string) => {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return')
+  })
+
+  it('rechecks rich editing and content grants before engine field or structure mutations', () => {
+    for (const [name, nextName] of [['saveResumeField', 'reorderResumeStructure'], ['reorderResumeStructure', 'autoCompileFn']]) {
+      const start = EDITOR.indexOf(`const ${name} = useCallback`)
+      expect(start).toBeGreaterThanOrEqual(0)
+      const end = EDITOR.indexOf(`const ${nextName}`, start + 1)
+      const handler = EDITOR.slice(start, end > start ? end : start + 2500)
+      expect(handler).toContain("if (!canRef.current('b10') || !canRef.current('c01') || !engineSupported")
+      expect(handler).toContain('sourceAtRenderRef.current === sourceAtStart')
+    }
   })
 
   it('hides new Quick Tailor entrypoints unless every required capability is allowed', () => {

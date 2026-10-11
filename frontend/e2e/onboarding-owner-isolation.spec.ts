@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Request as PlaywrightRequest, type Route } from '@playwright/test'
+import { expect, type Page, type Request as PlaywrightRequest, type Route } from '@playwright/test'
+import { test } from './helpers/owner-isolation-hydration-fixture'
 
 type Owner = 'A' | 'B'
 const ownerId = (owner: Owner) => `onboarding-owner-${owner.toLowerCase()}`
@@ -379,7 +380,8 @@ test.describe('onboarding owner-isolation acceptance', () => {
     await assertClean(state, 'B true')
   })
 
-  test('A completion does not suppress B false', async ({ page }) => {
+  test('A completion does not suppress B false', async ({ page, ownerIsolationHydration }) => {
+    ownerIsolationHydration.requireDocuments(2)
     const state = await installFixture(page, { initialOwner: 'A', onboarded: { A: false, B: false } })
     await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
     await waitForSessionOwner(page, 'A')

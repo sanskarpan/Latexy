@@ -406,7 +406,27 @@ def bounded_result_payload(job_id: str, result: Optional[dict[str, Any]]) -> dic
     }
     if omitted_outputs:
         payload["omitted_output_fields"] = omitted_outputs
+    artifact = result.get("artifact")
+    if isinstance(artifact, dict):
+        from ..models.event_schemas import ArtifactReadyEvent
+
+        try:
+            # Closed public DTO: never persist object keys or owner tokens.
+            public = ArtifactReadyEvent.model_validate({**artifact, "job_id": job_id})
+            payload["artifact"] = public.model_dump(exclude={"event_id", "timestamp", "sequence", "type"})
+        except (ValueError, TypeError):
+            pass
     integer_fields = ("tokens_used", "page_count", "slide_count", "pdf_size")
+    if isinstance(result.get("pdf_quality"), dict) and isinstance(payload.get("artifact"), dict):
+        from ..services.render_engine.quality import PDFQualityReport
+
+        try:
+            quality = PDFQualityReport.model_validate(result["pdf_quality"])
+            if (quality.pdf_sha256 == payload["artifact"].get("pdf_sha256")
+                    and quality.source_sha256 == payload["artifact"].get("source_sha256")):
+                payload["pdf_quality"] = quality.model_dump()
+        except (ValueError, TypeError):
+            pass
     float_fields = ("compilation_time", "optimization_time", "ats_score")
     boolean_fields = ("is_beamer", "cancelled")
     for key in (
@@ -785,6 +805,7 @@ async def commit_success(
     cover_letter_user_id: Optional[str] = None,
     cover_letter_content: Optional[str] = None,
     require_pdf: bool = False,
+    render_manifest: Optional[dict[str, Any]] = None,
 ) -> FinalizationOutcome:
     """Commit generated resume/PDF/Compilation output in one DB transaction."""
     compilation = None
@@ -879,10 +900,30 @@ async def commit_success(
     if compilation is not None and (not pdf_path or not pdf_sha256 or not pdf_size):
         _record_rejected_terminal("compilation_pdf_missing", fenced=True)
         return FinalizationOutcome.FENCED
-    if pdf_path is not None and pdf_path != compilation_pdf_key(job_id, owner_token):
+    manifest_bound = False
+    if render_manifest is not None:
+        from ..services.render_engine.artifacts import parse_manifest, sha256
+
+        try:
+            manifest = parse_manifest(render_manifest)
+            manifest_bound = (manifest.job_id == job_id
+                and manifest.owner_token_sha256 == sha256(owner_token)
+                and manifest.owner_epoch == owner_epoch
+                and manifest.pdf.key == pdf_path
+                and manifest.pdf.sha256 == pdf_sha256
+                and manifest.pdf.size == pdf_size
+                and bounded_payload.get("artifact") == manifest.public()
+                and manifest.owner_scope_kind == ("user" if row.user_id else "device")
+                and (row.user_id is None or manifest.owner_scope_sha256 == sha256(f"user:{row.user_id}")))
+        except (ValueError, TypeError):
+            manifest_bound = False
+        if not manifest_bound:
+            _record_rejected_terminal("render_manifest_binding_mismatch", fenced=True)
+            return FinalizationOutcome.FENCED
+    if pdf_path is not None and not manifest_bound and pdf_path != compilation_pdf_key(job_id, owner_token):
         _record_rejected_terminal("pdf_owner_mismatch", fenced=True)
         return FinalizationOutcome.FENCED
-    if pdf_path is not None and not _PDF_PATH_RE.fullmatch(pdf_path):
+    if pdf_path is not None and not manifest_bound and not _PDF_PATH_RE.fullmatch(pdf_path):
         _record_rejected_terminal("invalid_pdf_path", fenced=True)
         return FinalizationOutcome.FENCED
     if pdf_sha256 is not None and not _PDF_SHA256_RE.fullmatch(pdf_sha256):
@@ -961,6 +1002,9 @@ async def commit_success(
         compilation.status = "completed"
         compilation.compilation_time = compilation_time
         compilation.pdf_path = pdf_path
+        if manifest_bound:
+            compilation.artifact_branch = manifest.branch
+            compilation.artifact_accepted = manifest.branch == "draft"
         compilation.pdf_size = pdf_size
         row.compilation_id = compilation.id
 

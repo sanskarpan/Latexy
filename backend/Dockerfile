@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     texlive-lang-greek \
     fonts-noto-cjk \
     fonts-noto-core \
+    fonts-texgyre \
     texlive-lang-english \
     fonts-lohit-deva \
     curl \
@@ -29,6 +30,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the generated, hash-verified lock first for better caching.
+COPY scripts/warm_tex_cache.sh /usr/local/bin/latexy-warm-tex-cache
+RUN sh /usr/local/bin/latexy-warm-tex-cache
+COPY scripts/build_trusted_render_formats.py /opt/latexy-format-build/scripts/build_trusted_render_formats.py
+COPY app/services/render_engine/managed_preamble.py /opt/latexy-format-build/app/services/render_engine/managed_preamble.py
+RUN python /opt/latexy-format-build/scripts/build_trusted_render_formats.py
+COPY scripts/write_renderer_fingerprint.py /usr/local/bin/latexy-write-renderer-fingerprint.py
+RUN python /usr/local/bin/latexy-write-renderer-fingerprint.py
+ENV TEXMFCACHE=/var/lib/texmf
+
 COPY requirements-dev.lock .
 
 # Install the reproducible development/test environment used by this image.

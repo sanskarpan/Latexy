@@ -11,11 +11,13 @@ import sys
 from time import perf_counter
 
 from celery import Celery
+from celery.exceptions import WorkerTerminate
 from celery.schedules import crontab
 from celery.signals import (
     task_failure,
     task_postrun,
     task_prerun,
+    worker_init,
     worker_process_init,
     worker_process_shutdown,
 )
@@ -507,6 +509,20 @@ def _install_darwin_fork_safe_resolver() -> None:
     socket.getaddrinfo = _ipv4_only_getaddrinfo
     socket._latexy_stock_getaddrinfo = _stock_getaddrinfo
     socket._latexy_ipv4_only = True
+
+
+@worker_init.connect
+def prepare_worker_parent(sender=None, **kwargs):
+    """Prepare imports before the pool starts, outside child/task deadlines."""
+    from .worker_runtime import prepare_worker_runtime
+
+    try:
+        prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
+    except Exception as exc:
+        logger.error("Worker runtime preparation failed", extra={"error_type": type(exc).__name__})
+        # Signal.send catches Exception. SystemExit must stop readiness instead
+        # of allowing a worker with an incomplete native import to consume jobs.
+        raise WorkerTerminate(1) from exc
 
 
 @worker_process_init.connect

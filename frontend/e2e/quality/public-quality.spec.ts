@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './quality-test'
+import { mockEngineAncillaryApi, mockPublicEngineDocument } from './engine-fixtures'
 import { fulfillQualityJson, QUALITY_FEATURES, QUALITY_PLANS, qualityOrigins } from './mock-api'
 
 const PUBLIC_ROUTES = [
@@ -16,6 +17,9 @@ const PUBLIC_ROUTES = [
     '/try',
 ]
 
+// Resume-mode layout is an explicit opt-in; background generation stays closed.
+const PUBLIC_ENGINE_FEATURES = { ...QUALITY_FEATURES, b10: true }
+
 const diagnosticsByPage = new Map<Page, string[]>()
 
 async function installPublicPageMocks(page: Page) {
@@ -28,6 +32,8 @@ async function installPublicPageMocks(page: Page) {
         unmocked.push(`${route.request().method()} ${route.request().url()}`)
         return fulfillQualityJson(route, { error: 'Unmocked quality API request' }, 501)
     })
+    await mockEngineAncillaryApi(page, undefined, { b10: true })
+    await mockPublicEngineDocument(page)
     await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/get-session', route =>
         fulfillQualityJson(route, null)
     )
@@ -38,7 +44,7 @@ async function installPublicPageMocks(page: Page) {
         fulfillQualityJson(route, {})
     )
     await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
-        fulfillQualityJson(route, { features: QUALITY_FEATURES })
+        fulfillQualityJson(route, { features: PUBLIC_ENGINE_FEATURES })
     )
     await page.route(url => url.origin === backendOrigin && url.pathname === '/subscription/plans', route =>
         fulfillQualityJson(route, QUALITY_PLANS)
@@ -337,7 +343,7 @@ test('disabled templates expose a named recovery page without mounting the catal
     const { backendOrigin } = qualityOrigins()
     let catalogReads = 0
     await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
-        fulfillQualityJson(route, { features: { ...QUALITY_FEATURES, b04: false } })
+        fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, b04: false } })
     )
     await page.route(url => url.origin === backendOrigin && (url.pathname === '/templates' || url.pathname.startsWith('/templates/')), route => {
         catalogReads += 1
@@ -353,10 +359,10 @@ test('disabled templates expose a named recovery page without mounting the catal
 test('denied studio import preserves the baseline editor and manual compile', async ({ page }) => {
     const { backendOrigin } = qualityOrigins()
     await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
-        fulfillQualityJson(route, { features: { ...QUALITY_FEATURES, a09: true, b01: true, c01: true, c05: true, b06: false } })
+        fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, a09: true, b01: true, c01: true, c05: true, b06: false } })
     )
     await page.goto('/try', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('button', { name: 'Update PDF preview' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
     const tools = page.getByRole('button', { name: 'Tools', exact: true })
     if (await tools.isVisible()) await tools.click()
     await expect(page.getByRole('button', { name: /Import file/ })).toHaveCount(0)

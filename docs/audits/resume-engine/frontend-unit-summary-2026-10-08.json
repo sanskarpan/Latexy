@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source_commit": "15540528",
+  "runtime": "Linux Node 22.23.3, frozen pnpm lockfile",
+  "command": "pnpm exec vitest run --maxWorkers=1 --reporter=default --reporter=json --outputFile.json=/qa/provider-full-unit-root.json",
+  "passed_tests": 1170,
+  "total_tests": 1170,
+  "failed_tests": 0,
+  "pending_tests": 0,
+  "files": 185,
+  "success": true,
+  "raw_report_sha256": "76930573b39c931f0f45020df803310095d39d8d3948d731ed59c8a8505003a5",
+  "duration_seconds": 331.05,
+  "limitations": "Unit contracts; not real paid providers, cloud rendering or end-to-end latency acceptance"
+}

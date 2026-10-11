@@ -1,0 +1,48 @@
+Skip to content
+Please verify your email address to secure your account.
+Resend verification
+Workspace
+Saved
+Import
+Export
+Tools
+Cover Letter
+Career Path
+Variant
+Save
+Save Checkpoint
+Ask AI
+Share
+LuaLaTeX
+Auto
+Compile
+AI Optimize
+Latency QA 2026-10-08.tex
+Source
+Visual
+LaTeX Presets
+Loading...
+LATEX EDITOR
+Editor keybindings
+Standard
+Vim
+Emacs
+AUTO
+~1 PAGE
+ABC
+ATS —
+927 CHARS
+⌘S SAVE · ⌘↵ COMPILE · ⌘⇧H PRESETS
+Preview
+AI
+Logs
+History
+Design
+More
+
+Your PDF will appear here
+
+Compile to render a live preview
+
+LaTeX editor ready
+927 chars

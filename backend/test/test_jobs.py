@@ -41,6 +41,36 @@ Python, TypeScript, Docker
 
 @pytest.mark.asyncio
 class TestJobSubmission:
+    @pytest.mark.parametrize("job_type", ["latex_compilation", "combined", "auto_fit"])
+    async def test_missing_renderer_rejects_before_trial_quota_and_dispatch(
+        self, client: AsyncClient, pro_auth_headers: dict, job_type: str,
+    ):
+        from app.services.render_engine.modal_sandbox import ModalEngineUnavailable
+
+        # Auto-fit's owned-resume validation precedes renderer selection; the
+        # capability boundary for that route is covered with a valid resume.
+        if job_type == "auto_fit":
+            response = await client.post("/resumes/", json={
+                "title": "test_renderer_capability", "latex_content": VALID_LATEX,
+            }, headers=pro_auth_headers)
+            assert response.status_code in {200, 201}
+            metadata = {"resume_id": response.json()["id"]}
+        else:
+            metadata = {}
+        with (
+            patch("app.services.render_engine.backend.resolve_backend", side_effect=ModalEngineUnavailable("missing certificate")),
+            patch("app.api.job_routes._enforce_anonymous_trial", new_callable=AsyncMock) as trial,
+            patch("app.api.job_routes._consume_job_quota", new_callable=AsyncMock) as quota,
+            patch("app.api.job_routes.submit_async", new_callable=AsyncMock) as dispatch,
+        ):
+            response = await client.post("/jobs/submit", json={
+                "job_type": job_type, "latex_content": VALID_LATEX, "metadata": metadata,
+            }, headers=pro_auth_headers)
+        assert response.status_code == 503
+        trial.assert_not_called()
+        quota.assert_not_called()
+        dispatch.assert_not_called()
+
     async def test_quota_rejection_removes_precommitted_placeholder(
         self,
         client: AsyncClient,

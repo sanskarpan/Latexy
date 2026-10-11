@@ -1037,6 +1037,9 @@ def _purge_expired_finalization_rows(limit: int = 500) -> int:
         try:
             async with factory() as session:
                 deleted = await purge_expired_finalizations(session, limit=limit)
+                from ..services.resume_engine.pdf_imports import purge_expired_imports
+
+                await purge_expired_imports(session, limit=min(limit, 200))
                 await session.commit()
                 return deleted
         finally:
@@ -1407,6 +1410,44 @@ def _count_active_job_states(r, batch_size: int = 500) -> int:
     return active
 
 
+def _prune_render_artifacts(redis_client) -> Dict[str, int]:
+    """Resume a bounded reference-aware sweep, serialized across cleanup workers."""
+    from uuid import uuid4
+
+    from ..services.render_engine.retention import sweep_artifacts
+
+    cursor_key = "latexy:render-artifact-gc:cursor"
+    lock_key = "latexy:render-artifact-gc:lock"
+    token = str(uuid4())
+    stats = {"scanned": 0, "deleted": 0, "protected": 0}
+    acquired = False
+    try:
+        acquired = bool(redis_client.set(lock_key, token, nx=True, ex=120))
+        if not acquired:
+            return stats
+        cursor = redis_client.get(cursor_key)
+        if isinstance(cursor, bytes):
+            cursor = cursor.decode("utf-8")
+        if cursor is not None and not isinstance(cursor, str):
+            return stats
+        result = asyncio.run(sweep_artifacts(cursor=cursor, limit=512))
+        next_cursor = result.get("next_cursor")
+        if next_cursor:
+            redis_client.set(cursor_key, next_cursor, ex=7 * 86400)
+        else:
+            redis_client.delete(cursor_key)
+        return {key: int(result[key]) for key in stats}
+    except Exception as exc:
+        logger.warning("Render artifact sweep deferred (%s)", type(exc).__name__)
+        return stats
+    finally:
+        if acquired:
+            try:
+                redis_client.eval("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0", 1, lock_key, token)
+            except Exception as exc:
+                logger.warning("Render artifact sweep lock release deferred (%s)", type(exc).__name__)
+
+
 @celery_app.task(bind=True, name="app.workers.cleanup_worker.cleanup_expired_jobs_task")
 def cleanup_expired_jobs_task(
     self,
@@ -1454,6 +1495,7 @@ def cleanup_expired_jobs_task(
 
         r = get_worker_redis()
         quota_cache = get_sync_redis_cache_client()
+        render_prune = _prune_render_artifacts(r)
 
         # Receipt keys are the recovery source for LLM and other jobs that do
         # not have a Compilation row.  Only pre-dispatch/terminal failures are
@@ -1482,6 +1524,8 @@ def cleanup_expired_jobs_task(
                 "message": "No active jobs found for cleanup",
                 "minio_objects_scanned": minio_prune["scanned"],
                 "minio_objects_pruned": minio_prune["deleted"],
+                "render_objects_scanned": render_prune["scanned"],
+                "render_objects_pruned": render_prune["deleted"],
                 "jobs_cleaned": 0,
                 "total_jobs_scanned": 0,
                 "jobs_timed_out": 0,
@@ -1770,6 +1814,8 @@ def cleanup_expired_jobs_task(
             "message": f"Job cleanup completed: {jobs_cleaned} jobs cleaned, {jobs_timed_out} timed out",
             "minio_objects_scanned": minio_prune["scanned"],
             "minio_objects_pruned": minio_prune["deleted"],
+            "render_objects_scanned": render_prune["scanned"],
+            "render_objects_pruned": render_prune["deleted"],
             "jobs_cleaned": jobs_cleaned,
             "jobs_timed_out": jobs_timed_out,
             "orphaned_compilations": orphaned_compilations,

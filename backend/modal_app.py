@@ -11,9 +11,13 @@ DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 """
 
 import base64
+import hashlib
+import os
 from pathlib import Path
 
 import modal
+
+from app.core.engine_capacity import capacity_options
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -96,6 +100,7 @@ _APT_LATEX = [
     "texlive-lang-greek",
     "fonts-noto-cjk",
     "fonts-noto-core",
+    "fonts-texgyre",  # EuropeCV's fontspec TeX Gyre Heros must be visible to fontconfig
     "texlive-lang-english",  # hyphenation patterns; matches backend/Dockerfile
     # Small, freely licensed Devanagari font. LuaHBTeX + explicit HarfBuzz
     # shaping is required for correct Hindi/Marathi glyph order and extraction.
@@ -196,6 +201,13 @@ def _encode_shell_script(script: str) -> str:
 
 
 _WARM_TEX_CACHE_COMMAND = _encode_shell_script(_WARM_TEX_CACHE)
+_fingerprint_source = (_BACKEND_DIR / "scripts" / "write_renderer_fingerprint.py").read_text(encoding="utf-8")
+_fingerprint_encoded = base64.b64encode(_fingerprint_source.encode("utf-8")).decode("ascii")
+_cache_seed_digest = hashlib.sha256(_WARM_TEX_CACHE.encode("utf-8")).hexdigest()
+_WRITE_RENDERER_FINGERPRINT_COMMAND = (
+    f"LATEXY_CACHE_SEED_SHA256={_cache_seed_digest} "
+    f"python3 -c \"import base64; exec(base64.b64decode('{_fingerprint_encoded}'))\""
+)
 
 # ---------------------------------------------------------------------------
 # Images
@@ -216,19 +228,33 @@ texlive_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE, *_APT_LATEX, "unzip")
     .run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE_COMMAND)
+    .add_local_file(str(_BACKEND_DIR / "scripts/build_trusted_render_formats.py"),
+                    remote_path="/opt/latexy-format-build/scripts/build_trusted_render_formats.py", copy=True)
+    .add_local_file(str(_BACKEND_DIR / "app/services/render_engine/managed_preamble.py"),
+                    remote_path="/opt/latexy-format-build/app/services/render_engine/managed_preamble.py", copy=True)
+    .run_commands("python3 /opt/latexy-format-build/scripts/build_trusted_render_formats.py", _WRITE_RENDERER_FINGERPRINT_COMMAND)
 )
+
+# A certified VM renderer is an immutable *bare* image pinned by the operator.
+# The new image graph above is not substituted at request time: certification
+# of a previous image never attests newly built fonts/formats/assets.
+_renderer_capability_env = {
+    key: os.environ[key]
+    for key in ("MODAL_ENGINE_VM_CERTIFIED", "MODAL_ENGINE_VM_IMAGE_ID", "MODAL_ENGINE_VM_ASSETS_FINGERPRINT")
+    if key in os.environ
+}
 
 api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
 latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)
@@ -268,9 +294,14 @@ _secrets = [
 # ---------------------------------------------------------------------------
 def _init_worker_redis() -> None:
     from app.core.config import settings
+    from app.core.worker_runtime import prepare_worker_logging, prepare_worker_runtime
     from app.workers.event_publisher import initialize_worker_redis
 
-    initialize_worker_redis(settings.REDIS_URL)
+    prepare_worker_logging()
+    # Run before .apply installs the task lifecycle/budget. Imports are memoized;
+    # scoped clients and durable owner/epoch checks remain per invocation.
+    prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
+    initialize_worker_redis(settings.REDIS_URL, password=settings.REDIS_PASSWORD or None)
 
 
 # ---------------------------------------------------------------------------
@@ -286,18 +317,19 @@ def _init_worker_redis() -> None:
     # which dominated compile latency (warm compile work is only ~3.5s). min_containers=1
     # eliminates the cold start for the common single-compile path. scaledown_window keeps
     # extra burst containers around briefly so bursts stay warm too.
-    min_containers=1,
-    scaledown_window=120,
+    **capacity_options("LATEX"),
 )
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
-    _init_worker_redis()
-    from app.workers.latex_worker import compile_latex_task
-
     # throw=False: prevents Celery's self.retry() Retry exception from propagating
     # to Modal (which would cause a double-execution via Modal's retry mechanism).
     # The Celery task publishes its own error events; Modal must not independently retry.
-    compile_latex_task.apply(kwargs=payload, throw=False)
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.latex_worker import compile_latex_task
+        compile_latex_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(
@@ -311,29 +343,32 @@ def run_latex_task(payload: dict) -> None:
     # made the flagship "Optimize + Compile" flow take ~230s. Warm it so combined
     # jobs are ~40-50s (LLM-bound) instead. scaledown_window keeps burst
     # containers around for back-to-back runs.
-    min_containers=1,
-    scaledown_window=180,
+    **capacity_options("ORCHESTRATOR"),
 )
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
-    _init_worker_redis()
-    from app.workers.orchestrator import optimize_and_compile_task
-
-    optimize_and_compile_task.apply(kwargs=payload, throw=False)
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.orchestrator import optimize_and_compile_task
+        optimize_and_compile_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    scaledown_window=60,
+    **capacity_options("LLM"),
 )
 def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
-    _init_worker_redis()
-    from app.workers.llm_worker import optimize_resume_task
-
-    optimize_resume_task.apply(kwargs=payload, throw=False)
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.llm_worker import optimize_resume_task
+        optimize_resume_task.apply(kwargs=task_payload, throw=False)
 
 
 @app.function(
@@ -767,8 +802,44 @@ def scheduled_minute_recovery() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Migrations
+# Deployment preflight and migrations
 # ---------------------------------------------------------------------------
+@app.function(image=api_image, secrets=_secrets, timeout=60)
+def renderer_preflight() -> dict:
+    """Validate candidate configuration only; never certify or start a VM."""
+    import contextlib
+    import json
+    import logging
+    import os
+    import sys
+
+    previous_logging_disable = logging.root.manager.disable
+    check_failed = False
+    try:
+        # This isolated function has no concurrent inputs. Suppress startup
+        # diagnostics while importing settings: existing handlers may retain
+        # the original stderr, so redirecting the streams alone is insufficient.
+        logging.disable(sys.maxsize)
+        with open(os.devnull, "w") as discarded_output, contextlib.redirect_stdout(discarded_output), contextlib.redirect_stderr(discarded_output):
+            from app.services.render_engine.deployment_preflight import renderer_configuration_report
+
+            report = renderer_configuration_report()
+    except Exception:
+        # Configuration validation failures can contain secret input values.
+        # Keep the public diagnostic fixed, including import-time failures.
+        check_failed = True
+        report = {"configuration_ready": False, "certification_verified": False,
+                  "reasons": ["configuration_check_failed"]}
+    finally:
+        logging.disable(previous_logging_disable)
+    print(json.dumps(report, sort_keys=True))
+    if check_failed:
+        raise RuntimeError("Renderer configuration preflight failed") from None
+    if not report["configuration_ready"]:
+        raise RuntimeError("Renderer configuration preflight blocked deployment")
+    return report
+
+
 # Locally, migrations run on backend startup. In production nothing applied them:
 # alembic/ was excluded from every image and no deploy step ran it. Run this
 # BEFORE `modal deploy` whenever a migration has landed:
@@ -874,7 +945,11 @@ def billing_preflight(
     if expected_environment == "main" and report.get("production_like") is not True:
         # Billing mode guards depend on the application's ENVIRONMENT setting.
         # A diagnostic against main must not bless a development classification.
-        report["status"] = "blocked"
+        # A valid incomplete diagnostic may not include environment fields.
+        # Keep its failure state so rollout cannot mistake absent DB metadata
+        # for a malformed report; complete non-production reports still block.
+        if report.get("status") != "diagnostic_error":
+            report["status"] = "blocked"
         report["blockers"] = list(dict.fromkeys([
             *report.get("blockers", []), "main_environment_not_production_like",
         ]))

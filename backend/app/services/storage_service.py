@@ -100,25 +100,35 @@ def upload_bytes(key: str, data: bytes, content_type: str = "application/octet-s
     logger.info(f"Uploaded {key} ({len(data)} bytes)")
 
 
+def upload_immutable_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+    """Create a content-addressed object once; concurrent identical writes reuse it.
+
+    S3 If-None-Match is supported by the pinned boto3 model and prevents a
+    preview/candidate worker from replacing previously published bytes.
+    """
+    client = _get_client()
+    try:
+        client.put_object(Bucket=settings.MINIO_BUCKET, Key=key, Body=data, ContentType=content_type, IfNoneMatch="*")
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") not in {"PreconditionFailed", "412"}:
+            raise
+        # Check the immutable existing object, including digest, rather than
+        # treating an arbitrary pre-existing/corrupt object as accepted output.
+        existing = download_bytes(key, max_bytes=len(data))
+        if existing != data:
+            raise ValueError("immutable storage object conflict") from exc
+
+
 def download_bytes(key: str, max_bytes: int | None = None) -> bytes | None:
     """Download an object, optionally enforcing a hard in-memory byte limit."""
     if max_bytes is not None and max_bytes < 0:
         raise ValueError("max_bytes must be non-negative")
     client = _get_client()
     try:
-        if max_bytes is not None:
-            try:
-                metadata = client.head_object(Bucket=settings.MINIO_BUCKET, Key=key)
-            except ClientError as exc:
-                if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
-                    return None
-                # Some S3-compatible policies permit GET but not HEAD. The GET
-                # response is checked below in that case.
-                metadata = {}
-            declared_size = _declared_size(metadata)
-            if declared_size is not None and declared_size > max_bytes:
-                raise StorageObjectTooLarge("storage object exceeds byte limit")
-
+        # GET carries size metadata for the bytes actually being read. A HEAD
+        # preflight adds a network round trip and cannot protect against an
+        # object changing between requests. Check GET headers before reading,
+        # then retain the bounded stream guard even for missing/false lengths.
         response = client.get_object(Bucket=settings.MINIO_BUCKET, Key=key)
         body = response["Body"]
         try:
@@ -145,7 +155,7 @@ def download_bytes(key: str, max_bytes: int | None = None) -> bytes | None:
             if close is not None:
                 close()
     except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchKey":
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
             return None
         raise
 
@@ -160,6 +170,24 @@ def file_exists(key: str) -> bool:
         if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
             return False
         raise
+
+
+def head_size(key: str) -> int:
+    return int(_get_client().head_object(Bucket=settings.MINIO_BUCKET, Key=key)["ContentLength"])
+
+
+def list_object_page(prefix: str, *, cursor: str | None = None, limit: int = 512) -> tuple[list[dict], str | None]:
+    """One bounded S3 page; continuation avoids unsafe partial-prefix sweeps."""
+    arguments = {"Bucket": settings.MINIO_BUCKET, "Prefix": prefix, "MaxKeys": min(512, max(1, limit))}
+    if cursor:
+        if cursor.startswith("after:") and cursor[6:].startswith(prefix) and len(cursor) <= 1000:
+            arguments["StartAfter"] = cursor[6:]
+        else:
+            arguments["ContinuationToken"] = cursor
+    page = _get_client().list_objects_v2(**arguments)
+    objects = [{"key": item["Key"], "size": item.get("Size", 0),
+                "last_modified": item.get("LastModified")} for item in page.get("Contents", [])]
+    return objects, page.get("NextContinuationToken") if page.get("IsTruncated") else None
 
 
 def list_objects(prefix: str, max_keys: int = 1000) -> list[dict]:

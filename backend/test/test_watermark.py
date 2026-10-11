@@ -1,7 +1,7 @@
 """Tests for Feature 71: Watermark Control."""
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -78,6 +78,24 @@ class TestWatermarkValidation:
 
 @pytest.mark.asyncio
 class TestCompileWatermarkedEndpoint:
+
+    async def test_missing_renderer_does_not_spend_anonymous_trial(self, client: AsyncClient):
+        from app.services.render_engine.modal_sandbox import ModalEngineUnavailable
+
+        with (
+            patch("app.services.render_engine.backend.resolve_backend", side_effect=ModalEngineUnavailable("missing certificate")),
+            patch("app.api.job_routes._enforce_anonymous_trial", new_callable=AsyncMock) as trial,
+            patch("app.api.job_routes._consume_job_quota", new_callable=AsyncMock) as quota,
+            patch("app.api.job_routes.submit_async", new_callable=AsyncMock) as dispatch,
+        ):
+            response = await client.post("/jobs/compile-watermarked", json={
+                "latex_content": SIMPLE_LATEX, "watermark": "DRAFT", "compiler": "lualatex",
+                "device_fingerprint": "test_renderer_capability",
+            })
+        assert response.status_code == 503
+        trial.assert_not_called()
+        quota.assert_not_called()
+        dispatch.assert_not_called()
 
     @patch("app.api.job_routes.submit_latex_compilation")
     async def test_valid_watermark_returns_job_id(

@@ -3,10 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from test_capability_resolution import allowed_blob
 
 from app.core.feature_registry import CAPABILITY_ROLES, FEATURE_REGISTRY, PLAN_KEYS, gateable_keys
 from app.services.entitlement_service import EntitlementService, _blob_from_rows
+from test.test_capability_resolution import allowed_blob
 
 
 @pytest.mark.parametrize("role", CAPABILITY_ROLES)

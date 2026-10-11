@@ -30,6 +30,9 @@ patchedDependencies:
   monaco-emacs@0.3.0:
     hash: 4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18
     path: patches/monaco-emacs@0.3.0.patch
+  next@15.5.27:
+    hash: a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4
+    path: patches/next@15.5.27.patch
 
 importers:
 
@@ -43,7 +46,7 @@ importers:
     dependencies:
       '@better-auth/passkey':
         specifier: 1.7.7
-        version: 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))))(better-call@1.4.0(zod@4.6.5))(nanostores@1.3.0)
+        version: 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))))(better-call@1.4.0(zod@4.6.5))(nanostores@1.3.0)
       '@codemirror/basic-setup':
         specifier: ^0.20.0
         version: 0.20.0
@@ -70,7 +73,7 @@ importers:
         version: 3.2.2(react@18.3.1)
       '@ducanh2912/next-pwa':
         specifier: ^10.2.9
-        version: 10.2.9(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.107.2(esbuild@0.28.1)(postcss@8.5.29))
+        version: 10.2.9(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.107.2(esbuild@0.28.1)(postcss@8.5.29))
       '@heroicons/react':
         specifier: ^2.0.18
         version: 2.2.0(react@18.3.1)
@@ -190,7 +193,7 @@ importers:
         version: 12.12.0(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       better-auth:
         specifier: 1.7.7
-        version: 1.7.7(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2)))
+        version: 1.7.7(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2)))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -208,7 +211,7 @@ importers:
         version: 12.43.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       geist:
         specifier: ^1.7.2
-        version: 1.7.2(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+        version: 1.7.2(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       idb:
         specifier: ^8.0.3
         version: 8.0.4
@@ -226,7 +229,7 @@ importers:
         version: 0.4.4(monaco-editor@0.55.1)
       next:
         specifier: 15.5.27
-        version: 15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pako:
         specifier: ^3.0.1
         version: 3.0.2
@@ -7759,14 +7762,14 @@ snapshots:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/passkey@1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))))(better-call@1.4.0(zod@4.6.5))(nanostores@1.3.0)':
+  '@better-auth/passkey@1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))))(better-call@1.4.0(zod@4.6.5))(nanostores@1.3.0)':
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.2
       '@simplewebauthn/browser': 13.3.0
       '@simplewebauthn/server': 13.3.3
-      better-auth: 1.7.7(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2)))
+      better-auth: 1.7.7(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2)))
       better-call: 1.4.0(zod@4.6.5)
       nanostores: 1.3.0
       zod: 4.6.5
@@ -7955,10 +7958,10 @@ snapshots:
       react: 18.3.1
       tslib: 2.8.1
 
-  '@ducanh2912/next-pwa@10.2.9(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.107.2(esbuild@0.28.1)(postcss@8.5.29))':
+  '@ducanh2912/next-pwa@10.2.9(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.107.2(esbuild@0.28.1)(postcss@8.5.29))':
     dependencies:
       fast-glob: 3.3.2
-      next: 15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      next: 15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       semver: 7.6.3
       webpack: 5.107.2(esbuild@0.28.1)(postcss@8.5.29)
       workbox-build: 7.1.1
@@ -10394,7 +10397,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.27: {}
 
-  better-auth@1.7.7(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))):
+  better-auth@1.7.7(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.23.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.11(@types/node@26.6.4)(vite@8.0.16(@types/node@26.6.4)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2))):
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0)
       '@better-auth/drizzle-adapter': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)
@@ -10414,7 +10417,7 @@ snapshots:
       nanostores: 1.3.0
       zod: 4.6.5
     optionalDependencies:
-      next: 15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      next: 15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pg: 8.23.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -11489,9 +11492,9 @@ snapshots:
 
   functions-have-names@1.2.3: {}
 
-  geist@1.7.2(next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)):
+  geist@1.7.2(next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)):
     dependencies:
-      next: 15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      next: 15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   generator-function@2.0.1: {}
 
@@ -12237,7 +12240,7 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  next@15.5.27(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  next@15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@next/env': 15.5.27
       '@swc/helpers': 0.5.15

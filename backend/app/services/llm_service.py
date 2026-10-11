@@ -93,7 +93,7 @@ class LLMService:
         if not job_description:
             return []
         # Simple keyword extraction - can be enhanced with NLP libraries
-        text = job_description.lower()
+        text = job_description
 
         # Common technical keywords patterns
         patterns = [
@@ -102,10 +102,12 @@ class LLMService:
             r'\b\w{2,}\b'  # General words 2+ characters
         ]
 
-        keywords = set()
-        for pattern in patterns:
-            matches = re.findall(pattern, text)
-            keywords.update(matches)
+        # Keep source order across processes: set iteration previously changed
+        # the capped keyword context for identical job descriptions. Scan the
+        # original text so capitalized-term extraction can actually match.
+        keywords = dict.fromkeys(
+            match.casefold() for pattern in patterns for match in re.findall(pattern, text)
+        )
 
         # Filter out common words
         common_words = {

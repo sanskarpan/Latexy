@@ -6,10 +6,13 @@
         "node": "22.x"
     },
     "scripts": {
+        "verify:next-hydration": "node scripts/next-hydration-backport.mjs",
+        "postinstall": "pnpm verify:next-hydration",
+        "prestart": "pnpm verify:next-hydration",
         "prepare:monaco": "node scripts/prepare-monaco.mjs",
-        "predev": "pnpm prepare:monaco",
+        "predev": "pnpm verify:next-hydration && pnpm prepare:monaco",
         "dev": "next dev --turbopack -p ${PORT:-5180}",
-        "prebuild": "pnpm prepare:monaco",
+        "prebuild": "pnpm verify:next-hydration && pnpm prepare:monaco",
         "build": "node scripts/validate-build.mjs preflight && next build && node scripts/validate-build.mjs artifacts",
         "start": "next start",
         "clean": "rm -rf .next && rm -f tsconfig.tsbuildinfo",

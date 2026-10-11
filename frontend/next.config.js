@@ -64,7 +64,7 @@ const nextConfig = {
   },
 }
 
-module.exports = withPWA({
+const configuredNext = withPWA({
   dest: 'public',
   // Disable service worker in dev to avoid caching surprises during development
   disable: process.env.NODE_ENV === 'development',
@@ -112,3 +112,10 @@ module.exports = withPWA({
     ],
   },
 })(nextConfig)
+
+// Direct Next CLI and disposable browser-test builds also verify their runtime.
+module.exports = async () => {
+  const { verifyNextHydrationBackport } = await import('./scripts/next-hydration-backport.mjs')
+  verifyNextHydrationBackport(__dirname, configuredNext)
+  return configuredNext
+}

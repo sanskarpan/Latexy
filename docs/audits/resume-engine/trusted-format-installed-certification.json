@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "scope": "image-built runtime selected profile correctness; no latency SLO claim",
+  "variants": [
+    {
+      "category": "ats_safe",
+      "source_sha256": "f2db9c21ae9b17d81969f37cea2d9b517dd042d2af68ae646d9172b1d930f891",
+      "profile_identity": "fbf51571ea55ec16134fa546a59f09ffa2dfd7f66400f53543f449b544985c41",
+      "format_sha256": "76b9ffcb2c760fbd0e81c032cb291bc4f64c6e363ab3baa84a50bb5a67aea383",
+      "page_count": 1,
+      "source_record_count": 358,
+      "text_sha256": "7bfe3da1f67bb6544280a69f0b3fcd2e7b349ba9cd4141f5a83522be321cd338",
+      "pixel_sha256": "217c384814881f75abed536e98ecce385ff2ce50e97862c89fd638e4c1af8a79",
+      "geometry_sha256": "5dd9bb5a4b914e170acc069e9ca5b17f684ee034eb98df356cd2891b01829249",
+      "synctex_source_records_sha256": "dbec8ee1647995137fed700a89eaa356c08d5f666b645876aa19ba4950fbb466",
+      "equivalent": true
+    },
+    {
+      "category": "executive",
+      "source_sha256": "d21cb90717f760e99e1dea9d799d4efb0ae826f9bb8d8f57332df930e1061edc",
+      "profile_identity": "fbf51571ea55ec16134fa546a59f09ffa2dfd7f66400f53543f449b544985c41",
+      "format_sha256": "76b9ffcb2c760fbd0e81c032cb291bc4f64c6e363ab3baa84a50bb5a67aea383",
+      "page_count": 1,
+      "source_record_count": 351,
+      "text_sha256": "22f9c099540f7b43f830e442384bb104a2c65f2a833fd1ac38f7b27948c49f43",
+      "pixel_sha256": "d2da3346ea1136be99f40597894bc2da5fb7b923e94bbb6e6a46cc95544f1887",
+      "geometry_sha256": "4a3c6784c14555a5837f53471ac0fd6824dacee26dda68a71435ae1809d8521f",
+      "synctex_source_records_sha256": "d5a31910ff2b843e59b922f21d1e45a2aa546babdd8b9289250ea1e1de89aa36",
+      "equivalent": true
+    },
+    {
+      "category": "graduate",
+      "source_sha256": "d541aab6447357ad80e0dc85b1c36ff4287e28d71237f6a73ae75a53160d2820",
+      "profile_identity": "fbf51571ea55ec16134fa546a59f09ffa2dfd7f66400f53543f449b544985c41",
+      "format_sha256": "76b9ffcb2c760fbd0e81c032cb291bc4f64c6e363ab3baa84a50bb5a67aea383",
+      "page_count": 1,
+      "source_record_count": 360,
+      "text_sha256": "f10b666b3508501a165c0a1d3ef214db752f66d569e23a0e834cdf7874d2c5a9",
+      "pixel_sha256": "abac8ce3d82941e456e54050d805011c04979f3cf0e2631591efa4c21595c6c8",
+      "geometry_sha256": "cd00f9b2a2eb6d8a1a710486e484ae2fff2b3c3846045df54e572f79d66e2fad",
+      "synctex_source_records_sha256": "9a67c9270057279b2779c03462a1be9c4627fe1b2511a107e4c95ff6362df236",
+      "equivalent": true
+    }
+  ],
+  "passed": true
+}

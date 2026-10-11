@@ -10,6 +10,7 @@ refunding a receipt.  The receipt is only refunded after ``fence_job`` wins.
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -672,11 +673,27 @@ return 1
 """
 
 
+_WRITE_ARTIFACTS_IF_MATCH = _WRITE_ARTIFACTS.replace(
+    "local value_index = 3",
+    """local expected = cjson.decode(ARGV[#ARGV - 1])
+for key, value in pairs(expected) do
+  local actual = redis.call('GET', key)
+  if value == cjson.null then
+    if actual then return 0 end
+  elseif actual ~= value then
+    return 0
+  end
+end
+local value_index = 3""",
+)
+
+
 def write_owned_artifacts(
     redis_client: Any,
     job_id: str,
     artifacts: dict[str, str],
     ttl: int,
+    expected_values: Optional[dict[str, Optional[str]]] = None,
 ) -> bool:
     """Write job artifacts only while the current lifecycle owner is leased.
 
@@ -688,5 +705,11 @@ def write_owned_artifacts(
     owner_epoch = current_owner_epoch(job_id)
     keys = [lifecycle_key(job_id), *artifacts]
     args = [owner, "" if owner_epoch is None else str(owner_epoch), *artifacts.values(), ttl]
-    result = redis_client.eval(_WRITE_ARTIFACTS, len(keys), *keys, *args)
+    script = _WRITE_ARTIFACTS
+    if expected_values is not None:
+        if set(expected_values) - set(artifacts):
+            raise ValueError("Expected values must refer to the written artifacts")
+        script = _WRITE_ARTIFACTS_IF_MATCH
+        args.insert(-1, json.dumps(expected_values))
+    result = redis_client.eval(script, len(keys), *keys, *args)
     return _redis_one(result)

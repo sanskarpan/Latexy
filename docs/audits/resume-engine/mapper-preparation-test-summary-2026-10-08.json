@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "scope": "Overlapping isolated local suites; source and exclusions in release-audit-2026-10-08.md",
+  "reports": [
+    {
+      "file": "mapper-preparation-before-20261008.xml",
+      "sha256": "dc41b924d2e16d7370efcf24e09997d43d432bb010ec7a0175955699c2b758b9",
+      "tests": 1,
+      "passed": 0,
+      "failed": [
+        "test.test_worker_runtime_preparation::test_clean_process_preparation_configures_models_before_any_database_io"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 23.199
+    },
+    {
+      "file": "mapper-preparation-after-20261008.xml",
+      "sha256": "d4857517eac2c4d93ef2d850ba0f716e3df075a3882938b3be823fcf8a4f10b2",
+      "tests": 8,
+      "passed": 6,
+      "failed": [
+        "test.test_render_storage_integration::test_real_admitted_render_cache_preview_export_sync_geometry",
+        "test.test_render_storage_integration::test_real_guest_completed_artifact_binding_and_exact_cache"
+      ],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 26.255
+    },
+    {
+      "file": "mapper-preparation-fixed-20261008.xml",
+      "sha256": "d64dc9683f4a9b3ce95e9290f16c86df0deb04a8020eb6924b3d09f120faef65",
+      "tests": 8,
+      "passed": 8,
+      "failed": [],
+      "errors": [],
+      "skipped": [],
+      "suite_seconds": 33.923
+    }
+  ]
+}
