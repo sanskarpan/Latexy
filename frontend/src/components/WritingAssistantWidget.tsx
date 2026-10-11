@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BookOpen, Check, Copy, Loader2, MessageSquare, RefreshCw, Scissors, Sparkles, Trash2, TrendingUp, Wand2, X, ZoomIn } from 'lucide-react'
 import { apiClient, type BulletVariantSet, type RewriteAction } from '@/lib/api-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 interface ActionDef {
   key: RewriteAction | 'synonyms'
@@ -57,6 +58,9 @@ export default function WritingAssistantWidget({
   onClose,
   top,
 }: WritingAssistantWidgetProps) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const [phase, setPhase]               = useState<Phase>('picking')
   const [activeAction, setActiveAction] = useState<RewriteAction | 'synonyms' | null>(null)
   const [activeTone, setActiveTone]     = useState<string | null>(null)
@@ -102,6 +106,7 @@ export default function WritingAssistantWidget({
   }, [isOpen, onClose])
 
   const callApi = async (action: RewriteAction, tone?: string, instruction?: string) => {
+    if (!canRef.current('d06')) return
     setActiveAction(action)
     setActiveTone(tone ?? null)
     setActiveInstruction(instruction ?? null)
@@ -126,6 +131,7 @@ export default function WritingAssistantWidget({
   }
 
   const handleActionClick = (key: RewriteAction) => {
+    if (!canRef.current('d06')) return
     if (key === 'change_tone') {
       setActiveAction('change_tone')
       setPhase('tone_picking')
@@ -138,6 +144,7 @@ export default function WritingAssistantWidget({
   }
 
   const loadSynonyms = async () => {
+    if (!canRef.current('d07')) return
     setActiveAction('synonyms')
     setPhase('loading')
     setLoadingMessage('Finding synonyms…')
@@ -167,6 +174,7 @@ export default function WritingAssistantWidget({
   }
 
   const generateVariants = async () => {
+    if (!canRef.current('d10')) return
     setPhase('loading')
     setLoadingMessage('Generating three variants…')
     setError(null)
@@ -207,6 +215,16 @@ export default function WritingAssistantWidget({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to remove variant set')
     }
+  }
+
+  const acceptOption = (option: string, feature: 'd06' | 'd07' | 'd10') => {
+    if (!canRef.current(feature)) return
+    onAccept(option)
+  }
+
+  const openVariantSetup = () => {
+    if (!canRef.current('d10')) return
+    setPhase('variant_setup')
   }
 
   const normalizedDocument = ' ' + documentLatex.split(/\s+/).join(' ').toLocaleLowerCase() + ' '
@@ -316,6 +334,7 @@ export default function WritingAssistantWidget({
                 <button
                   key={key}
                   onClick={() => chooseAction(key)}
+                  disabled={!can(key === 'synonyms' ? 'd07' : 'd06')}
                   className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-2 text-left transition hover:border-accent/20 hover:bg-accent-soft"
                 >
                   <span className="shrink-0 text-accent-strong">{icon}</span>
@@ -326,7 +345,8 @@ export default function WritingAssistantWidget({
                 </button>
               ))}
               <button
-                onClick={() => setPhase('variant_setup')}
+                onClick={openVariantSetup}
+                disabled={!can('d10')}
                 className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft px-2.5 py-2 text-left transition hover:brightness-110"
               >
                 <span className="shrink-0 text-accent-strong"><Wand2 size={11} /></span>
@@ -377,7 +397,7 @@ export default function WritingAssistantWidget({
               </p>
               <button
                 onClick={() => void generateVariants()}
-                disabled={!targetLabel.trim()}
+                disabled={!can('d10') || !targetLabel.trim()}
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-2 text-[11px] font-semibold text-accent-strong ring-1 ring-accent/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Wand2 size={11} />
@@ -403,6 +423,7 @@ export default function WritingAssistantWidget({
                 <button
                   key={key}
                   onClick={() => callApi('change_tone', key)}
+                  disabled={!can('d06')}
                   className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-2 text-left transition hover:border-accent/20 hover:bg-accent-soft"
                 >
                   <span className="shrink-0 text-accent-strong"><MessageSquare size={11} /></span>
@@ -444,7 +465,7 @@ export default function WritingAssistantWidget({
               />
               <button
                 onClick={() => callApi('steer', undefined, steerNote.trim())}
-                disabled={!steerNote.trim()}
+                disabled={!can('d06') || !steerNote.trim()}
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-2 text-[11px] font-semibold text-accent-strong ring-1 ring-accent/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Wand2 size={11} />
@@ -473,7 +494,8 @@ export default function WritingAssistantWidget({
                 <button
                   key={synonym}
                   type="button"
-                  onClick={() => onAccept(synonym)}
+                  onClick={() => acceptOption(synonym, 'd07')}
+                  disabled={!can('d07')}
                   className="flex w-full items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-2 text-left text-[11px] text-fg transition hover:border-accent/20 hover:bg-accent-soft"
                 >
                   {synonym}
@@ -483,6 +505,7 @@ export default function WritingAssistantWidget({
               <button
                 type="button"
                 onClick={() => { void loadSynonyms() }}
+                disabled={!can('d07')}
                 className="flex w-full items-center justify-center gap-1 text-[10px] text-fg-3 hover:text-fg-2"
               >
                 <RefreshCw size={10} /> Regenerate suggestions
@@ -509,8 +532,8 @@ export default function WritingAssistantWidget({
                     <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg-3">Option {index + 1}</p>
                     <p className="mt-1 text-[11px] leading-relaxed text-ok">{option}</p>
                     <button
-                      onClick={() => onAccept(option)}
-                      disabled={duplicate}
+                      onClick={() => acceptOption(option, 'd10')}
+                      disabled={!can('d10') || duplicate}
                       title={duplicate ? 'This exact bullet is already present in the document' : undefined}
                       className="mt-2 flex w-full items-center justify-center gap-1 rounded-[var(--radius-md)] bg-ok/15 py-1.5 text-[10px] font-semibold text-ok ring-1 ring-ok/25 transition hover:bg-ok/25 disabled:cursor-not-allowed disabled:opacity-45"
                     >
@@ -521,7 +544,7 @@ export default function WritingAssistantWidget({
                 )
               })}
               <div className="flex gap-2">
-                <button onClick={() => void generateVariants()} className="flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-md)] border border-line px-2 py-1.5 text-[10px] text-fg-2 hover:bg-surface-2">
+                <button onClick={() => void generateVariants()} disabled={!can('d10')} className="flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-md)] border border-line px-2 py-1.5 text-[10px] text-fg-2 hover:bg-surface-2">
                   <RefreshCw size={10} /> Regenerate
                 </button>
                 <button onClick={() => void openLibrary()} className="flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-md)] border border-line px-2 py-1.5 text-[10px] text-fg-2 hover:bg-surface-2">
@@ -565,10 +588,10 @@ export default function WritingAssistantWidget({
                         return (
                           <div key={option} className="rounded border border-line bg-bg px-2 py-1.5">
                             <p className="text-[10px] leading-relaxed text-fg-2">{index + 1}. {option}</p>
-                            {matchesSelection ? (
+                            {matchesSelection && can('d10') ? (
                               <button
-                                onClick={() => onAccept(option)}
-                                disabled={duplicate}
+                                onClick={() => acceptOption(option, 'd10')}
+                                disabled={!can('d10') || duplicate}
                                 className="mt-1 text-[9px] font-semibold text-ok disabled:cursor-not-allowed disabled:text-fg-3"
                               >
                                 {duplicate ? 'Already in document' : 'Apply to selection'}
@@ -611,7 +634,8 @@ export default function WritingAssistantWidget({
               {/* Action buttons */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => onAccept(rewritten)}
+                  onClick={() => acceptOption(rewritten, 'd06')}
+                  disabled={!can('d06')}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/20 py-2 text-[11px] font-semibold text-ok ring-1 ring-ok/30 transition hover:bg-ok/30"
                 >
                   <Check size={11} />
@@ -619,6 +643,7 @@ export default function WritingAssistantWidget({
                 </button>
                 <button
                   onClick={handleRegenerate}
+                  disabled={!can('d06')}
                   className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[11px] font-semibold text-fg-2 transition hover:border-accent/20 hover:text-fg"
                   title="Try again"
                 >

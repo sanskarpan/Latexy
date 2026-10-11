@@ -720,6 +720,10 @@ class TestJobScraperService:
         mock_board_resp = _mock_http_response(200, json_data=board_data)
 
         with (
+            # HTTP is fully mocked below; keep the real public-address guard
+            # deterministic rather than depending on the runner's DNS/VPN.
+            patch("app.services.job_scraper_service.socket.getaddrinfo",
+                  return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
             patch("httpx.AsyncClient") as mock_cls,
@@ -750,6 +754,8 @@ class TestJobScraperService:
             "source": "api", "cached": False, "error": None, "scraped_at": "2025-01-01T00:00:00+00:00",
         }
         with (
+            patch("app.services.job_scraper_service.socket.getaddrinfo",
+                  return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=cached),
             patch("httpx.AsyncClient") as mock_cls,
         ):
@@ -805,6 +811,8 @@ class TestJobScraperService:
         service = JobScraperService()
         html = _indeed_html_with_initialdata("ML Researcher", "AILabs")
         with (
+            patch("app.services.job_scraper_service.socket.getaddrinfo",
+                  return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
             patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=html)),

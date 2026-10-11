@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check extraction.js && node --check autofill.js && node --check bridge.js && node --check popup.js && node --check options.js && node scripts/check-package.js"
+    "check": "node --check capabilities.js && node --check extraction.js && node --check autofill.js && node --check bridge.js && node --check popup.js && node --check options.js && node scripts/check-package.js"
   },
   "engines": {
     "node": "22.x"

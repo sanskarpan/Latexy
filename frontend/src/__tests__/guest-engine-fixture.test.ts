@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import type { Page, Route } from '@playwright/test'
+import { fulfillEngineResponse, mockEngineRoute } from '../../e2e/quality/engine-fixtures'
 import { describe, expect, it, vi } from 'vitest'
 import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from '../../e2e/quality/guest-engine-fixture'
 import { FIRST_USE_ENGINE_RESUME_TEMPLATE } from '@/lib/first-use-resume'
@@ -18,25 +20,43 @@ function patchBody(latex_content: string, text: string) {
 
 // Execute the actual registered browser handlers, not just a parallel mock in
 // this test. The old handlers fabricated absent text and returned successful no-ops.
-function routeHandler(file: string, path: string) {
+async function routeHandler(file: string, path: string) {
   const contents = readFileSync(new URL(`../../e2e/quality/${file}`, import.meta.url), 'utf8')
   const ast = ts.createSourceFile(file, contents, ts.ScriptTarget.Latest, true)
   let expression = ''
   function visit(node: ts.Node) {
-    if (!expression && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === 'route' && node.arguments[0] && ts.isStringLiteral(node.arguments[0])
-      && node.arguments[0].text === path) expression = node.arguments[1].getText(ast)
+    if (!expression && ts.isCallExpression(node)) {
+      const wrapped = ts.isIdentifier(node.expression) && node.expression.text === 'mockEngineRoute'
+      const direct = ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'route'
+      const pattern = node.arguments[wrapped ? 1 : 0]
+      if ((wrapped || direct) && pattern && ts.isStringLiteral(pattern) && pattern.text === path) {
+        expression = node.arguments[wrapped ? 2 : 1].getText(ast)
+      }
+    }
     ts.forEachChild(node, visit)
   }
   visit(ast)
   expect(expression).not.toBe('')
   const js = ts.transpileModule(`const handler = ${expression}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-  const handle = runInNewContext(`${js}\nhandler`, { expect, digest, GUEST_ORIGINAL_BULLET, projectGuestBullet, applyGuestBulletPatch })
-  return async (body: unknown) => {
+  const handler = runInNewContext(`${js}\nhandler`, { expect, digest, GUEST_ORIGINAL_BULLET, projectGuestBullet, applyGuestBulletPatch, fulfillEngineResponse })
+  let registered!: (route: Route) => Promise<void> | void
+  const register = vi.fn(async (_pattern: unknown, wrapped: typeof registered) => { registered = wrapped })
+  await mockEngineRoute({ route: register } as unknown as Page, path, handler)
+  expect(register).toHaveBeenCalledOnce()
+  return async (body: unknown, method = 'POST') => {
     const fulfill = vi.fn()
-    await handle({ request: () => ({ postDataJSON: () => body }), fulfill })
+    const postDataJSON = vi.fn(() => body)
+    await registered({ request: () => ({ postDataJSON, method: () => method, headers: () => ({
+      origin: 'http://localhost:5182', 'access-control-request-headers': 'authorization,content-type',
+    }) }), fulfill } as unknown as Route)
     expect(fulfill).toHaveBeenCalledOnce()
-    return fulfill.mock.calls[0][0].json
+    const response = fulfill.mock.calls[0][0]
+    expect(response.headers).toMatchObject({ 'access-control-allow-origin': 'http://localhost:5182', 'access-control-allow-credentials': 'true' })
+    if (method === 'OPTIONS') {
+      expect(postDataJSON).not.toHaveBeenCalled()
+      return response
+    }
+    return response.json
   }
 }
 
@@ -54,8 +74,8 @@ describe('source-bound guest engine browser fixtures', () => {
   })
 
   it.each(['resume-engine-preview.spec.ts', 'resume-preview-recovery.spec.ts'])('executes %s read/patch handlers against the actual seed', async file => {
-    const read = routeHandler(file, '**/public/engine/document')
-    const patch = routeHandler(file, '**/public/engine/document/patch')
+    const read = await routeHandler(file, '**/public/engine/document')
+    const patch = await routeHandler(file, '**/public/engine/document/patch')
     const initial = await read({ latex_content: source })
     expect(initial.document.nodes[0].text).toBe(GUEST_ORIGINAL_BULLET)
     const result = await patch(patchBody(source, edited(8)))
@@ -66,8 +86,19 @@ describe('source-bound guest engine browser fixtures', () => {
     expect((await read({ latex_content: result.latex_content })).document).toEqual(result.document)
   })
 
+  it.each(['resume-engine-preview.spec.ts', 'resume-preview-recovery.spec.ts'])('answers %s read and patch preflight without reading a source or mutating fields', async file => {
+    for (const path of ['**/public/engine/document', '**/public/engine/document/patch']) {
+      const handler = await routeHandler(file, path)
+      const response = await handler(null, 'OPTIONS')
+      expect(response).toMatchObject({ status: 204, body: '', headers: {
+        'access-control-allow-headers': 'authorization,content-type',
+      } })
+      expect(response.json).toBeUndefined()
+    }
+  })
+
   it('cancellation recovery applies the second edit to the first edited revision', async () => {
-    const patch = routeHandler('resume-preview-recovery.spec.ts', '**/public/engine/document/patch')
+    const patch = await routeHandler('resume-preview-recovery.spec.ts', '**/public/engine/document/patch')
     const first = await patch(patchBody(source, edited(8)))
     const second = await patch(patchBody(first.latex_content, edited(9)))
     expect(second.latex_content).toBe(source.replace(GUEST_ORIGINAL_BULLET, edited(9)))

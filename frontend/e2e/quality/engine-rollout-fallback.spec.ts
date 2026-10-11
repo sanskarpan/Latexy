@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './quality-test'
-import { mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
+import { fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
 
 const source = '\\documentclass{article}\n\\begin{document}\nMy preserved resume\n\\end{document}'
 const owner = { session: { token: 'rollout-owner-token' }, user: { id: 'rollout-owner', email: 'rollout@example.com', name: 'Rollout Owner' } }
@@ -16,11 +16,11 @@ function legacyPdf() {
   return Buffer.from(pdf)
 }
 
-async function base(page: Page, authenticated = false) {
+async function base(page: Page, authenticated = false, features: Record<string, boolean> = {}) {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await mockEngineAncillaryApi(page, owner.user.id)
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: authenticated ? owner : null }))
-  await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
+  await mockEngineAncillaryApi(page, owner.user.id, { b10: true, ...features })
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: authenticated ? owner : null }))
+  await mockEngineRoute(page, '**/public/trial-status**', route => fulfillEngineResponse(route, { json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
   await page.addInitScript(source => {
     localStorage.setItem('latexy_try_latex', source)
@@ -32,12 +32,12 @@ for (const scenario of ['404', 'missing-version', 'future-version'] as const) {
   test(`guest ${scenario} deployment preserves source without repeated engine requests`, async ({ page }) => {
     await base(page)
     let probes = 0; let engineCalls = 0; let mutations = 0
-    await page.route('**/public/engine/capabilities', route => {
+    await mockEngineRoute(page, '**/public/engine/capabilities', route => {
       probes++
-      return route.fulfill({ status: scenario === '404' ? 404 : 200, json: scenario === 'future-version' ? { resume_engine_version: 2 } : {} })
+      return fulfillEngineResponse(route, { status: scenario === '404' ? 404 : 200, json: scenario === 'future-version' ? { resume_engine_version: 2 } : {} })
     })
-    await page.route('**/public/engine/document**', route => { engineCalls++; return route.fulfill({ status: 404, json: {} }) })
-    await page.route('**/jobs/submit', route => { mutations++; return route.fulfill({ status: 500, json: {} }) })
+    await mockEngineRoute(page, '**/public/engine/document**', route => { engineCalls++; return fulfillEngineResponse(route, { status: 404, json: {} }) })
+    await mockEngineRoute(page, '**/jobs/submit', route => { mutations++; return fulfillEngineResponse(route, { status: 500, json: {} }) })
     await page.goto('/try')
     await expect(page.getByText('Resume fields are not available on this server yet.', { exact: false })).toBeVisible()
     await expect.poll(() => readMonacoSource(page)).toBe(source)
@@ -49,16 +49,16 @@ for (const scenario of ['404', 'missing-version', 'future-version'] as const) {
     expect({ probes, engineCalls, mutations }).toEqual({ probes: 1, engineCalls: 0, mutations: 0 })
     if (scenario === '404') {
       let pdfRequests = 0
-      await page.route('**/jobs/submit', route => {
+      await mockEngineRoute(page, '**/jobs/submit', route => {
         mutations++
         expect(route.request().postDataJSON().latex_content).toBe(source + '\n% new local edit')
-        return route.fulfill({ json: { success: true, job_id: 'legacy-rollout-pdf', message: 'Queued' } })
+        return fulfillEngineResponse(route, { json: { success: true, job_id: 'legacy-rollout-pdf', message: 'Queued' } })
       })
-      await page.route('**/jobs/legacy-rollout-pdf/state', route => route.fulfill({ json: { job_id: 'legacy-rollout-pdf', status: 'completed', stage: 'completed', percent: 100, last_updated: Date.now() / 1000 } }))
-      await page.route('**/jobs/legacy-rollout-pdf/result', route => route.fulfill({ json: { job_id: 'legacy-rollout-pdf', success: true, result: { job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1 } } }))
-      await page.route('**/download/legacy-rollout-pdf', route => { pdfRequests++; return route.fulfill({ contentType: 'application/pdf', body: legacyPdf() }) })
-      await page.route('**/download/legacy-rollout-pdf/synctex', route => route.fulfill({ status: 404 }))
-      await page.getByRole('button', { name: 'Recompile', exact: true }).click()
+      await mockEngineRoute(page, '**/jobs/legacy-rollout-pdf/state', route => fulfillEngineResponse(route, { json: { job_id: 'legacy-rollout-pdf', status: 'completed', stage: 'completed', percent: 100, last_updated: Date.now() / 1000 } }))
+      await mockEngineRoute(page, '**/jobs/legacy-rollout-pdf/result', route => fulfillEngineResponse(route, { json: { job_id: 'legacy-rollout-pdf', success: true, result: { job_id: 'legacy-rollout-pdf', pdf_job_id: 'legacy-rollout-pdf', page_count: 1 } } }))
+      await mockEngineRoute(page, '**/download/legacy-rollout-pdf', route => { pdfRequests++; return fulfillEngineResponse(route, { contentType: 'application/pdf', body: legacyPdf() }) })
+      await mockEngineRoute(page, '**/download/legacy-rollout-pdf/synctex', route => fulfillEngineResponse(route, { status: 404 }))
+      await page.getByRole('button', { name: 'Update PDF preview', exact: true }).click()
       await expect(page.locator('.react-pdf__Page canvas').first()).toBeVisible({ timeout: 30000 })
       expect(pdfRequests).toBe(1)
       expect(mutations).toBe(1)
@@ -71,8 +71,8 @@ for (const status of [401, 403]) {
   test(`capability ${status} stays an authorization error and retries only explicitly`, async ({ page }) => {
     await base(page)
     let supported = false; let probes = 0; let engineCalls = 0
-    await page.route('**/public/engine/capabilities', route => { probes++; return route.fulfill({ status: supported ? 200 : status, json: supported ? { resume_engine_version: 1 } : {} }) })
-    await page.route('**/public/engine/document**', route => { engineCalls++; return route.fulfill({ status: 403, json: {} }) })
+    await mockEngineRoute(page, '**/public/engine/capabilities', route => { probes++; return fulfillEngineResponse(route, { status: supported ? 200 : status, json: supported ? { resume_engine_version: 1 } : {} }) })
+    await mockEngineRoute(page, '**/public/engine/document**', route => { engineCalls++; return fulfillEngineResponse(route, { status: 403, json: {} }) })
     await page.goto('/try')
     await expect(page.getByText('Access to resume fields could not be verified.', { exact: false })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Source', exact: true })).toHaveAttribute('aria-pressed', 'false')
@@ -93,9 +93,9 @@ test('saved editor capability fallback preserves its stored mode and unsaved buf
   await base(page, true)
   await page.addInitScript(id => localStorage.setItem(`latexy_editor_mode_${id}`, 'pdf'), resumeId)
   let engineCalls = 0; let denyRetry = false
-  await page.route('**/public/engine/capabilities', route => route.fulfill({ status: denyRetry ? 403 : 404, json: {} }))
-  await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: owner.user.id, title: 'Preserved resume', latex_content: source, document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
-  await page.route(`**/resumes/${resumeId}/engine/**`, route => { engineCalls++; return route.fulfill({ status: 404, json: {} }) })
+  await mockEngineRoute(page, '**/public/engine/capabilities', route => fulfillEngineResponse(route, { status: denyRetry ? 403 : 404, json: {} }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}`, route => fulfillEngineResponse(route, { json: { id: resumeId, user_id: owner.user.id, title: 'Preserved resume', latex_content: source, document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/**`, route => { engineCalls++; return fulfillEngineResponse(route, { status: 404, json: {} }) })
   await page.goto(`/workspace/${resumeId}/edit`)
   await expect(page.getByText('Resume fields are not available on this server yet.', { exact: false })).toBeVisible()
   await expect.poll(() => readMonacoSource(page)).toBe(source)
@@ -109,11 +109,11 @@ test('saved editor capability fallback preserves its stored mode and unsaved buf
 })
 
 test('unavailable PDF import preserves selected file and title without uploading or paid conversion', async ({ page }) => {
-  await base(page, true)
+  await base(page, true, { b08: true })
   let mutations = 0
-  await page.route('**/public/engine/capabilities', route => route.fulfill({ status: 404, json: {} }))
-  await page.route('**/resumes/imports/pdf', route => { mutations++; return route.fulfill({ status: 404, json: {} }) })
-  await page.route('**/formats/upload**', route => { mutations++; return route.fulfill({ status: 500, json: {} }) })
+  await mockEngineRoute(page, '**/public/engine/capabilities', route => fulfillEngineResponse(route, { status: 404, json: {} }))
+  await mockEngineRoute(page, '**/resumes/imports/pdf', route => { mutations++; return fulfillEngineResponse(route, { status: 404, json: {} }) })
+  await mockEngineRoute(page, '**/formats/upload**', route => { mutations++; return fulfillEngineResponse(route, { status: 500, json: {} }) })
   await page.goto('/workspace/new')
   await page.getByLabel('Resume Title', { exact: true }).fill('Keep this title')
   await page.getByRole('button', { name: /Import File/ }).click()

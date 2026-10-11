@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import func, or_, select
@@ -17,6 +17,7 @@ from ..core.config import settings
 from ..database.connection import get_db
 from ..database.models import Resume, ResumePdfImport, ResumeTemplate, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..parsers.pdf_parser import PDFParser
 from ..services.resume_builder_service import SUPPORTED_BUILDER_CATEGORIES, resume_builder_service
@@ -170,7 +171,7 @@ async def adapt_import(import_id: str, body: AdaptImport, db: AsyncSession = Dep
     title = body.title.strip()
     if not title:
         raise HTTPException(422, "Give the resume a title")
-    template = await _get_builder_template(db, body.template_id)
+    template = await _get_builder_template(db, body.template_id, user_id)
     patches = [patch.model_dump() for patch in body.field_edits]
     identity = hashlib.sha256(json.dumps({"original": row.source_sha256, "template": template.id, "title": title,
         "patches": sorted(patches, key=lambda patch: patch["node_id"])}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()

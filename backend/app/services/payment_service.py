@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy import case, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,24 +69,17 @@ class PaymentService:
     def is_available(self) -> bool:
         return bool(self._base_status["available"] and self.provider.available)
 
+    async def get_subscription_plans(self, db: AsyncSession | None = None, *, feature_enabled: bool = True, user_id: str | None = None) -> dict[str, Any]:
+        """The public pricing and checkout catalog share one server authority."""
+        from .plan_catalog_service import plan_catalog_service
+
+        return await plan_catalog_service.list_plans(db, provider_available=self.is_available() and feature_enabled, user_id=user_id)
+
     def is_service_available(self) -> bool:
         """Existing billing remains manageable when new checkout is disabled."""
         if settings.is_production_like() and settings.normalized_dodo_mode != "live":
             return False
         return self.is_available() or bool(self.provider.available)
-
-    async def get_subscription_plans(self) -> dict[str, Any]:
-        plans: dict[str, Any] = {}
-        for key, value in settings.SUBSCRIPTION_PLANS.items():
-            if key == "free":
-                plans[key] = {**dict(value), "id": key}
-            elif get_dodo_product_id(key) and self.is_available():
-                plan = get_plan_config(key)
-                plans[key] = {**plan, "id": key, "provider": "dodo"}
-        for sku in ("weekly", "lifetime"):
-            if is_b57_sku_configured(sku) and self.is_available():
-                plans[sku] = {**get_plan_config(sku), "id": sku, "provider": "dodo"}
-        return plans
 
     def _resolve_concrete_plan_id(self, plan_id: str, billing_period: str) -> str:
         normalized, period = (plan_id or "free").strip().lower(), (billing_period or "monthly").strip().lower()
@@ -153,6 +147,11 @@ class PaymentService:
             if not raw:
                 return {"success": False, "error": "Student verification link is invalid or expired"}
             data = json.loads(raw)
+            from .plan_catalog_service import plan_catalog_service
+
+            # A verification link is a new-purchase admission path. Check its
+            # owner and target SKU here before any provider checkout call.
+            await plan_catalog_service.require_new_purchase(db, "student", user_id=data["user_id"])
             if not self.is_available():
                 return {"success": False, "error": self._base_status["message"]}
             result = await self.create_subscription(
@@ -162,6 +161,11 @@ class PaymentService:
             if result.get("success"):
                 await redis.delete(f"student_plan_verify:{token}")
             return result
+        except HTTPException:
+            # Preserve the typed admission denial and the verification token.
+            # A temporary product restriction is not a malformed verification.
+            await db.rollback()
+            raise
         except Exception as exc:
             logger.error("Student billing verification failed", extra={"error_type": type(exc).__name__})
             await db.rollback()
@@ -337,6 +341,13 @@ class PaymentService:
         concrete = self._resolve_concrete_plan_id(plan_id, billing_period)
         if concrete not in settings.SUBSCRIPTION_PLANS:
             return {"success": False, "error": "Invalid plan selected"}
+        if concrete != "free":
+            from .plan_catalog_service import plan_catalog_service
+
+            # Defense in depth for service callers outside the HTTP route. This
+            # protects new sales while existing billing recovery/fulfillment
+            # methods remain independent of the purchase switch.
+            await plan_catalog_service.require_new_purchase(db, concrete, user_id=user_id)
         plan = get_plan_config(concrete)
         quoted_tax_inclusive = plan.get("tax_inclusive", True)
         if type(quoted_tax_inclusive) is not bool:
@@ -548,8 +559,18 @@ class PaymentService:
                               .order_by(Subscription.created_at.desc()).limit(1))
         plan_id = user.subscription_plan or "free"
         plan = get_plan_config(plan_id)
-        return {"user_id": user_id, "plan_id": plan_id, "plan_name": plan.get("name", plan_id.title()),
-                "status": user.subscription_status or "inactive", "features": plan.get("features", {}),
+        plan_name = plan.get("name", plan_id.title())
+        features = plan.get("features", {})
+        try:
+            from .plan_catalog_service import plan_catalog_service
+
+            display = await plan_catalog_service.current_subscription_display(plan_id, user_id=user_id)
+            plan_name = display.get("name") or plan_name
+            features = display.get("features", features)
+        except Exception:
+            logger.warning("Subscription display metadata unavailable", exc_info=True)
+        return {"user_id": user_id, "plan_id": plan_id, "plan_name": plan_name,
+                "status": user.subscription_status or "inactive", "features": features,
                 "subscription_id": sub.provider_subscription_id if sub else None,
                 "current_period_end": sub.current_period_end.isoformat() if sub and sub.current_period_end else None}
 

@@ -103,6 +103,8 @@ async function loadHarness(): Promise<Harness> {
   vi.stubGlobal('confirm', vi.fn(() => true))
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
+    createContext: (defaultValue: unknown) => ({ _defaultValue: defaultValue, Provider: 'Context.Provider' }),
+    useContext: (context: { _defaultValue: unknown }) => context._defaultValue,
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
     useRef: (initial: unknown) => {
       const index = hookIndex++
@@ -132,6 +134,8 @@ async function loadHarness(): Promise<Harness> {
     jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
     jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
   }))
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))
+  vi.doMock('@/lib/oauth-completion-claims', () => ({ claimOAuthCompletion: () => 'claimed' }))
   vi.doMock('next/navigation', () => ({
     useSearchParams: () => rawQuery !== null ? new URLSearchParams(rawQuery) : ({
       get: (key: string) => providers.includes(key as Provider) && queryConnected ? 'connected' : null,
@@ -185,7 +189,7 @@ async function loadHarness(): Promise<Harness> {
     render,
     runMountedEffect: () => run('providerActionMountedRef.current = true') as () => void,
     runGitHubMountedEffect: () => run('githubOAuthMountedRef.current = true') as () => void,
-    runTicketedEffect: () => run('oauthCompletionStartedRef.current === completionKey') as () => void,
+    runTicketedEffect: () => run('claimOAuthCompletion') as () => void,
     runLegacyEffect: () => run('const connectedProviders') as () => void,
     runLegacyOwnerNoticeEffect: () => run('clearPreviousOwnerNotice') as () => void,
     setSession: (next) => { session = next },
@@ -245,6 +249,7 @@ afterEach(() => {
     '@/lib/oauth-navigation', '@/components/PersonalDictionarySettings',
     '@/components/auth/SecuritySettings', '@/components/ReferralPanel',
     'lucide-react', '@/components/icons/brand-icons', '@/lib/api-client',
+    '@/contexts/EntitlementsContext', '@/lib/oauth-completion-claims',
   ]) vi.doUnmock(moduleName)
   vi.resetModules()
 })

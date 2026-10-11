@@ -1,5 +1,7 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, ExternalLink, FileUp, Globe, Loader2, Star, X } from 'lucide-react'
@@ -31,6 +33,7 @@ const POLL_INTERVAL_MS = 2500
 const POLL_TIMEOUT_MS = 120_000
 
 type Source = 'github' | 'url' | 'linkedin'
+const SOURCE_CAPABILITIES = { github: 'g02', url: 'g03', linkedin: 'g04' } as const
 type Phase = 'input' | 'checking' | 'disconnected' | 'importing' | 'ready' | 'error'
 type Selection = { included: boolean; bullets: Set<number> }
 
@@ -44,11 +47,23 @@ export default function ImportProjectsModal({
   isOpen,
   onClose,
   onInsert,
+  allowNewActions = true,
 }: {
   isOpen: boolean
   onClose: () => void
   onInsert: (latex: string) => void
+  /** Deny new provider work while preserving already-admitted import results. */
+  allowNewActions?: boolean
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  // Admission is distinct from the source session: turning the parent feature
+  // off invalidates pending starts/OAuth, but not an already-submitted import.
+  const admissionRef = useRef({ allowNewActions, version: 0 })
+  if (admissionRef.current.allowNewActions !== allowNewActions) {
+    admissionRef.current = { allowNewActions, version: admissionRef.current.version + 1 }
+  }
   const [source, setSource] = useState<Source>('github')
   const [phase, setPhase] = useState<Phase>('input')
   const [projects, setProjects] = useState<ProjectEvidence[]>([])
@@ -59,6 +74,18 @@ export default function ImportProjectsModal({
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelledRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const requestVersion = useRef(0)
+  const sourceAllowed = can(SOURCE_CAPABILITIES[source])
+  const availableSource = sourceAllowed ? source : SOURCES.find((item) => can(SOURCE_CAPABILITIES[item.key]))?.key
+  const scopeRef = useRef({ isOpen, source, sourceAllowed })
+  // Invalidate before effects: a late provider response must not update a new
+  // source session, reopen a closed dialog, or navigate after live revocation.
+  if (scopeRef.current.isOpen !== isOpen || scopeRef.current.source !== source || scopeRef.current.sourceAllowed !== sourceAllowed) {
+    requestVersion.current += 1
+    scopeRef.current = { isOpen, source, sourceAllowed }
+  }
+  const isCurrentRequest = useCallback((version: number) =>
+    !cancelledRef.current && requestVersion.current === version, [])
 
   const clearTimer = () => {
     if (pollTimer.current) {
@@ -79,6 +106,7 @@ export default function ImportProjectsModal({
   }, [])
 
   const reset = useCallback(() => {
+    requestVersion.current += 1
     clearTimer()
     setPhase('input')
     setProjects([])
@@ -88,16 +116,19 @@ export default function ImportProjectsModal({
 
   // ── GitHub: connection check → async import job → poll ──────────────────────
   const startGithubImport = useCallback(async () => {
+    if (!canRef.current('g02') || !scopeRef.current.isOpen || scopeRef.current.source !== 'github' || cancelledRef.current || !admissionRef.current.allowNewActions) return
+    const version = requestVersion.current
     setPhase('importing')
     setError(null)
     try {
       const { job_id } = await apiClient.importGitHubProjects()
+      if (!isCurrentRequest(version)) return
       const deadline = Date.now() + POLL_TIMEOUT_MS
       const poll = async () => {
-        if (cancelledRef.current) return
+        if (!isCurrentRequest(version)) return
         try {
           const res = await apiClient.getGitHubImportResult(job_id)
-          if (cancelledRef.current) return
+          if (!isCurrentRequest(version)) return
           if (res.status === 'completed') return loadProjects(res.projects)
           if (res.status === 'failed') {
             setError(res.error || 'Import failed')
@@ -109,13 +140,14 @@ export default function ImportProjectsModal({
           }
           pollTimer.current = setTimeout(poll, POLL_INTERVAL_MS)
         } catch (e) {
-          if (cancelledRef.current) return
+          if (!isCurrentRequest(version)) return
           setError(e instanceof Error ? e.message : 'Failed to load import result')
           setPhase('error')
         }
       }
       pollTimer.current = setTimeout(poll, POLL_INTERVAL_MS)
     } catch (e) {
+      if (!isCurrentRequest(version)) return
       const msg = e instanceof Error ? e.message : 'Failed to start import'
       if (/not connected/i.test(msg)) setPhase('disconnected')
       else {
@@ -123,21 +155,26 @@ export default function ImportProjectsModal({
         setPhase('error')
       }
     }
-  }, [loadProjects])
+  }, [isCurrentRequest, loadProjects])
 
   const beginGithub = useCallback(async () => {
+    if (!canRef.current('g02') || !scopeRef.current.isOpen || scopeRef.current.source !== 'github' || cancelledRef.current || !admissionRef.current.allowNewActions) return
+    const version = requestVersion.current
+    const admissionVersion = admissionRef.current.version
     setPhase('checking')
     try {
       const status = await apiClient.getGitHubStatus()
-      if (cancelledRef.current) return
+      if (!isCurrentRequest(version) || !admissionRef.current.allowNewActions || admissionRef.current.version !== admissionVersion) return
       if (status.connected) startGithubImport()
       else setPhase('disconnected')
     } catch {
-      if (!cancelledRef.current) startGithubImport() // status best-effort
+      if (isCurrentRequest(version) && admissionRef.current.allowNewActions && admissionRef.current.version === admissionVersion) startGithubImport() // status best-effort
     }
-  }, [startGithubImport])
+  }, [isCurrentRequest, startGithubImport])
 
   const retry = useCallback(() => {
+    if (!canRef.current(SOURCE_CAPABILITIES[source]) || !admissionRef.current.allowNewActions || !scopeRef.current.isOpen || scopeRef.current.source !== source || cancelledRef.current) return
+    requestVersion.current += 1
     clearTimer()
     setProjects([])
     setSelection({})
@@ -150,6 +187,9 @@ export default function ImportProjectsModal({
   }, [beginGithub, source])
 
   const connectGithubForImport = useCallback(async () => {
+    if (!canRef.current('g02') || !scopeRef.current.isOpen || scopeRef.current.source !== 'github' || cancelledRef.current || !admissionRef.current.allowNewActions) return
+    const version = requestVersion.current
+    const admissionVersion = admissionRef.current.version
     setPhase('checking')
     setError(null)
     try {
@@ -157,6 +197,7 @@ export default function ImportProjectsModal({
         'import',
         window.location.pathname,
       )
+      if (!isCurrentRequest(version) || !canRef.current('g02') || !admissionRef.current.allowNewActions || admissionRef.current.version !== admissionVersion) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'github.com',
         pathname: '/login/oauth/authorize',
@@ -164,39 +205,45 @@ export default function ImportProjectsModal({
       if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e) {
+      if (!isCurrentRequest(version) || !admissionRef.current.allowNewActions || admissionRef.current.version !== admissionVersion) return
       setError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
       setPhase('error')
     }
-  }, [])
+  }, [isCurrentRequest])
 
   // ── URL: synchronous fetch + summarize ──────────────────────────────────────
   const runUrlImport = useCallback(async () => {
+    if (!canRef.current('g03') || !scopeRef.current.isOpen || scopeRef.current.source !== 'url' || cancelledRef.current || !admissionRef.current.allowNewActions) return
+    const version = requestVersion.current
     const url = urlInput.trim()
     if (!url) return
     setPhase('importing')
     setError(null)
     try {
       const res = await apiClient.importFromUrl(url)
-      if (cancelledRef.current) return
+      if (!isCurrentRequest(version)) return
       if (res.projects.length === 0) {
         setError('No projects found on that page.')
         return setPhase('error')
       }
       loadProjects(res.projects)
     } catch (e) {
+      if (!isCurrentRequest(version)) return
       setError(e instanceof Error ? e.message : 'Failed to import from URL')
       setPhase('error')
     }
-  }, [urlInput, loadProjects])
+  }, [isCurrentRequest, urlInput, loadProjects])
 
   // ── LinkedIn / resume file: synchronous upload + parse ──────────────────────
   const runLinkedInImport = useCallback(
     async (file: File) => {
+      if (!canRef.current('g04') || !scopeRef.current.isOpen || scopeRef.current.source !== 'linkedin' || cancelledRef.current || !admissionRef.current.allowNewActions) return
+      const version = requestVersion.current
       setPhase('importing')
       setError(null)
       try {
         const res = await apiClient.importLinkedIn(file)
-        if (cancelledRef.current) return
+        if (!isCurrentRequest(version)) return
         if (res.projects.length === 0) {
           setError('No projects or experience found in that file.')
           return setPhase('error')
@@ -207,37 +254,62 @@ export default function ImportProjectsModal({
         }
         loadProjects(res.projects)
       } catch (e) {
+        if (!isCurrentRequest(version)) return
         setError(e instanceof Error ? e.message : 'Failed to parse the file')
         setPhase('error')
       }
     },
-    [loadProjects]
+    [isCurrentRequest, loadProjects]
   )
 
-  const rememberArchiveRequest = () => {
+  const rememberArchiveRequest = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!canRef.current('g04') || !admissionRef.current.allowNewActions || !scopeRef.current.isOpen || scopeRef.current.source !== 'linkedin' || cancelledRef.current) {
+      event.preventDefault()
+      return
+    }
     setArchiveRequestedAt(rememberLinkedInArchiveRequest())
   }
 
-  // Reset on open + when the source changes; auto-start GitHub (its input is implicit).
+  // Reset only when this source session changes. A new entitlement snapshot
+  // with the same grants must not silently submit another import job.
   useEffect(() => {
+    cancelledRef.current = true
+    clearTimer()
     if (!isOpen) return
+    if (availableSource !== source) {
+      if (availableSource) setSource(availableSource)
+      else { setPhase('error'); setError('No import sources are currently available.') }
+      return
+    }
     cancelledRef.current = false
     reset()
     if (source === 'linkedin') {
       setArchiveRequestedAt(readLinkedInArchiveRequest())
     }
-    if (source === 'github') beginGithub()
     return () => {
       cancelledRef.current = true
+      requestVersion.current += 1
       clearTimer()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, source])
+  }, [availableSource, isOpen, reset, source])
+
+  useEffect(() => {
+    // A connection check/OAuth response may no longer admit a new import. Keep
+    // in-flight imports and their completion polling intact, including results.
+    if (!allowNewActions) setPhase((current) => current === 'checking' ? 'input' : current)
+  }, [allowNewActions])
+
+  useEffect(() => {
+    if (allowNewActions && isOpen && source === 'github' && sourceAllowed && phase === 'input') {
+      void beginGithub()
+    }
+  }, [allowNewActions, beginGithub, isOpen, phase, source, sourceAllowed])
 
   const switchSource = (s: Source) => {
+    if (!canRef.current(SOURCE_CAPABILITIES[s]) || !admissionRef.current.allowNewActions || !scopeRef.current.isOpen || source === s || cancelledRef.current) return
+    requestVersion.current += 1
     cancelledRef.current = true
     clearTimer()
-    cancelledRef.current = false
     setSource(s)
   }
 
@@ -268,6 +340,7 @@ export default function ImportProjectsModal({
   const selectedCount = Object.values(selection).filter((s) => s.included).length
 
   const handleInsert = () => {
+    if (!canRef.current(SOURCE_CAPABILITIES[source]) || !scopeRef.current.isOpen || scopeRef.current.source !== source) return
     const selections: ProjectSelection[] = projects
       .map((p, i) => ({ p, i }))
       .filter(({ i }) => selection[i]?.included)
@@ -320,8 +393,8 @@ export default function ImportProjectsModal({
           </div>
 
           {/* Source tabs */}
-          <div className="flex gap-1 border-b border-line px-4 py-2">
-            {SOURCES.map((s) => (
+          {allowNewActions && <div className="flex gap-1 border-b border-line px-4 py-2">
+            {SOURCES.filter((item) => can(SOURCE_CAPABILITIES[item.key])).map((s) => (
               <button
                 key={s.key}
                 onClick={() => switchSource(s.key)}
@@ -333,11 +406,11 @@ export default function ImportProjectsModal({
                 {s.label}
               </button>
             ))}
-          </div>
+          </div>}
 
           <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {/* Per-source input (only before results are ready) */}
-            {phase === 'input' && source === 'url' && (
+            {allowNewActions && phase === 'input' && source === 'url' && sourceAllowed && (
               <div className="py-6">
                 <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-2">Portfolio / project URL</label>
                 <div className="mt-2 flex gap-2">
@@ -357,7 +430,7 @@ export default function ImportProjectsModal({
               </div>
             )}
 
-            {phase === 'input' && source === 'linkedin' && (
+            {allowNewActions && phase === 'input' && source === 'linkedin' && sourceAllowed && (
               <div className="space-y-4 py-2">
                 <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-left">
                   <p className="text-xs font-semibold text-fg">1. Request your complete LinkedIn archive</p>
@@ -401,7 +474,10 @@ export default function ImportProjectsModal({
                   }}
                 />
                 <button
-                  onClick={() => fileRef.current?.click()}
+                  onClick={() => {
+                    if (!canRef.current('g04') || !admissionRef.current.allowNewActions || !scopeRef.current.isOpen || scopeRef.current.source !== 'linkedin' || cancelledRef.current) return
+                    fileRef.current?.click()
+                  }}
                   className="mx-auto flex w-full flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-line-2 bg-surface px-8 py-8 text-fg-2 transition hover:border-accent hover:text-fg"
                 >
                   <FileUp size={22} />
@@ -427,7 +503,7 @@ export default function ImportProjectsModal({
                 <p className="text-[11px] text-fg-3">This can take up to a minute.</p>
               </div>
             )}
-            {phase === 'disconnected' && (
+            {allowNewActions && phase === 'disconnected' && source === 'github' && sourceAllowed && (
               <div className="py-12 text-center">
                 <p className="text-sm text-fg-2">GitHub isn&apos;t connected yet.</p>
                 <p className="mx-auto mt-1 max-w-sm text-[11px] text-fg-3">
@@ -448,9 +524,9 @@ export default function ImportProjectsModal({
                 <div className="mx-auto max-w-md rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-4 py-3 text-sm text-err">
                   {error || 'Something went wrong.'}
                 </div>
-                <button onClick={retry} className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
+                {allowNewActions && sourceAllowed && <button onClick={retry} className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
                   Try again
-                </button>
+                </button>}
               </div>
             )}
 
@@ -539,7 +615,7 @@ export default function ImportProjectsModal({
               <button onClick={onClose} className="text-xs font-semibold text-fg-2 transition hover:text-fg">Cancel</button>
               <button
                 onClick={handleInsert}
-                disabled={phase !== 'ready' || selectedCount === 0}
+                disabled={!sourceAllowed || phase !== 'ready' || selectedCount === 0}
                 className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Insert into resume

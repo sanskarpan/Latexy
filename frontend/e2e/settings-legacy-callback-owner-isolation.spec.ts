@@ -388,7 +388,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       return
     }
     if (apiPath === '/config/entitlements') {
-      await fulfillJson(route, { features: {} }, { headers: bodyLabelHeaders('entitlements', appOrigin) })
+      await fulfillJson(route, { features: { g01: options.allowGitHubDisconnect === true } }, { headers: bodyLabelHeaders('entitlements', appOrigin) })
       return
     }
     if (apiPath === '/tenants/resolve-host') {

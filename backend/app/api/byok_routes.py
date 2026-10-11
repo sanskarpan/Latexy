@@ -6,13 +6,14 @@ Handles user API key management and multi-provider configuration
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_required, require_admin
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.llm_provider_service import LLMRequest, multi_provider_service

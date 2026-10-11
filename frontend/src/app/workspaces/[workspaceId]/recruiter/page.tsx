@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -15,8 +15,10 @@ import {
   type RecruiterNoteResponse,
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SessionLoadError from '@/components/SessionLoadError'
+import CapabilityGate from '@/components/CapabilityGate'
 import CommentsPanel from '@/components/CommentsPanel'
 import { downloadBlob } from '@/lib/download'
 
@@ -32,6 +34,11 @@ export default function RecruiterDashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  const { can } = useEntitlements()
+  const recruiterEnabled = can('f09')
+  const recruiterEnabledRef = useRef(recruiterEnabled)
+  recruiterEnabledRef.current = recruiterEnabled
 
   const [ws, setWs] = useState<WorkspaceDetailResponse | null>(null)
   const [items, setItems] = useState<ResumeWithNotes[]>([])
@@ -49,7 +56,8 @@ export default function RecruiterDashboardPage() {
   const requestedResumeId = searchParams.get('resume_id')
   const requestedCommentId = searchParams.get('comment_id') ?? undefined
   const memberRole = ws?.members.find((member) => member.user_id === userId)?.role
-  const canWrite = memberRole === 'owner' || memberRole === 'editor'
+  const canReview = memberRole === 'owner' || memberRole === 'editor'
+  const canWrite = canReview && recruiterEnabled
 
   const loadNotes = useCallback(async (resumeId: string) => {
     setItems((prev) =>
@@ -110,7 +118,7 @@ export default function RecruiterDashboardPage() {
         if (item.resume.id !== resumeId) return item
         if (item.expanded) return { ...item, expanded: false }
         // Load notes on first expand
-        if (canWrite && item.notes.length === 0 && !item.loading) {
+        if (canReview && item.notes.length === 0 && !item.loading) {
           loadNotes(resumeId)
         }
         return { ...item, expanded: true }
@@ -119,6 +127,7 @@ export default function RecruiterDashboardPage() {
   }
 
   async function handleAddNote(resumeId: string) {
+    if (!recruiterEnabledRef.current || !canReview) return
     const content = (drafts[resumeId] ?? '').trim()
     if (!content) return
     setSaving((p) => ({ ...p, [`add-${resumeId}`]: true }))
@@ -139,6 +148,7 @@ export default function RecruiterDashboardPage() {
   }
 
   async function handleUpdateNote(resumeId: string, noteId: string) {
+    if (!recruiterEnabledRef.current || !canReview) return
     const content = (editDrafts[noteId] ?? '').trim()
     if (!content) return
     setSaving((p) => ({ ...p, [`edit-${noteId}`]: true }))
@@ -287,7 +297,7 @@ export default function RecruiterDashboardPage() {
               </div>
 
               {/* Expanded notes section */}
-              {canWrite && expanded && (
+              {canReview && expanded && (
                 <div className="border-t border-line px-5 pb-5 pt-4">
                   {notesLoading ? (
                     <div className="flex justify-center py-4">
@@ -297,7 +307,7 @@ export default function RecruiterDashboardPage() {
                     <>
                       {/* Existing notes */}
                       {notes.length === 0 ? (
-                        <p className="text-sm text-fg-3 mb-4">No notes yet. Add one below.</p>
+                        <p className="text-sm text-fg-3 mb-4">No notes yet.</p>
                       ) : (
                         <ul className="space-y-3 mb-4">
                           {notes.map((note) => (
@@ -305,7 +315,7 @@ export default function RecruiterDashboardPage() {
                               key={note.id}
                               className="bg-surface-2 rounded-[var(--radius-md)] p-3"
                             >
-                              {editDrafts[note.id] !== undefined ? (
+                              {canWrite && editDrafts[note.id] !== undefined ? (
                                 <div className="space-y-2">
                                   <textarea
                                     value={editDrafts[note.id]}
@@ -346,9 +356,9 @@ export default function RecruiterDashboardPage() {
                                       {new Date(note.created_at).toLocaleDateString()}
                                     </p>
                                   </div>
-                                  {canWrite && note.author_id === userId && (
+                                  {canReview && (note.author_id === userId || memberRole === 'owner') && (
                                     <div className="flex items-center gap-1 shrink-0">
-                                      <button
+                                      {canWrite && note.author_id === userId && <button
                                         onClick={() =>
                                           setEditDrafts((p) => ({ ...p, [note.id]: note.content }))
                                         }
@@ -356,7 +366,7 @@ export default function RecruiterDashboardPage() {
                                         title="Edit note"
                                       >
                                         <Pencil className="h-3.5 w-3.5" />
-                                      </button>
+                                      </button>}
                                       <button
                                         onClick={() => handleDeleteNote(resume.id, note.id)}
                                         className="p-1 text-fg-3 hover:text-err transition-colors"
@@ -401,15 +411,17 @@ export default function RecruiterDashboardPage() {
                 </div>
               )}
               {expanded && (
+                <CapabilityGate feature="f06">
                 <div className="border-t border-line px-5 pb-5 pt-4">
                   <h2 className="mb-2 text-sm font-semibold text-fg">Resume comments</h2>
                   <CommentsPanel
                     resumeId={resume.id}
                     workspaceId={workspaceId}
                     highlightCommentId={requestedResumeId === resume.id ? requestedCommentId : undefined}
-                    canComment={canWrite}
+                    canComment={canReview}
                   />
                 </div>
+                </CapabilityGate>
               )}
             </div>
           ))}

@@ -350,17 +350,51 @@ class CollabRoom:
         self.resume_id = resume_id
         # Maps client_id → (websocket, user_info)
         self._clients: Dict[str, Tuple[WebSocket, dict]] = {}
+        self._access_checks: Dict[str, Callable[[], Awaitable[bool]]] = {}
         self._lock = asyncio.Lock()
 
     # ── Connection management ─────────────────────────────────────────────
 
-    async def add(self, client_id: str, ws: WebSocket, user_info: dict) -> None:
+    async def add(
+        self, client_id: str, ws: WebSocket, user_info: dict,
+        *, access_check: Optional[Callable[[], Awaitable[bool]]] = None,
+    ) -> None:
         async with self._lock:
             self._clients[client_id] = (ws, user_info)
+            if access_check is not None:
+                self._access_checks[client_id] = access_check
 
     async def remove(self, client_id: str) -> None:
         async with self._lock:
             self._clients.pop(client_id, None)
+            self._access_checks.pop(client_id, None)
+
+    async def has_access(self, client_id: str) -> bool:
+        """Revalidate an HTTP-admitted socket before incoming or outgoing data.
+
+        The transport supplies the current ACL/capability check at admission.
+        Standalone internal rooms may omit it; all websocket connections install
+        one. Do not cache an allow decision across frames or Redis broadcasts.
+        """
+        async with self._lock:
+            entry = self._clients.get(client_id)
+            check = self._access_checks.get(client_id)
+        if entry is None:
+            return False
+        if check is None:
+            return True
+        try:
+            allowed = await check()
+        except Exception:
+            allowed = False
+        if allowed:
+            return True
+        await self.remove(client_id)
+        try:
+            await entry[0].close(code=CLOSE_ACCESS_REVOKED, reason="Collaboration is unavailable")
+        except Exception:
+            pass
+        return False
 
     @property
     def size(self) -> int:
@@ -434,6 +468,8 @@ class CollabRoom:
             for cid, (ws, _) in snapshot:
                 if cid == exclude:
                     continue
+                if not await self.has_access(cid):
+                    continue
                 try:
                     await ws.send_bytes(data)
                 except Exception:
@@ -441,6 +477,8 @@ class CollabRoom:
         else:
             async def send_bounded(cid: str, ws: WebSocket) -> Optional[str]:
                 try:
+                    if not await asyncio.wait_for(self.has_access(cid), timeout=timeout):
+                        return cid
                     await asyncio.wait_for(ws.send_bytes(data), timeout=timeout)
                 except asyncio.TimeoutError:
                     return cid
@@ -464,6 +502,8 @@ class CollabRoom:
         async with self._lock:
             entry = self._clients.get(client_id)
         if entry is None:
+            return
+        if not await self.has_access(client_id):
             return
         ws, _ = entry
         try:
@@ -784,6 +824,7 @@ async def handle_collab_message(
     chat_user_id: Optional[str] = None,
     chat_sender_label: Optional[str] = None,
     chat_access_check: Optional[Callable[[], Awaitable[bool]]] = None,
+    document_write_check: Optional[Callable[[], Awaitable[bool]]] = None,
 ) -> None:
     """
     Dispatch one binary Y.js message received from *client_id*.
@@ -794,12 +835,17 @@ async def handle_collab_message(
     * MSG_AWARENESS / MSG_QUERY_AWARENESS → relay to peers (no persistence)
     * MSG_CHAT → relay validated plain-text chat only (never persisted)
 
-    ``chat_access_check`` is supplied by the websocket route and is deliberately
+    ``document_write_check`` is supplied by the websocket route and runs only
+    for source updates, leaving catch-up, awareness, and chat under their own
+    policies. ``chat_access_check`` is supplied by the websocket route and is deliberately
     invoked only after strict parsing and rate limiting. ``chat_authorized`` is
     an explicit internal/test override; ``None`` preserves the room-member
     assumption for internal callers, while ``False`` fails closed.
     """
     if not data:
+        return
+
+    if not await room.has_access(client_id):
         return
 
     # Bound per-frame size to prevent a single peer from flooding Redis / peers
@@ -851,6 +897,16 @@ async def handle_collab_message(
             try:
                 update_bytes, _ = _decode_varbuffer(data, pos)
             except ValueError:
+                return
+
+            if document_write_check is not None and not await document_write_check():
+                await room.send_to(
+                    client_id,
+                    _build_permission_denied(
+                        "feature_disabled",
+                        "Document editing is unavailable",
+                    ),
+                )
                 return
 
             if update_bytes:

@@ -3,6 +3,7 @@ import type { BuilderResumeResponse } from '@/lib/api-client'
 
 const fixture = vi.hoisted(() => ({
   cleanups: [] as (() => void)[],
+  compileAllowed: true,
   api: { compileLatex: vi.fn(), getJobState: vi.fn(), getJobResult: vi.fn(), downloadPdf: vi.fn() },
   download: vi.fn(),
 }))
@@ -15,6 +16,7 @@ vi.mock('react', () => ({
     if (cleanup) fixture.cleanups.push(cleanup)
   },
 }))
+vi.mock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: (key: string) => key !== 'c05' || fixture.compileAllowed }) }))
 vi.mock('@/lib/api-client', () => ({ apiClient: fixture.api }))
 vi.mock('@/lib/download', () => ({ downloadBlob: fixture.download }))
 // React's hooks are mocked above; this harness executes the production closure.

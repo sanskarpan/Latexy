@@ -23,6 +23,15 @@ function builder(status = 'active') {
 
 async function setup(page: Page, status = 'active') {
   const calls = { templates: 0, reads: 0, writes: 0, legacyWrites: 0, compiles: 0, exports: 0 }
+  await page.route('**/config/entitlements', route => route.fulfill({ json: { features: {
+    b01: true, // create a builder document in create/import scenarios
+    b06: true, // reach the upload handler before compatibility is revoked
+    b07: true, // allow JSON Resume import scenarios to reach their handler
+    b08: true, // enter and reattach the guided builder
+    c01: true, // edit/save structured content
+    c05: true, // expose PDF preview and compile-backed exports
+    h01: true, // reach the JSON export handler in compatibility-revocation coverage
+  } } }))
   await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
     session: { id: 'builder-session', userId: 'builder-user', token: 'synthetic-token', expiresAt: '2099-01-01T00:00:00Z' },
     user: { id: 'builder-user', email: 'builder@example.com', name: 'Builder User' },

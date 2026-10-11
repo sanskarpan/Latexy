@@ -4,29 +4,39 @@ import { useEffect, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { previewErrorMessage } from '@/lib/preview-errors'
 import { useEngineProviderChoice } from '@/hooks/useEngineProviderChoice'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import type { ResumeEngineDocument, OptimizationEffort, SemanticOptimizationRun } from '@/lib/resume-engine-types'
 
-export default function SemanticOptimizationPanel({ resumeId, identity, document, currentSourceHash, disabled,
+export default function SemanticOptimizationPanel({ resumeId, identity, document, currentSourceHash, disabled, startDisabled = false,
   jobDescription, setJobDescription, runId, provisionalPatches = [], onStarted, onApplied }: {
   resumeId: string; identity: string; document: ResumeEngineDocument | null; currentSourceHash: string | null
   provisionalPatches?: import('@/lib/resume-engine-types').SemanticPatch[]
-  disabled: boolean; jobDescription: string; setJobDescription: (text: string) => void; runId: string | null
+  disabled: boolean; startDisabled?: boolean; jobDescription: string; setJobDescription: (text: string) => void; runId: string | null
   onStarted: (jobId: string) => void
   onApplied: (document: ResumeEngineDocument, source: string, startedAt: number) => void
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can); canRef.current = can
+  const constraintsRef = useRef({ disabled, startDisabled }); constraintsRef.current = { disabled, startDisabled }
   const [effort, setEffort] = useState<OptimizationEffort>('standard')
   const [run, setRun] = useState<SemanticOptimizationRun | null>(null)
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const providerChoice = useEngineProviderChoice(identity)
   const accountToken = apiClient.getAuthToken()
-  const currentIdentity = useRef(identity); currentIdentity.current = identity
+  const currentIdentity = useRef(identity)
+  const identityGeneration = useRef(0)
+  if (currentIdentity.current !== identity) identityGeneration.current += 1
+  currentIdentity.current = identity
+  const renderedIdentityGeneration = identityGeneration.current
+  const isCurrentPanel = () => currentIdentity.current === identity && identityGeneration.current === renderedIdentityGeneration
   const currentSource = useRef(currentSourceHash); currentSource.current = currentSourceHash
   const currentRevision = useRef(document?.content_revision); currentRevision.current = document?.content_revision
-  useEffect(() => { setRun(null); setError(null); setBusy(false) }, [identity, runId])
+  useEffect(() => { setRun(null); setError(null); setBusy(false); busyRef.current = false }, [identity, runId])
   // A token refresh can invalidate an in-flight admission without changing the
   // user's identity. Its fenced finally block must not leave this panel busy.
-  useEffect(() => { setError(null); setBusy(false) }, [accountToken])
+  useEffect(() => { setError(null); setBusy(false); busyRef.current = false }, [accountToken])
   useEffect(() => {
     if (!runId) return
     let stale = false; let timer: ReturnType<typeof setTimeout> | undefined
@@ -47,40 +57,59 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
     return () => { stale = true; if (timer) clearTimeout(timer) }
   }, [identity, resumeId, runId])
   const eligible = document && document.source_mode === 'managed' && document.source_sha256 === currentSourceHash && !disabled && !busy
+  const startAllowed = ['d01', 'd18', 'c05', 'c01'].every(can)
+  const acceptAllowed = can('d03') && can('c01')
+  const rejectEligible = document && !disabled && !busy
   const start = async () => {
-    if (!eligible || !document || !jobDescription.trim() || !providerChoice.request || !providerChoice.accountContext?.isCurrent()) return
+    if (!isCurrentPanel() || busyRef.current || !['d01', 'd18', 'c05', 'c01'].every(canRef.current) || constraintsRef.current.disabled || constraintsRef.current.startDisabled || !eligible || !document || document.source_sha256 !== currentSource.current || document.content_revision !== currentRevision.current || !jobDescription.trim() || !providerChoice.request || !providerChoice.accountContext?.isCurrent()) return
     const source = currentSourceHash
-    setBusy(true); setError(null)
+    busyRef.current = true; setBusy(true); setError(null)
     try {
       const response = await apiClient.optimizeEngineDocument(resumeId, {
         expected_content_revision: document.content_revision, expected_source_sha256: document.source_sha256,
         job_description: jobDescription.trim(), effort, ...providerChoice.request,
-      }, providerChoice.accountContext)
-      if (currentIdentity.current !== identity || !providerChoice.accountContext.isCurrent()) return
+      }, {
+        authToken: providerChoice.accountContext.authToken,
+        isCurrent: () => isCurrentPanel() && providerChoice.accountContext!.isCurrent() &&
+          !constraintsRef.current.disabled && !constraintsRef.current.startDisabled &&
+          ['d01', 'd18', 'c05', 'c01'].every(canRef.current) &&
+          document.source_sha256 === currentSource.current && document.content_revision === currentRevision.current,
+      })
+      if (!isCurrentPanel() || !providerChoice.accountContext.isCurrent()) return
       if (!response.success || !response.job_id) throw new Error('Admission failed')
       if (source !== currentSource.current) setError('Your resume changed while the review started. Suggestions will require a fresh revision check.')
       onStarted(response.job_id)
-    } catch (error) { if (currentIdentity.current === identity && providerChoice.accountContext.isCurrent()) setError(previewErrorMessage(error, true, 'Review could not start. Save your current resume and try again. No suggestions were applied.')) }
-    finally { if (currentIdentity.current === identity && providerChoice.accountContext.isCurrent()) setBusy(false) }
+    } catch (error) { if (isCurrentPanel() && providerChoice.accountContext.isCurrent()) setError(previewErrorMessage(error, true, 'Review could not start. Save your current resume and try again. No suggestions were applied.')) }
+    finally { if (isCurrentPanel() && providerChoice.accountContext.isCurrent()) { busyRef.current = false; setBusy(false) } }
   }
   const decide = async (accept: string[], reject: string[]) => {
-    if (!eligible || !document || !runId || !run?.acceptance_ready) return
+    const accepting = accept.length > 0
+    if (!isCurrentPanel() || constraintsRef.current.disabled || !document || !runId || !run?.acceptance_ready || busyRef.current || busy) return
+    if (accepting && (!canRef.current('d03') || !canRef.current('c01') || !eligible || document.source_sha256 !== currentSource.current || document.content_revision !== currentRevision.current)) return
+    const requestToken = apiClient.getAuthToken()
+    if (!requestToken) return
+    const isCurrentDecision = () => isCurrentPanel() && apiClient.getAuthToken() === requestToken
     const actionStarted = performance.now()
     const source = currentSourceHash; const revision = document.content_revision
-    setBusy(true); setError(null)
+    busyRef.current = true; setBusy(true); setError(null)
     try {
       const response = await apiClient.decideEngineRun(resumeId, runId, {
         expected_content_revision: revision, expected_source_sha256: document.source_sha256,
         accept_patch_ids: accept, reject_patch_ids: reject,
+      }, {
+        authToken: requestToken,
+        isCurrent: () => isCurrentDecision() && !constraintsRef.current.disabled &&
+          (!accepting || (canRef.current('d03') && canRef.current('c01') &&
+            document.source_sha256 === currentSource.current && revision === currentRevision.current)),
       })
-      if (currentIdentity.current !== identity) return
-      if (source !== currentSource.current || revision !== currentRevision.current) {
+      if (!isCurrentDecision()) return
+      if (accepting && (source !== currentSource.current || revision !== currentRevision.current)) {
         setError('A newer edit arrived while saving your decision. Reload to recover the saved revision.'); return
       }
       setRun((previous) => previous ? { ...previous, decisions: response.decisions } : previous)
-      onApplied(response.document, response.latex_content, actionStarted)
-    } catch { if (currentIdentity.current === identity) setError('This suggestion is out of date or could not be saved. Your current resume is preserved.') }
-    finally { if (currentIdentity.current === identity) setBusy(false) }
+      if (accepting) onApplied(response.document, response.latex_content, actionStarted)
+    } catch { if (isCurrentDecision()) setError('This suggestion is out of date or could not be saved. Your current resume is preserved.') }
+    finally { if (isCurrentDecision()) { busyRef.current = false; setBusy(false) } }
   }
   const requirements = run?.result?.requirements?.requirements ?? []
   const missingEvidenceMessages = run?.result?.missing_evidence?.map((item) => {
@@ -91,7 +120,7 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
   return <div className="h-full space-y-5 overflow-auto p-4">
     <div><h2 className="text-base font-semibold">Improve your resume</h2>
       <p className="mt-1 text-xs leading-relaxed text-fg-3">Review plain-language suggestions before they change your resume. Unsupported fields stay intact.</p></div>
-    <label className="block text-xs font-semibold">Target job
+    {startAllowed && <><label className="block text-xs font-semibold">Target job
       <textarea value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} rows={5} maxLength={20000}
         className="mt-2 w-full rounded-lg border border-line bg-surface p-3 text-sm font-normal" placeholder="Paste the job description" /></label>
     <div className="space-y-2">
@@ -126,8 +155,8 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
         onClick={() => setEffort(level)} className={`rounded-lg border p-2 text-xs capitalize ${level === effort ? 'border-accent bg-accent-soft' : 'border-line'}`}>{level}</button>)}
     </div>
     <p className="text-xs text-fg-3">{effort === 'quick' ? 'A focused pass on the most useful changes.' : effort === 'deep' ? 'A more thorough review with a larger time and usage budget.' : 'A balanced review of supported resume sections.'}</p>
-    <button disabled={!eligible || !providerChoice.request || !jobDescription.trim() || run?.status === 'running'} onClick={() => void start()}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50">{busy ? 'Saving…' : 'Find suggestions'}</button>
+    <button disabled={startDisabled || !eligible || !providerChoice.request || !jobDescription.trim() || run?.status === 'running'} onClick={() => void start()}
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50">{busy ? 'Saving…' : 'Find suggestions'}</button></>}
     {!document && <p className="text-xs text-fg-3">Loading supported fields…</p>}
     {document && document.source_sha256 !== currentSourceHash && <p className="text-xs text-warn">Save your current resume before starting a review.</p>}
     {error && <p role="alert" className="text-xs text-err">{error}</p>}
@@ -156,7 +185,7 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
     </div>}
     {missingEvidenceMessages.length ? <div className="text-xs text-warn"><p>Add evidence for these suggestions:</p><ul className="mt-2 list-disc pl-4">{missingEvidenceMessages.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}
     {run?.result?.warnings?.map((warning, index) => <p key={index} className="text-xs text-warn">{warning}</p>)}
-    {pending.length > 0 && <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide(pending.map((patch) => patch.patch_id), [])}
+    {acceptAllowed && pending.length > 0 && <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide(pending.map((patch) => patch.patch_id), [])}
       className="rounded-lg border border-accent px-3 py-2 text-xs font-semibold disabled:opacity-50">Accept all {pending.length} suggestions</button>}
     {run?.result?.patches.map((patch) => <article key={patch.patch_id} className="space-y-3 rounded-lg border border-line p-3">
       <p className="text-xs font-semibold">{run.document.nodes.find((node) => node.node_id === patch.node_id)?.section ?? 'Resume field'}</p>
@@ -165,8 +194,8 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
       <p className="text-xs text-fg-3">{patch.reason}</p>
       {patch.review_reason && <p className="text-xs text-warn">{patch.review_reason}</p>}
       {run.decisions.patches?.[patch.patch_id] ? <p className="text-xs capitalize text-fg-3">{run.decisions.patches[patch.patch_id]}</p> : <div className="flex gap-2">
-        <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide([patch.patch_id], [])} className="rounded bg-accent px-3 py-1.5 text-xs text-accent-fg disabled:opacity-50">Accept</button>
-        <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide([], [patch.patch_id])} className="rounded border border-line px-3 py-1.5 text-xs disabled:opacity-50">Reject</button>
+        {acceptAllowed && <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide([patch.patch_id], [])} className="rounded bg-accent px-3 py-1.5 text-xs text-accent-fg disabled:opacity-50">Accept</button>}
+        <button disabled={!rejectEligible || !run?.acceptance_ready} onClick={() => void decide([], [patch.patch_id])} className="rounded border border-line px-3 py-1.5 text-xs disabled:opacity-50">Reject</button>
       </div>}
     </article>)}
   </div>

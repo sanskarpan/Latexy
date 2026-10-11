@@ -15,6 +15,8 @@ export default function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
+  confirmDisabled = false,
+  disabledReason,
   onConfirm,
   onCancel,
 }: {
@@ -24,6 +26,8 @@ export default function ConfirmDialog({
   confirmLabel?: string
   cancelLabel?: string
   destructive?: boolean
+  confirmDisabled?: boolean
+  disabledReason?: string
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -56,6 +60,7 @@ export default function ConfirmDialog({
       >
         <h2 id="confirm-dialog-title" className="text-sm font-semibold text-fg">{title}</h2>
         <p id="confirm-dialog-message" className="mt-2 text-sm leading-relaxed text-fg-2">{message}</p>
+        {confirmDisabled && disabledReason && <p id="confirm-disabled-reason" role="status" className="mt-2 text-xs text-warn">{disabledReason}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
@@ -67,8 +72,10 @@ export default function ConfirmDialog({
           <button
             ref={confirmRef}
             type="button"
-            onClick={onConfirm}
-            className={`rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-semibold text-accent-fg transition hover:brightness-110 ${destructive ? 'bg-err' : 'bg-accent'}`}
+            disabled={confirmDisabled}
+            aria-describedby={confirmDisabled && disabledReason ? 'confirm-disabled-reason' : undefined}
+            onClick={() => { if (!confirmDisabled) onConfirm() }}
+            className={`rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-50 ${destructive ? 'bg-err' : 'bg-accent'}`}
           >
             {confirmLabel}
           </button>

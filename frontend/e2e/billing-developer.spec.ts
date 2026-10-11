@@ -66,6 +66,7 @@ const plansPayload = {
     },
     student: {
       id: 'student',
+      capabilities: { i02: true },
       name: 'Student',
       price: 29900,
       currency: 'INR',
@@ -75,6 +76,7 @@ const plansPayload = {
     },
     team: {
       id: 'team',
+      capabilities: { i02: true },
       name: 'Team',
       price: 249900,
       currency: 'INR',
@@ -94,6 +96,14 @@ const plansPayload = {
 }
 
 test.describe('Billing page', () => {
+  test.beforeEach(async ({ page }) => {
+    // Exercise billing behavior with explicit effective commercial grants;
+    // absent permissions remain denied, including in synthetic browser tests.
+    await page.route('**/config/entitlements', route => route.fulfill({
+      json: { features: { i01: true, i02: true } },
+    }))
+  })
+
   test('an available old backend stays read-only without explicit Dodo capability', async ({ page }) => {
     let mutationRequests = 0
     await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
@@ -134,7 +144,7 @@ test.describe('Billing page', () => {
     await page.goto('/billing')
     await expect(page.getByRole('heading', { name: 'Pricing & Billing' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Basic' })).toBeVisible()
-    await page.getByRole('button', { name: 'Annual' }).click()
+    await page.getByRole('group', { name: 'Billing period' }).getByRole('button', { name: /^Annual\b/ }).click()
     await expect(page.getByRole('heading', { name: 'Basic Annual' })).toBeVisible()
     await expect(page.getByText('₹239.25/month effective')).toBeVisible()
     await page.getByRole('link', { name: 'Sign In to Subscribe' }).click()
@@ -276,11 +286,12 @@ test.describe('Billing page', () => {
     )
 
     await page.goto('/billing')
+    // The owned subscription panel confirms hydration before entering a coupon.
+    await expect(page.getByRole('heading', { name: 'Team seats' })).toBeVisible()
     await page.getByPlaceholder('SAVE20').fill('SAVE20')
     await page.getByRole('button', { name: 'Apply' }).click()
     await expect(page.getByText('SAVE20 · 20% off')).toBeVisible()
 
-    await expect(page.getByRole('heading', { name: 'Team seats' })).toBeVisible()
     await page.getByPlaceholder('teammate@company.com').fill('newhire@example.com')
     await page.getByRole('button', { name: 'Invite teammate' }).click()
     await expect(page.getByText('designer@example.com')).toBeVisible()
@@ -490,6 +501,12 @@ test.describe('Billing page', () => {
 })
 
 test.describe('Developer portal', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/config/entitlements', route => route.fulfill({
+      json: { features: { h08: true } },
+    }))
+  })
+
   test('authenticated user can view, create, and revoke developer keys', async ({ page }) => {
     await page.route('**/api/auth/get-session', (route) =>
       route.fulfill({

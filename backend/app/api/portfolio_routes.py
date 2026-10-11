@@ -7,7 +7,7 @@ from datetime import datetime
 from html import escape
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,10 +18,11 @@ from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
-from ..middleware.entitlements import require_feature
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.rate_limiting import client_ip_id
 from ..services.document_export_service import document_export_service
 from ..services.email_service import email_service
+from ..services.entitlement_service import entitlement_service
 
 logger = get_logger(__name__)
 
@@ -170,7 +171,6 @@ async def _check_contact_rate_limit(request: Request, username: str) -> None:
 @router.post(
     "/setup",
     response_model=PortfolioSetupResponse,
-    dependencies=[Depends(require_feature("portfolio"))],
 )
 async def setup_portfolio(
     body: PortfolioSetupRequest,
@@ -308,6 +308,9 @@ async def resolve_domain(
         )
     )
     user: Optional[User] = result.scalar_one_or_none()
+    if user and (not await entitlement_service.has_feature("g12", user=user.id)
+                 or not await entitlement_service.has_feature("g13", user=user.id)):
+        user = None
     return ResolveDomainResponse(
         domain=domain,
         username=user.public_username if user else None,
@@ -334,6 +337,8 @@ async def contact_portfolio_owner(
     )
     owner = result.scalar_one_or_none()
     if owner is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    if not await entitlement_service.has_feature("g12", user=owner.id):
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
     await _check_contact_rate_limit(request, normalized_username)
@@ -376,6 +381,8 @@ async def get_portfolio(
     user: Optional[User] = result.scalar_one_or_none()
 
     if user is None or not user.portfolio_enabled:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    if not await entitlement_service.has_feature("g12", user=user.id):
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
     resumes_result = await db.execute(

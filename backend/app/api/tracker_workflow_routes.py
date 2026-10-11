@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -25,7 +25,7 @@ from ..database.models import (
     TrackerContact,
 )
 from ..middleware.auth_middleware import get_current_user_required
-from ..middleware.entitlements import require_feature
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..utils.uuid_guard import ensure_uuid
 from .tracker_routes import _logo_url
 from .tracker_routes import _serialize as _serialize_application
@@ -33,7 +33,6 @@ from .tracker_routes import _serialize as _serialize_application
 router = APIRouter(
     prefix="/tracker",
     tags=["tracker"],
-    dependencies=[Depends(require_feature("application_tracker"))],
 )
 
 

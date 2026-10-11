@@ -1,16 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Users, Plus, Loader2, Building2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type WorkspaceResponse } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SessionLoadError from '@/components/SessionLoadError'
 
 export default function WorkspacesPage() {
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const { can } = useEntitlements()
+  const canCreate = can('f08')
+  const canCreateRef = useRef(canCreate)
+  canCreateRef.current = canCreate
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -37,6 +42,7 @@ export default function WorkspacesPage() {
   }, [session, reloadNonce])
 
   async function handleCreate() {
+    if (!canCreateRef.current) return
     const name = newName.trim()
     if (!name) return
     setCreating(true)
@@ -78,13 +84,13 @@ export default function WorkspacesPage() {
           <Building2 className="h-6 w-6 text-accent-strong" />
           <h1 className="text-2xl font-semibold">Team Workspaces</h1>
         </div>
-        <button
+        {canCreate && <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2 bg-accent hover:brightness-110 text-accent-fg rounded-[var(--radius-md)] text-sm font-medium transition-colors"
         >
           <Plus className="h-4 w-4" />
           New Workspace
-        </button>
+        </button>}
       </div>
 
       {loadError && (
@@ -102,7 +108,7 @@ export default function WorkspacesPage() {
       )}
 
       {/* Create form */}
-      {showCreate && (
+      {canCreate && showCreate && (
         <div className="mb-6 p-4 bg-surface border border-line rounded-[var(--radius-lg)]">
           <p className="text-sm font-medium text-fg-2 mb-3">Workspace name</p>
           <div className="flex gap-3">
@@ -136,7 +142,7 @@ export default function WorkspacesPage() {
         <div className="text-center py-20 text-fg-3">
           <Building2 className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg mb-1">No workspaces yet</p>
-          <p className="text-sm">Create a workspace to collaborate with your team.</p>
+          {canCreate && <p className="text-sm">Create a workspace to collaborate with your team.</p>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

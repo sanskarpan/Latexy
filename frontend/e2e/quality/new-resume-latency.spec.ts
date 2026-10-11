@@ -1,5 +1,5 @@
 import { expect, test } from './quality-test'
-import { mockEngineAncillaryApi } from './engine-fixtures'
+import { fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi } from './engine-fixtures'
 
 test('resume title and import controls remain usable while template requests are pending', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('latexy_onboarding_completed', 'true'))
@@ -7,13 +7,13 @@ test('resume title and import controls remain usable while template requests are
   const pending = new Promise<void>(resolve => { release = resolve })
   await mockEngineAncillaryApi(page, 'latency-test')
   let templateRequests = 0
-  await page.route(url => url.pathname === '/templates' || url.pathname.startsWith('/templates/'), route => {
+  await mockEngineRoute(page, url => url.pathname === '/templates' || url.pathname.startsWith('/templates/'), route => {
     if (!['fetch', 'xhr'].includes(route.request().resourceType())
       || route.request().headers().rsc === '1') return route.fallback()
     templateRequests++
-    return pending.then(() => route.fulfill({ json: [] }))
+    return pending.then(() => fulfillEngineResponse(route, { json: [] }))
   })
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: {
     session: { token: 'latency-test-token' }, user: { id: 'latency-test', email: 'latency@example.com', name: 'Latency QA', emailVerified: true },
   } }))
   try {

@@ -120,12 +120,21 @@ async def update_feature_flag(
 
 class KillSwitchUpdateRequest(BaseModel):
     enabled: bool
+    expected_enabled: bool | None = None
 
 
 class MatrixUpdateRequest(BaseModel):
     plan_family: str
     feature_key: str
     enabled: bool
+    expected_enabled: bool | None = None
+
+
+class RoleMatrixUpdateRequest(BaseModel):
+    role: str
+    feature_key: str
+    enabled: bool
+    expected_enabled: bool | None = None
 
 
 @router.get("/admin/entitlements")
@@ -146,7 +155,7 @@ async def update_kill_switch(
 ) -> dict:
     """Toggle a global feature kill-switch. Admin only. 404 if the key is not gateable."""
     try:
-        await entitlement_service.set_kill_switch(key, body.enabled, db)
+        await entitlement_service.set_kill_switch(key, body.enabled, db, expected_enabled=body.expected_enabled)
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -173,9 +182,9 @@ async def update_matrix_cell(
 
     400 on an unknown plan family, 404 on an unknown/non-gateable feature key.
     """
-    from ..core.feature_registry import PLAN_FAMILIES, is_gateable
+    from ..core.feature_registry import PLAN_MATRIX_KEYS, is_gateable
 
-    if body.plan_family not in PLAN_FAMILIES:
+    if body.plan_family not in PLAN_MATRIX_KEYS:
         raise HTTPException(
             status_code=400,
             detail=error_body(
@@ -194,7 +203,7 @@ async def update_matrix_cell(
             ),
         )
     await entitlement_service.set_matrix_cell(
-        body.plan_family, body.feature_key, body.enabled, db
+        body.plan_family, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled
     )
     logger.info(
         "admin_entitlement_matrix_updated",
@@ -205,6 +214,50 @@ async def update_matrix_cell(
             "enabled": body.enabled,
         },
     )
+    return await entitlement_service.get_state(db)
+
+
+def _log_role_toggle(admin_user_id: str, role: str, feature_key: str, enabled: bool) -> None:
+    """Keep the audit useful with JSON or plain-text handlers and one record per change."""
+    # Inputs are canonical registry values/server-owned identity. Escape line
+    # breaks again at the sink so a future caller cannot forge audit records.
+    def one_line(value: str) -> str:
+        return (value.replace("\r", "\\r").replace("\n", "\\n")
+                .replace("\x85", "\\x85").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+    # JsonFormatter intentionally allowlists extra fields and excludes these.
+    # Include bounded identifiers in the message so the audit is not empty.
+    logger.info(
+        "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
+        one_line(admin_user_id), one_line(role), one_line(feature_key), bool(enabled),
+    )
+
+
+@router.patch("/admin/entitlements/roles")
+async def update_role_matrix_cell(
+    body: RoleMatrixUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user_id: str = Depends(require_admin),
+) -> dict:
+    """Restrict one account role/context; document and tenant ACLs are unchanged."""
+    from ..core.feature_registry import CAPABILITY_ROLES, get_feature
+
+    # Resolve to the registry's canonical objects before persisting or logging.
+    # Never send raw request strings to the security audit event.
+    role = next((known for known in CAPABILITY_ROLES if known == body.role), None)
+    if role is None:
+        raise HTTPException(status_code=400, detail=error_body(
+            "invalid_capability_role", f"Unknown account role/context: {body.role!r}", None,
+        ))
+    feature = get_feature(body.feature_key)
+    if feature is None or not feature.gateable:
+        raise HTTPException(status_code=404, detail=error_body(
+            "feature_not_found", f"Unknown or non-gateable feature: {body.feature_key!r}", None,
+        ))
+    await entitlement_service.set_role_cell(
+        role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
+    )
+    _log_role_toggle(admin_user_id, role, feature.key, body.enabled)
     return await entitlement_service.get_state(db)
 
 

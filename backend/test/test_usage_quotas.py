@@ -306,6 +306,12 @@ class TestEnforceQuota:
         # operator environment has configured a paid-provider catalog.
         quota_module = importlib.import_module("app.services.entitlement_service")
         monkeypatch.setattr(quota_module, "get_plan_quota", lambda _plan, _dimension: None if allowed else 10)
+        policy_module = importlib.import_module("app.services.quota_policy_service")
+
+        async def resolve_numeric_policy(_plan, dimension):
+            return quota_module.get_plan_quota(plan, dimension), "day"
+
+        monkeypatch.setattr(policy_module, "resolve_quota_policy", resolve_numeric_policy)
 
         owner = "test_private_owner\r\nFORGED_QUOTA_EVENT"
 

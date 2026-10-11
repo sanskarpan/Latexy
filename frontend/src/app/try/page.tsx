@@ -39,6 +39,8 @@ import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { FIRST_USE_ENGINE_RESUME_TEMPLATE as DEMO_RESUME_TEMPLATE } from '@/lib/first-use-resume'
 import { insertProjectLatex } from '@/lib/github-projects-latex'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
 import SourcePdfDivider, { type PdfSelectionLocation } from '@/components/SourcePdfDivider'
 
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
@@ -69,16 +71,38 @@ const RAIL: { id: Tool; icon: typeof Files; label: string }[] = [
   { id: 'templates', icon: LayoutTemplate, label: 'Templates' },
 ]
 
+const TOOL_CAPABILITIES: Partial<Record<Tool, string>> = {
+  ai: 'd01', ats: 'd18', import: 'b06', templates: 'b04',
+}
+
 export default function TryPage() {
+  const { can, loaded: entitlementsLoaded } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const studioAllowed = can('a09')
+  const contentEditAllowed = can('c01')
+  const compileAllowed = can('c05')
+  const syncAllowed = can('c10')
+  const visualEditorAllowed = can('b10')
   const flags = useFeatureFlags()
   const [hydrated, setHydrated] = useState(false)
   const [showGuide, setShowGuide] = useState(true)
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
+  const changeContent = useCallback((content: string) => {
+    if (canRef.current('c01')) setLatexContent(content)
+  }, [])
   const { data: session, isPending: sessionPending } = useSession()
   const engineCapability = useEngineCapability(session?.user?.id ?? 'anonymous')
   const engineSupported = engineCapability.status === 'supported'
   const [preferredEditorMode, setEditorMode] = useState<'pdf' | 'source'>('pdf')
-  const editorMode = engineEditorMode(preferredEditorMode, engineCapability.status, engineCapability.sourceFallback)
+  const resolvedSession = hydrated ? session : null
+  const studioActionAllowed = Boolean(resolvedSession || studioAllowed)
+  const visualModeAvailable = visualEditorAllowed && contentEditAllowed && studioActionAllowed
+  const engineMode = engineEditorMode(preferredEditorMode, engineCapability.status, engineCapability.sourceFallback)
+  // A denied visual capability exposes the preserved source immediately, while
+  // its pending initial check keeps the user's preferred engine view intact.
+  const shouldFallbackFromDeniedVisualMode = hydrated && entitlementsLoaded && !visualModeAvailable && engineMode === 'pdf'
+  const editorMode = shouldFallbackFromDeniedVisualMode ? 'source' : engineMode
   const [engineDocument, setEngineDocument] = useState<ResumeEngineDocument | null>(null)
   const [engineError, setEngineError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
@@ -151,8 +175,15 @@ export default function TryPage() {
   const autoCompileTriggeredRef = useRef(false)
   const lastAutoCompileErrorRef = useRef<string | null>(null)
 
-  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
-  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
+  const { enabled: autoCompilePreference, toggle: toggleAutoCompilePreference } = useAutoCompile()
+  const quickAtsAdmission = contentEditAllowed && studioActionAllowed
+  const autoCompileAllowed = contentEditAllowed && compileAllowed && can('c06') && studioActionAllowed
+  const autoCompile = autoCompileAllowed && autoCompilePreference
+  const toggleAutoCompile = useCallback(() => {
+    if (!canRef.current('c01') || !canRef.current('c05') || !canRef.current('c06') || (!resolvedSession && !canRef.current('a09'))) return
+    toggleAutoCompilePreference()
+  }, [resolvedSession, toggleAutoCompilePreference])
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(can('d18') && quickAtsAdmission ? latexContent : '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const previewGenerationRef = useRef(0)
@@ -197,7 +228,6 @@ export default function TryPage() {
     setRenderedPdfJobId(artifact.job_id)
     setDisplayedArtifact(artifact)
   } })
-  const resolvedSession = hydrated ? session : null
   useEffect(() => {
     if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
   }, [artifactPreview.error, editorMode])
@@ -402,7 +432,7 @@ export default function TryPage() {
   // lifetime. Source edits can change refetchATS without restarting a pending
   // artifact download for the same completed job.
   useEffect(() => {
-    if (stream.status === 'completed') refetchATS()
+    if (stream.status === 'completed' && canRef.current('d18') && canRef.current('c01') && (resolvedSession || canRef.current('a09'))) refetchATS()
     if (stream.status === 'completed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'completed')
       if (stream.tokensUsed) {
@@ -414,7 +444,7 @@ export default function TryPage() {
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, activeJobId, stream.tokensUsed, refetchATS])
+  }, [stream.status, activeJobId, stream.tokensUsed, refetchATS, resolvedSession])
 
   // A retained PDF must not survive an authenticated owner change. The
   // rendered job is otherwise left untouched while a replacement downloads.
@@ -457,23 +487,26 @@ export default function TryPage() {
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   const handleSyncToSource = useCallback((line: number) => {
+    if (!canRef.current('c10') || (!resolvedSession && !canRef.current('a09'))) return
     if (!Number.isInteger(line) || line < 1) return
     setSyncFromLine(line)
     setSyncFromRequestId((value) => value + 1)
     if (!isDesktop) editorRef.current?.highlightLine(line)
-  }, [isDesktop])
+  }, [isDesktop, resolvedSession])
 
   const handleSourceToPdf = useCallback(() => {
+    if (!canRef.current('c10') || (!resolvedSession && !canRef.current('a09'))) return
     if (cursorLine === null || cursorLine < 1 || !pdfSyncReady) return
     setSourceSyncLine(cursorLine)
     setSourceSyncRequestId((value) => value + 1)
-  }, [cursorLine, pdfSyncReady])
+  }, [cursorLine, pdfSyncReady, resolvedSession])
 
   const handlePdfToSource = useCallback(() => {
+    if (!canRef.current('c10') || (!resolvedSession && !canRef.current('a09'))) return
     const line = pdfSelection?.line
     if (!line || line < 1) return
     handleSyncToSource(line)
-  }, [handleSyncToSource, pdfSelection])
+  }, [handleSyncToSource, pdfSelection, resolvedSession])
 
   useEffect(() => {
     setPdfSelection(null)
@@ -485,6 +518,8 @@ export default function TryPage() {
   }, [resolvedSession?.user?.id, renderedPdfJobId])
 
   const runCompile = async (mode: 'compile' | 'combined') => {
+    if (!canRef.current('c05') || (!resolvedSession && !canRef.current('a09'))) return
+    if (mode === 'combined' && (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c01'))) return
     if (isProcessing || isSubmitting) return
     const identityAtStart = previewRequestIdentityRef.current
     const actionStarted = performance.now()
@@ -582,6 +617,7 @@ export default function TryPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
+    if (!canRef.current('c01') || !canRef.current('c05') || !canRef.current('c06') || (!resolvedSession && !canRef.current('a09'))) return null
     const identityAtStart = previewRequestIdentityRef.current
     if (isProcessing || isSubmitting) return null
     if (!resolvedSession && !effectiveCanRun) return null
@@ -613,7 +649,7 @@ export default function TryPage() {
     }
   }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun, editorMode])
 
-  const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompile || (engineSupported && editorMode === 'pdf'),
+  const queuePreview = usePreviewScheduler({ identity: `trial:${session?.user?.id ?? 'anonymous'}:${trialStatus.fingerprint}`, enabled: autoCompileAllowed && (autoCompile || (engineSupported && editorMode === 'pdf')),
     blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
     cancelledJobId: cancelledPreviewJobId,
     submit: async (source) => await handleAutoCompile(source) ?? null,
@@ -638,6 +674,7 @@ export default function TryPage() {
   }, [stream.status, stream.error, editorMode])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
+    if (!canRef.current('d13') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
     setExplainerLine(error.line)
     setExplainerOpen(true)
     setExplainerLoading(true)
@@ -658,9 +695,10 @@ export default function TryPage() {
     } finally {
       setExplainerLoading(false)
     }
-  }, [])
+  }, [resolvedSession])
 
   const handleApplyExplainerFix = useCallback(() => {
+    if (!canRef.current('c01') || !canRef.current('d13')) return
     if (!explainerData?.corrected_code || explainerLine == null) return
     editorRef.current?.applyFix(explainerLine, explainerData.corrected_code)
     setExplainerOpen(false)
@@ -668,6 +706,7 @@ export default function TryPage() {
   }, [explainerData, explainerLine])
 
   const handleScrapeUrl = useCallback(async () => {
+    if (!canRef.current('e11') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
     if (!jobUrl.trim() || isScraping) return
     setIsScraping(true)
     setScrapedMeta(null)
@@ -686,11 +725,12 @@ export default function TryPage() {
     } finally {
       setIsScraping(false)
     }
-  }, [jobUrl, isScraping])
+  }, [jobUrl, isScraping, resolvedSession])
 
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
 
   const handleTrimToOnePage = useCallback(async () => {
+    if (!canRef.current('c01') || !canRef.current('c12') || !canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || (!resolvedSession && !canRef.current('a09'))) return
     const identityAtStart = previewRequestIdentityRef.current
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) return
@@ -727,6 +767,7 @@ export default function TryPage() {
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
 
   const applyStagedOptimization = useCallback((reviewedLatex?: string) => {
+    if (!canRef.current('c01') || !canRef.current('d03')) return false
     const nextLatex = reviewedLatex ?? stagedOptimization
     if (!nextLatex) return false
     const current = editorRef.current?.getValue() || latexContent
@@ -754,6 +795,7 @@ export default function TryPage() {
 
   // Revert a completed optimize back to the pre-optimize content.
   const revertOptimize = useCallback((latex?: string) => {
+    if (!canRef.current('c01') || !canRef.current('d03')) return
     const target = latex ?? optimizeSnapshot
     if (target == null) return
     editorRef.current?.setValue(target)
@@ -767,6 +809,7 @@ export default function TryPage() {
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
 
   const handleRunDeepAnalysis = async (industryOverride?: string) => {
+    if (!canRef.current('d20') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('Add LaTeX content first'); return }
     setIsDeepAnalysisRunning(true)
@@ -776,7 +819,7 @@ export default function TryPage() {
         latex_content: currentContent,
         job_description: jobDescription || undefined,
         device_fingerprint: trialStatus.fingerprint,
-        industry_override: industryOverride,
+        industry_override: canRef.current('d19') ? industryOverride : undefined,
       })
       if (response.success && response.job_id) {
         setDeepAnalysisJobId(response.job_id)
@@ -797,16 +840,19 @@ export default function TryPage() {
   }
 
   const restoreContent = (prev: string) => {
+    if (!canRef.current('c01')) return
     setLatexContent(prev)
     editorRef.current?.setValue(prev)
   }
   const resetEditor = () => {
+    if (!canRef.current('c01')) return
     const prev = editorRef.current?.getValue() || latexContent
     restoreContent(DEMO_RESUME_TEMPLATE)
     clearPdfPreview()
     toast('Reset to demo template', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
   }
   const clearEditor = () => {
+    if (!canRef.current('c01')) return
     const prev = editorRef.current?.getValue() || latexContent
     restoreContent('')
     clearPdfPreview()
@@ -840,7 +886,7 @@ export default function TryPage() {
   const saveGuestField = async (node: ResumeEngineNode, text: string) => {
     const actionStarted = performance.now()
     const identityAtStart = previewRequestIdentityRef.current
-    if (!engineSupported || !engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
+    if (!canRef.current('b10') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09')) || !engineSupported || !engineDocument || engineDocument.source_sha256 !== sourceHash) throw new Error('Stale field')
     const response = await apiClient.patchGuestEngineDocument({ latex_content: latexContent,
       expected_source_sha256: engineDocument.source_sha256,
       patches: [{ node_id: node.node_id, expected_node_revision: node.node_revision, text }] })
@@ -850,12 +896,16 @@ export default function TryPage() {
     queuePreview(response.latex_content, actionStarted, true)
   }
   const handleToggleEditorMode = useCallback((mode: 'pdf' | 'source') => {
+    if (mode === 'pdf' && (!canRef.current('b10') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09')))) return
     if (mode === preferredEditorMode || (mode === 'pdf' && !engineSupported)) return
-    if (editorMode === 'source') setLatexContent(editorRef.current?.getValue() || latexContent)
+    if (editorMode === 'source') {
+      const source = editorRef.current?.getValue()
+      if (source !== undefined) setLatexContent(source)
+    }
     setEditorMode(mode)
     try { localStorage.setItem('latexy_try_editor_mode', mode) } catch { /* optional preference */ }
-  }, [engineSupported, preferredEditorMode, editorMode, latexContent])
-  const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
+  }, [engineSupported, preferredEditorMode, editorMode, resolvedSession])
+  const openTool = (id: Tool) => { if (!toolAvailable(id)) return; setTool(id); setLeftOpen(true); setMobilePane('tools') }
   const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
   const atsDisplay = stream.atsScore ?? quickATSScore
 
@@ -883,17 +933,17 @@ export default function TryPage() {
       </div>
       <div className="border-t border-line p-3">
         <p className="mb-2 font-ui text-[12px] text-fg-3">{editorMode === 'source' ? 'Source' : 'Document'}</p>
-        <div className="grid grid-cols-2 gap-1.5">
+        {contentEditAllowed && <div className="grid grid-cols-2 gap-1.5">
           <button onClick={resetEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
             <RotateCcw size={11} /> Reset
           </button>
           <button onClick={clearEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
             <X size={11} /> Clear
           </button>
-        </div>
-        <button onClick={() => setShowImportModal(true)} className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
+        </div>}
+        {can('b06') && contentEditAllowed && studioActionAllowed && <button onClick={() => setShowImportModal(true)} className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
           <Upload size={11} /> Import file (PDF · DOCX · TEX)
-        </button>
+        </button>}
       </div>
     </>
   )
@@ -902,9 +952,9 @@ export default function TryPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       {panelHead('AI Optimize')}
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="border-b border-line p-3">
+        {contentEditAllowed && can('d01') && compileAllowed && Boolean(resolvedSession || studioAllowed) && <div className="border-b border-line p-3">
           <label className="font-ui text-[12px] text-fg-3">Target job</label>
-          <div className="mt-1.5 flex gap-1.5">
+          <CapabilityGate feature="e11"><div className="mt-1.5 flex gap-1.5">
             <input
               type="url"
               value={jobUrl}
@@ -922,7 +972,7 @@ export default function TryPage() {
             >
               {isScraping ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
             </button>
-          </div>
+          </div></CapabilityGate>
           {scrapedMeta && !scrapedMeta.error && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
               {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
@@ -943,14 +993,14 @@ export default function TryPage() {
           >
             <Sparkles size={13} /> {isSubmitting ? 'Running…' : 'Optimize for this role'}
           </button>
-          <button
+          {can('c12') && contentEditAllowed && Boolean(resolvedSession || studioAllowed) && <button
             onClick={handleTrimToOnePage}
             disabled={isSubmitting || isProcessing}
             className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg disabled:opacity-50"
           >
             Trim to one page
-          </button>
-        </div>
+          </button>}
+        </div>}
         {stagedOptimization != null && (
           <div className="border-t border-line p-3">
             <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
@@ -958,24 +1008,24 @@ export default function TryPage() {
                 AI optimization is ready. Your resume is still unchanged.
               </p>
               <div className="mt-2 grid grid-cols-3 gap-1">
-                <button
+                {can('d03') && contentEditAllowed && <button
                   onClick={() => setShowOptimizeDiff(true)}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
                   Review changes
-                </button>
+                </button>}
                 <button
                   onClick={discardStagedOptimization}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-fg-2 transition hover:bg-surface-2"
                 >
                   Discard
                 </button>
-                <button
+                {can('d03') && contentEditAllowed && <button
                   onClick={() => { const candidate = stagedOptimization; if (applyStagedOptimization() && candidate) queuePreview(candidate, undefined, true) }}
                   className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   Apply
-                </button>
+                </button>}
               </div>
             </div>
           </div>
@@ -1001,7 +1051,7 @@ export default function TryPage() {
             </div>
           </div>
         )}
-        {editorMode !== 'source' && showOptimizeDiff && (stagedOptimization != null || optimizeSnapshot != null) && (
+        {can('d03') && editorMode !== 'source' && showOptimizeDiff && (stagedOptimization != null || optimizeSnapshot != null) && (
           <VisualChangeReviewModal
             original={stagedOptimization != null ? preRunSnapshotRef.current || latexContent : optimizeSnapshot!}
             proposed={stagedOptimization ?? latexContent}
@@ -1011,7 +1061,7 @@ export default function TryPage() {
             onClose={() => setShowOptimizeDiff(false)}
           />
         )}
-        {editorMode === 'source' && showOptimizeDiff && stagedOptimization != null && (
+        {can('d03') && editorMode === 'source' && showOptimizeDiff && stagedOptimization != null && (
           <ChangeReviewModal
             originalLatex={preRunSnapshotRef.current || latexContent}
             optimizedLatex={stagedOptimization}
@@ -1066,10 +1116,10 @@ export default function TryPage() {
 
   const atsPanel = (
     <div className="flex min-h-0 flex-1 flex-col">
-      {panelHead('ATS Score', (
+      {panelHead('ATS Score', (can('d20') && contentEditAllowed && Boolean(resolvedSession || studioAllowed) ?
         <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[12px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
           {isDeepAnalysisRunning ? 'Analysing…' : 'Deep scan'}
-        </button>
+        </button> : undefined
       ))}
       <div className="border-b border-line p-4 text-center">
         <p className="font-display text-5xl font-bold tabular-nums text-accent-strong">
@@ -1168,7 +1218,12 @@ export default function TryPage() {
     </>
   )
 
-  const activePanel = tool === 'files' ? filesPanel : tool === 'ai' ? aiPanel : tool === 'ats' ? atsPanel : tool === 'import' ? importPanel : templatesPanel
+  const toolAvailable = (id: Tool) => !TOOL_CAPABILITIES[id]
+    || (can(TOOL_CAPABILITIES[id]!) && studioActionAllowed)
+    || (id === 'ai' && (stagedOptimization != null || optimizeSnapshot != null))
+    || (id === 'ats' && (atsDisplay != null || Boolean(categoryScores || deepStream.deepAnalysis)))
+  const activeTool = toolAvailable(tool) ? tool : 'files'
+  const activePanel = activeTool === 'files' ? filesPanel : activeTool === 'ai' ? aiPanel : activeTool === 'ats' ? atsPanel : activeTool === 'import' ? importPanel : templatesPanel
 
   // ────────────────────────── editor + pdf panes ──────────────────────────
   const editorPane = (
@@ -1177,8 +1232,8 @@ export default function TryPage() {
         <FileCode2 size={13} className="text-fg-3" />
         <span className="text-xs text-fg-2">{editorMode === 'source' ? 'resume.tex' : 'Your resume'}</span>
         <div className="ml-auto flex rounded-md border border-line p-0.5" role="group" aria-label="Editing mode">
-          {(['pdf', 'source'] as const).map((mode) => <button key={mode} type="button" aria-pressed={editorMode === mode}
-            disabled={mode === 'pdf' && !engineSupported} onClick={() => handleToggleEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+          {(['pdf', 'source'] as const).filter(mode => mode === 'source' || visualModeAvailable).map((mode) => <button key={mode} type="button" aria-pressed={editorMode === mode}
+            disabled={mode === 'pdf' && (!engineSupported || !visualModeAvailable)} onClick={() => handleToggleEditorMode(mode)} className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${editorMode === mode ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
             {mode === 'pdf' ? 'Resume' : 'Source'}</button>)}
         </div>
         {editorMode === 'source' && <>
@@ -1198,31 +1253,32 @@ export default function TryPage() {
       <div className="relative min-h-0 flex-1">
         {editorMode === 'pdf' ? <ResumeFieldsEditor document={engineDocument} currentSourceHash={sourceHash}
           selectedNode={selectedNode} onSelect={setSelectedNode} onSave={saveGuestField}
-          readOnly={!engineSupported} error={engineCapability.status === 'error' ? 'Resume fields are unavailable. Check the message above, or choose Source.' : engineError} /> : <LaTeXEditor
+          readOnly={!engineSupported || !visualModeAvailable} error={engineCapability.status === 'error' ? 'Resume fields are unavailable. Check the message above, or choose Source.' : engineError} /> : <LaTeXEditor
           editorRef={editorRef}
           value={latexContent}
-          onChange={setLatexContent}
-          readOnly={isProcessing}
+          onChange={changeContent}
+          readOnly={isProcessing || !contentEditAllowed}
           logLines={stream.logLines}
-          onCompile={() => runCompile('compile')}
+          onCompile={compileAllowed && (resolvedSession || studioAllowed) ? () => runCompile('compile') : undefined}
           onSave={persistNow}
           onCursorChange={setCursorLine}
           syncLine={syncFromLine}
           syncRequestId={syncFromRequestId}
-          onSyncToPdf={(line) => {
+          onSyncToPdf={syncAllowed ? (line) => {
+            if (!canRef.current('c10')) return
             setCursorLine(line)
             setSourceSyncLine(line)
             setSourceSyncRequestId((value) => value + 1)
-          }}
+          } : undefined}
           onAutoCompile={autoCompile ? queuePreview : undefined}
-          autoCompileEnabled={autoCompile}
+          autoCompileEnabled={autoCompile && hydrated}
           autoCompileBusy={false}
           autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try`}
           autoCompileDebounceMs={0}
-          atsScore={quickATSScore}
-          atsScoreLoading={quickATSLoading}
-          onATSBadgeClick={() => openTool('ats')}
-          onExplainError={handleExplainError}
+          atsScore={can('d18') && (quickAtsAdmission || quickATSScore != null) ? quickATSScore : undefined}
+          atsScoreLoading={can('d18') && quickAtsAdmission ? quickATSLoading : undefined}
+          onATSBadgeClick={can('d18') && studioActionAllowed ? () => openTool('ats') : undefined}
+          onExplainError={can('d13') && contentEditAllowed && Boolean(resolvedSession || studioAllowed) ? handleExplainError : undefined}
           pageCount={stream.pageCount}
         />}
         {editorMode === 'source' && <div className="absolute inset-x-0 bottom-0 z-10">
@@ -1269,7 +1325,7 @@ export default function TryPage() {
       {stream.pageCount !== null && stream.pageCount > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-warn/20 bg-warn/10 px-4 py-2">
           <span className="font-ui text-[12px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
-          <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[12px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
+          {can('c12') && contentEditAllowed && Boolean(resolvedSession || studioAllowed) && <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[12px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>}
         </div>
       )}
       {stream.timeoutError && (
@@ -1288,15 +1344,15 @@ export default function TryPage() {
           pdfUrl={pdfUrl}
           isLoading={isProcessing}
           onDownload={handleDownload}
-          jobId={renderedPdfJobId}
+          jobId={syncAllowed ? renderedPdfJobId : undefined}
           latexContent={latexContent}
           onPdfSelectionChange={setPdfSelection}
           onSyncReadyChange={setPdfSyncReady}
-          syncFromLine={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? sourceSyncLine : null}
+          syncFromLine={syncAllowed && editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? sourceSyncLine : null}
           syncFromRequestId={sourceSyncRequestId}
-          onSyncToSource={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
-          onJumpToLine={editorMode === 'source' ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
-          semanticGeometry={semanticGeometry}
+          onSyncToSource={syncAllowed && editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
+          onJumpToLine={syncAllowed && editorMode === 'source' ? (line) => { handleSyncToSource(line); if (!isDesktop) setMobilePane('editor') } : undefined}
+          semanticGeometry={visualModeAvailable ? semanticGeometry : null}
           onSemanticSelect={(nodeId) => { setSelectedNode(nodeId); if (!isDesktop) setMobilePane('editor') }}
         />
       </div>
@@ -1355,33 +1411,33 @@ export default function TryPage() {
             : <><Loader2 size={10} className="animate-spin" /> Saving…</>}
         </span>
 
-        <div className="ml-0 flex items-center sm:ml-2">
+        {compileAllowed && (resolvedSession || studioAllowed) && <div className="ml-0 flex items-center sm:ml-2">
           <button
             onClick={() => runCompile('compile')}
             disabled={!hydrated || isSubmitting || isProcessing}
-            aria-label={editorMode === 'source' ? 'Recompile' : 'Update PDF'}
+            aria-label="Update PDF preview"
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-2 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5"
           >
             {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
             <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Updating…' : editorMode === 'source' ? 'Recompile' : 'Update PDF'}</span>
           </button>
-        </div>
-        <button
+        </div>}
+        {autoCompileAllowed && <button
           onClick={toggleAutoCompile}
-          title="Auto-compile on change"
-          aria-label="Auto-compile on change"
+          title="Automatically update the PDF after edits"
+          aria-label="Automatically update the PDF after edits"
           aria-pressed={autoCompile}
           className={`hidden select-none items-center gap-1.5 rounded-[var(--radius-md)] border px-2 py-1.5 font-ui text-[12px] transition sm:flex ${
             autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3 hover:text-fg'
           }`}
         >
           <Zap size={12} /> Auto
-        </button>
+        </button>}
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex">
+          {can('d18') && studioActionAllowed && <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex">
             <Gauge size={12} className="text-accent-strong" /> ATS <b className="tabular-nums text-accent-strong">{atsDisplay ?? '—'}</b>
-          </button>
+          </button>}
           <button
             onClick={() => setPdfOpen((v) => !v)}
             title={pdfOpen ? 'Editor only' : 'Show preview'}
@@ -1412,7 +1468,7 @@ export default function TryPage() {
         </div>
       </header>
 
-      {showGuide && engineSupported && editorMode === 'pdf' && <FirstUseGuide
+      {can('a06') && visualModeAvailable && showGuide && engineSupported && editorMode === 'pdf' && <FirstUseGuide
         onImport={() => setShowImportModal(true)}
         onTailor={() => openTool('ai')}
         onPreview={() => { setPdfOpen(true); setMobilePane('pdf'); void runCompile('compile') }}
@@ -1449,26 +1505,27 @@ export default function TryPage() {
           </button>
         ))}
         {/* Auto-compile toggle — header copy is hidden < sm, so surface it here */}
-        <button
+        {autoCompileAllowed && <button
           onClick={toggleAutoCompile}
-          title="Auto-compile on change"
+          title="Automatically update the PDF after edits"
+          aria-label="Automatically update the PDF after edits"
           aria-pressed={autoCompile}
           className={`flex shrink-0 select-none items-center gap-1 rounded-[var(--radius-md)] border px-2.5 py-1.5 font-ui text-xs font-medium transition sm:hidden ${
             autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3'
           }`}
         >
           <Zap size={13} /> Auto
-        </button>
+        </button>}
       </div>
 
       {/* ── body ── */}
       <div className="flex min-h-0 flex-1">
         {/* icon rail (lg+) */}
         <nav className="hidden w-12 flex-shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-2 lg:flex">
-          {RAIL.map(({ id, icon: Icon, label }) => (
+          {RAIL.filter(({ id }) => toolAvailable(id)).map(({ id, icon: Icon, label }) => (
             <button
               key={id}
-              onClick={() => { setTool(id); setLeftOpen(true) }}
+              onClick={() => openTool(id)}
               title={label}
               className={`grid h-9 w-9 place-items-center rounded-[var(--radius-md)] transition ${
                 tool === id && leftOpen ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
@@ -1486,8 +1543,8 @@ export default function TryPage() {
         <aside className={`${mobilePane === 'tools' ? 'flex' : 'hidden'} ${leftOpen ? 'lg:flex' : 'lg:hidden'} w-full flex-shrink-0 flex-col border-r border-line bg-surface lg:w-64`}>
           {/* mobile rail (horizontal) */}
           <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 lg:hidden">
-            {RAIL.map(({ id, icon: Icon, label }) => (
-              <button key={id} onClick={() => setTool(id)} title={label} className={`grid h-8 w-8 place-items-center rounded-[var(--radius-md)] transition ${tool === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+            {RAIL.filter(({ id }) => toolAvailable(id)).map(({ id, icon: Icon, label }) => (
+              <button key={id} onClick={() => openTool(id)} title={label} className={`grid h-8 w-8 place-items-center rounded-[var(--radius-md)] transition ${tool === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
                 <Icon size={16} />
               </button>
             ))}
@@ -1508,7 +1565,7 @@ export default function TryPage() {
           {/* splitter (lg+) */}
           {pdfOpen && (
             <div className="relative hidden w-2 flex-shrink-0 lg:flex">
-              {editorMode === 'source' && <SourcePdfDivider
+              {syncAllowed && editorMode === 'source' && <SourcePdfDivider
                 sourceLine={cursorLine}
                 pdfSelection={pdfSelection}
                 pdfReady={pdfSyncReady}
@@ -1558,12 +1615,15 @@ export default function TryPage() {
         onRun={handleRunDeepAnalysis}
         isRunning={isDeepAnalysisRunning}
         hideUpgradeCtas={!flags.upgrade_ctas}
+        allowNewActions={can('d20') && contentEditAllowed && Boolean(resolvedSession || studioAllowed)}
       />
 
       <ImportProjectsModal
         isOpen={showProjectsModal}
+        allowNewActions={studioActionAllowed && contentEditAllowed}
         onClose={() => setShowProjectsModal(false)}
         onInsert={(latex: string) => {
+          if (!canRef.current('c01')) return
           // Monaco insertion is a side effect, so keep it outside a React state
           // updater (development Strict Mode may evaluate updaters twice).
           const nextLatex = insertProjectLatex(editorRef.current, latexContent, latex)
@@ -1573,7 +1633,7 @@ export default function TryPage() {
         }}
       />
 
-      {showImportModal && (
+      {showImportModal && can('b06') && studioActionAllowed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
           <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]">
             <div className="mb-3 flex items-center justify-between">
@@ -1596,6 +1656,7 @@ export default function TryPage() {
               visualOnly={editorMode !== 'source'}
               serverConversionEnabled={Boolean(resolvedSession)}
               onFileUpload={(content) => {
+                if (!canRef.current('b06') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
                 if (content) {
                   editorRef.current?.setValue(content)
                   setLatexContent(content)

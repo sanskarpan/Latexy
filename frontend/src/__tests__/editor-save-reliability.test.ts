@@ -83,6 +83,72 @@ describe('editor save reliability', () => {
     expect(EDITOR).not.toContain('if (anyRunning && pdfUrlRef.current)')
   })
 
+  it('retries the owned completed PDF job before falling back to offline cache', () => {
+    const retryStart = EDITOR.indexOf('const retryOfflinePdf = useCallback')
+    const retryEnd = EDITOR.indexOf('\n  const shareOrDownloadPdf', retryStart)
+    const retryHandler = EDITOR.slice(retryStart, retryEnd)
+
+    expect(retryHandler).toContain('resolveRetryableCompletedPdfJobId(')
+    expect(retryHandler).toContain('ownerAtStart === offlinePdfOwnerId')
+    expect(retryHandler).toContain('isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)')
+    expect(retryHandler).toContain('apiClient.downloadPdf(retryJobId)')
+    expect(retryHandler).toContain('activePdfJobId.current !== retryJobId')
+    expect(retryHandler.indexOf('apiClient.downloadPdf(retryJobId)'))
+      .toBeLessThan(retryHandler.indexOf('await loadOfflinePdf()'))
+  })
+
+  it('hides new AI compile actions when compilation is off and preserves read-only recovery', () => {
+    expect(EDITOR).toContain("if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || !canRef.current('c01')) return")
+    expect(EDITOR).toContain('<CapabilityGate feature="d01"><CapabilityGate feature="d18"><CapabilityGate feature="c05"><CapabilityGate feature="c01">')
+    expect(EDITOR).toContain('canStartRun={can(\'d01\') && can(\'d18\') && can(\'c05\') && canEditDocument}')
+    expect(EDITOR).toContain("const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview")
+    expect(EDITOR).toContain("if (!canRef.current('c12') || !canRef.current('c05') || !canRef.current('c01')) return")
+    expect(EDITOR).toContain("if (!canRef.current('d03') || !canRef.current('c01')) return false")
+    expect(EDITOR).toContain('onApplyFix={canEditDocument ? handleApplyExplainerFix : undefined}')
+    expect(EDITOR).toContain("if (!canRef.current('c01')) return\n                if (content)")
+    expect(EDITOR).toContain("if (!canRef.current('c01') || !['d06', 'd07', 'd10'].some(feature => canRef.current(feature))) return")
+
+    const editorComponent = readFileSync(
+      new URL('../components/LaTeXEditor.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(editorComponent).toContain("? 'Read-only'")
+    expect(editorComponent).not.toContain("? 'Read-only — job running'")
+    expect(editorComponent).toContain('setValue(content: string, opts?: { reveal?: boolean }) {\n        const model = editorRef.current?.getModel()')
+    expect(editorComponent).toContain('readOnly: readOnlyRef.current,\n          collabReadOnly: collabReadOnlyRef.current,')
+    expect(editorComponent).toContain('applyFix(line: number, correctedCode: string) {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return')
+    expect(editorComponent).toContain('applySuggestionResult(expectedContent: string, resultContent: string) {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return false')
+    expect(editorComponent).toContain('insertAtCursor(text: string) {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return false')
+    expect(editorComponent).toContain('acceptTrackedChange: (id: string) => {\n        if (readOnlyRef.current || collabReadOnlyRef.current) return')
+  })
+
+  it('rechecks rich editing and content grants before engine field or structure mutations', () => {
+    for (const [name, nextName] of [['saveResumeField', 'reorderResumeStructure'], ['reorderResumeStructure', 'autoCompileFn']]) {
+      const start = EDITOR.indexOf(`const ${name} = useCallback`)
+      expect(start).toBeGreaterThanOrEqual(0)
+      const end = EDITOR.indexOf(`const ${nextName}`, start + 1)
+      const handler = EDITOR.slice(start, end > start ? end : start + 2500)
+      expect(handler).toContain("if (!canRef.current('b10') || !canRef.current('c01') || !engineSupported")
+      expect(handler).toContain('sourceAtRenderRef.current === sourceAtStart')
+    }
+  })
+
+  it('hides new Quick Tailor entrypoints unless every required capability is allowed', () => {
+    const quickTailor = readFileSync(
+      new URL('../components/QuickTailorModal.tsx', import.meta.url),
+      'utf8',
+    )
+    const workspace = readFileSync(
+      new URL('../app/workspace/page.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(quickTailor).toContain("['d04', 'd01', 'd18', 'c05', 'b01', 'c01'] as const")
+    expect(quickTailor).toContain('if (!hasQuickTailorAccess()) return')
+    expect(quickTailor).not.toContain('access changed before the request completed')
+    expect(workspace).toContain('QUICK_TAILOR_CAPABILITIES.every((feature) => can(feature))')
+    expect(workspace).toContain('if (!QUICK_TAILOR_CAPABILITIES.every((feature) => canRef.current(feature))) return')
+  })
+
   it('exports the live editor buffer and wires PDF export to the latest successful artifact', () => {
     expect(EDITOR).toContain('latexContent={latexContent}')
     expect(EDITOR).toContain('onPdfExport={handleDownload}')

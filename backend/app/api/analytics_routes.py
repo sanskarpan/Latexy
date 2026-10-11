@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from ..middleware.auth_middleware import (
     get_current_user_required,
     require_admin,
 )
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.analytics_service import analytics_service
 

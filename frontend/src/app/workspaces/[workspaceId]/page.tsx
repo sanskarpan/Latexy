@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Building2, Users, FileText, Plus, Trash2, Loader2, Download,
@@ -16,6 +16,7 @@ import {
   type ResumeResponse,
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SessionLoadError from '@/components/SessionLoadError'
 import { downloadBlob } from '@/lib/download'
@@ -24,8 +25,12 @@ type RoleOption = 'editor' | 'viewer'
 
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
-  const router = useRouter()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  const { can } = useEntitlements()
+  const canManage = can('f08')
+  const canManageRef = useRef(canManage)
+  canManageRef.current = canManage
 
   const [ws, setWs] = useState<WorkspaceDetailResponse | null>(null)
   const [resumes, setResumes] = useState<WorkspaceResumeItem[]>([])
@@ -52,13 +57,11 @@ export default function WorkspaceDetailPage() {
     Promise.all([
       apiClient.getWorkspace(workspaceId),
       apiClient.listWorkspaceResumes(workspaceId),
-      apiClient.listAllResumes(),
     ])
-      .then(([detail, wrs, userResumes]) => {
+      .then(([detail, wrs]) => {
         setWs(detail)
         setNameInput(detail.name)
         setResumes(wrs)
-        setMyResumes(userResumes)
       })
       .catch((error) => {
         setLoadError(error instanceof Error ? error.message : 'Failed to load workspace')
@@ -67,11 +70,24 @@ export default function WorkspaceDetailPage() {
       .finally(() => setLoading(false))
   }, [session, workspaceId, reloadNonce])
 
+  // Loading the picker is a new sharing flow; saved workspace data remains readable.
+  useEffect(() => {
+    if (!session?.user || !canManage) return
+    let active = true
+    apiClient.listAllResumes().then((items) => {
+      if (active) setMyResumes(items)
+    }).catch(() => {
+      if (active) toast.error('Failed to load your resumes')
+    })
+    return () => { active = false }
+  }, [session, canManage])
+
   const isOwner = ws?.owner_id === userId
 
   // ── Rename ──────────────────────────────────────────────────────────────────
 
   async function handleRename() {
+    if (!canManageRef.current || !isOwner) return
     const name = nameInput.trim()
     if (!name || !ws) return
     try {
@@ -87,6 +103,7 @@ export default function WorkspaceDetailPage() {
   // ── Invite member ───────────────────────────────────────────────────────────
 
   async function handleInvite() {
+    if (!canManageRef.current || !isOwner) return
     const email = inviteEmail.trim()
     if (!email) return
     setInviting(true)
@@ -125,6 +142,8 @@ export default function WorkspaceDetailPage() {
   // ── Change role ─────────────────────────────────────────────────────────────
 
   async function handleRoleChange(member: WorkspaceMemberResponse, role: RoleOption) {
+    // Reducing an existing member's access is still available during a downgrade.
+    if (!isOwner || (role !== 'viewer' && !canManageRef.current)) return
     try {
       const updated = await apiClient.updateWorkspaceMemberRole(workspaceId, member.user_id, role)
       setWs((prev) =>
@@ -145,6 +164,7 @@ export default function WorkspaceDetailPage() {
   // ── Add resume ──────────────────────────────────────────────────────────────
 
   async function handleAddResume(resumeId: string) {
+    if (!canManageRef.current) return
     try {
       const item = await apiClient.addResumeToWorkspace(workspaceId, resumeId)
       setResumes((prev) => [...prev, item])
@@ -225,7 +245,7 @@ export default function WorkspaceDetailPage() {
           <div className="h-10 w-10 rounded-[var(--radius-md)] bg-accent-soft flex items-center justify-center">
             <Building2 className="h-5 w-5 text-accent-strong" />
           </div>
-          {editingName && isOwner ? (
+          {canManage && editingName && isOwner ? (
             <div className="flex items-center gap-2">
               <input
                 autoFocus
@@ -237,15 +257,15 @@ export default function WorkspaceDetailPage() {
               <button onClick={handleRename} className="text-ok hover:brightness-110"><Check className="h-4 w-4" /></button>
               <button onClick={() => setEditingName(false)} className="text-fg-3 hover:text-fg-2"><X className="h-4 w-4" /></button>
             </div>
-          ) : (
+          ) : canManage && isOwner ? (
             <button
-              onClick={() => isOwner && setEditingName(true)}
-              className={`text-2xl font-semibold ${isOwner ? 'hover:text-accent-strong cursor-pointer' : ''} transition-colors`}
-              title={isOwner ? 'Click to rename' : undefined}
+              onClick={() => setEditingName(true)}
+              className="text-2xl font-semibold hover:text-accent-strong cursor-pointer transition-colors"
+              title="Click to rename"
             >
               {ws.name}
             </button>
-          )}
+          ) : <h1 className="text-2xl font-semibold">{ws.name}</h1>}
         </div>
         <div className="flex gap-4 text-sm text-fg-2">
           <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{ws.member_count}/{ws.max_members}</span>
@@ -271,13 +291,13 @@ export default function WorkspaceDetailPage() {
                 <div className="flex items-center gap-2">
                   {m.role === 'owner' ? (
                     <span className="text-xs text-accent-strong bg-accent-soft px-2 py-0.5 rounded">Owner</span>
-                  ) : isOwner ? (
+                  ) : isOwner && (canManage || m.role === 'editor') ? (
                     <div className="relative group">
                       <button className="flex items-center gap-1 text-xs text-fg-2 bg-surface-2 hover:bg-surface px-2 py-0.5 rounded capitalize transition-colors">
                         {m.role} <ChevronDown className="h-3 w-3" />
                       </button>
                       <div className="absolute right-0 top-full mt-1 z-10 hidden group-focus-within:block bg-surface-2 border border-line rounded-[var(--radius-md)] shadow-[var(--shadow-2)] min-w-[100px]">
-                        {(['editor', 'viewer'] as RoleOption[]).map((r) => (
+                        {(['editor', 'viewer'] as RoleOption[]).filter((role) => canManage || role === 'viewer').map((r) => (
                           <button
                             key={r}
                             onClick={() => handleRoleChange(m, r)}
@@ -306,7 +326,7 @@ export default function WorkspaceDetailPage() {
           </ul>
 
           {/* Invite form (owner only) */}
-          {isOwner && ws.member_count < ws.max_members && (
+          {canManage && isOwner && ws.member_count < ws.max_members && (
             <div className="border-t border-line pt-4">
               <p className="text-xs text-fg-3 mb-2">Invite by email</p>
               <div className="flex gap-2">
@@ -336,7 +356,7 @@ export default function WorkspaceDetailPage() {
             </div>
           )}
 
-          {isOwner && ws.member_count >= ws.max_members && (
+          {canManage && isOwner && ws.member_count >= ws.max_members && (
             <p className="text-xs text-warn mt-3">Member limit reached ({ws.max_members}/{ws.max_members})</p>
           )}
         </section>
@@ -347,16 +367,16 @@ export default function WorkspaceDetailPage() {
             <h2 className="text-sm font-semibold text-fg-2 flex items-center gap-2">
               <FileText className="h-4 w-4 text-accent-strong" /> Shared Resumes
             </h2>
-            <button
+            {canManage && <button
               onClick={() => setShowAddResume((v) => !v)}
               className="flex items-center gap-1 text-xs text-accent-strong hover:brightness-110 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" /> Submit mine
-            </button>
+            </button>}
           </div>
 
           {/* Resume picker */}
-          {showAddResume && (
+          {canManage && showAddResume && (
             <div className="mb-4 bg-surface-2 rounded-[var(--radius-md)] p-3 max-h-40 overflow-y-auto space-y-1">
               {unsharedResumes.length === 0 ? (
                 <p className="text-xs text-fg-3">All your resumes are already shared here.</p>

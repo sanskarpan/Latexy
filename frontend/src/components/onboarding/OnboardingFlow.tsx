@@ -1,5 +1,6 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
@@ -69,6 +70,8 @@ export default function OnboardingFlow({
   userType = 'new',
 }: OnboardingFlowProps) {
   const { t } = useI18n()
+  const { can } = useEntitlements()
+  isOpen = isOpen && can('a06')
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   const [freePlanCopy, setFreePlanCopy] = useState(
@@ -288,10 +291,10 @@ export default function OnboardingFlow({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 50+ curated designs.', href: '/templates' },
+              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 50+ curated designs.', href: '/templates', features: ['b04', 'b01', 'c01'] },
               { icon: <Upload className="w-5 h-5" />, label: 'Import a resume', desc: 'Bring a PDF, DOCX, or .tex file.', href: '/workspace/new' },
-              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.', href: '/try' },
-            ].map((o) => (
+              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.', href: '/try', features: ['a09', 'c01'] },
+            ].filter((o) => (!o.features || o.features.every((feature) => can(feature))) && (o.href !== '/workspace/new' || (can('b01') && can('c01')))).map((o) => (
               <Link
                 key={o.label}
                 href={o.href}
@@ -308,12 +311,12 @@ export default function OnboardingFlow({
           </div>
 
           <div className="space-y-2 pt-1">
-            <button
+            {can('b01') && can('c01') && <button
               onClick={onComplete}
               className="w-full rounded-[var(--radius-md)] bg-accent py-3 text-base font-semibold text-accent-fg transition hover:brightness-110"
             >
               {t('onboarding.createFirst')}
-            </button>
+            </button>}
             <button
               onClick={onSkip}
               className="w-full py-1.5 text-sm text-fg-2 transition hover:text-fg"

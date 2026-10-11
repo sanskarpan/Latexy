@@ -27,7 +27,9 @@ def live_environment():
 
 def current_columns():
     return {**{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
-            "render_artifact_manifests": {"artifact_id"}, "resume_optimization_runs": {"id"}}
+            "render_artifact_manifests": {"artifact_id"}, "resume_optimization_runs": {"id"},
+            **{table: set(names) for revision in preflight.CAPABILITY_SCHEMA_COLUMNS.values()
+               for table, names in revision.items()}}
 
 
 def test_public_catalog_matches_current_runtime_defaults():
@@ -91,7 +93,11 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
      "legacy_dodo_0061_requires_bridge_validation"),
     ("0061", current_columns(), "ambiguous_0061_requires_review"),
     ("0067", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0068", current_columns(), "current_dodo_head"),
+    ("0068", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0069_capability_catalog", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0070_plan_catalog", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0071_plan_quotas", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0072_capability_roles", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -99,7 +105,31 @@ def test_revision_collision_classification(revision, columns, expected):
     assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == expected
 
 
-def fake_engine(columns=None, revision="0068", historical=0):
+@pytest.mark.parametrize("revision,table", [
+    ("0069_capability_catalog", "feature_flags"),
+    ("0070_plan_catalog", "plan_catalog"),
+    ("0071_plan_quotas", "plan_quota_overrides"),
+    ("0072_capability_roles", "role_features"),
+])
+def test_stamped_capability_revision_requires_its_schema(revision, table):
+    columns = current_columns()
+    del columns[table]
+    assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+
+
+@pytest.mark.parametrize("revision,table,column", [
+    ("0069_capability_catalog", "plan_features", "enabled"),
+    ("0070_plan_catalog", "plan_catalog", "purchase_enabled"),
+    ("0071_plan_quotas", "plan_quota_revisions", "limit_value"),
+    ("0072_capability_roles", "role_features", "feature_key"),
+])
+def test_stamped_capability_revision_rejects_partial_columns(revision, table, column):
+    columns = current_columns()
+    columns[table].remove(column)
+    assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+
+
+def fake_engine(columns=None, revision=preflight.EXPECTED_HEAD, historical=0):
     columns = current_columns() if columns is None else columns
     connection = MagicMock()
     transaction = connection.begin.return_value
@@ -327,14 +357,14 @@ def test_disposable_pre_dodo_database_reports_history_without_changing_it():
 def test_current_revision_with_missing_billing_column_is_not_ready(table, column):
     columns = current_columns()
     columns[table].remove(column)
-    assert preflight.classify_schema(["0068"], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+    assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
 
 
 @pytest.mark.parametrize("table", list(preflight.CURRENT_BILLING_COLUMNS))
 def test_current_revision_with_missing_billing_table_is_not_ready(table):
     columns = current_columns()
     del columns[table]
-    assert preflight.classify_schema(["0068"], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+    assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
 
 
 @pytest.mark.parametrize("revision", ["0059", "0060", "0061", "0064"])
@@ -390,7 +420,7 @@ def test_optional_integer_parsing_matches_pydantic_runtime():
 def complete_public_report():
     report, blockers = configuration_report(live_environment())
     report.update(status="ready", blockers=blockers, database={
-        "status": "read_only_complete", "alembic_revisions": ["0068"],
+        "status": "read_only_complete", "alembic_revisions": [preflight.EXPECTED_HEAD],
         "schema_classification": "current_dodo_head", "counts": dict.fromkeys(preflight.PUBLIC_COUNT_FIELDS, 0),
     })
     return report
@@ -535,7 +565,11 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0059", "known_mainline_pre_dodo"), ("0061", "known_mainline_pre_dodo"),
     ("0064", "known_mainline_pre_dodo"), ("0065", "known_mainline_dodo_upgrade_required"),
     ("0066", "known_mainline_dodo_upgrade_required"), ("0067", "known_mainline_dodo_upgrade_required"),
-    ("0068", "current_dodo_head"),
+    ("0068", "known_mainline_dodo_upgrade_required"),
+    ("0069_capability_catalog", "known_mainline_dodo_upgrade_required"),
+    ("0070_plan_catalog", "known_mainline_dodo_upgrade_required"),
+    ("0071_plan_quotas", "known_mainline_dodo_upgrade_required"),
+    ("0072_capability_roles", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -569,7 +603,7 @@ def test_rollout_blocks_each_historical_access_risk_even_with_operator_acceptanc
 
 
 def test_current_dodo_paid_owners_are_not_misclassified_as_historical_risk():
-    report = rollout_report(revision="0068", schema="current_dodo_head")
+    report = rollout_report(revision=preflight.EXPECTED_HEAD, schema="current_dodo_head")
     report["database"]["counts"]["paid_pointer_users"] = 10
     assert preflight.rollout_assessment(report)["safe_to_rollout"]
 
@@ -638,7 +672,7 @@ def test_upgrade_schema_must_contain_its_versioned_billing_columns(revision):
 ])
 def test_existing_dodo_intents_keep_servicing_requirements_when_sales_disabled(sales_mode, mode, api, hook, allowed):
     report = rollout_report(sales_mode=sales_mode, mode=mode, api=api, webhook=hook,
-                            revision="0068", schema="current_dodo_head")
+                            revision=preflight.EXPECTED_HEAD, schema="current_dodo_head")
     report["database"]["counts"]["existing_dodo_live_intent_users"] = 1
     result = preflight.rollout_assessment(report)
     assert result["safe_to_rollout"] is allowed

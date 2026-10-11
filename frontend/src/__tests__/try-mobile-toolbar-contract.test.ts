@@ -5,7 +5,7 @@ const source = readFileSync(new URL('../app/try/page.tsx', import.meta.url), 'ut
 
 describe('/try mobile toolbar contract', () => {
   it('compacts the compile/export controls and hides only secondary toggles below sm', () => {
-    expect(source).toContain("aria-label={editorMode === 'source' ? 'Recompile' : 'Update PDF'}")
+    expect(source).toContain('aria-label="Update PDF preview"')
     expect(source).toContain('className="hidden sm:inline">{isProcessing || isSubmitting ? \'Updating…\' : editorMode === \'source\' ? \'Recompile\' : \'Update PDF\'}</span>')
     expect(source).toContain('className="hidden sm:inline-flex"')
     expect(source).toContain('className="shrink-0 [&>button]:px-2 [&>button]:py-1.5 [&>button]:text-xs sm:[&>button]:px-4 sm:[&>button]:py-2 sm:[&>button]:text-sm"')

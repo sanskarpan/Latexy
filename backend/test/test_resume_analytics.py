@@ -148,6 +148,7 @@ class TestResumeViewRecording:
 
         with (
             patch("app.core.redis.redis_cache_client", redis),
+            patch("app.api.routes.entitlement_service.has_feature", AsyncMock(return_value=True)),
             patch("app.api.routes.settings.GEOIP_PROVIDER_URL", ""),
             patch(
                 "app.workers.email_worker.submit_share_viewed_email",
@@ -188,6 +189,7 @@ class TestResumeViewRecording:
 
         with (
             patch("app.core.redis.redis_cache_client", redis),
+            patch("app.api.routes.entitlement_service.has_feature", AsyncMock(return_value=True)),
             patch("app.workers.email_worker.submit_share_viewed_email") as submit,
         ):
             recorded = await _record_resume_view(
@@ -224,6 +226,7 @@ class TestResumeViewRecording:
 
         with (
             patch("app.core.redis.redis_cache_client", redis),
+            patch("app.api.routes.entitlement_service.has_feature", AsyncMock(return_value=True)),
             patch("app.api.routes.settings.GEOIP_PROVIDER_URL", ""),
             patch("app.workers.email_worker.submit_share_viewed_email") as submit,
         ):

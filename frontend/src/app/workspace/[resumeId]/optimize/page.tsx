@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import Link from 'next/link'
@@ -46,6 +49,9 @@ const PERSONA_OPTIONS = [
 ] as const
 
 export default function OptimizationSuitePage() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const params = useParams()
   const router = useRouter()
   const resumeId = params.resumeId as string
@@ -178,7 +184,7 @@ export default function OptimizationSuitePage() {
   }, [personaIdentity.key])
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
-  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(editorContent || resume?.latex_content || '', jobDescription)
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(can('d01') && can('d18') ? editorContent || resume?.latex_content || '' : '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -224,7 +230,7 @@ export default function OptimizationSuitePage() {
         setPersona(savedPersona || null)
 
         // Auto-compile on load so user sees PDF immediately
-        if (data.latex_content && data.latex_content.length >= 100) {
+        if (canRef.current('c05') && data.latex_content && data.latex_content.length >= 100) {
           try {
             const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: resolvedCompiler })
             if (!cancelled && r.success && r.job_id) { setActiveJobId(r.job_id); setActiveJobKind('compile') }
@@ -378,6 +384,7 @@ export default function OptimizationSuitePage() {
   }, [activeJobKind, stream.status, requestPermission])
 
   const runOptimization = async (fromScoreReport = false) => {
+    if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c01') || !canRef.current('c05')) return
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
@@ -404,11 +411,11 @@ export default function OptimizationSuitePage() {
         optimization_level: 'balanced',
         compiler,
         persona: persona ?? undefined,
-        industry: intake.industry || undefined,
-        seniority: intake.seniority || undefined,
-        tone: intake.tone || undefined,
-        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
-        downplay: intake.downplay.length ? intake.downplay : undefined,
+        industry: canRef.current('d02') ? intake.industry || undefined : undefined,
+        seniority: canRef.current('d02') ? intake.seniority || undefined : undefined,
+        tone: canRef.current('d02') ? intake.tone || undefined : undefined,
+        emphasize: canRef.current('d02') && intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: canRef.current('d02') && intake.downplay.length ? intake.downplay : undefined,
         custom_instructions: scoreInstructions,
       })
 
@@ -432,6 +439,7 @@ export default function OptimizationSuitePage() {
   // the label. Hits the same ats_scoring_service computation (sync path) that
   // powers the async job pipeline, so results stay consistent.
   const handleIndustryOverride = useCallback(async (key: string) => {
+    if (!canRef.current('d18') || !canRef.current('d19')) return
     const resolvedKey = key === 'generic' ? null : key
     setIndustryOverride(resolvedKey)
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
@@ -457,6 +465,7 @@ export default function OptimizationSuitePage() {
   }, [resume?.latex_content, jobDescription, atsLocale])
 
   const handleLocaleOverride = useCallback(async (localeKey: string) => {
+    if (!canRef.current('d18') || !canRef.current('d19')) return
     const locale = localeKey as typeof atsLocale
     setATSLocale(locale)
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
@@ -494,12 +503,19 @@ export default function OptimizationSuitePage() {
     toast.success('Original resume restored in editor')
   }
 
-  const handleAutoCompile = useCallback(async (content: string) => {
-    if (isProcessing || isSubmitting) return null
+  const compileContent = useCallback(async (content: string) => {
+    if (!canRef.current('c05') || isProcessing || isSubmitting) return null
+    const requestIdentity = { ...personaIdentityRef.current }
+    const requestOwnerId = sessionUserId
+    const isCurrentRequest = () => mountedRef.current &&
+      personaIdentityRef.current.key === requestIdentity.key &&
+      personaIdentityRef.current.generation === requestIdentity.generation &&
+      liveSessionUserIdRef.current === requestOwnerId
     setIsSubmitting(true)
     try {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      if (!isCurrentRequest()) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
       setActiveJobKind('compile')
@@ -507,18 +523,24 @@ export default function OptimizationSuitePage() {
     } catch {
       // Silent fail
     } finally {
-      setIsSubmitting(false)
+      if (isCurrentRequest()) setIsSubmitting(false)
     }
-  }, [compiler, isProcessing, isSubmitting, resumeId])
+  }, [compiler, isProcessing, isSubmitting, resumeId, sessionUserId])
+
+  const handleAutoCompile = useCallback(async (content: string) => {
+    if (!canRef.current('c05') || !canRef.current('d01') || !canRef.current('c06')) return null
+    return await compileContent(content)
+  }, [compileContent])
 
   const handleEditorCompile = useCallback(() => {
     const content = editorRef.current?.getValue() || editorContent
-    if (content.trim()) void handleAutoCompile(content)
-  }, [editorContent, handleAutoCompile])
+    if (content.trim()) void compileContent(content)
+  }, [editorContent, compileContent])
 
   // Apply the user's per-change review result (F2-P0): load the reconstructed
   // LaTeX into the editor, make it the new "after" snapshot, and recompile.
   const handleApplyReviewedChanges = useCallback(async (latex: string) => {
+    if (!canRef.current('d03') || !canRef.current('c01')) return false
     const currentLatex = editorRef.current?.getValue()
     if (
       compareOriginalLatex !== null
@@ -532,6 +554,10 @@ export default function OptimizationSuitePage() {
     editorRef.current?.setValue(latex)
     setEditorContent(latex)
     setCompareAfterLatex(latex)
+    if (!canRef.current('c05')) {
+      toast.success('Changes applied. Compilation is unavailable with your current feature settings.')
+      return true
+    }
     setIsSubmitting(true)
     setPdfUrl(null)
     try {
@@ -559,6 +585,7 @@ export default function OptimizationSuitePage() {
   }, [resumeId])
 
   const handleCreateVariant = useCallback(async () => {
+    if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return
     if (isForkingResume) return
     setIsForkingResume(true)
     try {
@@ -574,6 +601,7 @@ export default function OptimizationSuitePage() {
   }, [resumeId, forkTitleInput, isForkingResume, router])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
+    if (!canRef.current('d13')) return
     setExplainerLine(error.line)
     setExplainerOpen(true)
     setExplainerLoading(true)
@@ -597,13 +625,14 @@ export default function OptimizationSuitePage() {
   }, [])
 
   const handleApplyExplainerFix = useCallback(() => {
-    if (!explainerData?.corrected_code || explainerLine == null) return
+    if (!canRef.current('c01') || !explainerData?.corrected_code || explainerLine == null) return
     editorRef.current?.applyFix(explainerLine, explainerData.corrected_code)
     setExplainerOpen(false)
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
 
   const handleTrimToOnePage = useCallback(async () => {
+    if (!canRef.current('d01') || !canRef.current('c12') || !canRef.current('c01') || !canRef.current('c05')) return
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     if (!currentContent.trim()) return
     setIsSubmitting(true)
@@ -614,11 +643,11 @@ export default function OptimizationSuitePage() {
         job_description: jobDescription,
         optimization_level: 'aggressive',
         custom_instructions: TRIM_INSTRUCTION,
-        industry: intake.industry || undefined,
-        seniority: intake.seniority || undefined,
-        tone: intake.tone || undefined,
-        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
-        downplay: intake.downplay.length ? intake.downplay : undefined,
+        industry: canRef.current('d02') ? intake.industry || undefined : undefined,
+        seniority: canRef.current('d02') ? intake.seniority || undefined : undefined,
+        tone: canRef.current('d02') ? intake.tone || undefined : undefined,
+        emphasize: canRef.current('d02') && intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: canRef.current('d02') && intake.downplay.length ? intake.downplay : undefined,
       })
       if (!response.success || !response.job_id) {
         throw new Error(response.message || 'Failed to start trim')
@@ -647,6 +676,7 @@ export default function OptimizationSuitePage() {
   }, [])
 
   const handleScrapeUrl = useCallback(async () => {
+    if (!canRef.current('e11')) return
     if (!jobUrl.trim() || isScraping) return
     setIsScraping(true)
     setScrapedMeta(null)
@@ -667,7 +697,7 @@ export default function OptimizationSuitePage() {
     }
   }, [jobUrl, isScraping])
 
-  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:optimize`, enabled: autoCompile,
+  const queuePreview = usePreviewScheduler({ identity: `${sessionUserId}:${resumeId}:optimize`, enabled: can('c05') && can('d01') && can('c06') && autoCompile,
     blocked: isProcessing || isSubmitting, jobId: activeJobId, status: stream.status,
     submit: async (source) => await handleAutoCompile(source) ?? null,
   })
@@ -712,14 +742,15 @@ export default function OptimizationSuitePage() {
         </div>
         <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:shrink-0">
           <div className="relative">
-            <button
-              onClick={() => { setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
-              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
-            >
-              <GitFork size={12} />
-              Variant
-            </button>
-            {forkPopoverOpen && (
+            {can('b11') && can('b01') && can('c01') && <>
+              <CapabilityGate feature="b11"><button
+                onClick={() => { if (!canRef.current('b11') || !canRef.current('b01') || !canRef.current('c01')) return; setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
+              >
+                <GitFork size={12} />
+                Variant
+              </button></CapabilityGate>
+              {forkPopoverOpen && (
               <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-[var(--radius-md)] border border-line bg-bg p-3 shadow-[var(--shadow-2)]">
                 <input
                   type="text"
@@ -732,12 +763,13 @@ export default function OptimizationSuitePage() {
                 />
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button>
-                  <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:brightness-110 disabled:opacity-50">
+                  <CapabilityGate feature="b11"><button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:brightness-110 disabled:opacity-50">
                     {isForkingResume ? 'Creating...' : 'Create'}
-                  </button>
+                  </button></CapabilityGate>
                 </div>
               </div>
-            )}
+              )}
+            </>}
           </div>
           <ContrastToggle />
           <ModeToggle />
@@ -811,7 +843,7 @@ export default function OptimizationSuitePage() {
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Job Description</h2>
               <span className="text-[10px] text-fg-3">optional</span>
             </div>
-            <div className="mt-3 flex gap-2">
+            <CapabilityGate feature="e11"><div className="mt-3 flex gap-2">
               <input
                 type="url"
                 value={jobUrl}
@@ -823,14 +855,15 @@ export default function OptimizationSuitePage() {
               />
               <button
                 onClick={handleScrapeUrl}
-                disabled={!jobUrl.trim() || isProcessing || isScraping}
+                disabled={!can('e11') || !jobUrl.trim() || isProcessing || isScraping}
+                aria-description={!can('e11') ? 'Job URL import is unavailable for your current plan or feature settings.' : undefined}
                 title="Import job description from URL"
                 className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-xs font-medium text-fg-2 transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
                 {isScraping ? 'Importing…' : 'Import'}
               </button>
-            </div>
+            </div></CapabilityGate>
             {scrapedMeta && !scrapedMeta.error && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {scrapedMeta.title && (
@@ -871,16 +904,18 @@ export default function OptimizationSuitePage() {
               className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 text-sm text-fg outline-none transition focus:border-accent"
             />
             <div className="mt-3">
-              <GuidedIntakePanel value={intake} onChange={setIntake} />
+              <CapabilityGate feature="d02"><GuidedIntakePanel value={intake} onChange={setIntake} /></CapabilityGate>
             </div>
-            <button
-              onClick={() => void runOptimization()}
-              disabled={isProcessing || isSubmitting}
-              className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
-            </button>
-            {!intakeIsEmpty(intake) && (
+            {can('d01') && can('d18') && can('c01') && can('c05') && (
+              <button
+                onClick={() => void runOptimization()}
+                disabled={isProcessing || isSubmitting}
+                className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
+              </button>
+            )}
+            {can('d02') && !intakeIsEmpty(intake) && (
               <p className="mt-2 text-[10px] leading-relaxed text-fg-3">
                 The AI will follow your direction —
                 {[
@@ -954,7 +989,7 @@ export default function OptimizationSuitePage() {
               <div className="flex h-11 items-center justify-between gap-2 border-b border-line bg-surface-2 px-4">
                 <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
                   <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">LaTeX Source</p>
-                  <button
+                  <CapabilityGate feature="c06"><button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (5s quiet period; 10s minimum interval)"
                     aria-label="Auto-compile on change"
@@ -967,7 +1002,7 @@ export default function OptimizationSuitePage() {
                   >
                     <Zap size={10} />
                     Auto
-                  </button>
+                  </button></CapabilityGate>
                   <span className="h-4 w-px bg-line" />
                   <CompilerSelector
                     resumeId={resumeId}
@@ -981,7 +1016,7 @@ export default function OptimizationSuitePage() {
                 </button>
               </div>
               {/* Academic CVs legitimately run long — don't nag them about page count. */}
-              {stream.pageCount !== null && stream.pageCount > 1 && !academicReport?.is_academic_cv && (
+              {can('c12') && stream.pageCount !== null && stream.pageCount > 1 && !academicReport?.is_academic_cv && (
                 <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
                   <span className="text-[11px] text-warn">
                     ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.
@@ -999,12 +1034,12 @@ export default function OptimizationSuitePage() {
                 <LaTeXEditor
                   ref={editorRef}
                   value={editorContent}
-                  onChange={setEditorContent}
-                  readOnly={isProcessing}
+                  onChange={(value) => { if (canRef.current('c01')) setEditorContent(value) }}
+                  readOnly={!can('c01') || isProcessing}
                   logLines={stream.logLines}
-                  onCompile={handleEditorCompile}
-                  onAutoCompile={autoCompile ? queuePreview : undefined}
-                  autoCompileEnabled={autoCompile}
+                  onCompile={can('c05') ? handleEditorCompile : undefined}
+                  onAutoCompile={can('c05') && can('d01') && can('c06') && autoCompile ? queuePreview : undefined}
+                  autoCompileEnabled={can('c05') && can('d01') && can('c06') && autoCompile}
                   autoCompileBusy={false}
                   autoCompileDocumentKey={personaIdentityKey}
                   autoCompileDebounceMs={0}
@@ -1033,12 +1068,13 @@ export default function OptimizationSuitePage() {
                 <div className="flex items-center gap-3">
                   {compareAfterLatex !== null && compareOriginalLatex !== null && (
                     <>
-                      <button
-                        onClick={() => setShowReviewModal(true)}
+                      <CapabilityGate feature="d03"><button
+                        onClick={() => { if (canRef.current('d03')) setShowReviewModal(true) }}
+                        disabled={!can('d03')}
                         className="text-xs font-semibold text-ok transition hover:brightness-110"
                       >
                         Review Changes
-                      </button>
+                      </button></CapabilityGate>
                       <button
                         onClick={() => setShowCompareModal(true)}
                         className="text-xs font-semibold text-accent-strong transition hover:brightness-110"
@@ -1063,7 +1099,7 @@ export default function OptimizationSuitePage() {
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface overflow-hidden">
             {/* Tab bar */}
             <div className="flex overflow-x-auto border-b border-line">
-              {(['ATS Simulator', 'Keywords', 'Publications'] as const).map(tab => (
+              {(['ATS Simulator', 'Keywords', 'Publications'] as const).filter(tab => can(tab === 'ATS Simulator' ? 'd22' : tab === 'Keywords' ? 'd23' : 'g10')).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveToolTab(tab)}
@@ -1085,7 +1121,7 @@ export default function OptimizationSuitePage() {
                     These are not the vendors&apos; parsers and do not predict screening decisions.
                     Inspect the extracted plain text and address concrete document issues.
                   </p>
-                  <AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <CapabilityGate feature="d22"><AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} /></CapabilityGate>
                 </>
               ) : activeToolTab === 'Keywords' ? (
                 <>
@@ -1093,7 +1129,7 @@ export default function OptimizationSuitePage() {
                     Paste a job description to see which keywords your resume covers. Green = present,
                     amber = partial match, red = missing. Click a missing keyword for insertion advice.
                   </p>
-                  <KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <CapabilityGate feature="d23"><KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} /></CapabilityGate>
                 </>
               ) : (
                 <>
@@ -1101,7 +1137,7 @@ export default function OptimizationSuitePage() {
                     Fetch your publications from ORCID and insert a formatted bibliography section
                     directly into your resume. Choose a citation style, year range, and publication type.
                   </p>
-                  <PublicationsPanel insertAtCursor={(text) => {
+                  <CapabilityGate feature="g10"><PublicationsPanel insertAtCursor={(text) => {
                     // The side panel can become interactive while the dynamic
                     // Monaco bundle is still mounting. Never drop a user's
                     // insertion during that window; with no caret yet, prepend
@@ -1110,7 +1146,7 @@ export default function OptimizationSuitePage() {
                     if (!editorRef.current?.insertAtCursor(text)) {
                       setEditorContent((current) => text + current)
                     }
-                  }} />
+                  }} /></CapabilityGate>
                 </>
               )}
             </div>
@@ -1139,7 +1175,7 @@ export default function OptimizationSuitePage() {
                           // overwrite, so the prior version is never lost.
                           const stamp = new Date().toLocaleString()
                           try {
-                            await apiClient.createCheckpoint(resumeId, `Before save · ${stamp}`)
+                            if (canRef.current('c22')) await apiClient.createCheckpoint(resumeId, `Before save · ${stamp}`)
                           } catch {
                             // Non-fatal — proceed with save even if snapshot fails
                           }
@@ -1150,7 +1186,7 @@ export default function OptimizationSuitePage() {
                           setBaselineLatex(latex) // the saved content is the new clean baseline
                           setEditorContent(latex)
                           setHistoryRefreshKey((k) => k + 1)
-                          toast.success('New version saved — previous content kept in Version History')
+                          toast.success('Resume saved')
                         } catch {
                           toast.error('Failed to save')
                         } finally {
@@ -1185,13 +1221,13 @@ export default function OptimizationSuitePage() {
                   isLoading={isRescoringIndustry}
                   industryLabel={industryOverrideResult?.industry_label ?? (industryOverride ? null : stream.industryLabel)}
                   industryKey={industryOverrideResult?.industry_key ?? industryOverride ?? (stream.atsDetails as any)?.industry_key ?? null}
-                  onIndustryOverride={handleIndustryOverride}
+                  onIndustryOverride={can('d18') && can('d19') ? handleIndustryOverride : undefined}
                   localeKey={industryOverrideResult?.locale_key ?? (stream.atsDetails?.locale_key || atsLocale)}
                   localeLabel={industryOverrideResult?.locale_label ?? stream.atsDetails?.locale_label}
                   scoreThreshold={industryOverrideResult?.score_threshold ?? stream.atsDetails?.score_threshold}
                   calibrationStatement={industryOverrideResult?.calibration_statement ?? stream.atsDetails?.calibration_statement}
-                  onLocaleOverride={handleLocaleOverride}
-                  onOptimize={() => void runOptimization(true)}
+                  onLocaleOverride={can('d18') && can('d19') ? handleLocaleOverride : undefined}
+                  onOptimize={can('d01') && can('d18') && can('c01') && can('c05') ? () => void runOptimization(true) : undefined}
                   isOptimizing={isProcessing || isSubmitting}
                 />
               </motion.section>
@@ -1249,12 +1285,12 @@ export default function OptimizationSuitePage() {
 
       {/* Per-change accept/reject review (F2-P0) */}
       {showReviewModal && compareOriginalLatex !== null && compareAfterLatex !== null && (
-        <ChangeReviewModal
+        <CapabilityGate feature="d03"><ChangeReviewModal
           originalLatex={compareOriginalLatex}
           optimizedLatex={compareAfterLatex}
           onApply={handleApplyReviewedChanges}
           onClose={() => setShowReviewModal(false)}
-        />
+        /></CapabilityGate>
       )}
     </div>
   )

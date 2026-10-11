@@ -1,6 +1,6 @@
 import { expect, test } from './quality-test'
 import { createHash } from 'node:crypto'
-import { mockEngineAncillaryApi } from './engine-fixtures'
+import { fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -52,12 +52,12 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
       document_id: resumeId, branch: 'draft', owner_epoch: 1, pdf_sha256: digest(job.pdf), pdf_size: job.pdf.length, page_count: 1,
       compiler: 'pdflatex', settings_sha256: digest('settings'), preview_url: `/download/${id}/preview/${digest(id)}`, geometry_url: `/download/${id}/preview/${digest(id)}/geometry` }
   }
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'structure-owner', email: 'owner@example.com', name: 'Owner' } } }))
-  await mockEngineAncillaryApi(page, 'structure-owner')
-  await page.route('**/macros', route => route.fulfill({ json: [] }))
-  await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'structure-owner', title: 'Structured resume', latex_content: source(), document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
-  await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ status: 404, json: { detail: 'No original upload' } }))
-  await page.route(`**/resumes/${resumeId}/engine/document`, async route => {
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: { session: { token: 'contract-owner-token' }, user: { id: 'structure-owner', email: 'owner@example.com', name: 'Owner' } } }))
+  await mockEngineAncillaryApi(page, 'structure-owner', { b10: true, c06: true })
+  await mockEngineRoute(page, '**/macros', route => fulfillEngineResponse(route, { json: [] }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}`, route => fulfillEngineResponse(route, { json: { id: resumeId, user_id: 'structure-owner', title: 'Structured resume', latex_content: source(), document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/import`, route => fulfillEngineResponse(route, { status: 404, json: { detail: 'No original upload' } }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/document`, async route => {
     if (route.request().method() === 'PATCH') {
       const body = route.request().postDataJSON()
       expect(body.expected_content_revision).toBe(revision); expect(body.expected_source_sha256).toBe(digest(source()))
@@ -65,9 +65,9 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
       expect(body.patches[0].expected_node_revision).toBe(digest('section.experience.heading\0' + heading))
       heading = body.patches[0].text; revision++
     }
-    await route.fulfill({ json: { document: document(), latex_content: source() } })
+    await fulfillEngineResponse(route, { json: { document: document(), latex_content: source() } })
   })
-  await page.route(`**/resumes/${resumeId}/engine/structure`, async route => {
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/structure`, async route => {
     const body = route.request().postDataJSON(); commands.push(body)
     expect(body.expected_content_revision).toBe(revision); expect(body.expected_source_sha256).toBe(digest(source()))
     const before = body.container_id === 'sections' ? sections : body.container_id === 'section.experience.entries' ? entries : bullets
@@ -76,25 +76,25 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
     else if (body.container_id === 'section.experience.entries') entries = body.ordered_ids
     else bullets = body.ordered_ids
     revision++
-    await route.fulfill({ json: { document: document(), latex_content: source() } })
+    await fulfillEngineResponse(route, { json: { document: document(), latex_content: source() } })
   })
-  await page.route('**/jobs/submit', async route => {
+  await mockEngineRoute(page, '**/jobs/submit', async route => {
     const latex = route.request().postDataJSON().latex_content; const id = `structure-${jobs.size + 1}`
     jobs.set(id, { source: latex, document: document(latex), pdf: pdfRows(rows(latex)) })
-    await route.fulfill({ json: { success: true, job_id: id } })
+    await fulfillEngineResponse(route, { json: { success: true, job_id: id } })
   })
-  await page.route('**/jobs/*/state', route => {
+  await mockEngineRoute(page, '**/jobs/*/state', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]
-    return route.fulfill({ json: { status: 'completed', stage: '', percent: 100, artifact: artifacts(id), last_updated: Date.now() / 1000 } })
+    return fulfillEngineResponse(route, { json: { status: 'completed', stage: '', percent: 100, artifact: artifacts(id), last_updated: Date.now() / 1000 } })
   })
-  await page.route('**/jobs/*/result', route => {
+  await mockEngineRoute(page, '**/jobs/*/result', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]
-    return route.fulfill({ json: { success: true, job_id: id, result: { success: true, job_id: id, pdf_job_id: id, compilation_time: .01 } } })
+    return fulfillEngineResponse(route, { json: { success: true, job_id: id, result: { success: true, job_id: id, pdf_job_id: id, compilation_time: .01 } } })
   })
-  await page.route('**/download/*/preview/*', route => route.fulfill({ contentType: 'application/pdf', body: jobs.get(new URL(route.request().url()).pathname.split('/')[2])!.pdf }))
-  await page.route('**/download/*/preview/*/geometry', route => {
+  await mockEngineRoute(page, '**/download/*/preview/*', route => fulfillEngineResponse(route, { contentType: 'application/pdf', body: jobs.get(new URL(route.request().url()).pathname.split('/')[2])!.pdf }))
+  await mockEngineRoute(page, '**/download/*/preview/*/geometry', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2], job = jobs.get(id)!, artifact = artifacts(id), lines = rows(job.source)
-    return route.fulfill({ json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: artifact.artifact_id, document_id: resumeId,
+    return fulfillEngineResponse(route, { json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: artifact.artifact_id, document_id: resumeId,
       content_revision: job.document.content_revision, branch: 'draft', source_sha256: artifact.source_sha256, pdf_sha256: artifact.pdf_sha256,
       pages: [{ page: 1, width: 612, height: 792, rotation: 0 }], boxes: job.document.nodes.map((node) => ({ ...node, page: 1, x: 40, y: 30 + lines.indexOf(node.text) * 20, width: node.text.length * 6, height: 14 })) } })
   })

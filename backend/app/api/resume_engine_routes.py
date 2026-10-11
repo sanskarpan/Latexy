@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from ..core.config import settings
 from ..database.connection import get_db
 from ..database.models import Compilation, JobFinalization, Resume, ResumeOptimizationRun, ResumeTemplate, UserAPIKey
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.resume_engine.acceptance import valid_run_result, validate_factual_dependencies
 from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
 from ..services.resume_engine.document import digest
@@ -142,10 +143,12 @@ async def _access(db, resume_id, user_id, *, write=False, owner=False):
 async def engine_providers(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)):
     """Only this owner's configured keys and operator-priced models; no provider call."""
     from ..services.api_key_service import api_key_service
+    from ..services.entitlement_service import entitlement_service
     from ..services.resume_engine.provider import BYOK_ENDPOINTS, configured_models, resolve_provider
 
     available = set((await db.scalars(select(UserAPIKey.provider).where(
         UserAPIKey.user_id == user_id, UserAPIKey.is_active.is_(True)))).all())
+    byok_enabled = await entitlement_service.has_feature("d25", user=user_id)
     providers = []
     for provider in BYOK_ENDPOINTS:
         models = []
@@ -155,12 +158,16 @@ async def engine_providers(db: AsyncSession = Depends(get_db), user_id: str = De
                 models.append(model)
             except (BudgetExceeded, TypeError, ValueError):
                 pass
-        providers.append({"provider": provider, "key_available": provider in available, "models": models})
-    user_key = await api_key_service.get_user_provider(db, user_id, "openai")
-    default = {"provider": None, "model": None, "source": "byok" if user_key else "platform", "ready": False}
+        providers.append({"provider": provider, "key_available": byok_enabled and provider in available, "models": models})
+    # A disabled stored key must not make this metadata/recovery endpoint fail
+    # or advertise platform fallback. Actual admissions still recheck d25.
+    user_key = await api_key_service.get_user_provider(db, user_id, "openai") if byok_enabled else None
+    byok_denied = "openai" in available and not byok_enabled
+    default = {"provider": None, "model": None, "source": "byok" if user_key or byok_denied else "platform", "ready": False}
     try:
-        spec = resolve_provider(user_key or settings.OPENAI_API_KEY or "", None)
-        default.update(provider=spec.provider, model=spec.model, ready=bool(user_key or settings.OPENAI_API_KEY))
+        spec = resolve_provider("configured" if byok_denied else user_key or settings.OPENAI_API_KEY or "", None)
+        default.update(provider=spec.provider, model=spec.model,
+                       ready=not byok_denied and bool(user_key or settings.OPENAI_API_KEY))
     except (BudgetExceeded, TypeError, ValueError):
         pass
     return {"default": default, "providers": providers}

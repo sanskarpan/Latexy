@@ -42,6 +42,9 @@ function harness(page: keyof typeof pages) {
   let owner = 'owner-A', generation = 1
   let scheduler: PreviewScheduler
   const context = () => ({
+    canRef: { current: () => true },
+    currentCheckpointRecoveryPreview: null, checkpointRecoveryIdentity: {},
+    checkpointRecoverySourceForRead: (_preview: unknown, _identity: unknown, source: string) => source,
     Error, performance, navigator: { onLine: true },
     queuePreview: { submitManual: scheduler.submitManual.bind(scheduler) },
     previewRequestIdentityRef: identityRef,

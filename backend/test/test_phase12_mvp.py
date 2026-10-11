@@ -439,7 +439,10 @@ class TestBusinessRequirements:
         service = PaymentService(provider=DodoProvider(api_key=""))
         plans = await service.get_subscription_plans()
 
-        assert set(plans) == {"free"}
+        assert "free" in plans
+        assert set(plans) >= {"basic", "pro", "byok"}
+        assert all(plan["purchasable"] is False for sku, plan in plans.items() if sku != "free")
+        assert plans["free"]["purchasable"] is True
         assert service.get_status() == {
             "feature_enabled": True,
             "mode": "unconfigured",

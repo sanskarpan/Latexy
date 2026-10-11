@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import Depends, Header, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import Compilation, JobFinalization
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services import storage_service
 from ..services.render_engine.artifacts import (
     HASH_PATTERN,

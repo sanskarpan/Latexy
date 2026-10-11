@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { History, Loader2, RotateCcw, Save } from 'lucide-react'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
 import {
   apiClient,
   type JobApplication,
@@ -26,6 +28,9 @@ interface ElementVersionHistoryPanelProps {
 }
 
 export default function ElementVersionHistoryPanel({ resumeId, elements, onRestore }: ElementVersionHistoryPanelProps) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const [selectedKey, setSelectedKey] = useState(elements[0]?.key ?? '')
   const [versions, setVersions] = useState<ResumeElementVersion[]>([])
   const [loading, setLoading] = useState(false)
@@ -101,6 +106,7 @@ export default function ElementVersionHistoryPanel({ resumeId, elements, onResto
   }, [applicationsRetry, resumeId])
 
   const saveSnapshot = async () => {
+    if (!canRef.current('c23')) return
     if (!selected || !selected.content.trim()) return
     const identity = `${resumeId}:${selected.key}`
     setSaving(true)
@@ -192,10 +198,10 @@ export default function ElementVersionHistoryPanel({ resumeId, elements, onResto
             <select value={source} onChange={event => setSource(event.target.value as typeof source)} className="rounded-[var(--radius-md)] border border-line bg-bg px-2 py-2 text-xs text-fg">
               <option value="manual">Manual</option><option value="ai">AI-assisted</option><option value="import">Imported</option>
             </select>
-            <button type="button" onClick={() => void saveSnapshot()} disabled={saving || loading || !selected?.content.trim()} className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs text-accent-fg disabled:opacity-50">
+            <CapabilityGate feature="c23"><button type="button" onClick={() => void saveSnapshot()} disabled={saving || loading || !selected?.content.trim()} className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs text-accent-fg disabled:opacity-50">
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Save snapshot
-            </button>
+            </button></CapabilityGate>
           </div>
           <label className="mt-3 block text-[11px] uppercase tracking-[0.12em] text-fg-3" htmlFor="element-version-application">Link tracker evidence (optional)</label>
           <select

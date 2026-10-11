@@ -48,6 +48,7 @@ function callback(trigger: Trigger, context: Record<string, unknown>) {
 
 function harness() {
   let identity = 'anonymous:device'
+  const deniedFeatures = new Set<string>()
   let scheduler = new PreviewScheduler(async () => null)
   let busy = false
   let activeJob: string | null = null
@@ -63,6 +64,7 @@ function harness() {
   const clearPdfPreview = vi.fn()
   const context = () => ({
     Error, performance,
+    canRef: { current: (key: string) => !deniedFeatures.has(key) },
     queuePreview: { submitManual: (source: string, submit: () => Promise<string | null>) => scheduler.submitManual(source, submit) },
     previewRequestIdentityRef, previewAccountRef, previewAccountIdentity: identity,
     isProcessing: false, isSubmitting: busy,
@@ -94,6 +96,7 @@ function harness() {
   renderIdentity()
   return {
     admissions, submit, editor, toast, incrementUsage, autoCompileTriggeredRef, lastAutoCompileErrorRef, clearPdfPreview,
+    deny: (feature: string) => { deniedFeatures.add(feature) },
     get busy() { return busy }, get activeJob() { return activeJob }, renderIdentity,
     start(trigger: Trigger) {
       return callback(trigger, context())(trigger === 'manual' ? 'compile' : 'current source')
@@ -194,6 +197,27 @@ describe('trial preview admission survives an account change', () => {
       await retry
       expect(h.activeJob).toBe('retry-job')
       expect(h.busy).toBe(false)
+    })
+  }
+})
+
+
+describe('trial preview live capability denials', () => {
+  for (const [trigger, features] of [
+    ['manual', ['a09', 'c05']],
+    ['automatic', ['a09', 'c01', 'c05', 'c06']],
+    ['trim', ['a09', 'c01', 'c05', 'c12', 'd01', 'd18']],
+  ] as const) {
+    it.each(features)(`does not submit ${trigger} after %s is revoked`, async (feature) => {
+      const h = harness()
+      h.deny(feature)
+      await h.start(trigger)
+      expect(h.submit).not.toHaveBeenCalled()
+      expect(h.admissions).toHaveLength(0)
+      expect(h.busy).toBe(false)
+      expect(h.activeJob).toBeNull()
+      expect(h.clearPdfPreview).not.toHaveBeenCalled()
+      expect(h.incrementUsage).not.toHaveBeenCalled()
     })
   }
 })

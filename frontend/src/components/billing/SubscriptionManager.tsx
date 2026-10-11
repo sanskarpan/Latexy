@@ -287,6 +287,9 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
           : 'No renewal date'}
       </div>
 
+      {subscription.features.availabilityUnknown && (
+        <p role="status" className="mt-4 text-sm text-fg-2">Current feature availability is temporarily unavailable. Your subscription details and cancellation controls remain available.</p>
+      )}
       {checkoutRecovery}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -300,7 +303,7 @@ export default function SubscriptionManager({ authToken, billingStatus, checkout
           <p className="text-xs uppercase tracking-wider text-fg-3">Enabled Features</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-fg">
             {subscription.features.prioritySupport && <Tag text="Priority" />}
-            {subscription.features.apiAccess && <Tag text="API" />}
+            {subscription.features.apiAccess && <Tag text={subscription.features.apiDailyLimit === undefined ? "API" : `API: ${subscription.features.apiDailyLimit} / day`} />}
             {subscription.features.customModels && <Tag text="Custom Models" />}
             {!subscription.features.prioritySupport && !subscription.features.apiAccess && !subscription.features.customModels && (
               <span className="text-fg-3">None</span>

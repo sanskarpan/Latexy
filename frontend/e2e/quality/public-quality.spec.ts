@@ -1,5 +1,6 @@
 import { expect, test, type Page } from './quality-test'
 import { mockEngineAncillaryApi, mockPublicEngineDocument } from './engine-fixtures'
+import { fulfillQualityJson, QUALITY_FEATURES, QUALITY_PLANS, qualityOrigins } from './mock-api'
 
 const PUBLIC_ROUTES = [
     '/',
@@ -16,43 +17,60 @@ const PUBLIC_ROUTES = [
     '/try',
 ]
 
+// Resume-mode layout is an explicit opt-in; background generation stays closed.
+const PUBLIC_ENGINE_FEATURES = { ...QUALITY_FEATURES, b10: true }
+
+const diagnosticsByPage = new Map<Page, string[]>()
+
 async function installPublicPageMocks(page: Page) {
-    await mockEngineAncillaryApi(page)
+    const { appOrigin, backendOrigin } = qualityOrigins()
+    const unmocked: string[] = []
+    diagnosticsByPage.set(page, unmocked)
+    // Registered first so narrower mocks below take precedence. Missing fixtures
+    // fail diagnostics instead of quietly reaching a live backend.
+    await page.route(url => url.origin === backendOrigin, route => {
+        unmocked.push(`${route.request().method()} ${route.request().url()}`)
+        return fulfillQualityJson(route, { error: 'Unmocked quality API request' }, 501)
+    })
+    await mockEngineAncillaryApi(page, undefined, { b10: true })
     await mockPublicEngineDocument(page)
-    const jsonHeaders = {
-        'access-control-allow-origin': '*',
-        'content-type': 'application/json',
-    }
-    await page.route('**/api/auth/get-session', route =>
-        route.fulfill({ status: 200, headers: jsonHeaders, body: 'null' })
+    await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/get-session', route =>
+        fulfillQualityJson(route, null)
     )
-    await page.route('**/config/feature-flags', route =>
-        route.fulfill({ status: 200, headers: jsonHeaders, body: '{}' })
+    await page.route(url => url.origin === appOrigin && url.pathname === '/api/auth/providers', route =>
+        fulfillQualityJson(route, { google: false, github: false, oidc: null })
     )
-    await page.route('**/tenants/resolve-host**', route =>
-        route.fulfill({ status: 200, headers: jsonHeaders, body: '{"tenant":null}' })
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/config/feature-flags', route =>
+        fulfillQualityJson(route, {})
+    )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
+        fulfillQualityJson(route, { features: PUBLIC_ENGINE_FEATURES })
+    )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/subscription/plans', route =>
+        fulfillQualityJson(route, QUALITY_PLANS)
+    )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/tenants/resolve-host', route =>
+        fulfillQualityJson(route, { tenant: null })
+    )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/portfolio/resolve-domain', route =>
+        fulfillQualityJson(route, { profile: null })
+    )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/telemetry/frontend', route =>
+        fulfillQualityJson(route, null, 204)
     )
     await page.route(
-        url => url.pathname === '/templates' || url.pathname.startsWith('/templates/'),
-        async route => {
-            if (!['fetch', 'xhr'].includes(route.request().resourceType())
-                || route.request().headers().rsc === '1') return route.fallback()
-            return route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' })
-        }
+        url => url.origin === backendOrigin && (url.pathname === '/templates' || url.pathname.startsWith('/templates/')),
+        route => fulfillQualityJson(route, [])
     )
     await page.route(
-        url => url.pathname === '/public/trial-status' || url.pathname === '/api/public/trial-status',
-        route => route.fulfill({
-            status: 200,
-            headers: jsonHeaders,
-            body: JSON.stringify({
-                usageCount: 0,
-                remainingUses: 3,
-                blocked: false,
-                canUse: true,
-                lastUsed: null,
-                trialLimit: 3,
-            }),
+        url => [appOrigin, backendOrigin].includes(url.origin) && (url.pathname === '/public/trial-status' || url.pathname === '/api/public/trial-status'),
+        route => fulfillQualityJson(route, {
+            usageCount: 0,
+            remainingUses: 3,
+            blocked: false,
+            canUse: true,
+            lastUsed: null,
+            trialLimit: 3,
         })
     )
     await page.route('**/ws/**', route => route.abort())
@@ -60,6 +78,17 @@ async function installPublicPageMocks(page: Page) {
 
 test.beforeEach(async ({ page }) => {
     await installPublicPageMocks(page)
+})
+
+test.afterEach(async () => {
+    try {
+        for (const page of diagnosticsByPage.keys()) {
+            if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+        }
+        expect([...diagnosticsByPage.values()].flat(), 'All quality API requests need explicit fixtures').toEqual([])
+    } finally {
+        diagnosticsByPage.clear()
+    }
 })
 
 test('public routes render without runtime errors in every engine', async ({ context }) => {
@@ -75,6 +104,7 @@ test('public routes render without runtime errors in every engine', async ({ con
             expect(response?.status(), `${route} returned an error response`).toBeLessThan(500)
             await expect(routePage.locator('#main-content')).toBeVisible()
         } finally {
+            await routePage.unrouteAll({ behavior: 'wait' })
             await routePage.close()
         }
     }
@@ -88,6 +118,17 @@ test('public routes expose named controls and valid document structure', async (
         const routePage = await context.newPage()
         await installPublicPageMocks(routePage)
         await routePage.goto(route, { waitUntil: 'networkidle' })
+        if (route === '/templates') {
+            await expect(routePage.getByRole('heading', { level: 1, name: 'LaTeX templates, ready to use.' })).toBeVisible()
+        }
+        if (route === '/pricing') {
+            await expect(routePage.getByRole('heading', { level: 1, name: "Start free. Pay only when it's working for you." })).toBeVisible()
+            for (const plan of ['Free', 'Basic', 'Pro', 'Your AI key']) {
+                await expect(routePage.getByRole('heading', { level: 2, name: plan, exact: true })).toBeVisible()
+            }
+            await expect(routePage.getByRole('link', { name: 'Try the résumé builder →' })).toHaveAttribute('href', '/try?mode=visual')
+            await expect(routePage.getByRole('link', { name: 'Choose Basic', exact: true })).toHaveAttribute('href', '/billing')
+        }
 
         const audit = await routePage.evaluate(() => {
             const isVisible = (element: HTMLElement) => {
@@ -186,6 +227,7 @@ test('public routes expose named controls and valid document structure', async (
             audit.unnamedControls,
             `${route} contains controls without accessible names`
         ).toEqual([])
+        await routePage.unrouteAll({ behavior: 'wait' })
         await routePage.close()
     }
 })
@@ -278,7 +320,7 @@ test('mobile studio keeps primary controls reachable without document overflow',
     await page.goto('/try', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Editor', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PDF', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Update PDF', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Tools', exact: true }).click()
     await expect(page.getByRole('button', { name: /Import file/ })).toBeVisible()
 
@@ -294,4 +336,35 @@ test('mobile studio keeps primary controls reachable without document overflow',
         caret: 'hide',
     })
     await testInfo.attach('mobile-studio', { body: screenshot, contentType: 'image/png' })
+})
+
+
+test('disabled templates expose a named recovery page without mounting the catalog', async ({ page }) => {
+    const { backendOrigin } = qualityOrigins()
+    let catalogReads = 0
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
+        fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, b04: false } })
+    )
+    await page.route(url => url.origin === backendOrigin && (url.pathname === '/templates' || url.pathname.startsWith('/templates/')), route => {
+        catalogReads += 1
+        return fulfillQualityJson(route, [])
+    })
+    await page.goto('/templates', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { level: 1, name: 'Feature unavailable' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    await expect(page.getByRole('link', { name: 'Back to workspace' })).toBeVisible()
+    expect(catalogReads).toBe(0)
+})
+
+test('denied studio import preserves the baseline editor and manual compile', async ({ page }) => {
+    const { backendOrigin } = qualityOrigins()
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
+        fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, a09: true, b01: true, c01: true, c05: true, b06: false } })
+    )
+    await page.goto('/try', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('button', { name: 'Update PDF preview', exact: true })).toBeVisible()
+    const tools = page.getByRole('button', { name: 'Tools', exact: true })
+    if (await tools.isVisible()) await tools.click()
+    await expect(page.getByRole('button', { name: /Import file/ })).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 1, name: 'Résumé Studio' })).toBeAttached()
 })

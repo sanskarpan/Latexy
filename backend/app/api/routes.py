@@ -8,7 +8,7 @@ import json
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.params import Depends as DependsParam
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
@@ -25,6 +25,8 @@ from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, JobFinalization, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..middleware.auth_middleware import get_current_user_required as _require_user
+from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
@@ -363,6 +365,19 @@ async def update_me_preferences(
     if body.theme is not None:
         prefs["theme"] = body.theme
     if body.spell_dictionary is not None:
+        stored_dictionary = prefs.get("spell_dictionary")
+        existing_words = {
+            word.strip().lower()
+            for word in stored_dictionary
+            if isinstance(word, str) and word.strip()
+        } if isinstance(stored_dictionary, list) else set()
+        requested_words = set(body.spell_dictionary)
+        # The dictionary belongs to c16, but OFF should not strand existing
+        # account data: idempotent syncs and removals remain available. Check
+        # the authenticated owner's current capability only before admitting
+        # a genuinely new word, before any preference state is persisted.
+        if requested_words - existing_words:
+            await enforce_capabilities(("c16",), user.id)
         prefs["spell_dictionary"] = body.spell_dictionary
     meta["preferences"] = prefs
     user.user_metadata = meta
@@ -388,8 +403,10 @@ async def get_entitlements_for_user(
     Authenticated callers also get their monthly quota usage so the UI can show
     how much of the plan's allowance is left before it hits a 402.
     """
-    features = await entitlement_service.effective_features(user_id, db)
-    payload: dict = {"features": features}
+    snapshot = await entitlement_service.effective_snapshot(user_id, db)
+    if not snapshot["available"]:
+        raise HTTPException(status_code=503, detail="Feature availability is temporarily unavailable. Your saved data remains accessible.")
+    payload: dict = {"features": snapshot["features"]}
     if user_id:
         payload["quotas"] = await entitlement_service.quota_snapshot(user_id, await _resolve_user_plan(db, user_id))
     return payload
@@ -1413,11 +1430,12 @@ class CheckoutReconcileResponse(BaseModel):
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
 async def get_subscription_plans(
     db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Get available subscription plans."""
     try:
         feature_enabled = await feature_flag_service.get_flag("billing", db)
-        plans = await payment_service.get_subscription_plans()
+        plans = await payment_service.get_subscription_plans(db, feature_enabled=feature_enabled, user_id=user_id)
         return SubscriptionPlanResponse(
             plans=plans,
             billing=BillingStatusResponse(**payment_service.get_status(feature_enabled=feature_enabled)),
@@ -1451,6 +1469,11 @@ async def create_subscription(
             raise HTTPException(status_code=401, detail="Authenticated user not found")
         customer_email = owner_row.email
         customer_name = owner_row.name or "Latexy customer"
+
+        from ..services.plan_catalog_service import plan_catalog_service
+
+        concrete_sku = payment_service._resolve_concrete_plan_id(request_data.planId, request_data.billingPeriod)
+        await plan_catalog_service.require_new_purchase(db, concrete_sku, user_id=user_id)
 
         result = await payment_service.create_subscription(
             db=db,
@@ -1516,6 +1539,9 @@ async def verify_student_subscription(
     db: AsyncSession = Depends(get_db),
 ):
     """Activate a student plan after email verification."""
+    from ..services.plan_catalog_service import plan_catalog_service
+
+    await plan_catalog_service.require_sale_available(db, "student")
     result = await payment_service.verify_student_subscription(db, token)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "Verification failed")
@@ -1654,6 +1680,8 @@ async def _record_resume_view(
     resume_title: str,
 ) -> bool:
     """Insert a resume_views row with atomic Redis SET-NX 5-minute debounce (Feature 43)."""
+    if not await entitlement_service.has_feature("h07", user=owner_user_id):
+        return False
     import hashlib
 
     from ..core.redis import redis_cache_client
@@ -1795,7 +1823,12 @@ async def get_shared_resume(
 
     meta: dict = resume.resume_settings or {}
     is_anonymous = bool(meta.get("share_anonymous", False))
-    review_comments = bool(meta.get("share_review_comments", False))
+    for capability in (("f01", "f02") if is_anonymous else ("f01",)):
+        if not await entitlement_service.has_feature(capability, user=resume.user_id):
+            raise HTTPException(status_code=404, detail="Share link not found or has been revoked")
+    review_comments = bool(meta.get("share_review_comments", False)) and await entitlement_service.has_feature(
+        "f03", user=resume.user_id
+    )
     public_title = "Anonymous Resume" if is_anonymous else resume.title
     accessible_text = _shared_accessible_text(
         resume.latex_content,

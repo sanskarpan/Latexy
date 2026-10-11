@@ -5,6 +5,7 @@ import { BookOpen, Loader2, Plus } from 'lucide-react'
 import { apiClient, type PublicationOut } from '@/lib/api-client'
 import { buildPublicationSection } from '@/lib/publication-format'
 import { isOrcidId, normalizeOrcidId } from '@/lib/orcid'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 const PUB_TYPES = [
   { key: 'journal', label: 'Journal' },
@@ -26,6 +27,10 @@ interface PublicationsPanelProps {
 }
 
 export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelProps) {
+  const { can } = useEntitlements()
+  const allowed = can('g10')
+  const allowedRef = useRef(allowed)
+  allowedRef.current = allowed
   const [orcidId, setOrcidId] = useState('')
   const [yearFrom, setYearFrom] = useState('')
   const [yearTo, setYearTo] = useState('')
@@ -71,6 +76,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   const deselectAll = () => setSelectedPubs(new Set())
 
   const handleFetch = async () => {
+    if (!allowedRef.current || isLoading) return
     const id = normalizeOrcidId(orcidId)
     if (!isOrcidId(id)) return
     const version = requestVersion.current + 1
@@ -104,6 +110,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   }
 
   const handleInsert = () => {
+    if (!allowedRef.current) return
     const selected = publications.filter((_, i) => selectedPubs.has(i))
     if (selected.length === 0) return
     // Use backend-generated latex if all pubs are selected, else build from selection
@@ -225,7 +232,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
       {/* Fetch button */}
       <button
         onClick={handleFetch}
-        disabled={isLoading || !isOrcidId(normalizeOrcidId(orcidId))}
+        disabled={!allowed || isLoading || !isOrcidId(normalizeOrcidId(orcidId))}
         className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
@@ -302,7 +309,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           {/* Insert button */}
           <button
             onClick={handleInsert}
-            disabled={selectedPubs.size === 0}
+            disabled={!allowed || selectedPubs.size === 0}
             className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={14} />

@@ -12,8 +12,24 @@ import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
 import SecuritySettings from '@/components/auth/SecuritySettings'
 import ReferralPanel from '@/components/ReferralPanel'
 import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { claimOAuthCompletion } from '@/lib/oauth-completion-claims'
+
+function shouldShowIntegrationCard(state: {
+  canConnect: boolean
+  isLoading: boolean
+  isConnected: boolean
+  hasRecoveryState: boolean
+}): boolean {
+  // Loading alone does not reveal an unavailable integration. The other
+  // fields preserve granted, connected, and owner-scoped recovery states.
+  return state.canConnect || state.isConnected || state.hasRecoveryState
+}
 
 function SettingsContent() {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -132,6 +148,7 @@ function SettingsContent() {
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
   const handleReplayTour = () => {
+    if (!canRef.current('a06')) return
     resetOnboarding()
     router.push('/workspace')
   }
@@ -290,7 +307,10 @@ function SettingsContent() {
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
-  const oauthCompletionStartedRef = useRef<string | null>(null)
+  const integrationStatusOwnerIdRef = useRef<string | null>(null)
+  const integrationStatusOwnerMatches = Boolean(providerActionOwnerId)
+    && integrationStatusOwnerIdRef.current === providerActionOwnerId
+  const oauthCompletionHandledRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
   const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
@@ -325,6 +345,7 @@ function SettingsContent() {
   const [gdriveDisconnecting, setGdriveDisconnecting] = useState(false)
   const [gdriveError, setGdriveError] = useState<string | null>(null)
   const [gdriveSuccess, setGdriveSuccess] = useState<string | null>(null)
+  const [gdriveRetrying, setGdriveRetrying] = useState(false)
   type GoogleDriveCompletionOwner = {
     accountKey: string
     ticket: string
@@ -416,6 +437,7 @@ function SettingsContent() {
     setDbxDisconnecting(false)
     setMenDisconnecting(false)
     setGdriveLoading(false)
+    setGdriveRetrying(false)
     setGdriveDisconnecting(false)
   }, [providerActionIdentity.generation])
 
@@ -455,6 +477,7 @@ function SettingsContent() {
   useEffect(() => {
     if (sessionLoading) return
     if (!sessionData) {
+      integrationStatusOwnerIdRef.current = null
       setLoading(false)
       setGhLoading(false)
       setZotLoading(false)
@@ -462,6 +485,34 @@ function SettingsContent() {
       setDbxLoading(false)
       setGdriveLoading(false)
       return
+    }
+
+    const statusOwnerId = sessionData.user?.id ?? null
+    if (integrationStatusOwnerIdRef.current !== statusOwnerId) {
+      // Integration connection details and recovery notices belong to one
+      // account. Clear the prior owner's snapshot before admitting this one.
+      integrationStatusOwnerIdRef.current = statusOwnerId
+      setGhStatus({ connected: false, username: null, public_import: false, private_sync: false })
+      setZotStatus({ connected: false, username: null, user_id: null })
+      setMenStatus({ connected: false, name: null })
+      setDbxStatus({ connected: false, display_name: null, account_id: null })
+      setGdriveStatus({ connected: false, scope: null })
+      setGhError(null)
+      setGhSuccess(null)
+      setZotError(null)
+      setZotSuccess(null)
+      setMenError(null)
+      setMenSuccess(null)
+      setDbxError(null)
+      setDbxSuccess(null)
+      setGdriveError(null)
+      setGdriveSuccess(null)
+      setGdriveRetrying(false)
+      setGhLoading(true)
+      setZotLoading(true)
+      setMenLoading(true)
+      setDbxLoading(true)
+      setGdriveLoading(true)
     }
 
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
@@ -670,15 +721,22 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    // A callback ticket is one intent, not a new intent after account/token
-    // rotation. Never replay a started GitHub ticket as the replacement user.
-    const completionKey = provider === 'github'
-      ? `${provider}:${ticket}`
-      : `${accountKey}:${provider}:${ticket}`
-    if (oauthCompletionStartedRef.current === completionKey) return
+    // AccountBoundary can remount before router.replace removes the callback.
+    // The document ledger prevents the same short-lived ticket from being
+    // replayed under a replacement identity.
+    const completionKey = `${provider}:${ticket}`
+    if (oauthCompletionHandledRef.current === completionKey) return
+    oauthCompletionHandledRef.current = completionKey
+    const claim = claimOAuthCompletion(provider, ticket)
+    if (claim !== 'claimed') {
+      if (claim !== 'duplicate') {
+        setProviderError(`The ${providerName} connection could not be completed safely. Refresh the page and try connecting again.`)
+      }
+      router.replace(pathname, { scroll: false })
+      return
+    }
 
     if (provider !== 'google_drive') retireLegacyCallback(provider)
-    oauthCompletionStartedRef.current = completionKey
     const googleDriveOwner = provider === 'google_drive'
       ? { accountKey, ticket, active: true, statusApplied: false }
       : null
@@ -1130,36 +1188,50 @@ function SettingsContent() {
   }
 
   async function handleConnectGitHub() {
+    if (!canRef.current('g01')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g01')
+    if (!isCurrent()) return
     setGhConnecting(true)
     setGhError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startGitHubOAuth('sync')
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'github.com',
         pathname: '/login/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
-      setGhConnecting(false)
+      if (isCurrent()) {
+        setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
+        setGhConnecting(false)
+      }
     }
   }
 
   async function handleConnectZotero() {
+    if (!canRef.current('g07')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g07')
+    if (!isCurrent()) return
     setZotConnecting(true)
     setZotError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startZoteroOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'www.zotero.org',
         pathname: '/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('Zotero returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
-      setZotConnecting(false)
+      if (isCurrent()) {
+        setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
+        setZotConnecting(false)
+      }
     }
   }
 
@@ -1186,19 +1258,26 @@ function SettingsContent() {
   }
 
   async function handleConnectDropbox() {
+    if (!canRef.current('g05')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g05')
+    if (!isCurrent()) return
     setDbxConnecting(true)
     setDbxError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startDropboxOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'www.dropbox.com',
         pathname: '/oauth2/authorize',
       })
       if (!authorizationUrl) throw new Error('Dropbox returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
-      setDbxConnecting(false)
+      if (isCurrent()) {
+        setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
+        setDbxConnecting(false)
+      }
     }
   }
 
@@ -1225,11 +1304,16 @@ function SettingsContent() {
   }
 
   async function handleConnectGoogleDrive() {
+    if (!canRef.current('g06')) return
     if (gdriveConnecting || gdriveDisconnecting) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g06')
+    if (!isCurrent()) return
     setGdriveConnecting(true)
     setGdriveError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startGoogleDriveOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'accounts.google.com',
         pathname: '/o/oauth2/v2/auth',
@@ -1237,10 +1321,12 @@ function SettingsContent() {
       if (!authorizationUrl) {
         throw new Error('Google Drive returned an invalid authorization URL. Please retry.')
       }
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
-      setGdriveConnecting(false)
+      if (isCurrent()) {
+        setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
+        setGdriveConnecting(false)
+      }
     }
   }
 
@@ -1249,6 +1335,7 @@ function SettingsContent() {
     const action = beginProviderAction('google_drive')
     if (!action) return
     setGdriveLoading(true)
+    setGdriveRetrying(true)
     setGdriveError(null)
     try {
       const status = await apiClient.getGoogleDriveStatus(action.accountContext)
@@ -1261,6 +1348,7 @@ function SettingsContent() {
       if (action.isCurrent()) {
         providerActionActiveRef.current.google_drive = false
         setGdriveLoading(false)
+        setGdriveRetrying(false)
       }
     }
   }
@@ -1288,19 +1376,26 @@ function SettingsContent() {
   }
 
   async function handleConnectMendeley() {
+    if (!canRef.current('g08')) return
+    const identity = providerActionIdentityRef.current
+    const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g08')
+    if (!isCurrent()) return
     setMenConnecting(true)
     setMenError(null)
     try {
       const { authorization_url: rawAuthorizationUrl } = await apiClient.startMendeleyOAuth()
+      if (!isCurrent()) return
       const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
         hostname: 'api.mendeley.com',
         pathname: '/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('Mendeley returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
-      setMenConnecting(false)
+      if (isCurrent()) {
+        setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
+        setMenConnecting(false)
+      }
     }
   }
 
@@ -1399,7 +1494,7 @@ function SettingsContent() {
         </div>
 
         {/* Account-synced spelling dictionary */}
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
+        {can('c16') && <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
               <BookOpen size={14} className="text-accent-strong" />
@@ -1407,13 +1502,20 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Personal Dictionary</h2>
           </div>
           <PersonalDictionarySettings />
-        </div>
+        </div>}
 
         <SecuritySettings />
 
         <ReferralPanel />
 
         {/* GitHub Integration card */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g01'),
+          isLoading: integrationStatusOwnerMatches && ghLoading,
+          isConnected: integrationStatusOwnerMatches && ghStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(ghSuccess || ghError || ghConnecting || ghDisconnecting || (ghLoading && searchParams.get('github') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.github.ownerId === providerActionOwnerId && Boolean(ghSuccess || ghError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-surface-2">
@@ -1469,7 +1571,7 @@ function SettingsContent() {
                   {ghDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                   {ghDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                 </button>
-                {!ghStatus.private_sync && (
+                {!ghStatus.private_sync && can('g01') && (
                   <button
                     onClick={handleConnectGitHub}
                     disabled={ghConnecting}
@@ -1485,7 +1587,7 @@ function SettingsContent() {
                 Resume text you already imported or synced is not deleted.
               </p>
             </div>
-          ) : (
+          ) : can('g01') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your GitHub account to sync resume LaTeX source to a private repository.
@@ -1501,7 +1603,7 @@ function SettingsContent() {
                 {ghConnecting ? 'Connecting…' : 'Connect GitHub'}
               </button>
             </div>
-          )}
+          ) : null}
 
           {ghError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1509,8 +1611,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Zotero Integration card (Feature 42) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g07'),
+          isLoading: integrationStatusOwnerMatches && zotLoading,
+          isConnected: integrationStatusOwnerMatches && zotStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(zotSuccess || zotError || zotConnecting || zotDisconnecting || (zotLoading && searchParams.get('zotero') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.zotero.ownerId === providerActionOwnerId && Boolean(zotSuccess || zotError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1556,7 +1666,7 @@ function SettingsContent() {
                 {zotDisconnecting ? 'Disconnecting…' : 'Disconnect Zotero'}
               </button>
             </div>
-          ) : (
+          ) : can('g07') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Zotero account to import your reference library as BibTeX directly into any resume.
@@ -1570,7 +1680,7 @@ function SettingsContent() {
                 {zotConnecting ? 'Connecting…' : 'Connect Zotero'}
               </button>
             </div>
-          )}
+          ) : null}
 
           {zotError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1578,8 +1688,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Mendeley Integration card (Feature 42) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g08'),
+          isLoading: integrationStatusOwnerMatches && menLoading,
+          isConnected: integrationStatusOwnerMatches && menStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(menSuccess || menError || menConnecting || menDisconnecting || (menLoading && searchParams.get('mendeley') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.mendeley.ownerId === providerActionOwnerId && Boolean(menSuccess || menError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1625,7 +1743,7 @@ function SettingsContent() {
                 {menDisconnecting ? 'Disconnecting…' : 'Disconnect Mendeley'}
               </button>
             </div>
-          ) : (
+          ) : can('g08') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Mendeley account to import your research library as BibTeX directly into any resume.
@@ -1639,7 +1757,7 @@ function SettingsContent() {
                 {menConnecting ? 'Connecting…' : 'Connect Mendeley'}
               </button>
             </div>
-          )}
+          ) : null}
 
           {menError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1647,8 +1765,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Dropbox Integration card (Feature 77) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g05'),
+          isLoading: integrationStatusOwnerMatches && dbxLoading,
+          isConnected: integrationStatusOwnerMatches && dbxStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(dbxSuccess || dbxError || dbxConnecting || dbxDisconnecting || (dbxLoading && searchParams.get('dropbox') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.dropbox.ownerId === providerActionOwnerId && Boolean(dbxSuccess || dbxError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1690,7 +1816,7 @@ function SettingsContent() {
                 {dbxDisconnecting ? 'Disconnecting…' : 'Disconnect Dropbox'}
               </button>
             </div>
-          ) : (
+          ) : can('g05') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Dropbox account to sync resume LaTeX source to{' '}
@@ -1706,7 +1832,7 @@ function SettingsContent() {
                 {dbxConnecting ? 'Connecting…' : 'Connect Dropbox'}
               </button>
             </div>
-          )}
+          ) : null}
 
           {dbxError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1714,8 +1840,15 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Google Drive export (B50a) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g06'),
+          isLoading: integrationStatusOwnerMatches && gdriveLoading,
+          isConnected: integrationStatusOwnerMatches && gdriveStatus.connected,
+          hasRecoveryState: integrationStatusOwnerMatches && Boolean(gdriveSuccess || gdriveError || gdriveConnecting || gdriveDisconnecting || gdriveRetrying),
+        }) && (
         <div data-testid="google-drive-card" className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1756,7 +1889,7 @@ function SettingsContent() {
                 {gdriveDisconnecting ? 'Disconnecting…' : 'Disconnect Google Drive'}
               </button>
             </div>
-          ) : (
+          ) : can('g06') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Export your latest compiled resume PDF to Google Drive. This uses Google&apos;s{' '}
@@ -1773,7 +1906,7 @@ function SettingsContent() {
                 {gdriveConnecting ? 'Connecting…' : 'Connect Google Drive'}
               </button>
             </div>
-          )}
+          ) : null}
 
           {gdriveError && (
             <div role="alert" className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1784,6 +1917,7 @@ function SettingsContent() {
             </div>
           )}
         </div>
+        )}
 
         {/* Notification preferences card */}
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
@@ -2118,7 +2252,7 @@ function SettingsContent() {
         </div>
 
         {/* Getting started — replay the first-run product tour on demand. */}
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
+        {can('a06') && <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
           <div className="flex items-center gap-2">
             <BookOpen size={16} className="text-accent-strong" />
             <h2 className="text-base font-semibold text-fg">Getting Started</h2>
@@ -2131,7 +2265,7 @@ function SettingsContent() {
           >
             Replay product tour
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   )

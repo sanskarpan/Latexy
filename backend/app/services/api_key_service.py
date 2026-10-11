@@ -6,6 +6,7 @@ Handles secure storage, validation, and management of user API keys
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -295,9 +296,17 @@ class APIKeyService:
             key = result.scalars().first()
 
             if key:
+                # Recheck use, not just key creation. Never return None for a
+                # disabled stored key: callers may interpret None as consent
+                # to spend the platform's key/quota instead.
+                from ..middleware.capability_router import enforce_capabilities
+
+                await enforce_capabilities(("d25",), user_id)
                 return self.encryption.decrypt(key.encrypted_key)
             return None
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Error getting user provider key (%s)", type(e).__name__)
             return None
@@ -323,6 +332,9 @@ class APIKeyService:
 
     async def load_user_providers(self, db: AsyncSession, user_id: str):
         """Load all active providers for a user into the service"""
+        from ..middleware.capability_router import enforce_capabilities
+
+        await enforce_capabilities(("d25",), user_id)
         try:
             result = await db.execute(
                 select(UserAPIKey).where(

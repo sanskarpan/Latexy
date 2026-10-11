@@ -7,6 +7,7 @@ import { sha256Bytes } from '@/hooks/useArtifactPreview'
 import PDFPreview from '@/components/PDFPreview'
 import EngineCapabilityNotice from '@/components/EngineCapabilityNotice'
 import { useEngineCapability } from '@/hooks/useEngineCapability'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 type PdfImportWizardProps = {
   file: File; title: string; ownerId: string
@@ -15,22 +16,34 @@ type PdfImportWizardProps = {
 
 export default function PdfImportWizard(props: PdfImportWizardProps) {
   const capability = useEngineCapability(props.ownerId)
+  const { can } = useEntitlements()
+  const uploadAllowed = can('b06') && can('b08')
+  const createAllowed = uploadAllowed && can('b04') && can('b01') && can('c01')
   const admitted = useRef<{ ownerId: string; file: File } | null>(null)
-  if (capability.status === 'supported') admitted.current = { ownerId: props.ownerId, file: props.file }
+  if (capability.status === 'supported' && uploadAllowed) admitted.current = { ownerId: props.ownerId, file: props.file }
   // A token refresh must not discard already-reviewed fields. Keep the admitted
   // wizard mounted for this owner while disabling its new-only mutation.
   return <>
     <EngineCapabilityNotice capability={capability} pdfImport />
     {admitted.current?.ownerId === props.ownerId && admitted.current.file === props.file
-      ? <AvailablePdfImportWizard {...props} enabled={capability.status === 'supported'} />
+      ? <AvailablePdfImportWizard {...props} uploadEnabled={capability.status === 'supported' && uploadAllowed} enabled={capability.status === 'supported' && createAllowed} />
       : <section aria-label="Pending PDF import" className="space-y-3 py-3">
         <p className="text-sm text-fg-2">Selected file: {props.file.name}</p>
         <button type="button" onClick={props.onCancel} className="text-xs text-fg-2 underline">Choose another file</button>
       </section>}
+    {!uploadAllowed && <p role="status" className="text-sm text-fg-2">PDF import is unavailable for your current plan or feature settings. An already imported PDF and reviewed fields remain available.</p>}
   </>
 }
 
-function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, enabled }: PdfImportWizardProps & { enabled: boolean }) {
+function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, uploadEnabled, enabled }: PdfImportWizardProps & { uploadEnabled: boolean; enabled: boolean }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
+  const uploadEnabledRef = useRef(uploadEnabled)
+  uploadEnabledRef.current = uploadEnabled
+  const createAllowed = ['b06', 'b08', 'b04', 'b01', 'c01'].every(can)
   const [receipt, setReceipt] = useState<PdfImportReceipt | null>(null)
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,7 +78,13 @@ function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, e
         if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('Choose a PDF no larger than 10 MB.')
         const selectedHash = await sha256Bytes(await file.arrayBuffer())
         if (!isCurrent()) return
-        const uploaded = await apiClient.uploadPdfImport(file, context, controller.signal)
+        if (!uploadEnabledRef.current || !canRef.current('b06') || !canRef.current('b08')) {
+          throw new Error('PDF import is unavailable for your current plan or feature settings.')
+        }
+        const uploaded = await apiClient.uploadPdfImport(file, {
+          authToken: context.authToken,
+          isCurrent: () => isCurrent() && uploadEnabledRef.current && canRef.current('b06') && canRef.current('b08'),
+        }, controller.signal)
         if (!isCurrent()) return
         if (uploaded.original.size_bytes !== file.size || uploaded.original.sha256 !== selectedHash) {
           throw new Error('The preserved PDF does not match the file you selected. Choose the file again.')
@@ -92,7 +111,7 @@ function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, e
   }, [file, ownerId])
 
   async function createEditableResume() {
-    if (!enabled || !receipt || !receiptMatches || !originalUrl || savingRef.current || !templateId || !title.trim() || !hasReviewedContent) return
+    if (!enabledRef.current || !['b06', 'b08', 'b04', 'b01', 'c01'].every(canRef.current) || !receipt || !receiptMatches || !originalUrl || savingRef.current || !templateId || !title.trim() || !hasReviewedContent) return
     const generation = identity.current.generation
     const isCurrent = () => mounted.current && identity.current.ownerId === ownerId
       && identity.current.file === file && identity.current.generation === generation
@@ -104,7 +123,7 @@ function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, e
         title: title.trim(), template_id: templateId, expected_original_sha256: receipt.original.sha256,
         field_edits: receipt.extraction.fields.filter((field) => edits[field.field_id] !== undefined && edits[field.field_id] !== field.text)
           .map((field) => ({ node_id: field.field_id, expected_node_revision: field.node_revision, text: edits[field.field_id] })),
-      }, { authToken: token, isCurrent })
+      }, { authToken: token, isCurrent: () => isCurrent() && enabledRef.current && ['b06', 'b08', 'b04', 'b01', 'c01'].every(canRef.current) })
       if (isCurrent()) onCreated(result.resume_id)
     } catch (cause) {
       if (isCurrent()) setError(cause instanceof Error ? cause.message : 'Your editable resume could not be created.')
@@ -149,11 +168,11 @@ function AvailablePdfImportWizard({ file, title, ownerId, onCreated, onCancel, e
         </select>
         <p className="text-xs text-fg-3">The editable version will use this layout. Your original PDF remains available separately.</p>
         {!title.trim() && <p className="text-xs text-fg-2">Enter a resume title above before creating the editable version.</p>}
-        <button type="button" onClick={createEditableResume}
+        {createAllowed && <button type="button" onClick={createEditableResume}
           disabled={!enabled || saving || loading || !originalUrl || !templateId || !title.trim() || !hasReviewedContent}
           className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
           {saving ? 'Creating editable resume…' : 'Create editable resume'}
-        </button>
+        </button>}
       </div>
     </div>}
   </section>

@@ -42,6 +42,10 @@ async function loadSettingsHarness(): Promise<Harness> {
   const githubStatus = vi.fn().mockResolvedValue({ connected: false, username: null, public_import: false, private_sync: false })
 
   vi.stubGlobal('window', { opener: null, location: { origin: 'http://localhost:5180' } })
+  vi.stubGlobal('document', { cookie: '' })
+  // These lifecycle fixtures assume the optional tour is available.
+  // Entitlement failures and identity isolation are exercised separately.
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
@@ -152,6 +156,7 @@ async function settle() {
 }
 
 afterEach(() => {
+  vi.doUnmock('@/contexts/EntitlementsContext')
   vi.unstubAllGlobals()
   for (const moduleName of [
     'react', 'react/jsx-runtime', 'next/navigation', '@/hooks/useRequireAuth',

@@ -1,22 +1,22 @@
 import { expect, test, type Page } from './quality-test'
-import { mockEngineAncillaryApi } from './engine-fixtures'
+import { fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi } from './engine-fixtures'
 import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from './guest-engine-fixture'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const editedBullet = (count: number) => `Built internal design system used across ${count} product surfaces`
 
-async function mockGuest(page: Page) {
-  await mockEngineAncillaryApi(page, 'changed-account')
+async function mockGuest(page: Page, features: Record<string, boolean> = {}) {
+  await mockEngineAncillaryApi(page, 'changed-account', { b10: true, c06: true, ...features })
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
-  await page.route('**/config/feature-flags', route => route.fulfill({ json: {} }))
-  await page.route('**/tenants/resolve-host**', route => route.fulfill({ json: { tenant: null } }))
-  await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
-  await page.route('**/ats/quick-score', route => route.fulfill({ json: { score: 80 } }))
-  await page.route('**/public/engine/document', route => {
+  await mockEngineRoute(page, '**/config/feature-flags', route => fulfillEngineResponse(route, { json: {} }))
+  await mockEngineRoute(page, '**/tenants/resolve-host**', route => fulfillEngineResponse(route, { json: { tenant: null } }))
+  await mockEngineRoute(page, '**/public/trial-status**', route => fulfillEngineResponse(route, { json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
+  await mockEngineRoute(page, '**/ats/quick-score', route => fulfillEngineResponse(route, { json: { score: 80 } }))
+  await mockEngineRoute(page, '**/public/engine/document', route => {
     const { latex_content } = route.request().postDataJSON()
-    return route.fulfill({ json: { document: projectGuestBullet(latex_content), latex_content } })
+    return fulfillEngineResponse(route, { json: { document: projectGuestBullet(latex_content), latex_content } })
   })
   return errors
 }
@@ -25,20 +25,20 @@ test('acknowledged guest cancellation allows the next saved field to preview wit
   const errors = await mockGuest(page)
   const submissions: Array<{ latex_content: string }> = []
   let cancellations = 0
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
-  await page.route('**/public/engine/document/patch', route => {
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: null }))
+  await mockEngineRoute(page, '**/public/engine/document/patch', route => {
     const body = route.request().postDataJSON()
-    return route.fulfill({ json: applyGuestBulletPatch(body) })
+    return fulfillEngineResponse(route, { json: applyGuestBulletPatch(body) })
   })
-  await page.route('**/jobs/submit', route => {
+  await mockEngineRoute(page, '**/jobs/submit', route => {
     submissions.push(route.request().postDataJSON())
-    return route.fulfill({ json: { success: true, job_id: `cancel-preview-${submissions.length}`, message: 'Queued' } })
+    return fulfillEngineResponse(route, { json: { success: true, job_id: `cancel-preview-${submissions.length}`, message: 'Queued' } })
   })
-  await page.route('**/jobs/cancel-preview-*/state', route => route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
-  await page.route(/\/jobs\/cancel-preview-\d+$/, route => {
+  await mockEngineRoute(page, '**/jobs/cancel-preview-*/state', route => fulfillEngineResponse(route, { json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
+  await mockEngineRoute(page, /\/jobs\/cancel-preview-\d+$/, route => {
     expect(route.request().method()).toBe('DELETE')
     cancellations++
-    return route.fulfill({ json: { success: true } })
+    return fulfillEngineResponse(route, { json: { success: true } })
   })
   await page.goto('/try')
   await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
@@ -67,18 +67,18 @@ test('a delayed guest field patch cannot apply after the account changes with th
   let patchReceived = false
   let releasePatch!: () => void
   const heldPatch = new Promise<void>(resolve => { releasePatch = resolve })
-  await page.route('**/api/auth/get-session', route => {
+  await mockEngineRoute(page, '**/api/auth/get-session', route => {
     sessionReads++
-    return route.fulfill({ json: signedIn ? { session: { token: 'changed-account-token' },
+    return fulfillEngineResponse(route, { json: signedIn ? { session: { token: 'changed-account-token' },
       user: { id: 'changed-account', email: 'changed-account@example.com', name: 'Changed Account' } } : null })
   })
-  await page.route('**/public/engine/document/patch', async route => {
+  await mockEngineRoute(page, '**/public/engine/document/patch', async route => {
     const body = route.request().postDataJSON()
     patchReceived = true
     await heldPatch
-    await route.fulfill({ json: applyGuestBulletPatch(body) })
+    await fulfillEngineResponse(route, { json: applyGuestBulletPatch(body) })
   })
-  await page.route('**/jobs/submit', route => { submissions++; return route.fulfill({ json: { success: true, job_id: 'unexpected', message: 'Queued' } }) })
+  await mockEngineRoute(page, '**/jobs/submit', route => { submissions++; return fulfillEngineResponse(route, { json: { success: true, job_id: 'unexpected', message: 'Queued' } }) })
   await page.goto('/try')
   await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).click()
   await page.getByLabel('Experience · bullet').fill(editedBullet(8))
@@ -107,7 +107,7 @@ for (const { trigger, roundTrip } of [
   { trigger: 'manual', roundTrip: true },
 ] as const) {
   test(`an ${roundTrip ? 'A → B → A round-trip' : 'account change'} releases a pending ${trigger} admission without letting its late response disturb the next submit`, async ({ page }, testInfo) => {
-    const errors = await mockGuest(page)
+    const errors = await mockGuest(page, trigger === 'trim' ? { d01: true, d18: true, c12: true } : {})
     let signedIn = false
     let sessionReads = 0
     const submissions: Array<{ latex_content: string; job_type: string }> = []
@@ -116,23 +116,23 @@ for (const { trigger, roundTrip } of [
     let releaseNew!: () => void
     const oldAdmission = new Promise<void>(resolve => { releaseOld = resolve })
     const newAdmission = new Promise<void>(resolve => { releaseNew = resolve })
-    await page.route('**/api/auth/get-session', route => {
+    await mockEngineRoute(page, '**/api/auth/get-session', route => {
       sessionReads++
-      return route.fulfill({ json: signedIn ? { session: { token: 'changed-account-token' },
+      return fulfillEngineResponse(route, { json: signedIn ? { session: { token: 'changed-account-token' },
         user: { id: 'changed-account', email: 'changed-account@example.com', name: 'Changed Account' } } : null })
     })
-    await page.route('**/public/engine/document/patch', route => {
+    await mockEngineRoute(page, '**/public/engine/document/patch', route => {
       const body = route.request().postDataJSON()
-      return route.fulfill({ json: applyGuestBulletPatch(body) })
+      return fulfillEngineResponse(route, { json: applyGuestBulletPatch(body) })
     })
-    await page.route('**/jobs/submit', async route => {
+    await mockEngineRoute(page, '**/jobs/submit', async route => {
       const index = submissions.push(route.request().postDataJSON())
       await (index === 1 ? oldAdmission : newAdmission)
-      await route.fulfill({ json: { success: true, job_id: index === 1 ? 'stale-admission' : 'current-admission', message: 'Queued' } })
+      await fulfillEngineResponse(route, { json: { success: true, job_id: index === 1 ? 'stale-admission' : 'current-admission', message: 'Queued' } })
     })
-    await page.route(/\/jobs\/(stale|current)-admission\/state$/, route => {
+    await mockEngineRoute(page, /\/jobs\/(stale|current)-admission\/state$/, route => {
       stateReads.push(new URL(route.request().url()).pathname)
-      return route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } })
+      return fulfillEngineResponse(route, { json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } })
     })
     const saveField = async (count: number) => {
       if (testInfo.project.metadata.mobile) await page.getByRole('button', { name: 'Editor', exact: true }).click()
@@ -142,7 +142,7 @@ for (const { trigger, roundTrip } of [
     }
     try {
       await page.goto('/try')
-      const updatePdf = page.getByRole('button', { name: 'Update PDF', exact: true })
+      const updatePdf = page.getByRole('button', { name: 'Update PDF preview', exact: true })
       await expect(updatePdf).toBeEnabled()
       if (trigger === 'automatic') await saveField(8)
       else if (trigger === 'trim') {

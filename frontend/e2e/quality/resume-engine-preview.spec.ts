@@ -2,7 +2,7 @@ import { expect, test, type WebSocketRoute } from './quality-test'
 import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { captureClipboardText, mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
+import { captureClipboardText, fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi, readMonacoSource } from './engine-fixtures'
 import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from './guest-engine-fixture'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
@@ -42,31 +42,31 @@ test('guest Resume mode edits plain fields and submits exactly one quota-governe
   })
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close({ code: 1000, reason: 'Contract test uses state recovery' }))
   page.on('pageerror', error => errors.push(error.message))
-  await mockEngineAncillaryApi(page)
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
-  await page.route('**/config/feature-flags', route => route.fulfill({ json: {} }))
-  await page.route('**/ats/quick-score', route => {
+  await mockEngineAncillaryApi(page, undefined, { b10: true, c06: true, d18: true })
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: null }))
+  await mockEngineRoute(page, '**/config/feature-flags', route => fulfillEngineResponse(route, { json: {} }))
+  await mockEngineRoute(page, '**/ats/quick-score', route => {
     scoreSources.push(route.request().postDataJSON().latex_content)
-    return route.fulfill({ json: { score: 49, grade: 'D', sections_found: ['experience'], missing_sections: [], keyword_match_percent: null } })
+    return fulfillEngineResponse(route, { json: { score: 49, grade: 'D', sections_found: ['experience'], missing_sections: [], keyword_match_percent: null } })
   })
-  await page.route('**/tenants/resolve-host**', route => route.fulfill({ json: { tenant: null } }))
-  await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
-  await page.route('**/public/engine/document', async route => {
+  await mockEngineRoute(page, '**/tenants/resolve-host**', route => fulfillEngineResponse(route, { json: { tenant: null } }))
+  await mockEngineRoute(page, '**/public/trial-status**', route => fulfillEngineResponse(route, { json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
+  await mockEngineRoute(page, '**/public/engine/document', async route => {
     const { latex_content } = route.request().postDataJSON()
-    await route.fulfill({ json: { document: projectGuestBullet(latex_content), latex_content } })
+    await fulfillEngineResponse(route, { json: { document: projectGuestBullet(latex_content), latex_content } })
   })
-  await page.route('**/public/engine/document/patch', async route => {
+  await mockEngineRoute(page, '**/public/engine/document/patch', async route => {
     const body = route.request().postDataJSON()
     expect(body.expected_source_sha256).toBe(digest(body.latex_content))
     expect(body.patches[0].expected_node_revision).toBe(digest(GUEST_ORIGINAL_BULLET))
-    await route.fulfill({ json: applyGuestBulletPatch(body) })
+    await fulfillEngineResponse(route, { json: applyGuestBulletPatch(body) })
   })
-  await page.route('**/jobs/submit', async route => {
+  await mockEngineRoute(page, '**/jobs/submit', async route => {
     submissions.push(route.request().postDataJSON())
     firstAdmissionAt = Date.now()
-    await route.fulfill({ json: { success: true, job_id: 'guest-preview', message: 'Queued' } })
+    await fulfillEngineResponse(route, { json: { success: true, job_id: 'guest-preview', message: 'Queued' } })
   })
-  await page.route('**/jobs/guest-preview/state', route => route.fulfill({ json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
+  await mockEngineRoute(page, '**/jobs/guest-preview/state', route => fulfillEngineResponse(route, { json: { status: 'processing', stage: 'latex_compilation', percent: 20, last_updated: Date.now() / 1000 } }))
   await page.goto('/try', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Edit your resume' })).toBeVisible()
   await expect.poll(() => scoreSources.length, { timeout: 6000 }).toBe(1)
@@ -140,59 +140,59 @@ test('managed review keeps provisional candidates separate and applies authorita
       branch: compiled ? 'draft' : 'candidate', owner_epoch: 1, compiler: 'pdflatex', settings_sha256: digest('settings'), pdf_sha256: createHash('sha256').update(pdf).digest('hex'),
       pdf_size: pdf.length, page_count: 1, preview_url: `/download/${jobId}/preview/${digest(jobId + source)}`, geometry_url: `/download/${jobId}/preview/${digest(jobId + source)}/geometry` }
   }
-  await mockEngineAncillaryApi(page, 'engine-owner')
-  await page.route('**/ws/ticket', route => route.fulfill({ json: { ticket: 'contract-ticket' } }))
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' }, user: { id: 'engine-owner', email: 'engine-owner@example.com', name: 'Engine Owner' } } }))
-  await page.route('**/macros', route => route.fulfill({ json: [] }))
-  await page.route('**/resumes/engine/providers', route => route.fulfill({ json: {
+  await mockEngineAncillaryApi(page, 'engine-owner', { b10: true, c06: true, d01: true, d18: true, d03: true, h01: true })
+  await mockEngineRoute(page, '**/ws/ticket', route => fulfillEngineResponse(route, { json: { ticket: 'contract-ticket' } }))
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: { session: { token: 'contract-owner-token' }, user: { id: 'engine-owner', email: 'engine-owner@example.com', name: 'Engine Owner' } } }))
+  await mockEngineRoute(page, '**/macros', route => fulfillEngineResponse(route, { json: [] }))
+  await mockEngineRoute(page, '**/resumes/engine/providers', route => fulfillEngineResponse(route, { json: {
     default: { provider: 'openai', model: 'contract-model', source: 'platform', ready: true },
     providers: [{ provider: 'anthropic', key_available: true, models: ['contract-exact-model-a', 'contract-exact-model-b'] }],
   } }))
-  await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'engine-owner', title: 'Managed contract resume', latex_content: authority,
+  await mockEngineRoute(page, `**/resumes/${resumeId}`, route => fulfillEngineResponse(route, { json: { id: resumeId, user_id: 'engine-owner', title: 'Managed contract resume', latex_content: authority,
     document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
-  await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ status: 404, json: { detail: 'No original upload' } }))
-  await page.route(`**/resumes/${resumeId}/engine/document`, route => {
-    if (route.request().method() === 'PATCH') return route.fulfill({ status: 409, json: { detail: 'A newer field revision exists' } })
-    return route.fulfill({ json: { document: doc(), latex_content: authority } })
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/import`, route => fulfillEngineResponse(route, { status: 404, json: { detail: 'No original upload' } }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/document`, route => {
+    if (route.request().method() === 'PATCH') return fulfillEngineResponse(route, { status: 409, json: { detail: 'A newer field revision exists' } })
+    return fulfillEngineResponse(route, { json: { document: doc(), latex_content: authority } })
   })
-  await page.route(`**/resumes/${resumeId}/engine/optimize`, async route => {
-    admissions.push(route.request().postDataJSON()); await route.fulfill({ json: { success: true, job_id: 'semantic-run', message: 'Queued' } })
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/optimize`, async route => {
+    admissions.push(route.request().postDataJSON()); await fulfillEngineResponse(route, { json: { success: true, job_id: 'semantic-run', message: 'Queued' } })
   })
-  await page.route(`**/resumes/${resumeId}/engine/runs/semantic-run`, route => route.fulfill({ json: {
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/runs/semantic-run`, route => fulfillEngineResponse(route, { json: {
     run_id: 'semantic-run', document_id: resumeId, base_revision: 1, source_sha256: digest(baseSource), effort: 'deep',
     status: finalReview ? 'completed' : 'running', job_status: finalReview ? 'completed' : 'processing', acceptance_ready: finalReview,
     document: doc(baseSource, 1), budget: { requests: 1, usage_unknown: false }, decisions: { patches: decisions },
     result: finalReview ? { candidate_source_sha256: digest(candidateSource), patches, warnings: [], missing_evidence: ['jd.' + digest('design systems and mentoring'), 'jd.' + digest('unmapped'), 'Add a measurable outcome.'], requirements: { requirements: [{ requirement_id: 'jd.' + digest('design systems and mentoring'), excerpt: 'design systems and mentoring' }] } } : null,
     pdf_quality: finalReview ? { status: 'unavailable', pdf_sha256: artifact('semantic-run').pdf_sha256, source_sha256: digest(candidateSource), page_count: 1, warnings: ['Font embedding could not be checked.'] } : undefined,
   } }))
-  await page.route(`**/resumes/${resumeId}/engine/runs/semantic-run/decisions`, async route => {
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/runs/semantic-run/decisions`, async route => {
     const body = route.request().postDataJSON(); decisionBodies.push(body)
     expect(body.expected_content_revision).toBe(revision); expect(body.expected_source_sha256).toBe(digest(authority))
     for (const id of body.reject_patch_ids) decisions[id] = 'rejected'
     for (const id of body.accept_patch_ids) { decisions[id] = 'accepted'; authority = authority.replace(original, firstSuggestion); revision++ }
-    await route.fulfill({ json: { run_id: 'semantic-run', decisions: { patches: decisions, complete_acceptance: false, accepted_source_sha256: digest(authority), accepted_content_revision: revision }, document: doc(), latex_content: authority } })
+    await fulfillEngineResponse(route, { json: { run_id: 'semantic-run', decisions: { patches: decisions, complete_acceptance: false, accepted_source_sha256: digest(authority), accepted_content_revision: revision }, document: doc(), latex_content: authority } })
   })
-  await page.route('**/jobs/submit', async route => {
+  await mockEngineRoute(page, '**/jobs/submit', async route => {
     const body = route.request().postDataJSON(); const id = `accepted-${compilations.size + 1}`
-    compilations.set(id, { source: body.latex_content, revision }); await route.fulfill({ json: { success: true, job_id: id } })
+    compilations.set(id, { source: body.latex_content, revision }); await fulfillEngineResponse(route, { json: { success: true, job_id: id } })
   })
-  await page.route('**/jobs/*/state', route => {
+  await mockEngineRoute(page, '**/jobs/*/state', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]
-    return route.fulfill({ json: { status: id === 'semantic-run' && !finalReview ? 'processing' : 'completed', stage: '', percent: 100,
+    return fulfillEngineResponse(route, { json: { status: id === 'semantic-run' && !finalReview ? 'processing' : 'completed', stage: '', percent: 100,
       artifact: id === 'semantic-run' && !finalReview ? null : artifact(id), last_updated: Date.now() / 1000 } })
   })
-  await page.route('**/jobs/*/result', route => {
+  await mockEngineRoute(page, '**/jobs/*/result', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]
-    return route.fulfill({ json: { success: true, job_id: id, result: { success: true, job_id: id, pdf_job_id: id, compilation_time: .01 } } })
+    return fulfillEngineResponse(route, { json: { success: true, job_id: id, result: { success: true, job_id: id, pdf_job_id: id, compilation_time: .01 } } })
   })
-  await page.route('**/download/*/preview/*', route => {
+  await mockEngineRoute(page, '**/download/*/preview/*', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]; const source = compilations.get(id)?.source ?? candidateSource
-    return route.fulfill({ contentType: 'application/pdf', body: samplePdf(source.includes(firstSuggestion) ? firstSuggestion : original) })
+    return fulfillEngineResponse(route, { contentType: 'application/pdf', body: samplePdf(source.includes(firstSuggestion) ? firstSuggestion : original) })
   })
-  await page.route('**/download/*/preview/*/geometry', route => {
+  await mockEngineRoute(page, '**/download/*/preview/*/geometry', route => {
     const id = new URL(route.request().url()).pathname.split('/')[2]; const a = artifact(id); const compiled = compilations.get(id)
     const node = doc(compiled?.source ?? baseSource, compiled?.revision ?? 1).nodes[0]
-    return route.fulfill({ json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: a.artifact_id, source_sha256: a.source_sha256,
+    return fulfillEngineResponse(route, { json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: a.artifact_id, source_sha256: a.source_sha256,
       pdf_sha256: a.pdf_sha256, document_id: resumeId, content_revision: a.content_revision, branch: a.branch,
       pages: [{ page: 1, width: 612, height: 792, rotation: 0 }], boxes: [{ ...node, page: 1, x: 40, y: 42, width: 310, height: 12 }], omissions: [] } })
   })
@@ -283,11 +283,11 @@ test('managed review keeps provisional candidates separate and applies authorita
   let releaseField!: () => void; let fieldStarted = false
   const fieldResponse = new Promise<void>((resolve) => { releaseField = resolve })
   const serverFieldSource = authority.replace(firstSuggestion, 'Server accepted field text')
-  await page.route(`**/resumes/${resumeId}/engine/document`, async route => {
-    if (route.request().method() !== 'PATCH') return route.fulfill({ json: { document: doc(), latex_content: authority } })
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/document`, async route => {
+    if (route.request().method() !== 'PATCH') return fulfillEngineResponse(route, { json: { document: doc(), latex_content: authority } })
     fieldStarted = true
     await fieldResponse
-    await route.fulfill({ json: { document: doc(serverFieldSource, revision + 1), latex_content: serverFieldSource } })
+    await fulfillEngineResponse(route, { json: { document: doc(serverFieldSource, revision + 1), latex_content: serverFieldSource } })
   })
   await page.getByRole('textbox').first().fill('Server accepted field text')
   await page.getByRole('button', { name: 'Save field', exact: true }).click()
@@ -324,29 +324,29 @@ test('verified PDF field supports keyboard selection and mobile field pane', asy
     pdf_size: pdf.length, page_count: 1, document_id: 'guest', content_revision: 1, branch: 'draft', owner_epoch: 1,
     compiler: 'pdflatex', settings_sha256: digest('test-settings'), preview_url: `/download/mapped-preview/preview/${artifactId}`,
     geometry_url: `/download/mapped-preview/preview/${artifactId}/geometry` })
-  await mockEngineAncillaryApi(page)
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }))
-  await page.route('**/public/trial-status**', route => route.fulfill({ json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
-  await page.route('**/public/engine/document', async route => { source = route.request().postDataJSON().latex_content; await route.fulfill({ json: { document: projectGuestBullet(source), latex_content: source } }) })
-  await page.route('**/jobs/submit', async route => { traffic.admissions++; const body = route.request().postDataJSON(); source = body.latex_content; fingerprint = body.device_fingerprint; await route.fulfill({ json: { success: true, job_id: 'mapped-preview' } }) })
-  await page.route('**/jobs/mapped-preview/state', route => { traffic.states++; return route.fulfill({ json: { status: 'completed', stage: '', percent: 100, artifact: artifact(), last_updated: Date.now() / 1000 } }) })
-  await page.route('**/jobs/mapped-preview/result', route => route.fulfill({ json: { success: true, job_id: 'mapped-preview', result: { success: true, job_id: 'mapped-preview', pdf_job_id: 'mapped-preview', compilation_time: .01 } } }))
-  await page.route(`**/download/mapped-preview/preview/${artifactId}`, async route => {
+  await mockEngineAncillaryApi(page, undefined, { b10: true })
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: null }))
+  await mockEngineRoute(page, '**/public/trial-status**', route => fulfillEngineResponse(route, { json: { usageCount: 0, remainingUses: 3, blocked: false, canUse: true, trialLimit: 3 } }))
+  await mockEngineRoute(page, '**/public/engine/document', async route => { source = route.request().postDataJSON().latex_content; await fulfillEngineResponse(route, { json: { document: projectGuestBullet(source), latex_content: source } }) })
+  await mockEngineRoute(page, '**/jobs/submit', async route => { traffic.admissions++; const body = route.request().postDataJSON(); source = body.latex_content; fingerprint = body.device_fingerprint; await fulfillEngineResponse(route, { json: { success: true, job_id: 'mapped-preview' } }) })
+  await mockEngineRoute(page, '**/jobs/mapped-preview/state', route => { traffic.states++; return fulfillEngineResponse(route, { json: { status: 'completed', stage: '', percent: 100, artifact: artifact(), last_updated: Date.now() / 1000 } }) })
+  await mockEngineRoute(page, '**/jobs/mapped-preview/result', route => fulfillEngineResponse(route, { json: { success: true, job_id: 'mapped-preview', result: { success: true, job_id: 'mapped-preview', pdf_job_id: 'mapped-preview', compilation_time: .01 } } }))
+  await mockEngineRoute(page, `**/download/mapped-preview/preview/${artifactId}`, async route => {
     traffic.pdf++
     expect(route.request().headers()['x-device-fingerprint']).toBe(fingerprint)
-    await route.fulfill({ contentType: 'application/pdf', body: pdf })
+    await fulfillEngineResponse(route, { contentType: 'application/pdf', body: pdf })
   })
-  await page.route(`**/download/mapped-preview/preview/${artifactId}/geometry`, async route => {
+  await mockEngineRoute(page, `**/download/mapped-preview/preview/${artifactId}/geometry`, async route => {
     expect(route.request().headers()['x-device-fingerprint']).toBe(fingerprint)
     const node = projectGuestBullet(source).nodes[0]
-    await route.fulfill({ json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: artifactId,
+    await fulfillEngineResponse(route, { json: { schema_version: 1, coordinate_system: 'pdf_points_top_left', artifact_id: artifactId,
       source_sha256: digest(source), pdf_sha256: pdfSha, document_id: 'guest', content_revision: 1, branch: 'draft',
       pages: [{ page: 1, width: 612, height: 792, rotation: 0 }],
       boxes: [{ ...node, page: 1, x: 40, y: 42, width: 300, height: 12 }], omissions: [] } })
   })
   await page.goto('/try', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: `Experience · bullet ${GUEST_ORIGINAL_BULLET}`, exact: true }).waitFor()
-  await page.getByRole('button', { name: 'Update PDF', exact: true }).click()
+  await page.getByRole('button', { name: 'Update PDF preview', exact: true }).click()
   await expect.poll(() => traffic.admissions, { message: 'Manual update must admit a job' }).toBe(1)
   await expect.poll(() => traffic.states, { message: 'Closed socket must recover via state' }).toBeGreaterThan(0)
   await expect.poll(() => traffic.pdf, { message: 'Recovered immutable artifact must fetch bytes' }).toBeGreaterThan(0)

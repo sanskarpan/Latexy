@@ -42,6 +42,10 @@ def route_dependencies(monkeypatch):
     ticket.refund_payload.return_value = {"dimension": "optimizations", "user_id": USER_ID}
     quota = AsyncMock(return_value=ticket)
     monkeypatch.setattr(resume_routes.entitlement_service, "enforce_quota", quota)
+    # This fixture's synthetic owner has no DB identity. Model the admission
+    # grant explicitly instead of treating a saved setting as an entitlement.
+    features = AsyncMock(side_effect=lambda key, **kwargs: key == "c07")
+    monkeypatch.setattr(resume_routes.entitlement_service, "has_feature", features)
     queued, started, accepted = AsyncMock(), AsyncMock(), AsyncMock()
     monkeypatch.setattr(job_routes, "_write_initial_redis_state", queued)
     monkeypatch.setattr(job_routes, "_mark_dispatch_started", started)
@@ -49,7 +53,7 @@ def route_dependencies(monkeypatch):
     submit = MagicMock()
     monkeypatch.setattr(orchestrator, "submit_optimize_and_compile", submit)
     return SimpleNamespace(db=db, parent=parent, verify=verify, quota=quota, ticket=ticket,
-                           queued=queued, started=started, accepted=accepted, submit=submit)
+                           queued=queued, started=started, accepted=accepted, submit=submit, features=features)
 
 
 async def invoke_route(route, db):
@@ -80,6 +84,7 @@ async def test_unavailable_renderer_rejects_before_fork_quota_or_dispatch(route,
     deps.db.flush.assert_not_awaited()
     deps.db.commit.assert_not_awaited()
     deps.quota.assert_not_awaited()
+    deps.features.assert_not_awaited()
     deps.queued.assert_not_awaited()
     deps.started.assert_not_awaited()
     deps.accepted.assert_not_awaited()
@@ -87,14 +92,16 @@ async def test_unavailable_renderer_rejects_before_fork_quota_or_dispatch(route,
 
 
 @pytest.mark.parametrize("route", ["quick_tailor", "academic_convert"])
+@pytest.mark.parametrize("compiler_settings_enabled", [False, True])
 @pytest.mark.parametrize("saved_compiler,expected_compiler", [
     ("lualatex", "lualatex"), ("xelatex", "xelatex"), (None, "pdflatex"), ("unknown", "pdflatex"),
 ])
 async def test_available_renderer_preserves_fork_and_dispatch(
-    route, saved_compiler, expected_compiler, route_dependencies, monkeypatch,
+    route, saved_compiler, expected_compiler, compiler_settings_enabled, route_dependencies, monkeypatch,
 ):
     deps = route_dependencies
     deps.parent.resume_settings["compiler"] = saved_compiler
+    deps.features.side_effect = lambda key, **kwargs: key == "c07" and compiler_settings_enabled
     monkeypatch.setattr(resume_routes.settings, "DEFAULT_LATEX_COMPILER", "pdflatex")
 
     def resolve(compiler):
@@ -120,7 +127,9 @@ async def test_available_renderer_preserves_fork_and_dispatch(
     deps.submit.assert_called_once()
     kwargs = deps.submit.call_args.kwargs
     assert kwargs["compiler"] == expected_compiler
-    assert kwargs["compile_settings"] == {"main_file": "main.tex", "draft_mode": True}
+    assert kwargs["compile_settings"] == ({"main_file": "main.tex", "draft_mode": True}
+                                           if compiler_settings_enabled else None)
+    deps.features.assert_awaited_once_with("c07", user=USER_ID)
     assert kwargs["latex_content"] == SOURCE
     assert kwargs["resume_id"] == fork.id
     assert kwargs["optimization_level"] == "aggressive"

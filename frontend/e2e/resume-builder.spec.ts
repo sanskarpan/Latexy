@@ -8,6 +8,19 @@ import type {
 } from '../src/lib/api-client'
 
 test.beforeEach(async ({ page }) => {
+  // Keep this suite on the enabled guided-builder paths. The compatibility
+  // endpoint below separately controls whether the builder API version is usable.
+  await page.route('**/config/entitlements', route => route.fulfill({ json: { features: {
+    b01: true, // create the builder document
+    b06: true, // upload a seed document
+    b07: true, // builder/JSON Resume import
+    b08: true, // guided builder experience
+    c01: true, // edit and save structured source
+    c05: true, // compile for PDF preview and email/export
+    h01: true, // JSON Resume interchange export
+    h02: true, // SVG export
+    h05: true, // compiled PDF email
+  } } }))
   await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
 })
 

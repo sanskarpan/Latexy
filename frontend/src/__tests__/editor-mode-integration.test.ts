@@ -29,14 +29,16 @@ function callback(page: keyof typeof pages, name: string, context: Record<string
 }
 
 function modeHarness(page: keyof typeof pages, preferred = 'pdf', effective = preferred, supported = true) {
+  const features = new Set(['a09', 'b10', 'c01'])
   const context = {
+    canRef: { current: (key: string) => features.has(key) }, resolvedSession: null,
     preferredEditorMode: preferred, editorMode: effective, engineSupported: supported,
     latexContent: 'unsaved original source', resumeId: 'owned-document',
-    editorRef: { current: { getValue: vi.fn(() => 'latest source buffer') } },
+    editorRef: { current: { getValue: vi.fn<() => string | undefined>(() => 'latest source buffer') } },
     setLatexContent: vi.fn(), setRightTab: vi.fn(), setEditorMode: vi.fn(),
     localStorage: { setItem: vi.fn() },
   }
-  return { context, toggle: callback(page, 'handleToggleEditorMode', context) }
+  return { context, deny: (key: string) => features.delete(key), toggle: callback(page, 'handleToggleEditorMode', context) }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -61,9 +63,25 @@ describe('integrated editor view changes preserve work and preferences', () => {
 
     it(`${page}: a not-yet-mounted source wrapper cannot erase the draft`, () => {
       const { context, toggle } = modeHarness(page, 'source')
+      context.editorRef.current.getValue.mockReturnValue(undefined)
+      toggle('pdf')
+      expect(context.setLatexContent).not.toHaveBeenCalled()
+    })
+
+    it(`${page}: leaving Source preserves a genuinely empty current buffer`, () => {
+      const { context, toggle } = modeHarness(page, 'source')
       context.editorRef.current.getValue.mockReturnValue('')
       toggle('pdf')
-      expect(context.setLatexContent).toHaveBeenCalledExactlyOnceWith('unsaved original source')
+      expect(context.setLatexContent).toHaveBeenCalledExactlyOnceWith('')
+    })
+
+    it.each(['b10', 'c01'])(`${page}: a retained view-change callback rejects revoked %s without rewriting source or preference`, (feature) => {
+      const { context, deny, toggle } = modeHarness(page, 'source')
+      deny(feature)
+      toggle('pdf')
+      expect(context.setLatexContent).not.toHaveBeenCalled()
+      expect(context.setEditorMode).not.toHaveBeenCalled()
+      expect(context.localStorage.setItem).not.toHaveBeenCalled()
     })
 
     it(`${page}: unsupported Resume mode never overwrites the saved preference or draft`, () => {
@@ -153,10 +171,82 @@ describe('legacy Visual preserves side-panel actions', () => {
     }
     visit(ast)
     const visualPanels = evaluate(expressions.visualPanels, {})
-    const context = { visualPanels, editorMode: 'wysiwyg', rightTab: 'comments' }
+    const context = { RIGHT_TAB_CAPABILITIES: {}, can: () => true, aiRecoveryAvailable: false, visualPanels, editorMode: 'wysiwyg', rightTab: 'comments' }
     expect(evaluate(expressions.visibleRightTab, context)).toBe('comments')
     expect(menuFilter).not.toBe('')
     expect(evaluate(menuFilter, context)({ id: 'comments' })).toBe(true)
     expect(evaluate(expressions.visibleRightTab, { ...context, rightTab: 'logs' })).toBe('preview')
+  })
+})
+
+
+describe('engine mode capability visibility', () => {
+  it.each(['b10', 'c01'])('temporarily derives Source on saved %s denial and restores the preferred view on regrant', (denied) => {
+    const ast = ts.createSourceFile('editor/page.tsx', pages.saved, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    const expressions: Record<string, string> = {}
+    function visit(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && node.initializer && ['shouldFallbackFromDeniedVisualMode', 'editorMode'].includes(node.name.getText(ast))) {
+        expressions[node.name.getText(ast)] = node.initializer.getText(ast)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(ast)
+    expect(expressions.shouldFallbackFromDeniedVisualMode).not.toBeUndefined()
+    expect(expressions.editorMode).not.toBeUndefined()
+    const grants = new Set(['b10', 'c01'])
+    for (const preferred of ['pdf', 'wysiwyg', 'source']) {
+      const effectiveMode = (entitlementsLoaded = true) => {
+        const scope = { can: (key: string) => grants.has(key), entitlementsLoaded, engineMode: preferred }
+        const shouldFallbackFromDeniedVisualMode = runInNewContext(expressions.shouldFallbackFromDeniedVisualMode, scope)
+        return runInNewContext(expressions.editorMode, { ...scope, shouldFallbackFromDeniedVisualMode })
+      }
+      expect(effectiveMode()).toBe(preferred)
+      grants.delete(denied)
+      expect(effectiveMode(false)).toBe(preferred)
+      expect(effectiveMode()).toBe('source')
+      grants.add(denied)
+      expect(effectiveMode()).toBe(preferred)
+    }
+    expect(pages.saved).not.toMatch(/setEditorMode\('source'\)/)
+  })
+
+  it.each(['b10', 'c01'])('hides the saved Resume mode control when %s is off, retaining Source', (denied) => {
+    const ast = ts.createSourceFile('editor/page.tsx', pages.saved, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    let condition = ''
+    let disabled = ''
+    function visit(node: ts.Node) {
+      if (ts.isJsxElement(node) && node.openingElement.tagName.getText(ast) === 'button'
+        && node.openingElement.attributes.getText(ast).includes("onClick={() => handleToggleEditorMode('pdf')}")) {
+        expect(ts.isBinaryExpression(node.parent)).toBe(true)
+        condition = (node.parent as ts.BinaryExpression).left.getText(ast)
+        const attribute = node.openingElement.attributes.properties.find((item) => ts.isJsxAttribute(item) && item.name.getText(ast) === 'disabled') as ts.JsxAttribute
+        disabled = ((attribute.initializer as ts.JsxExpression).expression!).getText(ast)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(ast)
+    expect(condition).not.toBe('')
+    const can = (key: string) => key !== denied
+    expect(runInNewContext(condition, { can })).toBe(false)
+    expect(runInNewContext(condition, { can: () => true })).toBe(true)
+    expect(runInNewContext(disabled, { engineSupported: false })).toBe(true)
+    expect(runInNewContext(disabled, { engineSupported: true })).toBe(false)
+    expect(pages.saved).toContain("onClick={() => handleToggleEditorMode('source')}")
+  })
+
+  it('hides the guest Resume control on composite visual denial and keeps explicit Source recovery', () => {
+    const ast = ts.createSourceFile('try/page.tsx', pages.guest, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    let expression = ''
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'filter'
+        && node.expression.expression.getText(ast).includes("['pdf', 'source']")) expression = node.arguments[0].getText(ast)
+      ts.forEachChild(node, visit)
+    }
+    visit(ast)
+    expect(expression).not.toBe('')
+    const denied = runInNewContext(expression, { visualModeAvailable: false }) as (mode: string) => boolean
+    expect(['pdf', 'source'].filter(denied)).toEqual(['source'])
+    const granted = runInNewContext(expression, { visualModeAvailable: true }) as (mode: string) => boolean
+    expect(['pdf', 'source'].filter(granted)).toEqual(['pdf', 'source'])
   })
 })

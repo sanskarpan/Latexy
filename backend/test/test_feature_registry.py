@@ -15,21 +15,25 @@ from app.core.feature_registry import (
 )
 
 
-def test_registry_has_31_entries():
-    assert len(FEATURE_REGISTRY) == 31
+def test_registry_has_complete_inventory_and_parent_controls():
+    assert len(FEATURE_REGISTRY) == 160
 
 
-def test_registry_has_30_gateable():
-    assert len(gateable_keys()) == 30
+def test_registry_has_parent_and_granular_switches():
+    assert len(gateable_keys()) == 144
 
 
-def test_compile_present_and_non_gateable():
+def test_compile_and_new_admissions_are_gateable_without_gating_recovery():
     compile_feature = get_feature("compile")
     assert compile_feature is not None
-    assert compile_feature.gateable is False
-    assert is_gateable("compile") is False
-    assert "compile" not in gateable_keys()
+    assert compile_feature.gateable is True
+    assert is_gateable("compile") is True
+    assert "compile" in gateable_keys()
     assert "compile" in all_feature_keys()
+    from app.core.feature_registry import feature_ancestry
+    assert [feature.key for feature in feature_ancestry("c05")] == ["c05", "compile"]
+    for key in ("b01", "c01", "c05", "f10", "f11", "i01"):
+        assert is_gateable(key)
 
 
 def test_plan_families_exact():
@@ -51,7 +55,7 @@ def test_get_feature_known_and_unknown():
 
 def test_is_gateable_correctness():
     assert is_gateable("cover_letters") is True
-    assert is_gateable("compile") is False  # known but non-gateable
+    assert is_gateable("compile") is True  # parent admission switch
     assert is_gateable("totally_unknown_key") is False  # unknown → not gateable
 
 
@@ -73,3 +77,23 @@ def test_every_feature_has_required_fields():
         assert f.label and isinstance(f.label, str)
         assert f.category in valid_categories
         assert f.description and isinstance(f.description, str)
+
+
+def test_inventory_is_complete_unique_and_has_safe_baselines():
+    from app.core.feature_registry import CAPABILITY_INVENTORY, feature_ancestry
+    assert len(CAPABILITY_INVENTORY) == 129
+    assert len({f["inventory_id"] for f in CAPABILITY_INVENTORY}) == 129
+    for row in CAPABILITY_INVENTORY:
+        feature = get_feature(row["key"])
+        assert feature.inventory_id == row["inventory_id"]
+        assert feature_ancestry(feature.key)
+        assert row["source_paths"]
+        if not feature.gateable:
+            assert feature.always_on_reason
+
+
+def test_annual_and_student_skus_have_independent_restriction_axes():
+    from app.core.feature_registry import PLAN_KEYS, PLAN_MATRIX_KEYS
+    assert len(PLAN_KEYS) == 11
+    assert set(PLAN_FAMILIES) <= set(PLAN_MATRIX_KEYS)
+    assert {"student", "weekly", "lifetime", "basic_annual", "pro_annual", "byok_annual"} <= set(PLAN_MATRIX_KEYS)

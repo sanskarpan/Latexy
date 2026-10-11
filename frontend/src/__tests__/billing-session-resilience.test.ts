@@ -4,6 +4,16 @@ import { describe, expect, it } from 'vitest'
 const SOURCE = readFileSync(new URL('../app/billing/page.tsx', import.meta.url), 'utf8')
 
 describe('billing session resilience', () => {
+  it('announces a catalog outage and keeps a retry action available', () => {
+    const errorStart = SOURCE.indexOf('plansError && visiblePlans.length === 0')
+    const errorEnd = SOURCE.indexOf(') : (', errorStart)
+    const errorPanel = SOURCE.slice(errorStart, errorEnd)
+    expect(errorPanel).toContain('role="alert"')
+    expect(errorPanel).toContain('{plansError}')
+    expect(errorPanel).toContain('onClick={() => fetchPlans()}')
+    expect(errorPanel).toContain('Try again')
+  })
+
   it('preserves authenticated billing state while session refresh is indeterminate', () => {
     expect(SOURCE).toContain('lastKnownSessionRef')
     expect(SOURCE).toContain('(isPending || sessionError) ? lastKnownSessionRef.current : null')

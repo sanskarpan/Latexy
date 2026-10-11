@@ -1,10 +1,11 @@
 """Strict source-CAS structural editing for managed resumes."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.resume_engine.semantic import DocumentConflict, public_document
 from ..services.resume_engine.structure import apply_reorder
 from ..services.resume_managed_source_service import apply_managed_document_change

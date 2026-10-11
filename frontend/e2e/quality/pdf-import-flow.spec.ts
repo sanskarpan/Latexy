@@ -1,6 +1,6 @@
 import { expect, test } from './quality-test'
 import { createHash } from 'node:crypto'
-import { mockEngineAncillaryApi } from './engine-fixtures'
+import { fulfillEngineResponse, mockEngineRoute, mockEngineAncillaryApi } from './engine-fixtures'
 
 if (process.env.ENGINE_QA_CHROME === '1') test.use({ channel: 'chrome' })
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -51,30 +51,30 @@ for (const scenario of ['review', 'mismatch', 'manual']) test(scenario === 'mism
       return originalFetch.call(window, input, init)
     }
   })
-  await page.route('**/api/auth/get-session', route => route.fulfill({ json: { session: { token: 'contract-owner-token' },
+  await mockEngineRoute(page, '**/api/auth/get-session', route => fulfillEngineResponse(route, { json: { session: { token: 'contract-owner-token' },
     user: { id: 'import-owner', email: 'import-owner@example.com', name: 'Import Owner' } } }))
-  await mockEngineAncillaryApi(page, 'import-owner')
-  await page.route('**/formats/upload**', route => { conversions++; return route.fulfill({ status: 500, json: { detail: 'Paid conversion is outside this flow' } }) })
-  await page.route('**/resumes/imports/pdf', async route => {
+  await mockEngineAncillaryApi(page, 'import-owner', { b08: true, b10: true })
+  await mockEngineRoute(page, '**/formats/upload**', route => { conversions++; return fulfillEngineResponse(route, { status: 500, json: { detail: 'Paid conversion is outside this flow' } }) })
+  await mockEngineRoute(page, '**/resumes/imports/pdf', async route => {
     expect(route.request().headers().authorization).toBe('Bearer contract-owner-token')
     expect(route.request().headers()['content-type']).toContain('multipart/form-data')
     const uploaded = await page.evaluate(() => (window as typeof window & { uploadedPdfBytes?: number[] }).uploadedPdfBytes)
     expect(Buffer.from(uploaded ?? [])).toEqual(pdf)
-    await route.fulfill({ json: receipt })
+    await fulfillEngineResponse(route, { json: receipt })
   })
-  await page.route('**/resumes/imports/contract-import/original', route => {
+  await mockEngineRoute(page, '**/resumes/imports/contract-import/original', route => {
     originalRequests++; expect(route.request().headers().authorization).toBe('Bearer contract-owner-token')
-    return route.fulfill({ contentType: 'application/pdf', body: pdf })
+    return fulfillEngineResponse(route, { contentType: 'application/pdf', body: pdf })
   })
-  await page.route('**/resumes/imports/contract-import/adapt', async route => {
+  await mockEngineRoute(page, '**/resumes/imports/contract-import/adapt', async route => {
     adaptations.push(route.request().postDataJSON())
-    await route.fulfill({ json: { resume_id: resumeId, document, latex_content: source, original: receipt.original } })
+    await fulfillEngineResponse(route, { json: { resume_id: resumeId, document, latex_content: source, original: receipt.original } })
   })
-  await page.route(`**/resumes/${resumeId}`, route => route.fulfill({ json: { id: resumeId, user_id: 'import-owner', title: 'Imported resume',
+  await mockEngineRoute(page, `**/resumes/${resumeId}`, route => fulfillEngineResponse(route, { json: { id: resumeId, user_id: 'import-owner', title: 'Imported resume',
     latex_content: source, document_type: 'resume', metadata: {}, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' } }))
-  await page.route(`**/resumes/${resumeId}/engine/document`, route => route.fulfill({ json: { document, latex_content: source } }))
-  await page.route(`**/resumes/${resumeId}/engine/import`, route => route.fulfill({ json: { ...receipt, resume_id: resumeId, expires_at: null } }))
-  await page.route('**/macros', route => route.fulfill({ json: [] }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/document`, route => fulfillEngineResponse(route, { json: { document, latex_content: source } }))
+  await mockEngineRoute(page, `**/resumes/${resumeId}/engine/import`, route => fulfillEngineResponse(route, { json: { ...receipt, resume_id: resumeId, expires_at: null } }))
+  await mockEngineRoute(page, '**/macros', route => fulfillEngineResponse(route, { json: [] }))
   await page.routeWebSocket('**/ws/jobs**', socket => socket.close())
   // Compile the editor route separately so its cold development compilation
   // does not consume the navigation assertion's normal interaction timeout.

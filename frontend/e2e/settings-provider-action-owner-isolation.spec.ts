@@ -12,7 +12,7 @@ const SESSION = {
 } as const
 
 type Owner = keyof typeof SESSION
-type FixtureOptions = { retryA?: boolean; holdDisconnectA?: boolean; holdGitHubA?: boolean }
+type FixtureOptions = { retryA?: boolean; holdDisconnectA?: boolean; holdGitHubA?: boolean; allowDrive?: boolean; allowDriveForB?: boolean }
 
 function gate() {
   let release!: () => void
@@ -173,7 +173,11 @@ async function installSettingsFixture(page: Page, options: FixtureOptions = {}):
     body: JSON.stringify({ available: false, scope: 'test', message: 'Unavailable in diagnostic', share_code: null, your_attribution: null, referral_summary: { total: 0, captured: 0, qualified: 0, reversed: 0 }, reward_summary: { issued: 0, pending: 0, reversed: 0, issued_extension_days: 0 }, policy_configured: false }),
   }))
   await page.route((url) => url.pathname === '/config/feature-flags', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-  await page.route((url) => url.pathname === '/config/entitlements', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ features: {} }) }))
+  await page.route((url) => url.pathname === '/config/entitlements', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ features: { g06: options.allowDrive === true || (owner.current === 'b' && options.allowDriveForB === true) } }),
+  }))
   await page.route((url) => url.pathname === '/tenants/resolve-host', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tenant: null }) }))
   await page.route('**/ws/**', (route) => route.abort())
 
@@ -319,27 +323,53 @@ async function settle(page: Page) {
 }
 
 test.describe('Settings provider action owner isolation in a real browser', () => {
-  test('held Drive retry success for A cannot overwrite B after an account switch', async ({ page }) => {
-    const fixture = await installSettingsFixture(page, { retryA: true })
+  test('Drive ON exposes new connection while OFF recovery fixtures hide it', async ({ page }) => {
+    const fixture = await installSettingsFixture(page, { retryA: true, allowDrive: true })
     await page.goto('/settings', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Google Drive export' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
     await expect.poll(() => bodyReads(page)).toContain('drive-status-a-1')
-
-    fixture.armRetryA()
-    await page.getByRole('button', { name: 'Retry' }).click()
-    await fixture.waitForRetryA
-    await refreshSession(page, fixture, 'b')
-    await expect.poll(() => bodyReads(page)).toContain('drive-status-b-1')
     await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
-
-    fixture.releaseRetryA()
-    await expect.poll(() => bodyReads(page)).toContain('drive-status-a-retry')
-    await settle(page)
-    await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeEnabled()
+    expect(fixture.authErrors).toEqual([])
     await expect.poll(() => fixture.pageErrors).toEqual([])
   })
+
+  for (const allowDriveForB of [false, true]) {
+    test(`held Drive retry success for A cannot overwrite B after an account switch (B g06 ${allowDriveForB ? 'ON' : 'OFF'})`, async ({ page }) => {
+      const fixture = await installSettingsFixture(page, { retryA: true, allowDriveForB })
+      await page.goto('/settings', { waitUntil: 'domcontentloaded' })
+      await expect(page.getByRole('heading', { name: 'Google Drive export' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+      await expect.poll(() => bodyReads(page)).toContain('drive-status-a-1')
+
+      fixture.armRetryA()
+      await page.getByRole('button', { name: 'Retry' }).click()
+      await fixture.waitForRetryA
+      await refreshSession(page, fixture, 'b')
+      await expect.poll(() => bodyReads(page)).toContain('drive-status-b-1')
+      if (allowDriveForB) {
+        await expect(page.getByTestId('google-drive-card')).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
+        await expect(page.getByTestId('google-drive-card').getByText(/Export your latest compiled resume PDF/)).toBeVisible()
+      } else {
+        await expect(page.getByTestId('google-drive-card')).toHaveCount(0)
+      }
+      await expect(page.getByText('Google Drive connected', { exact: true })).toHaveCount(0)
+
+      fixture.releaseRetryA()
+      await expect.poll(() => bodyReads(page)).toContain('drive-status-a-retry')
+      await settle(page)
+      if (allowDriveForB) {
+        await expect(page.getByTestId('google-drive-card')).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
+        await expect(page.getByTestId('google-drive-card').getByText(/Export your latest compiled resume PDF/)).toBeVisible()
+      } else {
+        await expect(page.getByTestId('google-drive-card')).toHaveCount(0)
+      }
+      await expect(page.getByText('Google Drive connected', { exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toHaveCount(0)
+      await expect.poll(() => fixture.pageErrors).toEqual([])
+    })
+  }
 
   test('held Drive disconnect A→B cannot overwrite B after the response body is consumed', async ({ page }) => {
     const fixture = await installSettingsFixture(page, { holdDisconnectA: true })
@@ -359,7 +389,7 @@ test.describe('Settings provider action owner isolation in a real browser', () =
     await expect.poll(() => bodyReads(page)).toContain('drive-disconnect-a-1')
     await settle(page)
     await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Connect Google Drive(?: \(Unavailable\))?$/ })).toHaveCount(0)
     await expect.poll(() => fixture.pageErrors).toEqual([])
   })
 
@@ -385,23 +415,32 @@ test.describe('Settings provider action owner isolation in a real browser', () =
     await expect.poll(() => bodyReads(page)).toContain('drive-disconnect-a-1')
     await settle(page)
     await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Connect Google Drive(?: \(Unavailable\))?$/ })).toHaveCount(0)
     await expect.poll(() => fixture.pageErrors).toEqual([])
   })
 
-  test('same-owner Drive disconnect applies its synthetic success', async ({ page }) => {
-    const fixture = await installSettingsFixture(page)
-    page.on('dialog', (dialog) => dialog.accept())
-    await page.goto('/settings', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Disconnect Google Drive', exact: true }).click()
-    await expect.poll(() => bodyReads(page)).toContain('drive-disconnect-a-1')
-    await settle(page)
-    await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toHaveCount(0)
-    expect(fixture.disconnectOwners).toEqual(['a'])
-    await expect.poll(() => fixture.pageErrors).toEqual([])
-  })
+  for (const allowDrive of [false, true]) {
+    test(`same-owner Drive disconnect applies its synthetic success (g06 ${allowDrive ? 'ON' : 'OFF'})`, async ({ page }) => {
+      const fixture = await installSettingsFixture(page, { allowDrive })
+      page.on('dialog', (dialog) => dialog.accept())
+      await page.goto('/settings', { waitUntil: 'domcontentloaded' })
+      await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'Disconnect Google Drive', exact: true }).click()
+      await expect.poll(() => bodyReads(page)).toContain('drive-disconnect-a-1')
+      await settle(page)
+      if (allowDrive) {
+        await expect(page.getByTestId('google-drive-card')).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Connect Google Drive', exact: true })).toBeVisible()
+        await expect(page.getByTestId('google-drive-card').getByText(/Export your latest compiled resume PDF/)).toBeVisible()
+      } else {
+        await expect(page.getByTestId('google-drive-card')).toHaveCount(0)
+      }
+      await expect(page.getByText('Google Drive connected', { exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Disconnect Google Drive', exact: true })).toHaveCount(0)
+      expect(fixture.disconnectOwners).toEqual(['a'])
+      await expect.poll(() => fixture.pageErrors).toEqual([])
+    })
+  }
 
   test('same-owner GitHub callback dispatches once with the fixture owner token', async ({ page }) => {
     const fixture = await installSettingsFixture(page)
@@ -413,7 +452,7 @@ test.describe('Settings provider action owner isolation in a real browser', () =
     await expect.poll(() => fixture.pageErrors).toEqual([])
   })
 
-  test('held GitHub completion for A does not report success or change location after switching to B', async ({ page }) => {
+  for (const returnToA of [false, true]) test(`held GitHub completion for A cannot replay or report success after ${returnToA ? 'A→B→A' : 'A→B'}`, async ({ page }) => {
     const fixture = await installSettingsFixture(page, { holdGitHubA: true })
     await page.goto('/settings?github=complete&ticket=test-ticket', { waitUntil: 'domcontentloaded' })
     await fixture.waitForGitHubA
@@ -421,6 +460,10 @@ test.describe('Settings provider action owner isolation in a real browser', () =
 
     await refreshSession(page, fixture, 'b')
     await expect.poll(() => bodyReads(page)).toContain('drive-status-b-1')
+    if (returnToA) {
+      await refreshSession(page, fixture, 'a')
+      await expect.poll(() => bodyReads(page)).toContain('drive-status-a-2')
+    }
     fixture.releaseGitHubA()
     await expect.poll(() => bodyReads(page)).toContain('github-complete-a-1')
     await settle(page)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, type BuilderResumeResponse } from '@/lib/api-client'
 import { downloadBlob } from '@/lib/download'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 type Options = {
   resumeId: string
@@ -12,6 +13,9 @@ type Options = {
 
 /** Compile the exact saved builder revision, without opening the source editor. */
 export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
+  const { can } = useEntitlements()
+  const canCompileRef = useRef(can('c05'))
+  canCompileRef.current = can('c05')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +70,9 @@ export function useBuilderPdf({ resumeId, prepareResume, isCurrent }: Options) {
         if (download) downloadBlob(cachedRef.current.blob, `${saved.resume.title || 'resume'}.pdf`)
         return
       }
+      // Existing generated output can be reused from the local cache above.
+      // Admit no new compilation when the compile capability is unavailable.
+      if (!canCompileRef.current) throw new Error('Creating a new PDF is unavailable right now. Your saved source and existing PDF remain available.')
       const submission = await apiClient.compileLatex({
         latex_content: saved.resume.latex_content,
         resume_id: resumeId,

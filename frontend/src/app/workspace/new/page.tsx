@@ -1,5 +1,8 @@
 'use client'
 
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import CapabilityGate from '@/components/CapabilityGate'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -135,6 +138,10 @@ function NewResumePageForm({
   sessionLoading: boolean
   ownerIdentityRef: NewResumeOwnerIdentityRef
 }) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const canCreateNewDocument = can('b01') && can('c01')
   const router = useRouter()
 
   // ---- form state ----
@@ -207,6 +214,7 @@ function NewResumePageForm({
   // ---- fetch templates on mount ----
   useEffect(() => {
     if (sessionLoading) return
+    if (!can('b04')) { setTemplates([]); setCategories([]); setLoadingTemplates(false); return }
     if (!session) {
       setLoadingTemplates(false)
       return
@@ -226,7 +234,7 @@ function NewResumePageForm({
         if (!cancelled) setLoadingTemplates(false)
       })
     return () => { cancelled = true }
-  }, [session, sessionLoading])
+  }, [can, session, sessionLoading])
 
   // ---- filtered templates (client-side) ----
   const filteredTemplates = useMemo(() => {
@@ -256,6 +264,8 @@ function NewResumePageForm({
 
   // ---- handlers ----
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
+    if (!canRef.current('b04')) return false
+    if (!canRef.current('b01') || !canRef.current('c01')) return false
     if (!mountedRef.current || sessionLoading || activeCreateRef.current || ownerIdentityRef.current.ownerId !== session.user.id) return false
     if (isCreating || activeTemplateUseRef.current) {
       if (creatingTemplateId !== id || activeTemplateUseRef.current) toast('Another template is already being created')
@@ -276,7 +286,7 @@ function NewResumePageForm({
     activeTemplateUseRef.current = request
     try {
       const result = await apiClient.useTemplate(id, finalTitle)
-      if (!isCurrentTemplateUseOwner(request) ||
+      if (!canRef.current('b01') || !canRef.current('c01') || !canRef.current('b04') || !isCurrentTemplateUseOwner(request) ||
         (request.preview && (previewIdentityRef.current.templateId !== request.preview.templateId ||
           previewIdentityRef.current.generation !== request.preview.generation))) {
         return false
@@ -327,6 +337,9 @@ function NewResumePageForm({
   }, [handleUseTemplate])
 
   const handleCreate = async () => {
+    if (!canRef.current('b01') || !canRef.current('c01')) return
+    const required = mode === 'import' ? 'b06' : mode === 'linkedin' ? 'g04' : mode === 'builder' ? 'b07' : null
+    if (required && !canRef.current(required)) return
     const ownerId = ownerIdentityRef.current.ownerId
     if (!mountedRef.current || sessionLoading || isCreating || activeCreateRef.current || activeTemplateUseRef.current || ownerId !== session.user.id) return
 
@@ -355,7 +368,7 @@ function NewResumePageForm({
           latex_content: importedContent,
           is_template: false,
         })
-        if (!isCurrentCreateRequest(request)) return
+        if (!canRef.current('b01') || !canRef.current('c01') || !isCurrentCreateRequest(request)) return
         toast.success('Resume created from import')
         router.push(`/workspace/${created.id}/edit`)
       } else {
@@ -365,7 +378,7 @@ function NewResumePageForm({
           latex_content: BLANK_CONTENT,
           is_template: false,
         })
-        if (!isCurrentCreateRequest(request)) return
+        if (!canRef.current('b01') || !canRef.current('c01') || !isCurrentCreateRequest(request)) return
         toast.success('Blank resume created')
         router.push(`/workspace/${created.id}/edit`)
       }
@@ -380,6 +393,8 @@ function NewResumePageForm({
   }
 
   const canCreate =
+    can('b01') &&
+    can('c01') &&
     !!title.trim() &&
     !isCreating &&
     ((mode === 'import' || mode === 'linkedin' || mode === 'builder') ? !!importedContent : true)
@@ -387,14 +402,6 @@ function NewResumePageForm({
   // ---------------------------------------------------------------- //
   //  Render                                                           //
   // ---------------------------------------------------------------- //
-
-  if (sessionLoading) {
-    return (
-      <div className="flex h-[70vh] items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    )
-  }
 
   return (
     <>
@@ -444,9 +451,9 @@ function NewResumePageForm({
               Fill in your experience with simple forms, choose a layout, and download your résumé. No code required.
             </p>
           </div>
-          <Link href="/workspace/builder/new" className="rounded-[var(--radius-md)] bg-accent px-5 py-3 text-sm font-semibold text-accent-fg hover:brightness-110">
+          {canCreateNewDocument && <CapabilityGate feature="b08"><Link href="/workspace/builder/new" className="rounded-[var(--radius-md)] bg-accent px-5 py-3 text-sm font-semibold text-accent-fg hover:brightness-110">
             Open Guided Builder
-          </Link>
+          </Link></CapabilityGate>}
         </section>
 
         {/* Mode toggle */}
@@ -466,7 +473,7 @@ function NewResumePageForm({
             </div>
           </button>
 
-          <button
+          {canCreateNewDocument && <CapabilityGate feature="b06"><button
             onClick={() => { setMode('import'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'import'
@@ -479,9 +486,9 @@ function NewResumePageForm({
               <h2 className="text-sm font-semibold text-fg">Import File</h2>
               <p className="mt-0.5 text-xs text-fg-2">Upload PDF, Word, Markdown, LaTeX, or more.</p>
             </div>
-          </button>
+          </button></CapabilityGate>}
 
-          <button
+          {canCreateNewDocument && <CapabilityGate feature="g04"><button
             onClick={() => { setMode('linkedin'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'linkedin'
@@ -494,9 +501,9 @@ function NewResumePageForm({
               <h2 className="text-sm font-semibold text-fg">Import from LinkedIn</h2>
               <p className="mt-0.5 text-xs text-fg-2">Export your LinkedIn profile as PDF and import it.</p>
             </div>
-          </button>
+          </button></CapabilityGate>}
 
-          <button
+          {canCreateNewDocument && <CapabilityGate feature="b07"><button
             onClick={() => { setMode('builder'); setImportedContent(''); setPdfImportFile(null) }}
             className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'builder'
@@ -509,18 +516,18 @@ function NewResumePageForm({
               <h2 className="text-sm font-semibold text-fg">Import Builder Export</h2>
               <p className="mt-0.5 text-xs text-fg-2">Bring in Reactive Resume or JSON Resume data, plus PDF and Word exports from Rezi, Teal, and similar tools.</p>
             </div>
-          </button>
+          </button></CapabilityGate>}
         </div>
 
         {/* --- IMPORT MODE --- */}
-        {mode === 'import' && (
+        {mode === 'import' && (pdfImportFile || (canCreateNewDocument && can('b06'))) && (
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             {pdfImportFile ? <PdfImportWizard file={pdfImportFile} title={title} ownerId={session.user.id}
               onCancel={() => setPdfImportFile(null)}
               onCreated={(resumeId) => {
-                if (ownerIdentityRef.current.ownerId === session.user.id) router.push(`/workspace/${encodeURIComponent(resumeId)}/edit`)
-              }} /> : <MultiFormatUpload onFileUpload={setImportedContent}
-                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file) }} />}
+                if (mountedRef.current && ownerIdentityRef.current.ownerId === session.user.id && ownerIdentityRef.current.generation === currentNewResumeIdentityGeneration) router.push(`/workspace/${encodeURIComponent(resumeId)}/edit`)
+              }} /> : <CapabilityGate feature="b06"><MultiFormatUpload onFileUpload={setImportedContent}
+                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file) }} /></CapabilityGate>}
             {importedContent && (
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-ok">
                 File parsed — {importedContent.length.toLocaleString()} characters ready
@@ -530,7 +537,7 @@ function NewResumePageForm({
         )}
 
         {/* --- LINKEDIN MODE --- */}
-        {mode === 'linkedin' && (
+        {canCreateNewDocument && can('g04') && mode === 'linkedin' && (
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
             {/* Step-by-step instructions */}
             <div className="rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">
@@ -585,8 +592,8 @@ function NewResumePageForm({
             </div>
 
             {/* Upload area — PDF only, LinkedIn-optimised prompt */}
-            <MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin"
-              onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} />
+            <CapabilityGate feature="b06"><MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin"
+              onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} /></CapabilityGate>
             {importedContent && (
               <p className="text-xs uppercase tracking-[0.12em] text-ok">
                 Profile parsed — {importedContent.length.toLocaleString()} characters ready
@@ -596,15 +603,15 @@ function NewResumePageForm({
         )}
 
         {/* --- BUILDER MODE --- */}
-        {mode === 'builder' && (
+        {can('b07') && mode === 'builder' && (
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             {importedContent ? (
               <p className="text-xs uppercase tracking-[0.12em] text-ok">
                 Resume imported — {importedContent.length.toLocaleString()} characters ready
               </p>
             ) : (
-              <ImportFromBuilderWizard onComplete={setImportedContent}
-                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} />
+              <CapabilityGate feature="b07"><ImportFromBuilderWizard onComplete={setImportedContent}
+                onPdfSelected={(file) => { setImportedContent(''); setPdfImportFile(file); setMode('import') }} /></CapabilityGate>
             )}
           </section>
         )}
@@ -652,13 +659,13 @@ function NewResumePageForm({
               </div>
 
               {/* Blank option */}
-              <button
+              {canCreateNewDocument && <button
                 onClick={handleCreate}
                 disabled={isCreating}
                 className="shrink-0 rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-medium text-fg-3 transition hover:border-line-2 hover:text-fg-2 disabled:opacity-40"
               >
                 Start from Blank
-              </button>
+              </button>}
             </div>
 
             {/* Category tabs */}
@@ -709,12 +716,13 @@ function NewResumePageForm({
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredTemplates.map(template => (
                   <div key={template.id} className="relative">
-                    <TemplateCard
+                    <CapabilityGate feature="b04"><TemplateCard
                       template={template}
-                      onSelect={handleSelectTemplate}
+                      onSelect={canCreateNewDocument ? handleSelectTemplate : undefined}
                       onPreview={handlePreviewTemplate}
                       disabled={creatingTemplateId === template.id}
-                    />
+                      allowUse={canCreateNewDocument}
+                    /></CapabilityGate>
                     {creatingTemplateId === template.id && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-[color:var(--overlay)] backdrop-blur-[1px]">
                         <Loader2 size={20} className="animate-spin text-accent-strong" />
@@ -733,23 +741,24 @@ function NewResumePageForm({
         {/* Create button — shown for non-template creation flows */}
         {(mode === 'import' || mode === 'linkedin' || mode === 'builder') && !(mode === 'import' && pdfImportFile) && (
           <div className="flex items-center justify-end gap-3">
-            <button
+            {canCreateNewDocument && <button
               onClick={handleCreate}
               disabled={!canCreate}
               className="rounded-[var(--radius-md)] bg-accent px-8 py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isCreating ? 'Creating…' : 'Create Resume'}
-            </button>
+            </button>}
           </div>
         )}
       </div>
 
       {/* Preview modal (portal-like; renders on top) */}
-      <TemplatePreviewModal
+      <CapabilityGate feature="b04"><TemplatePreviewModal
         templateId={previewTemplateId}
         onUse={handleUseFromPreview}
         onClose={handleClosePreview}
-      />
+        allowUse={canCreateNewDocument && can('b04')}
+      /></CapabilityGate>
     </>
   )
 }
