@@ -150,6 +150,38 @@ The correction passes **97** deployment-manifest contracts; the optional
 diagnostic has **six** focused unit regressions for its pinned hook, ordinary-case
 opt-in, bounded capture, delivery ordering, timeout and origin restrictions.
 
+The [third CI execution, 38114969613](https://github.com/sanskarpan/Latexy/actions/runs/38114969613),
+on head `fb09cbc4`, verified the corrected host access path: the real API accepted
+a guest compile, the broker/worker completed it, and its download returned a PDF.
+The smoke reader then failed because it expected a flattened result, while the
+public `JobResultResponse` wraps the worker payload under `result`. The reader
+now validates both success flags, both job identities, `pdf_job_id`, error
+consistency and the required nested artifact before accepting evidence. It does
+not accept the obsolete flattened shape or substitute an absent artifact.
+**37** dependency-free guards pass with warnings treated as errors, including
+wire-shaped success/failure cases and the complete mocked reader protocol.
+The actual artifact, private storage and real browser checks still need the next
+CI run; a successfully downloaded PDF alone does not close those gates.
+
+The downloaded [artifact 11692898534](https://github.com/sanskarpan/Latexy/actions/runs/38114969613/artifacts/11692898534)
+matches SHA-256 `cab3c7c91695ce92d4e94c71708fb7bc2e4ac592868d0277605fc3aa3dbf974b`.
+It records actual merge-ref checkout `82e54f9dc8f7cf8a6b9d5664b164b0c8e93c6310`,
+candidate image `sha256:bccb7170a645a57bee67d018e5581d51c14ad4d9f3bc524b9490f1d0537c3234`,
+renderer assets `da4fca5eb5b248b5d886bc83af75636329e444159f802e050aa98489360219d7`,
+and successful cleanup. No application latency is inferred from the coarse
+container log timestamps.
+
+The third run's other **14 CI jobs passed**. Its broader browser quality suite
+reported **141 passed, one flaky and three skipped** under its existing retry
+policy; the explicit owner/editor matrix passed **82/82 with zero retries**, and
+the dedicated hydration case passed. The quality flake was one React 418 during
+the final signed-out homepage reload in the account-navigation case, with no
+unmocked API or unexpected authentication requests. The passing retry used the
+same three session reads. It does not establish the mismatched node, and the
+original failure has no trace. This is retained as unresolved hydration evidence,
+not reported as clean first-attempt browser acceptance. The Settings-only
+failure diagnostic correctly did not run because that case passed.
+
 The new `test_converter_failure_ledger_integration.py` passed **11 cases, no
 skips, in 3.89 seconds** with warnings treated as errors against disposable
 PostgreSQL/Redis. Its final run also removed the optional `TEST_REDIS_*`

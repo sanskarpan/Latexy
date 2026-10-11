@@ -2,12 +2,14 @@
 import argparse
 import ast
 import copy
+import hashlib
 import importlib.util
 import inspect
 import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -35,6 +37,33 @@ helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) an
 namespace = {}
 exec(compile(ast.Module(body=[helper], type_ignores=[]), str(source), 'exec'), namespace)  # noqa: S102 -- repository-owned pure helper only
 require_matrix = namespace['require_certified_matrix']
+
+
+def compile_fixture():
+    """Wire-shaped public envelope + worker payload, without runtime imports."""
+    job_id = '3bf24854-afeb-4bc7-a322-6a520f25bb9a'
+    pdf = b'%PDF-1.4\nsynthetic protocol bytes for a helper unit test\n'
+    prefix = '/download/' + job_id + '/preview/' + 'a' * 64
+    artifact = {'artifact_id': 'a' * 64, 'job_id': job_id,
+        'source_sha256': hashlib.sha256(smoke.MINIMAL_SOURCE.encode()).hexdigest(),
+        'render_source_sha256': hashlib.sha256(smoke.MINIMAL_SOURCE.encode()).hexdigest(),
+        'content_revision': 1, 'document_id': 'guest', 'branch': 'draft', 'owner_epoch': 1, 'run_id': None,
+        'compiler': 'pdflatex', 'settings_sha256': 'b' * 64,
+        'pdf_sha256': hashlib.sha256(pdf).hexdigest(), 'pdf_size': len(pdf), 'page_count': 1,
+        'preview_url': prefix, 'geometry_url': prefix + '/geometry'}
+    result = {'success': True, 'job_id': job_id, 'pdf_job_id': job_id, 'compilation_time': 1.23,
+        'pdf_size': len(pdf), 'page_count': 1, 'slide_count': None, 'is_beamer': False,
+        'extracted_text': 'Local real worker smoke produced a verified artifact.', 'artifact': artifact}
+    envelope = {'success': True, 'job_id': job_id, 'result': result, 'error': None}
+    geometry = {'schema_version': 1, 'coordinate_system': 'pdf_points_top_left',
+        'source_sha256': artifact['source_sha256'], 'pdf_sha256': artifact['pdf_sha256'],
+        'document_id': 'guest', 'content_revision': 1, 'branch': 'draft', 'artifact_id': artifact['artifact_id'],
+        'pages': [{'page': 1, 'width': 612, 'height': 792, 'rotation': 0}],
+        'boxes': [{'node_id': 'literal-node', 'node_revision': 1, 'kind': 'bullet',
+            'text': 'Local real worker smoke produced a verified artifact.',
+            'source_span': {'start': 0, 'end': 1}, 'page': 1, 'x': 10, 'y': 20, 'width': 100, 'height': 12}],
+        'omissions': []}
+    return job_id, envelope, pdf, geometry
 
 
 class HarnessGuards(unittest.TestCase):
@@ -452,6 +481,105 @@ class HarnessGuards(unittest.TestCase):
         with patch.object(smoke, 'urlopen', return_value=response) as opened:
             smoke.request('http://127.0.0.1:1', '/download/synthetic', 'single-device')
         self.assertEqual(opened.call_args.args[0].get_header('X-device-fingerprint'), 'single-device')
+
+    def test_compile_result_unwraps_actual_public_envelope_without_runtime_imports(self):
+        job_id, envelope, _, _ = compile_fixture()
+        self.assertIs(smoke.unwrap_compile_result(envelope, job_id), envelope['result'])
+        route = ast.parse((HERE.parents[1] / 'backend/app/api/job_routes.py').read_text())
+        model = next(node for node in route.body if isinstance(node, ast.ClassDef) and node.name == 'JobResultResponse')
+        fields = {node.target.id for node in model.body if isinstance(node, ast.AnnAssign)}
+        self.assertEqual(fields, {'success', 'job_id', 'result', 'error'})
+
+    def test_compile_result_rejects_failure_delivery_failure_and_success_disagreement(self):
+        job_id, envelope, _, _ = compile_fixture()
+        failed = {'success': False, 'job_id': job_id, 'result': None, 'error': 'synthetic-private-detail'}
+        delivery = {**failed, 'result': {**envelope['result'], 'success': False, 'output_unavailable': True}}
+        for value in (failed, delivery, {**envelope, 'success': False},
+                      {**envelope, 'error': 'synthetic-private-detail'},
+                      {**envelope, 'result': {**envelope['result'], 'success': False}},
+                      {**envelope, 'result': {**envelope['result'], 'error': 'synthetic-private-detail'}}):
+            with self.assertRaises(RuntimeError) as error:
+                smoke.unwrap_compile_result(value, job_id)
+            self.assertNotIn('synthetic-private-detail', str(error.exception))
+
+    def test_compile_result_rejects_flattened_missing_malformed_and_cross_job_shapes(self):
+        job_id, envelope, _, _ = compile_fixture()
+        result = envelope['result']
+        for value in (None, [], True, 'not an envelope', {}, result,
+                      {key: value for key, value in envelope.items() if key != 'error'},
+                      {**envelope, 'artifact': result['artifact']},
+                      {**envelope, 'result': None}, {**envelope, 'result': []},
+                      {**envelope, 'success': 1}, {**envelope, 'job_id': 'other'},
+                      {**envelope, 'result': {**result, 'success': 1}},
+                      {**envelope, 'result': {**result, 'job_id': 'other'}},
+                      {**envelope, 'result': {**result, 'pdf_job_id': 'other'}},
+                      {**envelope, 'result': {key: value for key, value in result.items() if key != 'artifact'}},
+                      {**envelope, 'result': {**result, 'artifact': None}},
+                      {**envelope, 'result': {**result, 'artifact': []}},
+                      {**envelope, 'result': {**result, 'artifact': {}}},
+                      {**envelope, 'result': {**result, 'artifact': {**result['artifact'], 'job_id': 'other'}}}):
+            with self.assertRaises(RuntimeError):
+                smoke.unwrap_compile_result(value, job_id)
+
+    def test_artifact_identity_matches_guest_manifest_and_rejects_boolean_or_wrong_metadata(self):
+        job_id, envelope, pdf, _ = compile_fixture()
+        artifact = envelope['result']['artifact']
+        self.assertEqual(smoke.validate_artifact(artifact, job_id, smoke.MINIMAL_SOURCE, 'pdflatex', pdf), 'a' * 64)
+        for updates in ({'page_count': True}, {'page_count': 0}, {'content_revision': True},
+                        {'document_id': 'other'}, {'branch': 'candidate'}, {'compiler': 'lualatex'},
+                        {'source_sha256': 'c' * 64}, {'pdf_sha256': 'c' * 64}, {'pdf_size': len(pdf) + 1}):
+            with self.assertRaises(RuntimeError):
+                smoke.validate_artifact({**artifact, **updates}, job_id, smoke.MINIMAL_SOURCE, 'pdflatex', pdf)
+
+    def test_smoke_reader_consumes_model_shaped_result_and_real_route_shapes_with_one_identity(self):
+        job_id, envelope, pdf, geometry = compile_fixture()
+        artifact = envelope['result']['artifact']
+        prefix = artifact['preview_url']
+        calls = []
+        def request(base, path, fingerprint, payload=None):
+            self.assertEqual(base, 'http://127.0.0.1:8030')
+            calls.append((path, fingerprint))
+            if path == '/jobs/submit':
+                self.assertEqual(payload, {'job_type': 'latex_compilation', 'latex_content': smoke.MINIMAL_SOURCE,
+                    'compiler': 'pdflatex', 'device_fingerprint': fingerprint})
+            responses = {
+                '/health': ({'status': 'healthy', 'latex_available': True}, 'application/json'),
+                '/jobs/submit': ({'success': True, 'job_id': job_id, 'message': 'Started', 'estimated_time': 30}, 'application/json'),
+                f'/jobs/{job_id}/result': (envelope, 'application/json'),
+                f'/jobs/{job_id}/state': ({'status': 'completed', 'stage': 'done', 'percent': 100,
+                    'last_updated': 1.0, 'artifact': artifact}, 'application/json'),
+                f'/download/{job_id}': (pdf, 'application/pdf'),
+                prefix: (pdf, 'application/pdf'),
+                prefix + '/synctex': (b'SyncTeX Version:1\nInput:1:resume.tex\n', 'text/plain'),
+                prefix + '/geometry': (geometry, 'application/json'),
+            }
+            body, media = responses[path]
+            return (body if isinstance(body, bytes) else json.dumps(body).encode()), media
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'evidence.json'
+            with (patch.object(sys, 'argv', ['local-job-smoke.py', '--base-url', 'http://127.0.0.1:8030', '--output', str(output)]),
+                  patch.object(smoke, 'request', side_effect=request), patch('builtins.print'),
+                  patch.object(smoke.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, b'Local real worker smoke', b''))):
+                smoke.main()
+            report = json.loads(output.read_text())
+            self.assertTrue(report['success'])
+            self.assertEqual(report['artifact_id'], artifact['artifact_id'])
+            self.assertEqual(report['pdf_sha256'], hashlib.sha256(pdf).hexdigest())
+            self.assertEqual(report['geometry_boxes'], 1)
+            self.assertEqual(len(calls), 8)
+            self.assertEqual(len({fingerprint for _, fingerprint in calls}), 1)
+            self.assertNotIn(calls[0][1], output.read_text())
+            self.assertNotIn(smoke.MINIMAL_SOURCE, output.read_text())
+
+    def test_smoke_reader_refuses_bad_result_before_state_or_artifact_download(self):
+        job_id, envelope, _, _ = compile_fixture()
+        responses = [{'status': 'healthy', 'latex_available': True},
+                     {'success': True, 'job_id': job_id, 'message': 'Started'}, envelope['result']]
+        with (patch.object(sys, 'argv', ['local-job-smoke.py']), patch('builtins.print'),
+              patch.object(smoke, 'request', side_effect=[(json.dumps(value).encode(), 'application/json') for value in responses]) as request,
+              self.assertRaises(RuntimeError)):
+            smoke.main()
+        self.assertEqual(request.call_count, 3)
 
     def test_server_artifact_urls_cannot_redirect_to_other_origins_or_jobs(self):
         expected = '/download/synthetic/preview/' + 'a' * 64

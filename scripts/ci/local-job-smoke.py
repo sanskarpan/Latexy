@@ -61,6 +61,27 @@ def hindi_fixture_path(script: Path) -> Path:
     return fixture_root / "app/data/templates/ats_safe/hindi_professional.tex"
 
 
+def unwrap_compile_result(envelope: object, job_id: str) -> dict:
+    """Validate JobResultResponse separately from its worker result payload.
+
+    Failed results, including typed delivery failures, are never acceptable
+    compile evidence. Do not fall back to the obsolete flattened shape.
+    """
+    if (not isinstance(envelope, dict)
+            or set(envelope) != {"success", "job_id", "result", "error"}
+            or envelope.get("job_id") != job_id or envelope.get("success") is not True
+            or envelope.get("error") is not None):
+        raise RuntimeError("Compilation result envelope failed or did not match this job")
+    result = envelope.get("result")
+    if (not isinstance(result, dict) or result.get("success") is not True
+            or result.get("job_id") != job_id or result.get("pdf_job_id") != job_id
+            or result.get("error") is not None
+            or not isinstance(result.get("artifact"), dict)
+            or result["artifact"].get("job_id") != job_id):
+        raise RuntimeError("Completed worker result did not publish this job's immutable artifact")
+    return result
+
+
 def validate_artifact(artifact: dict, job_id: str, source: str, compiler: str, pdf: bytes) -> str:
     artifact_id = artifact.get("artifact_id")
     if (
@@ -68,9 +89,10 @@ def validate_artifact(artifact: dict, job_id: str, source: str, compiler: str, p
         or artifact.get("job_id") != job_id or artifact.get("compiler") != compiler
         or artifact.get("source_sha256") != hashlib.sha256(source.encode()).hexdigest()
         or artifact.get("pdf_sha256") != hashlib.sha256(pdf).hexdigest()
-        or artifact.get("pdf_size") != len(pdf)
-        or artifact.get("content_revision") != 1 or artifact.get("branch") != "draft"
-        or not isinstance(artifact.get("page_count"), int) or artifact["page_count"] < 1
+        or type(artifact.get("pdf_size")) is not int or artifact["pdf_size"] != len(pdf)
+        or type(artifact.get("content_revision")) is not int or artifact["content_revision"] != 1
+        or artifact.get("branch") != "draft" or artifact.get("document_id") != "guest"
+        or type(artifact.get("page_count")) is not int or not 1 <= artifact["page_count"] <= 1000
     ):
         raise RuntimeError("Artifact PDF/source/revision identity is inconsistent")
     return artifact_id
@@ -224,9 +246,7 @@ def main() -> None:
                 raise
             time.sleep(0.5)
             continue
-        result = json.loads(raw)
-        if result.get("success") is not True:
-            raise RuntimeError(f"Local compilation failed: job {job_id}")
+        result = unwrap_compile_result(json.loads(raw), job_id)
         break
     else:
         raise RuntimeError(f"Timed out waiting for real worker: job {job_id}")
@@ -242,13 +262,11 @@ def main() -> None:
     pdf, media_type = call(f"/download/{job_id}")
     if media_type != "application/pdf" or not pdf.startswith(b"%PDF-"):
         raise RuntimeError("Downloaded artifact is not a PDF")
-    artifact = result.get("artifact")
-    if not isinstance(artifact, dict):
-        raise TypeError("Completed candidate job did not publish an immutable artifact")
+    artifact = result["artifact"]
     artifact_id = validate_artifact(artifact, job_id, source, engine, pdf)
     prefix = f"/download/{job_id}/preview/{artifact_id}"
-    preview, _ = call(artifact_path(artifact.get("preview_url"), prefix))
-    if preview != pdf:
+    preview, preview_type = call(artifact_path(artifact.get("preview_url"), prefix))
+    if preview_type != "application/pdf" or preview != pdf:
         raise RuntimeError("Preview and terminal export differ")
     synctex, media_type = call(prefix + "/synctex")
     if media_type != "text/plain" or not synctex.startswith(b"SyncTeX Version:"):
