@@ -446,16 +446,36 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert "LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS" not in step["env"]
     hydration = next(
         step for step in job["steps"]
-        if step.get("name") == "Verify Better Auth hydration snapshot contract"
+        if step.get("name") == "Verify Better Auth snapshot and vendored host replay contracts"
     )
-    assert hydration["env"] == {"HYDRATION_AUTH_CLIENT_BASELINE": "0"}
+    assert hydration["env"] == {
+        "HYDRATION_AUTH_CLIENT_BASELINE": "0",
+        "PLAYWRIGHT_JUNIT_OUTPUT_FILE": "test-results/hydration-session-store/results.xml",
+    }
     assert "e2e/hydration-session-store.opt-in.ts" in hydration["run"]
+    assert "e2e/hydration-host-replay.opt-in.ts" in hydration["run"]
     assert "--config=playwright.hydration.config.ts" in hydration["run"]
     assert "--retries=0" in hydration["run"]
     assert "--trace=on" in hydration["run"]
     assert "--workers=1" in hydration["run"]
     assert "--output=test-results/hydration-session-store" in hydration["run"]
-    assert "if" not in hydration  # Candidate failures must fail the scoped job.
+    # The causal pair must still run after the original browser gate fails,
+    # while neither that failure nor a partial/skipped proof is softened.
+    assert hydration["if"] == "${{ !cancelled() }}"
+    assert hydration["timeout-minutes"] == "5"
+    assert hydration.get("continue-on-error", "false") == "false"
+    assert "set -euo pipefail" in hydration["run"]
+    assert "rm -f test-results/hydration-session-store/results.xml" in hydration["run"]
+    assert "--reporter=line,junit" in hydration["run"]
+    assert "len(cases)!=2" in hydration["run"]
+    assert "{c.get('name') for c in cases}!=expected" in hydration["run"]
+    assert "('skipped','failure','error')" in hydration["run"]
+    host_proof = _read("frontend/e2e/hydration-host-replay.opt-in.ts")
+    assert "expect(observations).toHaveLength(4)" in host_proof
+    assert "expect(observations.map(({ variant, childState })" in host_proof
+    assert "expect(observations[2].probes).toEqual(observations[3].probes)" in host_proof
+    quality = next(step for step in job["steps"] if step.get("name") == "Audit desktop and mobile browser quality")
+    assert quality["run"] == "pnpm test:quality --retries=0"
     artifact = next(step for step in job["steps"] if step.get("name") == "Upload browser quality evidence")
     assert artifact["if"] == "${{ !cancelled() }}"
     assert "frontend/test-results/editor-compile-sync" in artifact["with"]["path"]

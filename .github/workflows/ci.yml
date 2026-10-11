@@ -442,7 +442,7 @@ jobs:
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Audit desktop and mobile browser quality
-        run: pnpm test:quality
+        run: pnpm test:quality --retries=0
       - name: Verify guided builder, compile cadence and source-PDF synchronization
         id: editor-owner-regressions
         env:
@@ -484,15 +484,23 @@ jobs:
             --grep 'same-owner GitHub legacy callback succeeds after the session token rotates$' \
             --output=test-results/settings-hydration-diagnostic
           python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/settings-hydration-diagnostic/results.xml').getroot().iter('testcase')); failed=len(cases)!=1 or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Diagnostic replay was empty, skipped or failed' if failed else 0)"
-      - name: Verify Better Auth hydration snapshot contract
+      - name: Verify Better Auth snapshot and vendored host replay contracts
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
         env:
           # The baseline expected-error mode is a local diagnostic only; CI runs
           # the gated candidate and must never silently switch to that mode.
           HYDRATION_AUTH_CLIENT_BASELINE: "0"
-        run: >-
-          pnpm exec playwright test e2e/hydration-session-store.opt-in.ts
-          --config=playwright.hydration.config.ts --workers=1 --retries=0
-          --trace=on --reporter=line --output=test-results/hydration-session-store
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results/hydration-session-store/results.xml
+        # The original owner/quality outcome remains required. This synthetic
+        # causal proof runs even after that failure, without retrying or masking it.
+        run: |
+          set -euo pipefail
+          rm -f test-results/hydration-session-store/results.xml
+          pnpm exec playwright test e2e/hydration-session-store.opt-in.ts e2e/hydration-host-replay.opt-in.ts \
+            --config=playwright.hydration.config.ts --workers=1 --retries=0 \
+            --trace=on --reporter=line,junit --output=test-results/hydration-session-store
+          python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/hydration-session-store/results.xml').getroot().iter('testcase')); expected={'real Better Auth SSR snapshot stays stable for a late consumer and refreshes safely','pinned Next host replay reproduces #418 and the upstream cursor backport preserves SSR nodes'}; failed=len(cases)!=2 or {c.get('name') for c in cases}!=expected or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Hydration proof was empty, partial, skipped or failed' if failed else 0)"
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
