@@ -20,6 +20,36 @@ inherits its secrets, builds an image during a request, or uses its fingerprint
 as evidence for the VM's assets. A selected unavailable capability fails closed.
 Immutable Docker image digests permit cache reuse; mutable Docker tags do not.
 
+## Durable automatic-deployment inputs
+
+After independently certifying the intended image and supported profile, an
+authorized operator supplies the three non-secret values above as GitHub Actions
+repository configuration variables. The deployment workflow explicitly maps
+`vars.MODAL_ENGINE_VM_CERTIFIED`, `vars.MODAL_ENGINE_VM_IMAGE_ID` and
+`vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT` into its job environment. Keep any
+same-named `Production` environment variables consistent with the reviewed tuple.
+This source change does not create or populate those variables.
+
+Before installing the Modal CLI or starting cloud work, the workflow requires
+the flag to be exactly `true`, an immutable `im-...` identifier and a lowercase
+64-hex asset fingerprint. Missing or malformed values fail closed with fixed
+boolean diagnostics. Passing this input check is not image certification; its
+report deliberately retains `certification_verified: false`.
+
+The job-scoped values reach every subsequent Modal invocation. The existing
+`_renderer_capability_env` image construction passes the same tuple into both
+`api_image` and `latex_image`, including the compile and orchestrator workers.
+The bound-runtime renderer preflight still runs after billing checks and before
+migrations. A manual invocation must supply the same reviewed tuple in its
+invoking environment; it must not rely on an unrelated local shell's state.
+
+Do not replace `latexy-backend-secrets`, `latexy-storage` or `latexy-redis` to
+deliver these non-secret values. The previous documentation's generic environment
+requirements did not wire repository variables into future automatic deploys.
+If an existing bound secret already contains conflicting renderer values, stop
+and resolve that configuration through an authorized operator; this workflow
+does not inspect, rewrite or claim precedence over opaque secret contents.
+
 ## Deployment configuration preflight
 
 The Modal deployment workflow runs `modal_app.py::renderer_preflight` before

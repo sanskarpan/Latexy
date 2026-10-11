@@ -34,6 +34,11 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
+      # Non-secret, operator-certified identity. Keep this job-scoped so every
+      # preflight/build/deploy uses the same API and compile-worker image inputs.
+      MODAL_ENGINE_VM_CERTIFIED: ${{ vars.MODAL_ENGINE_VM_CERTIFIED }}
+      MODAL_ENGINE_VM_IMAGE_ID: ${{ vars.MODAL_ENGINE_VM_IMAGE_ID }}
+      MODAL_ENGINE_VM_ASSETS_FINGERPRINT: ${{ vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT }}
 
     steps:
       - name: Check out the CI-validated revision
@@ -102,6 +107,26 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Validate renderer deployment inputs
+        if: steps.freshness.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          checks = {
+              "operator_certification_asserted": os.environ.get("MODAL_ENGINE_VM_CERTIFIED") == "true",
+              "immutable_image_id_valid": re.fullmatch(r"im-[A-Za-z0-9]{1,128}", os.environ.get("MODAL_ENGINE_VM_IMAGE_ID", "")) is not None,
+              "asset_fingerprint_valid": re.fullmatch(r"[0-9a-f]{64}", os.environ.get("MODAL_ENGINE_VM_ASSETS_FINGERPRINT", "")) is not None,
+          }
+          valid = all(checks.values())
+          print(json.dumps({"configuration_inputs_valid": valid, "certification_verified": False, "checks": checks}, sort_keys=True))
+          sys.exit(0 if valid else 1)
+          PY
 
       - name: Install pinned Modal CLI
         if: steps.freshness.outputs.current == 'true'
