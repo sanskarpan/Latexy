@@ -5,6 +5,8 @@ RUN npm install -g pnpm@10.10.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY frontend/package.json ./frontend/package.json
+# Legacy deploy runs frontend postinstall from the source directory.
+COPY frontend/scripts/next-hydration-backport.mjs frontend/scripts/next-hydration-backport-integrity.json ./frontend/scripts/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 # Portable links remain valid after Compose mounts frontend source over /app.
 RUN pnpm --filter ./frontend deploy --legacy /dev-runtime

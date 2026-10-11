@@ -1,0 +1,51 @@
+{
+  "renderers": {
+    "react-dom-client.development.js": {
+      "original": {
+        "bytes": 979588,
+        "sha256": "14c33685b88f2e39827dc6f0515f9d44411958758aef6573686468163465f6bb"
+      },
+      "patched": {
+        "bytes": 980010,
+        "sha256": "c8cdb740bbe0f98cc09105964998714579538a94b317ee8a849c41b915bcf730"
+      }
+    },
+    "react-dom-client.production.js": {
+      "original": {
+        "bytes": 530233,
+        "sha256": "9bcaacd92279559075407d2fb09b19893f03f9b93ad74eb0ef42b31b66f6053e"
+      },
+      "patched": {
+        "bytes": 530601,
+        "sha256": "d39323365a551e20b8bd0a8e5b9e559906ec4ed9b6629cc6c20af8c68827d7f5"
+      }
+    },
+    "react-dom-profiling.development.js": {
+      "original": {
+        "bytes": 995972,
+        "sha256": "d0b4798776943fddff40056c9bd001e6076111b30aae3a392436722bfab24e2e"
+      },
+      "patched": {
+        "bytes": 996394,
+        "sha256": "3c632d37abfc1a2acf3968015ce7234acbbd3f71899f41002a09ccc76c9a93e3"
+      }
+    },
+    "react-dom-profiling.profiling.js": {
+      "original": {
+        "bytes": 563842,
+        "sha256": "2a2f9a79c0d5906720e6833f1d0cc605379b004279ca1b1ef37142a5fe392178"
+      },
+      "patched": {
+        "bytes": 564210,
+        "sha256": "07f4958e75c7c49dbc48059292677fce6509fc08eddc9d980c98f783cd911a4c"
+      }
+    }
+  },
+  "companions": {
+    "react": "00b0be34d1299a94f8ae95880f5a213a8c3477102f363cd5cea1aab56664c075",
+    "react-dom": "e0c31589940fa953d896c6b04929d3645b779f48d7720c65f174a7ca1a848a08",
+    "scheduler": "62158e615fd4a275db1a473ee8c267b24c8fc53dfedcb2ad1a5daafcf7928a80",
+    "react-server-dom-webpack": "17a91faeec4237cf8ccdfd357e8c59475747f59bcfe2ea98935ab8203747a46c",
+    "react-server-dom-turbopack": "df24aa98331cdc8e662614f6d8ce615bb70bbf9366d9883bae91e6607803cbfc"
+  }
+}

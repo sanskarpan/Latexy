@@ -223,6 +223,33 @@ def test_node_package_manager_is_pinned_consistently():
         assert set(versions) == {pnpm_version}
 
 
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "frontend/Dockerfile.dev",
+        "frontend/Dockerfile.prod",
+        "frontend/Dockerfile.vitest-validation",
+    ),
+)
+def test_frontend_hydration_guard_exists_before_install_and_legacy_deploy(relative):
+    """The install hook must exist in manifest-only Docker dependency layers."""
+    dockerfile = _read(relative)
+    guard_copy = (
+        "COPY frontend/scripts/next-hydration-backport.mjs "
+        "frontend/scripts/next-hydration-backport-integrity.json ./frontend/scripts/"
+    )
+    assert guard_copy in dockerfile
+    assert dockerfile.index(guard_copy) < dockerfile.index("RUN pnpm install")
+    if relative.endswith("Dockerfile.dev"):
+        assert dockerfile.index(guard_copy) < dockerfile.index(
+            "RUN pnpm --filter ./frontend deploy --legacy"
+        )
+        context = _read("frontend/Dockerfile.dev.dockerignore").splitlines()
+        assert "!frontend/scripts" in context
+        assert "!frontend/scripts/next-hydration-backport.mjs" in context
+        assert "!frontend/scripts/next-hydration-backport-integrity.json" in context
+
+
 def test_canonical_ci_covers_main_and_every_pr_without_exposing_secrets():
     """Main pushes and every PR get CI without exposing secrets to forks."""
     ci = _read(".github/workflows/ci.yml")

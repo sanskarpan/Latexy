@@ -4,6 +4,8 @@ RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY frontend/package.json ./frontend/package.json
+# Frontend postinstall verifies the exact patched runtime before any build.
+COPY frontend/scripts/next-hydration-backport.mjs frontend/scripts/next-hydration-backport-integrity.json ./frontend/scripts/
 COPY packages/browser-extension/package.json ./packages/browser-extension/package.json
 COPY packages/tui/package.json ./packages/tui/package.json
 RUN pnpm install --frozen-lockfile

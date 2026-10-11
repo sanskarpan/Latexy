@@ -7,5 +7,8 @@
 !patches/**
 !frontend
 !frontend/package.json
+!frontend/scripts
+!frontend/scripts/next-hydration-backport.mjs
+!frontend/scripts/next-hydration-backport-integrity.json
 !frontend/Dockerfile.dev
 !frontend/Dockerfile.dev.dockerignore

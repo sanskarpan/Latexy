@@ -6,8 +6,9 @@ import path from 'node:path'
 
 import { expect, test, type Browser, type CDPSession } from '@playwright/test'
 import {
-  applyCursorBackport, HOST_IDS, HOST_MARKUP, NEXT_VERSION, ORIGINAL_CHUNK,
+  HOST_IDS, HOST_MARKUP, NEXT_VERSION, ORIGINAL_CHUNK,
   readVendoredRenderer, REACT_VERSION, RENDERER_BYTES, RENDERER_SHA256,
+  PATCHED_RENDERER_BYTES, PATCHED_RENDERER_SHA256,
   REPLAY_ISSUE, replayProbeLocations, selectProbeBreakpoint, sha256, UPSTREAM_CURSOR_FIX,
 } from './helpers/hydration-host-replay'
 
@@ -223,29 +224,28 @@ test('pinned Next host replay reproduces #418 and the upstream cursor backport p
   test.setTimeout(90_000)
   expect(browserName).toBe('chromium')
   const vendor = readVendoredRenderer(frontendRoot)
-  const patchedSource = applyCursorBackport(vendor.source)
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), 'latexy-host-replay-'))
   let server: http.Server | undefined
   const observations: Observation[] = []
   const serverRequests: string[] = []
   const evidence = {
     nextVersion: NEXT_VERSION, reactVersion: REACT_VERSION,
-    renderer: { bytes: RENDERER_BYTES, sha256: RENDERER_SHA256 },
-    patchedRenderer: { bytes: Buffer.byteLength(patchedSource), sha256: sha256(patchedSource) },
+    baselineRenderer: { bytes: RENDERER_BYTES, sha256: RENDERER_SHA256, origin: 'exact inverse of installed patched runtime' },
+    patchedRenderer: { bytes: PATCHED_RENDERER_BYTES, sha256: PATCHED_RENDERER_SHA256, origin: 'effective installed runtime' },
     originalCiChunk: ORIGINAL_CHUNK, sources: [UPSTREAM_CURSOR_FIX, REPLAY_ISSUE],
-    instrumentation: 'Identical Chromium CDP conditional logpoints return false and only record state. Debugger attachment may affect scheduling. Baseline renderer bytes and real vendored Scheduler are unchanged. Pending status thenable resolves in a microtask; no timing rerolls.',
+    instrumentation: 'Identical Chromium CDP conditional logpoints return false and only record state. Debugger attachment may affect scheduling. Baseline is the exact inverse of the installed patch; patched arm imports the effective installed renderer. Matched vendored Scheduler is unchanged. Pending status thenable resolves in a microtask; no timing rerolls.',
     expectedMatrix: matrix, observations, serverRequests,
   }
   try {
     const vitestPackage = createRequire(path.join(frontendRoot, 'package.json')).resolve('vitest/package.json')
     const esbuildEntry = createRequire(vitestPackage).resolve('esbuild')
     const { build } = await import(esbuildEntry)
-    const patchedRendererPath = path.join(temporaryDirectory, 'react-dom-client.patched.cjs')
-    writeFileSync(patchedRendererPath, patchedSource)
+    const originalRendererPath = path.join(temporaryDirectory, 'react-dom-client.original.cjs')
+    writeFileSync(originalRendererPath, vendor.originalSource)
     const bundles: Record<Variant, string> = { baseline: '', patched: '' }
     for (const variant of ['baseline', 'patched'] as const) {
       const entryPath = path.join(temporaryDirectory, `${variant}.tsx`)
-      writeFileSync(entryPath, browserSource(variant === 'baseline' ? vendor.rendererPath : patchedRendererPath))
+      writeFileSync(entryPath, browserSource(variant === 'baseline' ? originalRendererPath : vendor.rendererPath))
       const result = await build({
         absWorkingDir: frontendRoot, entryPoints: [entryPath], bundle: true,
         format: 'iife', platform: 'browser', write: false, metafile: true,
@@ -257,7 +257,7 @@ test('pinned Next host replay reproduces #418 and the upstream cursor backport p
       replayProbeLocations(bundles[variant])
       const inputs = Object.keys(result.metafile!.inputs).map((input) => path.resolve(frontendRoot, input))
       for (const dependency of Object.values(vendor.alias)) expect(inputs).toContain(dependency)
-      expect(inputs).toContain(variant === 'baseline' ? vendor.rendererPath : patchedRendererPath)
+      expect(inputs).toContain(variant === 'baseline' ? originalRendererPath : vendor.rendererPath)
       expect(inputs.some((input) => /\/react(?:-dom)?@18\./.test(input))).toBe(false)
     }
     server = http.createServer((request, response) => {
@@ -332,7 +332,7 @@ test('pinned Next host replay reproduces #418 and the upstream cursor backport p
     expect(observations[2].probes).toEqual(observations[3].probes)
     expect(serverRequests).toEqual([])
     // Ensure building/running the diagnostic never changed the installed bytes.
-    expect(sha256(readFileSync(vendor.rendererPath))).toBe(RENDERER_SHA256)
+    expect(sha256(readFileSync(vendor.rendererPath))).toBe(PATCHED_RENDERER_SHA256)
   } finally {
     try {
       await testInfo.attach('next-vendored-host-replay.json', { body: Buffer.from(JSON.stringify(evidence, null, 2)), contentType: 'application/json' })

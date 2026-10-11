@@ -2,10 +2,12 @@ import type { CDPSession, Page, TestInfo } from '@playwright/test'
 import { createHash } from 'node:crypto'
 
 // Test-only CDP observer: never rewrite a response or guess another React hook.
-export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/082d2186-2be66f8bc71d1842.js'
-export const LEGACY_SETTINGS_REACT_SHA256 = 'a0e4c895093e4f49edffedacbeca356d139ebced5a1f3b68cd5783f6a94388b3'
-export const LEGACY_SETTINGS_REACT_BYTES = 173025
-const CLAIM_LOCATION = { lineNumber: 0, columnNumber: 35055 } as const
+// Exact normal-channel production bundle after the reviewed Next 15.5.27
+// host-replay backport. rD(e), rN (cursor), and rP (parent) retain their roles.
+export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/acabd415-aedf19c35bd5be5e.js'
+export const LEGACY_SETTINGS_REACT_SHA256 = 'fa2c533810f6e61eaa4849afbc041758c4eb89953b7f19f71e5b3527e1748941'
+export const LEGACY_SETTINGS_REACT_BYTES = 173133
+const CLAIM_LOCATION = { lineNumber: 0, columnNumber: 35054 } as const
 const COMMAND_TIMEOUT_MS = 250
 const SETUP_TIMEOUT_MS = 2000
 const PAUSE_WATCHDOG_MS = 1000
@@ -119,7 +121,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   // Chrome can advance the first statement to Error(), six columns later.
   // This range stays within the reviewed rD statement of the exact hash pin.
   const locationMatches = (location: { lineNumber: number; columnNumber?: number }) => location.lineNumber === 0
-    && typeof location.columnNumber === 'number' && location.columnNumber >= 35055 && location.columnNumber <= 35061
+    && typeof location.columnNumber === 'number' && location.columnNumber >= 35054 && location.columnNumber <= 35060
 
   async function removeOwnedBreakpoint(id = breakpointId) {
     if (!session || !id || breakpointRemoved) return
