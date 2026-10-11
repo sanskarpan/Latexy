@@ -9,7 +9,7 @@ import { digest, extractReceivedPdfText, isAdmissionRequest, normalizedText, obs
 const apiOrigin = localHttpOrigin(process.env.REAL_PREVIEW_API_URL)
 const originalBullet = firstEditableBullet(FIRST_USE_ENGINE_RESUME_TEMPLATE)
 const finalBullet = 'Verified latest customer support workflow.'
-type Observed = ReturnType<typeof observeRealPreview>
+type Observed = Awaited<ReturnType<typeof observeRealPreview>>
 
 async function renderedPdfText(page: Page) {
   return normalizedText((await page.locator('.react-pdf__Page__textContent span').allTextContents()).join(' '))
@@ -95,7 +95,7 @@ async function replaceSourceThroughEditor(page: Page, source: string) {
 }
 
 test('normal guest compiles the shipped source and renders only the latest exact edited artifact', async ({ page }) => {
-  const observed = observeRealPreview(page, apiOrigin)
+  const observed = await observeRealPreview(page, apiOrigin)
   const started = Date.now()
   const samples: Awaited<ReturnType<typeof assertRenderedArtifact>>[] = []
   let cooldownMilliseconds = 0
@@ -157,15 +157,19 @@ test('normal guest compiles the shipped source and renders only the latest exact
     expect(observed.externalRequestCount()).toBe(0)
     passed = true
   } finally {
+    await observed.dispose()
     const evidenceDir = resolve(process.env.CI_ISOLATED_EVIDENCE_DIR ?? 'test-results/real-preview')
     await mkdir(evidenceDir, { recursive: true })
     await writeFile(resolve(evidenceDir, 'browser-proof.json'), JSON.stringify({
-      success: passed, scenario: 'normal-guest-initial-and-latest-source', measured_at_utc: new Date().toISOString(),
+      success: passed && observed.captureErrors.length === 0, scenario: 'normal-guest-initial-and-latest-source', measured_at_utc: new Date().toISOString(),
       elapsed_ms: Date.now() - started, normal_guest_cooldown_ms: cooldownMilliseconds,
       samples, admission_count: observed.admissions.length, runtime_error_count: observed.runtimeErrors.length,
       capture_error_count: observed.captureErrors.length, external_request_count: observed.externalRequestCount(),
+      artifact_transfers: observed.transferDiagnostics(),
       limitations: ['Two isolated functional samples; no production SLO or percentile claim.',
+        'Test-local original-response clone observation can perturb timing; no latency acceptance claim.',
         'Saved-owner authentication and AI/provider flows are not exercised.'],
     }, null, 2) + '\n', { mode: 0o600 })
+    if (passed && observed.captureErrors.length) throw new Error('Original browser capture did not settle and clean up successfully')
   }
 })

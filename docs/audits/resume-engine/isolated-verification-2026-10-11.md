@@ -226,6 +226,57 @@ results: **142 passed / three intentional skips**, **82/82 explicit owner/editor
 cases with zero retries**, and **one hydration case passed**. Neither prior
 intermittent React 418 reproduced; those historical observations are retained.
 
+The [fifth CI execution, 38126692748](https://github.com/sanskarpan/Latexy/actions/runs/38126692748),
+on head `d69d9ee0`, passed the actual Origin capability GET and all four
+preflights, both complete API/storage fixtures, all **11** required ledger cases
+and both direct Lua fixtures. The real Chromium guest then compiled its shipped
+source; the captured page contains the expected PDF text and semantic edit
+overlays. Its strict byte assertion nevertheless failed: Playwright's
+`Response.body()` observer returned zero bytes for a **56,125-byte** manifest.
+No browser runtime/capture error or external request was recorded. The two-sample
+browser gate remains failed; the rendered snapshot alone is not sufficient.
+
+The [downloaded artifact 11697153445](https://github.com/sanskarpan/Latexy/actions/runs/38126692748/artifacts/11697153445)
+matches SHA-256 `8acab33d0b77d02ee48a097ad045ea11ff1c224ebfc0ef24c7337e2ee01ab07b`.
+It records actual merge-ref checkout `3967a7b90f81749123f91b87cb09c15ab40f6de5`,
+candidate image `sha256:8ab70dd04d98b8fd45d585d2d2bf97d326526b70a2f5df5268e68e6f72bb2d0d`,
+renderer assets `0c9cc42fde158f250b4dc435222dd2c4a1220e738870b7b5ed56c798ef60c66b`,
+and successful cleanup. The other **14 CI jobs passed**, with clean ordinary
+browser results of **142 passed / three skips**, **82 passed with zero retries**
+and **one hydration pass**.
+
+[Playwright issue 42862](https://github.com/microsoft/playwright/issues/42862)
+reports a Chromium regression from 1.63: after an application consumes
+`fetch().blob()`, the Node-side response observer may return an empty body even
+though the browser received all bytes. The locked version here is 1.64.0, and
+the application verifies its actual Blob size/hash before rendering. This is a
+strongly supported explanation, not an independently reproduced cause for this
+specific CI response. Waiting for request completion cannot recover an evicted
+body, and re-fetching the URL would verify a different response. Any workaround
+must observe the original browser response without another request, keep exact
+byte/hash assertions and disclose observer overhead rather than claim latency
+acceptance.
+
+The test-local workaround clones only the original successful PDF GET response
+from the exact owned API origin, then returns the identical native Response to
+the application. It never re-fetches, fulfills or changes a response. Copied
+bytes must match the real request's job, artifact, request ID and fingerprint;
+the existing exact length/hash, PDF extraction, geometry, SyncTeX, painted text
+and keyboard checks remain required. The observer is bounded to six PDF
+captures, 20 MiB each and ten seconds per capture, including binding delivery.
+Capture errors, missing/incorrect bytes, late delivery and cleanup failures fail
+the gate. Owned init-script and binding handles are disposed using the supported
+Playwright API. Redacted transfer diagnostics contain sizes, hashes and matching
+booleans rather than source, raw fingerprints or credentials. Clone observation
+may affect buffering and timing, so this remains functional evidence rather than
+latency acceptance. The corrected real-browser run is still pending.
+The final capture correction passes **60** focused cases across three files,
+full TypeScript, full frontend ESLint and static discovery of exactly one real-browser
+case. Independent source review found no remaining blocker. These tests cover
+unchanged original-response consumption, exact binary copying, absent/incorrect
+bytes, method/origin/identity mismatches, late/hung delivery and cleanup failure;
+they do not substitute for the next actual browser execution.
+
 The new `test_converter_failure_ledger_integration.py` passed **11 cases, no
 skips, in 3.89 seconds** with warnings treated as errors against disposable
 PostgreSQL/Redis. Its final run also removed the optional `TEST_REDIS_*`
