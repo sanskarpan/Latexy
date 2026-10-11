@@ -750,13 +750,12 @@ test.describe('legacy Settings provider callback owner isolation', () => {
 
   test('same-owner GitHub legacy callback succeeds after the session token rotates', async ({ page, context }, testInfo) => {
     const fixture = await installFixture(context, page, 'github', { legacyACallNumber: 4 })
-    // The ordinary required run is unchanged. Only a separate failure-only CI
-    // replay opts into structural diagnostics; never treat it as acceptance.
-    const diagnostics = process.env.LEGACY_SETTINGS_HYDRATION_DIAGNOSTICS === '1'
-      ? await installLegacySettingsHydrationDiagnostics(page) : null
+    // Observe the original required case before navigation without changing
+    // production bytes, behavior assertions, or React's mismatch throw.
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(page, appBaseUrl())
+    let originalFailure = false
     try {
       await page.goto('/settings', { waitUntil: 'domcontentloaded' })
-      if (diagnostics) await diagnostics.verifyHookLoaded(1)
       await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-1')
       await expect(page.getByText('AliceInitialGitHub', { exact: true })).toBeVisible()
 
@@ -764,9 +763,7 @@ test.describe('legacy Settings provider callback owner isolation', () => {
       await expect.poll(() => bodyReads(page, fixture)).toContain('status-github-a-2')
       await expect(page.getByText('AliceRotatedGitHub', { exact: true })).toBeVisible()
 
-      if (diagnostics) await diagnostics.checkpoint()
       await page.goto('/settings?github=connected', { waitUntil: 'domcontentloaded' })
-      if (diagnostics) await diagnostics.verifyHookLoaded(2)
       await expect.poll(() => bodyReads(page, fixture)).toContain('legacy-github-a')
       await expect(page.getByText('AliceLegacyGitHub', { exact: true })).toBeVisible()
       await expect(page.getByText('GitHub account connected successfully!', { exact: true })).toBeVisible()
@@ -776,8 +773,12 @@ test.describe('legacy Settings provider callback owner isolation', () => {
         tokenVersion: 'rotated-a',
       })
       await assertFixtureClean(fixture)
+      await diagnostics.verifyReady(2)
+    } catch (error) {
+      originalFailure = true
+      throw error
     } finally {
-      if (diagnostics) await diagnostics.attach(testInfo)
+      await diagnostics.finish(testInfo, originalFailure)
     }
   })
 
