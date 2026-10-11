@@ -592,6 +592,8 @@
     "always_on_reason": null,
     "source_paths": [
       "backend/app/api/ai_routes.py",
+      "backend/app/api/routes.py",
+      "frontend/src/app/settings/page.tsx",
       "frontend/src/components/PersonalDictionarySettings.tsx",
       "frontend/src/components/LaTeXEditor.tsx"
     ]

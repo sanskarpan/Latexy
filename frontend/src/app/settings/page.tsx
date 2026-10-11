@@ -15,6 +15,17 @@ import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { claimOAuthCompletion } from '@/lib/oauth-completion-claims'
 
+function shouldShowIntegrationCard(state: {
+  canConnect: boolean
+  isLoading: boolean
+  isConnected: boolean
+  hasRecoveryState: boolean
+}): boolean {
+  // Loading alone does not reveal an unavailable integration. The other
+  // fields preserve granted, connected, and owner-scoped recovery states.
+  return state.canConnect || state.isConnected || state.hasRecoveryState
+}
+
 function SettingsContent() {
   const { can } = useEntitlements()
   const canRef = useRef(can)
@@ -137,6 +148,7 @@ function SettingsContent() {
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
   const handleReplayTour = () => {
+    if (!canRef.current('a06')) return
     resetOnboarding()
     router.push('/workspace')
   }
@@ -295,6 +307,9 @@ function SettingsContent() {
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
+  const integrationStatusOwnerIdRef = useRef<string | null>(null)
+  const integrationStatusOwnerMatches = Boolean(providerActionOwnerId)
+    && integrationStatusOwnerIdRef.current === providerActionOwnerId
   const oauthCompletionHandledRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
@@ -330,6 +345,7 @@ function SettingsContent() {
   const [gdriveDisconnecting, setGdriveDisconnecting] = useState(false)
   const [gdriveError, setGdriveError] = useState<string | null>(null)
   const [gdriveSuccess, setGdriveSuccess] = useState<string | null>(null)
+  const [gdriveRetrying, setGdriveRetrying] = useState(false)
   type GoogleDriveCompletionOwner = {
     accountKey: string
     ticket: string
@@ -421,6 +437,7 @@ function SettingsContent() {
     setDbxDisconnecting(false)
     setMenDisconnecting(false)
     setGdriveLoading(false)
+    setGdriveRetrying(false)
     setGdriveDisconnecting(false)
   }, [providerActionIdentity.generation])
 
@@ -460,6 +477,7 @@ function SettingsContent() {
   useEffect(() => {
     if (sessionLoading) return
     if (!sessionData) {
+      integrationStatusOwnerIdRef.current = null
       setLoading(false)
       setGhLoading(false)
       setZotLoading(false)
@@ -467,6 +485,34 @@ function SettingsContent() {
       setDbxLoading(false)
       setGdriveLoading(false)
       return
+    }
+
+    const statusOwnerId = sessionData.user?.id ?? null
+    if (integrationStatusOwnerIdRef.current !== statusOwnerId) {
+      // Integration connection details and recovery notices belong to one
+      // account. Clear the prior owner's snapshot before admitting this one.
+      integrationStatusOwnerIdRef.current = statusOwnerId
+      setGhStatus({ connected: false, username: null, public_import: false, private_sync: false })
+      setZotStatus({ connected: false, username: null, user_id: null })
+      setMenStatus({ connected: false, name: null })
+      setDbxStatus({ connected: false, display_name: null, account_id: null })
+      setGdriveStatus({ connected: false, scope: null })
+      setGhError(null)
+      setGhSuccess(null)
+      setZotError(null)
+      setZotSuccess(null)
+      setMenError(null)
+      setMenSuccess(null)
+      setDbxError(null)
+      setDbxSuccess(null)
+      setGdriveError(null)
+      setGdriveSuccess(null)
+      setGdriveRetrying(false)
+      setGhLoading(true)
+      setZotLoading(true)
+      setMenLoading(true)
+      setDbxLoading(true)
+      setGdriveLoading(true)
     }
 
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
@@ -1289,6 +1335,7 @@ function SettingsContent() {
     const action = beginProviderAction('google_drive')
     if (!action) return
     setGdriveLoading(true)
+    setGdriveRetrying(true)
     setGdriveError(null)
     try {
       const status = await apiClient.getGoogleDriveStatus(action.accountContext)
@@ -1301,6 +1348,7 @@ function SettingsContent() {
       if (action.isCurrent()) {
         providerActionActiveRef.current.google_drive = false
         setGdriveLoading(false)
+        setGdriveRetrying(false)
       }
     }
   }
@@ -1446,7 +1494,7 @@ function SettingsContent() {
         </div>
 
         {/* Account-synced spelling dictionary */}
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
+        {can('c16') && <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
               <BookOpen size={14} className="text-accent-strong" />
@@ -1454,13 +1502,20 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Personal Dictionary</h2>
           </div>
           <PersonalDictionarySettings />
-        </div>
+        </div>}
 
         <SecuritySettings />
 
         <ReferralPanel />
 
         {/* GitHub Integration card */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g01'),
+          isLoading: integrationStatusOwnerMatches && ghLoading,
+          isConnected: integrationStatusOwnerMatches && ghStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(ghSuccess || ghError || ghConnecting || ghDisconnecting || (ghLoading && searchParams.get('github') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.github.ownerId === providerActionOwnerId && Boolean(ghSuccess || ghError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-surface-2">
@@ -1556,8 +1611,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Zotero Integration card (Feature 42) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g07'),
+          isLoading: integrationStatusOwnerMatches && zotLoading,
+          isConnected: integrationStatusOwnerMatches && zotStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(zotSuccess || zotError || zotConnecting || zotDisconnecting || (zotLoading && searchParams.get('zotero') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.zotero.ownerId === providerActionOwnerId && Boolean(zotSuccess || zotError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1625,8 +1688,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Mendeley Integration card (Feature 42) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g08'),
+          isLoading: integrationStatusOwnerMatches && menLoading,
+          isConnected: integrationStatusOwnerMatches && menStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(menSuccess || menError || menConnecting || menDisconnecting || (menLoading && searchParams.get('mendeley') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.mendeley.ownerId === providerActionOwnerId && Boolean(menSuccess || menError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1694,8 +1765,16 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Dropbox Integration card (Feature 77) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g05'),
+          isLoading: integrationStatusOwnerMatches && dbxLoading,
+          isConnected: integrationStatusOwnerMatches && dbxStatus.connected,
+          hasRecoveryState: (integrationStatusOwnerMatches && Boolean(dbxSuccess || dbxError || dbxConnecting || dbxDisconnecting || (dbxLoading && searchParams.get('dropbox') === 'connected')))
+            || (Boolean(providerActionOwnerId) && legacyOwnedNoticeRef.current.dropbox.ownerId === providerActionOwnerId && Boolean(dbxSuccess || dbxError)),
+        }) && (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1761,8 +1840,15 @@ function SettingsContent() {
             </p>
           )}
         </div>
+        )}
 
         {/* Google Drive export (B50a) */}
+        {shouldShowIntegrationCard({
+          canConnect: integrationStatusOwnerMatches && can('g06'),
+          isLoading: integrationStatusOwnerMatches && gdriveLoading,
+          isConnected: integrationStatusOwnerMatches && gdriveStatus.connected,
+          hasRecoveryState: integrationStatusOwnerMatches && Boolean(gdriveSuccess || gdriveError || gdriveConnecting || gdriveDisconnecting || gdriveRetrying),
+        }) && (
         <div data-testid="google-drive-card" className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
@@ -1831,6 +1917,7 @@ function SettingsContent() {
             </div>
           )}
         </div>
+        )}
 
         {/* Notification preferences card */}
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
@@ -2165,7 +2252,7 @@ function SettingsContent() {
         </div>
 
         {/* Getting started — replay the first-run product tour on demand. */}
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
+        {can('a06') && <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
           <div className="flex items-center gap-2">
             <BookOpen size={16} className="text-accent-strong" />
             <h2 className="text-base font-semibold text-fg">Getting Started</h2>
@@ -2178,7 +2265,7 @@ function SettingsContent() {
           >
             Replay product tour
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   )

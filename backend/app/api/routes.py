@@ -25,6 +25,7 @@ from ..database.models import Compilation, JobFinalization, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..middleware.auth_middleware import get_current_user_required as _require_user
 from ..middleware.capability_router import CapabilityRouter as APIRouter
+from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
@@ -349,6 +350,19 @@ async def update_me_preferences(
     if body.theme is not None:
         prefs["theme"] = body.theme
     if body.spell_dictionary is not None:
+        stored_dictionary = prefs.get("spell_dictionary")
+        existing_words = {
+            word.strip().lower()
+            for word in stored_dictionary
+            if isinstance(word, str) and word.strip()
+        } if isinstance(stored_dictionary, list) else set()
+        requested_words = set(body.spell_dictionary)
+        # The dictionary belongs to c16, but OFF should not strand existing
+        # account data: idempotent syncs and removals remain available. Check
+        # the authenticated owner's current capability only before admitting
+        # a genuinely new word, before any preference state is persisted.
+        if requested_words - existing_words:
+            await enforce_capabilities(("c16",), user.id)
         prefs["spell_dictionary"] = body.spell_dictionary
     meta["preferences"] = prefs
     user.user_metadata = meta

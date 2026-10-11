@@ -1,11 +1,16 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { normalizeDictionaryWord, usePersonalDictionary } from '@/hooks/useSpellCheck'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 export default function PersonalDictionarySettings() {
+  const { can } = useEntitlements()
+  const dictionaryAllowed = can('c16')
+  const canRef = useRef(can)
+  canRef.current = can
   const { session, isPending, error: sessionError } = useRequireAuth()
   const ownerId = session?.user?.id ?? null
   const dictionaryScope = useMemo(() => ({
@@ -13,7 +18,7 @@ export default function PersonalDictionarySettings() {
     authToken: session?.session?.token ?? null,
     confirmed: ownerId !== null || (!isPending && !sessionError),
   }), [isPending, ownerId, session?.session?.token, sessionError])
-  const dictionary = usePersonalDictionary(dictionaryScope)
+  const dictionary = usePersonalDictionary(dictionaryScope, dictionaryAllowed)
   const words = useMemo(
     () => [...dictionary.words].sort((a, b) => a.localeCompare(b)),
     [dictionary.words],
@@ -30,6 +35,7 @@ export default function PersonalDictionarySettings() {
 
   function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canRef.current('c16')) return
     const normalized = normalizeDictionaryWord(entry)
     if (!normalized) {
       setError('Enter one word of 64 characters or fewer, without spaces.')
@@ -45,9 +51,12 @@ export default function PersonalDictionarySettings() {
   }
 
   function handleRemove(word: string) {
+    if (!canRef.current('c16')) return
     setError(null)
     dictionary.removeWord(word)
   }
+
+  if (!dictionaryAllowed) return null
 
   return (
     <div className="space-y-4">

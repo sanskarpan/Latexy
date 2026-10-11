@@ -288,6 +288,7 @@
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/settings/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
@@ -2312,10 +2313,14 @@
       "serverHandlers": [
         "backend/app/api/ai_routes.py:spell_check"
       ],
-      "dynamicOrServiceGates": [],
+      "dynamicOrServiceGates": [
+        "backend/app/api/routes.py:update_me_preferences (normalized dictionary additions require current owner policy; unchanged words and removals remain available)"
+      ],
       "clientControls": [
+        "frontend/src/app/settings/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
-        "frontend/src/components/LaTeXEditor.tsx"
+        "frontend/src/components/LaTeXEditor.tsx",
+        "frontend/src/components/PersonalDictionarySettings.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",

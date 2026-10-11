@@ -8,6 +8,16 @@ from __future__ import annotations
 import pytest
 
 from app.api.routes import MeResponse, UserPreferencesUpdate, _user_preferences
+from app.services.entitlement_service import entitlement_service
+
+
+def _set_dictionary_capability(monkeypatch, *, allowed: bool):
+    async def has_feature(key, *, user, db=None):
+        assert key == "c16"
+        assert user
+        return allowed
+
+    monkeypatch.setattr(entitlement_service, "has_feature", has_feature)
 
 
 class _FakeUser:
@@ -75,7 +85,8 @@ class TestUserPreferences:
 
 
 @pytest.mark.asyncio
-async def test_spell_dictionary_round_trips_without_replacing_other_preferences(client, auth_headers):
+async def test_spell_dictionary_round_trips_without_replacing_other_preferences(client, auth_headers, monkeypatch):
+    _set_dictionary_capability(monkeypatch, allowed=True)
     first = await client.patch(
         "/me/preferences",
         headers=auth_headers,
@@ -98,3 +109,73 @@ async def test_spell_dictionary_round_trips_without_replacing_other_preferences(
     loaded = await client.get("/me", headers=auth_headers)
     assert loaded.status_code == 200
     assert loaded.json()["preferences"] == updated.json()["preferences"]
+
+
+@pytest.mark.asyncio
+async def test_spell_dictionary_new_word_is_denied_without_mutating_preferences(client, auth_headers, monkeypatch):
+    _set_dictionary_capability(monkeypatch, allowed=False)
+    before = (await client.get("/me", headers=auth_headers)).json()["preferences"]
+
+    denied = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"spell_dictionary": ["capability-off-new-word"]},
+    )
+    assert denied.status_code == 403
+    assert (await client.get("/me", headers=auth_headers)).json()["preferences"] == before
+
+
+@pytest.mark.asyncio
+async def test_spell_dictionary_existing_words_can_sync_or_be_removed_when_off(client, auth_headers, monkeypatch):
+    capability = {"allowed": True}
+
+    async def has_feature(key, *, user, db=None):
+        assert key == "c16"
+        assert user
+        return capability["allowed"]
+
+    monkeypatch.setattr(entitlement_service, "has_feature", has_feature)
+    seeded = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"spell_dictionary": ["keep-word", "remove-word"]},
+    )
+    assert seeded.status_code == 200
+    capability["allowed"] = False
+
+    same = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"spell_dictionary": ["keep-word", "remove-word"]},
+    )
+    assert same.status_code == 200
+    assert same.json()["preferences"]["spell_dictionary"] == ["keep-word", "remove-word"]
+
+    removed = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"spell_dictionary": ["keep-word"]},
+    )
+    assert removed.status_code == 200
+    assert removed.json()["preferences"]["spell_dictionary"] == ["keep-word"]
+
+
+@pytest.mark.asyncio
+async def test_spell_dictionary_mixed_theme_and_new_word_denial_is_atomic(client, auth_headers, monkeypatch):
+    _set_dictionary_capability(monkeypatch, allowed=True)
+    initialized = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"theme": "light", "spell_dictionary": ["existing-word"]},
+    )
+    assert initialized.status_code == 200
+    before = initialized.json()["preferences"]
+    _set_dictionary_capability(monkeypatch, allowed=False)
+
+    denied = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"theme": "dark", "spell_dictionary": ["existing-word", "new-word"]},
+    )
+    assert denied.status_code == 403
+    assert (await client.get("/me", headers=auth_headers)).json()["preferences"] == before

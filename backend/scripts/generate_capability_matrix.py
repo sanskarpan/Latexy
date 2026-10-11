@@ -30,6 +30,7 @@ DYNAMIC = {
     "c22": ["workers/auto_save_worker.py:submit_auto_save_checkpoint (new automatic checkpoint admission)"],
     "c12": ["middleware/capability_router.py:payload_capabilities (jobs/submit auto_fit)"],
     "c14": ["middleware/capability_router.py:payload_capabilities (presentation document type)", "api/template_routes.py:use_template (presentation template)"],
+    "c16": ["api/routes.py:update_me_preferences (normalized dictionary additions require current owner policy; unchanged words and removals remain available)"],
     "d01": ["middleware/capability_router.py:payload_capabilities (llm_optimization/combined)", "api/public_api_routes.py:require_developer_operation/_authorize (optimize)"],
     "d02": ["middleware/capability_router.py:payload_capabilities (guided industry/seniority/tone/emphasize/downplay)"],
     "d18": ["middleware/capability_router.py:payload_capabilities (ATS and combined jobs)", "api/public_api_routes.py:require_developer_operation/_authorize (ATS)"],
