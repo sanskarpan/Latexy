@@ -1114,6 +1114,10 @@ export default function ResumeEditPage() {
   ) ? checkpointRecoveryPreview : null
   const checkpointRecoveryPreviewRef = useRef(currentCheckpointRecoveryPreview)
   checkpointRecoveryPreviewRef.current = currentCheckpointRecoveryPreview
+  // Keep the existing editor instance mounted across responsive changes while
+  // its shared model is hidden behind the recovered, read-only source view.
+  const checkpointRecoveryMobileRef = useRef(isMobile)
+  const recoveryEditorIsMobile = currentCheckpointRecoveryPreview ? checkpointRecoveryMobileRef.current : isMobile
   const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
   useEffect(() => {
     offlinePdfMountedRef.current = true
@@ -2383,6 +2387,7 @@ export default function ResumeEditPage() {
 
   const runAiOptimize = async () => {
     if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || !canRef.current('c01')) return
+    if (checkpointRecoveryPreviewRef.current) return
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -2509,12 +2514,13 @@ export default function ResumeEditPage() {
         generation: generationAtStart,
       })
       if (!preview) return
+      if (!checkpointRecoveryPreviewRef.current) checkpointRecoveryMobileRef.current = isMobile
       setCheckpointRecoveryPreview(preview)
     }
     setLatexContent(latex)
     setSavedSnapshot((current) => ({ ...current, latex }))
     closeDiff?.()
-  }, [isCurrentOfflinePdfIdentity, pushUndo, resumeId, sessionData?.session?.token, sessionUserId])
+  }, [isCurrentOfflinePdfIdentity, isMobile, pushUndo, resumeId, sessionData?.session?.token, sessionUserId])
 
   const handleHistoryRestore = useCallback((latex: string) => {
     handleCheckpointRestore(latex)
@@ -3824,7 +3830,7 @@ export default function ResumeEditPage() {
             {/* WYSIWYG mode (Feature 78) */}
             {can('b10') && editorMode === 'wysiwyg' ? (
               <VisualResumeEditor value={latexContent} onChange={handleEditorContentChange} readOnly={!canEditDocument} />
-            ) : isMobile ? (
+            ) : recoveryEditorIsMobile ? (
               /* Mobile: lightweight CodeMirror editor (Feature 79E) */
               <MobileEditor
                 ref={editorRef}
@@ -4202,7 +4208,7 @@ export default function ResumeEditPage() {
             {can('d01') && rightTab === 'ai' && (
               <AIPanel
                 visualOnly={editorMode === 'wysiwyg'}
-                canStartRun={can('d18') && can('c05') && can('c01')}
+                canStartRun={can('d18') && can('c05') && canEditDocument}
                 canEditDocument={canEditDocument}
                 aiStream={aiStream}
                 isRunning={isAiRunning}

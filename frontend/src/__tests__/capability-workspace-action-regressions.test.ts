@@ -30,12 +30,26 @@ function action(source: ts.SourceFile, name: string, context: Record<string, unk
   }
   visit(source)
   expect(expression, name).toBeDefined()
-  const scope = { canRef: { current: () => false }, ...context }
+  const scope = { canRef: { current: () => false }, checkpointRecoveryPreviewRef: { current: null }, checkpointRecoveryMobileRef: { current: false }, isMobile: false, ...context }
   const js = ts.transpileModule(`const action = ${expression!.getText(source)}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   return new Function(...Object.keys(scope), `${js}\nreturn action`)(...Object.values(scope)) as (...args: unknown[]) => Promise<unknown>
 }
 
 describe('workspace optional-action regressions', () => {
+  it('preserves the hidden shared editor instance when a recovery view crosses the mobile breakpoint', () => {
+    let expression: ts.Expression | undefined
+    const visit = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) && node.name.getText(editorPage) === 'recoveryEditorIsMobile') expression = node.initializer
+      ts.forEachChild(node, visit)
+    }
+    visit(editorPage)
+    expect(expression).toBeDefined()
+    const chooseEditor = new Function('currentCheckpointRecoveryPreview', 'checkpointRecoveryMobileRef', 'isMobile', `return ${expression!.getText(editorPage)}`)
+    expect(chooseEditor({ source: 'recovered' }, { current: false }, true)).toBe(false)
+    expect(chooseEditor({ source: 'recovered' }, { current: true }, false)).toBe(true)
+    expect(chooseEditor(null, { current: false }, true)).toBe(true)
+  })
+
   it('shows an owned recovered checkpoint without writing the bound shared model when c01 is off', () => {
     const setValue = vi.fn()
     const setCheckpointRecoveryPreview = vi.fn()
@@ -114,6 +128,15 @@ describe('workspace optional-action regressions', () => {
     expect(setValue).not.toHaveBeenCalled()
     expect(setLatexContent).toHaveBeenCalledExactlyOnceWith('new peer source')
     expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it('does not start source optimization from a hidden shared model during read-only recovery', async () => {
+    const optimizeAndCompile = vi.fn()
+    await action(editorPage, 'runAiOptimize', {
+      canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
+      apiClient: { optimizeAndCompile },
+    })()
+    expect(optimizeAndCompile).not.toHaveBeenCalled()
   })
 
   it('tracks an owned admitted optimization after revocation but blocks applying its source', async () => {

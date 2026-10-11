@@ -107,7 +107,11 @@ describe('Studio composite admission controls', () => {
   it('restores a stored Auto preference on re-enable without writing it during denial', () => {
     grants.add('a09'); grants.add('c06'); grants.add('c01'); grants.add('c05')
     const before = policy(true)
-    for (const button of autoButtons) expect(render(guarded(button), before)).toContain('aria-pressed="true"')
+    for (const button of autoButtons) {
+      const html = render(guarded(button), before)
+      expect(html).toContain('aria-pressed="true"')
+      expect(html).toContain('aria-label="Automatically update the PDF after edits"')
+    }
     grants.delete('a09')
     expect(policy(true).autoCompile).toBe(false)
     const writePreference = vi.fn()

@@ -116,10 +116,12 @@ test('public routes expose named controls and valid document structure', async (
             await expect(routePage.getByRole('heading', { level: 1, name: 'LaTeX templates, ready to use.' })).toBeVisible()
         }
         if (route === '/pricing') {
-            await expect(routePage.getByRole('heading', { level: 2, name: 'Available plans' })).toBeVisible()
-            await expect(routePage.getByRole('heading', { level: 3, name: 'Free', exact: true })).toBeVisible()
-            await expect(routePage.getByRole('button', { name: 'Select Plan', exact: true })).toBeEnabled()
-            await expect(routePage.getByRole('button', { name: 'Purchases disabled in this test', exact: true })).toBeDisabled()
+            await expect(routePage.getByRole('heading', { level: 1, name: "Start free. Pay only when it's working for you." })).toBeVisible()
+            for (const plan of ['Free', 'Basic', 'Pro', 'Your AI key']) {
+                await expect(routePage.getByRole('heading', { level: 2, name: plan, exact: true })).toBeVisible()
+            }
+            await expect(routePage.getByRole('link', { name: 'Try the résumé builder →' })).toHaveAttribute('href', '/try?mode=visual')
+            await expect(routePage.getByRole('link', { name: 'Choose Basic', exact: true })).toHaveAttribute('href', '/billing')
         }
 
         const audit = await routePage.evaluate(() => {
@@ -351,10 +353,10 @@ test('disabled templates expose a named recovery page without mounting the catal
 test('denied studio import preserves the baseline editor and manual compile', async ({ page }) => {
     const { backendOrigin } = qualityOrigins()
     await page.route(url => url.origin === backendOrigin && url.pathname === '/config/entitlements', route =>
-        fulfillQualityJson(route, { features: { ...QUALITY_FEATURES, b06: false } })
+        fulfillQualityJson(route, { features: { ...QUALITY_FEATURES, a09: true, b01: true, c01: true, c05: true, b06: false } })
     )
     await page.goto('/try', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('button', { name: /Recompile/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update PDF preview' })).toBeVisible()
     const tools = page.getByRole('button', { name: 'Tools', exact: true })
     if (await tools.isVisible()) await tools.click()
     await expect(page.getByRole('button', { name: /Import file/ })).toHaveCount(0)

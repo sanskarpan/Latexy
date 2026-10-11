@@ -100,7 +100,8 @@ describe('editor save reliability', () => {
   it('hides new AI compile actions when compilation is off and preserves read-only recovery', () => {
     expect(EDITOR).toContain("if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || !canRef.current('c01')) return")
     expect(EDITOR).toContain('<CapabilityGate feature="d01"><CapabilityGate feature="d18"><CapabilityGate feature="c05"><CapabilityGate feature="c01">')
-    expect(EDITOR).toContain('canStartRun={can(\'d18\') && can(\'c05\') && can(\'c01\')}')
+    expect(EDITOR).toContain('canStartRun={can(\'d18\') && can(\'c05\') && canEditDocument}')
+    expect(EDITOR).toContain("const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview")
     expect(EDITOR).toContain("if (!canRef.current('c12') || !canRef.current('c05') || !canRef.current('c01')) return")
     expect(EDITOR).toContain("if (!canRef.current('c01')) return false")
     expect(EDITOR).toContain('onApplyFix={canEditDocument ? handleApplyExplainerFix : undefined}')

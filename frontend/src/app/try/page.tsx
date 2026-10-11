@@ -1810,6 +1810,7 @@ export default function TryPage() {
                 {autoCompileAllowed && <button
                     onClick={toggleAutoCompile}
                     title="Automatically update the PDF after edits"
+                    aria-label="Automatically update the PDF after edits"
                     aria-pressed={autoCompile}
                     className={`flex shrink-0 select-none items-center gap-1 rounded-[var(--radius-md)] border px-2.5 py-1.5 font-ui text-xs font-medium transition sm:hidden ${
                         autoCompile

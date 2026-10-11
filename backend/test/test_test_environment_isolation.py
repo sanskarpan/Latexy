@@ -118,6 +118,9 @@ def test_full_stack_allows_only_its_local_test_cors_without_relaxing_production(
     probe = """
 from app.core.config import settings
 assert settings.ENVIRONMENT == 'test'
+assert settings.RATE_LIMIT_ENABLED is True
+assert settings.RATE_LIMIT_CALLS_PER_MINUTE == 300
+assert type(settings).model_fields['RATE_LIMIT_CALLS_PER_MINUTE'].default == 60
 assert 'http://localhost:5180' in settings.effective_cors_origins()
 for environment in ('production', 'staging'):
     settings.ENVIRONMENT = environment
@@ -127,5 +130,6 @@ print('local test CORS works; deployed filtering remains intact')
     process = subprocess.run(["bash", "-c", 'source /dev/stdin; "$1" -c "$2"', "smoke", sys.executable, probe],
                              input=prefix, cwd=repository / "backend", capture_output=True, text=True, timeout=10,
                              env=dict(os.environ, ENVIRONMENT="staging", DATABASE_URL="postgresql://localhost/latexy_test",
+                                      FULL_STACK_RATE_LIMIT_CALLS_PER_MINUTE="",
                                       CORS_ORIGINS='["http://localhost:5180","http://127.0.0.1:5180"]'), check=True)
     assert 'deployed filtering remains intact' in process.stdout

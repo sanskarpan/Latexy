@@ -36,6 +36,12 @@ export CORS_ORIGINS="${CORS_ORIGINS:-[\"http://localhost:${FRONTEND_PORT}\",\"ht
 # Production/staging intentionally reject credentialed loopback CORS. This
 # launcher owns only isolated local services, so never inherit deployment mode.
 export ENVIRONMENT="test"
+# Capability acceptance deliberately reloads the editor repeatedly to exercise
+# role/global denials and recovery, sharing one synthetic actor's token bucket.
+# Keep middleware enabled with a finite smoke-only budget; production defaults
+# and the dedicated rate-limit regression tests continue to enforce 60/minute.
+export RATE_LIMIT_ENABLED=true
+export RATE_LIMIT_CALLS_PER_MINUTE="${FULL_STACK_RATE_LIMIT_CALLS_PER_MINUTE:-300}"
 # This is a local-service smoke, never a remote Modal workload. Environment
 # variables take precedence over deployment settings in a developer's .env.
 export DEPLOY_TARGET="local"
