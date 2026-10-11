@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 import { installFindCapabilityActions, OPTIONAL_FIND_ACTIONS } from '@/lib/editor-find-capability'
+import { createCheckpointRecoveryPreview } from '@/lib/checkpoint-recovery-preview'
 
 function read(relative: string) {
   return ts.createSourceFile(relative, readFileSync(new URL(relative, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -35,6 +36,86 @@ function action(source: ts.SourceFile, name: string, context: Record<string, unk
 }
 
 describe('workspace optional-action regressions', () => {
+  it('shows an owned recovered checkpoint without writing the bound shared model when c01 is off', () => {
+    const setValue = vi.fn()
+    const setCheckpointRecoveryPreview = vi.fn()
+    const setLatexContent = vi.fn()
+    const closeDiff = vi.fn()
+    const pushUndo = vi.fn()
+    const restore = action(editorPage, 'handleCheckpointRestore', {
+      sessionUserId: 'owner-a', sessionData: { session: { token: 'owner-token' } },
+      offlinePdfIdentityRef: { current: { generation: 7 } }, resumeId: 'resume-a',
+      isCurrentOfflinePdfIdentity: () => true, apiClient: { getAuthToken: () => 'owner-token' },
+      editorRef: { current: { setValue } }, createCheckpointRecoveryPreview,
+      setCheckpointRecoveryPreview, setLatexContent, setSavedSnapshot: vi.fn(), pushUndo,
+    })
+    restore('stored checkpoint source', closeDiff)
+    expect(setValue).not.toHaveBeenCalled()
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith({
+      ownerId: 'owner-a', resumeId: 'resume-a', generation: 7, source: 'stored checkpoint source',
+    })
+    expect(setLatexContent).toHaveBeenCalledExactlyOnceWith('stored checkpoint source')
+    expect(closeDiff).toHaveBeenCalledOnce()
+  })
+
+  it('does not show a recovered source after the authenticated owner token changes', () => {
+    const setCheckpointRecoveryPreview = vi.fn()
+    const setLatexContent = vi.fn()
+    const restore = action(editorPage, 'handleCheckpointRestore', {
+      sessionUserId: 'owner-a', sessionData: { session: { token: 'owner-token' } },
+      offlinePdfIdentityRef: { current: { generation: 7 } }, resumeId: 'resume-a',
+      isCurrentOfflinePdfIdentity: () => true, apiClient: { getAuthToken: () => 'other-token' },
+      setCheckpointRecoveryPreview, setLatexContent,
+    })
+    restore('owner-a source')
+    expect(setCheckpointRecoveryPreview).not.toHaveBeenCalled()
+    expect(setLatexContent).not.toHaveBeenCalled()
+  })
+
+  it('keeps a recovery view stable when the hidden shared editor receives changes after editing is re-enabled', () => {
+    const setLatexContent = vi.fn()
+    const change = action(editorPage, 'handleEditorContentChange', {
+      canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
+      setLatexContent,
+    })
+    change('new peer source')
+    expect(setLatexContent).not.toHaveBeenCalled()
+  })
+
+  it('keeps subsequent recoveries separate from a hidden shared model after editing is re-enabled', () => {
+    const setValue = vi.fn()
+    const setCheckpointRecoveryPreview = vi.fn()
+    const restore = action(editorPage, 'handleCheckpointRestore', {
+      canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'first checkpoint' } },
+      sessionUserId: 'owner-a', sessionData: { session: { token: 'owner-token' } },
+      offlinePdfIdentityRef: { current: { generation: 7 } }, resumeId: 'resume-a',
+      isCurrentOfflinePdfIdentity: () => true, apiClient: { getAuthToken: () => 'owner-token' },
+      editorRef: { current: { setValue } }, createCheckpointRecoveryPreview,
+      setCheckpointRecoveryPreview, setLatexContent: vi.fn(), setSavedSnapshot: vi.fn(), pushUndo: vi.fn(),
+    })
+    restore('second checkpoint')
+    expect(setValue).not.toHaveBeenCalled()
+    expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith({
+      ownerId: 'owner-a', resumeId: 'resume-a', generation: 7, source: 'second checkpoint',
+    })
+  })
+
+  it('returns explicitly to the live shared source without rewriting its model', () => {
+    const setValue = vi.fn()
+    const setLatexContent = vi.fn()
+    const setCheckpointRecoveryPreview = vi.fn()
+    const returnToShared = action(editorPage, 'handleReturnToSharedEditor', {
+      canRef: { current: () => true }, checkpointRecoveryPreviewRef: { current: { source: 'recovered' } },
+      editorRef: { current: { getValue: () => 'new peer source', setValue } },
+      latestLatexContentRef: { current: 'old source' }, setLatexContent, setCheckpointRecoveryPreview,
+    })
+    returnToShared()
+    expect(setValue).not.toHaveBeenCalled()
+    expect(setLatexContent).toHaveBeenCalledExactlyOnceWith('new peer source')
+    expect(setCheckpointRecoveryPreview).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
   it('tracks an owned admitted optimization after revocation but blocks applying its source', async () => {
     let resolveAdmission!: (value: { success: boolean; job_id: string }) => void
     const optimizeAndCompile = vi.fn(() => new Promise(resolve => { resolveAdmission = resolve }))

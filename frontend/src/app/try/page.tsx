@@ -89,7 +89,7 @@ const TOOL_CAPABILITIES: Partial<Record<Tool, string>> = {
 }
 
 export default function TryPage() {
-    const { can } = useEntitlements()
+    const { can, loaded: entitlementsLoaded } = useEntitlements()
     const canRef = useRef(can)
     canRef.current = can
     const studioAllowed = can('a09')
@@ -174,8 +174,10 @@ export default function TryPage() {
     const { enabled: autoCompilePreference, toggle: toggleAutoCompilePreference } = useAutoCompile()
     const { data: session, isPending: sessionPending } = useSession()
     const resolvedSession = hydrated ? session : null
-    const quickAtsAdmission = contentEditAllowed && Boolean(resolvedSession || studioAllowed)
-    const autoCompileAllowed = contentEditAllowed && compileAllowed && can('c06') && Boolean(resolvedSession || studioAllowed)
+    const studioActionAllowed = Boolean(resolvedSession || studioAllowed)
+    const visualModeAvailable = visualEditorAllowed && contentEditAllowed && studioActionAllowed
+    const quickAtsAdmission = contentEditAllowed && studioActionAllowed
+    const autoCompileAllowed = contentEditAllowed && compileAllowed && can('c06') && studioActionAllowed
     const autoCompile = autoCompileAllowed && autoCompilePreference
     const toggleAutoCompile = useCallback(() => {
         if (!canRef.current('c01') || !canRef.current('c05') || !canRef.current('c06') || (!resolvedSession && !canRef.current('a09'))) return
@@ -241,9 +243,10 @@ export default function TryPage() {
         }
     }, [])
 
+    const shouldFallbackFromDeniedVisualMode = hydrated && entitlementsLoaded && !visualModeAvailable && editorMode === 'visual'
     useEffect(() => {
-        if (!visualEditorAllowed && editorMode === 'visual') setEditorMode('source')
-    }, [visualEditorAllowed, editorMode])
+        if (shouldFallbackFromDeniedVisualMode) setEditorMode('source')
+    }, [shouldFallbackFromDeniedVisualMode])
 
     // Rehydrate the last locally-saved draft on mount so a reload/tab-close no
     // longer silently destroys work. The restored buffer becomes the clean
@@ -924,7 +927,7 @@ export default function TryPage() {
         setMobilePane('tools')
     }
     const changeEditorMode = (mode: 'visual' | 'source') => {
-        if (mode === 'visual' && !canRef.current('b10')) return
+        if (mode === 'visual' && (!canRef.current('b10') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09')))) return
         if (mode === editorMode) return
         if (!canRef.current('c01') && mode === 'visual') return
         if (editorMode === 'source') setLatexContent(editorRef.current?.getValue() || latexContent)
@@ -985,12 +988,12 @@ export default function TryPage() {
                         <X size={11} /> Clear
                     </button>
                 </div>}
-                <CapabilityGate feature="b06"><button
+                {studioActionAllowed && <CapabilityGate feature="b06"><button
                     onClick={() => setShowImportModal(true)}
                     className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg"
                 >
                     <Upload size={11} /> Import file (PDF · DOCX · TEX)
-                </button></CapabilityGate>
+                </button></CapabilityGate>}
             </div>
         </>
     )
@@ -1358,7 +1361,7 @@ export default function TryPage() {
     )
 
     const toolAvailable = (id: Tool) => !TOOL_CAPABILITIES[id]
-        || can(TOOL_CAPABILITIES[id]!)
+        || (can(TOOL_CAPABILITIES[id]!) && studioActionAllowed)
         || (id === 'ai' && (stagedOptimization != null || optimizeSnapshot != null))
         || (id === 'ats' && (atsDisplay != null || Boolean(categoryScores || deepStream.deepAnalysis)))
     const activeTool = toolAvailable(tool) ? tool : 'files'
@@ -1412,9 +1415,9 @@ export default function TryPage() {
                     autoCompileEnabled={autoCompile && hydrated}
                     autoCompileBusy={isProcessing || isSubmitting}
                     autoCompileDocumentKey={`${resolvedSession?.user?.id ?? 'anonymous'}:try-source`}
-                    atsScore={can('d18') ? quickATSScore : undefined}
+                    atsScore={can('d18') && (quickAtsAdmission || quickATSScore != null) ? quickATSScore : undefined}
                     atsScoreLoading={can('d18') && quickAtsAdmission ? quickATSLoading : undefined}
-                    onATSBadgeClick={can('d18') ? () => openTool('ats') : undefined}
+                    onATSBadgeClick={can('d18') && studioActionAllowed ? () => openTool('ats') : undefined}
                     onExplainError={can('d13') && contentEditAllowed && Boolean(resolvedSession || studioAllowed) ? handleExplainError : undefined}
                     pageCount={stream.pageCount}
                 />
@@ -1623,7 +1626,7 @@ export default function TryPage() {
                     aria-label="Editing mode"
                     className="flex shrink-0 rounded-md border border-line bg-bg p-0.5"
                 >
-                    {(['visual', 'source'] as const).filter(mode => mode === 'source' || visualEditorAllowed).map(mode => (
+                    {(['visual', 'source'] as const).filter(mode => mode === 'source' || visualModeAvailable).map(mode => (
                         <button
                             key={mode}
                             onClick={() => changeEditorMode(mode)}
@@ -1685,7 +1688,7 @@ export default function TryPage() {
                 </button>}
 
                 <div className="ml-auto flex items-center gap-2">
-                    {can('d18') && <button
+                    {can('d18') && studioActionAllowed && <button
                         onClick={() => openTool('ats')}
                         className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex"
                     >
@@ -1875,7 +1878,7 @@ export default function TryPage() {
                         className={`${mobilePane === 'editor' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col lg:flex ${isDesktop ? 'lg:flex-none' : 'flex-1'}`}
                         style={isDesktop ? { width: `${pdfOpen ? split : 100}%` } : undefined}
                     >
-                        {editorMode === 'visual' ? (
+                        {editorMode === 'visual' && visualModeAvailable ? (
                                 <VisualResumeEditor
                                     value={latexContent}
                                     onChange={changeContent}
@@ -1972,10 +1975,10 @@ export default function TryPage() {
             />
 
             <ImportProjectsModal
-                isOpen={showProjectsModal}
+                isOpen={showProjectsModal && studioActionAllowed}
                 onClose={() => setShowProjectsModal(false)}
                 onInsert={(latex: string) => {
-                    if (!canRef.current('g02') || !canRef.current('c01')) return
+                    if (!canRef.current('g02') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
                     // Monaco insertion is a side effect, so keep it outside a React state
                     // updater (development Strict Mode may evaluate updaters twice).
                     const nextLatex = insertProjectLatex(editorRef.current, latexContent, latex)
@@ -1985,7 +1988,7 @@ export default function TryPage() {
                 }}
             />
 
-            {showImportModal && can('b06') && (
+            {showImportModal && can('b06') && studioActionAllowed && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
                     <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]">
                         <div className="mb-3 flex items-center justify-between">
@@ -2018,7 +2021,7 @@ export default function TryPage() {
                             visualOnly={editorMode === 'visual'}
                             serverConversionEnabled={Boolean(resolvedSession)}
                             onFileUpload={content => {
-                                if (!canRef.current('b06') || !canRef.current('c01')) return
+                                if (!canRef.current('b06') || !canRef.current('c01') || (!resolvedSession && !canRef.current('a09'))) return
                                 if (content) {
                                     editorRef.current?.setValue(content)
                                     setLatexContent(content)

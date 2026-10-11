@@ -60,7 +60,7 @@ test('billing loads current catalog, retries errors and respects annual sale pau
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toBeVisible()
   await expect(page.getByText('10 / day').first()).toBeVisible()
-  await page.getByRole('button', { name: 'Annual', exact: true }).click()
+  await page.getByRole('group', { name: 'Billing period' }).getByRole('button', { name: /^Annual\b/ }).click()
   await expect(page.getByRole('heading', { name: 'Pro Annual' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sales paused' })).toBeDisabled()
   await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0)

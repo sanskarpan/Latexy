@@ -893,7 +893,7 @@ function BillingPageContent() {
           {loading ? (
             <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading plans...</div>
           ) : plansError && visiblePlans.length === 0 ? (
-            <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-6 text-center">
+            <div role="alert" className="rounded-[var(--radius-lg)] border border-line bg-bg p-6 text-center">
               <p className="text-sm font-medium text-fg">Couldn&apos;t load billing info</p>
               <p className="mt-1 text-sm text-fg-2">{plansError}</p>
               <button

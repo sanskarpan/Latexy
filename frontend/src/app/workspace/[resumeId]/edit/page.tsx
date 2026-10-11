@@ -98,6 +98,7 @@ import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
 import { saveDraft, getDraft, getPendingDrafts, deleteDraftIfUnchanged, pendingDraftCount } from '@/lib/offline-drafts'
 import { clearAllOfflineCompiledPdfs, getOfflineCompiledPdf, getRememberedOfflinePdfOwner, OFFLINE_PDF_OWNER_KEY, rememberOfflinePdfOwner, saveOfflineCompiledPdf } from '@/lib/offline-pdfs'
 import { resolveRetryableCompletedPdfJobId } from '@/lib/pdf-retry-target'
+import { checkpointRecoverySourceForRead, createCheckpointRecoveryPreview, isCurrentCheckpointRecoveryPreview, type CheckpointRecoveryPreview } from '@/lib/checkpoint-recovery-preview'
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
 import { acquireReconnectReservation, compileReconnectReservationKey, draftReconnectReservationKey } from '@/lib/reconnect-reservations'
 import { canEditResume, type ResumeAccessRole } from '@/lib/resume-access'
@@ -767,7 +768,7 @@ function AIPanel({
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function ResumeEditPage() {
-  const { can } = useEntitlements()
+  const { can, loaded: entitlementsLoaded } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
   const params = useParams()
@@ -786,6 +787,7 @@ export default function ResumeEditPage() {
   // Core state
   const [title, setTitle] = useState('')
   const [latexContent, setLatexContent] = useState('')
+  const [checkpointRecoveryPreview, setCheckpointRecoveryPreview] = useState<CheckpointRecoveryPreview | null>(null)
   const [bibliographyBibTeX, setBibliographyBibTeX] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [resumeLoadError, setResumeLoadError] = useState<string | null>(null)
@@ -1063,7 +1065,6 @@ export default function ResumeEditPage() {
     canChat: !!sessionData?.session?.token,
   })
   const collabCanEdit = canEditResume(collabRole)
-  const canEditDocument = can('c01') && collabCanEdit && (!isLinkedVariant || linkedEditEnabled)
 
   // Track Changes (Feature 41)
   const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
@@ -1102,6 +1103,18 @@ export default function ResumeEditPage() {
     offlinePdfIdentityRef.current.generation === generation
   ), [])
 
+  const checkpointRecoveryIdentity = {
+    ownerId: sessionUserId,
+    resumeId,
+    generation: offlinePdfIdentityRef.current.generation,
+  }
+  const currentCheckpointRecoveryPreview = isCurrentCheckpointRecoveryPreview(
+    checkpointRecoveryPreview,
+    checkpointRecoveryIdentity,
+  ) ? checkpointRecoveryPreview : null
+  const checkpointRecoveryPreviewRef = useRef(currentCheckpointRecoveryPreview)
+  checkpointRecoveryPreviewRef.current = currentCheckpointRecoveryPreview
+  const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
   useEffect(() => {
     offlinePdfMountedRef.current = true
     return () => {
@@ -1134,6 +1147,7 @@ export default function ResumeEditPage() {
       setOfflinePdfLoaded(false)
     }
     if (changed) {
+      setCheckpointRecoveryPreview(null)
       setShareModalOpen(false)
       setShareToken(null)
       setShareUrl(null)
@@ -2210,8 +2224,8 @@ export default function ResumeEditPage() {
   }, [editorMode, resumeId])
 
   useEffect(() => {
-    if (!can('b10') && editorMode === 'wysiwyg') setEditorMode('source')
-  }, [can, editorMode])
+    if (entitlementsLoaded && !can('b10') && editorMode === 'wysiwyg') setEditorMode('source')
+  }, [can, editorMode, entitlementsLoaded])
 
   const handleSave = async () => {
     const ownerAtStart = offlinePdfOwnerId
@@ -2298,7 +2312,7 @@ export default function ResumeEditPage() {
   }
 
   const handleEditorContentChange = useCallback((value: string) => {
-    if (!canRef.current('c01')) return
+    if (!canRef.current('c01') || checkpointRecoveryPreviewRef.current) return
     setLatexContent(value)
   }, [])
 
@@ -2308,7 +2322,7 @@ export default function ResumeEditPage() {
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
-    const content = editorRef.current?.getValue() || latexContent
+    const content = checkpointRecoverySourceForRead(currentCheckpointRecoveryPreview, checkpointRecoveryIdentity, editorRef.current?.getValue() || latexContent)
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     // Offline: queue the compile for later (Feature 79D)
     if (!navigator.onLine) {
@@ -2474,11 +2488,43 @@ export default function ResumeEditPage() {
   }, [aiStream.streamingLatex, applyOptimizationCandidate, editorMode])
 
   // Version history: restore from checkpoint
-  const handleHistoryRestore = useCallback((latex: string) => {
-    pushUndo('Before restore')
-    editorRef.current?.setValue(latex)
+  const handleCheckpointRestore = useCallback((latex: string, closeDiff?: () => void) => {
+    const ownerAtStart = sessionUserId
+    const tokenAtStart = sessionData?.session?.token ?? null
+    const generationAtStart = offlinePdfIdentityRef.current.generation
+    if (
+      !ownerAtStart || !tokenAtStart ||
+      !isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) ||
+      apiClient.getAuthToken() !== tokenAtStart
+    ) return
+
+    if (canRef.current('c01') && !checkpointRecoveryPreviewRef.current) {
+      pushUndo('Before restore')
+      editorRef.current?.setValue(latex)
+      setCheckpointRecoveryPreview(null)
+    } else {
+      const preview = createCheckpointRecoveryPreview(latex, {
+        ownerId: ownerAtStart,
+        resumeId,
+        generation: generationAtStart,
+      })
+      if (!preview) return
+      setCheckpointRecoveryPreview(preview)
+    }
     setLatexContent(latex)
-  }, [pushUndo])
+    setSavedSnapshot((current) => ({ ...current, latex }))
+    closeDiff?.()
+  }, [isCurrentOfflinePdfIdentity, pushUndo, resumeId, sessionData?.session?.token, sessionUserId])
+
+  const handleHistoryRestore = useCallback((latex: string) => {
+    handleCheckpointRestore(latex)
+  }, [handleCheckpointRestore])
+
+  const handleReturnToSharedEditor = useCallback(() => {
+    if (!canRef.current('c01') || !checkpointRecoveryPreviewRef.current) return
+    setLatexContent(editorRef.current?.getValue() ?? latestLatexContentRef.current)
+    setCheckpointRecoveryPreview(null)
+  }, [])
 
   // Version history: compare two checkpoints
   const handleCompare = useCallback((a: CheckpointEntry, b: CheckpointEntry) => {
@@ -2489,12 +2535,11 @@ export default function ResumeEditPage() {
 
   // Version history: restore from diff viewer
   const handleDiffRestore = useCallback((latex: string) => {
-    pushUndo('Before diff restore')
-    editorRef.current?.setValue(latex)
-    setLatexContent(latex)
-    setShowDiffModal(false)
-    toast.success('Version restored from diff')
-  }, [pushUndo])
+    handleCheckpointRestore(latex, () => {
+      setShowDiffModal(false)
+      toast.success('Version restored from diff')
+    })
+  }, [handleCheckpointRestore])
 
   // Checkpoint saved callback
   const handleCheckpointSaved = useCallback(() => {
@@ -3130,7 +3175,7 @@ export default function ResumeEditPage() {
     ? `Compile failed: ${compileStream.error || 'error'}`
     : 'LaTeX editor ready'
 
-  const currentLatex = editorMode === 'source' ? editorRef.current?.getValue() || latexContent : latexContent
+  const currentLatex = currentCheckpointRecoveryPreview?.source ?? (editorMode === 'source' ? editorRef.current?.getValue() || latexContent : latexContent)
   const outline = buildLatexOutline(currentLatex)
 
   // Right-panel tab hierarchy: a few primary tabs stay inline; the rest live in
@@ -3228,7 +3273,7 @@ export default function ResumeEditPage() {
           <ExportDropdown
             visualOnly={editorMode === 'wysiwyg'}
             resumeId={resumeId}
-            latexContent={latexContent}
+            latexContent={currentCheckpointRecoveryPreview?.source ?? latexContent}
             onPdfExport={handleDownload}
             variant="toolbar"
           />
@@ -3742,7 +3787,40 @@ export default function ResumeEditPage() {
               </div>
             </div>
           )}
-          <div className="relative min-h-0 flex-1">
+          {currentCheckpointRecoveryPreview && (
+            <section
+              aria-label="Recovered saved source preview"
+              className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-[var(--radius-md)] border border-accent/30 bg-surface-1 p-3"
+            >
+              <div className="flex shrink-0 items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xs font-semibold text-fg">Recovered saved source</h2>
+                  <p className="text-[10px] text-fg-3">Read-only recovery view. The shared editor may contain newer changes.</p>
+                </div>
+                {can('c01') && (
+                  <button
+                    type="button"
+                    onClick={handleReturnToSharedEditor}
+                    className="shrink-0 rounded-[var(--radius-sm)] border border-border px-2.5 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2"
+                  >
+                    Return to shared editor
+                  </button>
+                )}
+              </div>
+              <textarea
+                aria-label="Recovered saved source"
+                readOnly
+                spellCheck={false}
+                value={currentCheckpointRecoveryPreview.source}
+                className="min-h-0 flex-1 resize-none rounded-[var(--radius-sm)] border border-border bg-surface-0 p-3 font-mono text-xs leading-5 text-fg"
+              />
+            </section>
+          )}
+          <div
+            className="relative min-h-0 flex-1"
+            style={{ display: currentCheckpointRecoveryPreview ? 'none' : undefined }}
+            aria-hidden={currentCheckpointRecoveryPreview ? true : undefined}
+          >
             {/* WYSIWYG mode (Feature 78) */}
             {can('b10') && editorMode === 'wysiwyg' ? (
               <VisualResumeEditor value={latexContent} onChange={handleEditorContentChange} readOnly={!canEditDocument} />
@@ -4080,7 +4158,11 @@ export default function ResumeEditPage() {
                   PDF
                 </button>
                 <CapabilityGate feature="c13"><WatermarkDownloadPopover
-                  getLatex={() => editorRef.current?.getValue() ?? latexContent}
+                  getLatex={() => checkpointRecoverySourceForRead(
+                    currentCheckpointRecoveryPreview,
+                    checkpointRecoveryIdentity,
+                    editorRef.current?.getValue() ?? latexContent,
+                  )}
                   filename={title}
                 /></CapabilityGate>
               </>

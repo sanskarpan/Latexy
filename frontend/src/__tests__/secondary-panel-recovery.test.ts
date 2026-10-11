@@ -27,6 +27,19 @@ describe('authenticated secondary-panel recovery', () => {
     expect(history).toContain('if (!result.success) throw new Error')
   })
 
+  it('shows checkpoint source separately from the bound editor when content editing is OFF', () => {
+    const edit = source('../app/workspace/[resumeId]/edit/page.tsx')
+    expect(edit).toContain('const handleHistoryRestore = useCallback((latex: string) => {\n    handleCheckpointRestore(latex)')
+    expect(edit).toContain('if (canRef.current(\'c01\') && !checkpointRecoveryPreviewRef.current)')
+    expect(edit).toContain('setCheckpointRecoveryPreview(preview)')
+    expect(edit).toContain('apiClient.getAuthToken() !== tokenAtStart')
+    expect(edit).toContain('aria-label="Recovered saved source preview"')
+    expect(edit).toContain('Return to shared editor')
+    expect(edit).toContain('currentCheckpointRecoveryPreview ? \'none\' : undefined')
+    expect(edit).toContain('currentCheckpointRecoveryPreview?.source ??')
+    expect(edit).toContain('getLatex={() => checkpointRecoverySourceForRead(')
+  })
+
   it('supports account-bound checkpoint content reads', () => {
     const client = source('../lib/api-client.ts')
     expect(client).toContain('async getCheckpointContent(')

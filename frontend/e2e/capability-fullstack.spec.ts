@@ -37,14 +37,14 @@ async function signup(context: BrowserContext, frontend: string) {
 
 test('real role toggles hide desktop/mobile controls and block API while owner data and admin recovery survive', async ({ browser }, testInfo) => {
   const database = isolatedDatabase()
-  const frontend = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5180'}`
+  const frontend = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5181'}`
   const backend = process.env.PLAYWRIGHT_BACKEND_URL ?? 'http://127.0.0.1:8030'
   const adminContext = await browser.newContext({ baseURL: frontend })
   const actorContext = await browser.newContext({ baseURL: frontend })
   const guestContext = await browser.newContext({ baseURL: frontend, viewport: { width: 390, height: 844 } })
   await guestContext.addInitScript(() => { localStorage.setItem('latexy_auto_compile', 'false') })
   const createdUsers: string[] = []
-  const oldRoles = await database.query('SELECT role, feature_key, enabled FROM role_features WHERE feature_key = ANY($1::text[])', [['b03', 'a09']])
+  const oldRoles = await database.query('SELECT role, feature_key, enabled, updated_at FROM role_features WHERE feature_key = ANY($1::text[])', [['b03', 'a09']])
   try {
     const admin = await signup(adminContext, frontend); createdUsers.push(admin.id)
     const actor = await signup(actorContext, frontend); createdUsers.push(actor.id)
@@ -135,7 +135,9 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toBeVisible()
     await adminPage.screenshot({ path: testInfo.outputPath('real-admin-role-controls.png'), fullPage: true })
   } finally {
-    for (const row of oldRoles.rows) await database.query('UPDATE role_features SET enabled = $1 WHERE role = $2 AND feature_key = $3', [row.enabled, row.role, row.feature_key])
+    // Authorization snapshots read the database on each request. Restore the
+    // exact original policy and timestamp even when an earlier assertion fails.
+    for (const row of oldRoles.rows) await database.query('UPDATE role_features SET enabled = $1, updated_at = $2 WHERE role = $3 AND feature_key = $4', [row.enabled, row.updated_at, row.role, row.feature_key])
     if (createdUsers.length) {
       await database.query('DELETE FROM session WHERE "userId" = ANY($1::text[])', [createdUsers])
       await database.query('DELETE FROM account WHERE "userId" = ANY($1::text[])', [createdUsers])

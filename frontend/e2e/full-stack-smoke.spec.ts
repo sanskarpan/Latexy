@@ -14,7 +14,7 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   const flags = await request.get(`${apiBase}/config/feature-flags`)
   expect(flags.ok()).toBeTruthy()
 
-  const frontendOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5180'}`
+  const frontendOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '5181'}`
   const preflight = await request.fetch(`${apiBase}/config/entitlements`, {
     method: 'OPTIONS',
     headers: { Origin: frontendOrigin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization' },

@@ -32,7 +32,7 @@ function policy(preference = true, extra: Record<string, unknown> = {}) {
   const scope: Record<string, unknown> = {
     can: (key: string) => grants.has(key), autoCompilePreference: preference,
     resolvedSession: null,
-    hydrated: true, editorMode: 'source', pdfOpen: true, split: 50, mobilePane: 'editor', isDesktop: true,
+    hydrated: true, entitlementsLoaded: true, visualEditorAllowed: grants.has('b10'), editorMode: 'source', pdfOpen: true, split: 50, mobilePane: 'editor', isDesktop: true,
     handleSplitKey: vi.fn(), setSourceSyncLine: vi.fn(), setSourceSyncRequestId: vi.fn(),
     canEditDocument: grants.has('c01'),
     handleExplainError: vi.fn(), setExplainerLine: vi.fn(), setDeepPanelOpen: vi.fn(),
@@ -41,7 +41,7 @@ function policy(preference = true, extra: Record<string, unknown> = {}) {
     atsDisplay: null, categoryScores: null, deepStream: { deepAnalysis: null }, tool: 'files',
     TOOL_CAPABILITIES: { ai: 'd01', ats: 'd18', import: 'b06', templates: 'b04' }, ...extra,
   }
-  for (const name of ['studioAllowed', 'contentEditAllowed', 'compileAllowed', 'quickAtsAdmission', 'autoCompileAllowed', 'syncAllowed', 'autoCompile', 'toolAvailable']) {
+  for (const name of ['studioAllowed', 'contentEditAllowed', 'compileAllowed', 'studioActionAllowed', 'visualModeAvailable', 'quickAtsAdmission', 'autoCompileAllowed', 'syncAllowed', 'autoCompile', 'shouldFallbackFromDeniedVisualMode', 'toolAvailable']) {
     scope[name] = execute(initializer(name), scope)
   }
   scope.allowedTool = execute(initializer('activeTool'), scope)
@@ -67,6 +67,7 @@ function guarded(node: ts.Node) {
   throw new Error('Expected a rendered conditional')
 }
 const buttons = find(page, (node) => ts.isJsxElement(node) && node.openingElement.tagName.getText(page) === 'button') as ts.JsxElement[]
+const atsToolbarButton = buttons.find((button) => button.openingElement.attributes.getText(page).includes("onClick={() => openTool('ats')}"))!
 const autoButtons = buttons.filter((node) => node.openingElement.attributes.getText(page).includes('title="Automatically update the PDF after edits"'))
 const manual = buttons.find((node) => node.openingElement.attributes.getText(page).includes('aria-label="Update PDF preview"'))!
 const divider = find(page, (node) => ts.isJsxSelfClosingElement(node) && node.tagName.getText(page) === 'SourcePdfDivider')[0]
@@ -154,15 +155,11 @@ describe('Studio composite admission controls', () => {
     expect(render(guarded(divider), policy())).toContain('aria-label="Source and PDF synchronization"')
   })
 
-  it('omits Explain Error and preserves read access to an existing ATS score', () => {
+  it('omits Explain Error and new ATS navigation without Studio admission', () => {
     grants.add('d13'); grants.add('d18')
     const scope = policy()
     expect(execute(attribute('LaTeXEditor', 'onExplainError'), scope)).toBeUndefined()
-    const openTool = vi.fn()
-    const callback = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), { ...scope, openTool })
-    expect(callback).toBeTypeOf('function')
-    callback()
-    expect(openTool).toHaveBeenCalledWith('ats')
+    expect(execute(attribute('LaTeXEditor', 'onATSBadgeClick'), { ...scope, openTool: vi.fn() })).toBeUndefined()
   })
 
   it('omits the empty ATS status and stale loading state when Studio admission is OFF', () => {
@@ -178,6 +175,23 @@ describe('Studio composite admission controls', () => {
     }
   })
 
+  it('hides empty ATS output and anonymous ATS entrypoints when Studio admission is OFF', () => {
+    grants.add('d18')
+    const scope = { ...policy(true, { tool: 'ats', quickATSScore: null, quickATSLoading: false }) }
+    const atsScore = execute(attribute('LaTeXEditor', 'atsScore'), scope)
+    const atsScoreLoading = execute(attribute('LaTeXEditor', 'atsScoreLoading'), scope)
+    const onATSBadgeClick = execute(attribute('LaTeXEditor', 'onATSBadgeClick'), scope)
+    expect(atsScore).toBeUndefined()
+    expect(atsScoreLoading).toBeUndefined()
+    expect(onATSBadgeClick).toBeUndefined()
+    expect(render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })).toBe('')
+    expect(render(guarded(atsToolbarButton), scope)).toBe('')
+    expect(scope.allowedTool).toBe('files')
+
+    const returned = policy(true, { tool: 'ats', atsDisplay: 86 })
+    expect(returned.allowedTool).toBe('ats')
+  })
+
   it('keeps admitted ATS scores readable after Studio denial, including a genuine zero', () => {
     grants.add('d18')
     for (const savedScore of [0, 85]) {
@@ -190,8 +204,7 @@ describe('Studio composite admission controls', () => {
       const html = render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })
       expect(html).toContain(`ATS ${savedScore}`)
       expect(html).not.toContain('animate-spin')
-      onATSBadgeClick()
-      expect(scope.openTool).toHaveBeenCalledWith('ats')
+      expect(onATSBadgeClick).toBeUndefined()
     }
   })
 
@@ -205,6 +218,36 @@ describe('Studio composite admission controls', () => {
     expect(atsScoreLoading).toBe(false)
     expect(render(atsStatus.expression!, { ...scope, ATSScoreBadge, atsScore, atsScoreLoading, onATSBadgeClick })).toContain('ATS 92')
     expect(execute(attribute('LaTeXEditor', 'atsScoreLoading'), { ...scope, quickATSLoading: true })).toBe(true)
+  })
+
+  it('waits for verified entitlements before falling back from visual mode', () => {
+    const effect = find(page, (node) => ts.isCallExpression(node)
+      && node.expression.getText(page) === 'useEffect'
+      && node.arguments[0]?.getText(page).includes('shouldFallbackFromDeniedVisualMode') === true)[0] as ts.CallExpression
+    const shouldFallback = (args: { editorMode: string; visualModeAvailable: boolean; entitlementsLoaded: boolean; hydrated: boolean }) =>
+      execute(initializer('shouldFallbackFromDeniedVisualMode'), args)
+    const applyFallback = (shouldApply: boolean, setEditorMode: (mode: string) => void) =>
+      (execute(effect.arguments[0], { shouldFallbackFromDeniedVisualMode: shouldApply, setEditorMode }) as () => void)()
+
+    const duringLoading = vi.fn()
+    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: false, hydrated: true }), duringLoading)
+    expect(duringLoading).not.toHaveBeenCalled()
+
+    const afterGrant = vi.fn()
+    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: true, entitlementsLoaded: true, hydrated: true }), afterGrant)
+    expect(afterGrant).not.toHaveBeenCalled()
+
+    const afterLoadedRevocation = vi.fn()
+    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true }), afterLoadedRevocation)
+    expect(afterLoadedRevocation).toHaveBeenCalledWith('source')
+
+    const explicitSource = vi.fn()
+    applyFallback(shouldFallback({ editorMode: 'source', visualModeAvailable: false, entitlementsLoaded: true, hydrated: true }), explicitSource)
+    expect(explicitSource).not.toHaveBeenCalled()
+
+    const awaitingSession = vi.fn()
+    applyFallback(shouldFallback({ editorMode: 'visual', visualModeAvailable: false, entitlementsLoaded: true, hydrated: false }), awaitingSession)
+    expect(awaitingSession).not.toHaveBeenCalled()
   })
 
   it('hides both trim actions and passes composite admission to already-open dialogs', () => {
