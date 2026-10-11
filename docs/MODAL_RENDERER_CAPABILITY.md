@@ -58,7 +58,17 @@ On 2026-10-07, the final bounded test of cached bare image
 
 The CJK failure's log was lost because the original certification script retained
 only the first case's failure artifacts. The script now retains multilingual
-failure artifacts too. The cause remains unknown. No further cloud retry was run.
+failure artifacts too. The cause remains unknown.
+
+On 2026-10-11, an ordinary functional smoke on that same historical image
+successfully compiled one fixed synthetic English, Hindi and CJK document with
+zero missing-glyph or font warnings. [The redacted execution evidence](audits/resume-engine/historical-modal-functional-2026-10-11.json)
+records zero image builds and confirmed sandbox termination. This direct
+compilation did not run the candidate renderer bridge or repeat its confinement
+certification. The image has no renderer asset marker, so its assets cannot be
+compared with the candidate fingerprint. The earlier CJK failure was not
+reproduced; its original cause remains unresolved.
+
 The image is not certified for a broad multilingual production default. A new
 TeX image or asset fingerprint must receive its own certification; passing local
 TeX Live 2025 tests does not attest this cloud image. Keep the production gate

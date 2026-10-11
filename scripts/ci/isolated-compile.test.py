@@ -2,6 +2,7 @@
 import argparse
 import ast
 import importlib.util
+import inspect
 import json
 import os
 import subprocess
@@ -106,6 +107,47 @@ class HarnessGuards(unittest.TestCase):
                                                     OSError('synthetic image cleanup failure')])
             self.assertEqual(instance.cleanup(), [instance.names[1], 'candidate-image'])
             self.assertEqual(instance.docker.call_count, 4)
+
+    def test_minio_fixture_uses_pinned_official_source_and_verified_go_builder(self):
+        recipe = (HERE / 'Dockerfile.minio-ci').read_text()
+        self.assertEqual(harness.MINIO_SOURCE_COMMIT, '9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a')
+        self.assertEqual(harness.MINIO_MODULE_VERSION, 'v0.0.0-20251015172955-9e49d5e7a648')
+        self.assertIn('FROM golang:1.24.8-bookworm@sha256:4ed690d6649d63c312b99a6120025ec79ce3b542968a37da53d6236c7c61a848 AS build', recipe)
+        self.assertIn('GOSUMDB=sum.golang.org', recipe)
+        self.assertIn('GOPROXY=https://proxy.golang.org', recipe)
+        self.assertIn('GOTOOLCHAIN=local', recipe)
+        self.assertIn('CGO_ENABLED=0', recipe)
+        self.assertIn('go install -trimpath -p 2 github.com/minio/minio@' + harness.MINIO_MODULE_VERSION, recipe)
+        self.assertIn('org.opencontainers.image.revision="' + harness.MINIO_SOURCE_COMMIT + '"', recipe)
+        self.assertIn('FROM scratch', recipe)
+        self.assertIn('USER 65532:65532', recipe)
+        self.assertNotIn('GOSUMDB=off', recipe)
+        self.assertNotIn('storage', harness.SERVICE_IMAGES)
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertLess(prepare.index('self.prepare_storage_image()'), prepare.index('self.image_attempted = True'))
+
+    def test_owned_storage_build_context_and_provenance_have_no_application_data(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(HERE.parents[1], work, work)
+            instance.docker = MagicMock(return_value='sha256:synthetic-storage')
+            instance.prepare_storage_image()
+            self.assertEqual([path.name for path in (work / 'storage-context').iterdir()], ['Dockerfile'])
+            self.assertTrue(instance.storage_image_attempted and instance.storage_image_built)
+            self.assertEqual(instance.provenance['storage_source_commit'], harness.MINIO_SOURCE_COMMIT)
+            self.assertEqual(instance.provenance['storage_image_id'], 'sha256:synthetic-storage')
+            self.assertEqual(len(instance.provenance['storage_recipe_sha256']), 64)
+            self.assertEqual(instance.docker.call_args_list[0].kwargs['timeout'], 900)
+
+    def test_cleanup_removes_only_owned_storage_fixture_image_and_reports_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = harness.Harness(Path(temporary), Path(temporary), Path(temporary))
+            instance.storage_image_attempted = instance.storage_image_built = True
+            instance.docker = MagicMock()
+            self.assertEqual(instance.cleanup(), [])
+            instance.docker.assert_called_once_with('image', 'rm', instance.storage_image, timeout=30, capture=True)
+            instance.docker = MagicMock(side_effect=subprocess.TimeoutExpired('docker', 30))
+            self.assertEqual(instance.cleanup(), ['storage-image'])
 
     def test_process_cleanup_does_not_kill_arbitrary_ports(self):
         process = MagicMock(pid=12345)

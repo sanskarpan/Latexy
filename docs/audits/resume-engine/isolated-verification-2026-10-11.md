@@ -60,8 +60,9 @@ its independently read asset fingerprint and a separately authorized execution
 context. A bounded ephemeral functional run can test ordinary templates and
 fonts without deploying the candidate or attaching production data. The
 existing `certify_modal_vm_engine.py` additionally performs isolation probes;
-it is not the ordinary functional smoke described here. Its historical CJK
-failure and the separate supported-profile/default-flow requirements remain
+it is not the ordinary functional smoke described here. The historical CJK
+failure was not reproduced in the October 11 ordinary smoke below; its cause
+and the separate candidate supported-profile/default-flow requirements remain
 open in [MODAL_RENDERER_CAPABILITY.md](../../MODAL_RENDERER_CAPABILITY.md).
 
 Do not set certification flags merely to pass configuration checks. The
@@ -77,8 +78,35 @@ availability, answer quality or provider charges.
 
 ## Execution status
 
-The additional harness is being implemented and independently reviewed. No
-successful container/browser execution of this new gate is claimed yet.
+The additional harness is implemented and independently reviewed. Its first
+[CI execution on revision 42282346](https://github.com/sanskarpan/Latexy/actions/runs/38111831084)
+failed after successfully building the candidate image: the pinned Docker Hub
+MinIO image could not be pulled anonymously, before any application container
+or test started. No successful container/browser execution of this new gate is
+claimed yet. The existing deployment-manifest test's exact job inventory initially
+rejected the added job; the corrected inventory and isolation contract passed
+all **96** deployment-manifest tests and independent review.
+
+The failed isolated attempt's [artifact 11692107284](https://github.com/sanskarpan/Latexy/actions/runs/38111831084/artifacts/11692107284)
+was downloaded and verified against SHA-256
+`c3cd11c1981ccef0f4c8e598785c59de6ee661c00013487b2e12781fe212ad89`.
+It records `success: false`, `cleanup_success: true`, no cleanup failures,
+the actual GitHub merge-ref checkout `95130a5b3118a9462a3abde0f98832c43177dd38`,
+and candidate image
+`sha256:94d3bfa319082707bdf5a38a11c76fc4e726e088374269ba43dfdcf5f8ff92b8`.
+No runtime or browser result may be inferred from this build-only checkpoint.
+
+The corrected disposable storage fixture follows MinIO's documented
+[source-only installation](https://github.com/minio/minio#install-from-source).
+Its [official security release](https://github.com/minio/minio/releases/tag/RELEASE.2025-10-15T17-29-55Z)
+is pinned to source commit `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`
+and checksum-verified Go module `v0.0.0-20251015172955-9e49d5e7a648`.
+The official Go 1.24.8 builder is digest-pinned. A bounded 900-second build
+produces an owned, non-root fixture image before the expensive candidate image
+build; the evidence records its recipe, source and actual image identity.
+No private registry login or third-party prebuilt image is substituted. The
+overall 45-minute harness deadline, private network, fresh data and exact-owned
+cleanup remain enforced. This recipe still requires actual CI execution.
 
 The new `test_converter_failure_ledger_integration.py` passed **11 cases, no
 skips, in 3.89 seconds** with warnings treated as errors against disposable
@@ -91,8 +119,9 @@ replaced. The task executes eagerly: this result does not prove broker delivery
 or a real provider response. No application runtime edit was needed.
 
 The final frontend passed **1,587 tests in 226 files**, TypeScript and full
-ESLint. The harness passed **17 dependency-free guards**, scoped Python lint,
-and an independent read-only review. Its dedicated browser case was collected,
+ESLint. The initial harness passed **17 dependency-free guards**; the source-built
+storage correction passes **20 guards** and scoped Python lint. The initial
+harness and correction also passed independent read-only review. Its dedicated browser case was collected,
 not executed locally. Actual browser execution is required in the isolated job
 before this gap can be closed.
 
@@ -110,3 +139,23 @@ Playwright-managed Chromium runtime. The evidence directory must not already
 exist. It is a mutating local/CI test operation against newly created disposable
 resources, not a read-only production diagnostic. Review the harness before
 running it outside the dedicated CI job.
+
+## Historical Modal functional evidence
+
+The authorized October 11 ordinary smoke used the already existing immutable
+image `im-1fho7eMXjj9Z60ziS7Kf6J`, without an image build. The actual compiler was
+LuaHBTeX 1.15.0 / TeX Live 2022 (Debian). All three fixed synthetic documents
+passed: English **1.920 s**, Hindi **0.612 s**, CJK **3.122 s**. Each produced a
+valid PDF with the expected text and zero missing-glyph or font warnings.
+
+[Redacted execution evidence](historical-modal-functional-2026-10-11.json)
+records server-confirmed 300-second maximum lifetime, 2-core/2-GiB limits, blocked
+network, no attached credentials or mounts, one sandbox creation, zero image
+builds/retries and confirmed termination. Started-to-finished lifetime was
+**6.255 seconds**. These durations are individual direct compiler samples,
+not API/worker/browser latency or a distribution.
+
+The image has no renderer marker or asset fingerprint. This result cannot
+certify the candidate image, its renderer bridge, confinement checks, supported
+profile or application default flow. The earlier CJK failure was not reproduced;
+the missing original failure log still prevents establishing its cause.

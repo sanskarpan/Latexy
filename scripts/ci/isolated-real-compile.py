@@ -28,8 +28,9 @@ RUNTIME_KEYS = {"PATH", "LANG", "LC_ALL", "TERM", "CI", "PNPM_HOME", "COREPACK_H
 SERVICE_IMAGES = {
     "postgres": "pgvector/pgvector:pg16",
     "redis": "redis:7-alpine",
-    "storage": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
 }
+MINIO_SOURCE_COMMIT = "9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a"
+MINIO_MODULE_VERSION = "v0.0.0-20251015172955-9e49d5e7a648"
 
 
 def clean_environment(home: Path) -> dict[str, str]:
@@ -134,6 +135,7 @@ class Harness:
         self.prefix = "latexy-ci-" + self.run_id
         self.network = self.prefix + "-network"
         self.image = self.prefix + ":candidate"
+        self.storage_image = self.prefix + ":storage"
         self.environment = clean_environment(work / "home")
         Path(self.environment["HOME"]).mkdir()
         self.environment["DOCKER_CONFIG"] = str(work / "docker-config")
@@ -141,6 +143,8 @@ class Harness:
         self.network_created = False
         self.image_attempted = False
         self.image_built = False
+        self.storage_image_attempted = False
+        self.storage_image_built = False
         self.frontend = None
         self.frontend_log = None
         self.app_environment: dict[str, str] = {}
@@ -201,6 +205,23 @@ class Harness:
             self.docker("logs", "--tail", "80", name)
             raise RuntimeError(f"Owned candidate QA process failed (exit {code})")
 
+    def prepare_storage_image(self) -> None:
+        context = self.work / "storage-context"
+        context.mkdir()
+        recipe = self.root / "scripts/ci/Dockerfile.minio-ci"
+        shutil.copyfile(recipe, context / "Dockerfile")
+        self.provenance.update({
+            "storage_source_commit": MINIO_SOURCE_COMMIT,
+            "storage_module_version": MINIO_MODULE_VERSION,
+            "storage_recipe_sha256": hashlib.sha256(recipe.read_bytes()).hexdigest(),
+        })
+        self.storage_image_attempted = True
+        self.docker("build", "--file", str(context / "Dockerfile"), "--tag", self.storage_image,
+                    str(context), timeout=900)
+        self.storage_image_built = True
+        self.provenance["storage_image_id"] = self.docker(
+            "image", "inspect", "--format", "{{.Id}}", self.storage_image, capture=True)
+
     def prepare(self) -> tuple[str, str]:
         context = self.work / "context"
         copy_candidate_context(self.root, context)
@@ -211,14 +232,17 @@ class Harness:
             "pnpm_lock_sha256": hashlib.sha256((self.root / "pnpm-lock.yaml").read_bytes()).hexdigest(),
             "qa_layer": "isolated-ci: production assets plus hash-locked requirements-dev.lock",
         }
+        # Verify public prerequisites before the expensive candidate TeX image.
+        # MinIO's supported community distribution is now official source.
+        # No registry login, removed image retry, or unofficial binary fallback.
+        for image in SERVICE_IMAGES.values():
+            self.docker("pull", image, timeout=300)
+        self.prepare_storage_image()
         self.image_attempted = True
         self.docker("build", "--target", "isolated-ci", "--file", str(context / "Dockerfile.prod"),
                     "--tag", self.image, str(context), timeout=2400)
         self.image_built = True
         self.provenance["candidate_image_id"] = self.docker("image", "inspect", "--format", "{{.Id}}", self.image, capture=True)
-        # No host default config, registry credentials, or credential helpers.
-        for image in SERVICE_IMAGES.values():
-            self.docker("pull", image, timeout=300)
         # A timed-out Docker CLI can leave a created network behind.
         self.network_created = True
         self.docker("network", "create", "--internal", "--label", "latexy.ci.run=" + self.run_id, self.network)
@@ -229,9 +253,12 @@ class Harness:
         redis = self.start("redis", SERVICE_IMAGES["redis"], [], ["redis-server", "--save", "", "--appendonly", "no"])
         access = "ci-" + uuid.uuid4().hex
         secret = uuid.uuid4().hex + uuid.uuid4().hex
-        storage = self.start("storage", SERVICE_IMAGES["storage"],
+        storage = self.start("storage", self.storage_image,
             ["--env", "MINIO_ROOT_USER=" + access, "--env", "MINIO_ROOT_PASSWORD=" + secret,
-             "--tmpfs", "/data:rw,nosuid,size=512m"], ["server", "/data", "--console-address", ":9001"])
+             "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256",
+             "--memory", "1g", "--cpus", "1", "--tmpfs", "/tmp:rw,nosuid,size=64m,uid=65532,gid=65532,mode=0700",
+             "--tmpfs", "/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700"],
+            ["server", "/data", "--console-address", ":9001"])
         def exec_ready(name, command):
             result = subprocess.run(["docker", "exec", name, *command], env=self.environment,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
@@ -376,6 +403,12 @@ print('Fresh private artifact bucket ready')
                 # A failed build can leave no tagged image; do not prune caches.
                 if self.image_built:
                     failures.append("candidate-image")
+        if self.storage_image_attempted:
+            try:
+                self.docker("image", "rm", self.storage_image, timeout=30, capture=True)
+            except (RuntimeError, OSError, subprocess.TimeoutExpired):
+                if self.storage_image_built:
+                    failures.append("storage-image")
         return failures
 
 
