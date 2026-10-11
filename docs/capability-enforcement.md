@@ -20,10 +20,15 @@ new operation; administrative privileges do not grant product access.
   Failed work follows the existing exactly-once quota refund rules. A feature
   switch never cancels a job or manufactures a refund by itself.
 
+New institution/cohort/membership setup uses `f10`; domain setup uses `f11`.
+Existing tenant routing and isolation remain mandatory. New purchases use
+`i01`; signed billing callbacks, reconciliation, cancellation and refund
+accounting retain their existing identity and recovery rules.
+
 ## Safe downgrade and recovery
 
-Owners retain source reads and edits, ordinary compilation, individual source
-and PDF downloads, existing job status/results, historical artifacts, deletion,
+Owners retain source reads, individual source and existing PDF downloads,
+existing job status/results, historical artifacts, deletion,
 key revocation, integration disconnect, sharing revocation, and account/billing
 recovery. Those endpoints still enforce their original authentication and
 ownership checks. Premium format conversion and bulk convenience export are
@@ -39,9 +44,12 @@ map and payload-sensitive policies. `CapabilityRouter` attaches dependencies
 at registration, so production and isolated router tests share the policy.
 Resource-dependent decisions (public ownership, specialty templates, structured
 imports, API-key scope and provider-key use) are checked in the relevant route
-or service after its normal resource/identity validation. Core source editing
-is intentionally not parsed to prevent users writing LaTeX that resembles a
-disabled optional UI tool.
+or service after its normal resource/identity validation. New creation requires
+`b01`; source/content writes require `c01`; new compilation requires `c05` and
+its `compile` parent. These apply to indirect writes and compile submissions,
+including builder saves, accepted suggestions, imports, generic jobs, developer
+API requests and export preparation. The source is not parsed to guess which
+optional UI tool a user could have used.
 
 Client-only editor tools are disabled at their UI entry points. CLI, MCP and
 GitHub Action clients inherit the server policy of each operation they call.
@@ -54,3 +62,5 @@ to one hour for shared PDFs and 24 hours for template assets); the capability
 check stops issuing new URLs. Gated template API responses use `no-store`.
 
 The additional [role/UI/service review](audits/admin-capabilities/role-review.md) records the current account-role matrix, race/recipient fixes and precise tested/unverified boundaries.
+
+The [11 October integration review](audits/admin-capabilities/2026-10-11-integration-review.md) supersedes earlier base, catalog-count and core-action coverage claims.

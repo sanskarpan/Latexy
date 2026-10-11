@@ -2,13 +2,14 @@
 
 import subprocess
 import sys
+import time
 
 import pytest
 
 
 @pytest.mark.parametrize("case", ["metrics", "authors", "bibtex"])
-def test_large_failed_matches_finish_without_quadratic_backtracking(case):
-    # Enforce a process deadline: a future regex regression cannot hang pytest.
+def test_large_failed_matches_finish_without_quadratic_backtracking(case, tmp_path):
+    # Enforce the regex deadline independently of application import startup.
     script = {
         "metrics": """
 from app.services.bullet_metric_service import replace_unverified_metrics
@@ -33,4 +34,23 @@ else:
     raise AssertionError('Malformed key accepted')
 """,
     }[case]
-    subprocess.run([sys.executable, "-c", script], timeout=8, check=True, capture_output=True)
+    imports, checks = script.strip().split("\n", 1)
+    ready = tmp_path / "imports-ready"
+    bootstrap = f"{imports}\nfrom pathlib import Path\nPath({str(ready)!r}).touch()\n{checks}"
+    log = tmp_path / "regex-process.log"
+    with log.open("w") as output:
+        process = subprocess.Popen([sys.executable, "-c", bootstrap], stdout=output, stderr=output)
+        try:
+            startup_deadline = time.monotonic() + 60
+            while not ready.exists() and process.poll() is None:
+                if time.monotonic() >= startup_deadline:
+                    pytest.fail("Application imports did not finish within 60 seconds")
+                time.sleep(0.05)
+            # A catastrophic regex still cannot hang pytest, including on Windows.
+            process.wait(timeout=8)
+            assert process.returncode == 0, log.read_text()
+            assert ready.exists(), "Regex checks did not reach their import boundary"
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)

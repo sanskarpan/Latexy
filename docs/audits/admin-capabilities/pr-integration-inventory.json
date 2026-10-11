@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-10-09T22:46:16Z",
+  "checkedAt": "2026-10-11",
   "count": 11,
-  "scope": "PR-only audit groups, explicitly excluded from implemented main-branch feature coverage. Source PRs remain unmerged.",
+  "scope": "Integration groups reconciled against main fb68ae0652a7b95f9d6d22861eee8e73f86d3408. Merged groups are included in the current capability review; open engine PR #1833 remains separate. Runtime evidence is recorded in 2026-10-11-integration-review.md.",
   "items": [
     {
       "id": "P01",
@@ -13,13 +13,14 @@
         "backend/app/services/render_engine/artifacts.py"
       ],
       "qa": "Real latest-head worker/image render and current-revision viewer; stale/cancelled/revoked artifacts cannot be fetched or published. Timing claims require controlled cold/warm/cache distributions.",
-      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
       "url": "https://github.com/sanskarpan/Latexy/pull/1833",
       "currentPr": {
         "number": 1833,
-        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+        "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+        "state": "OPEN"
       },
       "implementationStatus": "not merged into this branch; no runtime verification claimed",
       "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
@@ -35,13 +36,14 @@
         "frontend/src/components/ResumeFieldsEditor.tsx"
       ],
       "qa": "Facts/source round-trip, revision precondition, collaborator write/revocation, desktop/mobile PDF\u2194field selection and older-result rejection.",
-      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
       "url": "https://github.com/sanskarpan/Latexy/pull/1833",
       "currentPr": {
         "number": 1833,
-        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+        "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+        "state": "OPEN"
       },
       "implementationStatus": "not merged into this branch; no runtime verification claimed",
       "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
@@ -57,13 +59,14 @@
         "frontend/src/components/ImportedOptimizationPanel.tsx"
       ],
       "qa": "Paid-provider choice and cost boundaries; factual acceptance/rejection and canonical candidate PDF; interrupted/repeated requests, no unreviewed write.",
-      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
       "url": "https://github.com/sanskarpan/Latexy/pull/1833",
       "currentPr": {
         "number": 1833,
-        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+        "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+        "state": "OPEN"
       },
       "implementationStatus": "not merged into this branch; no runtime verification claimed",
       "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
@@ -79,13 +82,14 @@
         "frontend/src/components/ResumeOriginalPdf.tsx"
       ],
       "qa": "Inspect original versus adapted text, explicit review, upload caps, owner isolation, cleanup, unknown confidence explicit and no original public leak.",
-      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
       "url": "https://github.com/sanskarpan/Latexy/pull/1833",
       "currentPr": {
         "number": 1833,
-        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+        "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+        "state": "OPEN"
       },
       "implementationStatus": "not merged into this branch; no runtime verification claimed",
       "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
@@ -101,13 +105,14 @@
         "frontend/src/app/workspace/new/page.tsx"
       ],
       "qa": "Permanent 404/timeout/invalid output/event publication exception all end terminal with correct refund; real provider acceptance and timings remain separate.",
-      "head": "fed556813b68a999e03813bf2ecdf170259ba834",
+      "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
       "url": "https://github.com/sanskarpan/Latexy/pull/1833",
       "currentPr": {
         "number": 1833,
-        "head": "fed556813b68a999e03813bf2ecdf170259ba834",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1833"
+        "head": "5d7167d9cd7f0345ebfa689cdf2de7dea7ef6a82",
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1833",
+        "state": "OPEN"
       },
       "implementationStatus": "not merged into this branch; no runtime verification claimed",
       "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
@@ -116,22 +121,24 @@
       "id": "P06",
       "pr": 1834,
       "feature": "Dodo billing and recovery",
-      "scope": "Provider-neutral billing migrations, Dodo quote/checkout/reconciliation/refund ledger; main Razorpay flow is not yet replaced.",
+      "scope": "Provider-neutral billing migrations, Dodo quote/checkout/reconciliation/refund ledger. New purchases are controlled by i01; billing status, cancellation, reconciliation, refunds and signed webhooks retain their mandatory recovery and identity checks.",
       "code": [
         "backend/app/services/dodo_provider.py",
         "backend/app/services/payment_service.py",
         "docs/BILLING_DODO.md"
       ],
       "qa": "Sandbox exact SKU/amount/currency/identity, signed lifecycle and refund transitions; pending provider refund/production commercial review not claimed complete.",
-      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
       "url": "https://github.com/sanskarpan/Latexy/pull/1834",
       "currentPr": {
         "number": 1834,
-        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
         "draft": false,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+        "state": "MERGED",
+        "mergeCommit": "fb68ae06"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
       "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
     },
     {
@@ -146,37 +153,41 @@
         "frontend/src/lib/resume-navigation.ts"
       ],
       "qa": "Create\u2192edit\u2192conflicting save\u2192recover\u2192reload\u2192library reopen\u2192real PDF/SVG/JPEG; email and Drive delivery still require real integration acceptance.",
-      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
       "url": "https://github.com/sanskarpan/Latexy/pull/1834",
       "currentPr": {
         "number": 1834,
-        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
         "draft": false,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+        "state": "MERGED",
+        "mergeCommit": "fb68ae06"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
-      "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
+      "integrationRequirement": "Preserve version preconditions, serialized saves and current-source PDF integrity. Require c01 for new content saves and c05 for new PDF generation, including export preparation; existing artifacts remain readable."
     },
     {
       "id": "P08",
       "pr": 1834,
       "feature": "New visual editor and first-use presentation components",
-      "scope": "VisualResumeEditor/VisualChangeReviewModal and FirstUseGuide files appear in PR diff; not current-main capabilities.",
+      "scope": "VisualResumeEditor/VisualChangeReviewModal are reachable from the source editor and Studio; FirstUseGuide is integrated into initial use. Optional visual mode inherits b10 and content writes require c01.",
       "code": [
         "frontend/src/components/VisualResumeEditor.tsx",
         "frontend/src/components/VisualChangeReviewModal.tsx",
         "frontend/src/components/FirstUseGuide.tsx"
       ],
-      "qa": "Verify reachable route/wiring and intended overlap with #1833 before adding to main inventory; changed-file presence is lower evidence than exercised behavior.",
-      "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+      "qa": "Current integration checks source recovery with visual mode disabled, content write denial and first-use owner isolation; individual browser evidence is recorded separately.",
+      "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
       "url": "https://github.com/sanskarpan/Latexy/pull/1834",
       "currentPr": {
         "number": 1834,
-        "head": "db97a68283d02d35d65be334ed0f2792faf700a3",
+        "head": "6e9a1612f03f9a5141fb025f4331dcb23450b78b",
         "draft": false,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1834"
+        "url": "https://github.com/sanskarpan/Latexy/pull/1834",
+        "state": "MERGED",
+        "mergeCommit": "fb68ae06"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
       "integrationRequirement": "Map new product actions to the audited family/granular controls and add admission/UI tests when the source PR is integrated; preserve immutable billing identities."
     },
     {
@@ -194,9 +205,11 @@
         "number": 1851,
         "head": "d6e11f97bb000b15b5d9c7e621e0647fb9b71a9e",
         "draft": false,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1851"
+        "url": "https://github.com/sanskarpan/Latexy/pull/1851",
+        "state": "MERGED",
+        "mergeCommit": "b96aa3b5"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
       "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
     },
     {
@@ -213,10 +226,12 @@
       "currentPr": {
         "number": 1858,
         "head": "d3987450aee0ed40cd3c37c4663399b36e44159e",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1858"
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1858",
+        "state": "MERGED",
+        "mergeCommit": "f5bf14a7"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
       "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
     },
     {
@@ -233,10 +248,12 @@
       "currentPr": {
         "number": 1861,
         "head": "3a8959850a0bce3caa06ddcd35f8effb07598e3a",
-        "draft": true,
-        "url": "https://github.com/sanskarpan/Latexy/pull/1861"
+        "draft": false,
+        "url": "https://github.com/sanskarpan/Latexy/pull/1861",
+        "state": "MERGED",
+        "mergeCommit": "c21bcc20"
       },
-      "implementationStatus": "not merged into this branch; no runtime verification claimed",
+      "implementationStatus": "merged into main and integrated into this checkout; current-run verification recorded separately",
       "integrationRequirement": "Security, ownership, revision integrity and recovery fixes must remain mandatory; do not turn them into optional product gates."
     }
   ]

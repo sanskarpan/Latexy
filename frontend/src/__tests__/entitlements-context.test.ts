@@ -97,7 +97,11 @@ describe('identity-scoped feature availability', () => {
     ready.refresh(); expect(h.render().can('d01')).toBe(false)
     h.getEntitlements.mockRejectedValue(new Error('offline')); h.fetch(); await flush()
     const failed = h.render(); expect(failed.loaded).toBe(false); expect(failed.error).toBe('offline')
-    expect(failed.can('d01')).toBe(false); expect(failed.can('c05')).toBe(true); expect(failed.can('b01')).toBe(true)
+    for (const key of ['d01', 'b01', 'c01', 'c05', 'compile', 'f10', 'f11', 'i01']) {
+      expect(failed.can(key), `${key} must fail closed`).toBe(false)
+    }
+    expect(failed.can('c09')).toBe(true) // Existing PDF preview remains available.
+    expect(failed.can('i04')).toBe(true) // Admin recovery remains available.
     h.getEntitlements.mockResolvedValue({ features: { d01: true } }); failed.refresh(); h.render(); h.fetch(); await flush()
     expect(h.render().can('d01')).toBe(true)
   })
@@ -138,6 +142,7 @@ describe('bounded non-destructive background refresh', () => {
     await vi.advanceTimersByTimeAsync(38000)
     expect(h.render().can('d01')).toBe(false)
     expect(h.render().error).toContain('expired')
-    expect(h.render().can('b01')).toBe(true)
+    for (const key of ['b01', 'c01', 'c05', 'compile']) expect(h.render().can(key)).toBe(false)
+    expect(h.render().can('c09')).toBe(true)
   })
 })

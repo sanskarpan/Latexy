@@ -7,7 +7,15 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import PlanCatalog, PlanCatalogRevision, Subscription, User
+from app.database.models import (
+    BillingWebhookEvent,
+    Payment,
+    PaymentRefund,
+    PlanCatalog,
+    PlanCatalogRevision,
+    Subscription,
+    User,
+)
 from app.services.plan_catalog_service import PlanCatalogService
 
 
@@ -80,7 +88,12 @@ async def test_retired_sku_preserves_existing_subscription_and_entitlement(db_se
     customer = User(id=str(uuid4()), email=f"test_{uuid4().hex}@example.com", subscription_plan="pro", subscription_status="active", subscription_id=provider_id)
     db_session.add(customer)
     await db_session.flush()
-    subscription = Subscription(user_id=customer.id, plan_id="pro", razorpay_subscription_id=provider_id, status="active", current_period_start=datetime.now(timezone.utc), current_period_end=datetime.now(timezone.utc) + timedelta(days=30))
+    subscription = Subscription(
+        user_id=customer.id, plan_id="pro", provider="dodo",
+        provider_subscription_id=provider_id, provider_product_id="p_test_pro", status="active",
+        current_period_start=datetime.now(timezone.utc),
+        current_period_end=datetime.now(timezone.utc) + timedelta(days=30),
+    )
     db_session.add(subscription)
     await db_session.commit()
     original_end = subscription.current_period_end
@@ -92,6 +105,80 @@ async def test_retired_sku_preserves_existing_subscription_and_entitlement(db_se
     assert subscription.status == "active"
     assert subscription.plan_id == "pro"
     assert subscription.current_period_end == original_end
+
+
+async def test_plan_catalog_migration_leaves_dodo_subscription_payment_and_refund_evidence_unchanged(
+    db_session: AsyncSession,
+):
+    import importlib.util
+    from pathlib import Path
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    user = User(
+        id=str(uuid4()), email=f"dodo_catalog_{uuid4().hex}@example.com", name="Dodo Catalog",
+        subscription_plan="pro", subscription_status="active",
+    )
+    provider_subscription_id = f"sub_{uuid4().hex}"
+    subscription = Subscription(
+        id=str(uuid4()), user_id=user.id, provider="dodo", provider_subscription_id=provider_subscription_id,
+        provider_checkout_session_id=f"checkout_{uuid4().hex}", provider_customer_id="cus_keep",
+        provider_product_id="p_test_pro", quoted_amount=2400, quoted_tax_inclusive=True,
+        discount_percent=10, plan_id="pro", status="active",
+        current_period_start=datetime.now(timezone.utc),
+        current_period_end=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    provider_payment_id = f"pay_{uuid4().hex}"
+    payment = Payment(
+        id=str(uuid4()), user_id=user.id, subscription_id=subscription.id, provider="dodo",
+        provider_payment_id=provider_payment_id, amount=2160, currency="INR", status="partially_refunded",
+    )
+    provider_refund_id = f"refund_{uuid4().hex}"
+    refund = PaymentRefund(
+        id=str(uuid4()), payment_id=payment.id, provider="dodo", provider_refund_id=provider_refund_id,
+        amount=240, currency="INR", status="succeeded", reason="preserved ledger evidence",
+    )
+    webhook = BillingWebhookEvent(
+        id=str(uuid4()), provider="dodo", event_id=f"evt_{uuid4().hex}", event_type="payment.refunded",
+        event_resource_id=payment.provider_payment_id, payload_sha256="a" * 64, status="processed", attempts=1,
+    )
+    db_session.add_all([user, subscription])
+    await db_session.flush()
+    db_session.add(payment)
+    await db_session.flush()
+    db_session.add_all([refund, webhook])
+    await db_session.commit()
+
+    migration_path = Path(__file__).parents[1] / "alembic/versions/0070_plan_catalog.py"
+    spec = importlib.util.spec_from_file_location("plan_catalog_migration_preservation", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    def upgrade(connection):
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+
+    await (await db_session.connection()).run_sync(upgrade)
+    await db_session.commit()
+    await db_session.refresh(subscription)
+    await db_session.refresh(payment)
+    await db_session.refresh(refund)
+    await db_session.refresh(webhook)
+
+    assert (subscription.provider, subscription.provider_subscription_id, subscription.provider_product_id) == (
+        "dodo", provider_subscription_id, "p_test_pro",
+    )
+    assert (subscription.quoted_amount, subscription.quoted_tax_inclusive, subscription.discount_percent) == (
+        2400, True, 10,
+    )
+    assert (payment.provider_payment_id, payment.amount, payment.status) == (
+        provider_payment_id, 2160, "partially_refunded",
+    )
+    assert (refund.provider_refund_id, refund.amount, refund.status) == (
+        provider_refund_id, 240, "succeeded",
+    )
+    assert webhook.event_resource_id == provider_payment_id
 
 
 async def test_paused_plan_blocks_direct_checkout_and_student_verification(client: AsyncClient, db_session: AsyncSession, monkeypatch):
@@ -151,7 +238,7 @@ async def test_catalog_migration_roundtrip_preserves_edits_and_audit(db_session:
 
     admin_id, _ = await headers(db_session)
     await PlanCatalogService().update(db_session, "pro", {"name": "Preserved", "purchase_enabled": False}, version=1, admin_id=admin_id)
-    path = Path(__file__).parents[1] / "alembic/versions/0061_plan_catalog.py"
+    path = Path(__file__).parents[1] / "alembic/versions/0070_plan_catalog.py"
     spec = importlib.util.spec_from_file_location("plan_catalog_migration", path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)

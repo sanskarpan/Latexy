@@ -228,6 +228,7 @@ yarn-error.log*
 # Next.js
 .next/
 .next-playwright-*/
+.next-codex-*/
 .playwright-e2e-*/
 out/
 

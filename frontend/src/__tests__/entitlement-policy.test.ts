@@ -15,7 +15,7 @@ function state(): AdminEntitlementsState {
 describe('effective capability policy', () => {
   it('keeps the offline baseline exactly aligned with the server immutable catalog', () => {
     const catalog = JSON.parse(readFileSync(resolve(__dirname, '../../../backend/app/core/capability_catalog.json'), 'utf8')) as EntitlementFeatureDef[]
-    const baseline = ['compile', ...catalog.filter((entry) => !entry.gateable).map((entry) => entry.key)]
+    const baseline = catalog.filter((entry) => !entry.gateable).map((entry) => entry.key)
     expect([...BASELINE_FEATURES].sort()).toEqual(baseline.sort())
   })
   it('fails closed for absent, unknown, inherited object properties and nonboolean values', () => {
@@ -28,7 +28,11 @@ describe('effective capability policy', () => {
   })
   it('preserves only explicitly immutable baseline access through failures', () => {
     for (const key of BASELINE_FEATURES) expect(isFeatureAllowed({}, key)).toBe(true)
-    expect(isFeatureAllowed({ c05: false }, 'c05')).toBe(true)
+    for (const key of ['compile', 'b01', 'c01', 'c05', 'f10', 'f11', 'i01']) {
+      expect(isFeatureAllowed({}, key)).toBe(false)
+      expect(isFeatureAllowed({ [key]: false }, key)).toBe(false)
+      expect(isFeatureAllowed({ [key]: true }, key)).toBe(true)
+    }
     for (const key of ['a06', 'b08', 'b09', 'c02', 'c03', 'c06', 'c22', 'd01', 'f01']) expect(isFeatureAllowed({}, key)).toBe(false)
   })
   it('validates responses rather than coercing malformed grants', () => {

@@ -1,0 +1,143 @@
+- link "Skip to content":
+  - /url: "#main-content"
+- main:
+  - heading "Résumé Studio" [level=1]
+  - link "L":
+    - /url: /
+  - generic: Résumé Studio
+  - generic: resume.tex
+  - generic "Draft autosaved to this browser":
+    - text: Saved locally
+  - button "Recompile":
+    - generic: Recompile
+  - button "Auto-compile on change":
+    - text: Auto
+  - button "ATS 59":
+    - text: ATS
+    - generic: "59"
+  - button "Editor only":
+  - button "Turn on high contrast mode":
+  - button "Toggle light or dark mode":
+  - button "Export":
+    - text: Export
+  - generic: trials 2
+  - link "Log in":
+    - /url: /login
+  - navigation:
+    - button "Files":
+    - button "AI Optimize":
+    - button "ATS Score" [active]:
+    - button "Import":
+    - button "Templates":
+    - button "Toggle panel":
+  - complementary:
+    - generic: ATS Score
+    - button "Deep scan"
+    - paragraph: "59"
+    - paragraph: out of 100
+    - paragraph: Compile or optimize to see a category breakdown, or run a Deep scan for a full AI analysis.
+    - paragraph: Tokens used
+    - paragraph: "0"
+  - generic: resume.tex
+  - button "Copy LaTeX source":
+    - text: Copy
+  - generic: ⌘F to find
+  - button "LaTeX search presets":
+    - generic: LaTeX Presets
+  - code:
+    - textbox "Editor content"
+    - textbox
+    - generic: "1"
+    - generic: "2"
+    - generic: "3"
+    - generic: "4"
+    - generic: "5"
+    - generic: 
+    - generic: "6"
+    - generic: 
+    - generic: "7"
+    - generic: "8"
+    - generic: "9"
+    - generic: "10"
+    - generic: "11"
+    - generic: "12"
+    - generic: "13"
+    - generic: 
+    - generic: "14"
+    - generic: "15"
+    - generic: "16"
+    - generic: "17"
+    - generic: 
+    - generic: "18"
+    - generic: "19"
+    - generic: 
+    - generic: "20"
+    - generic: "21"
+    - generic: "22"
+    - generic: "23"
+    - generic: "24"
+    - generic: "25"
+    - generic: "\\documentclass[11pt,a4paper]{article}"
+    - generic: "\\usepackage[margin=0.72in]{geometry}"
+    - generic: "\\usepackage{enumitem}"
+    - generic: "\\setlist{nosep}"
+    - generic: "\\begin{document}"
+    - generic: "\\begin{center}"
+    - generic: "{\\LARGE\\textbf{Alex Morgan}} \\\\"
+    - generic: "\\vspace{1mm}"
+    - generic: Senior Software Engineer \\
+    - generic: "Email: alex@example.com | linkedin.com/in/"
+    - generic: alexmorgan
+    - generic: "\\end{center}"
+    - generic: "\\section*{Summary}"
+    - generic: Product-focused engineer with 6+ years building
+    - generic: resilient SaaS systems, developer tooling,
+    - generic: and observability-first workflows.
+    - generic: "\\section*{Experience}"
+    - generic: "\\textbf{Staff Engineer, Northbeam Labs} \\hfill"
+    - generic: 2022 - Present
+    - generic: "\\begin{itemize}"
+    - generic: \item Led migration to event-driven backend
+    - generic: reducing deployment risk by 35\%
+    - generic: \item Built internal design system used across 6
+    - generic: product surfaces
+    - generic: \item Mentored 4 engineers and introduced
+    - generic: measurable review standards
+    - generic: "\\end{itemize}"
+  - generic: LaTeX editor
+  - generic "Editor keybinding mode":
+    - generic: Editor keybindings
+    - combobox "Editor keybindings":
+      - option "Standard" [selected]
+      - option "Vim"
+      - option "Emacs"
+    - generic: STANDARD
+  - generic "Resume is 1 page": 1 page
+  - button "ATS 59"
+  - generic: 856 chars
+  - generic: ⌘S save · ⌘↵ compile · ⌘⇧H presets
+  - button [disabled]:
+  - separator "Resize editor and preview panes"
+  - button "Zoom out":
+  - button "Reset zoom to 100%" [disabled]: 100%
+  - button "Zoom in":
+  - button "Fit to width" [disabled]: Fit
+  - generic "SyncTeX enabled — Ctrl+click PDF to jump to source":
+    - text: Ctrl+click to sync
+  - button "Heatmap":
+    - text: Heatmap
+  - button "Dark PDF preview":
+  - button "B&W print preview":
+    - text: Print
+  - button "PDF":
+    - text: PDF
+  - generic: "Alex Morgan Senior Software Engineer Email: alex@example.com — linkedin.com/in/alexmorgan Summary Product-focused engineer with 6+ years building resilient SaaS systems, developer tooling, and observability- first workflows. Experience Staff Engineer, Northbeam Labs 2022 - Present • Led migration to event-driven backend reducing deployment risk by 35% • Built internal design system used across 6 product surfaces • Mentored 4 engineers and introduced measurable review standards Skills TypeScript, Next.js, Python, PostgreSQL, Redis, Kubernetes, AWS 1"
+  - button "Compiled 17 log lines":
+    - text: Compiled
+    - generic: 17 log lines
+  - button "Copy all log output":
+    - text: Copy
+- region "Notifications alt+T"
+- alert
+- alert
+- alert

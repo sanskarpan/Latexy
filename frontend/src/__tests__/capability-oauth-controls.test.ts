@@ -39,7 +39,7 @@ describe('OAuth and sync capability controls', () => {
     }
   })
   it('requires a current grant at the confirm dialog and again after an awaited source save', () => {
-    const source = editor.getFullText()
+    const source = editor.getFullText().replace(/\r\n/g, '\n')
     expect(source).toContain("confirmDisabled={confirmPull === 'dropbox' ? !can('g05') : !can('g01')}")
     expect(source).toContain("if (!canRef.current('g01')) return\n      const result = await apiClient.pushToGitHub")
     expect(source).toContain("if (!canRef.current('g05')) return\n      const result = await apiClient.pushToDropbox")

@@ -223,13 +223,15 @@ Copy `.env.example` and fill in values. Key variables:
 | `MINIO_SECRET_KEY` | — | Defaults to `minioadmin_secret` |
 | `MINIO_BUCKET` | — | Defaults to `latexy` |
 | `BILLING_MODE` | — | `disabled`, `auto`, or `required` |
-| `RAZORPAY_KEY_ID` | — | Payments (India) |
-| `RAZORPAY_KEY_SECRET` | — | Payments (India) |
-| `RAZORPAY_WEBHOOK_SECRET` | — | Webhook signature validation |
-| `RAZORPAY_PLAN_WEEKLY` | — | Reviewed Razorpay weekly subscription plan ID (B57) |
-| `RAZORPAY_WEEKLY_AMOUNT` | `0` | Weekly INR amount in paise; `0` keeps the SKU unavailable |
-| `RAZORPAY_LIFETIME_AMOUNT` | `0` | Lifetime one-time INR amount in paise; `0` keeps the SKU unavailable |
-| `RAZORPAY_BILLING_CURRENCY` | `INR` | Currency for B57 amounts; client amounts are never accepted |
+| `DODO_MODE` | `test` | Selects isolated `test` or `live` Dodo credentials and product catalog |
+| `DODO_TEST_API_KEY`, `DODO_TEST_WEBHOOK_KEY` | — | Server-only test-mode API and webhook signing keys |
+| `DODO_LIVE_API_KEY`, `DODO_LIVE_WEBHOOK_KEY` | — | Server-only live-mode API and webhook signing keys |
+| `DODO_{TEST,LIVE}_PRODUCT_*` | — | Dodo dashboard product IDs mapped to each server-side plan SKU |
+| `DODO_{TEST,LIVE}_BUSINESS_ID` | — | Optional expected Dodo business ID checked against signed webhook events |
+
+See [Dodo billing operations](docs/BILLING_DODO.md) for test/live setup, webhook configuration, migration notes, and the sandbox verification checklist.
+| `WEEKLY_AMOUNT_MINOR`, `LIFETIME_AMOUNT_MINOR` | `0` | Optional SKU prices in the currency's smallest unit; zero keeps the SKU unavailable |
+| `BILLING_CURRENCY` | `INR` | Currency used for the optional weekly and lifetime SKUs |
 
 Generate strong secrets:
 ```bash
@@ -240,8 +242,8 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Production startup is fail-fast:
 - `ENVIRONMENT=staging|production` requires `API_KEY_ENCRYPTION_KEY`.
-- `BILLING_MODE=required` requires all Razorpay credentials.
-- Partial Razorpay config is rejected at startup so billing cannot silently degrade.
+- `BILLING_MODE=required` requires the active Dodo API and webhook signing keys.
+- Partial active-mode Dodo config is rejected at startup so billing cannot silently degrade.
 - Weekly and lifetime pricing are intentionally absent from `/subscription/plans`
   until their operator-configured amount (minor INR units) and provider mapping
   are present. Do not put commercial prices in source code.

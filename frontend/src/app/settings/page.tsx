@@ -1,9 +1,6 @@
 'use client'
 
-import { useEntitlements } from '@/contexts/EntitlementsContext'
-import CapabilityGate from '@/components/CapabilityGate'
-
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
@@ -15,6 +12,7 @@ import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
 import SecuritySettings from '@/components/auth/SecuritySettings'
 import ReferralPanel from '@/components/ReferralPanel'
 import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { claimOAuthCompletion } from '@/lib/oauth-completion-claims'
 
 function SettingsContent() {
@@ -25,7 +23,11 @@ function SettingsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
-  const { resetOnboarding } = useOnboarding()
+  const { resetOnboarding } = useOnboarding(useMemo(() => ({
+    ownerId: sessionData?.user?.id ?? null,
+    authToken: sessionData?.session?.token ?? '',
+    confirmed: Boolean(sessionData?.user?.id && sessionData?.session?.token && !sessionLoading && !sessionError),
+  }), [sessionData?.session?.token, sessionData?.user?.id, sessionError, sessionLoading]))
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   type ProviderActionKey =
     | 'google_drive'
@@ -56,6 +58,12 @@ function SettingsContent() {
   const providerActionAuthToken = sessionData?.session?.token ?? ''
   const providerActionAuthReady = Boolean(sessionData && !sessionLoading && !sessionError)
   providerActionAuthReadyRef.current = providerActionAuthReady
+  const legacyAuthReadyRef = useRef(providerActionAuthReady)
+  const legacyAuthReadyGenerationRef = useRef(0)
+  if (legacyAuthReadyRef.current !== providerActionAuthReady) {
+    legacyAuthReadyRef.current = providerActionAuthReady
+    legacyAuthReadyGenerationRef.current += 1
+  }
   if (
     providerActionIdentityRef.current.ownerId !== providerActionOwnerId
     || providerActionIdentityRef.current.authToken !== providerActionAuthToken
@@ -93,11 +101,42 @@ function SettingsContent() {
     }
   }
   const notificationOwnerIdentity = notificationOwnerIdentityRef.current
+  type LegacyProvider = 'github' | 'zotero' | 'mendeley' | 'dropbox'
+  type LegacyCallbackAttempt = {
+    key: string
+    ownerGeneration: number
+    dispatched: boolean
+    settled: boolean
+  }
+  type LegacyOwnedNotice = { ownerId: string | null; success: string | null; error: string | null }
+  const legacyCallbackStartedRef = useRef<Map<LegacyProvider, LegacyCallbackAttempt>>(new Map())
+  const legacyCallbackQueryRef = useRef(searchParams)
+  legacyCallbackQueryRef.current = searchParams
+  const legacyOperationRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  const legacyStatusRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  const legacyOwnedNoticeRef = useRef<Record<LegacyProvider, LegacyOwnedNotice>>({
+    github: { ownerId: null, success: null, error: null },
+    zotero: { ownerId: null, success: null, error: null },
+    mendeley: { ownerId: null, success: null, error: null },
+    dropbox: { ownerId: null, success: null, error: null },
+  })
+  const legacyOwnerRef = useRef<string | null>(providerActionIdentity.ownerId)
+  const legacyOwnerGenerationRef = useRef(0)
+  if (legacyOwnerRef.current !== providerActionIdentity.ownerId) {
+    legacyOwnerRef.current = providerActionIdentity.ownerId
+    legacyOwnerGenerationRef.current += 1
+  }
+  const legacyNoticeOwnerRef = useRef<string | null>(providerActionIdentity.ownerId)
+  const legacyOwnerNoticeRevisionRef = useRef(0)
+  const legacyProviderNoticeRevisionRef = useRef<Record<LegacyProvider, number>>({ github: 0, zotero: 0, mendeley: 0, dropbox: 0 })
+  if (legacyNoticeOwnerRef.current !== providerActionIdentity.ownerId) {
+    legacyNoticeOwnerRef.current = providerActionIdentity.ownerId
+    legacyOwnerNoticeRevisionRef.current += 1
+  }
 
   // Replay the first-run product tour: clear the completion flag (local + account)
   // then head to the workspace, which re-opens onboarding when it isn't completed.
   const handleReplayTour = () => {
-    if (!can('a06')) return
     resetOnboarding()
     router.push('/workspace')
   }
@@ -125,6 +164,33 @@ function SettingsContent() {
     settingsTimersRef.current.add(t)
   }
 
+  function retireLegacyCallback(provider: LegacyProvider) {
+    // A later explicit action owns the card, even if an earlier verification
+    // has already reached the server and cannot be cancelled.
+    legacyOperationRevisionRef.current[provider] += 1
+    legacyProviderNoticeRevisionRef.current[provider] += 1
+    const attempt = legacyCallbackStartedRef.current.get(provider)
+    if (attempt) attempt.settled = true
+    const notice = legacyOwnedNoticeRef.current[provider]
+    if (notice.ownerId === providerActionIdentityRef.current.ownerId && notice.success) {
+      if (provider === 'github' && ghSuccess === notice.success) setGhSuccess(null)
+      if (provider === 'zotero' && zotSuccess === notice.success) setZotSuccess(null)
+      if (provider === 'mendeley' && menSuccess === notice.success) setMenSuccess(null)
+      if (provider === 'dropbox' && dbxSuccess === notice.success) setDbxSuccess(null)
+    }
+    legacyOwnedNoticeRef.current[provider] = {
+      ownerId: providerActionIdentityRef.current.ownerId,
+      success: null,
+      error: null,
+    }
+    const query = new URLSearchParams(legacyCallbackQueryRef.current.toString())
+    if (query.get(provider) === 'connected') {
+      query.delete(provider)
+      const remaining = query.toString()
+      router.replace(remaining ? `${pathname}?${remaining}` : pathname, { scroll: false })
+    }
+  }
+
   function beginProviderAction(key: ProviderActionKey) {
     if (
       !providerActionMountedRef.current
@@ -142,6 +208,11 @@ function SettingsContent() {
     const lifecycle = providerActionLifecycleRef.current
     const revision = ++providerActionRevisionRef.current[key]
     providerActionActiveRef.current[key] = true
+    if (key !== 'google_drive') {
+      const provider = key.replace('_disconnect', '') as LegacyProvider
+      retireLegacyCallback(provider)
+      legacyStatusRevisionRef.current[provider] += 1
+    }
     const isCurrent = () => (
       providerActionMountedRef.current
       && providerActionLifecycleRef.current === lifecycle
@@ -303,6 +374,7 @@ function SettingsContent() {
     const lifecycle = ++providerActionLifecycleRef.current
     const revisions = providerActionRevisionRef.current
     const active = providerActionActiveRef.current
+    const legacyCallbackStarted = legacyCallbackStartedRef.current
     return () => {
       if (providerActionLifecycleRef.current !== lifecycle) return
       providerActionMountedRef.current = false
@@ -313,8 +385,32 @@ function SettingsContent() {
       for (const key of Object.keys(revisions) as ProviderActionKey[]) {
         revisions[key] += 1
       }
+      legacyCallbackStarted.clear()
     }
   }, [])
+
+  useEffect(() => {
+    const clearPreviousOwnerNotice = (
+      provider: LegacyProvider,
+      currentSuccess: string | null,
+      currentError: string | null,
+      setSuccess: (message: string | null) => void,
+      setError: (message: string | null) => void,
+    ) => {
+      const notice = legacyOwnedNoticeRef.current[provider]
+      if (notice.ownerId === providerActionIdentity.ownerId) return
+      if (notice.success && currentSuccess === notice.success) setSuccess(null)
+      if (notice.error && currentError === notice.error) setError(null)
+      notice.ownerId = providerActionIdentity.ownerId
+      notice.success = null
+      notice.error = null
+    }
+
+    clearPreviousOwnerNotice('github', ghSuccess, ghError, setGhSuccess, setGhError)
+    clearPreviousOwnerNotice('zotero', zotSuccess, zotError, setZotSuccess, setZotError)
+    clearPreviousOwnerNotice('mendeley', menSuccess, menError, setMenSuccess, setMenError)
+    clearPreviousOwnerNotice('dropbox', dbxSuccess, dbxError, setDbxSuccess, setDbxError)
+  }, [providerActionIdentity.ownerId, ghSuccess, ghError, zotSuccess, zotError, menSuccess, menError, dbxSuccess, dbxError])
 
   // An account/token transition invalidates in-flight provider actions. Clear
   // transient busy indicators, but keep confirmed state until the owner-scoped
@@ -380,6 +476,10 @@ function SettingsContent() {
     const generation = ++integrationStatusGenerationRef.current
     let cancelled = false
     const current = () => !cancelled && integrationStatusGenerationRef.current === generation
+    const initialStatusRevision = { ...legacyStatusRevisionRef.current }
+    const currentStatus = (provider: LegacyProvider) => (
+      current() && legacyStatusRevisionRef.current[provider] === initialStatusRevision[provider]
+    )
     const ownerIdentity = notificationOwnerIdentity
     if (!notificationAuthReady) {
       setLoading(false)
@@ -430,40 +530,40 @@ function SettingsContent() {
     }
 
     apiClient.getGitHubStatus()
-      .then((status) => { if (current()) setGhStatus(status) })
+      .then((status) => { if (currentStatus('github')) setGhStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('github')) return
         console.error('Failed to load GitHub status')
         setGhError('Failed to load GitHub status')
       })
-      .finally(() => { if (current()) setGhLoading(false) })
+      .finally(() => { if (currentStatus('github')) setGhLoading(false) })
 
     apiClient.getZoteroStatus()
-      .then((status) => { if (current()) setZotStatus(status) })
+      .then((status) => { if (currentStatus('zotero')) setZotStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('zotero')) return
         console.error('Failed to load Zotero status')
         setZotError('Failed to load Zotero status')
       })
-      .finally(() => { if (current()) setZotLoading(false) })
+      .finally(() => { if (currentStatus('zotero')) setZotLoading(false) })
 
     apiClient.getMendeleyStatus()
-      .then((status) => { if (current()) setMenStatus(status) })
+      .then((status) => { if (currentStatus('mendeley')) setMenStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('mendeley')) return
         console.error('Failed to load Mendeley status')
         setMenError('Failed to load Mendeley status')
       })
-      .finally(() => { if (current()) setMenLoading(false) })
+      .finally(() => { if (currentStatus('mendeley')) setMenLoading(false) })
 
     apiClient.getDropboxStatus()
-      .then((status) => { if (current()) setDbxStatus(status) })
+      .then((status) => { if (currentStatus('dropbox')) setDbxStatus(status) })
       .catch(() => {
-        if (!current()) return
+        if (!currentStatus('dropbox')) return
         console.error('Failed to load Dropbox status')
         setDbxError('Failed to load Dropbox status')
       })
-      .finally(() => { if (current()) setDbxLoading(false) })
+      .finally(() => { if (currentStatus('dropbox')) setDbxLoading(false) })
 
     return () => {
       cancelled = true
@@ -575,12 +675,9 @@ function SettingsContent() {
       return
     }
     const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
-    // AccountBoundary can remount this component before router.replace removes
-    // the callback URL. Admission must outlive refs and account/token changes,
-    // and is intentionally independent of current feature availability so an
-    // already-admitted OAuth flow can recover after its feature is turned off.
-    // This local marker only avoids repeating URL cleanup (which could race a
-    // successful return_to navigation). The document ledger controls dispatch.
+    // AccountBoundary can remount before router.replace removes the callback.
+    // The document ledger prevents the same short-lived ticket from being
+    // replayed under a replacement identity.
     const completionKey = `${provider}:${ticket}`
     if (oauthCompletionHandledRef.current === completionKey) return
     oauthCompletionHandledRef.current = completionKey
@@ -592,6 +689,8 @@ function SettingsContent() {
       router.replace(pathname, { scroll: false })
       return
     }
+
+    if (provider !== 'google_drive') retireLegacyCallback(provider)
     const googleDriveOwner = provider === 'google_drive'
       ? { accountKey, ticket, active: true, statusApplied: false }
       : null
@@ -710,65 +809,203 @@ function SettingsContent() {
 
   // Show success message after OAuth redirect
   useEffect(() => {
-    let sawConnectedParam = false
+    const connectedProviders = ['github', 'zotero', 'mendeley', 'dropbox'] as const
+    const activeProviders = connectedProviders.filter((provider) => searchParams.get(provider) === 'connected')
 
-    const verifyLegacyConnection = async <T,>(
+    for (const provider of connectedProviders) {
+      if (!activeProviders.includes(provider) && legacyCallbackStartedRef.current.has(provider)) {
+        legacyOperationRevisionRef.current[provider] += 1
+        legacyCallbackStartedRef.current.delete(provider)
+      }
+    }
+    if (!activeProviders.length) return
+    if (!providerActionAuthReady || !providerActionIdentity.ownerId || !providerActionIdentity.authToken) {
+      for (const provider of activeProviders) {
+        const attempt = legacyCallbackStartedRef.current.get(provider)
+        if (
+          attempt?.ownerGeneration === legacyOwnerGenerationRef.current
+          && !attempt.dispatched
+          && legacyCallbackStartedRef.current.get(provider) === attempt
+        ) {
+          legacyOperationRevisionRef.current[provider] += 1
+          legacyCallbackStartedRef.current.delete(provider)
+        }
+      }
+      return
+    }
+
+    const requestKey = `${providerActionIdentity.generation}:${searchParams.toString()}`
+    const ownerGeneration = legacyOwnerGenerationRef.current
+    const clearQueryAfterVerification = () => {
+      // Navigation can add a provider or unrelated parameters while a read is
+      // held. Only consume the current, fully settled callback markers.
+      const query = new URLSearchParams(legacyCallbackQueryRef.current.toString())
+      const currentProviders = connectedProviders.filter((provider) => query.get(provider) === 'connected')
+      if (currentProviders.length && currentProviders.every((provider) => {
+        const attempt = legacyCallbackStartedRef.current.get(provider)
+        return attempt?.ownerGeneration === ownerGeneration && attempt.settled
+      })) {
+        for (const provider of currentProviders) query.delete(provider)
+        const remaining = query.toString()
+        router.replace(remaining ? `${pathname}?${remaining}` : pathname, { scroll: false })
+      }
+    }
+    const verifyLegacyConnection = async <T extends { connected: boolean }>(
+      provider: LegacyProvider,
       providerName: string,
-      loadStatus: () => Promise<T>,
+      loadStatus: (context: { authToken: string; isCurrent: () => boolean }) => Promise<T>,
       setStatus: (status: T) => void,
+      setProviderLoading: (loading: boolean) => void,
       setSuccess: (message: string | null) => void,
       setProviderError: (message: string | null) => void,
-    ): Promise<boolean> => {
+      onVerified?: (isCurrent: () => boolean) => void,
+    ): Promise<void> => {
+      const previousAttempt = legacyCallbackStartedRef.current.get(provider)
+      if (previousAttempt?.ownerGeneration === ownerGeneration && (
+        previousAttempt.key === requestKey
+        || previousAttempt.settled
+        || (previousAttempt.dispatched && !previousAttempt.settled)
+      )) return
+
+      const operationRevision = legacyOperationRevisionRef.current[provider] + 1
+      legacyOperationRevisionRef.current[provider] = operationRevision
+      const providerActionLifecycle = providerActionLifecycleRef.current
+      const capturedIdentity = providerActionIdentity
+      const capturedAuthReadyGeneration = legacyAuthReadyGenerationRef.current
+      const ownerNoticeRevision = legacyOwnerNoticeRevisionRef.current
+      let noticeRevision = legacyProviderNoticeRevisionRef.current[provider]
+      const attempt: LegacyCallbackAttempt = {
+        key: requestKey,
+        ownerGeneration,
+        dispatched: false,
+        settled: false,
+      }
+      legacyCallbackStartedRef.current.set(provider, attempt)
+      const isCurrentResult = () => (
+        providerActionMountedRef.current
+        && providerActionLifecycleRef.current === providerActionLifecycle
+        && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+        && legacyOwnerGenerationRef.current === ownerGeneration
+        && legacyOperationRevisionRef.current[provider] === operationRevision
+        && legacyCallbackStartedRef.current.get(provider) === attempt
+        && legacyCallbackQueryRef.current.get(provider) === 'connected'
+      )
+      const isCurrentDispatch = () => {
+        const current = (
+          isCurrentResult()
+          && providerActionAuthReadyRef.current
+          && legacyAuthReadyGenerationRef.current === capturedAuthReadyGeneration
+          && providerActionIdentityRef.current.authToken === capturedIdentity.authToken
+          && providerActionIdentityRef.current.generation === capturedIdentity.generation
+        )
+        if (current) attempt.dispatched = true
+        return current
+      }
+      const isCurrentNotice = () => (
+        providerActionMountedRef.current
+        && providerActionLifecycleRef.current === providerActionLifecycle
+        && providerActionIdentityRef.current.ownerId === capturedIdentity.ownerId
+        && legacyOwnerGenerationRef.current === ownerGeneration
+        && legacyOwnerNoticeRevisionRef.current === ownerNoticeRevision
+        && legacyProviderNoticeRevisionRef.current[provider] === noticeRevision
+      )
+      const accountContext = { authToken: capturedIdentity.authToken, isCurrent: isCurrentDispatch }
+      const verificationFailure = `${providerName} authorization completed, but the connection could not be verified. Refresh or try connecting again.`
+      if (!isCurrentResult()) return
       setProviderError(null)
+      if (legacyOwnedNoticeRef.current[provider].ownerId === capturedIdentity.ownerId) {
+        legacyOwnedNoticeRef.current[provider].error = null
+      }
       try {
-        setStatus(await loadStatus())
-        setSuccess(`${providerName} connected successfully!`)
-        scheduleTimer(() => setSuccess(null), 5000)
-        return true
+        const status = await loadStatus(accountContext)
+        if (!isCurrentResult()) return
+        attempt.settled = true
+        // An ordinary initial status read may finish while this callback is
+        // pending. Keep that known status visible, but once this later read is
+        // verified, don't let an older initial response overwrite it.
+        legacyStatusRevisionRef.current[provider] += 1
+        noticeRevision = legacyProviderNoticeRevisionRef.current[provider] + 1
+        legacyProviderNoticeRevisionRef.current[provider] = noticeRevision
+        setStatus(status)
+        setProviderLoading(false)
+        if (!status.connected) {
+          setSuccess(null)
+          setProviderError(verificationFailure)
+          legacyOwnedNoticeRef.current[provider] = {
+            ownerId: capturedIdentity.ownerId,
+            success: null,
+            error: verificationFailure,
+          }
+          clearQueryAfterVerification()
+          return
+        }
+        const successMessage = `${providerName} connected successfully!`
+        setSuccess(successMessage)
+        legacyOwnedNoticeRef.current[provider] = {
+          ownerId: capturedIdentity.ownerId,
+          success: successMessage,
+          error: null,
+        }
+        scheduleTimer(() => {
+          if (!isCurrentNotice()) return
+          setSuccess(null)
+          const notice = legacyOwnedNoticeRef.current[provider]
+          if (notice.ownerId === capturedIdentity.ownerId && notice.success === successMessage) {
+            notice.success = null
+          }
+        }, 5000)
+        if (onVerified && isCurrentResult()) onVerified(isCurrentResult)
+        clearQueryAfterVerification()
       } catch {
+        if (!isCurrentResult()) return
+        if (!attempt.dispatched) {
+          if (legacyCallbackStartedRef.current.get(provider) === attempt) {
+            legacyCallbackStartedRef.current.delete(provider)
+          }
+          return
+        }
+        attempt.settled = true
         console.error(`Failed to verify ${providerName} connection`)
         setSuccess(null)
-        setProviderError(`${providerName} authorization completed, but the connection could not be verified. Refresh or try connecting again.`)
-        return false
+        setProviderLoading(false)
+        setProviderError(verificationFailure)
+        legacyOwnedNoticeRef.current[provider] = {
+          ownerId: capturedIdentity.ownerId,
+          success: null,
+          error: verificationFailure,
+        }
+        clearQueryAfterVerification()
       }
     }
 
-    if (searchParams.get('github') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('GitHub account', () => apiClient.getGitHubStatus(), setGhStatus, setGhSuccess, setGhError)
+    if (activeProviders.includes('github')) {
+      void verifyLegacyConnection<GitHubStatusResponse>('github', 'GitHub account', (context) => apiClient.getGitHubStatus(context), setGhStatus, setGhLoading, setGhSuccess, setGhError)
     }
-    if (searchParams.get('zotero') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Zotero', () => apiClient.getZoteroStatus(), setZotStatus, setZotSuccess, setZotError)
-        .then((verified) => {
-          if (verified && window.opener) {
+    if (activeProviders.includes('zotero')) {
+      void verifyLegacyConnection<ZoteroStatusResponse>('zotero', 'Zotero', (context) => apiClient.getZoteroStatus(context), setZotStatus, setZotLoading, setZotSuccess, setZotError, (isCurrent) => {
+          if (isCurrent() && window.opener) {
             window.opener.postMessage({ type: 'zotero:connected' }, window.location.origin)
             window.close()
           }
         })
     }
-    if (searchParams.get('mendeley') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Mendeley', () => apiClient.getMendeleyStatus(), setMenStatus, setMenSuccess, setMenError)
-        .then((verified) => {
-          if (verified && window.opener) {
+    if (activeProviders.includes('mendeley')) {
+      void verifyLegacyConnection<MendeleyStatusResponse>('mendeley', 'Mendeley', (context) => apiClient.getMendeleyStatus(context), setMenStatus, setMenLoading, setMenSuccess, setMenError, (isCurrent) => {
+          if (isCurrent() && window.opener) {
             window.opener.postMessage({ type: 'mendeley:connected' }, window.location.origin)
             window.close()
           }
         })
     }
-    if (searchParams.get('dropbox') === 'connected') {
-      sawConnectedParam = true
-      void verifyLegacyConnection('Dropbox account', () => apiClient.getDropboxStatus(), setDbxStatus, setDbxSuccess, setDbxError)
+    if (activeProviders.includes('dropbox')) {
+      void verifyLegacyConnection<DropboxStatusResponse>('dropbox', 'Dropbox account', (context) => apiClient.getDropboxStatus(context), setDbxStatus, setDbxLoading, setDbxSuccess, setDbxError)
     }
-
-    // Strip the OAuth success query params from the URL so a refresh or
-    // shared link doesn't replay the "connected successfully" state.
-    if (sawConnectedParam) {
-      router.replace(pathname, { scroll: false })
-    }
+    // Removing a pending provider may leave only already-settled callbacks.
+    // They are deduplicated above, but their remaining URL markers still need
+    // consuming so a later reload does not replay a finished verification.
+    clearQueryAfterVerification()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [pathname, router, searchParams, providerActionIdentity.generation, providerActionAuthReady])
 
   // Notification prefs autosave on toggle (optimistic). The switches look like
   // instant toggles, so persist immediately and reconcile with the server. On
@@ -888,6 +1125,7 @@ function SettingsContent() {
     if (!action) return
     setGhDisconnecting(true)
     setGhError(null)
+    setGhSuccess(null)
     try {
       await apiClient.disconnectGitHub(action.accountContext)
       if (!action.isCurrent()) return
@@ -904,7 +1142,7 @@ function SettingsContent() {
   }
 
   async function handleConnectGitHub() {
-    if (!can('g01')) return
+    if (!canRef.current('g01')) return
     const identity = providerActionIdentityRef.current
     const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g01')
     if (!isCurrent()) return
@@ -918,18 +1156,17 @@ function SettingsContent() {
         pathname: '/login/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      if (!isCurrent()) return
-      setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
-      setGhConnecting(false)
-    } finally {
-      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setGhConnecting(false)
+      if (isCurrent()) {
+        setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
+        setGhConnecting(false)
+      }
     }
   }
 
   async function handleConnectZotero() {
-    if (!can('g07')) return
+    if (!canRef.current('g07')) return
     const identity = providerActionIdentityRef.current
     const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g07')
     if (!isCurrent()) return
@@ -943,13 +1180,12 @@ function SettingsContent() {
         pathname: '/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('Zotero returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      if (!isCurrent()) return
-      setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
-      setZotConnecting(false)
-    } finally {
-      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setZotConnecting(false)
+      if (isCurrent()) {
+        setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
+        setZotConnecting(false)
+      }
     }
   }
 
@@ -959,6 +1195,7 @@ function SettingsContent() {
     if (!action) return
     setZotDisconnecting(true)
     setZotError(null)
+    setZotSuccess(null)
     try {
       await apiClient.disconnectZotero(action.accountContext)
       if (!action.isCurrent()) return
@@ -975,7 +1212,7 @@ function SettingsContent() {
   }
 
   async function handleConnectDropbox() {
-    if (!can('g05')) return
+    if (!canRef.current('g05')) return
     const identity = providerActionIdentityRef.current
     const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g05')
     if (!isCurrent()) return
@@ -989,13 +1226,12 @@ function SettingsContent() {
         pathname: '/oauth2/authorize',
       })
       if (!authorizationUrl) throw new Error('Dropbox returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      if (!isCurrent()) return
-      setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
-      setDbxConnecting(false)
-    } finally {
-      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setDbxConnecting(false)
+      if (isCurrent()) {
+        setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
+        setDbxConnecting(false)
+      }
     }
   }
 
@@ -1005,6 +1241,7 @@ function SettingsContent() {
     if (!action) return
     setDbxDisconnecting(true)
     setDbxError(null)
+    setDbxSuccess(null)
     try {
       await apiClient.disconnectDropbox(action.accountContext)
       if (!action.isCurrent()) return
@@ -1021,11 +1258,11 @@ function SettingsContent() {
   }
 
   async function handleConnectGoogleDrive() {
-    if (!can('g06')) return
+    if (!canRef.current('g06')) return
+    if (gdriveConnecting || gdriveDisconnecting) return
     const identity = providerActionIdentityRef.current
     const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g06')
     if (!isCurrent()) return
-    if (gdriveConnecting || gdriveDisconnecting) return
     setGdriveConnecting(true)
     setGdriveError(null)
     try {
@@ -1038,13 +1275,12 @@ function SettingsContent() {
       if (!authorizationUrl) {
         throw new Error('Google Drive returned an invalid authorization URL. Please retry.')
       }
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      if (!isCurrent()) return
-      setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
-      setGdriveConnecting(false)
-    } finally {
-      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setGdriveConnecting(false)
+      if (isCurrent()) {
+        setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
+        setGdriveConnecting(false)
+      }
     }
   }
 
@@ -1092,7 +1328,7 @@ function SettingsContent() {
   }
 
   async function handleConnectMendeley() {
-    if (!can('g08')) return
+    if (!canRef.current('g08')) return
     const identity = providerActionIdentityRef.current
     const isCurrent = () => providerActionMountedRef.current && providerActionIdentityRef.current === identity && canRef.current('g08')
     if (!isCurrent()) return
@@ -1106,13 +1342,12 @@ function SettingsContent() {
         pathname: '/oauth/authorize',
       })
       if (!authorizationUrl) throw new Error('Mendeley returned an invalid authorization URL. Please retry.')
-      window.location.assign(authorizationUrl)
+      if (isCurrent()) window.location.assign(authorizationUrl)
     } catch (e: unknown) {
-      if (!isCurrent()) return
-      setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
-      setMenConnecting(false)
-    } finally {
-      if (providerActionMountedRef.current && providerActionIdentityRef.current === identity) setMenConnecting(false)
+      if (isCurrent()) {
+        setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
+        setMenConnecting(false)
+      }
     }
   }
 
@@ -1122,6 +1357,7 @@ function SettingsContent() {
     if (!action) return
     setMenDisconnecting(true)
     setMenError(null)
+    setMenSuccess(null)
     try {
       await apiClient.disconnectMendeley(action.accountContext)
       if (!action.isCurrent()) return
@@ -1283,12 +1519,12 @@ function SettingsContent() {
                 {!ghStatus.private_sync && can('g01') && (
                   <button
                     onClick={handleConnectGitHub}
-                    disabled={!can('g01') || (ghConnecting)}
+                    disabled={ghConnecting}
                     className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-3 py-1.5 text-[11px] font-medium text-fg ring-1 ring-line transition hover:brightness-110 disabled:opacity-40"
-                   aria-description={!can('g01') ? 'Unavailable for your current plan or feature settings' : undefined}>
+                  >
                     {ghConnecting ? <Loader2 size={11} className="animate-spin" /> : <Github size={11} />}
                     {ghConnecting ? 'Authorizing…' : 'Enable private sync'}
-                  {!can('g01') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>
+                  </button>
                 )}
               </div>
               <p className="text-[10px] leading-relaxed text-fg-3">
@@ -1296,23 +1532,23 @@ function SettingsContent() {
                 Resume text you already imported or synced is not deleted.
               </p>
             </div>
-          ) : (
+          ) : can('g01') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your GitHub account to sync resume LaTeX source to a private repository.
                 This requests read/write access to your repositories because GitHub OAuth cannot
                 make private source-code access read-only. Push from the editor manually to save a version in Git.
               </p>
-              {can('g01') && <button
+              <button
                 onClick={handleConnectGitHub}
-                disabled={!can('g01') || (ghConnecting)}
+                disabled={ghConnecting}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2 px-4 py-2 text-sm font-semibold text-fg ring-1 ring-line transition hover:bg-surface-2 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-               aria-description={!can('g01') ? 'Unavailable for your current plan or feature settings' : undefined}>
+              >
                 {ghConnecting ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
                 {ghConnecting ? 'Connecting…' : 'Connect GitHub'}
-              {!can('g01') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
+              </button>
             </div>
-          )}
+          ) : null}
 
           {ghError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1367,21 +1603,21 @@ function SettingsContent() {
                 {zotDisconnecting ? 'Disconnecting…' : 'Disconnect Zotero'}
               </button>
             </div>
-          ) : (
+          ) : can('g07') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Zotero account to import your reference library as BibTeX directly into any resume.
               </p>
-              {can('g07') && <button
+              <button
                 onClick={handleConnectZotero}
-                disabled={!can('g07') || (zotConnecting)}
+                disabled={zotConnecting}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-               aria-description={!can('g07') ? 'Unavailable for your current plan or feature settings' : undefined}>
+              >
                 {zotConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
                 {zotConnecting ? 'Connecting…' : 'Connect Zotero'}
-              {!can('g07') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
+              </button>
             </div>
-          )}
+          ) : null}
 
           {zotError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1436,21 +1672,21 @@ function SettingsContent() {
                 {menDisconnecting ? 'Disconnecting…' : 'Disconnect Mendeley'}
               </button>
             </div>
-          ) : (
+          ) : can('g08') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Mendeley account to import your research library as BibTeX directly into any resume.
               </p>
-              {can('g08') && <button
+              <button
                 onClick={handleConnectMendeley}
-                disabled={!can('g08') || (menConnecting)}
+                disabled={menConnecting}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-               aria-description={!can('g08') ? 'Unavailable for your current plan or feature settings' : undefined}>
+              >
                 {menConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
                 {menConnecting ? 'Connecting…' : 'Connect Mendeley'}
-              {!can('g08') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
+              </button>
             </div>
-          )}
+          ) : null}
 
           {menError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1501,23 +1737,23 @@ function SettingsContent() {
                 {dbxDisconnecting ? 'Disconnecting…' : 'Disconnect Dropbox'}
               </button>
             </div>
-          ) : (
+          ) : can('g05') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your Dropbox account to sync resume LaTeX source to{' '}
                 <span className="font-mono text-fg-2">/Latexy/</span> in your Dropbox.
                 Push and pull from the editor toolbar per resume.
               </p>
-              {can('g05') && <button
+              <button
                 onClick={handleConnectDropbox}
-                disabled={!can('g05') || (dbxConnecting)}
+                disabled={dbxConnecting}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-               aria-description={!can('g05') ? 'Unavailable for your current plan or feature settings' : undefined}>
+              >
                 {dbxConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
                 {dbxConnecting ? 'Connecting…' : 'Connect Dropbox'}
-              {!can('g05') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
+              </button>
             </div>
-          )}
+          ) : null}
 
           {dbxError && (
             <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1567,24 +1803,24 @@ function SettingsContent() {
                 {gdriveDisconnecting ? 'Disconnecting…' : 'Disconnect Google Drive'}
               </button>
             </div>
-          ) : (
+          ) : can('g06') ? (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Export your latest compiled resume PDF to Google Drive. This uses Google&apos;s{' '}
                 <span className="font-mono text-fg-2">drive.file</span> scope: Latexy can access files it creates for you,
                 not your whole Drive. Latexy does not read unrelated Drive files.
               </p>
-              {can('g06') && <button
+              <button
                 type="button"
                 onClick={handleConnectGoogleDrive}
-                disabled={!can('g06') || (gdriveConnecting || gdriveDisconnecting)}
+                disabled={gdriveConnecting || gdriveDisconnecting}
                 className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-               aria-description={!can('g06') ? 'Unavailable for your current plan or feature settings' : undefined}>
+              >
                 {gdriveConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
                 {gdriveConnecting ? 'Connecting…' : 'Connect Google Drive'}
-              {!can('g06') && <span className="ml-1 text-[10px]">(Unavailable)</span>}</button>}
+              </button>
             </div>
-          )}
+          ) : null}
 
           {gdriveError && (
             <div role="alert" className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
@@ -1935,13 +2171,13 @@ function SettingsContent() {
             <h2 className="text-base font-semibold text-fg">Getting Started</h2>
           </div>
           <p className="mt-2 text-sm text-fg-2">Want a refresher? Replay the product tour that runs the first time you sign in.</p>
-          <CapabilityGate feature="a06"><button
+          <button
             type="button"
             onClick={handleReplayTour}
             className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm font-medium text-fg transition hover:bg-surface-2"
           >
             Replay product tour
-          </button></CapabilityGate>
+          </button>
         </div>
       </div>
     </div>

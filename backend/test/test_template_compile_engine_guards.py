@@ -71,6 +71,7 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
         assert kwargs["timeout"] == 60
         output_dir = Path(command[3])
         (output_dir / "template.pdf").write_bytes(b"%PDF-1.7\nsynthetic\n")
+        (output_dir / "template.fls").write_text(f"PWD {output_dir}\nINPUT {output_dir / 'template.tex'}\n")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(compile_templates.subprocess, "run", run)
@@ -92,7 +93,7 @@ async def test_backfill_compiler_uses_restricted_environment_and_flags(monkeypat
         assert child_env["SOURCE_DATE_EPOCH"] == "1640995200"
         assert child_env["TEXMFVAR"] == "/tmp/synthetic-texmfvar"
         assert child_env["TEXMFHOME"] == "/tmp/synthetic-texmfhome"
-        assert child_env["openin_any"] == "p"
+        assert child_env["openin_any"] == ("r" if command[0] == "lualatex" else "p")
         assert child_env["openout_any"] == "p"
         assert child_env["shell_escape"] == "f"
         for credential_name in (

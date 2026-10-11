@@ -6,9 +6,9 @@ compile_timeouts, task_priority, billing, upgrade_ctas) — those live in the
 feature_flags table and are handled by feature_flag_service.
 
 Each registry entry has a stable ``key``. Gateable features can be turned off
-globally (kill-switch) or per plan family (matrix). Non-gateable features (e.g.
-core LaTeX compilation) are always available and shown in the dashboard as
-always-on.
+globally (kill-switch) or per plan family (matrix). Gateable entries control
+admission of new work; they do not remove existing reads, artifacts, recovery,
+or security controls. Non-gateable entries are shown as always-on.
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ CAPABILITY_ROLES = ["anonymous", "user", "support", "admin"]
 FEATURE_REGISTRY: list[FeatureDef] = [
     # ---- core -------------------------------------------------------------
     FeatureDef("compile", "LaTeX Compilation", "core",
-               "Compile LaTeX source to PDF.", gateable=False,
-               always_on_reason="Core compilation remains available with all security and quota limits enforced."),
+               "Admission switch for new LaTeX compilation jobs. Existing jobs, PDFs, errors and recovery remain available.",
+               gateable=True),
     FeatureDef("llm_optimize", "AI Resume Optimization", "core",
                "Rewrite and optimize a resume with the AI engine."),
     FeatureDef("ats_score", "ATS Scoring", "core",

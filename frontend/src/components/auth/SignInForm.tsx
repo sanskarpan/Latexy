@@ -199,8 +199,8 @@ export default function SignInForm({ redirect, oauthError }: { redirect?: string
       setError('Taking longer than expected — try again.')
     }, SOCIAL_TIMEOUT_MS)
     try {
-      const result = await authClient.signIn.oauth2({
-        providerId: oidcProvider.id,
+      const result = await authClient.signIn.social({
+        provider: oidcProvider.id,
         callbackURL: dest,
         errorCallbackURL: oauthErrorCallbackURL('/login', dest),
       })

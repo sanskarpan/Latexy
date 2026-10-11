@@ -672,12 +672,24 @@ class Subscription(Base):
     """Subscription management."""
 
     __tablename__ = "subscriptions"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subscription_id", name="uq_subscriptions_provider_subscription_id"),
+        UniqueConstraint("provider", "provider_checkout_session_id", name="uq_subscriptions_provider_checkout_id"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    razorpay_subscription_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="dodo", server_default="dodo")
+    provider_subscription_id: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_checkout_session_id: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_customer_id: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_product_id: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_event_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    quoted_amount: Mapped[Optional[int]] = mapped_column(Integer)
+    quoted_tax_inclusive: Mapped[Optional[bool]] = mapped_column(Boolean)
+    discount_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     current_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -697,6 +709,9 @@ class Payment(Base):
     """Payment history."""
 
     __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_payment_id", name="uq_payments_provider_payment_id"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(
@@ -707,18 +722,58 @@ class Payment(Base):
     subscription_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), index=True
     )
-    # DB-018: nullable=True with unique=True is intentional — payments in progress have
-    # no Razorpay payment ID yet; PostgreSQL unique constraints allow multiple NULL rows.
-    razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="dodo", server_default="dodo")
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(String(255))
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     payment_method: Mapped[Optional[str]] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    provider_event_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="payments")
     subscription: Mapped[Optional["Subscription"]] = relationship("Subscription", back_populates="payments")
+
+
+class BillingWebhookEvent(Base):
+    """Durable inbox for signed provider webhooks; Redis is only an optional lock."""
+
+    __tablename__ = "billing_webhook_events"
+    __table_args__ = (UniqueConstraint("provider", "event_id", name="uq_billing_webhook_provider_event"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    event_resource_id: Mapped[Optional[str]] = mapped_column(String(255))
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="processing", server_default="processing")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PaymentRefund(Base):
+    """Append-only refund records, including partial refunds and failed attempts."""
+
+    __tablename__ = "payment_refunds"
+    __table_args__ = (UniqueConstraint("provider", "provider_refund_id", name="uq_payment_refunds_provider_id"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    payment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_refund_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Optional[int]] = mapped_column(Integer)
+    currency: Mapped[Optional[str]] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TeamSeat(Base):
@@ -762,7 +817,7 @@ class CouponCode(Base):
 
 
 class CouponRedemption(Base):
-    """Audit trail for coupon redemptions."""
+    """Coupon reservation and redemption state for a subscription intent."""
 
     __tablename__ = "coupon_redemptions"
     # DB-005: one redemption per (coupon, user); backs the app-level already-redeemed
@@ -777,7 +832,11 @@ class CouponRedemption(Base):
     user_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="redeemed", server_default="redeemed")
+    redeemed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.now())
 
 
 class ReferralIdentity(Base):

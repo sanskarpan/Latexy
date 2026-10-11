@@ -23,7 +23,61 @@ async def test_roles_cannot_bypass_disabled_product_features(role):
     svc._get_blob = AsyncMock(return_value=blob)
     user = SimpleNamespace(role=role, subscription_plan="pro")
     assert not await svc.has_feature("d01", user=user)
-    assert await svc.has_feature("compile", user=user)
+    assert await svc.has_feature("compile", user=user) is (role is not None)
+
+
+@pytest.mark.parametrize("role", ["admin", "support"])
+async def test_admin_roles_use_current_billing_plan_for_product_capabilities(role):
+    svc = EntitlementService()
+    blob = allowed_blob()
+    blob["matrix"]["free"]["compile"] = False
+    svc._subject_snapshot = AsyncMock(return_value=(
+        {"owner": (role, "pro")}, blob,
+    ))
+    current_plan = AsyncMock(return_value="free")
+    svc._effective_plan_for_billing_status = current_plan
+
+    assert not await svc.has_feature("compile", user="owner")
+    current_plan.assert_awaited_once_with("owner", "pro", product_capability=True)
+
+    svc._subject_snapshot = AsyncMock(return_value=(
+        {"owner": (role, "pro")}, blob,
+    ))
+    assert not await svc.users_have_feature("compile", ("owner",))
+
+
+async def test_active_legacy_plan_is_preserved_but_still_intersects_capability_policy(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    db = AsyncMock()
+    no_dodo_row = Mock(first=Mock(return_value=None))
+    db.execute.return_value = no_dodo_row
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    monkeypatch.setattr("app.database.connection.get_async_db_session", session)
+    service = EntitlementService()
+    active_plan = await service._effective_plan_for_billing_status(
+        "legacy-user", "pro", subscription_status="active",
+        subscription_id="legacy-provider-id", product_capability=True,
+    )
+    assert active_plan == "pro"
+
+    blob = allowed_blob()
+    assert service._decide(blob, "compile", active_plan, "user")
+    blob["kill"]["compile"] = False
+    assert not service._decide(blob, "compile", active_plan, "user")
+    blob["kill"]["compile"] = True
+    blob["roles"]["user"]["compile"] = False
+    assert not service._decide(blob, "compile", active_plan, "user")
+
+    inactive_plan = await service._effective_plan_for_billing_status(
+        "legacy-user", "pro", subscription_status="cancelled",
+        subscription_id="legacy-provider-id", product_capability=True,
+    )
+    assert inactive_plan == "free"
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("db down"), ValueError("bad state")])
@@ -101,7 +155,7 @@ def test_sync_matches_async_decision_and_fails_closed():
     assert svc.sync_has_feature("b06", "pro")
     svc._sync_get_blob.side_effect = RuntimeError("db unavailable")
     assert not svc.sync_has_feature("b06", "pro")
-    assert svc.sync_has_feature("c05", "pro")
+    assert not svc.sync_has_feature("c05", "pro")
     assert not svc.sync_has_feature("unknown", "pro")
 
 
@@ -117,9 +171,17 @@ async def test_legacy_mutation_uses_authoritative_product_write(monkeypatch):
     write.assert_awaited_once_with("d01", False, db)
 
 
-async def test_always_on_flags_cannot_be_mutated_by_legacy_api():
-    with pytest.raises(KeyError):
-        await FeatureFlagService().update_flag("compile", False, AsyncMock())
+async def test_legacy_api_can_toggle_compilation_parent(monkeypatch):
+    from app.services.entitlement_service import entitlement_service
+
+    write = AsyncMock()
+    monkeypatch.setattr(entitlement_service, "set_kill_switch", write)
+    flag = SimpleNamespace(key="compile", enabled=False)
+    db = AsyncMock()
+    db.execute.return_value = Mock(scalar_one=Mock(return_value=flag))
+    result = await FeatureFlagService().update_flag("compile", False, db)
+    assert result.enabled is False
+    write.assert_awaited_once_with("compile", False, db)
 
 
 def test_snapshot_parser_rejects_unknown_keys_and_plan_axes():
@@ -168,8 +230,12 @@ async def test_collaboration_batch_uses_one_filtered_snapshot(monkeypatch):
         yield db
 
     monkeypatch.setattr("app.database.connection.get_async_db_session", session)
-    assert await EntitlementService().users_have_feature("f05", ("owner", "member"))
+    service = EntitlementService()
+    effective_plan = AsyncMock(side_effect=lambda user_id, plan, **kwargs: plan)
+    monkeypatch.setattr(service, "_effective_plan_for_billing_status", effective_plan)
+    assert await service.users_have_feature("f05", ("owner", "member"))
     assert db.execute.await_count == 1
+    assert effective_plan.await_count == 2
     snapshot_query = db.execute.await_args_list[0].args[0]
     params = snapshot_query.compile().params
     assert any(value == ("f05", "collaboration") or value == ["f05", "collaboration"] for value in params.values())
@@ -195,9 +261,11 @@ async def test_unavailable_snapshot_is_distinct_from_an_explicit_denial():
     service._get_blob = AsyncMock(side_effect=ConnectionError("offline"))
     snapshot = await service.effective_snapshot(None)
     assert snapshot["available"] is False
-    assert snapshot["features"]["compile"] is True
+    assert snapshot["features"]["compile"] is False
     service._get_blob = AsyncMock(return_value=service._empty_blob())
-    assert (await service.effective_snapshot(None))["available"] is True
+    explicit_denial = await service.effective_snapshot(None)
+    assert explicit_denial["available"] is True
+    assert explicit_denial["features"]["compile"] is False
 
 
 async def test_config_route_reports_policy_outage_instead_of_false_plan_limits(monkeypatch):

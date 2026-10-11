@@ -138,7 +138,7 @@ async function installFixture(page: Page) {
     if (path === '/ats/quick-score') return route.fulfill({ json: { score: 70, grade: 'C', sections_found: [], missing_sections: [] } })
     // These success fixtures exercise auto-compile and SyncTeX explicitly.
     // Other optional capabilities remain denied by the effective-map contract.
-    if (path === '/config/entitlements' && route.request().method() === 'GET') return route.fulfill({ json: { features: { c06: true, c10: true } } })
+    if (path === '/config/entitlements' && route.request().method() === 'GET') return route.fulfill({ json: { features: { b01: true, c01: true, c05: true, c06: true, c10: true } } })
     if (path === '/tenants/resolve-host' && route.request().method() === 'GET') return route.fulfill({ json: { tenant: null } })
     if (path === '/macros' && route.request().method() === 'GET') return route.fulfill({ json: [] })
     if (path === '/subscription/current' && route.request().method() === 'GET') return route.fulfill({ json: { userId: 'editor-fixture-owner', planId: 'free', planName: 'Free', status: 'active', features: { compilations: 10, optimizations: 3, historyRetention: 7, prioritySupport: false, apiAccess: false } } })
@@ -159,6 +159,9 @@ async function installFixture(page: Page) {
     })
   })
   await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
+  // These synchronization scenarios exercise source editing; new users start
+  // in the visual view and should not need to open the code editor.
+  await page.getByRole('button', { name: 'Source', exact: true }).click()
   await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
   observe('editor-ready')
   return {
@@ -382,7 +385,7 @@ test('retains the prior PDF while busy and disables stale selections if the new 
   await appendText(page, ' edited content')
   await expect.poll(() => fixture.submitted.length).toBe(2)
   await expect(page.locator('.react-pdf__Page__canvas').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Compiling…', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Preparing…', exact: true })).toBeDisabled()
   await fixture.complete(2)
   await expect(page.getByRole('button', { name: 'Show the selected source line in PDF', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Select a PDF location mapped to source', exact: true })).toBeDisabled()

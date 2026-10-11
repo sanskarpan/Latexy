@@ -219,10 +219,12 @@ export default function CoverLetterPage() {
           if (initial.latex_content) {
             editorRef.current?.setValue(initial.latex_content)
             setEditorContent(initial.latex_content)
-            // Auto-compile the existing cover letter
+            // Compile an existing letter only when new compilation is enabled.
             try {
-              const r = await apiClient.compileLatex({ latex_content: initial.latex_content })
-              if (!cancelled && r.success && r.job_id) setActiveJobId(r.job_id)
+              if (canRef.current('c05')) {
+                const r = await apiClient.compileLatex({ latex_content: initial.latex_content })
+                if (!cancelled && r.success && r.job_id) setActiveJobId(r.job_id)
+              }
             } catch {
               // Silent
             }
@@ -298,7 +300,7 @@ export default function CoverLetterPage() {
       generationCompileStartedRef.current !== activeJobId
     ) {
       const content = editorRef.current?.getValue()
-      if (content && content.length > 50) {
+      if (canRef.current('c05') && content && content.length > 50) {
         const generationJobId = activeJobId
         generationCompileStartedRef.current = generationJobId
         void apiClient.compileLatex({ latex_content: content }).then((r) => {
@@ -409,6 +411,7 @@ export default function CoverLetterPage() {
   }
 
   const compileCurrentContent = async () => {
+    if (!canRef.current('c05')) return
     if (isProcessing || isSubmitting) return
     const content = editorRef.current?.getValue()
     if (!content || content.length < 50) {
@@ -433,7 +436,7 @@ export default function CoverLetterPage() {
   }
 
   const saveChanges = async () => {
-    if (!activeCoverLetterId) return
+    if (!canRef.current('e01') || !canRef.current('c01') || !activeCoverLetterId) return
     const content = editorRef.current?.getValue()
     if (!content) return
     const requestResumeId = resumeId
@@ -450,7 +453,7 @@ export default function CoverLetterPage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (!canRef.current('c06')) return
+    if (!canRef.current('c05') || !canRef.current('c06')) return
     if (isProcessing || isSubmitting) return
     setIsSubmitting(true)
     const requestResumeId = resumeId
@@ -494,8 +497,9 @@ export default function CoverLetterPage() {
     setEditorContent(cl.latex_content)
     const requestResumeId = resumeId
     const requestUserId = sessionUserId
-    // Compile loaded cover letter
+    // Compile loaded cover letter only when new compilation is enabled.
     try {
+      if (!canRef.current('c05')) return
       const r = await apiClient.compileLatex({ latex_content: cl.latex_content })
       if (isCurrentPage(requestResumeId, requestUserId, cl.id) && r.success && r.job_id) setActiveJobId(r.job_id)
     } catch {
@@ -530,6 +534,7 @@ export default function CoverLetterPage() {
   }
 
   const saveSignature = async (nextLatex: string): Promise<boolean> => {
+    if (!canRef.current('e01') || !canRef.current('c01')) return false
     if (!activeCoverLetterId) throw new Error('Generate or open a cover letter before adding a signature.')
     editorRef.current?.setValue(nextLatex)
     setEditorContent(nextLatex)
@@ -548,6 +553,7 @@ export default function CoverLetterPage() {
     setExistingCoverLetters((previous) => previous.map((item) => item.id === saved.id ? saved : item))
     setHasUnsavedEdits(false)
     try {
+      if (!canRef.current('c05')) return true
       const compiled = await apiClient.compileLatex({ latex_content: nextLatex })
       if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId) && compiled.success && compiled.job_id) setActiveJobId(compiled.job_id)
     } catch {
@@ -894,6 +900,7 @@ export default function CoverLetterPage() {
                   {hasUnsavedEdits && activeCoverLetterId && (
                     <button
                       onClick={saveChanges}
+                      disabled={!can('e01') || !can('c01')}
                       className="text-xs font-semibold text-accent-strong transition hover:text-fg"
                     >
                       Save Changes
@@ -901,7 +908,7 @@ export default function CoverLetterPage() {
                   )}
                   <button
                     onClick={compileCurrentContent}
-                    disabled={isProcessing || isSubmitting}
+                    disabled={!can('c05') || isProcessing || isSubmitting}
                     className="text-xs font-semibold text-fg-2 transition hover:text-fg disabled:opacity-50"
                   >
                     Compile PDF
@@ -913,13 +920,14 @@ export default function CoverLetterPage() {
                   ref={editorRef}
                   value=""
                   onChange={(value) => {
+                    if (!canRef.current('e01') || !canRef.current('c01')) return
                     setEditorContent(value)
                     setHasUnsavedEdits(true)
                   }}
-                  readOnly={isProcessing}
-                  onCompile={compileCurrentContent}
+                  readOnly={!can('e01') || !can('c01') || isProcessing}
+                  onCompile={can('c05') ? compileCurrentContent : undefined}
                   onAutoCompile={handleAutoCompile}
-                  autoCompileEnabled={can('c06') && autoCompile}
+                  autoCompileEnabled={can('c05') && can('c06') && autoCompile}
                   autoCompileBusy={isProcessing || isSubmitting}
                   autoCompileDocumentKey={`${sessionUserId ?? 'anonymous'}:${resumeId}:${activeCoverLetterId ?? 'none'}`}
                   hideEmptyAction

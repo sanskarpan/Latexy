@@ -1,15 +1,15 @@
 """Admin-owned SKU merchandising and audited revisions; no billing mutations.
 
-Revision ID: 0061_plan_catalog
-Revises: 0060_capability_catalog
+Revision ID: 0070_plan_catalog
+Revises: 0069_capability_catalog
 """
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0061_plan_catalog"
-down_revision = "0060_capability_catalog"
+revision = "0070_plan_catalog"
+down_revision = "0069_capability_catalog"
 branch_labels = None
 depends_on = None
 

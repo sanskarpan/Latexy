@@ -1,9 +1,9 @@
 import { existsSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 const command = process.argv[2]
 const frontendRoot = process.cwd()
-const nextRoot = join(frontendRoot, '.next')
+const nextRoot = resolve(frontendRoot, process.env.NEXT_DIST_DIR || '.next')
 
 const requiredFiles = [
     join(nextRoot, 'BUILD_ID'),
@@ -51,7 +51,7 @@ if (command === 'preflight') {
         fail(`Next exited without complete production output:\n- ${missing.join('\n- ')}`)
     }
 
-    console.log('Frontend build artifacts validated.')
+    console.log(`Frontend build artifacts validated in ${nextRoot}.`)
 } else {
     fail('expected command: preflight or artifacts')
 }

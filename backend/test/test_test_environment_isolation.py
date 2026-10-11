@@ -36,7 +36,8 @@ print(json.dumps({
         env=environment,
         capture_output=True,
         text=True,
-        timeout=30,
+        # This checks import-time isolation, not a 30-second startup SLA.
+        timeout=60,
         check=True,
     )
     payload = json.loads(process.stdout.strip().splitlines()[-1])
@@ -62,7 +63,12 @@ def test_local_launchers_override_inherited_modal_dispatch(script, boundary, exp
     process = subprocess.run(
         ["bash", "-c", 'source /dev/stdin; printf "%s\\n%s\\n" "$DEPLOY_TARGET" "$ENVIRONMENT"'],
         input=prefix,
-        env=dict(os.environ, DEPLOY_TARGET="modal", ENVIRONMENT="production"),
+        env=dict(
+            os.environ,
+            DEPLOY_TARGET="modal",
+            ENVIRONMENT="production",
+            DATABASE_URL="postgresql://localhost:5434/latexy_test",
+        ),
         capture_output=True,
         text=True,
         timeout=10,

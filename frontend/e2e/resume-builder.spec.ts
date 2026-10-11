@@ -7,6 +7,11 @@ import type {
   StructuredResume,
 } from '../src/lib/api-client'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
+})
+
+
 const BUILDER_TEMPLATES: BuilderTemplateResponse[] = [
   {
     id: '11111111-1111-1111-1111-111111111111',
@@ -147,6 +152,52 @@ function builderResponse(overrides?: Partial<BuilderResumeResponse>): BuilderRes
   }
 }
 
+function onePagePdf() {
+  const content = 'BT /F1 12 Tf 60 750 Td (Guided resume preview) Tj ET'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  pdf += offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
+async function mockBuilderPdf(page: Page, expectedSource: () => string) {
+  const jobId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+  const requests = { compiled: 0, downloaded: 0 }
+  await page.route('**/jobs/submit', async route => {
+    const body = route.request().postDataJSON()
+    expect(body.job_type).toBe('latex_compilation')
+    expect(body.metadata.resume_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    expect(body.latex_content).toBe(expectedSource())
+    requests.compiled += 1
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, job_id: jobId }) })
+  })
+  await page.route(`**/jobs/${jobId}/state`, route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ job_id: jobId, status: 'completed' }),
+  }))
+  await page.route(`**/jobs/${jobId}/result`, route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, job_id: jobId, result: { pdf_job_id: jobId, latex_content: expectedSource() } }),
+  }))
+  await page.route(`**/download/${jobId}`, async route => {
+    requests.downloaded += 1
+    await route.fulfill({ status: 200, contentType: 'application/pdf', body: onePagePdf() })
+  })
+  return requests
+}
+
 async function mockSession(page: Page) {
   await page.route('**/api/auth/get-session', route =>
     route.fulfill({
@@ -190,17 +241,17 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(builderResponse()),
       }),
     )
-    await page.route('**/resumes/builder/seed-upload', route =>
+    await page.route('**/resumes/builder/v1/seed-upload', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(seededResponse) }),
     )
-    await page.route('**/resumes/builder', async route => {
+    await page.route('**/resumes/builder/v1', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = await route.request().postDataJSON()
       expect(body.title).toBe('Taylor Core Resume')
@@ -214,8 +265,8 @@ test.describe('Guided Resume Builder', () => {
     })
 
     await page.goto('/workspace/builder/new')
-    await expect(page.getByRole('heading', { name: 'Build from structured content' })).toBeVisible()
-    await expect(page.getByText('1. Seed')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Create your résumé' })).toBeVisible()
+    await expect(page.getByText('1. Start')).toBeVisible()
     await expect(page.getByRole('button', { name: /ATS-Safe ATS Guided/i })).toBeVisible()
 
     await page.locator('input[placeholder*="Senior Backend Engineer"]').fill('Taylor Core Resume')
@@ -227,7 +278,7 @@ test.describe('Guided Resume Builder', () => {
 
     await expect(page.getByText('Taylor Builder')).toBeVisible()
     await expect(page.getByText(/non-LinkedIn\/GitHub profile/)).toBeVisible()
-    await page.getByRole('button', { name: 'Start Guided Builder' }).click()
+    await page.getByRole('button', { name: 'Start my résumé' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa$/)
   })
 
@@ -238,7 +289,7 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({
           status: 200,
@@ -278,8 +329,8 @@ test.describe('Guided Resume Builder', () => {
 
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
     await expect(page.getByRole('heading', { name: 'Builder Resume' })).toBeVisible()
-    await expect(page.getByText('Resume Health')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Certifications' })).toBeVisible()
+    await expect(page.getByText('Résumé completeness')).toBeVisible()
+    await expect(page.getByRole('complementary').getByRole('button', { name: /^Certifications\b/ })).toBeVisible()
     await expect(page.getByText('All changes saved')).toBeVisible()
 
     await page.getByLabel('Full Name').fill('Taylor Builder Updated')
@@ -295,17 +346,41 @@ test.describe('Guided Resume Builder', () => {
     await expect(page.getByText('Unsaved changes')).toBeVisible()
     await expect(page.getByText('All changes saved')).toBeVisible({ timeout: 8000 })
     await expect(page.getByLabel('Template')).toHaveValue(BUILDER_TEMPLATES[1].id)
-    await expect(page.getByText('Family: executive · Executive')).toBeVisible()
+    await expect(page.getByText('Executive', { exact: true })).toBeVisible()
+  })
+
+  test('builder fields keep line breaks and commas during ordinary typing', async ({ page }) => {
+    await page.route('**/resumes/builder/templates', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
+    )
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
+    )
+    await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    const bullets = page.getByLabel('Impact Bullets', { exact: true }).first()
+    await bullets.fill('Helped customers')
+    await bullets.press('End')
+    await bullets.press('Enter')
+    await expect(bullets).toHaveValue('Helped customers\n')
+    await bullets.pressSequentially('Improved service')
+    await expect(bullets).toHaveValue('Helped customers\nImproved service')
+    const skills = page.getByLabel('Keywords', { exact: true }).first()
+    await skills.fill('Customer service')
+    await skills.press('End')
+    await skills.pressSequentially(', Teamwork')
+    await expect(skills).toHaveValue('Customer service, Teamwork')
+    await expect(page.getByRole('button', { name: 'Move Experience up', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Hide Experience', exact: true })).toBeVisible()
   })
 
   test('builder editor downloads its structured JSON Resume interchange document', async ({ page }) => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
     )
-    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/json', route =>
+    await page.route('**/export/builder/v1/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/json', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -332,37 +407,61 @@ test.describe('Guided Resume Builder', () => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
-    )
+    let current = builderResponse()
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
+      if (route.request().method() === 'PATCH') {
+        const body = route.request().postDataJSON()
+        expect(body.expected_structured_version).toBe(current.resume.structured_version)
+        current = { ...current, resume: { ...current.resume, structured_version: current.resume.structured_version! + 1, structured_content: body.structured_content,
+          latex_content: `\\documentclass{article}\\begin{document}${body.structured_content.basics.name}\\end{document}` } }
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(current) })
+    })
+    const pdfRequests = await mockBuilderPdf(page, () => current.resume.latex_content)
     let attempts = 0
-    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/svg', async route => {
+    await page.route('**/export/builder/v1/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/svg', async route => {
+      expect(current.resume.latex_content).toContain('Taylor Latest SVG')
+      expect(pdfRequests.downloaded).toBe(1)
       attempts += 1
       if (attempts === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'renderer unavailable' }) })
       return route.fulfill({ status: 200, contentType: 'image/svg+xml', headers: { 'content-disposition': 'attachment; filename="resume.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg"><text>Resume</text></svg>' })
     })
 
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await page.getByLabel('Full Name').fill('Taylor Latest SVG')
     await page.getByRole('button', { name: /Export/ }).click()
     await page.getByRole('button', { name: /^SVG / }).click()
     const exportError = page.getByRole('alert').filter({ hasText: 'renderer unavailable' })
     await expect(exportError).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__canvas')).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__textContent')).toContainText('Guided resume preview')
     const downloadPromise = page.waitForEvent('download')
     await exportError.getByRole('button', { name: 'Retry' }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toBe('resume.svg')
     expect(attempts).toBe(2)
+    expect(pdfRequests).toEqual({ compiled: 1, downloaded: 1 })
   })
 
   test('compiled PDF email reports provider failure and keeps a retry action', async ({ page }) => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
-    )
+    let current = builderResponse()
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
+      if (route.request().method() === 'PATCH') {
+        const body = route.request().postDataJSON()
+        expect(body.expected_structured_version).toBe(current.resume.structured_version)
+        current = { ...current, resume: { ...current.resume, structured_version: current.resume.structured_version! + 1, structured_content: body.structured_content,
+          latex_content: `\\documentclass{article}\\begin{document}${body.structured_content.basics.name}\\end{document}` } }
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(current) })
+    })
+    const pdfRequests = await mockBuilderPdf(page, () => current.resume.latex_content)
     let attempts = 0
     await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/email', async route => {
+      expect(current.resume.latex_content).toContain('Taylor Latest Email')
+      expect(pdfRequests.downloaded).toBe(1)
       expect(route.request().method()).toBe('POST')
       expect(route.request().postDataJSON()).toEqual({})
       attempts += 1
@@ -385,20 +484,23 @@ test.describe('Guided Resume Builder', () => {
     })
 
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await page.getByLabel('Full Name').fill('Taylor Latest Email')
     await page.getByRole('button', { name: /Export/ }).click()
     await page.getByRole('button', { name: /^Email me / }).click()
     const exportError = page.getByRole('alert').filter({ hasText: 'Email provider did not accept the PDF' })
     await expect(exportError).toBeVisible()
+    await expect(page.getByTestId('builder-pdf-preview').locator('.react-pdf__Page__canvas')).toBeVisible()
     await exportError.getByRole('button', { name: 'Retry' }).click()
     await expect(page.getByText('PDF email accepted for your verified account email.')).toBeVisible()
     expect(attempts).toBe(2)
+    expect(pdfRequests).toEqual({ compiled: 1, downloaded: 1 })
   })
 
   test('detached builder state exposes explicit reattach action', async ({ page }) => {
     await page.route('**/resumes/builder/templates', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
     )
-    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', async route => {
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder/v1', async route => {
       if (route.request().method() === 'GET') {
         return route.fulfill({
           status: 200,
@@ -425,6 +527,7 @@ test.describe('Guided Resume Builder', () => {
 
     await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
     await expect(page.getByText('Builder detached')).toBeVisible()
+    page.once('dialog', dialog => dialog.accept())
     await page.getByRole('button', { name: /Reattach Builder/ }).click()
     await expect(page.getByText('Builder detached')).not.toBeVisible()
   })

@@ -25,7 +25,7 @@ describe('end-of-cycle subscription cancellation', () => {
   })
 
   test('pausing new sales cannot disable the cancellation button', () => {
-    expect(MANAGER_SOURCE).toContain('disabled={isCancelling}')
+    expect(MANAGER_SOURCE).toContain('disabled={isCancelling || !dodoBackendReady}')
     expect(MANAGER_SOURCE).not.toContain('disabled={isCancelling || !billingStatus?.available}')
   })
 

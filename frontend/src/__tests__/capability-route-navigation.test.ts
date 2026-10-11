@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CapabilityGate from '@/components/CapabilityGate'
 import CapabilityRouteBoundary from '@/components/CapabilityRouteBoundary'
 import { capabilityForRoute } from '@/lib/capability-ui-policy'
+import { resumeEditorHref } from '@/lib/resume-navigation'
 
 const state = vi.hoisted(() => ({ grants: new Set<string>(), pathname: '/workspace' }))
 vi.mock('@/contexts/EntitlementsContext', () => ({
@@ -58,6 +59,7 @@ function renderExpression(expression: ts.Node, extra: Record<string, unknown> = 
     IconTile: emptyIcon,
     can: (key: string) => state.grants.has(key), t: (key: string) => key,
     resume: { id: 'resume' }, variant: { id: 'variant' }, resumeId: 'resume',
+    workspaceOwnerId: 'owner', resumeEditorHref,
     data: { source_resume_id: 'source', source_title: 'Saved source title' },
     dirty: false, confirmDiscardIfDirty: () => true,
     userType: 'new', freePlanCopy: 'the current free allowance', onComplete: vi.fn(), onSkip: vi.fn(), ...extra,
@@ -132,7 +134,10 @@ describe('baseline recovery and direct route consistency', () => {
   })
 
   it('keeps workspace source editing reachable independently of Optimize', () => {
-    expect(renderExpression(linkExpression(workspace, '/workspace/${resume.id}/edit'))).toContain('href="/workspace/resume/edit"')
+    const editLink = find(workspace, (node) => ts.isJsxElement(node) && node.openingElement.tagName.getText(workspace) === 'Link' &&
+      node.openingElement.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(workspace) === 'href' && attribute.initializer?.getText(workspace).includes('resumeEditorHref(resume, workspaceOwnerId)') === true))[0]
+    expect(editLink).toBeDefined()
+    expect(renderExpression(editLink!)).toContain('href="/workspace/resume/edit"')
   })
 
   it.each([

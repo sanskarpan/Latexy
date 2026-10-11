@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.database.models import ResumeTemplate
 from app.services import storage_service
 from app.services.europecv import configure_europecv_latex, is_europecv_source
-from app.services.latex_service import LATEX_SANDBOX_FLAGS, engine_env
+from app.services.latex_service import LATEX_SANDBOX_FLAGS, engine_env, engine_output_error, find_recorder_read_escape
 from app.utils.bounded_io import MAX_COMPILED_PDF_BYTES, read_file_bounded
 
 
@@ -119,8 +119,13 @@ async def main():
                             stderr=subprocess.DEVNULL,
                             timeout=60,
                             cwd=tmpdir,
-                            env=engine_env(),
+                            env=engine_env(compiler),
                         )
+                        violation = find_recorder_read_escape(Path(tmpdir) / "template.fls", tmpdir, require_recorder=True)
+                        if violation:
+                            print(f"FAIL ({engine_output_error(violation)})")
+                            ok = False
+                            break
                         if result.returncode != 0 and _pass == 1:
                             print(f"FAIL ({compiler} exit {result.returncode})")
                             log_path = Path(tmpdir) / "template.log"

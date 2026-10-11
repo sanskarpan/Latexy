@@ -1,5 +1,10 @@
 # Latexy TUI Audit
 
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](BILLING_DODO.md) and the October 2026 migration audit.
+
+
 **Purpose:** Comprehensive technical audit of the Latexy codebase for the purpose of building a
 Python/Textual Terminal User Interface (TUI). This document catalogues every API endpoint, WebSocket
 event, database model, Celery worker, and Redis key namespace, then evaluates which features are

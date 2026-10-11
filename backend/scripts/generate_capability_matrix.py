@@ -17,11 +17,15 @@ OUTPUT = ROOT / "docs/audits/admin-capabilities/feature-matrix.json"
 # Resource/payload-sensitive checks cannot be expressed as a whole-route gate.
 # Each reference names the actual enforcement function and its condition.
 DYNAMIC = {
+    "b01": ["middleware/capability_router.py:ROUTE_CAPABILITIES (source/builder/fork/merge creation and batch/conversion admission)", "api/template_routes.py:use_template (before creating a resume)"],
+    "c01": ["middleware/capability_router.py:ROUTE_CAPABILITIES (source/metadata/builder writes, optimization history recording, accepted suggestions, GitHub pull)", "services/collab_manager.py:handle_collab_message (before Yjs source persistence and relay)"],
+    "c05": ["middleware/capability_router.py:payload_capabilities (generic compile, combined, auto-fit and anonymous share)", "api/resume_routes.py:create_share_link (before redacted PDF submission)", "api/public_api_routes.py:require_developer_operation (compile admission)"],
+    "i01": ["services/plan_catalog_service.py:require_new_purchase (new target-SKU checkout and token-owner Student verification)"],
     "a09": ["middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark and premium raw export)"],
     "b02": ["middleware/capability_router.py:payload_capabilities (nonempty tags in source create/update; explicit tag changes; clearing tags exempt)"],
     "b05": ["api/template_routes.py:list_categories/list_templates (filter specialty catalog)", "api/template_routes.py:_template_asset_access/get_template/use_template (academic/regional/presentation)", "api/resume_routes.py:_get_builder_template (specialty selection)"],
     "b07": ["api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)"],
-    "b09": ["middleware/capability_router.py:payload_capabilities (normalized force_reattach; ordinary source edits/detachment remain recovery)"],
+    "b09": ["middleware/capability_router.py:payload_capabilities (normalized force_reattach; content changes also require c01)"],
     "b12": ["api/resume_routes.py:fork_resume (source-linked builder variant)", "api/resume_routes.py:_sync_linked_variants (new automatic refresh admission)"],
     "c22": ["workers/auto_save_worker.py:submit_auto_save_checkpoint (new automatic checkpoint admission)"],
     "c12": ["middleware/capability_router.py:payload_capabilities (jobs/submit auto_fit)"],
@@ -50,6 +54,10 @@ DYNAMIC = {
 }
 
 FOCUSED_TESTS = {
+    "b01": ["test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation"],
+    "c01": ["test_capability_route_policy.py::test_optimization_history_write_is_gated_but_restore_remains_recovery", "test_capability_route_policy.py::test_existing_optimization_restore_succeeds_while_source_edit_is_disabled"],
+    "c05": ["test_capability_route_policy.py::test_global_compile_off_blocks_every_new_compile_admission", "test_capability_route_policy.py::test_developer_api_compile_uses_owner_capability_gate"],
+    "i01": ["test_plan_catalog.py::test_purchase_capability_disables_new_checkout_without_hiding_billing_recovery"],
     "a09": ["test_capability_route_policy.py::test_anonymous_studio_gate_covers_alternate_guest_admissions"],
     "b05": ["test_capability_route_policy.py::test_specialty_template_asset_rechecks_category_capability"],
     "b07": ["test_capability_route_policy.py::test_structured_import_checks_interchange_capability"],
@@ -75,7 +83,7 @@ FULLSTACK_COMMIT = "e0881b31db0cd534d7fed4868ebe5fc2a0403ee6"
 BROWSER_EVIDENCE = {
     "a02": "Admin inventory displays the immutable authentication baseline and no switch; authentication itself was not exercised.",
     "b03": "Admin inventory displays the search switch and exact-SKU columns; cross-document search itself was not exercised.",
-    "c01": "Source remains intact and manual compile stays enabled while optional grants are revoked or unavailable; no compiler provider was invoked.",
+    "c01": "Historical pre-core-gating evidence only: source remained intact when unrelated optional tools were disabled. It does not verify the newly gateable c01/c05 controls.",
     "c03": "Find controls and keyboard search deny/enable according to refreshed grants.",
     "c04": "Editor keybinding selector denies/enables according to refreshed grants.",
     "c06": "Auto-compile control denies/enables with grants, then disappears on policy outage while source and manual compile survive.",
@@ -83,23 +91,23 @@ BROWSER_EVIDENCE = {
 
 
 def generate() -> dict:
-    catalog = json.loads((ROOT / "backend/app/core/capability_catalog.json").read_text())
-    policy_ast = ast.parse(POLICY.read_text())
+    catalog = json.loads((ROOT / "backend/app/core/capability_catalog.json").read_text(encoding="utf-8"))
+    policy_ast = ast.parse(POLICY.read_text(encoding="utf-8"))
     assignment = next(node for node in policy_ast.body if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "ROUTE_CAPABILITIES")
     routes = ast.literal_eval(assignment.value)
-    ui_text = (ROOT / "frontend/src/lib/capability-ui-policy.ts").read_text()
+    ui_text = (ROOT / "frontend/src/lib/capability-ui-policy.ts").read_text(encoding="utf-8")
     client = {}
     for key, paths in re.findall(r"^\s*([a-i]\d\d):\s*\[(.*)\],?$", ui_text, re.MULTILINE):
-        client[key] = [str((ROOT / "frontend/src" / relative).resolve().relative_to(ROOT)) for relative in re.findall(r"'([^']+)'", paths)]
+        client[key] = [(ROOT / "frontend/src" / relative).resolve().relative_to(ROOT).as_posix() for relative in re.findall(r"'([^']+)'", paths)]
     # Find direct component gates and dynamic editor-tool maps too. Test files
     # and the admin catalog are excluded: listing a key is not a user gate.
     for path in (ROOT / "frontend/src").rglob("*.tsx"):
         if "__tests__" in path.parts or "admin" in path.parts:
             continue
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         for key in re.findall(r"(?:can|canUseFeature)\(\s*['\"]([a-i]\d\d)['\"]|feature=['\"]([a-i]\d\d)['\"]", source):
             actual = next(value for value in key if value)
-            client.setdefault(actual, []).append(str(path.relative_to(ROOT)))
+            client.setdefault(actual, []).append(path.relative_to(ROOT).as_posix())
     features = []
     for feature in catalog:
         key = feature["key"]

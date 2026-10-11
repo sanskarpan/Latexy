@@ -32,53 +32,6 @@ setup_telemetry("api")
 logger = get_logger(__name__)
 
 
-async def _check_coupon_offer_mappings_on_startup() -> None:
-    """Report which active percentage coupons Razorpay can actually apply.
-
-    A percentage discount reaches Razorpay only through an offer ID mapped in
-    RAZORPAY_COUPON_OFFERS; validate_coupon refuses any code without one rather
-    than charging full price behind an advertised discount. That refusal is
-    invisible until a customer hits checkout, so list the state at boot.
-
-    Best-effort: a failure here must never crash startup.
-    """
-    try:
-        from datetime import datetime, timezone
-
-        from sqlalchemy import or_
-        from sqlalchemy import select as _select
-
-        from .core.config import get_razorpay_offer_id
-        from .database.connection import get_async_db_session
-        from .database.models import CouponCode
-
-        now = datetime.now(timezone.utc)
-        async with get_async_db_session() as session:
-            result = await session.execute(
-                _select(CouponCode.code).where(
-                    CouponCode.discount_percent > 0,
-                    or_(CouponCode.expires_at.is_(None), CouponCode.expires_at > now),
-                )
-            )
-            codes = [row[0] for row in result.all()]
-
-        if not codes:
-            return
-
-        mapped = [c for c in codes if get_razorpay_offer_id(c)]
-        unmapped = [c for c in codes if c not in mapped]
-        logger.info("Coupon offer mapping: %d of %d active percentage coupon(s) redeemable: %s",
-                    len(mapped), len(codes), ", ".join(sorted(mapped)) or "none")
-        if unmapped:
-            logger.warning(
-                "Coupon codes with no RAZORPAY_COUPON_OFFERS entry will be refused at "
-                "checkout: %s",
-                ", ".join(sorted(unmapped)),
-            )
-    except Exception as e:  # pragma: no cover - diagnostics only
-        logger.error("Coupon offer mapping check failed (non-fatal)", extra={"error_type": type(e).__name__})
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
@@ -163,9 +116,6 @@ async def lifespan(app: FastAPI):
 
     # CONFIG-002: Warn if CORS origins include localhost in production
     _check_cors_origins_on_startup()
-
-    # Surface coupons that checkout will refuse before a customer finds them.
-    await _check_coupon_offer_mappings_on_startup()
 
     yield
 

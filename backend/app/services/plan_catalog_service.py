@@ -17,8 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import (
     get_developer_api_daily_limit,
+    get_dodo_product_id,
     get_plan_config,
-    get_razorpay_plan_id,
     is_b57_sku_configured,
     settings,
 )
@@ -96,9 +96,9 @@ class PlanCatalogService:
             if public and not presentation["visible"]:
                 continue
             configured = (
-                is_b57_sku_configured(sku) if sku in {"weekly", "lifetime"}
-                else bool(get_razorpay_plan_id(sku)) if sku.endswith("_annual")
-                else True
+                True if sku == "free"
+                else is_b57_sku_configured(sku) if sku in {"weekly", "lifetime"}
+                else bool(get_dodo_product_id(sku))
             )
             # Never market an unconfigured optional offer as a zero-price plan.
             if public and sku in {"weekly", "lifetime"} and not (configured and provider_available):
@@ -122,7 +122,11 @@ class PlanCatalogService:
             if not capabilities.get("ai_writing", True):
                 features["ai_assists"] = "Unavailable"
             role_offer_allowed = state is None or sku not in {"student", "team"} or capabilities.get("i02") is True
-            purchasable = bool(presentation["purchase_enabled"] and configured and role_offer_allowed and (sku == "free" or provider_available))
+            purchase_capability_allowed = state is None or sku == "free" or capabilities.get("i01") is True
+            purchasable = bool(
+                presentation["purchase_enabled"] and configured and role_offer_allowed
+                and purchase_capability_allowed and (sku == "free" or provider_available)
+            )
             plan = {
                 **config, **presentation, "id": sku, "features": features,
                 "capabilities": capabilities,
@@ -131,13 +135,14 @@ class PlanCatalogService:
                 "purchasable": purchasable,
                 "configured": configured,
                 "unavailable_reason": (
-                    None if purchasable else "Unavailable for this account" if not role_offer_allowed else "Sales paused" if not presentation["purchase_enabled"]
+                    None if purchasable else "Unavailable for this account" if not role_offer_allowed else "New purchases unavailable" if not purchase_capability_allowed else "Sales paused" if not presentation["purchase_enabled"]
                     else "Not configured" if not configured else "Billing unavailable"
                 ),
             }
             if not public:
                 plan.update({
-                    "provider_plan_id": get_razorpay_plan_id(sku) or None,
+                    "provider": "dodo",
+                    "provider_product_id": get_dodo_product_id(sku) or None,
                     "commercial_fields_read_only": True,
                     "quota_fields_read_only": False,
                     "quota_windows_read_only": True,
@@ -182,6 +187,10 @@ class PlanCatalogService:
     async def require_new_purchase(self, db: AsyncSession, sku: str, *, user_id: str | None = None) -> None:
         """New sale only; target SKU and current purchaser account role intersect."""
         await self.require_sale_available(db, sku)
+        if sku != "free" and not await entitlement_service.has_feature_for_plan("i01", user=user_id, plan=sku):
+            raise HTTPException(status_code=403, detail=error_body(
+                "feature_disabled", "New plan purchases are currently unavailable for this plan.", None,
+            ))
         if sku in {"student", "team"} and not await entitlement_service.has_feature_for_plan(
             "i02", user=user_id, plan=sku,
         ):

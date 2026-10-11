@@ -53,6 +53,7 @@ async function loadHarness(): Promise<Harness> {
   let sessionPending = false
   let sessionError: Error | null = null
   let hookIndex = 0
+  const memos: Array<{ deps: unknown[]; value: unknown }> = []
   const states: unknown[] = []
   const refs: Array<{ current: unknown }> = []
   const effects: Array<() => void | (() => void)> = []
@@ -110,6 +111,14 @@ async function loadHarness(): Promise<Harness> {
   vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => true }) }))
   vi.doMock('react', () => ({
     Suspense: 'Suspense',
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const index = hookIndex++
+      const previous = memos[index]
+      if (!previous || deps.length !== previous.deps.length || deps.some((value, depIndex) => !Object.is(value, previous.deps[depIndex]))) {
+        memos[index] = { deps: [...deps], value: factory() }
+      }
+      return memos[index].value
+    },
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
     useRef: (initial: unknown) => {
       const index = hookIndex++

@@ -90,7 +90,8 @@ function PlanEditor({ plan, onSaved, onReload }: {
         <div><span className="text-fg-3">Stable SKU</span><p>{plan.id} · version {plan.version}</p></div>
         <div><span className="text-fg-3">Capability family</span><p>{plan.plan_family}</p></div>
         <div><span className="text-fg-3">Configured price (read-only)</span><p>{formatCatalogPrice(plan.price, plan.currency)} / {plan.interval}</p></div>
-        <div><span className="text-fg-3">Provider plan ID (read-only)</span><p className="break-all">{plan.provider_plan_id || (isFree ? 'No payment required' : plan.purchase_type === 'one_time' ? 'One-time Orders checkout' : 'Uses existing provider setup')}</p></div>
+        <div><span className="text-fg-3">Payment provider (read-only)</span><p>{plan.provider || (isFree ? 'None' : 'Not configured')}</p></div>
+        {plan.provider === 'dodo' && <div><span className="text-fg-3">Dodo product ID (read-only)</span><p className="break-all">{plan.provider_product_id || 'Not configured'}</p></div>}
       </div>
       {!plan.configured && <p className="text-sm text-warn">This SKU is not configured for purchase. Enabling sales here cannot create or configure a provider price.</p>}
       <label className="block text-sm text-fg-2">Display name

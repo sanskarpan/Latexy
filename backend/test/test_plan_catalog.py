@@ -58,7 +58,10 @@ async def test_public_and_admin_share_names_prices_order_and_capabilities(monkey
     for field in ("name", "description", "price", "currency", "features", "capabilities", "display_order"):
         assert public["pro"][field] == admin["pro"][field]
     assert public["pro"]["features"]["apiAccess"] is False
-    assert "provider_plan_id" not in public["pro"]
+    assert "provider_product_id" not in public["pro"]
+    assert "provider" not in public["pro"]
+    assert admin["pro"]["provider"] == "dodo"
+    assert "provider_product_id" in admin["pro"]
     assert "i04" not in public["pro"]["capability_labels"]  # admin access is not a purchasable capability
     assert admin["pro"]["commercial_fields_read_only"] is True
     assert public["free"]["features"]["apiAccess"] is True
@@ -140,7 +143,7 @@ async def test_unknown_sku_rejected_before_database_or_provider_access():
     db.execute.assert_not_awaited()
 
 
-@pytest.mark.parametrize("field", ["price", "currency", "plan_family", "provider_plan_id", "features", "quotas", "interval", "id"])
+@pytest.mark.parametrize("field", ["price", "currency", "plan_family", "provider_plan_id", "provider_product_id", "features", "quotas", "interval", "id"])
 def test_commercial_and_entitlement_overrides_are_rejected(field):
     with pytest.raises(ValidationError):
         PlanCatalogUpdate.model_validate({"version": 1, field: "changed"})
@@ -202,8 +205,7 @@ async def test_stale_admin_edit_does_not_overwrite_newer_version():
 
 @pytest.mark.asyncio
 async def test_missing_optional_provider_prices_stay_unavailable(monkeypatch):
-    monkeypatch.setattr(settings, "RAZORPAY_WEEKLY_AMOUNT", 0)
-    monkeypatch.setattr(settings, "RAZORPAY_LIFETIME_AMOUNT", 0)
+    monkeypatch.setattr("app.services.plan_catalog_service.is_b57_sku_configured", lambda _sku: False)
     service = PlanCatalogService()
     public = await service.list_plans(None, provider_available=True)
     admin = await service.list_plans(None, provider_available=True, public=False)
@@ -217,8 +219,8 @@ def test_catalog_guard_only_covers_new_checkout_not_subscription_lifecycle():
     assert 'require_new_purchase(db, concrete_sku, user_id=user_id)' in source
     assert 'require_sale_available(db, "student")' in source
     payments = (Path(__file__).parents[1] / "app/services/payment_service.py").read_text()
-    assert 'require_new_purchase(db, "student", user_id=user_id)' in payments
-    assert payments.count("require_new_purchase") == 1
+    assert 'require_new_purchase(db, "student", user_id=data["user_id"])' in payments
+    assert payments.count("require_new_purchase") == 2
 
 
 def test_catalog_admin_routes_always_require_admin():
@@ -268,11 +270,60 @@ async def test_catalog_outage_preserves_current_subscription_recovery(monkeypatc
 @pytest.mark.parametrize("sku", ["student", "team"])
 async def test_commercial_capability_uses_target_sku(sku, monkeypatch):
     db = db_with_row(None)
-    gate = AsyncMock(return_value=False)
+    gate = AsyncMock(side_effect=[True, False])
     monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature_for_plan", gate)
     with pytest.raises(HTTPException) as exc:
         await PlanCatalogService().require_new_purchase(db, sku)
     assert exc.value.status_code == 403
-    assert gate.call_args.args[0] == "i02"
-    assert gate.call_args.kwargs["plan"] == sku
-    assert gate.call_args.kwargs["user"] is None
+    assert [call.args[0] for call in gate.await_args_list] == ["i01", "i02"]
+    assert all(call.kwargs["plan"] == sku and call.kwargs["user"] is None for call in gate.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_dodo_annual_catalog_is_configured_from_active_product_mapping(monkeypatch):
+    service = PlanCatalogService()
+    product_id = "p_test_pro_annual"
+    monkeypatch.setattr(
+        "app.services.plan_catalog_service.get_dodo_product_id",
+        lambda sku: product_id if sku == "pro_annual" else "",
+    )
+    monkeypatch.setattr("app.services.plan_catalog_service.is_b57_sku_configured", lambda _sku: False)
+
+    public = await service.list_plans(None, provider_available=True)
+    admin = await service.list_plans(None, provider_available=True, public=False)
+
+    assert public["pro_annual"]["configured"] is True
+    assert public["pro_annual"]["purchasable"] is True
+    assert admin["pro_annual"]["provider"] == "dodo"
+    assert admin["pro_annual"]["provider_product_id"] == product_id
+    assert "provider_plan_id" not in admin["pro_annual"]
+
+
+@pytest.mark.asyncio
+async def test_new_purchase_switch_blocks_paid_offer(monkeypatch):
+    db = db_with_row(None)
+    gate = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature_for_plan", gate)
+    with pytest.raises(HTTPException) as exc:
+        await PlanCatalogService().require_new_purchase(db, "pro", user_id="owner-1")
+    assert exc.value.status_code == 403
+    gate.assert_awaited_once_with("i01", user="owner-1", plan="pro")
+
+
+@pytest.mark.asyncio
+async def test_purchase_capability_disables_new_checkout_without_hiding_billing_recovery(monkeypatch):
+    entitlements = state()
+    entitlements["kill_switches"]["i01"] = False
+    monkeypatch.setattr(
+        "app.services.plan_catalog_service.entitlement_service.get_state",
+        AsyncMock(return_value=entitlements),
+    )
+    service = PlanCatalogService()
+    monkeypatch.setattr(service, "_rows", AsyncMock(return_value={}))
+    plans = await service.list_plans(MagicMock(), provider_available=True)
+
+    assert plans["pro"]["capabilities"]["i01"] is False
+    assert plans["pro"]["purchasable"] is False
+    assert plans["pro"]["unavailable_reason"] == "New purchases unavailable"
+    assert "free" in plans  # Free fallback remains visible and available.
+    assert plans["free"]["purchasable"] is True

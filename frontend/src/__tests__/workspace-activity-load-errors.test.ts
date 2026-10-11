@@ -21,7 +21,7 @@ describe('workspace recent-activity isolation', () => {
 
   it('routes post-tailor refresh through the primary recoverable loader', () => {
     expect(WORKSPACE_SOURCE).not.toContain('apiClient.listAllResumes().then((data)')
-    expect(WORKSPACE_SOURCE).toContain('// Refresh resume list so the new fork appears\n            void fetchData()')
+    expect(WORKSPACE_SOURCE).toMatch(/\/\/ Refresh resume list so the new fork appears\s+void fetchData\(\)/)
   })
 
   it('keeps a run-detail outage distinct from a genuine missing result', () => {

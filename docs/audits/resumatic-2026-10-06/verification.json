@@ -1,0 +1,12 @@
+{
+  "screenshots_in_report": 14,
+  "missing_images": [],
+  "broken_section_links": [],
+  "source_base": "1cb54c0b5d8f40b1f7773b7f2057084c166fd8d8",
+  "local_api": "timed out; schema unavailable",
+  "resumatic_sitemap_urls": 78,
+  "resumatic_articles": 58,
+  "mobile_verification": "unavailable: viewport override stayed at 1280",
+  "production_guest_compile": "passed: one-page PDF; guest trial 3 to 2",
+  "scope": "public browser audit and targeted source review; authenticated competitor untested"
+}

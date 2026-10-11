@@ -98,7 +98,17 @@ def test_registered_policy_keys_are_real_and_wiring_survives_router_inclusion():
         assert get_feature(key).gateable
 
 
+@pytest.mark.parametrize(("module", "name"), [
+    ("resume_routes", "quick_tailor_resume"),
+    ("resume_routes", "convert_academic_cv"),
+    ("job_routes", "create_batch_tailor"),
+])
+def test_routes_that_dispatch_combined_jobs_require_compilation(module, name):
+    assert "c05" in ROUTE_CAPABILITIES[module][name]
+
+
 @pytest.mark.parametrize("job_type,key", [
+    ("latex_compilation", "c05"),
     ("llm_optimization", "d01"), ("combined", "d01"),
     ("ats_scoring", "d18"), ("auto_fit", "c12"),
 ])
@@ -110,6 +120,131 @@ async def test_multiplexed_jobs_cannot_bypass_disabled_feature(job_type, key, po
     assert response.status_code == 403
     assert key in response.text
     db.execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize("method,path,body", [
+    ("POST", "/compile", None),
+    ("POST", "/public/compile", None),
+    ("POST", "/jobs/submit", {"job_type": "latex_compilation", "latex_content": "source"}),
+    ("POST", "/jobs/compile-watermarked", {"latex_content": "source", "watermark": "Preview"}),
+    ("POST", f"/resumes/{USER_ID}/share", {"anonymous": True}),
+])
+async def test_global_compile_off_blocks_every_new_compile_admission(method, path, body, policy_app):
+    app, db = policy_app
+    entitlement_service.has_feature.side_effect = lambda candidate, **kwargs: candidate != "c05"
+    if path == "/public/compile":
+        app.dependency_overrides[get_current_user_optional] = lambda: None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        if path in {"/compile", "/public/compile"}:
+            response = await client.request(
+                method, path,
+                data={"latex_content": "source", "device_fingerprint": "device-1"},
+            )
+        else:
+            response = await client.request(method, path, json=body)
+    assert response.status_code == 403, response.text
+    assert "c05" in response.text
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+def test_existing_artifact_and_billing_recovery_paths_do_not_inherit_admission_gates():
+    routes = _routes()
+    for pair in (
+        ("routes", "download_pdf"),
+        ("job_routes", "get_job_result"),
+        ("resume_routes", "get_resume"),
+        ("resume_routes", "delete_resume"),
+        ("cover_letter_routes", "get_cover_letter"),
+        ("cover_letter_routes", "delete_cover_letter"),
+        ("routes", "reconcile_subscription"),
+        ("routes", "cancel_subscription"),
+        ("tenant_routes", "resolve_tenant_host"),
+        ("tenant_routes", "leave_tenant"),
+    ):
+        route = routes[pair]
+        assert not any(
+            getattr(dependency.call, "__name__", "").startswith("capability_")
+            for dependency in route.dependant.dependencies
+        ), pair
+
+    assert ROUTE_CAPABILITIES["cover_letter_routes"]["update_cover_letter"] == ("e01", "c01")
+
+
+async def test_developer_api_compile_uses_owner_capability_gate(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api import public_api_routes
+
+    enforce = AsyncMock()
+    monkeypatch.setattr(public_api_routes, "enforce_capabilities", enforce)
+    key = SimpleNamespace(user_id=USER_ID, scopes=["compile"])
+    await public_api_routes.require_developer_operation("compile")(key)
+    enforce.assert_awaited_once_with(("h09", "c05"), USER_ID)
+
+
+@pytest.mark.parametrize("method,path,body,key", [
+    ("POST", "/resumes/", {"latex_content": "source"}, "b01"),
+    ("PUT", f"/resumes/{USER_ID}", {"latex_content": "edited"}, "c01"),
+    ("PATCH", f"/resumes/{USER_ID}/builder", {"structured_content": {}}, "c01"),
+    ("POST", f"/resumes/{USER_ID}/record-optimization", {
+        "original_latex": "source", "optimized_latex": "injected source",
+    }, "c01"),
+    ("POST", "/tenants", {"slug": "test-tenant", "name": "Test"}, "f10"),
+    ("POST", f"/tenants/{USER_ID}/cohorts", {"name": "Class"}, "f10"),
+    ("PATCH", f"/tenants/{USER_ID}", {"custom_domain": "example.com"}, "f11"),
+])
+async def test_new_resume_tenant_and_domain_admissions_fail_closed(method, path, body, key, policy_app):
+    app, db = policy_app
+    entitlement_service.has_feature.side_effect = lambda candidate, **kwargs: candidate != key
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.request(method, path, json=body)
+    assert response.status_code == 403, response.text
+    assert key in response.text
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+def test_optimization_history_write_is_gated_but_restore_remains_recovery():
+    routes = _routes()
+    record = routes[("resume_routes", "record_optimization")]
+    restore = routes[("resume_routes", "restore_optimization")]
+    assert _route_gate("resume_routes", "record_optimization") in {
+        dependency.call for dependency in record.dependant.dependencies
+    }
+    assert all(
+        not getattr(dependency.call, "__name__", "").startswith("capability_")
+        for dependency in restore.dependant.dependencies
+    )
+
+
+def test_source_transformation_and_variant_rendering_are_edit_admissions():
+    assert "c01" in ROUTE_CAPABILITIES["optimize_routes"]["apply_changes_endpoint"]
+    assert ROUTE_CAPABILITIES["resume_routes"]["update_variant_visibility"] == ("b12", "c01")
+
+
+async def test_existing_optimization_restore_succeeds_while_source_edit_is_disabled(policy_app):
+    app, db = policy_app
+    entitlement_service.has_feature.return_value = False
+    resume = SimpleNamespace(
+        id=USER_ID, user_id=USER_ID, latex_content="old", content_source="manual_latex",
+        selected_template_id=None, structured_content=None, resume_settings={},
+    )
+    optimization = SimpleNamespace(optimized_latex="recovered source")
+    resume_result = MagicMock()
+    resume_result.scalar_one_or_none.return_value = resume
+    optimization_result = MagicMock()
+    optimization_result.scalar_one_or_none.return_value = optimization
+    db.execute.side_effect = [resume_result, optimization_result]
+    db.commit.side_effect = None
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(f"/resumes/{USER_ID}/restore-optimization/{USER_ID}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["latex_content"] == "recovered source"
+    assert resume.latex_content == "recovered source"
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.parametrize("fmt,key", [("docx", "h01"), ("json", "h01"), ("svg", "h02")])
@@ -224,7 +359,10 @@ async def test_enabled_gate_calls_handler_and_retains_request_validation(monkeyp
         response = await client.patch("/builder", json={"structured_content": {}})
     assert response.status_code == 200
     assert response.json() == {"updated": True}
-    checker.assert_awaited_once_with("b08", user=USER_ID)
+    assert checker.await_args_list == [
+        (("b08",), {"user": USER_ID}),
+        (("c01",), {"user": USER_ID}),
+    ]
 
 
 def test_safe_downgrade_routes_do_not_gain_product_dependencies():
@@ -248,10 +386,19 @@ def test_safe_downgrade_routes_do_not_gain_product_dependencies():
 
 
 @pytest.mark.parametrize("module,name,body,expected", [
-    ("job_routes", "submit_job", {"job_type": "latex_compilation"}, ()),
-    ("job_routes", "submit_job", {"job_type": "combined", "tone": "formal"}, ("d01", "d18", "d02")),
-    ("resume_routes", "create_share_link", {"anonymous": True, "review_comments": True}, ("f01", "f02", "f03")),
+    ("job_routes", "submit_job", {"job_type": "latex_compilation"}, ("c05",)),
+    ("job_routes", "submit_job", {"job_type": "combined", "tone": "formal"}, ("d01", "d18", "c05", "c01", "d02")),
+    ("resume_routes", "create_share_link", {"anonymous": True, "review_comments": True}, ("f01", "f02", "f03", "c05")),
     ("resume_routes", "update_resume", {"portfolio_visible": False}, ()),
+    ("resume_routes", "update_resume", {"title": "Metadata only"}, ()),
+    ("resume_routes", "update_resume", {"latex_content": "new source"}, ()),
+    ("tenant_routes", "update_tenant", {"name": "New name"}, ("f10",)),
+    ("tenant_routes", "update_tenant", {"logo_url": "https://example.com/logo.png"}, ("f10",)),
+    ("tenant_routes", "update_tenant", {"active": True}, ("f10",)),
+    ("tenant_routes", "update_tenant", {"active": False}, ()),
+    ("tenant_routes", "update_tenant", {"custom_domain": None}, ()),
+    ("suggestion_routes", "decide_suggestion", {"status": "rejected"}, ()),
+    ("suggestion_routes", "decide_suggestion", {"status": "accepted"}, ("c01",)),
     ("tracker_workflow_routes", "update_alert", {"active": False}, ()),
     ("tracker_workflow_routes", "update_alert", {"active": False, "query": "new"}, ("e06",)),
     ("ws_routes", "create_websocket_ticket", {"purpose": "jobs"}, ()),

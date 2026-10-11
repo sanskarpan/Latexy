@@ -229,7 +229,7 @@ export default function OptimizationSuitePage() {
         setPersona(savedPersona || null)
 
         // Auto-compile on load so user sees PDF immediately
-        if (data.latex_content && data.latex_content.length >= 100) {
+        if (canRef.current('c05') && data.latex_content && data.latex_content.length >= 100) {
           try {
             const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: resolvedCompiler })
             if (!cancelled && r.success && r.job_id) { setActiveJobId(r.job_id); setActiveJobKind('compile') }
@@ -383,7 +383,7 @@ export default function OptimizationSuitePage() {
   }, [activeJobKind, stream.status, requestPermission])
 
   const runOptimization = async (fromScoreReport = false) => {
-    if (!canRef.current('d01')) return
+    if (!canRef.current('d01') || !canRef.current('c01') || !canRef.current('c05')) return
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
@@ -503,7 +503,7 @@ export default function OptimizationSuitePage() {
   }
 
   const compileContent = useCallback(async (content: string) => {
-    if (isProcessing || isSubmitting) return
+    if (!canRef.current('c05') || isProcessing || isSubmitting) return
     setIsSubmitting(true)
     try {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
@@ -519,7 +519,7 @@ export default function OptimizationSuitePage() {
   }, [compiler, isProcessing, isSubmitting, resumeId])
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (!canRef.current('d01') || !canRef.current('c06')) return
+    if (!canRef.current('c05') || !canRef.current('d01') || !canRef.current('c06')) return
     await compileContent(content)
   }, [compileContent])
 
@@ -531,7 +531,7 @@ export default function OptimizationSuitePage() {
   // Apply the user's per-change review result (F2-P0): load the reconstructed
   // LaTeX into the editor, make it the new "after" snapshot, and recompile.
   const handleApplyReviewedChanges = useCallback(async (latex: string) => {
-    if (!canRef.current('d03')) return false
+    if (!canRef.current('d03') || !canRef.current('c01')) return false
     const currentLatex = editorRef.current?.getValue()
     if (
       compareOriginalLatex !== null
@@ -545,6 +545,10 @@ export default function OptimizationSuitePage() {
     editorRef.current?.setValue(latex)
     setEditorContent(latex)
     setCompareAfterLatex(latex)
+    if (!canRef.current('c05')) {
+      toast.success('Changes applied. Compilation is unavailable with your current feature settings.')
+      return true
+    }
     setIsSubmitting(true)
     setPdfUrl(null)
     try {
@@ -612,14 +616,14 @@ export default function OptimizationSuitePage() {
   }, [])
 
   const handleApplyExplainerFix = useCallback(() => {
-    if (!explainerData?.corrected_code || explainerLine == null) return
+    if (!canRef.current('c01') || !explainerData?.corrected_code || explainerLine == null) return
     editorRef.current?.applyFix(explainerLine, explainerData.corrected_code)
     setExplainerOpen(false)
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
 
   const handleTrimToOnePage = useCallback(async () => {
-    if (!canRef.current('d01') || !canRef.current('c12')) return
+    if (!canRef.current('d01') || !canRef.current('c12') || !canRef.current('c01') || !canRef.current('c05')) return
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     if (!currentContent.trim()) return
     setIsSubmitting(true)
@@ -1013,12 +1017,12 @@ export default function OptimizationSuitePage() {
                 <LaTeXEditor
                   ref={editorRef}
                   value={editorContent}
-                  onChange={setEditorContent}
-                  readOnly={isProcessing}
+                  onChange={(value) => { if (canRef.current('c01')) setEditorContent(value) }}
+                  readOnly={!can('c01') || isProcessing}
                   logLines={stream.logLines}
-                  onCompile={handleEditorCompile}
+                  onCompile={can('c05') ? handleEditorCompile : undefined}
                   onAutoCompile={handleAutoCompile}
-                  autoCompileEnabled={can('d01') && can('c06') && autoCompile}
+                  autoCompileEnabled={can('c05') && can('d01') && can('c06') && autoCompile}
                   autoCompileBusy={isProcessing || isSubmitting}
                   autoCompileDocumentKey={personaIdentityKey}
                   atsScore={quickATSScore}

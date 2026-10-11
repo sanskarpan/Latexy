@@ -1,6 +1,10 @@
-# Latexy brand mark
+# Latexy identity study
 
-The primary mark is [Imprint Open Corner](imprint-open.svg). Two measured corners form an L with a deliberate gap. The wordmark uses the product's Bricolage Grotesque display face in the UI.
+The [comparison board](identity-exploration.html) presents five original vector directions. The [rendered board](identity-exploration.png) and numbered PNG samples make them easy to compare without running the app. Editable SVGs are in [`marks/`](marks/).
+
+## Selected direction: Imprint Open Corner
+
+The primary mark is [Imprint Open Corner](imprint-open.svg). Two measured corners form an L with a deliberate gap. The open upper corner reduces the box reading, while the solid geometry remains legible at favicon size. The wordmark uses the product's Bricolage Grotesque display face in the UI.
 
 | Use | Asset |
 | --- | --- |
@@ -21,3 +25,14 @@ Colors: ink `#19375D`, paper `#F7F3E9`. The mark may be used in one color on con
 Rebuild all browser, install, and extension assets with `python docs/brand/export-icons.py` (requires Pillow). The SVG path in that script is the source for the exports. Extension icons must also be included in the install archive; its manifest and package check enumerate them.
 
 Use `BrandMark` or `BrandLogo` for new app brand placements, including standalone page headers. Do not substitute a text initial or an illustrative icon for the Latexy mark. Static integrations use the same Imprint geometry and the generated icons above.
+
+## Other explored directions
+
+| Direction | Idea | Tradeoff |
+| --- | --- | --- |
+| Glyph | A literal L and x monogram | Strong naming link; busy at 16 px |
+| Register | Alignment corners around a center point | Distinct system potential; less immediate at small sizes |
+| Fold | A page becoming an opening | Expressive; more document-specific |
+| Baseline | L with typographic rules | Restrained; can resemble an E at small sizes |
+
+The comparison board and refinements preserve these routes as editable alternatives; Imprint Open Corner remains the selected mark.

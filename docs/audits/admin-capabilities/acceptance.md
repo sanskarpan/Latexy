@@ -1,3 +1,5 @@
+> Historical verification at the earlier PR head. See [11 October integration review](2026-10-11-integration-review.md) for the current main integration, 144 gateable keys and core-action controls.
+
 # Admin capability and plan controls: review acceptance
 
 Status: **draft implementation; exact-head browser and provider acceptance remain open**.

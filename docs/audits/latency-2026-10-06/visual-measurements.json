@@ -1,0 +1,438 @@
+{
+  "scope": "Node microbenchmark of current projection; excludes React, browser layout, PDF rendering and network",
+  "node": "v24.19.0",
+  "source_sha256": "db3250fc1f7dbe6acbfb3610c7a6c9419b0e5136820b3c9b4485cd83f41e0208",
+  "calls": 6100,
+  "templates": 61,
+  "p50_ms": 0.2868,
+  "p95_ms": 0.9272,
+  "template_results": [
+    {
+      "path": "backend/app/data/templates/academic/phd_applicant.tex",
+      "fields": 26,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.3404,
+      "p95_ms": 0.7946
+    },
+    {
+      "path": "backend/app/data/templates/academic/postdoc.tex",
+      "fields": 17,
+      "unsupportedBlocks": 20,
+      "p50_ms": 0.3232,
+      "p95_ms": 0.6728
+    },
+    {
+      "path": "backend/app/data/templates/academic/professor.tex",
+      "fields": 18,
+      "unsupportedBlocks": 16,
+      "p50_ms": 0.2693,
+      "p95_ms": 0.5124
+    },
+    {
+      "path": "backend/app/data/templates/academic/research_cv.tex",
+      "fields": 25,
+      "unsupportedBlocks": 16,
+      "p50_ms": 0.2977,
+      "p95_ms": 0.7445
+    },
+    {
+      "path": "backend/app/data/templates/academic/stem_grad.tex",
+      "fields": 22,
+      "unsupportedBlocks": 15,
+      "p50_ms": 0.4727,
+      "p95_ms": 2.275
+    },
+    {
+      "path": "backend/app/data/templates/ats_safe/ats_clean.tex",
+      "fields": 23,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.3836,
+      "p95_ms": 1.3411
+    },
+    {
+      "path": "backend/app/data/templates/ats_safe/ats_modern.tex",
+      "fields": 18,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.2816,
+      "p95_ms": 0.4794
+    },
+    {
+      "path": "backend/app/data/templates/ats_safe/ats_plain.tex",
+      "fields": 23,
+      "unsupportedBlocks": 16,
+      "p50_ms": 0.4422,
+      "p95_ms": 1.4178
+    },
+    {
+      "path": "backend/app/data/templates/ats_safe/ats_standard.tex",
+      "fields": 22,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.2558,
+      "p95_ms": 0.7593
+    },
+    {
+      "path": "backend/app/data/templates/ats_safe/hindi_professional.tex",
+      "fields": 18,
+      "unsupportedBlocks": 6,
+      "p50_ms": 0.2951,
+      "p95_ms": 0.5753
+    },
+    {
+      "path": "backend/app/data/templates/creative/art_director.tex",
+      "fields": 20,
+      "unsupportedBlocks": 12,
+      "p50_ms": 0.2271,
+      "p95_ms": 0.6601
+    },
+    {
+      "path": "backend/app/data/templates/creative/copywriter.tex",
+      "fields": 23,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.2317,
+      "p95_ms": 0.7007
+    },
+    {
+      "path": "backend/app/data/templates/creative/product_designer.tex",
+      "fields": 22,
+      "unsupportedBlocks": 9,
+      "p50_ms": 0.2676,
+      "p95_ms": 0.5798
+    },
+    {
+      "path": "backend/app/data/templates/creative/ux_designer.tex",
+      "fields": 22,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.3718,
+      "p95_ms": 1.9598
+    },
+    {
+      "path": "backend/app/data/templates/executive/board_advisor.tex",
+      "fields": 25,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.5915,
+      "p95_ms": 2.8554
+    },
+    {
+      "path": "backend/app/data/templates/executive/cxo.tex",
+      "fields": 23,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.2747,
+      "p95_ms": 1.0118
+    },
+    {
+      "path": "backend/app/data/templates/executive/executive_classic.tex",
+      "fields": 21,
+      "unsupportedBlocks": 17,
+      "p50_ms": 0.502,
+      "p95_ms": 3.043
+    },
+    {
+      "path": "backend/app/data/templates/executive/vp_director.tex",
+      "fields": 22,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.4604,
+      "p95_ms": 1.6109
+    },
+    {
+      "path": "backend/app/data/templates/finance/accounting.tex",
+      "fields": 23,
+      "unsupportedBlocks": 7,
+      "p50_ms": 0.4043,
+      "p95_ms": 1.3037
+    },
+    {
+      "path": "backend/app/data/templates/finance/fintech.tex",
+      "fields": 23,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.3371,
+      "p95_ms": 0.9268
+    },
+    {
+      "path": "backend/app/data/templates/finance/investment_banking.tex",
+      "fields": 16,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.2257,
+      "p95_ms": 0.687
+    },
+    {
+      "path": "backend/app/data/templates/finance/quant.tex",
+      "fields": 18,
+      "unsupportedBlocks": 11,
+      "p50_ms": 0.298,
+      "p95_ms": 0.6968
+    },
+    {
+      "path": "backend/app/data/templates/graduate/bootcamp.tex",
+      "fields": 22,
+      "unsupportedBlocks": 11,
+      "p50_ms": 0.2279,
+      "p95_ms": 0.5113
+    },
+    {
+      "path": "backend/app/data/templates/graduate/career_changer.tex",
+      "fields": 25,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.3319,
+      "p95_ms": 0.5273
+    },
+    {
+      "path": "backend/app/data/templates/graduate/mba.tex",
+      "fields": 24,
+      "unsupportedBlocks": 12,
+      "p50_ms": 0.4386,
+      "p95_ms": 0.6739
+    },
+    {
+      "path": "backend/app/data/templates/graduate/new_grad.tex",
+      "fields": 21,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.3101,
+      "p95_ms": 0.672
+    },
+    {
+      "path": "backend/app/data/templates/legal/attorney.tex",
+      "fields": 20,
+      "unsupportedBlocks": 11,
+      "p50_ms": 0.3019,
+      "p95_ms": 0.576
+    },
+    {
+      "path": "backend/app/data/templates/legal/corporate_counsel.tex",
+      "fields": 21,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.2187,
+      "p95_ms": 0.4702
+    },
+    {
+      "path": "backend/app/data/templates/legal/law_clerk.tex",
+      "fields": 21,
+      "unsupportedBlocks": 17,
+      "p50_ms": 0.1428,
+      "p95_ms": 0.3795
+    },
+    {
+      "path": "backend/app/data/templates/legal/paralegal.tex",
+      "fields": 26,
+      "unsupportedBlocks": 7,
+      "p50_ms": 0.2599,
+      "p95_ms": 0.561
+    },
+    {
+      "path": "backend/app/data/templates/marketing/brand_manager.tex",
+      "fields": 24,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.3303,
+      "p95_ms": 0.6498
+    },
+    {
+      "path": "backend/app/data/templates/marketing/content_strategist.tex",
+      "fields": 24,
+      "unsupportedBlocks": 9,
+      "p50_ms": 0.2866,
+      "p95_ms": 0.6251
+    },
+    {
+      "path": "backend/app/data/templates/marketing/growth_marketer.tex",
+      "fields": 23,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.2343,
+      "p95_ms": 0.5717
+    },
+    {
+      "path": "backend/app/data/templates/marketing/pmm.tex",
+      "fields": 25,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.213,
+      "p95_ms": 0.6136
+    },
+    {
+      "path": "backend/app/data/templates/medical/biotech.tex",
+      "fields": 21,
+      "unsupportedBlocks": 12,
+      "p50_ms": 0.2661,
+      "p95_ms": 0.6928
+    },
+    {
+      "path": "backend/app/data/templates/medical/clinical_research.tex",
+      "fields": 28,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.3346,
+      "p95_ms": 0.5606
+    },
+    {
+      "path": "backend/app/data/templates/medical/nursing.tex",
+      "fields": 24,
+      "unsupportedBlocks": 9,
+      "p50_ms": 0.3432,
+      "p95_ms": 0.937
+    },
+    {
+      "path": "backend/app/data/templates/medical/physician.tex",
+      "fields": 25,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.2951,
+      "p95_ms": 0.931
+    },
+    {
+      "path": "backend/app/data/templates/minimal/classic.tex",
+      "fields": 16,
+      "unsupportedBlocks": 16,
+      "p50_ms": 0.2975,
+      "p95_ms": 1.8163
+    },
+    {
+      "path": "backend/app/data/templates/minimal/clean_simple.tex",
+      "fields": 21,
+      "unsupportedBlocks": 12,
+      "p50_ms": 0.2578,
+      "p95_ms": 0.4863
+    },
+    {
+      "path": "backend/app/data/templates/minimal/modern_minimal.tex",
+      "fields": 17,
+      "unsupportedBlocks": 14,
+      "p50_ms": 0.2654,
+      "p95_ms": 0.7444
+    },
+    {
+      "path": "backend/app/data/templates/minimal/ultra_minimal.tex",
+      "fields": 22,
+      "unsupportedBlocks": 6,
+      "p50_ms": 0.2328,
+      "p95_ms": 0.3991
+    },
+    {
+      "path": "backend/app/data/templates/presentation/beamer_madrid.tex",
+      "fields": 4,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.2058,
+      "p95_ms": 0.683
+    },
+    {
+      "path": "backend/app/data/templates/presentation/beamer_metropolis.tex",
+      "fields": 3,
+      "unsupportedBlocks": 10,
+      "p50_ms": 0.1415,
+      "p95_ms": 0.2858
+    },
+    {
+      "path": "backend/app/data/templates/presentation/beamer_pitch.tex",
+      "fields": 0,
+      "unsupportedBlocks": 9,
+      "p50_ms": 0.2905,
+      "p95_ms": 0.7735
+    },
+    {
+      "path": "backend/app/data/templates/presentation/beamer_research.tex",
+      "fields": 4,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.1782,
+      "p95_ms": 0.3528
+    },
+    {
+      "path": "backend/app/data/templates/presentation/beamer_warsaw.tex",
+      "fields": 4,
+      "unsupportedBlocks": 11,
+      "p50_ms": 0.1964,
+      "p95_ms": 0.4011
+    },
+    {
+      "path": "backend/app/data/templates/regional/europecv.tex",
+      "fields": 0,
+      "unsupportedBlocks": 1,
+      "p50_ms": 0.0519,
+      "p95_ms": 0.5572
+    },
+    {
+      "path": "backend/app/data/templates/regional/india_government_psu_application.tex",
+      "fields": 18,
+      "unsupportedBlocks": 4,
+      "p50_ms": 0.2688,
+      "p95_ms": 1.084
+    },
+    {
+      "path": "backend/app/data/templates/regional/india_professional_biodata.tex",
+      "fields": 21,
+      "unsupportedBlocks": 6,
+      "p50_ms": 0.2914,
+      "p95_ms": 0.418
+    },
+    {
+      "path": "backend/app/data/templates/regional/polish_cv_rodo.tex",
+      "fields": 20,
+      "unsupportedBlocks": 5,
+      "p50_ms": 0.3783,
+      "p95_ms": 0.7031
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/data_scientist.tex",
+      "fields": 19,
+      "unsupportedBlocks": 11,
+      "p50_ms": 0.3999,
+      "p95_ms": 1.1301
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/devops.tex",
+      "fields": 23,
+      "unsupportedBlocks": 9,
+      "p50_ms": 0.2801,
+      "p95_ms": 0.897
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/fullstack.tex",
+      "fields": 22,
+      "unsupportedBlocks": 13,
+      "p50_ms": 0.3911,
+      "p95_ms": 0.7556
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/ml_engineer.tex",
+      "fields": 19,
+      "unsupportedBlocks": 14,
+      "p50_ms": 0.3891,
+      "p95_ms": 1.129
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/swe_clean.tex",
+      "fields": 18,
+      "unsupportedBlocks": 20,
+      "p50_ms": 0.4101,
+      "p95_ms": 1.8601
+    },
+    {
+      "path": "backend/app/data/templates/software_engineering/swe_technical.tex",
+      "fields": 21,
+      "unsupportedBlocks": 12,
+      "p50_ms": 0.3073,
+      "p95_ms": 0.8648
+    },
+    {
+      "path": "backend/app/data/templates/two_column/two_col_classic.tex",
+      "fields": 2,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.1323,
+      "p95_ms": 0.5512
+    },
+    {
+      "path": "backend/app/data/templates/two_column/two_col_creative.tex",
+      "fields": 1,
+      "unsupportedBlocks": 8,
+      "p50_ms": 0.2063,
+      "p95_ms": 0.7469
+    },
+    {
+      "path": "backend/app/data/templates/two_column/two_col_modern.tex",
+      "fields": 0,
+      "unsupportedBlocks": 5,
+      "p50_ms": 0.188,
+      "p95_ms": 0.7549
+    },
+    {
+      "path": "backend/app/data/templates/two_column/two_col_sidebar.tex",
+      "fields": 0,
+      "unsupportedBlocks": 4,
+      "p50_ms": 0.2096,
+      "p95_ms": 0.6848
+    }
+  ]
+}

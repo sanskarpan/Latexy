@@ -1,6 +1,8 @@
 import { auth, pool } from "@/lib/auth"
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit"
 import { validatePasskeyName } from "@/lib/passkey-security"
+import { oidcConfiguration } from "@/lib/oidc-config"
+import { normalizeInstitutionalOidcCallback } from "@/lib/oidc-provider"
 
 /**
  * Every auth request passes the shared, atomic per-IP gate before Better
@@ -10,6 +12,7 @@ import { validatePasskeyName } from "@/lib/passkey-security"
  * counter-store outage so a DB blip degrades rate limiting, not sign-in.
  */
 async function handle(request: Request): Promise<Response> {
+  request = normalizeInstitutionalOidcCallback(request, oidcConfiguration?.provider.providerId)
   const limited = await enforceAuthRateLimit(pool, request)
   if (limited) return limited
 

@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-06",
+  "scope": ["landing and marketing", "first use", "visual editing", "themes", "brand assets", "public metadata"],
+  "automated": {
+    "focusedTests": { "files": 9, "tests": 64, "passed": true },
+    "targetedLint": "passed",
+    "typescript": "passed after review fixes; temporary preview/build directories excluded",
+    "diffWhitespace": "passed",
+    "productionCompile": "passed before this review; not repeated for these fixes",
+    "productionTypeCheck": "passed before this review; final standalone TypeScript check also passed",
+    "productionPageGeneration": { "generated": 44, "total": 44 },
+    "productionStandalonePackaging": "blocked: Windows EPERM creating a symlink"
+  },
+  "browserVerified": [
+    "Homepage suggestion selection, accept, and undo",
+    "Platform, Resources, and FAQ navigation and content",
+    "Light and dark appearance",
+    "Visual mode has no mounted code editor",
+    "Clear and retype a visual field",
+    "Source and Visual switching preserves content",
+    "Local draft recovery after reload",
+    "Add and rename a section",
+    "Add an achievement",
+    "Trailing spaces and ordinary word typing remain editable",
+    "Multiline name field remains editable",
+    "Two identically named Skills sections remain independent",
+    "Windows line endings do not create blank lines or hide the headline",
+    "Settled high-contrast toggle uses black on yellow",
+    "Visual exports contain PDF, Word, and plain text only",
+    "Missing/current-draft PDF guard prompts for preview update",
+    "Public header and marketing entry links explicitly request Visual mode",
+    "Fresh preview favicon metadata contains versioned new brand URLs"
+  ],
+  "brand": {
+    "identity": "Imprint Open Corner",
+    "assetChecks": 16,
+    "passed": true,
+    "checkedPublicRoutesAndAssets": 10,
+    "httpChecksPassed": true,
+    "sharingImageRenderedAndInspected": true,
+    "homepageBrokenImagesObserved": 0,
+    "faviconCacheVersion": "imprint-20261006"
+  },
+  "unverified": [
+    "Live PDF and AI end-to-end requests: local backend health request timed out",
+    "Authenticated browser flows: configured database hostname does not resolve locally",
+    "Mobile viewport: the in-app browser did not apply the requested viewport override",
+    "Live asynchronous AI proposal/approval and preview queue behavior: code and policy tests passed, but responding backend is unavailable"
+  ],
+  "limitations": [
+    "Visual mode conservatively supports recognized document structures and preserves custom source; it is not a general-purpose LaTeX layout designer",
+    "No deployment performed",
+    "Passing these checks is not a guarantee of zero bugs"
+  ]
+}

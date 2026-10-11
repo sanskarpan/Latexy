@@ -10,7 +10,7 @@
  */
 
 import { betterAuth } from 'better-auth'
-import { genericOAuth, twoFactor } from 'better-auth/plugins'
+import { twoFactor } from 'better-auth/plugins'
 import { createAuthMiddleware } from 'better-auth/api'
 import { deleteSessionCookie } from 'better-auth/cookies'
 import { passkey } from '@better-auth/passkey'
@@ -18,6 +18,7 @@ import { Pool } from 'pg'
 import { assertEmailTransportConfigured, sendEmail } from './email'
 import { handlePasskeyTwoFactorAfterHook } from './passkey-two-factor'
 import { oidcConfiguration, readAdditionalTrustedOrigins } from './oidc-config'
+import { createInstitutionalOidcPlugin } from './oidc-provider'
 import { getConfiguredSocialProviders } from './social-provider-config'
 
 const APP_URL = process.env.BETTER_AUTH_URL || 'http://localhost:5180'
@@ -217,7 +218,7 @@ export const auth = betterAuth({
 
   plugins: [
     ...(oidcConfiguration
-      ? [genericOAuth({ config: [oidcConfiguration.provider] })]
+      ? [createInstitutionalOidcPlugin(oidcConfiguration, APP_URL)]
       : []),
     twoFactor({
       issuer: 'Latexy',

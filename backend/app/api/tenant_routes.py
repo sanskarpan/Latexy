@@ -17,7 +17,7 @@ from typing import Any, List, Literal, Optional
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -36,6 +36,7 @@ from ..database.models import (
     WorkspaceResume,
 )
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.tenant_middleware import (
     get_current_tenant,
     invalidate_tenant_cache,

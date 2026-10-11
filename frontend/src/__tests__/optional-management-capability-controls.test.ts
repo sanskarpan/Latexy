@@ -37,7 +37,7 @@ async function settle() { for (let i = 0; i < 8; i += 1) await Promise.resolve()
 async function harness(kind: 'workspaces' | 'workspace' | 'recruiter' | 'billing' | 'dashboard' | 'referral', initiallyAllowed = true, query = '') {
   vi.resetModules()
   let allowed = initiallyAllowed
-  let entitlementFeatures = { i02: initiallyAllowed }
+  let entitlementFeatures = { i01: true, i02: initiallyAllowed, f10: true, f11: true, b01: true, c01: true, c05: true }
   let stateIndex = 0
   let refIndex = 0
   let effectIndex = 0
@@ -55,7 +55,7 @@ async function harness(kind: 'workspaces' | 'workspace' | 'recruiter' | 'billing
     updateWorkspace: vi.fn(), inviteWorkspaceMember: vi.fn(), updateWorkspaceMemberRole: vi.fn().mockResolvedValue({ role: 'viewer' }), addResumeToWorkspace: vi.fn(),
     removeWorkspaceMember: vi.fn().mockResolvedValue(undefined), removeResumeFromWorkspace: vi.fn().mockResolvedValue(undefined), downloadWorkspaceResume: vi.fn().mockResolvedValue(new Blob(['saved pdf'])),
     listRecruiterNotes: vi.fn().mockResolvedValue([{ id: 'note', author_id: 'owner', content: 'Saved note', created_at: '2026-01-01' }]), createRecruiterNote: vi.fn(), updateRecruiterNote: vi.fn(), deleteRecruiterNote: vi.fn().mockResolvedValue(undefined),
-    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { available: true } } }),
+    getSubscriptionPlans: vi.fn().mockResolvedValue({ success: true, data: { plans, billing: { available: true, provider: 'dodo' } } }),
     verifyStudentSubscription: vi.fn().mockResolvedValue({ success: true }), previewTeamSeat: vi.fn().mockResolvedValue({ success: true }), joinTeamSeat: vi.fn(), inviteTeamSeat: vi.fn(), createSubscription: vi.fn().mockResolvedValue({ success: true, data: { shortUrl: 'https://payments.example.test/pay' } }),
     getTeamSeats: vi.fn().mockResolvedValue({ success: true, data: [{ id: 'seat', member_email: 'member@example.test', status: 'active', invited_at: '2026-01-01' }] }), removeTeamSeat: vi.fn().mockResolvedValue({ success: true }),
     getCurrentSubscription: vi.fn().mockResolvedValue({ success: true, data: { planId: 'team' } }), cancelSubscription: vi.fn().mockResolvedValue({ success: true }),
@@ -93,7 +93,7 @@ async function harness(kind: 'workspaces' | 'workspace' | 'recruiter' | 'billing
   const router = { push: vi.fn(), replace: vi.fn() }
   const params = new URLSearchParams(query)
   vi.doMock('next/navigation', () => ({ useParams: () => ({ workspaceId: 'workspace' }), useRouter: () => router, useSearchParams: () => params }))
-  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => allowed, features: entitlementFeatures, loaded: true, loading: false }) }))
+  vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: (key: string) => key in entitlementFeatures ? entitlementFeatures[key as keyof typeof entitlementFeatures] : allowed, features: entitlementFeatures, loaded: true, loading: false }) }))
   vi.doMock('@/contexts/FeatureFlagsContext', () => ({ useFeatureFlags: () => ({ billing: true }) }))
   vi.doMock('@/hooks/useRequireAuth', () => ({ useRequireAuth: () => ({ session, isPending: false, error: null }) }))
   vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: session, isPending: false, error: null }) }))
@@ -113,7 +113,7 @@ async function harness(kind: 'workspaces' | 'workspace' | 'recruiter' | 'billing
             : (await import('@/components/ReferralPanel')).default
   return {
     api, browser, tab, fetch, copy,
-    allow: (value: boolean) => { allowed = value },
+    allow: (value: boolean) => { allowed = value; entitlementFeatures = { ...entitlementFeatures, i02: value } },
     allowTarget: (value: boolean) => {
       Object.values(plans).forEach((plan) => { plan.capabilities.i02 = value })
       entitlementFeatures = { ...entitlementFeatures }
@@ -216,7 +216,7 @@ describe('optional commercial and referral controls', () => {
     expect(h.api.previewTeamSeat).not.toHaveBeenCalled()
     expect(elements(tree).filter((node) => node.type === 'PricingCard').map((node) => (node.props.plan as { id: string }).id)).toEqual(['free', 'pro'])
     const manager = elements(tree).find((node) => node.type === 'SubscriptionManager')!
-    ;(manager.props.onLoaded as (value: unknown) => void)({ planId: 'team' })
+    ;(manager.props.onLoaded as (value: unknown) => void)({ planId: 'team', userId: 'owner' })
     h.render(); await h.flush(); tree = h.render()
     expect(content(tree)).not.toContain('Invite teammate')
     expect(h.api.getTeamSeats).toHaveBeenCalled()
@@ -233,7 +233,7 @@ describe('optional commercial and referral controls', () => {
     expect(elements(tree).filter((node) => node.type === 'PricingCard').map((node) => (node.props.plan as { id: string }).id)).toContain('team')
     const select = elements(tree).find((node) => node.type === 'PricingCard')!.props.onSelectPlan as (id: string) => Promise<void>
     await select('team')
-    expect(h.api.createSubscription).toHaveBeenCalledWith('team', 'owner@example.test', 'Owner', { billingPeriod: 'monthly', couponCode: undefined })
+    expect(h.api.createSubscription).toHaveBeenCalledWith('team', 'owner@example.test', 'Owner', { billingPeriod: 'monthly', couponCode: undefined }, expect.objectContaining({ authToken: 'session-token', isCurrent: expect.any(Function) }))
     expect(h.api.previewTeamSeat).not.toHaveBeenCalled()
   })
 
@@ -272,7 +272,7 @@ describe('optional commercial and referral controls', () => {
     let tree = h.render()
     const accept = control(tree, 'Accept team invitation')
     const manager = elements(tree).find((node) => node.type === 'SubscriptionManager')!
-    ;(manager.props.onLoaded as (value: unknown) => void)({ planId: 'team' })
+    ;(manager.props.onLoaded as (value: unknown) => void)({ planId: 'team', userId: 'owner' })
     h.render(); await h.flush()
     type(input(h.render(), 'teammate@company.com'), 'new@example.test')
     const invite = control(h.render(), 'Invite teammate')

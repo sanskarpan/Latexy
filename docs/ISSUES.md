@@ -1,4 +1,9 @@
 # ISSUES — Latexy Production Audit
+
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](BILLING_DODO.md) and the October 2026 migration audit.
+
 **Date:** 2026-06-11  
 **Auditor:** Multi-agent production readiness audit (23-phase)  
 **Scope:** Full codebase — backend, frontend, workers, database, security, performance, observability  

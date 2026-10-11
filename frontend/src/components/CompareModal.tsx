@@ -7,6 +7,7 @@ import { DiffEditor } from '@monaco-editor/react'
 import '@/lib/monaco-loader'
 import type { editor } from 'monaco-editor'
 import { apiClient, type LatexCompiler } from '@/lib/api-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { useJobStream } from '@/hooks/useJobStream'
 import PDFPreview from '@/components/PDFPreview'
 
@@ -40,6 +41,9 @@ export default function CompareModal({
   optimizedPdfUrl,
   compiler,
 }: Props) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const [activeTab, setActiveTab] = useState<Tab>('diff')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
@@ -144,6 +148,7 @@ export default function CompareModal({
   }, [])
 
   const handleCompileOriginal = async () => {
+    if (!canRef.current('c05')) return
     setIsCompiling(true)
     setCompileError(null)
     try {
@@ -307,12 +312,14 @@ export default function CompareModal({
                     {compileError && (
                       <p className="max-w-[220px] text-center text-[11px] text-err">{compileError}</p>
                     )}
-                    <button
-                      onClick={handleCompileOriginal}
-                      className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
-                    >
-                      Compile Original
-                    </button>
+                    {can('c05') && (
+                      <button
+                        onClick={handleCompileOriginal}
+                        className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
+                      >
+                        Compile Original
+                      </button>
+                    )}
                   </div>
                 )}
                 {isOriginalLoading && (

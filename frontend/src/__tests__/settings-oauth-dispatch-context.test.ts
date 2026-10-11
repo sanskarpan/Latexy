@@ -67,6 +67,7 @@ describe('Settings OAuth completion captured account context', () => {
     let hookIndex = 0
     let refs: Array<{ current: unknown }> = []
     let states: unknown[] = []
+    const memos: Array<{ deps: unknown[]; value: unknown }> = []
     const effects: Array<() => void | (() => void)> = []
     const requests: Array<{ url: string; init: RequestInit }> = []
     const replace = vi.fn()
@@ -106,6 +107,16 @@ describe('Settings OAuth completion captured account context', () => {
     vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => ({ can: () => featureEnabled }) }))
     vi.doMock('react', () => ({
       Suspense: 'Suspense',
+      createContext: (defaultValue: unknown) => ({ _defaultValue: defaultValue, Provider: 'Context.Provider' }),
+      useContext: (context: { _defaultValue: unknown }) => context._defaultValue,
+      useMemo: (factory: () => unknown, deps: unknown[]) => {
+        const index = hookIndex++
+        const previous = memos[index]
+        if (!previous || deps.length !== previous.deps.length || deps.some((value, depIndex) => !Object.is(value, previous.deps[depIndex]))) {
+          memos[index] = { deps: [...deps], value: factory() }
+        }
+        return memos[index].value
+      },
       useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
       useRef: (initial: unknown) => {
         const index = hookIndex++

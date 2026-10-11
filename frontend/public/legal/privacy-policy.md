@@ -16,9 +16,10 @@ social sign-in, the selected identity provider sends us the account information
 you authorize. Password authentication is handled by Better Auth; Latexy does
 not store a recoverable copy of your password.
 
-Razorpay processes payment-card and mandate details. Latexy stores provider
-identifiers, subscription state, plan, invoices/payment records, and related
-billing metadata, but does not receive your full card number.
+Dodo Payments provides hosted checkout and processes payment credentials,
+billing details, tax calculations, and transactions as merchant of record. Latexy
+stores provider identifiers, subscription state, plan, payment/refund records,
+and related billing metadata. Payment-card credentials remain with Dodo Payments.
 
 ### Documents and feature data
 
@@ -90,8 +91,9 @@ are no longer needed.
 
 Latexy uses service providers to operate the product. Current infrastructure
 includes Vercel (web hosting), Modal (API and worker compute), Neon
-(PostgreSQL), Upstash (Redis), and Cloudflare R2 (object storage). Razorpay
-handles payments, and Resend or a configured SMTP provider may deliver email.
+(PostgreSQL), Upstash (Redis), and Cloudflare R2 (object storage). Dodo Payments
+handles hosted checkout and billing, and Resend or a configured SMTP provider
+may deliver email.
 The AI and optional integration providers described above receive data only when
 their corresponding feature is used.
 

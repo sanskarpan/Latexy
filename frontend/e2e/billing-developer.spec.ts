@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 const plansPayload = {
   plans: {
     free: {
+      id: 'free',
       name: 'Free Trial',
       price: 0,
       currency: 'INR',
@@ -10,6 +11,7 @@ const plansPayload = {
       features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
     },
     basic: {
+      id: 'basic',
       name: 'Basic',
       price: 29900,
       currency: 'INR',
@@ -17,6 +19,7 @@ const plansPayload = {
       features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
     },
     basic_annual: {
+      id: 'basic_annual',
       name: 'Basic Annual',
       price: 287100,
       currency: 'INR',
@@ -26,6 +29,7 @@ const plansPayload = {
       features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
     },
     pro: {
+      id: 'pro',
       name: 'Pro',
       price: 59900,
       currency: 'INR',
@@ -33,6 +37,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     pro_annual: {
+      id: 'pro_annual',
       name: 'Pro Annual',
       price: 575000,
       currency: 'INR',
@@ -42,6 +47,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     byok: {
+      id: 'byok',
       name: 'BYOK (Bring Your Own Key)',
       price: 19900,
       currency: 'INR',
@@ -49,6 +55,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true, customModels: true },
     },
     byok_annual: {
+      id: 'byok_annual',
       name: 'BYOK Annual',
       price: 191000,
       currency: 'INR',
@@ -58,6 +65,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true, customModels: true },
     },
     student: {
+      id: 'student',
       name: 'Student',
       price: 29900,
       currency: 'INR',
@@ -66,6 +74,7 @@ const plansPayload = {
       features: { compilations: 'unlimited', optimizations: 'unlimited', historyRetention: 365, prioritySupport: true, apiAccess: true },
     },
     team: {
+      id: 'team',
       name: 'Team',
       price: 249900,
       currency: 'INR',
@@ -75,6 +84,7 @@ const plansPayload = {
     },
   },
   billing: {
+    provider: 'dodo',
     feature_enabled: true,
     mode: 'enabled',
     available: true,
@@ -84,6 +94,35 @@ const plansPayload = {
 }
 
 test.describe('Billing page', () => {
+  test('an available old backend stays read-only without explicit Dodo capability', async ({ page }) => {
+    let mutationRequests = 0
+    await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
+      user: { id: 'old-owner', email: 'owner@example.com', name: 'Owner' },
+      session: { id: 'old-session', userId: 'old-owner', token: 'old-owner-token' },
+    } }))
+    await page.route('**/subscription/plans', route => route.fulfill({ json: {
+      ...plansPayload, billing: { ...plansPayload.billing, provider: undefined, available: true },
+    } }))
+    await page.route('**/subscription/current', route => route.fulfill({ json: {
+      userId: 'old-owner', planId: 'basic', planName: 'Basic', status: 'active',
+      features: plansPayload.plans.basic.features,
+      subscriptionId: 'old-subscription', currentPeriodEnd: '2099-01-01T00:00:00Z',
+    } }))
+    await page.route(/\/subscription\/(create|cancel|reconcile|student\/verify)(?:\/|$)/, route => {
+      mutationRequests += 1
+      return route.fulfill({ status: 400, json: { detail: 'Unexpected billing mutation' } })
+    })
+
+    await page.goto('/billing?checkout=return&student_verify=old-token')
+    await expect(page.getByText('Dodo billing is not available on this server yet. Please try again after the update.').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeHidden()
+    const cards = page.locator('article')
+    await expect(cards).not.toHaveCount(0)
+    for (const button of await cards.getByRole('button').all()) await expect(button).toBeDisabled()
+    expect(mutationRequests).toBe(0)
+  })
+
   test('guest can view pricing and annual toggle updates plan set', async ({ page }) => {
     await page.route('**/api/auth/get-session', (route) =>
       route.fulfill({ json: { user: null, session: null } }),
@@ -98,6 +137,79 @@ test.describe('Billing page', () => {
     await page.getByRole('button', { name: 'Annual' }).click()
     await expect(page.getByRole('heading', { name: 'Basic Annual' })).toBeVisible()
     await expect(page.getByText('₹239.25/month effective')).toBeVisible()
+    await page.getByRole('link', { name: 'Sign In to Subscribe' }).click()
+    await expect(page).toHaveURL(/\/login\?redirect=%2Fbilling$/)
+  })
+
+  test('current paid plan is selected and Free explains end-of-cycle cancellation', async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-basic', email: 'basic@example.com', name: 'Basic User' },
+          session: { id: 'sess-basic', userId: 'user-basic', token: 'basic-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) =>
+      route.fulfill({ json: plansPayload }),
+    )
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-basic',
+          planId: 'basic',
+          planName: 'Basic',
+          status: 'active',
+          features: { compilations: 50, optimizations: 10, historyRetention: 30, prioritySupport: false, apiAccess: false },
+          subscriptionId: 'sub_basic_1',
+          currentPeriodEnd: '2099-01-01T00:00:00Z',
+        },
+      }),
+    )
+
+    await page.goto('/billing')
+    const basicCard = page.locator('article').filter({
+      has: page.getByRole('heading', { name: 'Basic', exact: true }),
+    })
+    await expect(basicCard.getByRole('button', { name: 'Current Plan' })).toBeDisabled()
+    await expect(page.getByText(
+      'Selecting Free schedules cancellation at the end of your current billing period. Your paid access continues until then.',
+    )).toBeVisible()
+  })
+
+  test('failed checkout return reports the result but keeps server subscription state authoritative', async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-failed-checkout', email: 'failed@example.com', name: 'Test User' },
+          session: { id: 'sess-failed-checkout', userId: 'user-failed-checkout', token: 'failed-checkout-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) =>
+      route.fulfill({ json: plansPayload }),
+    )
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-failed-checkout',
+          planId: 'free',
+          planName: 'Free Trial',
+          status: 'active',
+          features: { compilations: 3, optimizations: 0, historyRetention: 0, prioritySupport: false, apiAccess: false },
+        },
+      }),
+    )
+
+    await page.route('**/subscription/reconcile', route => route.fulfill({
+      json: { success: false, status: 'pending', message: 'Payment is not confirmed yet.' },
+    }))
+    await page.goto('/billing?checkout=return&status=failed')
+    await expect(page.getByRole('status').filter({ hasText: 'This checkout was reported as unsuccessful.' })).toHaveText(
+      'This checkout was reported as unsuccessful. Your current subscription status is shown below.',
+    )
+    await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeEnabled()
+    await expect(page.getByText("You're currently on the Free plan.")).toBeVisible()
   })
 
   test('coupon input validates and signed-in team user can manage seats', async ({ page }) => {

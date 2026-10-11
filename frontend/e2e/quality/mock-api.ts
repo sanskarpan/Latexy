@@ -32,8 +32,14 @@ export const QUALITY_FEATURES: Record<string, boolean> = {
   compile: true,
   ...Object.fromEntries(registry.map(({ key, gateable }) => [key, !gateable])),
   a09: true,
+  b01: true,
+  c01: true,
+  c05: true,
   b04: true,
   b06: true,
+  f10: true,
+  f11: true,
+  i01: true,
 }
 
 export const QUALITY_PLANS = {

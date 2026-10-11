@@ -159,7 +159,7 @@ async function loadFormHarness(kind: FormKind, redirect = '/workspace'): Promise
   vi.doMock('@/lib/passkey-security', () => ({ supportsPasskeys: () => false }))
   vi.doMock('@/lib/auth-client', () => ({
     authClient: {
-      signIn: { social, oauth2: vi.fn(), passkey },
+      signIn: { social, passkey },
     },
     signIn: { email, social: vi.fn(), passkey },
     signUp: { email, social },
@@ -207,6 +207,25 @@ afterEach(() => {
 })
 
 describe('auth forms consume runtime provider state', () => {
+  it('starts institutional SSO through the supported social API', async () => {
+    const harness = await loadFormHarness('signin', '/workspace/new')
+    harness.fetch.mockResolvedValue({ ok: true, json: async () => ({
+      google: false, github: false, oidc: { id: 'university_sso', label: 'University SSO' },
+    }) })
+    harness.social.mockResolvedValue({ data: { url: 'https://id.example.edu/authorize' } })
+    harness.render()
+    harness.runEffects()
+    await settle()
+    const button = findButton(harness.render(), 'University SSO')
+    expect(button).not.toBeNull()
+    await (button!.props.onClick as () => Promise<void>)()
+    expect(harness.social).toHaveBeenCalledWith({
+      provider: 'university_sso', callbackURL: '/workspace/new',
+      errorCallbackURL: '/login?redirect=%2Fworkspace%2Fnew',
+    })
+    harness.cleanup()
+  })
+
   it.each([
     ['signin', ''], ['signin', 'false'], ['signup', ''], ['signup', 'false'],
   ] as const)('shows Google only after a real provider response without a build flag (%s, %s)', async (kind, flag) => {

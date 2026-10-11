@@ -20,16 +20,20 @@ def test_registry_has_complete_inventory_and_parent_controls():
 
 
 def test_registry_has_parent_and_granular_switches():
-    assert len(gateable_keys()) == 137
+    assert len(gateable_keys()) == 144
 
 
-def test_compile_present_and_non_gateable():
+def test_compile_and_new_admissions_are_gateable_without_gating_recovery():
     compile_feature = get_feature("compile")
     assert compile_feature is not None
-    assert compile_feature.gateable is False
-    assert is_gateable("compile") is False
-    assert "compile" not in gateable_keys()
+    assert compile_feature.gateable is True
+    assert is_gateable("compile") is True
+    assert "compile" in gateable_keys()
     assert "compile" in all_feature_keys()
+    from app.core.feature_registry import feature_ancestry
+    assert [feature.key for feature in feature_ancestry("c05")] == ["c05", "compile"]
+    for key in ("b01", "c01", "c05", "f10", "f11", "i01"):
+        assert is_gateable(key)
 
 
 def test_plan_families_exact():
@@ -51,7 +55,7 @@ def test_get_feature_known_and_unknown():
 
 def test_is_gateable_correctness():
     assert is_gateable("cover_letters") is True
-    assert is_gateable("compile") is False  # known but non-gateable
+    assert is_gateable("compile") is True  # parent admission switch
     assert is_gateable("totally_unknown_key") is False  # unknown → not gateable
 
 

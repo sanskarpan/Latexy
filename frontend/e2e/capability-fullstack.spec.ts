@@ -110,7 +110,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     const guestPage = await guestContext.newPage()
     await guestPage.goto('/try')
     await expect(guestPage.locator('.monaco-editor').first()).toBeVisible({ timeout: 45_000 })
-    await expect(guestPage.getByRole('button', { name: /recompile/i })).toHaveCount(0)
+    await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toHaveCount(0)
     await expect(guestPage.locator('button[aria-label="Auto-compile on change"]')).toHaveCount(0)
     await expect(guestPage.locator('[aria-label="Source and PDF synchronization"]')).toHaveCount(0)
     await expect(guestPage.getByText('ATS —', { exact: true })).toHaveCount(0)
@@ -123,8 +123,16 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     const guestOn = adminPage.waitForResponse((response) => response.url().endsWith('/admin/entitlements/roles') && response.request().method() === 'PATCH')
     await anonymousSwitch.click(); expect((await guestOn).status()).toBe(200)
     await guestPage.reload()
-    await expect(guestPage.getByRole('button', { name: /recompile/i })).toBeVisible({ timeout: 45_000 })
-    await expect(guestPage.getByRole('button', { name: 'Auto-compile on change', exact: true })).toBeVisible()
+    // The merged studio opens in Visual mode, where compilation is called
+    // “Update PDF preview”. Verify the source mode toggle and compile control
+    // in both editor modes so this acceptance test covers the current UI.
+    await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toBeVisible({ timeout: 45_000 })
+    await expect(guestPage.getByRole('button', { name: 'Source', exact: true })).toBeVisible()
+    await guestPage.getByRole('button', { name: 'Source', exact: true }).click()
+    await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toBeVisible()
+    await expect(guestPage.getByRole('button', { name: 'Automatically update the PDF after edits', exact: true })).toBeVisible()
+    await guestPage.getByRole('button', { name: 'Visual', exact: true }).click()
+    await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toBeVisible()
     await adminPage.screenshot({ path: testInfo.outputPath('real-admin-role-controls.png'), fullPage: true })
   } finally {
     for (const row of oldRoles.rows) await database.query('UPDATE role_features SET enabled = $1 WHERE role = $2 AND feature_key = $3', [row.enabled, row.role, row.feature_key])

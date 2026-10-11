@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { cp, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
@@ -42,7 +40,13 @@ function watchParent(onParentGone) {
   let stopped = false
   const timer = setInterval(() => {
     if (stopped) return
-    if (process.ppid !== expectedParentPid) {
+    let parentAlive = true
+    try {
+      process.kill(expectedParentPid, 0)
+    } catch (error) {
+      parentAlive = error?.code === 'EPERM'
+    }
+    if (process.ppid !== expectedParentPid || !parentAlive) {
       stopped = true
       clearInterval(timer)
       onParentGone()

@@ -11,7 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, redis_manager
-from ..database.models import Compilation, DeviceTrial, Optimization, Payment, Subscription, UsageAnalytics, User
+from ..database.models import (
+    Compilation,
+    DeviceTrial,
+    Optimization,
+    Payment,
+    PaymentRefund,
+    Subscription,
+    UsageAnalytics,
+    User,
+)
 
 logger = get_logger(__name__)
 
@@ -460,7 +469,7 @@ class AnalyticsService:
 
             # Active subscriptions
             active_subs_query = select(func.count(Subscription.id)).where(
-                Subscription.status == 'active'
+                Subscription.status.in_(['active', 'cancel_scheduled', 'past_due'])
             )
             active_subs_result = await db.execute(active_subs_query)
             active_subscriptions = active_subs_result.scalar()
@@ -469,11 +478,22 @@ class AnalyticsService:
             revenue_query = select(func.sum(Payment.amount)).where(
                 and_(
                     Payment.created_at >= start_date,
-                    Payment.status == 'captured'
+                    Payment.currency == 'INR',
+                    Payment.status.in_(['paid', 'partially_refunded', 'captured', 'refunded'])
                 )
             )
             revenue_result = await db.execute(revenue_query)
             total_revenue = revenue_result.scalar() or 0
+            refund_result = await db.execute(
+                select(func.sum(PaymentRefund.amount))
+                .join(Payment, PaymentRefund.payment_id == Payment.id)
+                .where(
+                    Payment.created_at >= start_date,
+                    Payment.currency == 'INR',
+                    PaymentRefund.status == 'succeeded',
+                )
+            )
+            total_revenue -= refund_result.scalar() or 0
 
             # Trial conversions
             trial_users_query = select(func.count(DeviceTrial.id)).where(
@@ -609,7 +629,7 @@ class AnalyticsService:
             subscriptions_query = select(func.count(Subscription.id)).where(
                 and_(
                     Subscription.created_at >= start_date,
-                    Subscription.status == 'active'
+                    Subscription.status.in_(['active', 'cancel_scheduled', 'past_due'])
                 )
             )
             subscriptions_result = await db.execute(subscriptions_query)

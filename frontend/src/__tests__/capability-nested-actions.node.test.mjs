@@ -7,11 +7,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 const require = nodeModule.createRequire(import.meta.url)
-const stripTypeScriptTypes = nodeModule.stripTypeScriptTypes ?? ((code) => {
-  // Early Node 22 versions need the project's normal TypeScript dependency.
-  const ts = require('typescript')
-  return ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-})
+const ts = require('typescript')
 
 const component = (name) => readFileSync(new URL(`../components/${name}.tsx`, import.meta.url), 'utf8')
 const references = component('ReferencesPanel')
@@ -30,14 +26,21 @@ const orcid = scope(references, 'OrcidSection')
 const citations = scope(references, 'CitationCheckSection')
 const bibliography = scope(references, 'ReferencesPanel')
 function handler(source, name, context = {}) {
-  const marker = `  const ${name} = `
-  const start = source.indexOf(marker)
-  assert.notEqual(start, -1, name)
-  const closing = source.startsWith('useCallback(\n', start + marker.length) ? '\n    }' : '\n  }'
-  const end = source.indexOf(closing, start)
-  assert.notEqual(end, -1, `${name} end`)
-  const expression = source.slice(start + marker.length, end + closing.length).replace(/^useCallback\(\s*/, '')
-  const javascript = stripTypeScriptTypes(`const action = ${expression}`)
+  const file = ts.createSourceFile('component.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let expression
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === name && node.initializer) {
+      const initializer = node.initializer
+      expression = ts.isCallExpression(initializer)
+        && initializer.expression.getText(file) === 'useCallback'
+        ? initializer.arguments[0]?.getText(file)
+        : initializer.getText(file)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  assert.ok(expression, name)
+  const javascript = ts.transpileModule(`const action = (${expression})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   const scope = { admissionRef: { current: { allowNewActions: true, version: 0 } }, ...context }
   return new Function(...Object.keys(scope), `${javascript}; return action`)(...Object.values(scope))
 }

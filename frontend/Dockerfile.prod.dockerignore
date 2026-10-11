@@ -10,6 +10,10 @@
 **/node_modules/**
 **/.next
 **/.next/**
+**/.next-*/**
+**/.next-*
+**/.venv
+**/.venv/**
 **/.env
 **/.env.*
 **/.envrc

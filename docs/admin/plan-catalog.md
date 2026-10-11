@@ -1,12 +1,12 @@
 # Plan catalog and commercial safety
 
-The Admin → Plan Catalog screen owns the customer-facing merchandising of the eleven existing billing SKUs. Public `/pricing`, `/billing` plan cards and current-subscription display use the same catalog service. Numeric compile, optimization and AI-assist limits are versioned per exact SKU. Pricing cards derive capability access from the same global, family, concrete-SKU and parent-feature decisions used by backend enforcement. The intentional free Developer API allowance is displayed from its enforced daily quota.
+The Admin → Plan Catalog screen owns the customer-facing merchandising of the eleven existing billing SKUs. Public `/pricing`, `/billing` plan cards and current-subscription display use the same catalog service. Numeric compile, optimization and AI-assist limits are versioned per exact SKU. Pricing cards derive capability access from the same global, account-role, family, concrete-SKU and parent-feature decisions used by backend enforcement. The intentional free Developer API allowance is displayed from its enforced daily quota.
 
 ## Editable controls
 
 Administrators can change a stable SKU's display name, description, sort order, pricing visibility and availability for **new purchases**. Updates require the current integer version; concurrent or stale edits return HTTP 409, preserving the later administrator's changes. Each accepted update adds an audit snapshot in `plan_catalog_revisions`. The free fallback cannot be hidden or disabled.
 
-Visibility and purchase availability are separate controls. Hiding a card does not prohibit a direct purchase request. Pause new purchases to retire an offer. The create-subscription endpoint resolves annual aliases before checking availability; student-verification completion also checks availability. Missing or failed catalog reads never silently permit a checkout.
+Visibility and purchase availability are separate controls. Hiding a card does not prohibit a direct purchase request. Pause new purchases to retire an offer. The create-subscription endpoint resolves annual aliases before checking availability; student-verification completion also checks availability. Missing or failed catalog reads never silently permit a checkout. New purchases also require `i01`, including token-owner Student verification. Signed webhooks, existing payment reconciliation, cancellation and refunds remain recovery operations.
 
 ## Deliberate read-only boundaries
 
@@ -16,7 +16,7 @@ Visibility and purchase availability are separate controls. Hiding a card does n
 - Existing subscriptions, outstanding payment verification, refunds, cancellation, subscription IDs and period boundaries are not modified by catalog edits. Pausing sales does not revoke an existing plan's features. Feature-matrix changes are the explicit way to restrict capability access.
 - Unconfigured weekly and lifetime offers remain absent from public pricing; they cannot become a free or payable offer through an admin switch. Unconfigured annual offers remain unavailable for purchase.
 
-The existing provider's monthly plan-creation fallback is unchanged by this work. No provider calls or real payments are required to operate catalog editing, migrations or tests.
+The admin view identifies the provider as Dodo and displays the configured product mapping read-only. Product IDs never appear in the public catalog. All paid offers, including annual aliases, require an operator-configured Dodo product; a switch cannot create a provider product. No provider calls or real payments are required to operate catalog editing, migrations or tests.
 
 ## Quota changes
 
@@ -26,7 +26,7 @@ Edits require the current quota version and add an audit revision. Counter keys,
 
 ## Recovery and rollout
 
-Run Alembic through `0062_plan_quotas` before deploying these application changes. It follows `0061_plan_catalog` and `0060_capability_catalog`, adding catalog/quota audit tables without rewriting user, subscription or payment records. Unedited SKUs resolve to the stable application defaults; their first edit creates a versioned row atomically.
+Run Alembic through the single head `0072_capability_roles` before deploying these application changes. The released-main revision `0068` is followed by `0069_capability_catalog`, `0070_plan_catalog`, `0071_plan_quotas` and `0072_capability_roles`, adding capability/catalog/quota/role controls without rewriting user, subscription, payment or refund records. The earlier unpublished draft revision IDs are unsupported; inspect the database revision before rollout (see [integration review](../audits/admin-capabilities/2026-10-11-integration-review.md)). Unedited SKUs resolve to the stable application defaults; their first edit creates a versioned row atomically.
 
 Catalog and entitlement failures do not block an existing subscriber from retrieving their subscription identity and cancellation information. The current-subscription display reads catalog state in a separate transaction and labels optional feature availability as unavailable if that lookup fails.
 

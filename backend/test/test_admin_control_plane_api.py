@@ -118,10 +118,10 @@ class TestKillSwitch:
         get_resp = await client.get("/admin/entitlements", headers=headers)
         assert get_resp.json()["kill_switches"]["cover_letters"] is False
 
-    async def test_non_gateable_key_404(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_security_invariant_key_404(self, client: AsyncClient, db_session: AsyncSession):
         headers = await _admin_headers(db_session)
         resp = await client.patch(
-            "/admin/entitlements/kill-switch/compile",  # non-gateable
+            "/admin/entitlements/kill-switch/a01",  # authentication is a security invariant
             json={"enabled": False},
             headers=headers,
         )
@@ -162,11 +162,11 @@ class TestMatrix:
         )
         assert resp.status_code == 400
 
-    async def test_non_gateable_key_404(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_security_invariant_key_404(self, client: AsyncClient, db_session: AsyncSession):
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/matrix",
-            json={"plan_family": "free", "feature_key": "compile", "enabled": False},
+            json={"plan_family": "free", "feature_key": "a01", "enabled": False},
             headers=headers,
         )
         assert resp.status_code == 404

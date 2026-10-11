@@ -23,6 +23,7 @@ import OnboardingFlow, { useOnboarding } from '@/components/onboarding/Onboardin
 import GenerateReferencesModal from '@/components/GenerateReferencesModal'
 import ApplyModal from '@/components/ApplyModal'
 import { downloadBlob } from '@/lib/download'
+import { resumeEditorHref } from '@/lib/resume-navigation'
 import { useI18n } from '@/components/I18nProvider'
 
 // ── Translation languages (Feature 44) ────────────────────────────────────
@@ -114,10 +115,15 @@ export default function WorkspacePage() {
   const {
     isOnboardingOpen,
     hasCompletedOnboarding,
+    onboardingReady,
     startOnboarding,
     completeOnboarding,
     skipOnboarding,
-  } = useOnboarding()
+  } = useOnboarding(useMemo(() => ({
+    ownerId: session?.user?.id ?? null,
+    authToken: session?.session?.token ?? '',
+    confirmed: Boolean(session?.user?.id && session?.session?.token && !sessionLoading && !sessionError),
+  }), [session?.session?.token, session?.user?.id, sessionError, sessionLoading]))
 
   // Project search modal
   const [projectSearchOpen, setProjectSearchOpen] = useState(false)
@@ -210,10 +216,10 @@ export default function WorkspacePage() {
 
   // Show onboarding for first-time users (localStorage flag not yet set)
   useEffect(() => {
-    if (session && !hasCompletedOnboarding) {
+    if (session && onboardingReady && !hasCompletedOnboarding) {
       startOnboarding()
     }
-  }, [session, hasCompletedOnboarding, startOnboarding])
+  }, [session, onboardingReady, hasCompletedOnboarding, startOnboarding])
 
   useEffect(() => {
     workspaceMountedRef.current = true
@@ -887,7 +893,7 @@ export default function WorkspacePage() {
       {/* Primary actions + overflow menu */}
       <div className="mt-5 flex items-center gap-2">
         <Link
-          href={`/workspace/${resume.id}/edit`}
+          href={resumeEditorHref(resume, workspaceOwnerId, isVariant)}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-fg transition hover:brightness-110"
         >
           <Pencil size={12} /> Edit
@@ -1030,9 +1036,9 @@ export default function WorkspacePage() {
             <span className="hidden sm:inline">Merge</span>
           </Link></CapabilityGate>
 
-          <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+          {can('b01') && <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
             {t('workspace.newResume')}
-          </Link>
+          </Link>}
         </div>
       </section>
 
@@ -1131,7 +1137,7 @@ export default function WorkspacePage() {
               <p className="mt-2 text-sm text-fg-2">
                 {searchQuery ? t('workspace.noSearchResults', { query: searchQuery }) : t('workspace.createFirst')}
               </p>
-              {!searchQuery && (
+              {!searchQuery && can('b01') && (
                 <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 mt-5 px-4 py-2 text-xs">
                   {t('workspace.createResume')}
                 </Link>
@@ -1177,7 +1183,7 @@ export default function WorkspacePage() {
                                 {expandedParents.has(resume.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                               </button>
                             )}
-                            <Link href={`/workspace/${resume.id}/edit`} className="text-sm font-medium text-fg transition hover:text-accent-strong">
+                            <Link href={resumeEditorHref(resume, workspaceOwnerId)} className="text-sm font-medium text-fg transition hover:text-accent-strong">
                               {resume.title}
                             </Link>
                             {getVariantCount(resume) > 0 && (
@@ -1215,7 +1221,7 @@ export default function WorkspacePage() {
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex gap-2 items-center">
                             <Link
-                              href={`/workspace/${resume.id}/edit`}
+                              href={resumeEditorHref(resume, workspaceOwnerId)}
                               className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
                             >
                               Edit
@@ -1354,7 +1360,7 @@ export default function WorkspacePage() {
                       <p className="truncate text-sm font-medium text-fg-2">{r.title}</p>
                     </div>
                     <div className="flex gap-2">
-                      <a href={`/workspace/${r.id}/edit`} className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-center text-[11px] font-semibold text-fg-2 transition hover:brightness-110 hover:text-fg">
+                      <a href={resumeEditorHref(r, workspaceOwnerId)} className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-center text-[11px] font-semibold text-fg-2 transition hover:brightness-110 hover:text-fg">
                         Edit
                       </a>
                       <button
@@ -1773,7 +1779,7 @@ export default function WorkspacePage() {
         /></CapabilityGate>
       )}
 
-      <CapabilityGate feature="a06"><OnboardingFlow
+      <CapabilityGate feature="a06"><OnboardingFlow key={session?.user?.id ?? 'anonymous'}
         isOpen={isOnboardingOpen}
         onComplete={completeOnboarding}
         onSkip={skipOnboarding}

@@ -49,9 +49,11 @@ from ..services.latex_service import (
     docker_engine_available,
     docker_sandbox_args,
     engine_env,
+    engine_output_error,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
+    publish_verified_engine_log,
 )
 from ..utils.bounded_io import (
     MAX_COMPILED_PDF_BYTES,
@@ -335,7 +337,7 @@ def _probe_auto_fit_candidate(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(),
+                *docker_sandbox_args(compiler),
                 "-v",
                 f"{probe_dir}:/workspace",
                 "-w",
@@ -372,7 +374,7 @@ def _probe_auto_fit_candidate(
         completed = subprocess.run(
             command,
             cwd=compile_cwd,
-            env=engine_env(),
+            env=engine_env(compiler),
             # The compiler log is the bounded source of diagnostics/page
             # counts.  Do not let a generated document fill subprocess pipes.
             stdout=subprocess.DEVNULL,
@@ -1983,7 +1985,7 @@ def compile_latex_task(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(),
+                *docker_sandbox_args(compiler),
                 "-v",
                 f"{job_dir}:/workspace",
                 "-w",
@@ -2032,7 +2034,7 @@ def compile_latex_task(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=compile_cwd,
-                env=engine_env(),
+                env=engine_env(compiler),
             )
 
             # ── Detect Beamer presentation ───────────────────────────────
@@ -2052,10 +2054,11 @@ def compile_latex_task(
             def _fail_read_escape(escaped: str) -> Dict[str, Any]:
                 """Terminate the job without publishing the log, PDF or extracted text."""
                 logger.warning(f"[{job_id}] engine read outside the job directory: {escaped}")
+                safe_error = engine_output_error(escaped)
                 escape_result = {
                     "success": False,
                     "job_id": job_id,
-                    "error": ENGINE_READ_ESCAPE_ERROR,
+                    "error": safe_error,
                 }
                 terminal_accepted = publish_job_result(job_id, escape_result)
                 if terminal_accepted:
@@ -2065,11 +2068,11 @@ def compile_latex_task(
                         {
                             "stage": "latex_compilation",
                             "error_code": "engine_read_escape",
-                            "error_message": ENGINE_READ_ESCAPE_ERROR,
+                            "error_message": safe_error,
                             "retryable": False,
                         },
                     )
-                cache_compile_log(job_id, ENGINE_READ_ESCAPE_ERROR)
+                cache_compile_log(job_id, safe_error)
                 reconcile_compilation_record(
                     job_id,
                     success=False,
@@ -2099,7 +2102,10 @@ def compile_latex_task(
                         proc.wait()
                         return _fail_read_escape(escaped)
 
-                    bounded_line = transcript.append(stripped)
+                    # Hold compiler output until the recorder has been checked:
+                    # an obfuscated openin/read can leak through typeout without
+                    # announcing the opened path in this transcript.
+                    transcript.append(stripped)
 
                     # Extract page count from pdflatex summary line
                     m = PAGE_COUNT_RE.search(stripped)
@@ -2110,19 +2116,6 @@ def compile_latex_task(
                     if first_latex_error is None and stripped.startswith("!"):
                         first_latex_error = stripped[:250]
 
-                    is_error_line = (
-                        "error" in stripped.lower() or stripped.startswith("!") or "fatal" in stripped.lower()
-                    )
-                    publish_event(
-                        job_id,
-                        "log.line",
-                        {
-                            "line": bounded_line,
-                            "source": compiler,
-                            "is_error": is_error_line,
-                        },
-                    )
-
                     # ── Cancellation check ───────────────────────────────────
                     if is_cancelled(job_id):
                         proc.kill()
@@ -2132,13 +2125,14 @@ def compile_latex_task(
                         terminal_accepted = publish_job_result(job_id, result)
                         if terminal_accepted:
                             publish_event(job_id, "job.cancelled", {})
-                        # Cache the partial log so GET /logs/{job_id} still works, and
-                        # move the row out of "processing" — DELETE /jobs/{job_id} is a
+                        # Cache only a safe cancellation message; interrupted
+                        # output has not passed final recorder validation. Move
+                        # the row out of "processing" — DELETE /jobs/{job_id} is a
                         # shipped endpoint, so this is a reachable terminal path.
                         # "cancelled" (not "failed") keeps it out of the error-history
                         # and failed-compile analytics buckets, both of which already
                         # understand the value.
-                        cache_compile_log(job_id, transcript.text())
+                        cache_compile_log(job_id, "Compilation cancelled before engine output could be validated.")
                         reconcile_compilation_record(
                             job_id,
                             success=False,
@@ -2200,7 +2194,7 @@ def compile_latex_task(
                 terminal_accepted = publish_job_result(job_id, result)
                 if terminal_accepted:
                     publish_event(job_id, "job.cancelled", {})
-                cache_compile_log(job_id, transcript.text())
+                cache_compile_log(job_id, "Compilation cancelled before engine output could be validated.")
                 reconcile_compilation_record(
                     job_id,
                     success=False,
@@ -2264,11 +2258,12 @@ def compile_latex_task(
         recorder_escape = find_recorder_read_escape(
             job_dir / f"resume{RECORDER_SUFFIX}",
             workspace,
-            require_recorder=proc.returncode == 0,
+            require_recorder=True,
         )
         if recorder_escape:
             return _fail_read_escape(recorder_escape)
 
+        publish_verified_engine_log(job_id, transcript, compiler, publish_event)
         cache_compile_log(job_id, transcript.text())
 
         publish_event(

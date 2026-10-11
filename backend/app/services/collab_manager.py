@@ -824,6 +824,7 @@ async def handle_collab_message(
     chat_user_id: Optional[str] = None,
     chat_sender_label: Optional[str] = None,
     chat_access_check: Optional[Callable[[], Awaitable[bool]]] = None,
+    document_write_check: Optional[Callable[[], Awaitable[bool]]] = None,
 ) -> None:
     """
     Dispatch one binary Y.js message received from *client_id*.
@@ -834,7 +835,9 @@ async def handle_collab_message(
     * MSG_AWARENESS / MSG_QUERY_AWARENESS → relay to peers (no persistence)
     * MSG_CHAT → relay validated plain-text chat only (never persisted)
 
-    ``chat_access_check`` is supplied by the websocket route and is deliberately
+    ``document_write_check`` is supplied by the websocket route and runs only
+    for source updates, leaving catch-up, awareness, and chat under their own
+    policies. ``chat_access_check`` is supplied by the websocket route and is deliberately
     invoked only after strict parsing and rate limiting. ``chat_authorized`` is
     an explicit internal/test override; ``None`` preserves the room-member
     assumption for internal callers, while ``False`` fails closed.
@@ -894,6 +897,16 @@ async def handle_collab_message(
             try:
                 update_bytes, _ = _decode_varbuffer(data, pos)
             except ValueError:
+                return
+
+            if document_write_check is not None and not await document_write_check():
+                await room.send_to(
+                    client_id,
+                    _build_permission_denied(
+                        "feature_disabled",
+                        "Document editing is unavailable",
+                    ),
+                )
                 return
 
             if update_bytes:

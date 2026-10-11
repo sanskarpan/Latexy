@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
@@ -12,6 +13,7 @@ import { isTeamInviteOwnerCurrent, type TeamInviteOwner } from '@/lib/team-invit
 import {
   apiClient,
   type BillingAvailability,
+  type AccountPreferenceRequestContext,
   type CouponValidationResponse,
   type CurrentSubscriptionResponse,
   type TeamSeat,
@@ -20,12 +22,6 @@ import {
 import { apiAllowance, catalogPlansForPeriod, type CatalogPlan as PricingPlan } from '@/lib/plan-catalog'
 
 type BillingPeriod = 'monthly' | 'annual'
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void }
-  }
-}
 
 /**
  * Navigate a pre-opened tab to `url`. The tab must be opened synchronously
@@ -101,6 +97,15 @@ function BillingPageContent() {
   const isAuthenticated = Boolean(sessionUser?.email)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const checkoutReturned = searchParams.get('checkout') === 'return'
+  const checkoutStatusParam = searchParams.get('status')?.toLowerCase()
+  const checkoutStatus = checkoutReturned
+    ? checkoutStatusParam === 'failed'
+      ? 'failed'
+      : checkoutStatusParam === 'cancelled' || checkoutStatusParam === 'canceled'
+        ? 'cancelled'
+        : null
+    : null
   const flags = useFeatureFlags()
   const { can, features: entitlementFeatures, loaded: entitlementsLoaded } = useEntitlements()
   const commercialEnabled = can('i02')
@@ -121,13 +126,14 @@ function BillingPageContent() {
   // A Free plan's disabled i02 must not prevent an eligible Student/Team upgrade.
   const canPurchasePlan = (planId: string) => {
     const plan = ownedPlansRef.current[planId]
-    return Boolean(plan && plan.purchasable !== false
+    return Boolean(can('i01') && plan && plan.purchasable !== false
       && (!requiresCommercialFeature(planId, plan) || targetPlansRef.current[planId]?.capabilities?.i02 === true))
   }
   const studentVerificationEnabled = canPurchasePlan('student')
   const studentVerificationEnabledRef = useRef(studentVerificationEnabled)
   studentVerificationEnabledRef.current = studentVerificationEnabled
   const [billingStatus, setBillingStatus] = useState<BillingAvailability | null>(null)
+  const dodoBackendReady = billingStatus?.provider === 'dodo'
   const [loading, setLoading] = useState(true)
   const [plansError, setPlansError] = useState<string | null>(null)
   const [activePlan, setActivePlan] = useState<string | null>(null)
@@ -139,7 +145,9 @@ function BillingPageContent() {
   const [showComparison, setShowComparison] = useState(false)
   const [studentEmail, setStudentEmail] = useState('')
   const [studentCheckoutPlan, setStudentCheckoutPlan] = useState<string | null>(null)
-  const [currentSubscription, setCurrentSubscription] = useState<CurrentSubscriptionResponse | null>(null)
+  const [subscriptionSnapshot, setCurrentSubscription] = useState<CurrentSubscriptionResponse | null>(null)
+  const currentSubscription = subscriptionSnapshot?.userId === sessionUser?.id ? subscriptionSnapshot : null
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0)
   const [teamSeats, setTeamSeats] = useState<TeamSeat[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [teamLoading, setTeamLoading] = useState(false)
@@ -161,6 +169,27 @@ function BillingPageContent() {
   const teamInviteGenerationRef = useRef(0)
   const teamInviteOwnerRef = useRef<TeamInviteOwner | null>(null)
   const teamInviteAcceptanceRef = useRef<TeamInviteOwner | null>(null)
+
+  const billingOwnerRef = useRef({ token: sessionToken, active: true })
+  if (billingOwnerRef.current.token !== sessionToken) {
+    billingOwnerRef.current = { token: sessionToken, active: true }
+  }
+  useEffect(() => {
+    const owner = billingOwnerRef.current
+    owner.active = true
+    setCurrentSubscription(null)
+    setTeamSeats([])
+    setActivePlan(null)
+    return () => { owner.active = false }
+  }, [sessionToken])
+
+  const captureBillingContext = () => {
+    const owner = billingOwnerRef.current
+    return {
+      authToken: owner.token ?? '',
+      isCurrent: () => owner.active && billingOwnerRef.current === owner,
+    }
+  }
 
   // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
   // layout — it is the single source of truth. Mirroring it from here would race
@@ -191,19 +220,6 @@ function BillingPageContent() {
     fetchPlans()
   }, [fetchPlans])
 
-  useEffect(() => {
-    // Standard Checkout is only needed when the server has exposed a
-    // configured lifetime order. Entitlements still come exclusively from the
-    // signed server webhook, never from this browser callback.
-    if (!plans.lifetime || document.querySelector('script[data-razorpay-checkout]')) return
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-    script.dataset.razorpayCheckout = 'true'
-    document.body.appendChild(script)
-    return () => script.remove()
-  }, [plans.lifetime])
-
   const studentVerifyToken = searchParams.get('student_verify')
   const teamInviteToken = searchParams.get('team_invite')
   const studentVerifyAccountKey = sessionUser && sessionToken
@@ -218,6 +234,7 @@ function BillingPageContent() {
       return
     }
     if (
+      dodoBackendReady && billingStatus?.available &&
       previousAttempt &&
       studentVerifyToken &&
       studentVerifyAccountKey &&
@@ -233,7 +250,7 @@ function BillingPageContent() {
         }
       }
     }
-    if (!studentVerifyToken || handledStudentToken === studentVerifyToken || !studentVerifyAccountKey) {
+    if (!dodoBackendReady || !billingStatus?.available || !studentVerifyToken || handledStudentToken === studentVerifyToken || !studentVerifyAccountKey) {
       studentVerifyAttemptRef.current = null
       return () => {
         if (studentVerifyGenerationRef.current === generation) {
@@ -244,7 +261,10 @@ function BillingPageContent() {
     const owner = { token: studentVerifyToken, accountKey: studentVerifyAccountKey, generation }
     studentVerifyAttemptRef.current = owner
     const verify = async () => {
-      const result = await apiClient.verifyStudentSubscription(studentVerifyToken)
+      const result = await apiClient.verifyStudentSubscription(studentVerifyToken, {
+        authToken: sessionToken ?? '',
+        isCurrent: () => studentVerifyGenerationRef.current === owner.generation && studentVerifyAttemptRef.current === owner,
+      })
       const stillCurrent =
         studentVerificationEnabledRef.current &&
         studentVerifyGenerationRef.current === owner.generation &&
@@ -273,7 +293,7 @@ function BillingPageContent() {
         studentVerifyGenerationRef.current += 1
       }
     }
-  }, [studentVerificationEnabled, handledStudentToken, studentVerifyAccountKey, studentVerifyToken])
+  }, [studentVerificationEnabled, billingStatus?.available, dodoBackendReady, handledStudentToken, sessionToken, studentVerifyAccountKey, studentVerifyToken])
 
   useEffect(() => {
     const generation = ++teamInviteGenerationRef.current
@@ -380,7 +400,8 @@ function BillingPageContent() {
     return catalogPlansForPeriod(plans, billingPeriod)
       .filter((plan) => !requiresCommercialFeature(plan.id, plan)
         || (targetGrantsCurrent && plan.capabilities?.i02 === true))
-  }, [billingPeriod, plans, targetGrantsCurrent])
+      .filter((plan) => can('i01') || plan.id === 'free' || plan.id === currentSubscription?.planId)
+  }, [billingPeriod, can, currentSubscription?.planId, plans, targetGrantsCurrent])
   const hasStudentOffer = visiblePlans.some((plan) => plan.id === 'student'
     || plan.plan_family === 'student' || plan.requires_student_verification)
   const hasTeamOffer = visiblePlans.some((plan) => plan.id === 'team' || plan.plan_family === 'team')
@@ -388,7 +409,14 @@ function BillingPageContent() {
   // Mirrors SubscriptionManager's own "no active paid subscription" check so the
   // Free plan card's CTA and behavior stay consistent with the subscription panel.
   const isFreeTier =
-    !currentSubscription || (currentSubscription.planId === 'free' && !currentSubscription.subscriptionId)
+    !currentSubscription || currentSubscription.planId === 'free'
+  const cancellationScheduled = currentSubscription?.status === 'cancel_scheduled'
+  const currentPaidPlanId =
+    currentSubscription?.subscriptionId &&
+    currentSubscription.planId !== 'free' &&
+    ['active', 'cancel_scheduled'].includes(currentSubscription.status)
+      ? currentSubscription.planId
+      : null
 
   const appliedCoupon = couponState?.valid ? couponState : null
   const couponScopePlan = couponPlanId ? plans[couponPlanId] ?? null : null
@@ -435,9 +463,11 @@ function BillingPageContent() {
   const resolveCouponForPlan = async (
     planId: string,
     period: BillingPeriod,
+    context: AccountPreferenceRequestContext,
   ): Promise<{ code: string | undefined; abort: boolean }> => {
     if (!appliedCoupon?.code) return { code: undefined, abort: false }
-    const check = await apiClient.validateCoupon(appliedCoupon.code, planId, period)
+    const check = await apiClient.validateCoupon(appliedCoupon.code, planId, period, context)
+    if (!context.isCurrent()) return { code: undefined, abort: true }
     if (check.success && check.data?.valid) {
       return { code: appliedCoupon.code, abort: false }
     }
@@ -449,8 +479,10 @@ function BillingPageContent() {
 
   const refreshTeamSeats = async () => {
     if (!sessionToken || currentSubscription?.planId !== 'team') return
+    const context = captureBillingContext()
     setTeamLoading(true)
     const result = await apiClient.getTeamSeats()
+    if (!context.isCurrent()) return
     setTeamLoading(false)
     if (result.success && result.data) {
       setTeamSeats(result.data)
@@ -464,23 +496,27 @@ function BillingPageContent() {
   }, [currentSubscription?.planId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Selecting Free schedules a paid subscription to end with its current
-  // billing cycle. Razorpay keeps it active until then, so the UI must not
-  // claim that the account was downgraded immediately.
+  // billing cycle, so the UI must not claim that access ends immediately.
   const handleDowngradeToFree = async () => {
+    if (!dodoBackendReady) return
     if (
       !confirm(
         'Cancel renewal and switch to Free after this billing cycle? Your paid access continues until then.',
       )
     ) return
+    const context = captureBillingContext()
     setActivePlan('free')
-    const result = await apiClient.cancelSubscription()
+    const result = await apiClient.cancelSubscription(context)
+    if (!context.isCurrent()) return
     setActivePlan(null)
     if (!result.success) {
       toast.error(result.error || 'Failed to downgrade to Free')
       return
     }
     toast.success(result.message || 'Cancellation scheduled for the end of the billing cycle.')
-    const refreshed = await apiClient.getCurrentSubscription()
+    const refreshed = await apiClient.getCurrentSubscription(context)
+    if (!context.isCurrent()) return
+    setSubscriptionRefreshKey((key) => key + 1)
     if (refreshed.success && refreshed.data) {
       setCurrentSubscription(refreshed.data)
     } else {
@@ -490,13 +526,17 @@ function BillingPageContent() {
 
   const handleSelectPlan = async (planId: string) => {
     if (planId !== 'free' && !canPurchasePlan(planId)) return
+    if (!dodoBackendReady) {
+      toast.error(billingStatus?.message || 'Billing is still being checked. Please try again.')
+      return
+    }
     if (planId !== 'free' && billingStatus && !billingStatus.available) {
       toast.error(billingStatus.message)
       return
     }
 
     if (!sessionUser?.email) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
+      router.push(`/login?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`)
       return
     }
 
@@ -514,13 +554,15 @@ function BillingPageContent() {
       return
     }
 
+    const context = captureBillingContext()
     setActivePlan(planId)
     // Open the target tab synchronously within the click gesture; navigating it
     // after the await avoids the browser popup blocker that fires when
     // window.open is called outside a user gesture.
     const checkoutTab = window.open('', '_blank')
     if (checkoutTab) checkoutTab.opener = null
-    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod)
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod, context)
+    if (!context.isCurrent()) { checkoutTab?.close(); return }
     if (abort || !canPurchasePlan(planId)) {
       checkoutTab?.close()
       setActivePlan(null)
@@ -534,7 +576,9 @@ function BillingPageContent() {
         billingPeriod: planId === 'weekly' ? 'weekly' : billingPeriod,
         couponCode: couponCodeForPlan,
       },
+      context,
     )
+    if (!context.isCurrent()) { checkoutTab?.close(); return }
     setActivePlan(null)
     if (!canPurchasePlan(planId)) {
       checkoutTab?.close()
@@ -563,28 +607,6 @@ function BillingPageContent() {
       return
     }
 
-    if (result.data.checkoutType === 'one_time' && result.data.orderId) {
-      if (!window.Razorpay || !result.data.keyId) {
-        checkoutTab?.close()
-        toast.error('Lifetime checkout is temporarily unavailable. Please try again.')
-        return
-      }
-      checkoutTab?.close()
-      const checkout = new window.Razorpay({
-        key: result.data.keyId,
-        amount: result.data.amount,
-        currency: result.data.currency,
-        order_id: result.data.orderId,
-        name: 'Latexy',
-        description: 'Latexy Lifetime plan',
-        prefill: { email: sessionUser.email, name: sessionUser.name || '' },
-        handler: () => toast.success('Payment received. Your Lifetime access will appear after verification.'),
-        modal: { ondismiss: () => undefined },
-      })
-      checkout.open()
-      return
-    }
-
     if (result.data.verificationRequired) {
       toast.success(result.data.message || 'Verification email sent')
       if (result.data.verificationPreviewUrl) {
@@ -601,11 +623,14 @@ function BillingPageContent() {
 
   const handleStudentCheckout = async () => {
     if (!studentCheckoutPlan || !canPurchasePlan(studentCheckoutPlan) || !sessionUser?.email) return
+    if (!dodoBackendReady || !billingStatus?.available || !studentCheckoutPlan || !sessionUser?.email) return
+    const context = captureBillingContext()
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
     if (previewTab) previewTab.opener = null
-    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly')
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly', context)
+    if (!context.isCurrent()) { previewTab?.close(); return }
     if (abort || !canPurchasePlan(studentCheckoutPlan)) {
       previewTab?.close()
       setActivePlan(null)
@@ -620,7 +645,9 @@ function BillingPageContent() {
         couponCode: couponCodeForPlan,
         studentEmail,
       },
+      context,
     )
+    if (!context.isCurrent()) { previewTab?.close(); return }
     setActivePlan(null)
     if (!canPurchasePlan(studentCheckoutPlan)) {
       previewTab?.close()
@@ -692,7 +719,7 @@ function BillingPageContent() {
     refreshTeamSeats()
   }
 
-  if (!flags.billing) {
+  if (!flags.billing && !isAuthenticated) {
     return (
       <div className="content-shell">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">
@@ -888,15 +915,21 @@ function BillingPageContent() {
                       onSelectPlan={handleSelectPlan}
                       isLoading={activePlan === plan.id}
                       disabled={
-                        plan.id === 'free'
-                          ? isFreeTier
-                          : !!billingStatus && !billingStatus.available
+                        !dodoBackendReady || activePlan !== null || (plan.id === 'free'
+                          ? isFreeTier || cancellationScheduled
+                          : cancellationScheduled || plan.id === currentPaidPlanId || (!!billingStatus && !billingStatus.available))
                       }
-                      disabledLabel={plan.id === 'free' ? 'Current Plan' : 'Unavailable'}
+                      disabledLabel={
+                        plan.id === 'free'
+                          ? cancellationScheduled ? 'Free plan scheduled' : 'Current Plan'
+                          : plan.id === currentPaidPlanId ? 'Current Plan' : 'Unavailable'
+                      }
                     />
-                    {plan.id === 'free' && !isFreeTier && (
+                    {plan.id === 'free' && currentPaidPlanId && (
                       <p className="mt-2 text-xs text-fg-3">
-                        Cancel your paid subscription first. Your current access remains until the paid period ends.
+                        {cancellationScheduled
+                          ? 'Your paid access continues through the current billing period, then your account returns to Free.'
+                          : 'Selecting Free schedules cancellation at the end of your current billing period. Your paid access continues until then.'}
                       </p>
                     )}
                   </div>
@@ -968,8 +1001,12 @@ function BillingPageContent() {
               <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-fg-2">Loading subscription state...</div>
             ) : isAuthenticated ? (
               <SubscriptionManager
+                key={sessionToken}
+                refreshKey={subscriptionRefreshKey}
                 authToken={sessionToken}
                 billingStatus={billingStatus}
+                checkoutReturned={checkoutReturned}
+                checkoutStatus={checkoutStatus}
                 onUpgrade={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 onLoaded={setCurrentSubscription}
               />
@@ -979,12 +1016,12 @@ function BillingPageContent() {
                 <p className="mt-2 text-sm text-fg-2">
                   Sign in to subscribe or manage billing.
                 </p>
-                <button
-                  onClick={() => router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)}
+                <Link
+                  href={`/login?redirect=${encodeURIComponent(`/billing${searchParams.toString() ? `?${searchParams.toString()}` : ''}`)}`}
                   className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
                 >
                   Sign In to Subscribe
-                </button>
+                </Link>
               </div>
             )}
           </div>

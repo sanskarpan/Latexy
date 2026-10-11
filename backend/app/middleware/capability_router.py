@@ -55,33 +55,49 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "resume_routes": {
         "list_builder_templates": ("b08", "b04"),
-        "seed_builder_from_upload": ("b06", "b08"),
-        "create_builder_resume": ("b08",), "update_builder_resume": ("b08",),
+        "seed_builder_from_upload": ("b06", "b08", "b01", "c01"),
+        "create_builder_resume": ("b08", "b01"),
+        "update_builder_resume": ("b08", "c01"),
+        "update_builder_resume_v1": ("b08", "c01"),
+        "create_resume": ("b01",), "update_resume": ("c01",),
         "search_resumes": ("b03",),
         "pin_resume": ("b02",), "archive_resume": ("b02",),
-        "update_resume_settings": ("c07",), "update_variant_visibility": ("b12",),
-        "fork_resume": ("b11",), "quick_tailor_resume": ("d04", "d01", "d18"),
-        "get_academic_cv_report": ("b14",), "convert_academic_cv": ("b14", "d01", "d18"),
+        "update_resume_settings": ("c07",), "update_variant_visibility": ("b12", "c01"),
+        "fork_resume": ("b11", "b01"), "quick_tailor_resume": ("d04", "d01", "d18", "c05", "b01", "c01"),
+        "get_academic_cv_report": ("b14",), "convert_academic_cv": ("b14", "d01", "d18", "c05", "b01", "c01"),
         "create_checkpoint": ("c22",), "invite_collaborator": ("f04",),
         "generate_references": ("g11",),
-        "merge_resumes": ("b13",), "generate_portfolio": ("g12",),
+        "merge_resumes": ("b13", "b01", "c01"), "generate_portfolio": ("g12",),
         "get_resume_analytics": ("h07",),
+        # The endpoint accepts client-supplied source and stores it as a
+        # restorable optimization. It is a source-write admission, even when
+        # called after an AI job; history reads/restores remain recovery paths.
+        "record_optimization": ("c01",),
     },
     "job_routes": {
-        "compile_watermarked": ("c13",), "create_batch_tailor": ("d05", "d01", "d18"),
+        "compile_watermarked": ("c05", "c13"), "create_batch_tailor": ("d05", "d01", "d18", "c05", "b01", "c01"),
     },
     "routes": {
-        "optimize_resume": ("d01", "d18"), "optimize_and_compile_resume": ("d01", "d18"),
+        "compile_latex_endpoint": ("c05",),
+        "compile_latex_anonymous": ("c05",),
+        "optimize_resume": ("d01", "d18", "c01"),
+        "optimize_and_compile_resume": ("d01", "d18", "c05", "c01"),
+    },
+    "public_api_routes": {},
+    "tenant_routes": {
+        "create_tenant": ("f10",), "create_cohort": ("f10",),
+        "invite_member": ("f10",), "accept_invitation": ("f10",),
+        "verify_domain": ("f11",),
     },
     "optimize_routes": {
-        "segment_changes_endpoint": ("d03",), "apply_changes_endpoint": ("d03",),
+        "segment_changes_endpoint": ("d03",), "apply_changes_endpoint": ("d03", "c01"),
     },
     "export_routes": {"export_canva": ("h03",), "export_figma": ("h03",)},
     "document_delivery_routes": {
         "email_compiled_document": ("h05",), "retry_email_compiled_document": ("h05",),
     },
     "cover_letter_routes": {
-        "generate_cover_letter": ("e01",), "update_cover_letter": ("e01",),
+        "generate_cover_letter": ("e01",), "update_cover_letter": ("e01", "c01"),
     },
     "interview_routes": {
         "generate_interview_prep": ("e02",), "evaluate_interview_simulation": ("e03",),
@@ -130,14 +146,16 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "template_routes": {
         "list_categories": ("b04",), "list_templates": ("b04",),
-        "get_template": ("b04",), "use_template": ("b04",),
+        "get_template": ("b04",), "use_template": ("b04", "b01"),
+        "create_template": ("b04", "c01"), "update_template": ("b04", "c01"),
+        "activate_template": ("b04",), "deactivate_template": ("b04",),
         "head_template_thumbnail": ("b04",), "get_template_thumbnail": ("b04",),
         "head_template_pdf": ("b04",), "get_template_pdf": ("b04",),
     },
     "github_routes": {
         "github_connect": ("g01",),
         "github_complete": ("g01",), "enable_github_sync": ("g01",),
-        "push_to_github": ("g01",), "pull_from_github": ("g01",),
+        "push_to_github": ("g01",), "pull_from_github": ("g01", "c01"),
         "import_github_projects": ("g02",),
     },
     "dropbox_routes": {
@@ -174,13 +192,17 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         "get_my_analytics": ("h06",), "get_my_analytics_timeseries": ("h06",),
     },
     "referral_routes": {"claim_referral": ("i03",)},
-    "team_routes": {"invite_team_member": ("i02",), "join_team_seat": ("i02",)},
+    "team_routes": {
+        "invite_team_member": ("i02", "f10"),
+        "join_team_seat": ("i02", "f10"),
+    },
 }
 
 DYNAMIC_ENDPOINTS = frozenset({
     ("job_routes", "submit_job"),
     ("resume_routes", "create_resume"), ("resume_routes", "update_resume"),
     ("resume_routes", "update_builder_resume"), ("resume_routes", "create_share_link"),
+    ("resume_routes", "update_builder_resume_v1"),
     ("resume_routes", "bulk_export"),
     ("export_routes", "export_resume"), ("export_routes", "export_content"),
     ("tracker_workflow_routes", "update_alert"),
@@ -192,6 +214,12 @@ DYNAMIC_ENDPOINTS = frozenset({
     ("portfolio_routes", "setup_portfolio"),
     ("resume_routes", "update_resume_tags"), ("resume_routes", "update_collaborator_role"),
     ("workspace_routes", "update_member_role"),
+    ("tenant_routes", "update_tenant"),
+    ("routes", "create_subscription"),
+    # The email token identifies the purchaser; the payment service enforces
+    # i01 after resolving that owner and exact student SKU.
+    ("routes", "verify_student_subscription"),
+    ("suggestion_routes", "decide_suggestion"),
 })
 
 
@@ -294,9 +322,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     }),
     "resume_routes": frozenset({
         "get_resume_stats", "list_resumes", "get_error_history",
-        "get_builder_resume", "get_resume", "delete_resume",
+        "get_builder_resume", "get_builder_capabilities", "get_resume", "delete_resume",
         "unpin_resume", "unarchive_resume", "get_variant_visibility",
-        "list_variants", "diff_with_parent", "record_optimization",
+        "list_variants", "diff_with_parent",
         "get_optimization_history", "get_score_history", "restore_optimization",
         "list_checkpoints", "get_checkpoint_content", "delete_checkpoint",
         "revoke_share_link", "list_collaborators", "remove_collaborator",
@@ -308,11 +336,11 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "routes": frozenset({
         "get_me", "update_me_preferences", "get_entitlements_for_user",
         "health_check", "livez", "readyz",
-        "metrics", "compile_latex_endpoint", "download_pdf",
+        "metrics", "download_pdf",
         "download_synctex", "get_compilation_logs", "get_trial_status",
-        "track_usage", "get_subscription_plans", "create_subscription",
-        "verify_student_subscription", "validate_coupon", "get_current_subscription",
-        "cancel_subscription", "razorpay_webhook", "get_shared_resume",
+        "track_usage", "get_subscription_plans",
+        "validate_coupon", "get_current_subscription", "reconcile_subscription",
+        "cancel_subscription", "razorpay_webhook", "dodo_webhook", "get_shared_resume",
     }),
     "settings_routes": frozenset({
         "get_notification_prefs", "update_notification_prefs",
@@ -332,15 +360,13 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
         "ingest_frontend_telemetry",
     }),
     "template_routes": frozenset({
-        "create_template", "update_template", "activate_template",
-        "deactivate_template", "delete_template",
+        "delete_template",
     }),
     "tenant_routes": frozenset({
-        "current_context", "resolve_tenant_host", "create_tenant",
-        "list_my_tenants", "create_cohort", "list_cohorts",
-        "list_cohort_submissions", "update_tenant", "list_members",
-        "invite_member", "accept_invitation", "remove_member",
-        "leave_tenant", "tenant_stats", "verify_domain",
+        "current_context", "resolve_tenant_host",
+        "list_my_tenants", "list_cohorts",
+        "list_cohort_submissions", "list_members",
+        "remove_member", "leave_tenant", "tenant_stats",
     }),
     "tracker_routes": frozenset({
         "list_applications", "get_tracker_stats", "get_application",
@@ -386,15 +412,23 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
         job_type = body.get("job_type")
         if not isinstance(job_type, str):
             job_type = None  # Leave malformed values to Pydantic's 422 response.
-        keys.extend({"llm_optimization": ("d01",), "combined": ("d01", "d18"),
-                     "ats_scoring": ("d18",), "auto_fit": ("c12",)}.get(job_type, ()))
+        keys.extend({"latex_compilation": ("c05",),
+                     "llm_optimization": ("d01", "c01"),
+                     "combined": ("d01", "d18", "c05", "c01"),
+                     "ats_scoring": ("d18",),
+                     "auto_fit": ("c12", "c05", "c01")}.get(job_type, ()))
         if job_type in {"llm_optimization", "combined"} and any(
             body.get(field) for field in ("industry", "seniority", "tone", "emphasize", "downplay")
         ):
             keys.append("d02")
         if job_type == "ats_scoring" and body.get("industry"):
             keys.append("d19")
+    if (module, name) == ("routes", "create_subscription"):
+        # The free fallback remains reachable when new paid sales are paused.
+        if body.get("planId", "free") != "free":
+            keys.append("i01")
     if module == "routes" and name in {"optimize_resume", "optimize_and_compile_resume"}:
+        keys.append("c01")
         if any(body.get(field) for field in ("industry", "seniority", "tone", "emphasize", "downplay")):
             keys.append("d02")
     if module == "ats_routes" and (
@@ -417,6 +451,8 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
             keys.append("f02")
         if _payload_bool(body.get("review_comments")) is True:
             keys.append("f03")
+        if _payload_bool(body.get("anonymous")) is True or _payload_bool(body.get("regenerate_anonymous")) is True:
+            keys.append("c05")
     if (module, name) == ("resume_routes", "update_builder_resume") and _payload_bool(body.get("force_reattach")) is True:
         keys.append("b09")
     if module == "export_routes" and name in {"export_resume", "export_content"}:
@@ -441,8 +477,20 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
         keys.append("b02")
     if (module, name) == ("resume_routes", "update_collaborator_role") and body.get("role") not in ("viewer", "commenter"):
         keys.append("f04")
+    if (module, name) == ("suggestion_routes", "decide_suggestion") and body.get("status") == "accepted":
+        keys.append("c01")
     if (module, name) == ("workspace_routes", "update_member_role") and body.get("role") != "viewer":
         keys.append("f08")
+    if (module, name) == ("tenant_routes", "update_tenant") and any(
+        body.get(field) for field in ("name", "logo_url", "primary_color", "brand_color")
+    ) or (
+        (module, name) == ("tenant_routes", "update_tenant") and body.get("active") is True
+    ):
+        keys.append("f10")
+    if (module, name) == ("tenant_routes", "update_tenant") and any(
+        body.get(field) for field in ("domain", "custom_domain")
+    ):
+        keys.append("f11")
     return tuple(dict.fromkeys(keys))
 
 

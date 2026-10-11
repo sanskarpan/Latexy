@@ -42,7 +42,7 @@ logger = get_logger(__name__)
 def require_developer_operation(scope: str):
     """Check existing credentials before creating even a pending job record."""
     async def gate(api_key: DeveloperAPIKey = Depends(get_developer_api_key_required)):
-        keys = ("h09",) + {"optimize": ("d01",), "ats": ("d18",)}.get(scope, ())
+        keys = ("h09",) + {"compile": ("c05",), "optimize": ("d01", "c01"), "ats": ("d18",)}.get(scope, ())
         await enforce_capabilities(keys, api_key.user_id)
     return gate
 
@@ -138,7 +138,7 @@ async def _authorize(
 
     # Existing credentials never grandfather access after a downgrade. Status
     # and PDF retrieval intentionally do not call this spend/dispatch gate.
-    keys = ("h09",) + {"optimize": ("d01",), "ats": ("d18",)}.get(scope, ())
+    keys = ("h09",) + {"compile": ("c05",), "optimize": ("d01", "c01"), "ats": ("d18",)}.get(scope, ())
     await enforce_capabilities(keys, api_key.user_id)
 
     plan_id = await _get_plan_id(db, api_key.user_id)

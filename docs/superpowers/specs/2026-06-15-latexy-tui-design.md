@@ -1,5 +1,10 @@
 # Latexy TUI — Design Specification
 
+> **Historical payment snapshot:** Razorpay references below describe the earlier
+> implementation. Current runtime billing uses Dodo hosted checkout and signed
+> webhooks; see [Dodo operations](../../BILLING_DODO.md) and the October 2026 migration audit.
+
+
 **Version:** 2.0 (complete rewrite — Hermes-style React+Ink architecture)
 **Date:** 2026-06-15
 **Status:** Approved for implementation

@@ -46,7 +46,7 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     ("reader", "b03", 400),
     ("user", "b03\nforged-event", 404),
     ("user", "b03\rforged-event", 404),
-    ("user", "compile", 404),
+    ("user", "a01", 404),
     ("user", "unknown", 404),
 ])
 async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatch, role, feature, status):

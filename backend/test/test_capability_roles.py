@@ -54,7 +54,7 @@ def test_resource_roles_and_malformed_account_roles_never_grant(role):
     service = EntitlementService()
     for key in gateable_keys():
         assert not service._decide(allowed_blob(), key, "pro", role)
-    assert service._decide({}, "compile", "pro", role)
+    assert not service._decide({}, "compile", "pro", role)
 
 
 async def test_anonymous_is_separate_from_authenticated_free_user():
@@ -84,7 +84,7 @@ def test_role_parser_rejects_unrecognized_and_nonboolean_grants():
     assert blob["roles"]["user"]["d01"] is False
     assert blob["roles"]["support"]["d01"] is True
     assert "reader" not in blob["roles"]
-    assert "compile" not in blob["roles"]["admin"]
+    assert blob["roles"]["admin"]["compile"] is False
 
 
 def test_sync_admission_uses_current_identity_not_callers_stale_plan():

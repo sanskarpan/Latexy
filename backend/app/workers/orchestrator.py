@@ -54,9 +54,11 @@ from ..services.latex_service import (
     docker_engine_available,
     docker_sandbox_args,
     engine_env,
+    engine_output_error,
     find_engine_read_escape,
     find_recorder_read_escape,
     latex_service,
+    publish_verified_engine_log,
 )
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
@@ -1065,7 +1067,7 @@ def _run_latex_stage(
                 "--rm",
                 "--name",
                 container_name,
-                *docker_sandbox_args(),
+                *docker_sandbox_args(compiler),
                 "-v",
                 f"{job_dir}:/workdir",
                 "-w",
@@ -1111,7 +1113,7 @@ def _run_latex_stage(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
-                env=engine_env(),
+                env=engine_env(compiler),
             )
 
             page_count: Optional[int] = None
@@ -1142,25 +1144,14 @@ def _run_latex_stage(
                                 None,
                             )
 
-                        bounded_line = transcript.append(stripped)
+                        # A read/typeout need not announce its path. Buffer
+                        # bounded diagnostics until recorder validation finishes.
+                        transcript.append(stripped)
 
                         # Extract page count from pdflatex summary line
                         m = _PAGE_COUNT_RE.search(stripped)
                         if m:
                             page_count = int(m.group(1))
-
-                        is_error = "error" in stripped.lower() or stripped.startswith("!")
-                        if "fatal" in stripped.lower():
-                            is_error = True
-                        publish_event(
-                            job_id,
-                            "log.line",
-                            {
-                                "line": bounded_line,
-                                "source": compiler,
-                                "is_error": is_error,
-                            },
-                        )
 
                     if is_cancelled(job_id):
                         proc.kill()
@@ -1204,6 +1195,13 @@ def _run_latex_stage(
                 raise
             finally:
                 watchdog_reason = watchdog.stop()
+                # Popen's stdout is a BufferedReader owned by this function.
+                # Close it on success, timeout, cancellation, parser failure,
+                # and external soft-time-limit paths to avoid leaking one file
+                # descriptor per compilation worker invocation.
+                close_stdout = getattr(proc.stdout, "close", None)
+                if callable(close_stdout):
+                    close_stdout()
 
             if watchdog_reason == "cancelled":
                 cleanup_docker_container(container_name)
@@ -1231,12 +1229,13 @@ def _run_latex_stage(
         recorder_escape = find_recorder_read_escape(
             job_dir / f"resume{RECORDER_SUFFIX}",
             workspace,
-            require_recorder=proc.returncode == 0,
+            require_recorder=True,
         )
         if recorder_escape:
             logger.warning(f"[{job_id}] engine read outside the job directory: {recorder_escape}")
-            return False, compilation_time, ENGINE_READ_ESCAPE_ERROR, None, None
+            return False, compilation_time, engine_output_error(recorder_escape), None, None
 
+        publish_verified_engine_log(job_id, transcript, compiler, publish_event)
         cache_compile_log(job_id, transcript.text())
 
         pdf_file = job_dir / "resume.pdf"

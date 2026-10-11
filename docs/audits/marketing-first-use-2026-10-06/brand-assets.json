@@ -1,0 +1,149 @@
+{
+  "checkedAt": "2026-10-06",
+  "selectedIdentity": "Imprint Open Corner",
+  "overallPassed": true,
+  "checks": [
+    {
+      "path": "frontend/public/icons/icon-192.png",
+      "format": "PNG",
+      "dimensions": [
+        192,
+        192
+      ],
+      "declaredSizes": "192x192",
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-512.png",
+      "format": "PNG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "declaredSizes": "512x512",
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-512-maskable.png",
+      "format": "PNG",
+      "dimensions": [
+        512,
+        512
+      ],
+      "declaredSizes": "512x512",
+      "passed": true
+    },
+    {
+      "path": "frontend/public/favicon.ico",
+      "format": "ICO",
+      "sizes": [
+        [
+          16,
+          16
+        ],
+        [
+          32,
+          32
+        ],
+        [
+          48,
+          48
+        ],
+        [
+          64,
+          64
+        ]
+      ],
+      "passed": true
+    },
+    {
+      "path": "frontend/src/app/icon.svg",
+      "selectedMarkMatches": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-192.svg",
+      "selectedMarkMatches": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-512.svg",
+      "selectedMarkMatches": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/src/components/brand/BrandLogo.tsx",
+      "selectedMarkMatches": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/offline.html",
+      "selectedMarkMatches": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-192.png",
+      "navyAndPaperPixelsMatch": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-512.png",
+      "navyAndPaperPixelsMatch": true,
+      "passed": true
+    },
+    {
+      "path": "frontend/public/icons/icon-512-maskable.png",
+      "opaqueBackground": true,
+      "markMaxRadiusPx": 166.35,
+      "safeCircleRadiusPx": 204.8,
+      "passed": true
+    },
+    {
+      "reference": "/favicon.ico",
+      "usedBy": [
+        "frontend/src/app/layout.tsx",
+        "frontend/src/app/layout.tsx",
+        "frontend/src/hooks/usePushNotifications.ts"
+      ],
+      "passed": true
+    },
+    {
+      "reference": "/icons/icon-192.png",
+      "usedBy": [
+        "frontend/src/app/layout.tsx",
+        "frontend/src/__tests__/pwa-cache-security.test.ts"
+      ],
+      "passed": true
+    },
+    {
+      "reference": "/icons/icon-512.png",
+      "usedBy": [
+        "frontend/src/__tests__/pwa-cache-security.test.ts"
+      ],
+      "passed": true
+    },
+    {
+      "reference": "/icons/icon-512-maskable.png",
+      "usedBy": [
+        "frontend/src/__tests__/pwa-cache-security.test.ts"
+      ],
+      "passed": true
+    }
+  ],
+  "reviewedSurfaces": [
+    "GlobalHeader",
+    "MarketingFooter",
+    "SignInForm",
+    "login/signup route shells",
+    "offline fallback",
+    "PWA manifest",
+    "Open Graph image",
+    "guest editor"
+  ],
+  "followups": [
+    "Auth emails retain orange text-only identity; backend notification templates retain purple styling. Deferred to avoid simultaneous auth/billing work."
+  ],
+  "limits": [
+    "Static file and format verification; installed PWA icon refresh and delivered email client rendering were not tested."
+  ]
+}

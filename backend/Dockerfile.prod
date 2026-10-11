@@ -65,10 +65,19 @@ RUN groupadd -r latexy && useradd -r -g latexy latexy
 # Create app directory and set permissions
 WORKDIR /app
 RUN mkdir -p /app/temp /app/logs && \
-    chown -R latexy:latexy /app
+    chown -R latexy:latexy /app && \
+    mkdir -p /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config && \
+    chown latexy:latexy /var/lib/texmf/latexy-cache /var/lib/texmf/latexy-config
 
 # Copy application code
 COPY --chown=latexy:latexy . /app/
+
+# Normalize font-directory metadata before the runtime user bakes font caches.
+RUN set -eu; \
+    engine_fonts="$(kpsewhich -var-value=TEXMFDIST)/fonts"; \
+    find "$engine_fonts" /usr/share/fonts /usr/local/share/fonts \
+      -type d -exec touch -m -d '@1704067200' {} +; \
+    fc-cache --force --system-only
 
 # Switch to non-root user
 USER latexy
@@ -78,6 +87,12 @@ USER latexy
 # k8s containerPort/probes). Override with -e PORT=... if you must.
 ENV PORT=8030 \
     UVICORN_WORKERS=4
+# Keep the non-root font cache in the TeX runtime tree recognized by the sandbox.
+ENV TEXMFVAR=/var/lib/texmf/latexy-cache \
+    TEXMFCONFIG=/var/lib/texmf/latexy-config
+
+# Bake the trusted font cache with runtime ownership, never with queued input.
+RUN python scripts/warm_lualatex_cache.py
 
 # Health check (shell form so $PORT is expanded at runtime)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

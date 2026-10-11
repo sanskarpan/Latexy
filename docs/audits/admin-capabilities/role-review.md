@@ -1,3 +1,5 @@
+> Historical verification at the earlier PR head. See [11 October integration review](2026-10-11-integration-review.md) for the current main integration, 144 gateable keys and core-action controls.
+
 # Role, UI and service review of draft #1864
 
 Reviewed from `1e0f1c459dff1e44db7f79bac992008244b2913e` on 2026-10-10.

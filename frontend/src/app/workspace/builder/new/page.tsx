@@ -17,6 +17,7 @@ import {
   type BuilderTemplateResponse,
   type ResumeValidationIssue,
 } from '@/lib/api-client'
+import BuilderCapabilityGate, { useBuilderCapability } from '@/components/builder/BuilderCapabilityGate'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import {
   cloneStructuredResume,
@@ -50,7 +51,9 @@ export default function NewBuilderPage() {
   // The form owns all mutable draft state. Remounting it on an authenticated
   // identity change prevents an in-flight create/upload from crossing owners,
   // including an A → B → A account switch.
-  return <NewBuilderForm key={session.user.id} session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
+  return <BuilderCapabilityGate key={session.user.id}>
+    <NewBuilderForm session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
+  </BuilderCapabilityGate>
 }
 
 function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
@@ -58,6 +61,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
   const canRef = useRef(can)
   canRef.current = can
   const router = useRouter()
+  const { ensureCompatible, isCompatible } = useBuilderCapability()
   const mountedRef = useRef(true)
   const authVerifiedRef = useRef(!authUnverified)
   authVerifiedRef.current = !authUnverified && can('b08')
@@ -106,7 +110,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
     }
   }, [])
 
-  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current
+  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current && isCompatible()
 
   const selectedTemplate = useMemo(
     () => templates.find(template => template.id === selectedTemplateId) ?? null,
@@ -128,6 +132,8 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
     setUploading(true)
     setUploadIssues([])
     try {
+      await ensureCompatible()
+      if (!isCurrentRequest()) return
       const seeded = await apiClient.seedBuilderFromUpload(file)
       if (!isCurrentRequest()) return
       setStructured(cloneStructuredResume(seeded.structured_content))
@@ -149,16 +155,18 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
   }
 
   const handleCreate = async () => {
+    if (!canRef.current('b01') || !canRef.current('c01') || !canRef.current('b08')) return
+    if (uploading || creating) return
     if (!isCurrentRequest()) {
       toast.error('Session verification is still in progress. Please try again.')
       return
     }
     if (!title.trim()) {
-      toast.error('Enter a resume title')
+      toast.error('Give your résumé a title')
       return
     }
     if (!selectedTemplateId) {
-      toast.error('Select a builder template')
+      toast.error('Choose a layout')
       return
     }
     if (title.trim().length > 255) {
@@ -167,13 +175,15 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
     }
     setCreating(true)
     try {
+      await ensureCompatible()
+      if (!isCurrentRequest()) return
       const created = await apiClient.createBuilderResume({
         title: title.trim(),
         template_id: selectedTemplateId,
         structured_content: structured,
       })
       if (!isCurrentRequest()) return
-      toast.success('Builder draft created')
+      toast.success('Your résumé is ready to edit')
       router.push(`/workspace/builder/${created.resume.id}`)
     } catch (error) {
       if (!isCurrentRequest()) return
@@ -207,10 +217,9 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
       <header className="flex items-end justify-between gap-4 pt-2">
         <div>
           <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Guided Builder</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Build from structured content</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Create your résumé</h1>
           <p className="mt-2 max-w-2xl text-sm text-fg-2">
-            This path is optimized for fast resume creation: pick a builder-native template, fill structured sections,
-            and keep the advanced LaTeX editor as a fallback rather than the starting point.
+            Choose a layout, then fill in your details. You can start with a blank résumé or import one you already have.
           </p>
         </div>
         <Link href="/workspace/new" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
@@ -220,10 +229,11 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
-          <label className="mb-2 block text-xs uppercase tracking-[0.14em] text-fg-3">
+          <label htmlFor="new-builder-resume-title" className="mb-2 block text-xs uppercase tracking-[0.14em] text-fg-3">
             Resume Title
           </label>
           <input
+            id="new-builder-resume-title"
             type="text"
             value={title}
             onChange={event => setTitle(event.target.value)}
@@ -234,7 +244,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
 
           <CapabilityGate feature="b06"><div className="mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
             <div>
-              <p className="text-sm font-semibold text-fg">Seed from an existing resume</p>
+              <p className="text-sm font-semibold text-fg">Have a résumé already?</p>
               <p className="mt-1 text-xs text-fg-3">
                 {can('b07') ? 'Upload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.' : 'Upload PDF, DOCX, or a LinkedIn export to prefill the builder.'}
               </p>
@@ -272,12 +282,12 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
           <div className="flex items-center gap-2 text-sm font-semibold text-fg">
             <Sparkles className="h-4 w-4 text-accent-strong" />
-            Why use this builder
+            A simple way to get started
           </div>
           <div className="mt-4 grid gap-3 text-sm text-fg-2">
-            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Structured sections with live preview, autosave, and section reordering.</div>
-            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Curated builder-native templates that stay stable under template swaps.</div>
-            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Advanced LaTeX editor remains available after creation for power users.</div>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Fill in familiar fields and see your résumé take shape.</div>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Switch layouts without losing your details.</div>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">Your changes save automatically as you work.</div>
           </div>
         </div>
       </section>
@@ -285,16 +295,16 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
       <section className="grid gap-4 lg:grid-cols-3">
         {[
           {
-            title: '1. Seed',
-            description: 'Start from a past resume, LinkedIn export, or JSON Resume so you do not rebuild the basics manually.',
+            title: '1. Start',
+            description: 'Start fresh or import a résumé to save time.',
           },
           {
-            title: '2. Shape',
-            description: 'Tune the headline, impact bullets, skills, and sections with a live structured editing surface.',
+            title: '2. Add your details',
+            description: 'Add your experience, education and skills in simple fields.',
           },
           {
-            title: '3. Ship',
-            description: 'Swap builder-safe templates, keep page density in check, and open the advanced editor only when needed.',
+            title: '3. Download',
+            description: 'Review the layout and download your résumé as a PDF.',
           },
         ].map(item => (
           <div key={item.title} className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
@@ -310,7 +320,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
       <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
         <div className="mb-5 flex items-center gap-2">
           <LayoutTemplate className="h-4 w-4 text-accent-strong" />
-          <h2 className="text-sm font-semibold text-fg">Choose a builder-native template</h2>
+          <h2 className="text-sm font-semibold text-fg">Choose a layout</h2>
         </div>
         {templates.length === 0 ? (
           <div role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-6 text-sm text-fg-2">
@@ -318,10 +328,11 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {templates.map(template => (
+            {templates.filter(() => can('b01') && can('c01')).map(template => (
               <button
                 key={template.id}
                 type="button"
+                aria-pressed={template.id === selectedTemplateId}
                 onClick={() => setSelectedTemplateId(template.id)}
                 className={`rounded-[var(--radius-lg)] border p-5 text-left transition ${
                   template.id === selectedTemplateId
@@ -334,7 +345,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
                 <p className="mt-2 text-sm text-fg-2">
                   {template.description || `${template.template_family} builder layout`}
                 </p>
-                <p className="mt-4 text-xs text-fg-3">Family: {template.template_family}</p>
+                <p className="mt-4 text-xs text-fg-3">{template.id === selectedTemplateId ? 'Selected layout' : 'Choose this layout'}</p>
               </button>
             ))}
           </div>
@@ -343,7 +354,7 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
 
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
-          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Seed Preview</p>
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Imported details</p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Basics</p>
@@ -388,26 +399,25 @@ function NewBuilderForm({ session, authUnverified }: { session: BuilderSession; 
             {selectedTemplate?.name || 'Select a template first'}
           </h2>
           <p className="mt-2 text-sm text-fg-2">
-            The builder will create a structured draft first, then keep LaTeX in sync behind the scenes.
+            Next, fill in the details you want to include. You can change this layout later.
           </p>
           <div className="mt-5 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 text-sm text-fg-2">
             <div className="flex items-center gap-2 font-semibold text-fg">
               <Wand2 className="h-4 w-4 text-accent-strong" />
-              Builder first, editor second
+              No code needed
             </div>
             <p className="mt-2 text-fg-2">
-              This path is best when you want guided UX, richer section controls, safer template switching, and fewer chances
-              to break layout details manually.
+              Add your information using familiar fields. Your résumé stays saved as you work.
             </p>
           </div>
-          <button
+          {can('b01') && can('c01') && <button
             type="button"
             onClick={() => void handleCreate()}
-            disabled={creating || loading || !selectedTemplateId}
+            disabled={creating || uploading || loading || authUnverified || !selectedTemplateId}
             className="mt-6 w-full rounded-[var(--radius-md)] bg-accent px-4 py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-50"
           >
-            {creating ? 'Creating builder draft…' : 'Start Guided Builder'}
-          </button>
+            {creating ? 'Creating your résumé…' : uploading ? 'Importing your résumé…' : 'Start my résumé'}
+          </button>}
         </div>
       </section>
     </div>

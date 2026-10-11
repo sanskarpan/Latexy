@@ -296,7 +296,8 @@ assert type(celery_app.backend).__name__ == "DisabledBackend"
         env=env,
         capture_output=True,
         text=True,
-        timeout=30,
+        # Worker imports include tracing integrations on a cold test image.
+        timeout=60,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
@@ -563,6 +564,12 @@ def test_local_engine_gate_across_real_topologies(monkeypatch, topology, env, cg
     monkeypatch.setattr(latex_service.settings, "DEPLOY_TARGET", env.get("DEPLOY_TARGET", "local"))
     monkeypatch.setattr(latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False)
     monkeypatch.setattr(Path, "read_text", lambda self, **kw: cgroup, raising=False)
+    # Model the selected topology even when pytest itself runs inside Docker.
+    original_exists = Path.exists
+    monkeypatch.setattr(
+        Path, "exists",
+        lambda self: False if str(self) in {"/.dockerenv", "/run/.containerenv"} else original_exists(self),
+    )
 
     assert latex_service.local_engine_allowed() is expected, (
         f"topology {topology!r}: expected local_engine_allowed() == {expected}. "
@@ -610,8 +617,8 @@ def test_importing_the_app_never_raises_when_optional_providers_are_unset():
         "RESEND_API_KEY": "",
         "OPENAI_API_KEY": "",
         "ANTHROPIC_API_KEY": "",
-        "RAZORPAY_KEY_ID": "",
-        "RAZORPAY_KEY_SECRET": "",
+        "DODO_TEST_API_KEY": "",
+        "DODO_TEST_WEBHOOK_KEY": "",
         "SENTRY_DSN": "",
         "GITHUB_CLIENT_ID": "",
         "DROPBOX_APP_KEY": "",
@@ -1105,15 +1112,6 @@ def test_env_example_documents_settings_whose_default_breaks_in_production():
         "ADMIN_EMAILS",
         "ADMIN_SECRET_KEY",
         "FRONTEND_URL",
-        "RAZORPAY_PLAN_BASIC_ANNUAL",
-        "RAZORPAY_PLAN_BASIC_MONTHLY",
-        "RAZORPAY_PLAN_BYOK_ANNUAL",
-        "RAZORPAY_PLAN_BYOK_MONTHLY",
-        "RAZORPAY_PLAN_PRO_ANNUAL",
-        "RAZORPAY_PLAN_PRO_MONTHLY",
-        "RAZORPAY_PLAN_STUDENT",
-        "RAZORPAY_PLAN_TEAM",
-        "RAZORPAY_COUPON_OFFERS",
         "UPSTASH_REDIS_REST_TOKEN",
         "UPSTASH_REDIS_REST_URL",
         "DROPBOX_APP_KEY",

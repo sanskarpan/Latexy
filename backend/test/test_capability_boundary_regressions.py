@@ -158,6 +158,32 @@ async def test_disabled_idle_socket_cannot_receive_or_persist_and_can_rejoin(mon
     ws.send_bytes.assert_awaited_once_with(b"allowed after reenable")
 
 
+async def test_collaboration_source_update_checks_c01_before_persist_or_relay(monkeypatch):
+    from app.services import collab_manager as collab
+
+    room = collab.CollabRoom(OWNER)
+    sender = AsyncMock()
+    receiver = AsyncMock()
+    await room.add("sender", sender, {"user_id": OWNER, "role": "owner"})
+    await room.add("receiver", receiver, {"user_id": ACTOR, "role": "editor"})
+    persist = AsyncMock()
+    relay = AsyncMock()
+    monkeypatch.setattr(collab, "_persist_update", persist)
+    monkeypatch.setattr(room, "relay", relay)
+
+    await collab.handle_collab_message(
+        OWNER,
+        "sender",
+        b"\x00\x02\x01x",
+        room,
+        document_write_check=AsyncMock(return_value=False),
+    )
+
+    persist.assert_not_awaited()
+    relay.assert_not_awaited()
+    sender.send_bytes.assert_awaited_once()
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_compiler_customization_snapshots_current_owner_grant(monkeypatch, enabled):
     from app.workers import latex_worker

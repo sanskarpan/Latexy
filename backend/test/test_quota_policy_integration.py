@@ -96,7 +96,7 @@ async def test_concurrent_quota_edits_have_one_winner(db_session):
 async def test_quota_migration_roundtrip_preserves_limit_and_audit(db_session):
     admin_id, _ = await headers(db_session)
     await quota_policy_service.update(db_session, "pro_annual", "ai_assists", limit=0, version=1, admin_id=admin_id)
-    path = Path(__file__).parents[1] / "alembic/versions/0062_plan_quotas.py"
+    path = Path(__file__).parents[1] / "alembic/versions/0071_plan_quotas.py"
     spec = importlib.util.spec_from_file_location("quota_migration", path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)

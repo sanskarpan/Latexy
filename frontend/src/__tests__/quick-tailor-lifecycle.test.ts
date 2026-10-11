@@ -77,6 +77,13 @@ async function loadHarness() {
 
   vi.doMock('react', () => ({
     useCallback: (callback: unknown) => callback,
+    useRef: (initial: unknown) => {
+      if (!activeInstance) throw new Error('ref read outside render')
+      const instance = activeInstance
+      const index = instance.hookIndex++
+      if (!(index in instance.states)) instance.states[index] = { current: initial }
+      return instance.states[index]
+    },
     useEffect: (effect: () => void | (() => void)) => {
       if (!activeInstance) throw new Error('effect registered outside render')
       activeInstance.pendingEffects.push(effect)
@@ -114,6 +121,9 @@ async function loadHarness() {
     }),
   }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: { quickTailorResume } }))
+  vi.doMock('@/contexts/EntitlementsContext', () => ({
+    useEntitlements: () => ({ can: (feature: string) => feature === 'c05' }),
+  }))
 
   const QuickTailorModal = (await import('../components/QuickTailorModal')).default
 
@@ -163,6 +173,7 @@ afterEach(() => {
     'next/navigation',
     '@/hooks/useJobStream',
     '@/lib/api-client',
+    '@/contexts/EntitlementsContext',
   ]) vi.doUnmock(moduleName)
   vi.resetModules()
 })

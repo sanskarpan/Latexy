@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Latexy — Identity directions</title>
+  <style>
+    :root { font-family: "Segoe UI", Arial, sans-serif; color: #201e1b; background: #eae7df; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .sheet { max-width: 1440px; margin: auto; padding: 54px 48px 80px; }
+    .eyebrow, .number, .micro, .sample-label { font-family: Consolas, "Courier New", monospace; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; }
+    .eyebrow { color: #746d61; font-size: 11px; }
+    h1 { margin: 15px 0 12px; font-size: clamp(46px, 6vw, 82px); font-weight: 650; letter-spacing: -.075em; line-height: .98; }
+    .intro { max-width: 740px; color: #605a51; font-size: 17px; line-height: 1.5; }
+    .rule { height: 1px; background: #c9c3b7; margin: 38px 0 25px; }
+    .direction { margin: 22px 0; border: 1px solid #d2cbbf; background: #f8f6f1; display: grid; grid-template-columns: 330px minmax(0,1fr); min-height: 345px; box-shadow: 0 8px 26px rgba(46,37,24,.035); }
+    .description { padding: 28px; display: flex; flex-direction: column; border-right: 1px solid #ded8cd; }
+    .number { color: #8a8275; font-size: 11px; }
+    .description h2 { margin: 31px 0 7px; font-size: 31px; letter-spacing: -.055em; font-weight: 650; }
+    .description p { margin: 0; max-width: 26ch; color: #625c52; line-height: 1.5; font-size: 15px; }
+    .tags { margin-top: auto; padding-top: 30px; color: #8b8378; font-size: 11px; line-height: 1.7; font-family: Consolas, "Courier New", monospace; text-transform: uppercase; letter-spacing: .07em; }
+    .samples { display: grid; grid-template-rows: minmax(0,1fr) 104px; min-width: 0; }
+    .hero { --ink: #1b1815; --paper: #fbfaf6; background: var(--paper); color: var(--ink); padding: 40px 52px; display: flex; align-items: center; justify-content: space-between; gap: 30px; min-width: 0; }
+    .lockup { display: flex; align-items: center; gap: 18px; min-width: 0; }
+    .wordmark { font-size: clamp(40px,4.2vw,66px); font-weight: 680; letter-spacing: -.075em; line-height: 1; white-space: nowrap; }
+    .strap { margin-top: 10px; color: currentColor; opacity: .6; font-family: Consolas, "Courier New", monospace; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+    .mark { display: inline-block; flex: none; width: 76px; height: 76px; }
+    .mark svg { width: 100%; height: 100%; fill: currentColor; display: block; }
+    .mark.large { width: 92px; height: 92px; }
+    .comparison { display: flex; align-items: center; gap: 12px; }
+    .comparison .mark { width: 28px; height: 28px; }
+    .comparison .mark.tiny { width: 16px; height: 16px; }
+    .comparison .mark.small { width: 24px; height: 24px; }
+    .footer-samples { display: grid; grid-template-columns: 1fr 1fr; }
+    .light-swatch, .dark-swatch { display: flex; align-items: center; gap: 20px; padding: 22px 35px; }
+    .sample-label { font-size: 10px; opacity: .65; white-space: nowrap; }
+    .imprint .hero { --ink: #19375d; --paper: #f7f3e9; }
+    .imprint .light-swatch { color: #19375d; background: #eae3d4; }
+    .imprint .dark-swatch { color: #f7f3e9; background: #19375d; }
+    .glyph .hero { --ink: #1f2825; --paper: #eef1e9; }
+    .glyph .light-swatch { color: #1f2825; background: #dce3d6; }
+    .glyph .dark-swatch { color: #eef1e9; background: #1f2825; }
+    .register .hero { --ink: #353329; --paper: #f2f0e8; }
+    .register .light-swatch { color: #353329; background: #e5e0d2; }
+    .register .dark-swatch { color: #f2f0e8; background: #353329; }
+    .fold .hero { --ink: #982f25; --paper: #fcf2ea; }
+    .fold .light-swatch { color: #982f25; background: #f4ddd1; }
+    .fold .dark-swatch { color: #fcf2ea; background: #982f25; }
+    .baseline .hero { --ink: #342c45; --paper: #f5f1ef; }
+    .baseline .light-swatch { color: #342c45; background: #e7dfe1; }
+    .baseline .dark-swatch { color: #f5f1ef; background: #342c45; }
+    .endnote { margin: 32px 0 0; font-family: Consolas, "Courier New", monospace; font-size: 11px; letter-spacing: .08em; line-height: 1.7; color: #726b60; text-transform: uppercase; }
+    @media (max-width: 920px) { .sheet { padding: 28px 16px; } .direction { display: block; } .description { border-right: 0; border-bottom: 1px solid #ded8cd; } .description h2 { margin-top: 12px; } .tags { padding-top: 12px; } .hero { padding: 28px 20px; } .wordmark { font-size: 39px; } .comparison { display: none; } .light-swatch, .dark-swatch { padding: 18px; } }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <div class="eyebrow">Latexy / Identity study / 06 October 2026</div>
+    <h1>Five ways to make<br>the mark.</h1>
+    <p class="intro">A logo system for a product built on precise writing, typesetting and control. Each route is a drawn vector mark, tested here as a full lockup and at browser-icon size.</p>
+    <div class="rule"></div>
+
+    <section class="direction imprint">
+      <div class="description"><div class="number">01 / Recommended</div><h2>Imprint</h2><p>Two measured corners form an L without enclosing it in a generic page. It suggests source and finished output, with a strong silhouette at small sizes.</p><div class="tags">Editorial · adaptable · architectural</div></div>
+      <div class="samples"><div class="hero"><div><div class="lockup"><span class="mark large"></span><span class="wordmark">Latexy</span></div><div class="strap">Make every line count.</div></div><span class="comparison"><span class="mark"></span><span class="mark small"></span><span class="mark tiny"></span></span></div><div class="footer-samples"><div class="light-swatch"><span class="mark"></span><span class="sample-label">On paper</span></div><div class="dark-swatch"><span class="mark"></span><span class="sample-label">In the studio</span></div></div></div>
+    </section>
+
+    <section class="direction glyph">
+      <div class="description"><div class="number">02 / Monogram</div><h2>Glyph</h2><p>A compact L× pairing draws from the name itself. Blunt terminals keep the form more like a designed type character than a tech symbol.</p><div class="tags">Direct · technical · assertive</div></div>
+      <div class="samples"><div class="hero"><div><div class="lockup"><span class="mark large"></span><span class="wordmark">Latexy</span></div><div class="strap">Write with intent.</div></div><span class="comparison"><span class="mark"></span><span class="mark small"></span><span class="mark tiny"></span></span></div><div class="footer-samples"><div class="light-swatch"><span class="mark"></span><span class="sample-label">On paper</span></div><div class="dark-swatch"><span class="mark"></span><span class="sample-label">In the studio</span></div></div></div>
+    </section>
+
+    <section class="direction register">
+      <div class="description"><div class="number">03 / System</div><h2>Register</h2><p>A composed field of crop-like corners around a central point. It speaks to alignment, review and repeatable craft.</p><div class="tags">Precise · modular · balanced</div></div>
+      <div class="samples"><div class="hero"><div><div class="lockup"><span class="mark large"></span><span class="wordmark">Latexy</span></div><div class="strap">From source to form.</div></div><span class="comparison"><span class="mark"></span><span class="mark small"></span><span class="mark tiny"></span></span></div><div class="footer-samples"><div class="light-swatch"><span class="mark"></span><span class="sample-label">On paper</span></div><div class="dark-swatch"><span class="mark"></span><span class="sample-label">In the studio</span></div></div></div>
+    </section>
+
+    <section class="direction fold">
+      <div class="description"><div class="number">04 / Expression</div><h2>Fold</h2><p>A single page turns into an opening. The red ink gives this route the energy of editorial annotation without relying on familiar AI imagery.</p><div class="tags">Human · expressive · document-led</div></div>
+      <div class="samples"><div class="hero"><div><div class="lockup"><span class="mark large"></span><span class="wordmark">Latexy</span></div><div class="strap">A better way forward.</div></div><span class="comparison"><span class="mark"></span><span class="mark small"></span><span class="mark tiny"></span></span></div><div class="footer-samples"><div class="light-swatch"><span class="mark"></span><span class="sample-label">On paper</span></div><div class="dark-swatch"><span class="mark"></span><span class="sample-label">In the studio</span></div></div></div>
+    </section>
+
+    <section class="direction baseline">
+      <div class="description"><div class="number">05 / Typography</div><h2>Baseline</h2><p>A typographic L carrying two text rules. It makes a confident visual shorthand for the careful structure behind clear writing.</p><div class="tags">Typographic · understated · clear</div></div>
+      <div class="samples"><div class="hero"><div><div class="lockup"><span class="mark large"></span><span class="wordmark">Latexy</span></div><div class="strap">Set it right.</div></div><span class="comparison"><span class="mark"></span><span class="mark small"></span><span class="mark tiny"></span></span></div><div class="footer-samples"><div class="light-swatch"><span class="mark"></span><span class="sample-label">On paper</span></div><div class="dark-swatch"><span class="mark"></span><span class="sample-label">In the studio</span></div></div></div>
+    </section>
+
+    <p class="endnote">Original vector construction · monochrome first · transparent marks · works in light and dark contexts</p>
+  </main>
+  <script>
+    const paths = {
+      imprint: '<path d="M16 13h29v14H30v42h44v14H16V13Zm38 0h26v47H66V27H54V13Z"/>',
+      glyph: '<path d="M16 15h15v51h19v15H16V15Z"/><path d="m48 25 13 0 9 14 9-14h13L77 47l15 24H78L69 56 59 71H45l16-24-13-22Z"/>',
+      register: '<path d="M16 16h27v12H28v15H16V16Zm37 0h27v27H68V28H53V16ZM16 53h12v15h15v12H16V53Zm52 0h12v27H53V68h15V53Z"/><path d="M42 42h12v12H42z"/>',
+      fold: '<path fill-rule="evenodd" d="M14 18h39l29 29v31H14V18Zm15 14v32h38V53L47 32H29Z"/><path d="M48 18v30h34L53 18h-5Z"/>',
+      baseline: '<path d="M17 16h14v51h49v13H17V16Z"/><path d="M42 17h38v13H42zM42 41h28v12H42z"/>'
+    };
+    for (const direction of document.querySelectorAll('.direction')) {
+      const key = [...direction.classList].find(name => paths[name]);
+      for (const mark of direction.querySelectorAll('.mark')) {
+        mark.innerHTML = `<svg viewBox="0 0 96 96" aria-hidden="true">${paths[key]}</svg>`;
+      }
+    }
+  </script>
+</body>
+</html>

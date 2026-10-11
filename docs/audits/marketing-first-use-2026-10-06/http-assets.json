@@ -1,0 +1,62 @@
+[
+  {
+    "path": "/favicon.ico",
+    "status": 200,
+    "contentType": "image/x-icon",
+    "bytes": 4908
+  },
+  {
+    "path": "/icon.svg",
+    "status": 200,
+    "contentType": "image/svg+xml",
+    "bytes": 267
+  },
+  {
+    "path": "/icons/icon-192.png",
+    "status": 200,
+    "contentType": "image/png",
+    "bytes": 3765
+  },
+  {
+    "path": "/icons/icon-512.png",
+    "status": 200,
+    "contentType": "image/png",
+    "bytes": 10473
+  },
+  {
+    "path": "/icons/icon-512-maskable.png",
+    "status": 200,
+    "contentType": "image/png",
+    "bytes": 2840
+  },
+  {
+    "path": "/manifest.json",
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "bytes": 623
+  },
+  {
+    "path": "/opengraph-image",
+    "status": 200,
+    "contentType": "image/png",
+    "bytes": 40377
+  },
+  {
+    "path": "/robots.txt",
+    "status": 200,
+    "contentType": "text/plain",
+    "bytes": 265
+  },
+  {
+    "path": "/sitemap.xml",
+    "status": 200,
+    "contentType": "application/xml",
+    "bytes": 513
+  },
+  {
+    "path": "/llms.txt",
+    "status": 200,
+    "contentType": "text/plain; charset=utf-8",
+    "bytes": 1274
+  }
+]

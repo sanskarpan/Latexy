@@ -49,10 +49,68 @@ describe('workspace optional-action regressions', () => {
   })
 
   it('blocks builder reattachment and file import separately from the b08 route', async () => {
-    await action(builderPage, 'forceReattach')()
-    await action(newBuilderPage, 'handleSeedUpload')({ name: 'resume.pdf' })
+    const updateBuilderResume = vi.fn().mockResolvedValue({
+      template_family: 'classic', resume: { structured_version: 2, latex_content: 'updated source' },
+    })
+    let c01 = false
+    let b08 = true
+    const confirm = vi.fn(() => true)
+    const setSaving = vi.fn()
+    const canRef = { current: (feature: string) => feature === 'c01' ? c01 : feature === 'b08' ? b08 : false }
+    const common = {
+      canRef,
+      isCurrentRequest: () => true,
+      window: { confirm },
+      editRevision: { current: 1 },
+      saveRequestId: { current: 0 },
+      setSaving,
+      ensureCompatible: vi.fn(async () => undefined),
+      apiClient: { updateBuilderResume },
+      resumeId: 'resume-id', title: 'Title', selectedTemplateId: 'template-id', structured: {},
+      setTemplateFamily: vi.fn(), savedVersionRef: { current: 1 },
+      savedBuilderRef: { current: null }, savedLatexRef: { current: 'old source' },
+      setBuilderStatus: vi.fn(), dirtyRef: { current: true }, setDirty: vi.fn(),
+      setSaveError: vi.fn(), toast: { success: vi.fn(), error: vi.fn() },
+      mountedRef: { current: true },
+    }
+    await action(builderPage, 'forceReattach', common)()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+
+    c01 = true
+    b08 = false
+    await action(builderPage, 'forceReattach', common)()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+
+    c01 = true
+    b08 = true
+    await action(builderPage, 'forceReattach', common)()
+    expect(updateBuilderResume).toHaveBeenCalledOnce()
+    expect(updateBuilderResume).toHaveBeenCalledWith('resume-id', expect.objectContaining({ force_reattach: true }))
+
+    updateBuilderResume.mockClear()
+    let finishCompatibility!: () => void
+    const pendingCompatibility = new Promise<void>((resolve) => { finishCompatibility = resolve })
+    const staleAction = action(builderPage, 'forceReattach', {
+      ...common,
+      ensureCompatible: () => pendingCompatibility,
+    })()
+    await Promise.resolve()
+    c01 = false
+    finishCompatibility()
+    await staleAction
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+
+    expect(builderPage.getFullText()).toContain("const contentEditAllowed = can('c01')")
+    expect(builderPage.getFullText()).toContain('{contentEditAllowed && can(\'b08\') && <button type="button" onClick={() => void forceReattach()}')
+    await action(newBuilderPage, 'handleSeedUpload', { isCurrentRequest: () => true })({ name: 'resume.pdf' })
     const error = vi.fn()
-    await action(newBuilderPage, 'handleSeedUpload', { canRef: { current: (feature: string) => feature !== 'b07' }, toast: { error } })({ name: 'resume.json', type: 'application/json' })
+    await action(newBuilderPage, 'handleSeedUpload', {
+      canRef: { current: (feature: string) => feature !== 'b07' },
+      isCurrentRequest: () => true,
+      toast: { error },
+    })({ name: 'resume.json', type: 'application/json' })
     expect(error).toHaveBeenCalledOnce()
   })
 
@@ -72,13 +130,29 @@ describe('workspace optional-action regressions', () => {
     expect(editorPage.getFullText()).toContain("{['d06', 'd07', 'd10'].some(can) && <WritingAssistantWidget")
   })
 
-  it('blocks cover-letter generation and automatic compile while retaining manual compilation', async () => {
+  it('blocks cover-letter generation and automatic compilation while retaining admitted manual compilation', async () => {
     await action(coverLetter, 'runGeneration')()
     await action(coverLetter, 'handleAutoCompile')('source')
-    const compile = action(coverLetter, 'compileCurrentContent', { isProcessing: true })
+    const compileLatex = vi.fn().mockResolvedValue({ success: true, job_id: 'compile-job' })
+    const compile = action(coverLetter, 'compileCurrentContent', {
+      canRef: { current: (feature: string) => feature === 'c05' || feature === 'c06' },
+      isProcessing: false,
+      isSubmitting: false,
+      editorRef: { current: { getValue: () => 'source'.repeat(20), markAutoCompileCompiled: vi.fn() } },
+      apiClient: { compileLatex },
+      setIsSubmitting: vi.fn(),
+      setActiveJobId: vi.fn(),
+      toast: { error: vi.fn() },
+      isCurrentPage: () => true,
+      resumeId: 'resume-id',
+      sessionUserId: 'user-id',
+      activeCoverLetterId: 'cover-letter-id',
+    })
     await compile()
+    expect(compileLatex).toHaveBeenCalledOnce()
     expect(coverLetter.getFullText()).toContain("disabled={!can('e01') || isProcessing || isSubmitting || !jobDescription.trim()}")
-    expect(coverLetter.getFullText()).toContain("autoCompileEnabled={can('c06') && autoCompile}")
+    expect(coverLetter.getFullText()).toContain("autoCompileEnabled={can('c05') && can('c06') && autoCompile}")
+    expect(coverLetter.getFullText()).toContain("onCompile={can('c05') ? compileCurrentContent : undefined}")
   })
 
   it('blocks an anonymous manual compile when anonymous studio is off', async () => {

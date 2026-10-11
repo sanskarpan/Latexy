@@ -67,6 +67,11 @@ async function harness(kind: 'deep' | 'imports', features = ['g02', 'g03', 'g04'
       if (!slots[slot] || !sameDeps(slots[slot].deps, deps)) slots[slot] = { value: callback, deps }
       return slots[slot].value
     },
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const slot = index++
+      if (!slots[slot] || !sameDeps(slots[slot].deps, deps)) slots[slot] = { value: factory(), deps }
+      return slots[slot].value
+    },
     useEffect: (effect: () => void | (() => void), deps?: unknown[]) => {
       const slot = index++
       const previous = slots[slot]

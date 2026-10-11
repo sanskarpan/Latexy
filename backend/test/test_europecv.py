@@ -96,5 +96,7 @@ def test_compiled_pdf_extraction_contains_standard_and_candidate_text(tmp_path: 
         capture_output=True,
         text=True,
     ).stdout
-    assert "Alex Morgan" in extracted
-    assert "Données personnelles" in extracted or "Informations personnelles" in extracted
+    # pdftotext preserves line wrapping in the narrow translated label column.
+    normalized_text = " ".join(extracted.split())
+    assert "Alex Morgan" in normalized_text
+    assert "Données personnelles" in normalized_text or "Informations personnelles" in normalized_text

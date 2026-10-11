@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, ArrowRight, CheckCircle, Loader2, X, Zap } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useJobStream } from '@/hooks/useJobStream'
 import { apiClient, type QuickTailorRequest } from '@/lib/api-client'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 type Step = 'form' | 'progress' | 'done' | 'error'
 
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDone }: Props) {
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
   const router = useRouter()
   const [step, setStep] = useState<Step>('form')
   const [jobDescription, setJobDescription] = useState('')
@@ -45,6 +49,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   }, [state.status, state.error, jobId, step, forkId, onDone])
 
   const handleSubmit = useCallback(async () => {
+    if (!canRef.current('c05')) return
     if (jobDescription.trim().length < 10) return
     setIsSubmitting(true)
     setErrorMessage(null)
@@ -125,7 +130,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         </p>
 
         {/* Step 1: Form */}
-        {step === 'form' && (
+        {step === 'form' && can('c05') && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -273,12 +278,12 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
               >
                 Close
               </button>
-              <button
+              {can('c05') && <button
                 onClick={handleTryAgain}
                 className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
               >
                 Try Again
-              </button>
+              </button>}
             </div>
           </div>
         )}

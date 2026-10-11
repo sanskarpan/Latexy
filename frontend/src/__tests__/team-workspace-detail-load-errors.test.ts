@@ -16,7 +16,7 @@ describe('team-workspace detail failures', () => {
 
   it('does not leave signed-out visitors on a permanent loading spinner', () => {
     expect(DETAIL_SOURCE).toContain('useRequireAuth()')
-    expect(DETAIL_SOURCE).toContain("if (!session?.user) {\n      setLoading(false)")
+    expect(DETAIL_SOURCE).toMatch(/if \(!session\?\.user\) \{\s*setLoading\(false\)/)
     expect(DETAIL_SOURCE).toContain('if (!session?.user) return null')
   })
 })

@@ -9,7 +9,7 @@ const RECRUITER_SOURCE = readFileSync(
 describe('recruiter-workspace loading failures', () => {
   it('does not leave signed-out visitors on a permanent loading spinner', () => {
     expect(RECRUITER_SOURCE).toContain('useRequireAuth()')
-    expect(RECRUITER_SOURCE).toContain("if (!session?.user) {\n      setLoading(false)")
+    expect(RECRUITER_SOURCE).toMatch(/if \(!session\?\.user\) \{\s*setLoading\(false\)/)
     expect(RECRUITER_SOURCE).toContain('if (!session?.user) return null')
   })
 

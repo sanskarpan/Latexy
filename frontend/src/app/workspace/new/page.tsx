@@ -262,6 +262,7 @@ function NewResumePageForm({
   // ---- handlers ----
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
     if (!canRef.current('b04')) return false
+    if (!canRef.current('b01')) return false
     if (!mountedRef.current || sessionLoading || activeCreateRef.current || ownerIdentityRef.current.ownerId !== session.user.id) return false
     if (isCreating || activeTemplateUseRef.current) {
       if (creatingTemplateId !== id || activeTemplateUseRef.current) toast('Another template is already being created')
@@ -333,6 +334,7 @@ function NewResumePageForm({
   }, [handleUseTemplate])
 
   const handleCreate = async () => {
+    if (!canRef.current('b01')) return
     const required = mode === 'import' ? 'b06' : mode === 'linkedin' ? 'g04' : mode === 'builder' ? 'b07' : null
     if (required && !canRef.current(required)) return
     const ownerId = ownerIdentityRef.current.ownerId
@@ -388,6 +390,7 @@ function NewResumePageForm({
   }
 
   const canCreate =
+    can('b01') &&
     !!title.trim() &&
     !isCreating &&
     ((mode === 'import' || mode === 'linkedin' || mode === 'builder') ? !!importedContent : true)
@@ -448,8 +451,7 @@ function NewResumePageForm({
               Guided Builder
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-fg-2">
-              Use the new structured builder if you want live preview, section forms, template swapping, and a safer
-              path than starting directly in LaTeX.
+              Fill in your experience with simple forms, choose a layout, and download your résumé. No code required.
             </p>
           </div>
           <CapabilityGate feature="b08"><Link href="/workspace/builder/new" className="rounded-[var(--radius-md)] bg-accent px-5 py-3 text-sm font-semibold text-accent-fg hover:brightness-110">
@@ -653,13 +655,13 @@ function NewResumePageForm({
               </div>
 
               {/* Blank option */}
-              <button
+              {can('b01') && <button
                 onClick={handleCreate}
                 disabled={isCreating}
                 className="shrink-0 rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-medium text-fg-3 transition hover:border-line-2 hover:text-fg-2 disabled:opacity-40"
               >
                 Start from Blank
-              </button>
+              </button>}
             </div>
 
             {/* Category tabs */}
@@ -734,13 +736,13 @@ function NewResumePageForm({
         {/* Create button — shown for non-template creation flows */}
         {(mode === 'import' || mode === 'linkedin' || mode === 'builder') && (
           <div className="flex items-center justify-end gap-3">
-            <button
+            {can('b01') && <button
               onClick={handleCreate}
               disabled={!canCreate}
               className="rounded-[var(--radius-md)] bg-accent px-8 py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isCreating ? 'Creating…' : 'Create Resume'}
-            </button>
+            </button>}
           </div>
         )}
       </div>

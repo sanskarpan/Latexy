@@ -90,6 +90,7 @@
     "parent_key": null,
     "always_on_reason": null,
     "source_paths": [
+      "frontend/src/components/FirstUseGuide.tsx",
       "frontend/src/components/onboarding/OnboardingFlow.tsx",
       "frontend/src/app/workspace/page.tsx",
       "frontend/src/app/settings/page.tsx"
@@ -145,12 +146,12 @@
   {
     "key": "b01",
     "inventory_id": "B01",
-    "label": "Resume library and CRUD",
+    "label": "New resume creation",
     "category": "editor",
-    "description": "Create/read/update/delete owned resumes; grid/table, pagination, search, sort, count/stats, recent job details.",
-    "gateable": false,
+    "description": "Admit creation of new resumes. Existing resume listing, opening, source/PDF access, deletion and owner recovery remain available.",
+    "gateable": true,
     "parent_key": null,
-    "always_on_reason": "Users retain access to their source, core editing, deletion and data ownership.",
+    "always_on_reason": null,
     "source_paths": [
       "frontend/src/app/workspace/page.tsx",
       "backend/app/api/resume_routes.py"
@@ -279,12 +280,15 @@
     "inventory_id": "B10",
     "label": "Rich-text WYSIWYG mode",
     "category": "editor",
-    "description": "Parser/serializer based visual mode inside saved LaTeX editor; LaTeX/visual switching.",
+    "description": "Parser/serializer based visual mode and visual resume editing inside the saved document editor; LaTeX/visual switching.",
     "gateable": true,
     "parent_key": "resume_builder",
     "always_on_reason": null,
     "source_paths": [
       "frontend/src/components/WYSIWYGEditor.tsx",
+      "frontend/src/components/VisualResumeEditor.tsx",
+      "frontend/src/components/VisualChangeReviewModal.tsx",
+      "frontend/src/lib/wysiwyg/visual-projection.ts",
       "frontend/src/lib/wysiwyg/latex-parser.ts",
       "frontend/src/lib/wysiwyg/latex-serializer.ts",
       "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
@@ -353,12 +357,12 @@
   {
     "key": "c01",
     "inventory_id": "C01",
-    "label": "LaTeX source editor",
+    "label": "Source and content editing",
     "category": "editor",
-    "description": "Monaco editing, syntax highlighting, read-only role, cursor/line selection, undo-related actions and save.",
-    "gateable": false,
+    "description": "Admit new source/content mutations and saves. Existing source/PDF reads, exports, deletion and recovery remain available.",
+    "gateable": true,
     "parent_key": null,
-    "always_on_reason": "Basic source editing and recovery remain available for every plan.",
+    "always_on_reason": null,
     "source_paths": [
       "frontend/src/components/LaTeXEditor.tsx",
       "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
@@ -414,12 +418,12 @@
   {
     "key": "c05",
     "inventory_id": "C05",
-    "label": "Core LaTeX compilation",
+    "label": "New compilation jobs",
     "category": "editor",
-    "description": "Manual compile and compiler selection pdflatex/xelatex/lualatex; logs, PDF, error results.",
-    "gateable": false,
-    "parent_key": null,
-    "always_on_reason": "Core PDF compilation remains available subject to fixed security and usage limits.",
+    "description": "Admit new manual and automatic LaTeX compilation jobs. Already queued jobs, completed PDFs, logs, results and recovery remain available.",
+    "gateable": true,
+    "parent_key": "compile",
+    "always_on_reason": null,
     "source_paths": [
       "backend/app/api/job_routes.py",
       "backend/app/api/routes.py",
@@ -1468,12 +1472,12 @@
   {
     "key": "f10",
     "inventory_id": "F10",
-    "label": "Institutional tenancy/cohorts",
+    "label": "New tenant, cohort and membership setup",
     "category": "advanced",
-    "description": "Tenant admin/member context, branding/settings, invite acceptance/leave/remove, cohorts and submissions/stats.",
-    "gateable": false,
+    "description": "Admit new institutional tenant, cohort and membership setup. Existing tenant routing, membership revocation, access checks and security recovery remain available.",
+    "gateable": true,
     "parent_key": null,
-    "always_on_reason": "Tenant isolation, institutional administration and existing membership remain enforced.",
+    "always_on_reason": null,
     "source_paths": [
       "frontend/src/app/admin/tenant/page.tsx",
       "frontend/src/app/tenant-invite/page.tsx",
@@ -1483,12 +1487,12 @@
   {
     "key": "f11",
     "inventory_id": "F11",
-    "label": "Tenant custom domains and white-label",
+    "label": "New tenant domain setup",
     "category": "advanced",
-    "description": "Verified host resolution, tenant branding/theme context and institutional auth origin constraints.",
-    "gateable": false,
+    "description": "Admit new tenant custom-domain and white-label setup. Existing configured-host routing, theme resolution and OIDC sign-in remain available.",
+    "gateable": true,
     "parent_key": null,
-    "always_on_reason": "Tenant routing, domain validation and isolation are security configuration, not optional entitlements.",
+    "always_on_reason": null,
     "source_paths": [
       "backend/app/api/tenant_routes.py",
       "frontend/src/components/TenantThemeSync.tsx",
@@ -1883,12 +1887,12 @@
   {
     "key": "i01",
     "inventory_id": "I01",
-    "label": "Plan discovery and subscription management",
+    "label": "New plan purchases",
     "category": "core",
-    "description": "Public/pricing and billing views, monthly/annual/optional configured SKUs, coupon validation, subscription create/current/cancel; main uses Razorpay flow.",
-    "gateable": false,
+    "description": "Admit new checkout and plan purchases. Existing subscription display, billing history, cancellation, refunds, reconciliation and webhook recovery remain available.",
+    "gateable": true,
     "parent_key": null,
-    "always_on_reason": "Plan discovery, billing history, cancellation and subscription recovery remain reachable.",
+    "always_on_reason": null,
     "source_paths": [
       "frontend/src/app/pricing/page.tsx",
       "frontend/src/app/billing/page.tsx",

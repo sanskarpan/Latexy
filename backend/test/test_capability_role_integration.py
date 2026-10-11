@@ -88,7 +88,7 @@ async def test_role_admin_validation_and_compare_swap(client, db_session):
     auth = await _admin_headers(db_session)
     url = "/admin/entitlements/roles"
     assert (await client.patch(url, headers=auth, json={"role": "reader", "feature_key": "b03", "enabled": False})).status_code == 400
-    assert (await client.patch(url, headers=auth, json={"role": "user", "feature_key": "compile", "enabled": False})).status_code == 404
+    assert (await client.patch(url, headers=auth, json={"role": "user", "feature_key": "compile", "enabled": False})).status_code == 200
     body = {"role": "user", "feature_key": "b03", "enabled": False, "expected_enabled": True}
     assert (await client.patch(url, headers=auth, json=body)).status_code == 200
     conflict = await client.patch(url, headers=auth, json={**body, "enabled": True})
@@ -121,7 +121,7 @@ async def test_concurrent_same_cell_has_one_winner_and_distinct_cells_survive(db
 
 async def test_role_migration_preserves_denials_and_reupgrade(db_session):
     saved = [dict(row) for row in (await db_session.execute(select(RoleFeature.__table__))).mappings()]
-    path = Path(__file__).parents[1] / "alembic/versions/0063_capability_roles.py"
+    path = Path(__file__).parents[1] / "alembic/versions/0072_capability_roles.py"
     spec = importlib.util.spec_from_file_location("capability_roles_migration", path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
@@ -132,13 +132,15 @@ async def test_role_migration_preserves_denials_and_reupgrade(db_session):
     try:
         await db_session.execute(delete(RoleFeature))
         db_session.add(RoleFeature(role="user", feature_key="b03", enabled=False))
+        db_session.add(RoleFeature(role="user", feature_key="compile", enabled=False))
         await db_session.commit()
         await (await db_session.connection()).run_sync(upgrade)
         await db_session.commit()
         grants = {(r.role, r.feature_key): r.enabled for r in (await db_session.execute(select(RoleFeature))).scalars()}
         assert len(grants) == len(CAPABILITY_ROLES) * len(gateable_keys())
+        assert {key for _role, key in grants} == set(gateable_keys())
         assert not grants["user", "b03"]
-        assert all(key != "compile" for role, key in grants)
+        assert grants["user", "compile"] is False
     finally:
         await db_session.rollback()
         await db_session.execute(delete(RoleFeature))
@@ -193,7 +195,9 @@ async def test_student_verification_uses_recorded_owner_role_before_provider_and
     key = f"student_plan_verify:{token}"
     await redis.set(key, json.dumps({"user_id": owner, "customer_email": "test_student@example.edu", "customer_name": "Synthetic"}), ex=60)
     provider = AsyncMock()
-    monkeypatch.setattr(payment_service, "_create_paid_subscription", provider)
+    # New Dodo checkout is dispatched through create_subscription; the role
+    # and SKU admission must reject before reaching this provider boundary.
+    monkeypatch.setattr(payment_service, "create_subscription", provider)
     await entitlement_service.set_role_cell("support", "i02", False, db_session)
     try:
         denied = await client.get(f"/subscription/student/verify/{token}")

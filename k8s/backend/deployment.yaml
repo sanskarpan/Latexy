@@ -171,50 +171,156 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: jwt-secret-key
-        - name: RAZORPAY_KEY_ID
+        - name: DODO_TEST_API_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-key-id
-        - name: RAZORPAY_KEY_SECRET
+              key: dodo-test-api-key
+        - name: DODO_TEST_WEBHOOK_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-key-secret
-        - name: RAZORPAY_PLAN_WEEKLY
+              key: dodo-test-webhook-key
+        - name: DODO_TEST_BUSINESS_ID
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-plan-weekly
-        - name: RAZORPAY_WEEKLY_AMOUNT
+              key: dodo-test-business-id
+        - name: DODO_LIVE_API_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-weekly-amount
-        - name: RAZORPAY_LIFETIME_AMOUNT
+              key: dodo-live-api-key
+        - name: DODO_LIVE_WEBHOOK_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-lifetime-amount
-        - name: RAZORPAY_BILLING_CURRENCY
+              key: dodo-live-webhook-key
+        - name: DODO_LIVE_BUSINESS_ID
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-billing-currency
-        - name: RAZORPAY_WEBHOOK_SECRET
+              key: dodo-live-business-id
+        - name: DODO_MODE
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: razorpay-webhook-secret
-        # JSON object mapping coupon code -> Razorpay offer ID, e.g.
-        # {"LAUNCH20":"offer_ABC123"}. Razorpay only discounts a subscription
-        # through an offer, so a percentage coupon with no mapping here is
-        # refused at checkout rather than charged at full price.
-        - name: RAZORPAY_COUPON_OFFERS
+              key: dodo-mode
+        - name: DODO_TEST_PRODUCT_BASIC_MONTHLY
           valueFrom:
             configMapKeyRef:
               name: latexy-config
-              key: razorpay-coupon-offers
+              key: dodo-test-product-basic-monthly
+        - name: DODO_TEST_PRODUCT_BASIC_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-basic-annual
+        - name: DODO_TEST_PRODUCT_PRO_MONTHLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-pro-monthly
+        - name: DODO_TEST_PRODUCT_PRO_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-pro-annual
+        - name: DODO_TEST_PRODUCT_BYOK_MONTHLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-byok-monthly
+        - name: DODO_TEST_PRODUCT_BYOK_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-byok-annual
+        - name: DODO_TEST_PRODUCT_STUDENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-student
+        - name: DODO_TEST_PRODUCT_TEAM
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-team
+        - name: DODO_TEST_PRODUCT_WEEKLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-weekly
+        - name: DODO_TEST_PRODUCT_LIFETIME
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-test-product-lifetime
+        - name: DODO_LIVE_PRODUCT_BASIC_MONTHLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-basic-monthly
+        - name: DODO_LIVE_PRODUCT_BASIC_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-basic-annual
+        - name: DODO_LIVE_PRODUCT_PRO_MONTHLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-pro-monthly
+        - name: DODO_LIVE_PRODUCT_PRO_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-pro-annual
+        - name: DODO_LIVE_PRODUCT_BYOK_MONTHLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-byok-monthly
+        - name: DODO_LIVE_PRODUCT_BYOK_ANNUAL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-byok-annual
+        - name: DODO_LIVE_PRODUCT_STUDENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-student
+        - name: DODO_LIVE_PRODUCT_TEAM
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-team
+        - name: DODO_LIVE_PRODUCT_WEEKLY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-weekly
+        - name: DODO_LIVE_PRODUCT_LIFETIME
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: dodo-live-product-lifetime
+        - name: WEEKLY_AMOUNT_MINOR
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: weekly-amount-minor
+        - name: LIFETIME_AMOUNT_MINOR
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: lifetime-amount-minor
+        - name: BILLING_CURRENCY
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: billing-currency
         - name: REFERRAL_PROGRAM_ENABLED
           valueFrom:
             configMapKeyRef:

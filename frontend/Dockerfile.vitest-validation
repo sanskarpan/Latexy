@@ -1,0 +1,11 @@
+FROM node:22-alpine AS vitest-validation
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
+COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY frontend/package.json ./frontend/package.json
+COPY packages/browser-extension/package.json ./packages/browser-extension/package.json
+COPY packages/tui/package.json ./packages/tui/package.json
+RUN pnpm install --frozen-lockfile
+COPY . .
+WORKDIR /app/frontend

@@ -7,11 +7,11 @@ const providers = source('settings-provider-action-owner-isolation.spec.ts')
 const preferences = source('settings-preferences-owner-race.spec.ts')
 
 describe('editor and Settings capability fixture contracts', () => {
-  it('grants only auto-compile and SyncTeX for editor success scenarios', () => {
+  it('explicitly grants core create/edit/compile plus auto-compile and SyncTeX for editor success scenarios', () => {
     const match = editor.match(/path === '\/config\/entitlements'[^\n]+features: \{([^}]+)\}/)
     expect(match).not.toBeNull()
     const grants = Object.fromEntries([...match![1].matchAll(/(\w+):\s*(true|false)/g)].map(([, key, enabled]) => [key, enabled === 'true']))
-    expect(grants).toEqual({ c06: true, c10: true })
+    expect(grants).toEqual({ b01: true, c01: true, c05: true, c06: true, c10: true })
     expect(editor).toContain("unknown.push(`${route.request().method()} ${path}`)")
     expect(editor).toContain('return route.abort()')
   })

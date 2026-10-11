@@ -10,8 +10,8 @@
   "inventorySource": "backend/app/core/capability_catalog.json",
   "generator": "backend/scripts/generate_capability_matrix.py",
   "inventoryCount": 129,
-  "gateableCount": 107,
-  "alwaysOnCount": 22,
+  "gateableCount": 113,
+  "alwaysOnCount": 16,
   "semantics": "Stop new admissions and external actions. Already admitted jobs retain existing completion/finalization/refund behavior; owners retain source/results/recovery/deletion/revocation. Previously issued presigned URLs last until expiry.",
   "verificationScope": "Automated policy, selected real-infrastructure admission/refund and existing regression coverage. Not a claim that all 129 features were manually QA-tested or that live providers/payments were exercised.",
   "features": [
@@ -288,7 +288,7 @@
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/settings/page.tsx",
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
@@ -447,14 +447,11 @@
         "backend/app/middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark and premium raw export)"
       ],
       "clientControls": [
-        "frontend/src/app/faq/page.tsx",
         "frontend/src/app/not-found.tsx",
-        "frontend/src/app/page.tsx",
-        "frontend/src/app/platform/page.tsx",
-        "frontend/src/app/resources/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
+        "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -512,45 +509,65 @@
     {
       "inventoryId": "B01",
       "key": "b01",
-      "label": "Resume library and CRUD",
+      "label": "New resume creation",
       "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Users retain access to their source, core editing, deletion and data ownership.",
-      "serverHandlers": [],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "gateable": true,
+      "baselineReason": null,
+      "serverHandlers": [
+        "backend/app/api/resume_routes.py:seed_builder_from_upload",
+        "backend/app/api/resume_routes.py:create_builder_resume",
+        "backend/app/api/resume_routes.py:create_resume",
+        "backend/app/api/resume_routes.py:fork_resume",
+        "backend/app/api/resume_routes.py:quick_tailor_resume",
+        "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/resume_routes.py:merge_resumes",
+        "backend/app/api/job_routes.py:create_batch_tailor",
+        "backend/app/api/template_routes.py:use_template"
+      ],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:ROUTE_CAPABILITIES (source/builder/fork/merge creation and batch/conversion admission)",
+        "backend/app/api/template_routes.py:use_template (before creating a resume)"
+      ],
+      "clientControls": [
+        "frontend/src/app/workspace/builder/new/page.tsx",
+        "frontend/src/app/workspace/new/page.tsx",
+        "frontend/src/app/workspace/page.tsx"
+      ],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation",
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -708,6 +725,10 @@
         "backend/app/api/template_routes.py:list_templates",
         "backend/app/api/template_routes.py:get_template",
         "backend/app/api/template_routes.py:use_template",
+        "backend/app/api/template_routes.py:create_template",
+        "backend/app/api/template_routes.py:update_template",
+        "backend/app/api/template_routes.py:activate_template",
+        "backend/app/api/template_routes.py:deactivate_template",
         "backend/app/api/template_routes.py:head_template_thumbnail",
         "backend/app/api/template_routes.py:get_template_thumbnail",
         "backend/app/api/template_routes.py:head_template_pdf",
@@ -954,7 +975,8 @@
         "backend/app/api/resume_routes.py:list_builder_templates",
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
         "backend/app/api/resume_routes.py:create_builder_resume",
-        "backend/app/api/resume_routes.py:update_builder_resume"
+        "backend/app/api/resume_routes.py:update_builder_resume",
+        "backend/app/api/resume_routes.py:update_builder_resume_v1"
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -1016,7 +1038,7 @@
       "baselineReason": null,
       "serverHandlers": [],
       "dynamicOrServiceGates": [
-        "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach; ordinary source edits/detachment remain recovery)"
+        "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach; content changes also require c01)"
       ],
       "clientControls": [
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx"
@@ -1072,6 +1094,7 @@
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
+        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
       ],
       "verification": {
@@ -1355,45 +1378,77 @@
     {
       "inventoryId": "C01",
       "key": "c01",
-      "label": "LaTeX source editor",
+      "label": "Source and content editing",
       "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Basic source editing and recovery remain available for every plan.",
-      "serverHandlers": [],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "gateable": true,
+      "baselineReason": null,
+      "serverHandlers": [
+        "backend/app/api/resume_routes.py:seed_builder_from_upload",
+        "backend/app/api/resume_routes.py:update_builder_resume",
+        "backend/app/api/resume_routes.py:update_builder_resume_v1",
+        "backend/app/api/resume_routes.py:update_resume",
+        "backend/app/api/resume_routes.py:update_variant_visibility",
+        "backend/app/api/resume_routes.py:quick_tailor_resume",
+        "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/resume_routes.py:merge_resumes",
+        "backend/app/api/resume_routes.py:record_optimization",
+        "backend/app/api/job_routes.py:create_batch_tailor",
+        "backend/app/api/routes.py:optimize_resume",
+        "backend/app/api/routes.py:optimize_and_compile_resume",
+        "backend/app/api/optimize_routes.py:apply_changes_endpoint",
+        "backend/app/api/cover_letter_routes.py:update_cover_letter",
+        "backend/app/api/template_routes.py:create_template",
+        "backend/app/api/template_routes.py:update_template",
+        "backend/app/api/github_routes.py:pull_from_github"
+      ],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:ROUTE_CAPABILITIES (source/metadata/builder writes, optimization history recording, accepted suggestions, GitHub pull)",
+        "backend/app/services/collab_manager.py:handle_collab_message (before Yjs source persistence and relay)"
+      ],
+      "clientControls": [
+        "frontend/src/app/try/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
+        "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
+        "frontend/src/app/workspace/builder/new/page.tsx"
+      ],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_optimization_history_write_is_gated_but_restore_remains_recovery",
+          "backend/test/test_capability_route_policy.py::test_existing_optimization_restore_succeeds_while_source_edit_is_disabled",
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -1404,7 +1459,7 @@
             "commit": "328acae82a918e5145e716db324679fe34673ab3",
             "run": "https://github.com/sanskarpan/Latexy/actions/runs/38004341871/job/114069613888",
             "testFile": "frontend/e2e/capability-controls.spec.ts",
-            "scope": "Source remains intact and manual compile stays enabled while optional grants are revoked or unavailable; no compiler provider was invoked."
+            "scope": "Historical pre-core-gating evidence only: source remained intact when unrelated optional tools were disabled. It does not verify the newly gateable c01/c05 controls."
           }
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
@@ -1591,45 +1646,70 @@
     {
       "inventoryId": "C05",
       "key": "c05",
-      "label": "Core LaTeX compilation",
-      "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Core PDF compilation remains available subject to fixed security and usage limits.",
-      "serverHandlers": [],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "label": "New compilation jobs",
+      "parentKey": "compile",
+      "gateable": true,
+      "baselineReason": null,
+      "serverHandlers": [
+        "backend/app/api/resume_routes.py:quick_tailor_resume",
+        "backend/app/api/resume_routes.py:convert_academic_cv",
+        "backend/app/api/job_routes.py:compile_watermarked",
+        "backend/app/api/job_routes.py:create_batch_tailor",
+        "backend/app/api/routes.py:compile_latex_endpoint",
+        "backend/app/api/routes.py:compile_latex_anonymous",
+        "backend/app/api/routes.py:optimize_and_compile_resume"
+      ],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (generic compile, combined, auto-fit and anonymous share)",
+        "backend/app/api/resume_routes.py:create_share_link (before redacted PDF submission)",
+        "backend/app/api/public_api_routes.py:require_developer_operation (compile admission)"
+      ],
+      "clientControls": [
+        "frontend/src/app/try/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/batch-tailor/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
+        "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
+        "frontend/src/components/CompareModal.tsx",
+        "frontend/src/components/QuickTailorModal.tsx"
+      ],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_global_compile_off_blocks_every_new_compile_admission",
+          "backend/test/test_capability_route_policy.py::test_developer_api_compile_uses_owner_capability_gate",
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -4952,7 +5032,6 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/try/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx"
       ],
       "verification": {
@@ -5659,45 +5738,54 @@
     {
       "inventoryId": "F10",
       "key": "f10",
-      "label": "Institutional tenancy/cohorts",
+      "label": "New tenant, cohort and membership setup",
       "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Tenant isolation, institutional administration and existing membership remain enforced.",
-      "serverHandlers": [],
+      "gateable": true,
+      "baselineReason": null,
+      "serverHandlers": [
+        "backend/app/api/tenant_routes.py:create_tenant",
+        "backend/app/api/tenant_routes.py:create_cohort",
+        "backend/app/api/tenant_routes.py:invite_member",
+        "backend/app/api/tenant_routes.py:accept_invitation",
+        "backend/app/api/team_routes.py:invite_team_member",
+        "backend/app/api/team_routes.py:join_team_seat"
+      ],
       "dynamicOrServiceGates": [],
       "clientControls": [],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -5710,45 +5798,49 @@
     {
       "inventoryId": "F11",
       "key": "f11",
-      "label": "Tenant custom domains and white-label",
+      "label": "New tenant domain setup",
       "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Tenant routing, domain validation and isolation are security configuration, not optional entitlements.",
-      "serverHandlers": [],
+      "gateable": true,
+      "baselineReason": null,
+      "serverHandlers": [
+        "backend/app/api/tenant_routes.py:verify_domain"
+      ],
       "dynamicOrServiceGates": [],
       "clientControls": [],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],
@@ -7231,45 +7323,51 @@
     {
       "inventoryId": "I01",
       "key": "i01",
-      "label": "Plan discovery and subscription management",
+      "label": "New plan purchases",
       "parentKey": null,
-      "gateable": false,
-      "baselineReason": "Plan discovery, billing history, cancellation and subscription recovery remain reachable.",
+      "gateable": true,
+      "baselineReason": null,
       "serverHandlers": [],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "dynamicOrServiceGates": [
+        "backend/app/services/plan_catalog_service.py:require_new_purchase (new target-SKU checkout and token-owner Student verification)"
+      ],
+      "clientControls": [
+        "frontend/src/app/billing/page.tsx"
+      ],
       "verification": {
-        "status": "deliberate_always_on_baseline",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_plan_catalog.py::test_purchase_capability_disables_new_checkout_without_hiding_billing_recovery"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [
           {
             "role": "anonymous",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "user",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "support",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           },
           {
             "role": "admin",
-            "effectivePolicy": "tested_immutable_baseline",
+            "effectivePolicy": "tested_off_on_and_cross_role_isolation",
             "ui": "not individually browser-tested for this role",
-            "api": "client-only or baseline; ordinary endpoint ACLs remain",
+            "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
             "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
           }
         ],

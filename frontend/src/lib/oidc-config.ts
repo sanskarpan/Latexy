@@ -7,6 +7,7 @@ export interface PublicOidcProvider {
 
 export interface OidcProviderConfiguration {
   provider: GenericOAuthConfig
+  expectedIssuer?: string
   public: PublicOidcProvider
 }
 
@@ -29,6 +30,9 @@ export function readOidcConfig(
   }
   if (!PROVIDER_ID_RE.test(providerId!)) {
     throw new Error('OIDC_PROVIDER_ID must contain 2–40 lowercase letters, digits, underscores, or hyphens.')
+  }
+  if (['google', 'github', 'credential'].includes(providerId!)) {
+    throw new Error('OIDC_PROVIDER_ID must not shadow a built-in sign-in provider.')
   }
   const discovery = new URL(discoveryUrl!)
   const localDevelopment =
@@ -53,10 +57,10 @@ export function readOidcConfig(
       discoveryUrl: discovery.href,
       clientId: clientId!,
       clientSecret: clientSecret!,
-      issuer: issuer || undefined,
       scopes: ['openid', 'profile', 'email'],
       pkce: true,
     },
+    expectedIssuer: issuer || undefined,
     public: {
       id: providerId!,
       label: env.OIDC_PROVIDER_LABEL?.trim().slice(0, 80) || 'Organization SSO',

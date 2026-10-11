@@ -21,7 +21,8 @@ export interface CatalogPlan {
   unavailable_reason?: string | null
   display_order?: number
   version?: number
-  provider_plan_id?: string | null
+  provider?: 'dodo' | string | null
+  provider_product_id?: string | null
   commercial_fields_read_only?: boolean
   quota_fields_read_only?: boolean
   quota_windows_read_only?: boolean

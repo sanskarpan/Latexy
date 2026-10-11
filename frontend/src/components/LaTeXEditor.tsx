@@ -1189,6 +1189,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       const model = editor.getModel()
       if (!model) return
+      if (!canRef.current('c16') || !spellCheckEnabled) {
+        monaco.editor.setModelMarkers(model, 'spellcheck', [])
+        return
+      }
 
       const dict = getPersonalDictionaryRef.current?.() ?? new Set<string>()
 
@@ -1220,7 +1224,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       })
 
       monaco.editor.setModelMarkers(model, 'spellcheck', markers)
-    }, [spellCheckIssues])
+    }, [can, spellCheckEnabled, spellCheckIssues])
 
     // Tracked changes decorations (Feature 41)
     useEffect(() => {
@@ -1937,6 +1941,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // ── Spell-check code actions (right-click replacements + Add to Dictionary) ──
       // Register a command for "Add to dictionary" so it can be referenced by code actions
       const addToDictCmdId = editor.addCommand(0, (_ctx: any, word: string) => {
+        if (!canRef.current('c16')) return
         onAddWordToDictionaryRef.current?.(word)
         // Force markers to refresh by clearing and re-setting with updated dictionary
         const m = editor.getModel()
@@ -1976,6 +1981,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           _range: import('monaco-editor').Range,
           context: import('monaco-editor').languages.CodeActionContext,
         ) {
+          if (!canRef.current('c16')) return { actions: [], dispose() {} }
           const spellMarkers = context.markers.filter((m) =>
             m.source?.startsWith('spellcheck(')
           )

@@ -430,6 +430,11 @@ async def _collab_capabilities_available(user_id: str, owner_id: str) -> bool:
     return user_id == owner_id or await entitlement_service.users_have_feature("f04", (user_id, owner_id))
 
 
+async def _collab_source_write_available(user_id: str, owner_id: str) -> bool:
+    """Require both editor and document owner to permit source mutations."""
+    return await entitlement_service.users_have_feature("c01", (user_id, owner_id))
+
+
 async def _collab_heartbeat(websocket: WebSocket, user_id: str | None = None, owner_id: str | None = None) -> None:
     """Keep the collab socket alive through idle-timeout proxies."""
     from ..services.collab_manager import MSG_QUERY_AWARENESS, _encode_varuint
@@ -669,6 +674,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                 chat_access_check=chat_access_check,
                 chat_user_id=user_id,
                 chat_sender_label=user_info["chat_label"],
+                document_write_check=lambda: _collab_source_write_available(user_id, owner_id),
             )
 
     except WebSocketDisconnect:
