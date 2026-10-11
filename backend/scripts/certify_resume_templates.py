@@ -33,6 +33,22 @@ def percentile(values, fraction):
     return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)] if ordered else None
 
 
+def require_certified_matrix(entries: list[dict], required: list[str], samples: int) -> None:
+    """Certification cannot pass an empty, partial, or failed required matrix."""
+    fixtures = [entry.get("fixture") for entry in entries]
+    if not entries or len(set(fixtures)) != len(fixtures):
+        raise RuntimeError("certification matrix is empty or has duplicate fixtures")
+    if set(required) - set(fixtures):
+        raise RuntimeError("certification matrix is missing required fixtures")
+    if any(
+        entry.get("certified") is not True
+        or len(entry.get("samples", [])) != samples
+        or any(sample.get("success") is not True for sample in entry.get("samples", []))
+        for entry in entries
+    ):
+        raise RuntimeError("certification matrix contains failed or incomplete samples")
+
+
 def certify(path: Path, root: Path, samples: int, timeout: float, render_directory: Path | None = None) -> dict:
     original = path.read_text(encoding="utf-8")
     source, compiler = _prepare_template(original)
@@ -147,6 +163,9 @@ def main():
         args.output.write_text(encoded, encoding="utf-8")
     else:
         print(encoded)
+    # Preserve failure evidence, then propagate failure to CI. Misspelled
+    # --fixture arguments and an empty root must never report certification.
+    require_certified_matrix(entries, args.fixture, args.samples)
 
 
 if __name__ == "__main__":
