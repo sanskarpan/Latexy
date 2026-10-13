@@ -316,7 +316,7 @@ jobs:
           node ../scripts/ci/audit-dependencies.mjs
       - name: Upload dependency audit summary
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: latexy-dependency-audit-summary
           path: ${{ runner.temp }}/latexy-dependency-audit-summary.json
@@ -388,7 +388,7 @@ jobs:
           manifest.json capabilities.js extraction.js autofill.js bridge.js popup.html popup.js
           options.html options.js extension.css icons README.md
       - name: Upload extension archive
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: latexy-browser-extension
           path: latexy-browser-extension.zip
@@ -512,7 +512,7 @@ jobs:
           python3 -c "import xml.etree.ElementTree as E; cases=list(E.parse('test-results/hydration-session-store/results.xml').getroot().iter('testcase')); expected={'real Better Auth SSR snapshot stays stable for a late consumer and refreshes safely','pinned Next host replay reproduces #418 and the upstream cursor backport preserves SSR nodes'}; failed=len(cases)!=2 or {c.get('name') for c in cases}!=expected or any(c.find(t) is not None for c in cases for t in ('skipped','failure','error')); exit('Hydration proof was empty, partial, skipped or failed' if failed else 0)"
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-quality-report
           path: |
@@ -657,7 +657,7 @@ jobs:
         run: bash scripts/ci/full-stack-smoke.sh
       - name: Upload real full-stack browser evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-full-stack-report
           path: frontend/test-results/full-stack
@@ -710,7 +710,7 @@ jobs:
           --evidence-dir "${{ runner.temp }}/latexy-real-compile-evidence"
       - name: Upload isolated functional evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: latexy-real-compile-evidence
           path: ${{ runner.temp }}/latexy-real-compile-evidence
