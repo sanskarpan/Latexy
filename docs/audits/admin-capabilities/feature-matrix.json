@@ -4624,7 +4624,9 @@
         "backend/app/api/interview_routes.py:evaluate_interview_simulation"
       ],
       "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/components/InterviewSimulation.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
