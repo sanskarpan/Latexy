@@ -2,10 +2,29 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
-import React, { act, createElement, startTransition, Suspense, useState } from 'react'
+import React, { act, createElement, startTransition, Suspense, useEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AccountContentScopeProvider, type AccountContentScope } from '@/contexts/AccountContentScope'
 import { useEditorSourceLoadScope, useLatexGeneratorRecovery } from '@/hooks/useLatexGeneratorRecovery'
+
+const lazyPanel = vi.hoisted(() => ({
+  load: Promise.resolve() as Promise<void>,
+  props: null as null | Record<string, unknown>,
+}))
+vi.mock('next/dynamic', async () => {
+  const { createRequire } = await import('node:module')
+  const React = await import('react')
+  // App Router aliases next/dynamic to this installed implementation. Keep its
+  // real React.lazy/Suspense behavior; only replace the panel chunk contents.
+  const dynamic = createRequire(import.meta.url)('next/dist/shared/lib/app-dynamic').default
+  return { default: () => dynamic(async () => {
+    await lazyPanel.load
+    return { default: (props: Record<string, unknown>) => {
+      lazyPanel.props = props
+      return React.createElement('generator', null, props.admissionAllowed ? 'New generation allowed' : 'New generation denied')
+    } }
+  }) }
+})
 
 type Host = { type: string; props: Record<string, unknown>; children: Host[]; text?: string }
 type Renderer = { createContainer: (...args: unknown[]) => unknown; updateContainer: (...args: unknown[]) => void; flushSync: (work: () => void) => void }
@@ -56,11 +75,136 @@ function boundaryLease(session: { user: { id: string }; session: { token: string
     useRef: (value: unknown) => refs[index++] ??= { current: value }, useEffect: () => {},
     usePathname: () => '/workspace/document-A/edit', useSession: () => ({ data: session, isPending: false, isRefetching: refetching, error }),
     isConfirmedSessionUnauthorized }).props.value }
-  return { render, refetching: (value: boolean) => { refetching = value }, error: (value: unknown) => { error = value } }
+  return { render, refetching: (value: boolean) => { refetching = value }, error: (value: unknown) => { error = value },
+    session: (value: typeof session) => { session = value } }
 }
 
 const text = (host: Host): string => host.text ?? host.children.map(text).join('')
 afterEach(() => vi.unstubAllGlobals())
+
+async function lazyGeneratorHarness() {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('window', {})
+  vi.resetModules()
+  let release!: () => void
+  lazyPanel.load = new Promise<void>(resolve => { release = resolve }); lazyPanel.props = null
+  const Shell = (await import('@/components/LatexGeneratorRecoveryShell')).default
+  const root = concurrentRoot()
+  let owner = 'owner-A'; let session = { user: { id: owner }, session: { token: 'token-A' } }
+  const boundary = boundaryLease(session); let authority = boundary.render()
+  let denied = new Set<string>()
+  let source!: ReturnType<typeof useEditorSourceLoadScope>; let recovery!: ReturnType<typeof useLatexGeneratorRecovery>
+  let select!: React.Dispatch<React.SetStateAction<string>>; let pulse!: React.Dispatch<React.SetStateAction<number>>
+  let selected = 'preview'
+  const inserted = vi.fn()
+  function Editor() {
+    const [tab, setTab] = useState('preview'); const [, refresh] = useState(0)
+    select = setTab; pulse = refresh; selected = tab
+    source = useEditorSourceLoadScope(owner, 'document-A', session, true)
+    const { beginLoad, finishLoad, ownsLoad } = source
+    useEffect(() => {
+      const ticket = beginLoad()
+      if (ownsLoad(ticket)) finishLoad(ticket, 'ready', 'server')
+    }, [beginLoad, finishLoad, ownsLoad])
+    const currentRecovery = useLatexGeneratorRecovery({ ownerId: owner, documentId: 'document-A', authReady: true,
+      can: feature => !denied.has(feature), newWorkAllowed: source.isSourceReady(), sourceLoadReady: source.isSourceReady,
+      active: tab === 'generate' })
+    recovery = currentRecovery
+    // Match the actual page's selection revocation: unowned/unavailable work
+    // returns to Preview, while owned recovery remains selected.
+    useEffect(() => { if (tab === 'generate' && !currentRecovery.canAccess) setTab('preview') }, [tab, currentRecovery.canAccess])
+    return createElement('editor', null, `Source ${source.isSourceReady() ? 'ready' : 'blocked'}; ${tab}; `,
+      createElement(Shell, { recovery, active: tab === 'generate', documentId: 'document-A', documentContext: 'Owned source', onInsert: inserted }))
+  }
+  const render = () => root.render(createElement(AccountContentScopeProvider, { value: authority },
+    createElement(Suspense, { fallback: 'Loading page content' }, createElement(Editor))))
+  await act(async () => render())
+  return {
+    root, inserted, release,
+    source: () => source, recovery: () => recovery, selected: () => selected,
+    open: async () => { await act(async () => select('generate')) },
+    deny: async (...features: string[]) => { denied = new Set(features); await act(async () => pulse(value => value + 1)) },
+    switchOwner: async (next: string) => {
+      owner = next; session = { user: { id: next }, session: { token: `token-${next}` } }
+      boundary.session(session); authority = boundary.render()
+      await act(async () => render())
+    },
+    unmount: async () => { await act(async () => root.render(null)) },
+  }
+}
+
+describe('cold generator chunk stays inside the recovery shell', () => {
+  it('keeps cold selection and source readiness, then blocks genuine source reload and permission revocation', async () => {
+    const h = await lazyGeneratorHarness()
+    try {
+      expect(h.source().isSourceReady()).toBe(true)
+      await h.open()
+      expect(text(h.root.container)).toContain('Loading generator…')
+      expect(text(h.root.container)).not.toContain('Loading page content')
+      expect(h.source().isSourceReady()).toBe(true); expect(h.selected()).toBe('generate')
+      await act(async () => h.release())
+      expect(h.selected()).toBe('generate'); expect(h.recovery().mayStart()).toBe(true)
+      expect(text(h.root.container)).toContain('New generation allowed')
+      await act(async () => h.recovery().onRecoveryChange(true))
+      const admitted = lazyPanel.props!
+      let reload!: ReturnType<ReturnType<typeof h.source>['beginLoad']>
+      await act(async () => { reload = h.source().beginLoad() })
+      expect(h.source().isSourceReady()).toBe(false); expect(h.recovery().available).toBe(true)
+      expect(h.selected()).toBe('generate'); expect(text(h.root.container)).toContain('New generation denied')
+      expect((admitted.admissionGuard as () => boolean)()).toBe(false)
+      ;(admitted.onInsert as (fragment: string) => void)('stale insert')
+      expect(h.inserted).not.toHaveBeenCalled()
+      await act(async () => { h.source().finishLoad(reload, 'ready', 'server') })
+      expect(h.recovery().mayStart()).toBe(true); expect(h.recovery().mayInsert()).toBe(true)
+      await h.deny('d14', 'c01')
+      expect(h.selected()).toBe('generate'); expect(h.recovery().available).toBe(true)
+      expect(h.recovery().mayStart()).toBe(false); expect(h.recovery().mayInsert()).toBe(false)
+      expect(text(h.root.container)).toContain('New generation denied')
+      ;(admitted.onInsert as (fragment: string) => void)('denied insert')
+      expect(h.inserted).not.toHaveBeenCalled()
+    } finally { h.release(); await h.unmount() }
+  })
+
+  it('does not revive a pending old-owner panel or callbacks after owner A to B to A', async () => {
+    const h = await lazyGeneratorHarness()
+    try {
+      await h.open()
+      const old = h.recovery()
+      expect(text(h.root.container)).toContain('Loading generator…')
+      await h.switchOwner('owner-B')
+      expect(old.mayStart()).toBe(false); expect(old.mayInsert()).toBe(false)
+      await act(async () => { old.onRecoveryChange(true); h.release() })
+      expect(h.recovery().available).toBe(false); expect(h.recovery().mounted).toBe(false)
+      expect(h.selected()).toBe('preview'); expect(text(h.root.container)).not.toContain('New generation allowed')
+      await h.switchOwner('owner-A')
+      expect(old.mayStart()).toBe(false); expect(old.mayInsert()).toBe(false)
+      await act(async () => old.onRecoveryChange(true))
+      expect(h.recovery().available).toBe(false); expect(h.recovery().mounted).toBe(false)
+    } finally { h.release(); await h.unmount() }
+  })
+
+  it('keeps a late cold chunk denied after parent, leaf and C01 revocation until a safe regrant', async () => {
+    const h = await lazyGeneratorHarness()
+    try {
+      await h.open()
+      expect(text(h.root.container)).toContain('Loading generator…')
+      const pending = h.recovery()
+      await h.deny('d14', 'd14_latex', 'c01')
+      expect(h.selected()).toBe('preview'); expect(h.recovery().available).toBe(false)
+      expect(pending.mayStart()).toBe(false); expect(pending.mayInsert()).toBe(false)
+      await act(async () => h.release())
+      expect(h.selected()).toBe('preview'); expect(h.recovery().available).toBe(false)
+      expect(lazyPanel.props?.admissionAllowed).toBe(false); expect(lazyPanel.props?.insertionAllowed).toBe(false)
+      ;(lazyPanel.props!.onInsert as (fragment: string) => void)('revoked late chunk')
+      expect(h.inserted).not.toHaveBeenCalled()
+      await h.deny()
+      await h.open()
+      expect(h.source().isSourceReady()).toBe(true); expect(h.selected()).toBe('generate')
+      expect(h.recovery().mayStart()).toBe(true); expect(h.recovery().mayInsert()).toBe(true)
+      expect(text(h.root.container)).toContain('New generation allowed')
+    } finally { h.release(); await h.unmount() }
+  })
+})
 
 describe('source readiness requires a real concurrent React commit', () => {
   it('retires old admission permanently when actual Boundary refetch completes before the real provider consumer renders', async () => {
