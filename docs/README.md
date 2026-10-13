@@ -9,6 +9,7 @@ revision, production probes, and the linked GitHub issue take precedence.
 
 | Document | Purpose |
 |---|---|
+| [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Release gates, individual feature evidence, ownership, operator decisions and launch sign-off |
 | [HANDOFF.md](HANDOFF.md) | Current architecture, delivery workflow, verification contract, and known external blockers |
 | [local-dev.md](local-dev.md) | Supported local stacks, ports, prerequisites, and troubleshooting |
 | [DATA-AND-TRAINING.md](DATA-AND-TRAINING.md) | Product data-use and model-training commitment |
