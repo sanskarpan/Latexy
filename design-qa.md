@@ -29,6 +29,7 @@ Full-page Chromium capture occasionally omitted off-screen text immediately afte
 2. P2: saturated gallery center, missing builder rail, unstyled source commands, loose FAQ/footer, missing footer CTA. Fixed pale steel gallery, functional icon rail, source syntax colors, compact FAQ/footer, centered final action, and gated footer CTA.
 3. Apparent P1: missing dark preview text in full-page capture. Verified complete visible text with scrolled focused captures and computed descendant styles; no application CSS workaround was necessary.
 4. P2: gallery selection changed only labels and implied a filtered destination. Fixed real selected-layout focus transform and a plainly named template-library link. Browser verification exercises both selected state and rendered transform.
+5. CI/review found optional entry links missing capability gates and the application schema resolving its origin too early. Restored template/builder/studio gates, render-time schema origin, and the unchanged generic footer. All 23 existing tests covering these contracts pass without test edits.
 
 ## Interaction verification
 
@@ -42,6 +43,7 @@ Playwright was authorized after the app browser automation retry timed out. Veri
 - Compiler selection changes its explanation; actual compilation remains in the studio.
 - FAQ expansion, canonical URL, FAQ JSON-LD, and the primary studio navigation.
 - No horizontal overflow at 1440px and 390px; no browser page errors during these checks.
+- Tablet 768px/high-contrast capture and denied capability fixtures confirm no overflow and no optional template, builder, or studio entry actions when access is denied.
 
 TypeScript and scoped ESLint pass. Production compilation and all 44 static routes succeeded; Windows standalone packaging failed with EPERM creating dependency symlinks. Linux CI remains the release packaging gate. Local source and tests were not changed to bypass that failure. The installed Next hydration patch was repaired only in this worktree's node_modules after proving normalized files exactly matched the existing integrity hashes.
 

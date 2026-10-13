@@ -4,118 +4,54 @@ import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
-import { MarketingCTA } from './MarketingSections'
+import LandingFooter from './LandingFooter'
 
 export default function MarketingFooter() {
-    const pathname = usePathname()
-    // The marketing footer belongs only on public/marketing + auth surfaces.
-    // App surfaces (the authenticated product) must never show it.
-    const APP_PREFIXES = [
-        '/try',
-        '/dashboard',
-        '/workspace',
-        '/workspaces',
-        '/billing',
-        '/byok',
-        '/settings',
-        '/admin',
-        '/tracker',
-    ]
-    const hidden = APP_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
-    if (hidden) return null
+  const pathname = usePathname()
+  // The marketing footer belongs only on public/marketing + auth surfaces.
+  // App surfaces (the authenticated product) must never show it.
+  const APP_PREFIXES = [
+    '/try', '/dashboard', '/workspace', '/workspaces', '/billing',
+    '/byok', '/settings', '/admin', '/tracker',
+  ]
+  const hidden = APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
+  if (hidden) return null
 
-    const year = new Date().getFullYear()
-    if (pathname === '/')
-        return (
-            <footer className="lp-footer">
-                <div className="lp-container">
-                    <div className="lp-footer-row">
-                        <Link href="/" aria-label="Latexy home">
-                            <BrandLogo small />
-                        </Link>
-                        <p>Build a résumé you’re proud to share.</p>
-                        <nav aria-label="Footer navigation">
-                            <Link href="/platform">Product</Link>
-                            <Link href="/templates">Templates</Link>
-                            <Link href="/resources">Resources</Link>
-                            <Link href="/pricing">Pricing</Link>
-                            <MarketingCTA />
-                        </nav>
-                    </div>
-                    <div className="lp-footer-row">
-                        <p>© {year} Latexy. All rights reserved.</p>
-                        <nav aria-label="Legal navigation">
-                            <Link href="/privacy">Privacy</Link>
-                            <Link href="/terms">Terms</Link>
-                            <Link href="/accessibility">Accessibility</Link>
-                            <a href="mailto:support@latexy.com">Contact</a>
-                        </nav>
-                    </div>
-                </div>
-            </footer>
-        )
+  const year = new Date().getFullYear()
+  if (pathname === '/') return <LandingFooter year={year} />
 
-    return (
-        <footer className="mt-10 border-t border-line bg-surface-2">
-            <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <p className="text-fg">
-                            <BrandLogo small />
-                        </p>
-                        <p className="mt-0.5 font-body text-sm text-fg-2">
-                            Tell your story. Build a résumé you’re ready to share — with precision
-                            for modern applicants.
-                        </p>
-                    </div>
-                    <nav className="flex flex-wrap items-center gap-5 font-ui text-sm text-fg-2">
-                        <Link href="/platform" className="transition hover:text-fg">
-                            Platform
-                        </Link>
-                        <Link href="/resources" className="transition hover:text-fg">
-                            Resources
-                        </Link>
-                        <Link href="/updates" className="transition hover:text-fg">
-                            Updates
-                        </Link>
-                        <Link href="/faq" className="transition hover:text-fg">
-                            FAQ
-                        </Link>
-                        <CapabilityGate feature="a09">
-                            <CapabilityGate feature="b01">
-                                <CapabilityGate feature="c01">
-                                    <Link
-                                        href="/try?mode=visual"
-                                        className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-                                    >
-                                        Build my résumé
-                                    </Link>
-                                </CapabilityGate>
-                            </CapabilityGate>
-                        </CapabilityGate>
-                    </nav>
-                </div>
+  return (
+    <footer className="mt-10 border-t border-line bg-surface-2">
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-fg"><BrandLogo small /></p>
+            <p className="mt-0.5 font-body text-sm text-fg-2">Tell your story. Build a résumé you’re ready to share — with precision for modern applicants.</p>
+          </div>
+          <nav className="flex flex-wrap items-center gap-5 font-ui text-sm text-fg-2">
+            <Link href="/platform" className="transition hover:text-fg">Platform</Link>
+            <Link href="/resources" className="transition hover:text-fg">Resources</Link>
+            <Link href="/updates" className="transition hover:text-fg">Updates</Link>
+            <Link href="/faq" className="transition hover:text-fg">FAQ</Link>
+            <CapabilityGate feature="a09"><CapabilityGate feature="b01"><CapabilityGate feature="c01"><Link
+              href="/try?mode=visual"
+              className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              Build my résumé
+            </Link></CapabilityGate></CapabilityGate></CapabilityGate>
+          </nav>
+        </div>
 
-                <div className="mt-8 flex flex-col gap-4 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="font-body text-xs text-fg-3">
-                        © {year} Latexy. All rights reserved.
-                    </p>
-                    <nav className="flex flex-wrap items-center gap-4 font-ui text-xs text-fg-3">
-                        <Link href="/privacy" className="transition hover:text-fg">
-                            Privacy
-                        </Link>
-                        <Link href="/terms" className="transition hover:text-fg">
-                            Terms
-                        </Link>
-                        <Link href="/accessibility" className="transition hover:text-fg">
-                            Accessibility
-                        </Link>
-                        <a href="mailto:support@latexy.com" className="transition hover:text-fg">
-                            Contact
-                        </a>
-                    </nav>
-                </div>
-            </div>
-        </footer>
-    )
+        <div className="mt-8 flex flex-col gap-4 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-body text-xs text-fg-3">© {year} Latexy. All rights reserved.</p>
+          <nav className="flex flex-wrap items-center gap-4 font-ui text-xs text-fg-3">
+            <Link href="/privacy" className="transition hover:text-fg">Privacy</Link>
+            <Link href="/terms" className="transition hover:text-fg">Terms</Link>
+            <Link href="/accessibility" className="transition hover:text-fg">Accessibility</Link>
+            <a href="mailto:support@latexy.com" className="transition hover:text-fg">Contact</a>
+          </nav>
+        </div>
+      </div>
+    </footer>
+  )
 }

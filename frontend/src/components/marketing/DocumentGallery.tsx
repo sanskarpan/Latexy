@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { IconArrowRight } from '@tabler/icons-react'
+import CapabilityGate from '@/components/CapabilityGate'
 
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
@@ -45,9 +46,11 @@ export default function DocumentGallery() {
                         </button>
                     ))}
                 </div>
-                <Link href="/templates" aria-label="Explore résumé templates">
-                    Explore templates <IconArrowRight size={14} aria-hidden="true" />
-                </Link>
+                <CapabilityGate feature="b04">
+                    <Link href="/templates" aria-label="Explore résumé templates">
+                        Explore templates <IconArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                </CapabilityGate>
             </div>
             <p className="lp-sample-note" aria-live="polite">
                 {layout} selected · Sample layouts. Explore the template library to make one yours.

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import { useId, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
@@ -173,16 +174,22 @@ function BuilderDemo() {
                         </button>
                     ))}
                 </div>
-                <Link
-                    href={
-                        mode === 'guided'
-                            ? '/workspace/builder/new'
-                            : `/try?mode=${mode === 'source' ? 'source' : 'visual'}`
-                    }
-                    className="lp-demo-open"
-                >
-                    Open <IconArrowRight size={13} aria-hidden="true" />
-                </Link>
+                <CapabilityGate feature={mode === 'guided' ? 'b08' : 'a09'}>
+                    <CapabilityGate feature={mode === 'guided' ? 'b08' : 'b01'}>
+                        <CapabilityGate feature={mode === 'guided' ? 'b08' : 'c01'}>
+                            <Link
+                                href={
+                                    mode === 'guided'
+                                        ? '/workspace/builder/new'
+                                        : `/try?mode=${mode === 'source' ? 'source' : 'visual'}`
+                                }
+                                className="lp-demo-open"
+                            >
+                                Open <IconArrowRight size={13} aria-hidden="true" />
+                            </Link>
+                        </CapabilityGate>
+                    </CapabilityGate>
+                </CapabilityGate>
             </div>
             <div
                 className="lp-builder-workspace"
@@ -713,9 +720,18 @@ function LatexDemo() {
                 <p className="lp-engine-note" aria-live="polite">
                     {engineNotes[engine]}
                 </p>
-                <Link className="lp-button-small lp-button-accent" href="/try?mode=source">
-                    Open compiler <IconArrowRight size={13} aria-hidden="true" />
-                </Link>
+                <CapabilityGate feature="a09">
+                    <CapabilityGate feature="b01">
+                        <CapabilityGate feature="c01">
+                            <Link
+                                className="lp-button-small lp-button-accent"
+                                href="/try?mode=source"
+                            >
+                                Open compiler <IconArrowRight size={13} aria-hidden="true" />
+                            </Link>
+                        </CapabilityGate>
+                    </CapabilityGate>
+                </CapabilityGate>
                 <p className="lp-demo-caption">Fixed sample — compile in the studio.</p>
             </div>
         </div>

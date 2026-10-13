@@ -5,6 +5,7 @@ import { BrandLogo } from '@/components/brand/BrandLogo'
 import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import { MarketingCTA } from './MarketingSections'
+import CapabilityGate from '@/components/CapabilityGate'
 
 export default function LandingHeader({ signedIn }: { signedIn: boolean }) {
     return (
@@ -14,7 +15,9 @@ export default function LandingHeader({ signedIn }: { signedIn: boolean }) {
             </Link>
             <nav aria-label="Main navigation" className="lp-navigation">
                 <Link href="/platform">Product</Link>
-                <Link href="/templates">Templates</Link>
+                <CapabilityGate feature="b04">
+                    <Link href="/templates">Templates</Link>
+                </CapabilityGate>
                 <Link href="/resources">Resources</Link>
                 <Link href="/pricing">Pricing</Link>
             </nav>

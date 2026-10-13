@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import CapabilityGate from '@/components/CapabilityGate'
 import DocumentGallery from '@/components/marketing/DocumentGallery'
 import LandingExperience from '@/components/marketing/LandingExperience'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
@@ -33,7 +34,7 @@ const faq = [
     },
     {
         question: 'Can I try without creating an account?',
-        answer: 'Yes. Try the guest studio, edit a sample résumé, and export a PDF with limited guest usage. A saved workspace and the guided builder require an account. Feature availability depends on your plan.',
+        answer: 'Yes. Try the guest studio and edit a sample résumé with limited guest usage. Professional PDF output is available in the studio. A saved workspace and the guided builder require an account. Feature availability depends on your plan.',
     },
     {
         question: 'Will AI change my résumé without asking?',
@@ -48,34 +49,37 @@ const faq = [
         answer: 'Yes. Use the LaTeX studio for papers, reports, and other LaTeX documents. Choose pdfLaTeX, XeLaTeX, or LuaLaTeX, inspect compilation logs, and preview the PDF.',
     },
 ]
-const structuredData = {
-    '@context': 'https://schema.org',
-    '@graph': [
-        {
-            '@type': 'SoftwareApplication',
-            name: 'Latexy',
-            url: siteUrl(),
-            applicationCategory: 'BusinessApplication',
-            operatingSystem: 'Web',
-            description,
-        },
-        {
-            '@type': 'FAQPage',
-            mainEntity: faq.map(item => ({
-                '@type': 'Question',
-                name: item.question,
-                acceptedAnswer: { '@type': 'Answer', text: item.answer },
-            })),
-        },
-    ],
-}
 export default function LandingPage() {
+    const applicationSchema = {
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'Latexy',
+        url: siteUrl(),
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        description,
+    }
+    const faqSchema = {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: faq.map(item => ({
+            '@type': 'Question',
+            name: item.question,
+            acceptedAnswer: { '@type': 'Answer', text: item.answer },
+        })),
+    }
     return (
         <div className="lp-page">
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
-                    __html: JSON.stringify(structuredData).replace(/</g, '\\u003c'),
+                    __html: JSON.stringify(applicationSchema).replace(/</g, '\\u003c'),
+                }}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c'),
                 }}
             />
             <section className="lp-hero lp-container" aria-labelledby="landing-title">
@@ -91,9 +95,11 @@ export default function LandingPage() {
                     </p>
                     <div className="lp-hero-actions">
                         <MarketingCTA />
-                        <Link className="lp-secondary-button" href="/templates">
-                            Explore templates
-                        </Link>
+                        <CapabilityGate feature="b04">
+                            <Link className="lp-secondary-button" href="/templates">
+                                Explore templates
+                            </Link>
+                        </CapabilityGate>
                     </div>
                     <p className="lp-trial-note">
                         Try the studio without an account · No card needed · Limited guest usage
