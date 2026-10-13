@@ -837,7 +837,6 @@
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
-        "frontend/src/components/marketing/DocumentGallery.tsx",
         "frontend/src/components/marketing/LandingFooter.tsx",
         "frontend/src/components/marketing/LandingHeader.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"

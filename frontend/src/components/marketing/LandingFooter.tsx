@@ -8,10 +8,15 @@ export default function LandingFooter({ year }: { year: number }) {
         <footer className="lp-footer">
             <div className="lp-container">
                 <div className="lp-footer-row">
-                    <Link href="/" aria-label="Latexy home">
-                        <BrandLogo small />
-                    </Link>
-                    <p>Build a résumé you’re proud to share.</p>
+                    <div className="lp-footer-brand">
+                        <Link href="/" aria-label="Latexy home">
+                            <BrandLogo small />
+                        </Link>
+                        <p>
+                            Build a résumé you’re proud to share — with precision for modern
+                            applicants.
+                        </p>
+                    </div>
                     <nav aria-label="Footer navigation">
                         <Link href="/platform">Product</Link>
                         <CapabilityGate feature="b04">
@@ -19,6 +24,7 @@ export default function LandingFooter({ year }: { year: number }) {
                         </CapabilityGate>
                         <Link href="/resources">Resources</Link>
                         <Link href="/pricing">Pricing</Link>
+                        <Link href="/login">Sign in</Link>
                         <MarketingCTA />
                     </nav>
                 </div>

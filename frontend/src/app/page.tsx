@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { IconArrowRight as ArrowRight, IconMinus, IconPlus } from '@tabler/icons-react'
 import CapabilityGate from '@/components/CapabilityGate'
 import DocumentGallery from '@/components/marketing/DocumentGallery'
 import LandingExperience from '@/components/marketing/LandingExperience'
@@ -43,10 +44,6 @@ const faq = [
     {
         question: 'Does an ATS score guarantee an interview?',
         answer: 'No. ATS feedback helps you examine structure, readability, and keywords. It is guidance, not a hiring decision or a guarantee of compatibility with every applicant tracking system.',
-    },
-    {
-        question: 'Can I compile documents other than résumés?',
-        answer: 'Yes. Use the LaTeX studio for papers, reports, and other LaTeX documents. Choose pdfLaTeX, XeLaTeX, or LuaLaTeX, inspect compilation logs, and preview the PDF.',
     },
 ]
 export default function LandingPage() {
@@ -98,6 +95,7 @@ export default function LandingPage() {
                         <CapabilityGate feature="b04">
                             <Link className="lp-secondary-button" href="/templates">
                                 Explore templates
+                                <ArrowRight size={15} aria-hidden="true" />
                             </Link>
                         </CapabilityGate>
                     </div>
@@ -113,7 +111,11 @@ export default function LandingPage() {
                 <div>
                     {faq.map(item => (
                         <details key={item.question}>
-                            <summary>{item.question}</summary>
+                            <summary>
+                                {item.question}
+                                <IconPlus className="lp-faq-plus" size={13} aria-hidden="true" />
+                                <IconMinus className="lp-faq-minus" size={13} aria-hidden="true" />
+                            </summary>
                             <p>{item.answer}</p>
                         </details>
                     ))}

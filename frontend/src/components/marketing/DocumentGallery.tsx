@@ -1,10 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import Link from 'next/link'
 import { useState } from 'react'
-import { IconArrowRight } from '@tabler/icons-react'
-import CapabilityGate from '@/components/CapabilityGate'
 
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
@@ -15,20 +12,22 @@ export default function DocumentGallery() {
             <div className="lp-gallery-art" data-layout={layout}>
                 <Image
                     className="lp-gallery-light"
-                    src="/marketing/document-gallery-light.webp?v=document-house-1"
+                    src="/marketing/document-gallery-light.webp?v=document-house-reference-2"
                     width={1440}
-                    height={580}
+                    height={561}
                     alt="Three sample résumé layouts: Classic, Modern and Minimal, with Modern in the centre"
                     priority
+                    quality={100}
                     sizes="(max-width: 1440px) 100vw, 1440px"
                 />
                 <Image
                     className="lp-gallery-dark"
-                    src="/marketing/document-gallery-dark.webp?v=document-house-1"
+                    src="/marketing/document-gallery-dark.webp?v=document-house-reference-2"
                     width={1440}
-                    height={580}
+                    height={561}
                     alt="Three sample résumé layouts: Classic, Modern and Minimal, with Modern in the centre"
                     sizes="(max-width: 1440px) 100vw, 1440px"
+                    quality={100}
                 />
             </div>
             <div className="lp-gallery-controls">
@@ -46,13 +45,8 @@ export default function DocumentGallery() {
                         </button>
                     ))}
                 </div>
-                <CapabilityGate feature="b04">
-                    <Link href="/templates" aria-label="Explore résumé templates">
-                        Explore templates <IconArrowRight size={14} aria-hidden="true" />
-                    </Link>
-                </CapabilityGate>
             </div>
-            <p className="lp-sample-note" aria-live="polite">
+            <p className="sr-only" aria-live="polite">
                 {layout} selected · Sample layouts. Explore the template library to make one yours.
             </p>
         </div>

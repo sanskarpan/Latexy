@@ -62,4 +62,29 @@ Fresh screenshots were recovered through GitHub workflow artifact `11835391088` 
 
 The final documentation commit changes this report only; application code and assets remain exactly those tested on `6d5fc743`.
 
-final result: passed
+final result: blocked
+
+## Reopened precision review - 2026-10-14
+
+The user identified remaining visual drift. The earlier broad-view approval was insufficient. This pass compares the exact selected source and implementation together, then uses focused region boards for every section. The previous reports above are retained as iteration history, not the current acceptance result.
+
+Evidence directory: `landing-qa/precision-review/` alongside the earlier evidence directory. Full comparisons: `light-full-comparison.png`, `dark-full-comparison.png`; focused comparisons: `light-hero-focused.png`, `light-ats-focused.png`, `dark-ats-focused.png`, `lower-light-crop.png`, `lower-dark-crop.png`. These boards put normalized source and implementation at the same 1440px width without stretching their heights.
+
+### Findings and corrections in progress
+
+- P1 hero/header: source starts near x170, implementation x96. Narrow the header/hero to 1100px, preserve the supporting-copy column near x870, restore headline scale/weight and narrower Times italic metrics, and include the secondary arrow.
+- P2 gallery: generated approximation changes the center-panel width and outer rotations. Extract the exact gallery artwork from the supplied source, measured at source light `(0,120)-(670,381)` and dark `(671,120)-(1341,381)`, then losslessly store resized 1440x561 assets. Center only the three layout controls; retain specimen disclosure for assistive technology.
+- P2 builder: restore Summary, selected experience card and bullet presentation, six rail controls, outlined Export PDF entry, and solid active tab. Match PDF body typography and blue section labels. Export still opens the guarded product flow, accurately labelled for assistive technology.
+- P1 ATS: split into two equal separate cards, use the existing Visx chart primitives, restore scale, grid, vertex dots and strong blue/gold fill, brighten category markers, remove initial selected-row highlight, and restore the subtle result panel. Scores remain explicitly illustrative.
+- P2 tailoring: restore inset cells, subtle connectors, requirement marker, plain initial Accept, and compact default specimen disclosure. Keep genuine editable/reviewed wording.
+- P2 application board: restore inline count badges, nested cards, illustrative company/status/date metadata, colored document icons, and source panel height. Existing variant information remains in the menu/accessible title.
+- P2 LaTeX: restore one-line heading, separate panels, Source/PDF controls, numbered source, compact Compiler label, full-width action, and restrained blue syntax. Compilation still opens the actual guarded studio; no simulated successful compilation.
+- P2 FAQ/closing/footer: restore four FAQ rows and right-side plus/minus indicators; compact closing typography, button and padding; group the smaller logo/tagline, restore Sign in, and reduce footer height. Current copyright year is retained.
+
+### Required post-fix evidence
+
+The existing CI landing screenshot case now records both themes at a 1440x1000 desktop CSS viewport, focused captures for all ten regions, layout measurements, mobile captures, and long-name/role/bullet plus disclosure/tab states. Assertions were extended, not relaxed. The in-app browser remains on a blocked `data:` error page; CI rendering uses isolated synthetic service fixtures and does not inspect that page or personal browser data.
+
+Current blocker: fresh browser-rendered CI evidence and post-fix focused comparison are pending. Do not hand off as passed until the revised captures have been reviewed. Actual light/dark page screenshots will be included in the PR after commits, as explicitly requested.
+
+final result: blocked

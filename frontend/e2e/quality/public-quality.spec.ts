@@ -291,6 +291,14 @@ test('representative public surface produces non-empty visual evidence', async (
     page,
 }, testInfo) => {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
+    if (!testInfo.project.metadata.mobile) await page.setViewportSize({ width: 1440, height: 1000 })
+    const { backendOrigin } = qualityOrigins()
+    // This visual specimen uses allowed marketing entry points, independently
+    // of the denied-capability tests below. No live services are contacted.
+    await page.route(
+        url => url.origin === backendOrigin && url.pathname === '/config/entitlements',
+        route => fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, b08: true } })
+    )
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -301,13 +309,92 @@ test('representative public surface produces non-empty visual evidence', async (
     expect(mainBox!.width).toBeLessThanOrEqual(viewport!.width + 1)
     expect(mainBox!.height).toBeGreaterThan(300)
 
-    const screenshot = await page.screenshot({
-        fullPage: true,
-        animations: 'disabled',
-        caret: 'hide',
+    const sections = [
+        '.lp-hero',
+        '.lp-gallery',
+        '.lp-builder-section',
+        '.lp-analysis-section',
+        '.lp-tailoring-section',
+        '.lp-applications-section',
+        '.lp-latex-section',
+        '.lp-faq',
+        '.lp-closing',
+        '.lp-footer',
+    ]
+    const settle = async () => {
+        await page.evaluate(() => document.fonts.ready)
+        await page.waitForFunction(() =>
+            [...document.images]
+                .filter(image => image.getBoundingClientRect().width > 0)
+                .every(image => image.complete && image.naturalWidth > 0)
+        )
+        await page.evaluate(
+            () =>
+                new Promise<void>(resolve =>
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+                )
+        )
+    }
+    for (const theme of ['light', 'dark'] as const) {
+        if ((await page.locator('html').getAttribute('data-mode')) !== theme) {
+            await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
+        }
+        await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+        await settle()
+        const geometry: Record<string, unknown> = { viewport: page.viewportSize(), theme }
+        for (const selector of sections) {
+            const section = page.locator(selector)
+            await section.scrollIntoViewIfNeeded()
+            await settle()
+            geometry[selector] = await section.boundingBox()
+            if (!testInfo.project.metadata.mobile) {
+                await testInfo.attach(`landing-${theme}-${selector.slice(1)}`, {
+                    body: await section.screenshot({ animations: 'disabled', caret: 'hide' }),
+                    contentType: 'image/png',
+                })
+            }
+        }
+        await page.evaluate(() => scrollTo(0, 0))
+        await settle()
+        const screenshot = await page.screenshot({
+            fullPage: true,
+            animations: 'disabled',
+            caret: 'hide',
+        })
+        expect(screenshot.byteLength).toBeGreaterThan(20_000)
+        await testInfo.attach(theme === 'light' ? 'landing-page' : 'landing-page-dark', {
+            body: screenshot,
+            contentType: 'image/png',
+        })
+        await testInfo.attach(`landing-layout-${theme}`, {
+            body: Buffer.from(JSON.stringify(geometry, null, 2)),
+            contentType: 'application/json',
+        })
+        const currentViewport = page.viewportSize()!
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            currentViewport.width + 1
+        )
+    }
+    // Exercise long sample content and disclosure states without changing any
+    // product data. These states must not push persistent controls off-screen.
+    await page
+        .locator('.lp-builder-fields details')
+        .filter({ has: page.locator('summary', { hasText: 'Personal details' }) })
+        .locator('summary')
+        .click()
+    await page.getByLabel('Name', { exact: true }).fill('W'.repeat(50))
+    await page.getByLabel('Role', { exact: true }).fill('W'.repeat(70))
+    await page.getByLabel('What did you do?', { exact: true }).fill('W'.repeat(300))
+    await page.getByRole('tab', { name: 'LaTeX source', exact: true }).click()
+    await page.getByRole('tab', { name: 'PDF', exact: true }).click()
+    await page.locator('.lp-faq summary').first().click()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        page.viewportSize()!.width + 1
+    )
+    await testInfo.attach('landing-long-content', {
+        body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+        contentType: 'image/png',
     })
-    expect(screenshot.byteLength).toBeGreaterThan(20_000)
-    await testInfo.attach('landing-page', { body: screenshot, contentType: 'image/png' })
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({

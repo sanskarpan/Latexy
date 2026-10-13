@@ -4,12 +4,22 @@ import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
 import { useId, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Circle, Line, Polygon } from '@visx/shape'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+import '@fontsource/tinos/latin-400.css'
+import '@fontsource/tinos/latin-700.css'
+import '@fontsource/tinos/latin-700-italic.css'
 import {
     IconArrowRight,
+    IconAlignLeft,
+    IconArrowsDiagonal,
+    IconCircleDot,
+    IconDownload,
+    IconBulb,
     IconBriefcase,
     IconCheck,
     IconChevronDown,
-    IconCode,
     IconDotsVertical,
     IconFileText,
     IconLayout,
@@ -19,10 +29,13 @@ import {
     IconUserCircle,
 } from '@tabler/icons-react'
 
+const SAMPLE_SUMMARY =
+    'Software engineer with a focus on building thoughtful, high-quality products. Experienced in full-stack development, team collaboration, and turning complex problems into simple, usable solutions.'
+
 const ORIGINAL_BULLET =
     'Built and maintained user-facing products in Python with a focus on performance.'
 const SUGGESTED_BULLET =
-    'Built and maintained user-facing Python features, prioritizing performance.'
+    'Designed and built scalable, user-facing features using Python, with a focus on performance and reliability.'
 const SAMPLE_SOURCE = `\\documentclass{article}
 \\usepackage{amsmath}
 \\begin{document}
@@ -32,19 +45,52 @@ const SAMPLE_SOURCE = `\\documentclass{article}
 \\]
 \\end{document}`
 
-function SourceCode({ source }: { source: string }) {
+function SourceCode({ source, lineNumbers = false }: { source: string; lineNumbers?: boolean }) {
+    const renderLine = (line: string) =>
+        line.split(/(\\[a-zA-Z]+\*?|\\\[|\\\])/g).map((part, index) =>
+            part.startsWith('\\') ? (
+                <span className="lp-code-command" key={index}>
+                    {part}
+                </span>
+            ) : (
+                part
+            )
+        )
     return (
-        <pre className="lp-code-sample">
-            {source.split(/(\\[a-zA-Z]+\*?|\\\[|\\\])/g).map((part, index) =>
-                part.startsWith('\\') ? (
-                    <span className="lp-code-command" key={index}>
-                        {part}
-                    </span>
-                ) : (
-                    part
-                )
-            )}
+        <pre className={`lp-code-sample${lineNumbers ? ' lp-code-numbered' : ''}`}>
+            {lineNumbers
+                ? source.split('\n').map((line, index) => (
+                      <span className="lp-code-line" key={index}>
+                          <span className="lp-code-line-number" aria-hidden="true">
+                              {index + 1}
+                          </span>
+                          <code>{renderLine(line)}</code>
+                      </span>
+                  ))
+                : renderLine(source)}
         </pre>
+    )
+}
+
+function EquationSample() {
+    return (
+        <article className="lp-demo-paper lp-equation-paper">
+            <h3>A Simple Equation</h3>
+            <div
+                className="lp-equation"
+                role="math"
+                aria-label="Integral from zero to one of x squared dx equals one third"
+                dangerouslySetInnerHTML={{
+                    __html: katex.renderToString(
+                        String.raw`\int_0^1 x^2\,dx = \frac{1}{3}\qquad(1)`,
+                        {
+                            displayMode: true,
+                            throwOnError: false,
+                        }
+                    ),
+                }}
+            />
+        </article>
     )
 }
 
@@ -53,31 +99,29 @@ function SampleResume({
     role,
     bullet,
     extraJob,
+    summary,
 }: {
     name: string
     role: string
     bullet: string
     extraJob: string | null
+    summary: string
 }) {
     return (
         <article className="lp-demo-paper" aria-label="Live sample résumé preview">
             <header>
-                <h3>{name || 'Your name'}</h3>
-                <p>{role || 'Your role'}</p>
+                <h3>{name.trim() || 'Your name'}</h3>
+                <p>{role.trim() || 'Your role'}</p>
                 <small>alex@example.com · London · linkedin.com/in/alex</small>
             </header>
             <section>
                 <h4>Summary</h4>
-                <p>
-                    Software engineer with a focus on building thoughtful, high-quality products.
-                    Experienced in full-stack development, team collaboration, and turning complex
-                    problems into simple, usable solutions.
-                </p>
+                <p>{summary}</p>
             </section>
             <section>
                 <h4>Experience</h4>
                 <div className="lp-paper-role">
-                    <strong>{role || 'Your role'}</strong>
+                    <strong>{role.trim() || 'Your role'}</strong>
                     <span>2021 — Present</span>
                 </div>
                 <p>BrightCode</p>
@@ -119,12 +163,14 @@ function BuilderDemo() {
     const id = useId()
     const [mode, setMode] = useState<'guided' | 'source' | 'studio'>('guided')
     const [name, setName] = useState('Alex Morgan')
+    const [summary, setSummary] = useState(SAMPLE_SUMMARY)
     const [role, setRole] = useState('Senior Software Engineer')
     const [bullet, setBullet] = useState(ORIGINAL_BULLET)
     const [extraJob, setExtraJob] = useState<string | null>(null)
     const modeNames = { guided: 'Guided builder', source: 'LaTeX source', studio: 'Visual studio' }
     const sectionLinks = [
         { key: 'personal', label: 'Personal details', icon: IconUserCircle },
+        { key: 'summary', label: 'Summary', icon: IconAlignLeft },
         { key: 'experience', label: 'Experience', icon: IconBriefcase },
         { key: 'skills', label: 'Skills', icon: IconListCheck },
         { key: 'education', label: 'Education', icon: IconSchool },
@@ -184,8 +230,10 @@ function BuilderDemo() {
                                         : `/try?mode=${mode === 'source' ? 'source' : 'visual'}`
                                 }
                                 className="lp-demo-open"
+                                aria-label={`Open ${modeNames[mode]} to export PDF`}
+                                title={`Open ${modeNames[mode]} to export PDF`}
                             >
-                                Open <IconArrowRight size={13} aria-hidden="true" />
+                                <IconDownload size={13} aria-hidden="true" /> Export PDF
                             </Link>
                         </CapabilityGate>
                     </CapabilityGate>
@@ -201,6 +249,25 @@ function BuilderDemo() {
             >
                 {mode !== 'source' && (
                     <aside className="lp-builder-rail" aria-label="Sample résumé sections">
+                        <button
+                            type="button"
+                            title="Show all sections"
+                            aria-label="Show all sample résumé sections"
+                            onClick={() => {
+                                sectionLinks.forEach(({ key }) => {
+                                    const details = document.getElementById(
+                                        `${id}-${key}-section`
+                                    ) as HTMLDetailsElement | null
+                                    if (details) details.open = true
+                                })
+                                document
+                                    .getElementById(`${id}-personal-section`)
+                                    ?.querySelector('summary')
+                                    ?.focus()
+                            }}
+                        >
+                            <IconLayout size={15} aria-hidden="true" />
+                        </button>
                         {sectionLinks.map(({ key, label, icon: Icon }) => (
                             <button
                                 type="button"
@@ -252,18 +319,41 @@ function BuilderDemo() {
                                     maxLength={70}
                                 />
                             </details>
+                            <details id={`${id}-summary-section`}>
+                                <summary>
+                                    Summary <IconChevronDown size={13} aria-hidden="true" />
+                                </summary>
+                                <label htmlFor={`${id}-summary`}>Professional summary</label>
+                                <textarea
+                                    id={`${id}-summary`}
+                                    value={summary}
+                                    onChange={event => setSummary(event.target.value)}
+                                    rows={4}
+                                    maxLength={500}
+                                />
+                            </details>
                             <details id={`${id}-experience-section`} open>
                                 <summary>
                                     Experience <IconChevronDown size={13} aria-hidden="true" />
                                 </summary>
-                                <label htmlFor={`${id}-bullet`}>What did you do?</label>
-                                <textarea
-                                    id={`${id}-bullet`}
-                                    value={bullet}
-                                    onChange={event => setBullet(event.target.value)}
-                                    rows={3}
-                                    maxLength={300}
-                                />
+                                <div className="lp-experience-entry">
+                                    <strong>{role.trim() || 'Your role'}</strong>
+                                    <small>BrightCode</small>
+                                    <label className="sr-only" htmlFor={`${id}-bullet`}>
+                                        What did you do?
+                                    </label>
+                                    <textarea
+                                        id={`${id}-bullet`}
+                                        value={bullet}
+                                        onChange={event => setBullet(event.target.value)}
+                                        rows={3}
+                                        maxLength={300}
+                                    />
+                                    <p>
+                                        • Collaborated with cross-functional teams to improve the
+                                        developer experience.
+                                    </p>
+                                </div>
                             </details>
                             {mode === 'studio' ? (
                                 <span className="lp-demo-hint lp-engine-note">
@@ -314,87 +404,101 @@ function BuilderDemo() {
                     )}
                 </div>
                 <div className="lp-builder-preview">
-                    <SampleResume name={name} role={role} bullet={bullet} extraJob={extraJob} />
+                    <SampleResume
+                        name={name}
+                        role={role}
+                        bullet={bullet}
+                        extraJob={extraJob}
+                        summary={summary}
+                    />
                 </div>
             </div>
-            <p className="lp-demo-caption">Interactive sample — edits stay in this preview.</p>
+            <p className="sr-only">Interactive sample — edits stay in this preview.</p>
         </div>
     )
 }
 
 const DIMENSIONS = [
-    { label: 'Grammar', score: 86 },
+    { label: 'Grammar', score: 70 },
     { label: 'Keywords', score: 61 },
-    { label: 'Density', score: 74 },
-    { label: 'Sections', score: 91 },
-    { label: 'Bullets', score: 78 },
+    { label: 'Density', score: 80 },
+    { label: 'Sections', score: 72 },
+    { label: 'Bullets', score: 86 },
 ]
 
 function AnalysisDemo() {
     const [category, setCategory] = useState<'present' | 'partial' | 'missing'>('missing')
+    const [categoryTouched, setCategoryTouched] = useState(false)
     const keywords = {
         present: ['Python', 'TypeScript', 'Product development'],
         partial: ['Scalable systems', 'Collaboration'],
         missing: ['System design', 'CI/CD', 'Stakeholder communication'],
     }
-    const point = (index: number, radius: number) =>
-        `${(130 + Math.sin((index * Math.PI * 2) / 5) * radius).toFixed(2)},${(114 - Math.cos((index * Math.PI * 2) / 5) * radius).toFixed(2)}`
+    const point = (index: number, radius: number): [number, number] => [
+        140 + Math.sin((index * Math.PI * 2) / 5) * radius,
+        114 - Math.cos((index * Math.PI * 2) / 5) * radius,
+    ]
     return (
-        <div className="lp-demo lp-analysis-demo">
-            <div className="lp-radar-panel">
+        <div className="lp-analysis-demo">
+            <div className="lp-demo lp-radar-panel">
                 <h3>ATS analysis</h3>
                 <svg
                     className="lp-radar-chart"
-                    viewBox="0 0 260 235"
+                    viewBox="0 0 280 228"
                     role="img"
-                    aria-label="Illustrative scores: Grammar 86, Keywords 61, Density 74, Sections 91, Bullets 78 out of 100"
+                    aria-label="Illustrative scores: Grammar 70, Keywords 61, Density 80, Sections 72, Bullets 86 out of 100"
                 >
                     {[0.25, 0.5, 0.75, 1].map(scale => (
-                        <polygon
+                        <Polygon
                             key={scale}
-                            points={DIMENSIONS.map((_, i) => point(i, 75 * scale)).join(' ')}
+                            points={DIMENSIONS.map((_, index) => point(index, 90 * scale))}
                             fill="none"
-                            stroke="var(--lp-border)"
+                            stroke="var(--lp-chart-grid)"
+                            strokeWidth={1}
                         />
                     ))}
-                    {DIMENSIONS.map((_, i) => (
-                        <line
-                            key={i}
-                            x1="130"
-                            y1="114"
-                            x2={point(i, 75).split(',')[0]}
-                            y2={point(i, 75).split(',')[1]}
-                            stroke="var(--lp-border)"
-                        />
-                    ))}
-                    <polygon
-                        points={DIMENSIONS.map((dimension, i) =>
-                            point(i, dimension.score * 0.75)
-                        ).join(' ')}
-                        fill="var(--lp-accent)"
-                        fillOpacity=".2"
-                        stroke="var(--lp-accent)"
-                        strokeWidth="1.5"
-                    />
-                    {DIMENSIONS.map((dimension, i) => {
-                        const [x, y] = point(i, 97).split(',')
+                    {DIMENSIONS.map((_, index) => {
+                        const [x, y] = point(index, 90)
                         return (
-                            <text
-                                key={dimension.label}
-                                x={x}
-                                y={y}
-                                textAnchor="middle"
-                                dominantBaseline="middle"
-                                fill="var(--lp-muted)"
-                                fontSize="10"
-                            >
-                                {dimension.label}
-                            </text>
+                            <Line
+                                key={index}
+                                from={{ x: 140, y: 114 }}
+                                to={{ x, y }}
+                                stroke="var(--lp-chart-grid)"
+                            />
+                        )
+                    })}
+                    <Polygon
+                        points={DIMENSIONS.map((dimension, index) =>
+                            point(index, dimension.score * 0.9)
+                        )}
+                        fill="var(--lp-chart-fill)"
+                        fillOpacity={0.55}
+                        stroke="var(--lp-chart-stroke)"
+                        strokeWidth={1.8}
+                    />
+                    {DIMENSIONS.map((dimension, index) => {
+                        const [x, y] = point(index, dimension.score * 0.9)
+                        const [labelX, labelY] = point(index, 109)
+                        return (
+                            <g key={dimension.label}>
+                                <Circle cx={x} cy={y} r={2.6} fill="var(--lp-chart-stroke)" />
+                                <text
+                                    x={labelX}
+                                    y={labelY}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill="var(--lp-muted)"
+                                    fontSize={11}
+                                >
+                                    {dimension.label}
+                                </text>
+                            </g>
                         )
                     })}
                 </svg>
             </div>
-            <div className="lp-keyword-panel">
+            <div className="lp-demo lp-keyword-panel">
                 <h3>Keyword analysis</h3>
                 <div className="lp-keyword-content">
                     <div className="lp-keyword-filters" aria-label="Keyword categories">
@@ -402,7 +506,11 @@ function AnalysisDemo() {
                             <button
                                 key={value}
                                 aria-pressed={category === value}
-                                onClick={() => setCategory(value)}
+                                data-highlighted={categoryTouched && category === value}
+                                onClick={() => {
+                                    setCategory(value)
+                                    setCategoryTouched(true)
+                                }}
                             >
                                 <span
                                     className={`lp-status-dot lp-status-${value} ${value}`}
@@ -424,11 +532,14 @@ function AnalysisDemo() {
                                   : 'Already in your résumé'}
                         </strong>
                         <p>{keywords[category].join(', ')}</p>
-                        <small>Only include skills and experience you actually have.</small>
+                        <small className="sr-only">
+                            Only include skills and experience you actually have.
+                        </small>
                     </div>
                 </div>
                 <p className="lp-demo-caption">
-                    Illustrative analysis. Scores are feedback, not a hiring prediction.
+                    Sample analysis — illustrative data. Scores are feedback, not a hiring
+                    prediction.
                 </p>
             </div>
         </div>
@@ -444,7 +555,9 @@ function TailoringDemo() {
         <div className="lp-demo lp-tailor-demo">
             <div className="lp-tailor-flow">
                 <div className="lp-tailor-cell">
-                    <h3>Job requirement</h3>
+                    <h3>
+                        <IconCircleDot size={12} aria-hidden="true" /> Job requirement
+                    </h3>
                     <p>Design and build scalable, user-facing features using Python.</p>
                 </div>
                 <IconArrowRight className="lp-flow-arrow" size={20} aria-hidden="true" />
@@ -482,7 +595,7 @@ function TailoringDemo() {
                         }}
                         disabled={!bullet.trim()}
                     >
-                        <IconCheck size={13} aria-hidden="true" />
+                        {decision === 'accepted' && <IconCheck size={13} aria-hidden="true" />}
                         {decision === 'accepted' ? 'Accepted' : 'Accept'}
                     </button>
                     <button
@@ -505,7 +618,10 @@ function TailoringDemo() {
                     </button>
                 </div>
             </div>
-            <p className="lp-demo-caption" aria-live="polite">
+            <p
+                className={decision === 'pending' ? 'sr-only' : 'lp-demo-caption'}
+                aria-live="polite"
+            >
                 {decision === 'accepted'
                     ? 'Sample updated with your approved wording.'
                     : decision === 'original'
@@ -578,13 +694,13 @@ function ApplicationDemo() {
                             <span className="lp-board-heading">
                                 <IconFileText size={14} aria-hidden="true" />
                                 {status}
-                            </span>
-                            <span>
-                                {
-                                    applications.filter(
-                                        application => application.status === status
-                                    ).length
-                                }
+                                <span className="lp-board-count">
+                                    {
+                                        applications.filter(
+                                            application => application.status === status
+                                        ).length
+                                    }
+                                </span>
                             </span>
                         </h3>
                         {applications
@@ -597,8 +713,12 @@ function ApplicationDemo() {
                                         <p
                                             title={`${application.version} · ${application.cover ? 'Cover letter attached' : 'Résumé ready'}`}
                                         >
-                                            {application.company} · Résumé
-                                            {application.cover ? ' + cover letter' : ''}
+                                            {application.company} · {application.status}{' '}
+                                            {
+                                                ['Oct 10', 'Oct 8', 'Oct 5', 'Oct 1', 'Oct 12'][
+                                                    application.id - 1
+                                                ]
+                                            }
                                         </p>
                                     </div>
                                     <DropdownMenu.Root>
@@ -671,7 +791,7 @@ function ApplicationDemo() {
                     </section>
                 ))}
             </div>
-            <p className="lp-demo-caption">Sample board — use a card menu to change its status.</p>
+            <p className="sr-only">Sample board — use a card menu to change its status.</p>
         </div>
     )
 }
@@ -679,6 +799,7 @@ function ApplicationDemo() {
 function LatexDemo() {
     const id = useId()
     const [engine, setEngine] = useState('pdflatex')
+    const [sampleView, setSampleView] = useState<'source' | 'pdf'>('source')
     const engineNotes: Record<string, string> = {
         pdflatex: 'The classic compiler for everyday LaTeX documents.',
         xelatex: 'A compiler suited to Unicode text and system fonts.',
@@ -687,27 +808,75 @@ function LatexDemo() {
     return (
         <div className="lp-demo lp-latex-demo">
             <div className="lp-latex-source">
-                <h3>
-                    <IconCode size={14} aria-hidden="true" />
-                    Source
-                </h3>
-                <SourceCode source={SAMPLE_SOURCE} />
+                <div className="lp-latex-tabs" role="tablist" aria-label="Explore the LaTeX sample">
+                    {(['source', 'pdf'] as const).map(value => (
+                        <button
+                            key={value}
+                            type="button"
+                            role="tab"
+                            id={`${id}-latex-${value}`}
+                            aria-controls={`${id}-latex-panel`}
+                            aria-selected={sampleView === value}
+                            tabIndex={sampleView === value ? 0 : -1}
+                            onClick={() => setSampleView(value)}
+                            onKeyDown={event => {
+                                if (
+                                    ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+                                ) {
+                                    event.preventDefault()
+                                    const next =
+                                        event.key === 'Home'
+                                            ? 'source'
+                                            : event.key === 'End'
+                                              ? 'pdf'
+                                              : value === 'source'
+                                                ? 'pdf'
+                                                : 'source'
+                                    setSampleView(next)
+                                    document.getElementById(`${id}-latex-${next}`)?.focus()
+                                }
+                            }}
+                        >
+                            {value === 'source' ? 'Source' : 'PDF'}
+                        </button>
+                    ))}
+                </div>
+                <div
+                    role="tabpanel"
+                    id={`${id}-latex-panel`}
+                    aria-labelledby={`${id}-latex-${sampleView}`}
+                    tabIndex={0}
+                >
+                    {sampleView === 'source' ? (
+                        <SourceCode source={SAMPLE_SOURCE} lineNumbers />
+                    ) : (
+                        <EquationSample />
+                    )}
+                </div>
             </div>
             <div className="lp-latex-preview">
-                <span className="lp-demo-label">PDF preview</span>
-                <article className="lp-demo-paper lp-equation-paper">
-                    <h3>A Simple Equation</h3>
-                    <p
-                        className="lp-equation"
-                        aria-label="Integral from zero to one of x squared dx equals one third"
-                    >
-                        ∫<sub>0</sub>
-                        <sup>1</sup> x<sup>2</sup> dx = ⅓ <span>(1)</span>
-                    </p>
-                </article>
+                <div className="lp-preview-toolbar">
+                    <span className="lp-demo-label">
+                        <IconFileText size={12} aria-hidden="true" /> PDF
+                    </span>
+                    <CapabilityGate feature="a09">
+                        <CapabilityGate feature="b01">
+                            <CapabilityGate feature="c01">
+                                <Link
+                                    href="/try?mode=source"
+                                    aria-label="Open full LaTeX preview in the studio"
+                                    title="Open full LaTeX preview in the studio"
+                                >
+                                    <IconArrowsDiagonal size={13} aria-hidden="true" />
+                                </Link>
+                            </CapabilityGate>
+                        </CapabilityGate>
+                    </CapabilityGate>
+                </div>
+                <EquationSample />
             </div>
             <div className="lp-compiler-controls">
-                <label htmlFor={`${id}-engine`}>Explore compiler engines</label>
+                <label htmlFor={`${id}-engine`}>Compiler</label>
                 <select
                     id={`${id}-engine`}
                     value={engine}
@@ -717,17 +886,19 @@ function LatexDemo() {
                     <option value="xelatex">XeLaTeX</option>
                     <option value="lualatex">LuaLaTeX</option>
                 </select>
-                <p className="lp-engine-note" aria-live="polite">
+                <p className="sr-only" aria-live="polite">
                     {engineNotes[engine]}
                 </p>
                 <CapabilityGate feature="a09">
                     <CapabilityGate feature="b01">
                         <CapabilityGate feature="c01">
                             <Link
-                                className="lp-button-small lp-button-accent"
+                                className="lp-button-small lp-button-accent lp-compile-action"
                                 href="/try?mode=source"
+                                aria-label="Open the LaTeX studio to compile"
+                                title="Open the LaTeX studio to compile"
                             >
-                                Open compiler <IconArrowRight size={13} aria-hidden="true" />
+                                Compile
                             </Link>
                         </CapabilityGate>
                     </CapabilityGate>
