@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { editorRecoveryLoadBoundary } from '@/hooks/useLatexGeneratorRecovery'
 
 const EDITOR = readFileSync(
   new URL('../app/workspace/[resumeId]/edit/page.tsx', import.meta.url),
@@ -37,7 +38,12 @@ describe('editor save reliability', () => {
     expect(EDITOR).toContain('getDraft(ownerAtStart, resumeId)')
     expect(EDITOR).toContain("localDraft?.syncStatus === 'pending'")
     expect(EDITOR).toContain('pendingDraft?.latexContent ?? data.latex_content')
-    expect(EDITOR).toContain('if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null')
+    expect(EDITOR).toContain("if (editorLoadBoundary === 'empty') return null")
+    const signedOut = { preserveRecovery: false, sourceStatus: 'ready' as const, isLoading: false, resumeLoadError: null,
+      hasSession: false, sessionError: null, offlineDraftLoaded: false, offlinePdfLoaded: false }
+    expect(editorRecoveryLoadBoundary(signedOut)).toBe('empty')
+    expect(editorRecoveryLoadBoundary({ ...signedOut, offlineDraftLoaded: true })).toBe('editor')
+    expect(editorRecoveryLoadBoundary({ ...signedOut, sourceStatus: 'pdf-only', offlinePdfLoaded: true })).toBe('editor')
     expect(EDITOR).toContain('getPendingDrafts(sessionUserId)')
     expect(EDITOR).toContain('deleteDraftIfUnchanged(draft)')
     expect(EDITOR).not.toContain('deleteDraft(sessionUserId, draft.resumeId)')
@@ -101,7 +107,7 @@ describe('editor save reliability', () => {
     expect(EDITOR).toContain("if (!canRef.current('d01') || !canRef.current('d18') || !canRef.current('c05') || !canRef.current('c01')) return")
     expect(EDITOR).toContain('<CapabilityGate feature="d01"><CapabilityGate feature="d18"><CapabilityGate feature="c05"><CapabilityGate feature="c01">')
     expect(EDITOR).toContain('canStartRun={can(\'d01\') && can(\'d18\') && can(\'c05\') && canEditDocument}')
-    expect(EDITOR).toContain("const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview")
+    expect(EDITOR).toContain("const canEditDocument = sourceLoadReady && can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview")
     expect(EDITOR).toContain("if (!canRef.current('c12') || !canRef.current('c05') || !canRef.current('c01')) return")
     expect(EDITOR).toContain("if (!canRef.current('d03') || !canRef.current('c01')) return false")
     expect(EDITOR).toContain('onApplyFix={canEditDocument ? handleApplyExplainerFix : undefined}')

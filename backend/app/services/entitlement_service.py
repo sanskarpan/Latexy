@@ -527,6 +527,7 @@ class EntitlementService:
             {"key": f.key, "label": f.label, "category": f.category,
              "description": f.description, "gateable": f.gateable,
              "parent_key": f.parent_key, "inventory_id": f.inventory_id,
+             "control_kind": f.control_kind, "product_inventory_id": f.product_inventory_id,
              "always_on_reason": f.always_on_reason}
             for f in FEATURE_REGISTRY
         ]

@@ -16,11 +16,11 @@ from app.core.feature_registry import (
 
 
 def test_registry_has_complete_inventory_and_parent_controls():
-    assert len(FEATURE_REGISTRY) == 160
+    assert len(FEATURE_REGISTRY) == 165
 
 
 def test_registry_has_parent_and_granular_switches():
-    assert len(gateable_keys()) == 144
+    assert len(gateable_keys()) == 149
 
 
 def test_compile_and_new_admissions_are_gateable_without_gating_recovery():
@@ -97,3 +97,67 @@ def test_annual_and_student_skus_have_independent_restriction_axes():
     assert len(PLAN_KEYS) == 11
     assert set(PLAN_FAMILIES) <= set(PLAN_MATRIX_KEYS)
     assert {"student", "weekly", "lifetime", "basic_annual", "pro_annual", "byok_annual"} <= set(PLAN_MATRIX_KEYS)
+
+
+def test_five_child_controls_preserve_product_ids_and_immutable_baselines():
+    from app.core.feature_registry import CAPABILITY_SUBFEATURES, feature_ancestry
+    expected = {"d14_latex", "d14_table_text", "d14_table_image", "d14_math_text", "d14_math_image"}
+    assert {row["key"] for row in CAPABILITY_SUBFEATURES} == expected
+    assert len(CAPABILITY_SUBFEATURES) == 5
+    assert sum(feature.control_kind == "parent" for feature in FEATURE_REGISTRY) == 31
+    assert sum(feature.control_kind == "product" for feature in FEATURE_REGISTRY) == 129
+    assert sum(feature.control_kind == "subfeature" for feature in FEATURE_REGISTRY) == 5
+    assert sum(not feature.gateable for feature in FEATURE_REGISTRY) == 16
+    for key in expected:
+        feature = get_feature(key)
+        assert feature.control_kind == "subfeature"
+        assert feature.inventory_id is None
+        assert feature.product_inventory_id == "D14"
+        assert feature.gateable
+        assert [entry.key for entry in feature_ancestry(key)] == [key, "d14", "ai_writing"]
+    for feature in FEATURE_REGISTRY:
+        if feature.control_kind == "product":
+            assert feature.product_inventory_id == feature.inventory_id
+        elif feature.control_kind == "parent":
+            assert feature.inventory_id is None and feature.product_inventory_id is None
+
+
+def test_ancestry_rejects_missing_or_cyclic_parent(monkeypatch):
+    from dataclasses import replace
+
+    import pytest
+
+    from app.core import feature_registry
+    key = "d14_latex"
+    leaf = get_feature(key)
+    monkeypatch.setitem(feature_registry._REGISTRY_BY_KEY, key, replace(leaf, parent_key="missing"))
+    with pytest.raises(ValueError, match="Invalid capability hierarchy"):
+        feature_registry.feature_ancestry(key)
+    monkeypatch.setitem(feature_registry._REGISTRY_BY_KEY, key, leaf)
+    monkeypatch.setitem(feature_registry._REGISTRY_BY_KEY, "ai_writing", replace(get_feature("ai_writing"), parent_key=key))
+    with pytest.raises(ValueError, match="Invalid capability hierarchy"):
+        feature_registry.feature_ancestry(key)
+
+
+async def test_admin_registry_exports_explicit_control_kinds_and_product_owners(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.core.feature_registry import CAPABILITY_ROLES, PLAN_MATRIX_KEYS
+    from app.services.entitlement_service import entitlement_service
+    keys = gateable_keys()
+    monkeypatch.setattr(entitlement_service, "_get_blob", AsyncMock(return_value={
+        "kill": dict.fromkeys(keys, True),
+        "matrix": {plan: dict.fromkeys(keys, True) for plan in PLAN_MATRIX_KEYS},
+        "roles": {role: dict.fromkeys(keys, True) for role in CAPABILITY_ROLES},
+    }))
+    state = await entitlement_service.get_state()
+    registry = {row["key"]: row for row in state["registry"]}
+    assert registry["ai_writing"]["control_kind"] == "parent"
+    assert registry["d14"]["control_kind"] == "product"
+    assert registry["d14"]["product_inventory_id"] == "D14"
+    for key in ("d14_latex", "d14_table_text", "d14_table_image", "d14_math_text", "d14_math_image"):
+        assert registry[key]["control_kind"] == "subfeature"
+        assert registry[key]["product_inventory_id"] == "D14"
+        assert registry[key]["inventory_id"] is None
+        assert all(state["matrix"][plan][key] for plan in PLAN_MATRIX_KEYS)
+        assert all(state["role_matrix"][role][key] for role in CAPABILITY_ROLES)

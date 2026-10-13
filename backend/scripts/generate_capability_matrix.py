@@ -44,7 +44,7 @@ DYNAMIC = {
     "f03": ["middleware/capability_router.py:payload_capabilities (enable public reviews)", "api/review_routes.py:_review_resume (public read/write checked against owner)", "api/routes.py:get_shared_resume (expose current review availability)"],
     "f04": ["middleware/capability_router.py:payload_capabilities (collaborator role increase; viewer downgrade exempt)", "api/resume_routes.py:_get_resume_document_access/update_resume (current collaborator and owner grants on reads and writes)"],
     "f05": ["middleware/capability_router.py:payload_capabilities (collaboration ticket)", "api/ws_routes.py:collab_websocket/_collab_live_access_callback (entry, current ACL, every frame and idle heartbeat)", "services/collab_manager.py:CollabRoom.has_access/broadcast/send_to (current recipient authorization before outbound data)", "services/entitlement_service.py:users_have_feature (fresh batched owner/participant grants)"],
-    "f08": ["middleware/capability_router.py:payload_capabilities (workspace role increase; viewer downgrade exempt)", "api/workspace_routes.py:_workspace_use_allowed/_require_workspace_use (actor and workspace owner; owned source/removal preserved)"],
+    "f08": ["middleware/capability_router.py:payload_capabilities (workspace role increase; viewer downgrade exempt)", "api/workspace_routes.py:_require_workspace_use (actor and workspace owner; owned source/removal preserved)"],
     "g12": ["middleware/capability_router.py:payload_capabilities (enable portfolio/source visibility; disable exempt)", "api/portfolio_routes.py:get_portfolio/contact_portfolio_owner/resolve_domain (existing owner's grant)"],
     "g13": ["api/portfolio_routes.py:resolve_domain (custom-domain owner's current grant)"],
     "h01": ["middleware/capability_router.py:payload_capabilities (premium saved/raw format conversion; tex/pdf exempt)"],
@@ -94,31 +94,95 @@ BROWSER_EVIDENCE = {
 }
 
 
-def generate() -> dict:
-    catalog = json.loads((ROOT / "backend/app/core/capability_catalog.json").read_text(encoding="utf-8"))
-    policy_ast = ast.parse(POLICY.read_text(encoding="utf-8"))
-    assignment = next(node for node in policy_ast.body if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "ROUTE_CAPABILITIES")
-    routes = ast.literal_eval(assignment.value)
+def client_grants(source: str, known_keys: set[str]) -> set[str]:
+    """Recognize grant calls/gates, not arbitrary mentions in a source file."""
+    candidates = re.findall(
+        r"(?:can|canUseFeature|allows)\(\s*['\"]([a-z][a-z0-9_]*)['\"]|feature=['\"]([a-z][a-z0-9_]*)['\"]",
+        source,
+    )
+    return {value for match in candidates for value in match if value in known_keys}
+
+
+def declared_client_controls(known_keys: set[str], subfeature_keys: set[str]) -> dict[str, list[str]]:
     ui_text = (ROOT / "frontend/src/lib/capability-ui-policy.ts").read_text(encoding="utf-8")
-    client = {}
-    for key, paths in re.findall(r"^\s*([a-i]\d\d):\s*\[(.*)\],?$", ui_text, re.MULTILINE):
-        client[key] = [(ROOT / "frontend/src" / relative).resolve().relative_to(ROOT).as_posix() for relative in re.findall(r"'([^']+)'", paths)]
-    # Find direct component gates and dynamic editor-tool maps too. Test files
-    # and the admin catalog are excluded: listing a key is not a user gate.
+    client: dict[str, list[str]] = {}
+    for key, paths in re.findall(r"^\s*([a-z][a-z0-9_]*):\s*\[(.*)\],?$", ui_text, re.MULTILINE):
+        if key not in known_keys:
+            raise RuntimeError(f"Unknown declared client capability: {key}")
+        relatives = re.findall(r"'([^']+)'", paths)
+        if not relatives:
+            raise RuntimeError(f"No declared client enforcement files: {key}")
+        client[key] = []
+        for relative in relatives:
+            path = (ROOT / "frontend/src" / relative).resolve()
+            if not path.is_file():
+                raise RuntimeError(f"Missing client enforcement file: {key}: {relative}")
+            # Child declarations must name a real grant call in their component.
+            # Merely listing a leaf in this catalog is never enforcement proof.
+            if key in subfeature_keys and key not in client_grants(path.read_text(encoding="utf-8"), known_keys):
+                raise RuntimeError(f"Missing child client grant: {key}: {relative}")
+            client[key].append(path.relative_to(ROOT).as_posix())
     for path in (ROOT / "frontend/src").rglob("*.tsx"):
         if "__tests__" in path.parts or "admin" in path.parts:
             continue
-        source = path.read_text(encoding="utf-8")
-        for key in re.findall(r"(?:can|canUseFeature)\(\s*['\"]([a-i]\d\d)['\"]|feature=['\"]([a-i]\d\d)['\"]", source):
-            actual = next(value for value in key if value)
-            client.setdefault(actual, []).append(path.relative_to(ROOT).as_posix())
+        for key in client_grants(path.read_text(encoding="utf-8"), known_keys):
+            client.setdefault(key, []).append(path.relative_to(ROOT).as_posix())
+    return {key: sorted(set(paths)) for key, paths in client.items()}
+
+
+def generate() -> dict:
+    catalog = json.loads((ROOT / "backend/app/core/capability_catalog.json").read_text(encoding="utf-8"))
+    subfeatures = json.loads((ROOT / "backend/app/core/capability_subfeature_catalog.json").read_text(encoding="utf-8"))
+    registry_ast = ast.parse((ROOT / "backend/app/core/feature_registry.py").read_text(encoding="utf-8"))
+    parent_keys = {node.args[0].value for node in ast.walk(registry_ast)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == "FeatureDef" and node.args and isinstance(node.args[0], ast.Constant)}
+    known_keys = parent_keys | {row["key"] for row in [*catalog, *subfeatures]}
+    definitions = {row["key"]: row for row in [*catalog, *subfeatures]}
+    def descendant_keys(key: str) -> set[str]:
+        descendants = {key}
+        for row in subfeatures:
+            ancestor = row["parent_key"]
+            seen = {row["key"]}
+            while ancestor:
+                if ancestor in seen or ancestor not in known_keys:
+                    raise RuntimeError(f"Invalid subfeature ancestry: {row['key']}")
+                seen.add(ancestor)
+                if ancestor == key:
+                    descendants.add(row["key"])
+                ancestor = definitions.get(ancestor, {}).get("parent_key")
+        return descendants
+    policy_ast = ast.parse(POLICY.read_text(encoding="utf-8"))
+    assignment = next(node for node in policy_ast.body if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "ROUTE_CAPABILITIES")
+    routes = ast.literal_eval(assignment.value)
+    for entries in routes.values():
+        for keys in entries.values():
+            unknown = set(keys) - known_keys
+            if unknown:
+                raise RuntimeError(f"Unknown route capabilities: {sorted(unknown)}")
+    client = declared_client_controls(known_keys, {row["key"] for row in subfeatures})
+    for key, refs in DYNAMIC.items():
+        if key not in known_keys:
+            raise RuntimeError(f"Unknown dynamic capability: {key}")
+        for ref in refs:
+            path, symbol = ref.split(":", 1)
+            source = (ROOT / "backend/app" / path).read_text(encoding="utf-8")
+            # References are inspectable wiring declarations; verify the actual
+            # enforcement symbol still exists rather than counting quoted keys.
+            names = symbol.split(" (", 1)[0].split("/")
+            if not all(name.rsplit(".", 1)[-1] in source for name in names):
+                raise RuntimeError(f"Missing dynamic enforcement symbol: {key}: {ref}")
     features = []
-    for feature in catalog:
+    for feature in [*catalog, *subfeatures]:
         key = feature["key"]
-        handlers = [f"backend/app/api/{module}.py:{name}" for module, entries in routes.items() for name, keys in entries.items() if key in keys]
+        operations = descendant_keys(key)
+        handlers = [f"backend/app/api/{module}.py:{name}" for module, entries in routes.items() for name, keys in entries.items() if operations.intersection(keys)]
         dynamic = ["backend/app/" + ref for ref in DYNAMIC.get(key, [])]
-        ui = sorted(set(client.get(key, [])))
+        ui = sorted({path for operation in operations for path in client.get(operation, [])})
         tests = list(FOCUSED_TESTS.get(key, []))
+        if key in {row["key"] for row in subfeatures}:
+            tests.extend(["test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+                          "test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)"])
         if handlers:
             tests.append("test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)")
         if key in {"b02", "d02", "d19", "e06", "f01", "f02", "f03", "f04", "f05", "f08", "g12"}:
@@ -137,6 +201,9 @@ def generate() -> dict:
             "inventoryId": feature["inventory_id"], "key": key,
             "label": feature["label"], "parentKey": feature["parent_key"],
             "gateable": feature["gateable"], "baselineReason": feature["always_on_reason"],
+            "controlKind": feature.get("control_kind", "product"),
+            "productInventoryId": feature.get("product_inventory_id", feature["inventory_id"]),
+            "operationCapabilities": sorted(operations),
             "serverHandlers": handlers, "dynamicOrServiceGates": dynamic,
             "clientControls": ui,
             "verification": {
@@ -170,21 +237,29 @@ def generate() -> dict:
                 "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows.",
             },
         })
-    missing = [feature["inventoryId"] for feature in features if feature["verification"]["status"] == "MISSING_ENFORCEMENT"]
+    missing = [feature["key"] for feature in features if feature["verification"]["status"] == "MISSING_ENFORCEMENT"]
     if missing:
         raise RuntimeError(f"Missing enforcement: {missing}")
+    products = [feature for feature in features if feature["controlKind"] == "product"]
+    children = [feature for feature in features if feature["controlKind"] == "subfeature"]
+    for feature in products:
+        feature["subfeatures"] = [child for child in children if child["productInventoryId"] == feature["inventoryId"]]
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "accountContexts": ["anonymous", "user", "support", "admin"],
         "rolePolicy": "global AND account role AND plan family AND exact SKU AND all ancestors; missing/unknown optional grants deny",
         "inventorySource": "backend/app/core/capability_catalog.json",
         "generator": "backend/scripts/generate_capability_matrix.py",
-        "inventoryCount": len(features),
-        "gateableCount": sum(feature["gateable"] for feature in features),
-        "alwaysOnCount": sum(not feature["gateable"] for feature in features),
+        "inventoryCount": len(products),
+        "subfeatureSource": "backend/app/core/capability_subfeature_catalog.json",
+        "subfeatureCount": len(children),
+        "gateableCount": sum(feature["gateable"] for feature in products),
+        "alwaysOnCount": sum(not feature["gateable"] for feature in products),
+        "runtimeRegistryCount": len(known_keys),
+        "runtimeGateableCount": len(parent_keys) + sum(feature["gateable"] for feature in features),
         "semantics": "Stop new admissions and external actions. Already admitted jobs retain existing completion/finalization/refund behavior; owners retain source/results/recovery/deletion/revocation. Previously issued presigned URLs last until expiry.",
         "verificationScope": "Automated policy, selected real-infrastructure admission/refund and existing regression coverage. Not a claim that all 129 features were manually QA-tested or that live providers/payments were exercised.",
-        "features": features,
+        "features": products,
     }
 
 

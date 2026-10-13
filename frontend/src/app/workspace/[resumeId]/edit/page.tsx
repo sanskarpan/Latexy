@@ -60,6 +60,8 @@ import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { downloadBlob } from '@/lib/download'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { editorRecoveryLoadBoundary, useEditorSourceLoadScope, useLatexGeneratorRecovery, type LatexGeneratorRecovery } from '@/hooks/useLatexGeneratorRecovery'
+import LatexGeneratorRecoveryShell from '@/components/LatexGeneratorRecoveryShell'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor from '@/components/DeferredLaTeXEditor'
@@ -139,7 +141,6 @@ const ProofreadPanel = dynamic(() => import('@/components/ProofreadPanel'))
 const PackageManagerPanel = dynamic(() => import('@/components/PackageManagerPanel'))
 const LinterPanel = dynamic(() => import('@/components/LinterPanel'))
 const SymbolPalette = dynamic(() => import('@/components/SymbolPalette'))
-const LatexGeneratorPanel = dynamic(() => import('@/components/LatexGeneratorPanel'))
 const CompileSettingsModal = dynamic(() => import('@/components/CompileSettingsModal'))
 const CollaboratorPanel = dynamic(() => import('@/components/CollaboratorPanel'))
 const CommentsPanel = dynamic(() => import('@/components/CommentsPanel'))
@@ -160,7 +161,8 @@ const CompileErrorHistory = dynamic(() => import('@/components/CompileErrorHisto
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'comments' | 'review' | 'chat' | 'references' | 'interview' | 'generate' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'suggestions' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
 const RIGHT_TAB_CAPABILITIES: Partial<Record<RightTab, string>> = {
-  ai: 'd01', chat: 'f05', interview: 'e02', generate: 'd14', design: 'c19',
+  // Generate uses the scoped recovery shell, rather than a coarse mount gate.
+  ai: 'd01', chat: 'f05', interview: 'e02', design: 'c19',
   proofread: 'd12', packages: 'c17', linter: 'c15', symbols: 'c18',
   changes: 'f07', suggestions: 'f07', docs: 'c17', layout: 'c19',
   snippets: 'c20', macros: 'c21', tikz: 'c18',
@@ -817,6 +819,10 @@ export default function ResumeEditPage() {
   const [resumeLoadError, setResumeLoadError] = useState<string | null>(null)
   const [offlineDraftLoaded, setOfflineDraftLoaded] = useState(false)
   const [offlinePdfLoaded, setOfflinePdfLoaded] = useState(false)
+  const { status: sourceLoadStatus, beginLoad: beginSourceLoad, finishLoad: finishSourceLoad, ownsLoad: ownsSourceLoad, isSourceReady } = useEditorSourceLoadScope(
+    sessionUserId, resumeId, sessionData, Boolean(sessionUserId && !sessionLoading && !sessionError),
+  )
+  const sourceLoadReady = isSourceReady() && !isLoading && !resumeLoadError
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Unsaved-changes guard: last-persisted snapshot + autosave status
@@ -859,15 +865,13 @@ export default function ResumeEditPage() {
 
   // Layout
   const aiRecoveryAvailableRef = useRef(false)
+  const latexGeneratorRecoveryRef = useRef<LatexGeneratorRecovery | null>(null)
   const [rightTab, setRightTabValue] = useState<RightTab>('preview')
   const setRightTab = useCallback((tab: RightTab) => {
+    if (tab === 'generate' && !latexGeneratorRecoveryRef.current?.canAccess) return
     const feature = RIGHT_TAB_CAPABILITIES[tab]
     if (!feature || canRef.current(feature) || (tab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue(tab)
   }, [])
-  useEffect(() => {
-    const feature = RIGHT_TAB_CAPABILITIES[rightTab]
-    if (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue('preview')
-  }, [can, rightTab])
   const rightTabBarRef = useRef<HTMLDivElement>(null)
   const activeRightTabRef = useRef<HTMLButtonElement>(null)
   // Keep the active right-panel tab scrolled into view within the horizontal scroller
@@ -1164,7 +1168,22 @@ export default function ResumeEditPage() {
   // its shared model is hidden behind the recovered, read-only source view.
   const checkpointRecoveryMobileRef = useRef(isMobile)
   const recoveryEditorIsMobile = currentCheckpointRecoveryPreview ? checkpointRecoveryMobileRef.current : isMobile
-  const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
+  const canEditDocument = sourceLoadReady && can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
+  const latexGeneratorRecovery = useLatexGeneratorRecovery({
+    ownerId: sessionUserId,
+    documentId: resumeId,
+    authReady: Boolean(sessionUserId && !sessionLoading && !sessionError),
+    can,
+    newWorkAllowed: sourceLoadReady && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled) && editorMode === 'source',
+    sourceLoadReady: isSourceReady,
+    active: editorMode === 'source' && visibleRightTab === 'generate',
+  })
+  latexGeneratorRecoveryRef.current = latexGeneratorRecovery
+  useEffect(() => {
+    const feature = RIGHT_TAB_CAPABILITIES[rightTab]
+    if ((rightTab === 'generate' && !latexGeneratorRecovery.canAccess)
+      || (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current))) setRightTabValue('preview')
+  }, [can, rightTab, latexGeneratorRecovery.canAccess])
   useEffect(() => {
     offlinePdfMountedRef.current = true
     return () => {
@@ -1831,14 +1850,16 @@ export default function ResumeEditPage() {
   // This makes offline storage recoverable after refresh instead of write-only.
   useEffect(() => {
     if (sessionLoading) return
+    const sourceLoad = beginSourceLoad()
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const initialPreviewIdentity = initialPreviewIdentityRef.current
-    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    const isActive = () => !cancelled && ownsSourceLoad(sourceLoad) && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
 
     if (!sessionData) {
       if (typeof navigator === 'undefined' || navigator.onLine) {
+        finishSourceLoad(sourceLoad, 'error')
         setIsLoading(false)
         return
       }
@@ -1846,6 +1867,7 @@ export default function ResumeEditPage() {
       setIsLoading(true)
       setResumeLoadError(null)
       if (!ownerAtStart) {
+        finishSourceLoad(sourceLoad, 'error')
         setResumeLoadError('No offline document is available for this browser profile.')
         setIsLoading(false)
         return
@@ -1862,11 +1884,13 @@ export default function ResumeEditPage() {
             if (ownerAtStart) {
               const cachedPdf = await getOfflineCompiledPdf(ownerAtStart, resumeId).catch(() => null)
               if (isActive() && cachedPdf) {
+                finishSourceLoad(sourceLoad, 'pdf-only')
                 setOfflinePdfLoaded(true)
                 return
               }
             }
             if (!isActive()) return
+            finishSourceLoad(sourceLoad, 'error')
             setResumeLoadError('No offline draft is available for this resume.')
             return
           }
@@ -1876,10 +1900,14 @@ export default function ResumeEditPage() {
           setSavedSnapshot({ title: draft.title, latex: draft.latexContent })
           editorRef.current?.setValue(draft.latexContent)
           setOfflineDraftLoaded(true)
+          finishSourceLoad(sourceLoad, 'ready', 'offline')
           setLastSavedAt(new Date(draft.savedAt).getTime())
         })
         .catch(() => {
-          if (isActive()) setResumeLoadError('The offline draft could not be loaded from this device.')
+          if (isActive()) {
+            finishSourceLoad(sourceLoad, 'error')
+            setResumeLoadError('The offline draft could not be loaded from this device.')
+          }
         })
         .finally(() => {
           if (isActive()) setIsLoading(false)
@@ -1950,6 +1978,7 @@ export default function ResumeEditPage() {
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionUserId)
         setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
+        finishSourceLoad(sourceLoad, 'ready', pendingDraft ? 'offline' : 'server')
 
         const nextParentResumeId = data.parent_resume_id ?? null
         setParentResumeId(nextParentResumeId)
@@ -1977,6 +2006,7 @@ export default function ResumeEditPage() {
         }
       } catch (error) {
         if (isActive()) {
+          finishSourceLoad(sourceLoad, 'error')
           setResumeLoadError(error instanceof Error ? error.message : 'Resume could not be loaded.')
         }
       } finally {
@@ -1985,7 +2015,7 @@ export default function ResumeEditPage() {
     }
     void fetchResume()
     return () => { cancelled = true }
-  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionUserId])
+  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionUserId])
 
   // A completed rewrite remains staged until the user explicitly applies it.
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
@@ -3349,7 +3379,12 @@ export default function ResumeEditPage() {
   // a "More" overflow menu (Finding: 17 equally-weighted tabs).
   const moreTabIds: RightTab[] = ['generate', 'comments', 'review', 'chat', 'references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'suggestions', 'docs', 'layout', 'snippets', 'macros', 'tikz']
 
-  if (isLoading) {
+  const editorLoadBoundary = editorRecoveryLoadBoundary({
+    preserveRecovery: latexGeneratorRecovery.mounted,
+    sourceStatus: sourceLoadStatus,
+    isLoading, resumeLoadError, hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded,
+  })
+  if (editorLoadBoundary === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-bg">
         <LoadingSpinner />
@@ -3357,7 +3392,7 @@ export default function ResumeEditPage() {
     )
   }
 
-  if (resumeLoadError) {
+  if (editorLoadBoundary === 'error') {
     return (
       <div className="flex h-screen items-center justify-center bg-bg px-6">
         <div role="alert" className="max-w-md rounded-[var(--radius-xl)] border border-line bg-surface p-6 text-center shadow-[var(--shadow-2)]">
@@ -3377,14 +3412,21 @@ export default function ResumeEditPage() {
     )
   }
 
-  if (sessionError && !sessionData && !offlineDraftLoaded && !offlinePdfLoaded) {
+  if (editorLoadBoundary === 'session-error') {
     return <SessionLoadError area="Resume editor" />
   }
 
-  if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null
+  if (editorLoadBoundary === 'empty') return null
 
   return (
     <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="flex h-screen flex-col overflow-hidden bg-bg">
+
+      {latexGeneratorRecovery.mounted && !sourceLoadReady && (
+        <div role={resumeLoadError ? 'alert' : 'status'} className="shrink-0 border-b border-line bg-surface-2 px-4 py-2 text-xs text-fg-2">
+          {resumeLoadError ? `Document reload failed: ${resumeLoadError}` : 'Loading the current document…'}
+          {' '}Saved generator recovery is available. New generation and insertion wait for the document to load.
+        </div>
+      )}
 
       {/* ── TOP HEADER ── */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
@@ -4272,7 +4314,7 @@ export default function ResumeEditPage() {
                     style={{ position: 'fixed', top: moreTabsPos.top, right: moreTabsPos.right }}
                   >
                     {([
-                      { id: 'generate', label: 'Generate LaTeX', icon: Sparkles },
+                      { id: 'generate', label: latexGeneratorRecovery.canStart ? 'Generate LaTeX' : 'Recover LaTeX', icon: Sparkles },
                       { id: 'comments', label: 'Comments', icon: MessageSquare },
                       { id: 'review', label: 'Review', icon: MessageSquare },
                       { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -4289,7 +4331,7 @@ export default function ResumeEditPage() {
                       { id: 'snippets', label: 'Snippets', icon: Package },
                       { id: 'macros', label: 'Macros', icon: Keyboard },
                       { id: 'tikz', label: 'TikZ', icon: Pencil },
-                    ] as const).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
+                    ] as const).filter(({ id }) => (id === 'generate' ? latexGeneratorRecovery.canAccess : !RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
                         role="menuitem"
@@ -4500,12 +4542,13 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {canEditDocument && editorMode === 'source' && visibleRightTab === 'generate' && (
-              <CapabilityGate feature="d14"><LatexGeneratorPanel
-                documentContext={latexContent}
-                onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
-              /></CapabilityGate>
-            )}
+            <LatexGeneratorRecoveryShell
+              recovery={latexGeneratorRecovery}
+              active={editorMode === 'source' && visibleRightTab === 'generate'}
+              documentId={resumeId}
+              documentContext={latexContent}
+              onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
+            />
 
             {visibleRightTab === 'interview' && (
               <div className="min-h-0 flex-1 overflow-hidden">
