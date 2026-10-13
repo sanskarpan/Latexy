@@ -39,6 +39,10 @@ const SAMPLE_SUMMARY =
 
 const ORIGINAL_BULLET =
     'Built and maintained user-facing products in Python with a focus on performance.'
+const EXPERIENCE_DETAILS = [
+    'Collaborated with cross-functional teams.',
+    'Improved the developer experience.',
+] as const
 const SUGGESTED_BULLET =
     'Built and maintained user-facing features using Python, with a focus on performance.'
 const SAMPLE_SOURCE = `\\documentclass{article}
@@ -132,10 +136,9 @@ function SampleResume({
                 <p>BrightCode</p>
                 <ul>
                     <li>{bullet}</li>
-                    <li>
-                        Collaborated with cross-functional teams to improve the developer
-                        experience.
-                    </li>
+                    {EXPERIENCE_DETAILS.map(detail => (
+                        <li key={detail}>{detail}</li>
+                    ))}
                 </ul>
                 <div className="lp-paper-role">
                     <strong>Software Engineer</strong>
@@ -299,7 +302,7 @@ function BuilderDemo() {
                         <>
                             <span className="lp-demo-label">Sample LaTeX source</span>
                             <SourceCode
-                                source={`\\section{Experience}\n\\textbf{${role}}\n\\begin{itemize}\n  \\item ${bullet}\n\\end{itemize}`}
+                                source={`\\section{Experience}\n\\textbf{${role}}\n\\textit{BrightCode} \\hfill 2021--Present\n\\begin{itemize}\n  \\item ${bullet}\n${EXPERIENCE_DETAILS.map(detail => `  \\item ${detail}`).join('\n')}\n\\end{itemize}`}
                             />
                         </>
                     ) : (
@@ -342,22 +345,30 @@ function BuilderDemo() {
                                     Experience <IconChevronDown size={13} aria-hidden="true" />
                                 </summary>
                                 <div className="lp-experience-entry">
-                                    <strong>{role.trim() || 'Your role'}</strong>
-                                    <small>BrightCode</small>
+                                    <div className="lp-experience-role">
+                                        <strong>{role.trim() || 'Your role'}</strong>
+                                        <div className="lp-experience-meta">
+                                            <small>BrightCode</small>
+                                            <small>2021 — Present</small>
+                                        </div>
+                                    </div>
                                     <label className="sr-only" htmlFor={`${id}-bullet`}>
                                         What did you do?
                                     </label>
-                                    <textarea
-                                        id={`${id}-bullet`}
-                                        value={bullet}
-                                        onChange={event => setBullet(event.target.value)}
-                                        rows={3}
-                                        maxLength={300}
-                                    />
-                                    <p>
-                                        • Collaborated with cross-functional teams to improve the
-                                        developer experience.
-                                    </p>
+                                    <ul className="lp-experience-bullets">
+                                        <li>
+                                            <textarea
+                                                id={`${id}-bullet`}
+                                                value={bullet}
+                                                onChange={event => setBullet(event.target.value)}
+                                                rows={3}
+                                                maxLength={300}
+                                            />
+                                        </li>
+                                        {EXPERIENCE_DETAILS.map(detail => (
+                                            <li key={detail}>{detail}</li>
+                                        ))}
+                                    </ul>
                                 </div>
                             </details>
                             {mode === 'studio' ? (

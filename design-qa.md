@@ -108,3 +108,14 @@ Independent focused reviews found no remaining P1, but retained P2 acceptance bl
 TypeScript, scoped ESLint and the 23 unchanged relevant contract tests passed. Source/asset verification is awaiting the next fresh CI render. Screenshots will be published in the PR with exact capture/source provenance.
 
 final result: blocked
+
+
+### Review capture publication - d36723f8
+
+All required CI checks passed on d36723f8, including 2,361 frontend tests, production build, backend tests, real compilation/preview and full-stack smoke. Browser artifact 11852589080 from run 38472114434 has verified SHA-256 `9be15c1c7effa1842e2bdb7c66628cb362e3bdeab834f767fda3ed8f740b0a52`. All five browser/device profiles passed, including the added tablet Source/PDF equation and action bounds assertions. Ten focused source/actual boards and full comparisons were reviewed in both themes. Lower sections pass the P0/P1/P2 gate.
+
+Two final P2 corrections remain to be recaptured: move the row-style gallery selectors 48px left to align Modern with its paper; and restore the builder's company/date plus three semantic bullets in editor, source and preview. Both are now implemented. A stale compiler-offset observation was checked against the actual current board and existing 370px+40px layout; no additional compiler layout patch was made.
+
+Actual d36723f8 screenshots are now saved under `docs/design/landing/` for PR review, copied unchanged from the browser artifact. Their metadata clearly identifies the captured source, not the subsequent alignment/list revision. They will be refreshed after that revision is captured.
+
+final result: blocked

@@ -1045,12 +1045,22 @@
 }
 .lp-experience-entry {
     margin: 4px 0 10px;
-    padding: 10px;
+    font-size: 10px;
+    line-height: 1.5;
+}
+.lp-experience-role {
+    padding: 8px 10px;
     border: 1px solid var(--lp-line);
     border-radius: 3px;
     background: var(--lp-builder-selection);
-    font-size: 10px;
-    line-height: 1.5;
+}
+.lp-experience-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+.lp-experience-meta > small:last-child {
+    white-space: nowrap;
 }
 .lp-experience-entry strong,
 .lp-experience-entry small {
@@ -1059,19 +1069,24 @@
 .lp-experience-entry small {
     color: var(--lp-muted);
     font-size: 10px;
-    margin-bottom: 8px;
+}
+.lp-experience-bullets {
+    margin-top: 8px;
+    padding-left: 20px;
+    list-style: disc;
+}
+.lp-experience-bullets li + li {
+    margin-top: 7px;
 }
 .lp-experience-entry textarea {
-    min-height: 52px;
+    min-height: 0;
+    resize: none;
     margin: 0;
     padding: 0;
     border: 0;
     background: transparent;
     font-size: 10px;
     line-height: 1.5;
-}
-.lp-experience-entry > p {
-    margin-top: 8px;
 }
 .lp-demo-add {
     min-height: 28px;
@@ -1541,6 +1556,11 @@
     align-items: baseline;
     gap: 18px;
     white-space: nowrap;
+}
+@media (min-width: 701px) {
+    .lp-gallery-controls {
+        transform: translateX(-48px);
+    }
 }
 .lp-hero-chapter {
     font-size: 0.96em;
