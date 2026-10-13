@@ -30,6 +30,7 @@ Full-page Chromium capture occasionally omitted off-screen text immediately afte
 3. Apparent P1: missing dark preview text in full-page capture. Verified complete visible text with scrolled focused captures and computed descendant styles; no application CSS workaround was necessary.
 4. P2: gallery selection changed only labels and implied a filtered destination. Fixed real selected-layout focus transform and a plainly named template-library link. Browser verification exercises both selected state and rendered transform.
 5. CI/review found optional entry links missing capability gates and the application schema resolving its origin too early. Restored template/builder/studio gates, render-time schema origin, and the unchanged generic footer. All 23 existing tests covering these contracts pass without test edits.
+6. The generated capability audit required six additional frontend control-path entries after the refactor. Regenerated the matrix using its existing script; its existing contract passes. No backend policy or tests changed. Linux CI on `8f5498e2` passed all 2197 frontend unit tests and ESLint.
 
 ## Interaction verification
 
