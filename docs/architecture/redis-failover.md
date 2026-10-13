@@ -94,7 +94,9 @@ the authoritative primary; it does not monitor backup account usage.
    the service returns its already-computed value. Underlying redis-py retries
    are explicitly disabled; no paid model/API operation is retried by this layer.
 5. Credentials/configuration errors are logged with only slot number and a
-   bounded error class. They are not classified as quota exhaustion or replayed
+   bounded error class. HTTP library INFO logs can include the credential-free
+   origin; auth headers, cache keys and values stay out of request URLs.
+   They are not classified as quota exhaustion or replayed
    in the same operation. Later calls can select another eligible backend.
 6. Routing remains on a working backup even when the primary cooldown expires.
    A failed endpoint is eligible again only when the active path also fails.

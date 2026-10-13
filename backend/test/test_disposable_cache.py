@@ -320,6 +320,7 @@ async def test_rest_recognizes_documented_quota_error_in_body(enabled, status):
                                      httpx.Response(307, headers={"Location": "https://wrong.invalid"}),
                                      httpx.Response(401, json={"error": "WRONGPASS token=secret"})])
 async def test_rest_unconfirmed_write_is_never_replayed_or_logged(enabled, response, caplog):
+    caplog.set_level("INFO", logger="httpx")
     endpoint = RestCacheBackend(DisposableCacheEndpoint(transport="rest", url="https://cache.invalid", token="dummy"))
     await endpoint.client.aclose()
     endpoint.client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response))
@@ -328,7 +329,12 @@ async def test_rest_unconfirmed_write_is_never_replayed_or_logged(enabled, respo
     with pytest.raises(CacheUnavailable):
         await chain.execute("set", "private-key", "private-value", 10)
     backup.set.assert_not_awaited()
-    assert "private" not in caplog.text and "secret" not in caplog.text and "cache.invalid" not in caplog.text
+    assert "private" not in caplog.text and "secret" not in caplog.text
+    # httpx may log the credential-free origin at INFO. Our application
+    # diagnostics must identify only the slot, never raw endpoint/error data.
+    app_logs = "\n".join(record.getMessage() for record in caplog.records
+                         if record.name == "app.core.disposable_cache")
+    assert "cache.invalid" not in app_logs
     await endpoint.aclose()
 
 
