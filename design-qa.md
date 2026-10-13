@@ -56,6 +56,10 @@ TypeScript and scoped ESLint pass. Production compilation and all 44 static rout
 
 ## Mobile navigation regression follow-up
 
-Cross-browser CI exposed the missing homepage menu after sign-out. The homepage now consumes the existing GlobalHeader mobile panel, session handling, capability filtering, focus trap, Escape behavior, and sign-out logic. Only its trigger is styled for the selected landing design. Desktop composition is unchanged. Existing tests remain unchanged; fresh CI and rendered evidence are pending.
+Cross-browser CI exposed the missing homepage menu after sign-out. The homepage now consumes the existing GlobalHeader mobile panel, session handling, capability filtering, focus trap, Escape behavior, and sign-out logic. Only its trigger is styled for the selected landing design. Desktop composition is unchanged. Existing tests remain unchanged. On `6d5fc743`, all 21 CI checks passed, CodeQL completed neutral, Vercel deployed, and no checks failed. The cross-browser job passed all five configurations, including authenticated sign-out to the homepage guest menu, plus builder/editor/source-PDF and hydration regressions. Real native compilation and full-stack smoke also passed.
 
-final result: pending mobile navigation verification
+Fresh screenshots were recovered through GitHub workflow artifact `11835391088` for run `38437552149`, with archive SHA256 `c3d1112e20b161e98342245589935250b7ce6a0189e285e2dd27e1f9cb81de4b` verified locally. Evidence: `ci-desktop-chromium-6d5fc743.png`, `ci-mobile-chromium-6d5fc743.png`, and `ci-mobile-webkit-6d5fc743.png` in the evidence directory above. Chromium and WebKit mobile headers fit the logo, theme controls, sign-in, and Menu without crowding. All document and equation previews remain visible. Independent visual review found no new P0/P1/P2 issues. Closed-menu visual evidence is separate from the passing menu behavior tests. The prior full light/dark and high-contrast comparisons remain applicable to the unchanged page composition; the trigger uses the existing theme foreground and border tokens.
+
+The final documentation commit changes this report only; application code and assets remain exactly those tested on `6d5fc743`.
+
+final result: passed
