@@ -36,6 +36,8 @@ _ALLOWED_KEY = re.compile(r"(?:latexy:embcache:[a-zA-Z0-9._-]+|esco:search):[a-f
 _PREFIX = "disposable:v1:"
 _MAX_TTL = 30 * 24 * 3600
 _MAX_VALUE_BYTES = 512 * 1024
+# A Redis JSON string can escape each cached byte once more, plus its wrapper.
+_MAX_REST_RESPONSE_BYTES = 2 * _MAX_VALUE_BYTES + 1024
 
 
 class CacheRejected(Exception):
@@ -87,24 +89,34 @@ class RestCacheBackend:
         self.client = httpx.AsyncClient(
             timeout=settings.DISPOSABLE_CACHE_TIMEOUT_SECONDS,
             follow_redirects=False,
-            headers={"Authorization": f"Bearer {endpoint.token.get_secret_value()}"},
+            headers={"Authorization": f"Bearer {endpoint.token.get_secret_value()}", "Accept-Encoding": "identity"},
         )
 
     async def _command(self, command: list):
         # POST body keeps cache keys/content out of URLs. Never follow redirects
         # with a credential, and never use HTTP retry middleware for writes.
-        response = await self.client.post(self.url, json=command)
-        try:
-            payload = response.json()
-        except ValueError:
-            raise CacheUnavailable("Invalid cache response") from None
-        if isinstance(payload, dict) and isinstance(payload.get("error"), str):
-            if response.status_code in {200, 400, 429} and payload["error"].lower().strip().removeprefix("err ").rstrip(".") == "max requests limit exceeded":
-                raise CacheRejected("Cache request quota exhausted")
-            raise CacheUnavailable("Cache command rejected")
-        if not response.is_success or not isinstance(payload, dict) or "result" not in payload:
-            raise CacheUnavailable("Invalid cache response")
-        return payload["result"]
+        async with self.client.stream("POST", self.url, json=command) as response:
+            # Bound memory before JSON decoding, not after response.json() has
+            # materialized an arbitrarily large provider/proxy response. Decline
+            # compressed bodies so decompression cannot bypass the byte bound.
+            if response.headers.get("content-encoding", "identity").lower() != "identity":
+                raise CacheUnavailable("Unsupported cache response encoding")
+            body = bytearray()
+            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                if len(body) + len(chunk) > _MAX_REST_RESPONSE_BYTES:
+                    raise CacheUnavailable("Cache response too large")
+                body.extend(chunk)
+            try:
+                payload = json.loads(body)
+            except (ValueError, UnicodeDecodeError):
+                raise CacheUnavailable("Invalid cache response") from None
+            if isinstance(payload, dict) and isinstance(payload.get("error"), str):
+                if response.status_code in {200, 400, 429} and payload["error"].lower().strip().removeprefix("err ").rstrip(".") == "max requests limit exceeded":
+                    raise CacheRejected("Cache request quota exhausted")
+                raise CacheUnavailable("Cache command rejected")
+            if not response.is_success or not isinstance(payload, dict) or "result" not in payload:
+                raise CacheUnavailable("Invalid cache response")
+            return payload["result"]
 
     async def get(self, key: str):
         result = await self._command(["GET", key])

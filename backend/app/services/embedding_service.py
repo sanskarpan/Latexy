@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 # not re-hit the embedding provider. Key namespace is separate from other caches.
 _EMBEDDING_CACHE_TTL = 604800  # 7 days
 _EMBEDDING_MODEL = "text-embedding-3-small"
+_EMBEDDING_DIMENSIONS = 1536
 
 # Stopwords for keyword extraction
 _STOPWORDS = {
@@ -79,7 +80,11 @@ class EmbeddingService:
         # Cache lookup — fall back to computing on any error / cold cache.
         try:
             cached = await disposable_cache.get(cache_key)
-            if cached:
+            if (
+                isinstance(cached, list)
+                and len(cached) == _EMBEDDING_DIMENSIONS
+                and all(type(value) in {int, float} and math.isfinite(value) for value in cached)
+            ):
                 return cached
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
             logger.debug("Embedding cache get failed", extra={"error_type": type(exc).__name__})

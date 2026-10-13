@@ -60,7 +60,9 @@ identity. A second database is not a replica simply because it is called backup.
 `UPSTASH_REDIS_REST_URL`/`TOKEN` are not reinterpreted as TCP credentials. The
 new optional REST transport uses POST command arrays and bearer header auth;
 it does not put tokens, cache keys or values in URLs and does not follow
-redirects. REST is not a substitute for the application's Celery/stream clients.
+redirects. Responses are streamed with a byte limit before JSON decoding;
+unexpected compression is rejected to prevent decompression bypass. Cached
+embedding vectors are checked for expected dimension and finite numeric values. REST is not a substitute for the application's Celery/stream clients.
 
 Defaults:
 

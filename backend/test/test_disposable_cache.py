@@ -307,7 +307,10 @@ async def test_rest_command_uses_json_body_header_auth_and_no_redirects(enabled)
 @pytest.mark.parametrize("status", [200, 400, 429])
 async def test_rest_recognizes_documented_quota_error_in_body(enabled, status):
     endpoint = RestCacheBackend(DisposableCacheEndpoint(transport="rest", url="https://cache.invalid", token="dummy"))
-    endpoint.client.post = AsyncMock(return_value=httpx.Response(status, json={"error": "ERR max requests limit exceeded"}))
+    await endpoint.client.aclose()
+    endpoint.client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(status, json={"error": "ERR max requests limit exceeded"})
+    ))
     with pytest.raises(CacheRejected):
         await endpoint.get("key")
     await endpoint.aclose()
@@ -318,7 +321,8 @@ async def test_rest_recognizes_documented_quota_error_in_body(enabled, status):
                                      httpx.Response(401, json={"error": "WRONGPASS token=secret"})])
 async def test_rest_unconfirmed_write_is_never_replayed_or_logged(enabled, response, caplog):
     endpoint = RestCacheBackend(DisposableCacheEndpoint(transport="rest", url="https://cache.invalid", token="dummy"))
-    endpoint.client.post = AsyncMock(return_value=response)
+    await endpoint.client.aclose()
+    endpoint.client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response))
     backup = backend()
     chain = DisposableCacheChain([endpoint, backup])
     with pytest.raises(CacheUnavailable):
@@ -527,3 +531,74 @@ def test_backup_count_is_bounded_and_secret_values_are_redacted():
     assert "secret" not in repr(DisposableCacheEndpoint(**config))
     with pytest.raises(ValidationError):
         Settings(_env_file=None, DISPOSABLE_CACHE_BACKUPS=[config] * 4)
+
+
+class _BodyStream(httpx.AsyncByteStream):
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.read_count = 0
+        self.closed = False
+
+    async def __aiter__(self):
+        for chunk in self.chunks:
+            self.read_count += 1
+            yield chunk
+
+    async def aclose(self):
+        self.closed = True
+
+
+async def test_oversized_rest_body_stops_before_reading_entire_response(enabled, monkeypatch):
+    monkeypatch.setattr("app.core.disposable_cache._MAX_REST_RESPONSE_BYTES", 64 * 1024)
+    body = _BodyStream([b"x" * (64 * 1024)] * 20)
+    endpoint = RestCacheBackend(DisposableCacheEndpoint(transport="rest", url="https://cache.invalid", token="dummy"))
+    assert endpoint.client.headers["Accept-Encoding"] == "identity"
+    await endpoint.client.aclose()
+    endpoint.client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=body)
+    ))
+    with pytest.raises(CacheUnavailable, match="too large"):
+        await endpoint.get("key")
+    assert body.read_count == 2
+    assert body.closed is True
+    await endpoint.aclose()
+
+
+async def test_compressed_rest_body_is_rejected_before_decompression(enabled):
+    body = _BodyStream([b"do-not-decompress"])
+    endpoint = RestCacheBackend(DisposableCacheEndpoint(transport="rest", url="https://cache.invalid", token="dummy"))
+    await endpoint.client.aclose()
+    endpoint.client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=body, headers={"Content-Encoding": "gzip"})
+    ))
+    with pytest.raises(CacheUnavailable, match="encoding"):
+        await endpoint.get("key")
+    assert body.read_count == 0
+    assert body.closed is True
+    await endpoint.aclose()
+
+
+@pytest.mark.parametrize("cached", [{"bad": "shape"}, "bad", [], [0.1], [True] * 1536, [float("nan")] * 1536,
+                                   [float("inf")] * 1536, ["0.1"] * 1536])
+async def test_invalid_cached_embedding_is_recomputed_without_consuming_bad_shape(cached):
+    from app.services.embedding_service import EmbeddingService
+
+    cache = Mock(get=AsyncMock(return_value=cached), set=AsyncMock())
+    vector = [0.1] * 1536
+    provider = Mock(embeddings=Mock(create=AsyncMock(return_value=Mock(data=[Mock(embedding=vector)]))))
+    service = EmbeddingService()
+    service._client = provider
+    with patch("app.services.embedding_service.disposable_cache", cache):
+        assert await service.embed_text("dummy text") == vector
+    provider.embeddings.create.assert_awaited_once()
+
+
+async def test_valid_cached_embedding_avoids_provider_call():
+    from app.services.embedding_service import EmbeddingService
+
+    vector = [0.1] * 1536
+    cache = Mock(get=AsyncMock(return_value=vector))
+    service = EmbeddingService()
+    with patch("app.services.embedding_service.disposable_cache", cache), patch.object(service, "_get_client") as provider:
+        assert await service.embed_text("dummy text") == vector
+    provider.assert_not_called()
