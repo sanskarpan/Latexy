@@ -932,7 +932,8 @@
       "baselineReason": null,
       "serverHandlers": [],
       "dynamicOrServiceGates": [
-        "backend/app/api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)"
+        "backend/app/api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)",
+        "backend/app/middleware/capability_router.py:payload_capabilities (JSON raw/saved/builder export also requires h01)"
       ],
       "clientControls": [
         "frontend/src/app/workspace/builder/new/page.tsx",
@@ -942,7 +943,9 @@
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
-          "backend/test/test_capability_route_policy.py::test_structured_import_checks_interchange_capability"
+          "backend/test/test_capability_route_policy.py::test_structured_import_checks_interchange_capability",
+          "backend/test/test_capability_route_policy.py::test_json_export_composes_interchange_and_export_grants_before_data_access",
+          "backend/test/test_capability_route_policy.py::test_json_export_allows_the_composed_grants"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
