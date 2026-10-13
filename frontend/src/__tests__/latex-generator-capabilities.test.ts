@@ -34,8 +34,18 @@ function deferred<T>() {
 
 async function harness() {
   vi.resetModules()
-  let index = 0; let grants = new Set<string>(all); let owner: string | null = 'A'; let pending = false; let sessionError: Error | null = null
+  let index = 0; let grants = new Set<string>(all); let owner: string | null = 'A'; let pending = false; let refetching = false; let sessionError: Error | null = null
   let token: string | null = 'A-token'; let documentId = 'document-A'; let missingSession = false; let documentContext = 'style context'
+  let authorityEpoch = 0; let admissionEpoch = 0; let recoveryIdentity = {}; let authorityProvided = true
+  const authority = () => {
+    const epoch = authorityEpoch; const admission = admissionEpoch
+    const isCurrent = () => authorityProvided && epoch === authorityEpoch
+    const isAdmissionCurrent = () => isCurrent() && admission === admissionEpoch
+    return { recoveryIdentity, isCurrent, isAdmissionCurrent, canAdmit: () => isAdmissionCurrent() && Boolean(owner && !missingSession && !pending && !refetching && !sessionError) }
+  }
+  let accountScope = authority()
+  const renewAdmission = () => { admissionEpoch += 1; accountScope = authority() }
+  const renewAuthority = () => { authorityEpoch += 1; recoveryIdentity = {}; renewAdmission() }
   const slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }> = []
   const effects = new Map<number, () => void>()
   const same = (a?: unknown[], b?: unknown[]) => Boolean(a && b && a.length === b.length && a.every((item, i) => Object.is(item, b[i])))
@@ -59,7 +69,10 @@ async function harness() {
     const snapshot = grants
     return { can: (key: string) => snapshot.has(key) }
   } }))
-  vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: owner && !missingSession ? { user: { id: owner }, session: { token } } : null, isPending: pending, error: sessionError }) }))
+  // Standalone tests supply an explicit boundary authority; production's
+  // missing-provider default is null and must remain fail-closed.
+  vi.doMock('@/contexts/AccountContentScope', () => ({ useAccountContentScope: () => authorityProvided ? accountScope : null }))
+  vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ data: owner && !missingSession ? { user: { id: owner }, session: { token } } : null, isPending: pending, isRefetching: refetching, error: sessionError }) }))
   const result = { latex: '\\section{Admitted}', cached: false, rows: 2, columns: 2 }
   const api = { getAuthToken: () => token,
     generateLatex: vi.fn().mockResolvedValue(result), generateLatexTable: vi.fn().mockResolvedValue(result),
@@ -77,11 +90,19 @@ async function harness() {
   render()
   return { api, onInsert, onRecoveryChange, writeText, result, render,
     allow: (next: string[]) => { grants = new Set(next) },
-    owner: (next: string | null) => { owner = next; token = next ? `${next}-token` : null },
-    session: (nextPending: boolean, error: Error | null = null, missing = false) => { pending = nextPending; sessionError = error; missingSession = missing },
-    document: (next: string) => { documentId = next },
+    owner: (next: string | null) => { if (owner !== next) renewAuthority(); owner = next; token = next ? `${next}-token` : null },
+    session: (nextPending: boolean, error: Error | null = null, missing = false) => {
+      const unauthorized = (value: Error | null) => value !== null && 'status' in value && value.status === 401
+      if (unauthorized(error) !== unauthorized(sessionError)) renewAuthority()
+      else if (pending !== nextPending || sessionError !== error || missingSession !== missing) renewAdmission()
+      pending = nextPending; sessionError = error; missingSession = missing
+    },
+    refetch: (next: boolean) => { if (refetching !== next) renewAdmission(); refetching = next },
+    authority: (provided: boolean) => { authorityProvided = provided },
+    renewAuthority,
+    document: (next: string) => { if (documentId !== next) renewAuthority(); documentId = next },
     context: (next: string) => { documentContext = next },
-    token: (next: string | null) => { token = next },
+    token: (next: string | null) => { if (token !== next) renewAdmission(); token = next },
     unmount: () => slots.forEach(slot => slot.cleanup?.()) }
 }
 type Harness = Awaited<ReturnType<typeof harness>>
@@ -98,11 +119,68 @@ function configure(h: Harness, leaf: typeof leaves[number]) {
 const action = (leaf: typeof leaves[number]) => leaf === 'd14_latex' ? 'Generate fragment' : leaf.includes('table') ? 'Generate table' : 'Generate math'
 const apiMethod = (leaf: typeof leaves[number]) => ({ d14_latex: 'generateLatex', d14_table_text: 'generateLatexTable', d14_table_image: 'generateLatexTableFromImage', d14_math_text: 'generateLatexMath', d14_math_image: 'generateLatexMathFromImage' } as const)[leaf]
 afterEach(() => {
-  for (const name of ['react', '@/contexts/EntitlementsContext', '@/lib/auth-client', '@/lib/api-client']) vi.doUnmock(name)
+  for (const name of ['react', '@/contexts/EntitlementsContext', '@/contexts/AccountContentScope', '@/lib/auth-client', '@/lib/api-client']) vi.doUnmock(name)
   vi.unstubAllGlobals(); vi.resetModules()
 })
 
 describe('D14 exact branch admission and result recovery', () => {
+  it('fails closed for a missing protected-content provider, including retained callbacks and recovery', async () => {
+    const h = await harness(); const generate = button(configure(h, 'd14_latex'), 'Generate fragment')
+    click(generate); await settle(); const tree = h.render()
+    const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment')
+    h.authority(false); const unavailable = h.render(false)
+    expect(label(unavailable)).not.toContain(h.result.latex)
+    expect(elements(unavailable).some(node => node.type === 'textarea')).toBe(false)
+    click(generate); click(insert); await click(copy)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled(); expect(h.writeText).not.toHaveBeenCalled()
+    h.unmount()
+  })
+  it('denies old callbacks after outer-boundary ABA without any child rerender or passive cleanup', async () => {
+    const h = await harness(); const generate = button(configure(h, 'd14_latex'), 'Generate fragment')
+    click(generate); await settle(); const tree = h.render()
+    const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment')
+    const input = textarea(tree); const mode = button(tree, 'Math')
+    h.renewAuthority(); h.renewAuthority()
+    click(generate); click(insert); await click(copy); change(input, 'STALE INPUT'); click(mode)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled(); expect(h.writeText).not.toHaveBeenCalled()
+    expect(label(h.render(false))).not.toContain(h.result.latex)
+    expect(label(h.render(false))).not.toContain('STALE INPUT'); h.unmount()
+  })
+  it('rejects late admitted completion after outer invalidation before a child rerender', async () => {
+    const h = await harness(); const request = deferred<typeof h.result>(); h.api.generateLatex.mockReturnValueOnce(request.promise)
+    const generate = button(configure(h, 'd14_latex'), 'Generate fragment'); click(generate)
+    h.onRecoveryChange.mockClear(); h.renewAuthority(); request.resolve(h.result); await settle()
+    expect(label(h.render(false))).not.toContain(h.result.latex)
+    expect(h.onRecoveryChange.mock.calls.flat()).not.toContain(true); h.unmount()
+  })
+  it('retires old admission callbacks across a whole skipped-child refetch cycle while retaining owned recovery', async () => {
+    const h = await harness(); const generate = button(configure(h, 'd14_latex'), 'Generate fragment')
+    click(generate); await settle(); const tree = h.render()
+    const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment')
+    h.refetch(true); h.refetch(false) // The panel never rendered the transient state.
+    click(generate); click(insert); await click(copy); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(h.writeText).toHaveBeenCalledExactlyOnceWith(h.result.latex)
+    const current = h.render(false)
+    expect(label(current)).toContain(h.result.latex); expect(textarea(current).props.value).toBe('Create a heading')
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    click(button(current, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledExactlyOnceWith(h.result.latex)
+    click(button(current, 'Generate fragment again')); await settle(); expect(h.api.generateLatex).toHaveBeenCalledTimes(2)
+    h.unmount()
+  })
+  it('keeps admitted recovery during authenticated refetch but treats numeric401 as confirmed invalidation', async () => {
+    const h = await harness(); const generate = button(configure(h, 'd14_latex'), 'Generate fragment')
+    click(generate); await settle(); const tree = h.render(); const insert = button(tree, 'Insert at cursor')
+    h.refetch(true); const refreshing = h.render(false)
+    expect(label(refreshing)).toContain(h.result.latex); click(generate); click(insert)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    await click(button(refreshing, 'Copy fragment')); expect(h.writeText).toHaveBeenCalledOnce()
+    h.refetch(false); h.session(false, Object.assign(new Error('Unauthorized'), { status: 401 }), true)
+    expect(label(h.render(false))).not.toContain(h.result.latex)
+    h.session(false); h.render(false); click(generate); click(insert)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled(); h.unmount()
+  })
   it.each(leaves)('%s toggles only its exact branch, including a retained callback', async leaf => {
     const h = await harness(); const before = configure(h, leaf); const retained = button(before, action(leaf))
     h.allow(all.filter(key => key !== leaf))

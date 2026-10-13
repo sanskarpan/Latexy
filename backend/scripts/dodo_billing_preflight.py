@@ -21,10 +21,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0072_capability_roles"
+EXPECTED_HEAD = "0073_d14_subfeatures"
 DODO_MAINLINE_REVISIONS = {
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
+    "0073_d14_subfeatures",
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -122,6 +123,9 @@ CAPABILITY_SCHEMA_COLUMNS = {
     "0072_capability_roles": {
         "role_features": {"role", "feature_key", "enabled", "updated_at"},
     },
+    # Insert-only seed migration: no new tables or columns. The ordered entry
+    # still requires every preceding capability and billing fingerprint.
+    "0073_d14_subfeatures": {},
 }
 
 

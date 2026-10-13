@@ -96,6 +96,7 @@ function harness() {
     },
     getDraft: () => Promise.resolve(null),
     isActive: () => true,
+    loadedDocumentScopeRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A' } },
     setResumeLoadError: (error: unknown) => { if (error) throw new Error(String(error)) },
     setIsLoading: (value: boolean) => { context.isLoading = value },
   }
@@ -112,6 +113,11 @@ function harness() {
       ...context, useRef: (current: Identity) => identityRef ?? { current },
     })
     context.initialPreviewIdentityRef = identityRef
+    const documentScopeRef = context.loadedDocumentScopeRef as { current: { ownerId: string; resumeId: string } }
+    if (documentScopeRef.current.ownerId !== owner || documentScopeRef.current.resumeId !== resume) {
+      documentScopeRef.current = { ownerId: owner, resumeId: resume }
+    }
+    context.documentScope = documentScopeRef.current
     return identityRef!.current
   }
   renderIdentity()

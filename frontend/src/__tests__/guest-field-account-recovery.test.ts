@@ -3,6 +3,7 @@ import { runInNewContext } from 'node:vm'
 import React from 'react'
 import ts from 'typescript'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import { FIRST_USE_ENGINE_RESUME_TEMPLATE } from '@/lib/first-use-resume'
 import { applyGuestBulletPatch, GUEST_ORIGINAL_BULLET, projectGuestBullet } from '../../e2e/quality/guest-engine-fixture'
 
@@ -63,10 +64,11 @@ async function harness() {
   }))
   const { usePreviewScheduler } = await import('@/hooks/usePreviewScheduler')
   let owner = 'anonymous'
-  let boundaryRef: { current: unknown } | undefined
+  const boundaryRefs: Array<{ current: unknown }> = []; let boundaryIndex = 0
   const boundaryRender = evaluate<(props: { children: null }) => React.ReactElement>(`(${boundary.parameters.map(node => node.getText(boundarySource)).join(', ')}) => ${boundary.body!.getText(boundarySource)}`, {
     React, Fragment: React.Fragment,
-    useRef: (current: unknown) => boundaryRef ??= { current },
+    useRef: (current: unknown) => boundaryRefs[boundaryIndex++] ??= { current },
+    useEffect: () => {}, usePathname: () => '/try', isConfirmedSessionUnauthorized, AccountContentScopeProvider: 'AccountContentScopeProvider',
     useSession: () => ({ data: owner === 'anonymous' ? null : { user: { id: owner } }, isPending: false, error: null }),
   })
   const features = new Set(['a09', 'b10', 'c01'])
@@ -114,7 +116,9 @@ async function harness() {
   let current: ReturnType<typeof createMount> | undefined
   const render = (nextOwner = owner) => {
     owner = nextOwner
-    const key = boundaryRender({ children: null }).key
+    boundaryIndex = 0
+    const tree = boundaryRender({ children: null })
+    const key = (tree.props as { children: React.ReactElement }).children.key
     if (!current || current.key !== key) { current?.unmount(); current = createMount(key) }
     return current
   }

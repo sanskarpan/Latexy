@@ -2,11 +2,30 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import ts from 'typescript'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
+
+type SessionData = { user: { id: string }; session: { token: string } }
+type SessionAtom = { value: { data: SessionData | null; isPending: boolean; isRefetching: boolean; error: unknown; refetch: () => Promise<void> };
+  set: (state: SessionAtom['value']) => void }
 
 const pageSource = readFileSync(resolve(process.cwd(), 'src/app/workspace/[resumeId]/edit/page.tsx'), 'utf8')
 const pageAst = ts.createSourceFile('page.tsx', pageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const pageFunction = pageAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'ResumeEditPage') as ts.FunctionDeclaration
 const pageStatements = pageFunction.body!.statements
+const confirmedEndedDeclaration = pageStatements.find(node => ts.isVariableStatement(node)
+  && node.declarationList.declarations.some(declaration => declaration.name.getText(pageAst) === 'confirmedSessionEnded'))!
+const offlineOwnerDeclaration = pageStatements.find(node => ts.isVariableStatement(node)
+  && node.declarationList.declarations.some(declaration => declaration.name.getText(pageAst) === 'offlinePdfOwnerId'))!
+const authorityStart = pageStatements.findIndex(node => ts.isVariableStatement(node)
+  && node.declarationList.declarations.some(declaration => declaration.name.getText(pageAst) === 'sessionUnauthorized'))
+const authorityEnd = pageStatements.indexOf(confirmedEndedDeclaration)
+const authorityJs = ts.transpileModule(`${pageStatements.slice(authorityStart, authorityEnd + 1).map(node => node.getText(pageAst)).join('\n')}
+${offlineOwnerDeclaration.getText(pageAst)}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+const actualSessionAuthority = new Function('context', `with (context) { ${authorityJs}; return { confirmedSessionEnded, offlinePdfOwnerId } }`) as
+  (context: Record<string, unknown>) => { confirmedSessionEnded: boolean; offlinePdfOwnerId: string | null }
 const pageBoundaryDeclaration = pageStatements.find(node => ts.isVariableStatement(node)
   && node.declarationList.declarations.some(declaration => declaration.name.getText(pageAst) === 'editorLoadBoundary'))!
 function containsPageReturn(node: ts.Node): boolean {
@@ -25,13 +44,25 @@ const boundaryJs = ts.transpileModule(`function actualPageLoadGuards() {
 const actualPageLoadGuards = new Function('context', 'React', `with (context) { ${boundaryJs}; return actualPageLoadGuards() }`) as
   (context: Record<string, unknown>, react: unknown) => import('react').ReactElement | null | undefined
 let sourceLoadActiveExpression = ''
+let sourceLoadWaitStatement = ''
+let sourceAuthReadyExpression = ''
+let generatorAuthReadyExpression = ''
 function findLoadEffect(node: ts.Node) {
+  if (ts.isCallExpression(node) && node.expression.getText(pageAst) === 'useEditorSourceLoadScope') {
+    sourceAuthReadyExpression = node.arguments[3].getText(pageAst)
+  }
+  if (ts.isCallExpression(node) && node.expression.getText(pageAst) === 'useLatexGeneratorRecovery') {
+    const options = node.arguments[0] as ts.ObjectLiteralExpression
+    const ready = options.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText(pageAst) === 'authReady') as ts.PropertyAssignment
+    generatorAuthReadyExpression = ready.initializer.getText(pageAst)
+  }
   if (ts.isCallExpression(node) && node.expression.getText(pageAst) === 'useEffect'
     && node.arguments[0]?.getText(pageAst).includes('const fetchResume =')) {
     const body = (node.arguments[0] as ts.ArrowFunction).body as ts.Block
     const declaration = body.statements.filter(ts.isVariableStatement).flatMap(statement => [...statement.declarationList.declarations])
       .find(item => item.name.getText(pageAst) === 'isActive')
     sourceLoadActiveExpression = declaration!.initializer!.getText(pageAst)
+    sourceLoadWaitStatement = body.statements[0].getText(pageAst)
   }
   ts.forEachChild(node, findLoadEffect)
 }
@@ -41,6 +72,13 @@ const activeLoadJs = ts.transpileModule(`const isActive = ${sourceLoadActiveExpr
 }).outputText
 const actualSourceLoadIsActive = new Function('context', `with (context) { ${activeLoadJs}; return isActive() }`) as
   (context: Record<string, unknown>) => boolean
+const actualSourceAuthReady = new Function('context', `with (context) { return ${sourceAuthReadyExpression} }`) as
+  (context: Record<string, unknown>) => boolean
+const actualGeneratorAuthReady = new Function('context', `with (context) { return ${generatorAuthReadyExpression} }`) as
+  (context: Record<string, unknown>) => boolean
+const actualSourceLoadCanBegin = new Function('context', `with (context) {
+  function beginAllowed() { ${sourceLoadWaitStatement}; return true }; return Boolean(beginAllowed())
+}`) as (context: Record<string, unknown>) => boolean
 
 type Element = { type: unknown; key?: string | null; props: Record<string, unknown> }
 type Slot = { value?: unknown; deps?: unknown[]; cleanup?: () => void }
@@ -71,17 +109,25 @@ function deferred<T>() {
 async function harness(autoLoad = true) {
   vi.resetModules()
   let rawOwner: string | null = 'owner-A'; let documentId = 'document-A'; let token = 'token-A'
-  let rawSession: { user: { id: string }; session: { token: string } } | null = { user: { id: rawOwner }, session: { token } }
-  let pending = false; let authError: Error | null = null; let grants = new Set(all); let sourceWritable = true
+  let rawSession: SessionData | null = { user: { id: rawOwner }, session: { token } }
+  let actualAtom: SessionAtom | null = null
+  let pending = false; let refetching = false; let authError: Error | null = null; let grants = new Set(all); let sourceWritable = true
   let isLoading = !autoLoad; let resumeLoadError: string | null = null
   let offlineDraftLoaded = false; let offlinePdfLoaded = false
+  const offlineIdentityDeniedRef = { current: false }
   let dirty = false; let instance: Instance
+  let accountAuthority: import('@/contexts/AccountContentScope').AccountContentScope | null = null
+  let accountKey = ''; let skipEditor = false; let editorTree: unknown
+  let lastAuthority: import('@/contexts/AccountContentScope').AccountContentScope | null = null
+  const pendingUnmount: Instance[] = []
   const instances = new Map<string, Instance>()
   const effects = new Map<Instance, Map<number, () => void>>()
+  const layouts = new Map<Instance, Map<number, () => void>>()
   let seen = new Set<string>()
   const same = (a?: unknown[], b?: unknown[]) => Boolean(a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index])))
   vi.doMock('react', async original => ({
     ...await original<typeof import('react')>(),
+    useContext: () => accountAuthority,
     useRef: (value: unknown) => { const slot = instance.index++; instance.slots[slot] ??= { value: { current: value } }; return instance.slots[slot].value },
     useState: (value: unknown) => {
       const target = instance; const slot = target.index++
@@ -98,6 +144,15 @@ async function harness(autoLoad = true) {
       if (!same(instance.slots[slot]?.deps, deps)) instance.slots[slot] = { value: callback, deps }
       return instance.slots[slot].value
     },
+    useLayoutEffect: (effect: () => void | (() => void), deps: unknown[]) => {
+      const target = instance; const slot = target.index++; const previous = target.slots[slot]
+      if (!same(previous?.deps, deps)) {
+        target.slots[slot] = { deps, cleanup: previous?.cleanup }
+        const queue = layouts.get(target) ?? new Map<number, () => void>()
+        layouts.set(target, queue)
+        queue.set(slot, () => { target.slots[slot].cleanup?.(); target.slots[slot].cleanup = effect() || undefined })
+      }
+    },
     useEffect: (effect: () => void | (() => void), deps: unknown[]) => {
       const target = instance; const slot = target.index++; const previous = target.slots[slot]
       if (!same(previous?.deps, deps)) {
@@ -111,9 +166,9 @@ async function harness(autoLoad = true) {
   let panel: typeof import('@/components/LatexGeneratorPanel').default
   vi.doMock('next/dynamic', () => ({ default: () => (props: Parameters<typeof panel>[0]) => panel(props) }))
   const router = { push: vi.fn() }
-  vi.doMock('next/navigation', () => ({ useRouter: () => router }))
-  vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({
-    data: rawSession, isPending: pending, error: authError,
+  vi.doMock('next/navigation', () => ({ useRouter: () => router, usePathname: () => `/workspace/${documentId}/edit` }))
+  vi.doMock('@/lib/auth-client', () => ({ useSession: () => actualAtom?.value ?? ({
+    data: rawSession, isPending: pending, isRefetching: refetching, error: authError,
   }) }))
   vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => {
     const snapshot = grants
@@ -131,6 +186,8 @@ async function harness(autoLoad = true) {
   const Shell = (await import('@/components/LatexGeneratorRecoveryShell')).default
   const { useLatexGeneratorRecovery, useEditorSourceLoadScope, editorRecoveryLoadBoundary } = await import('@/hooks/useLatexGeneratorRecovery')
   const { useRequireAuth } = await import('@/hooks/useRequireAuth')
+  const Boundary = (await import('@/components/AccountContentBoundary')).default
+  const { AccountContentScopeProvider } = await import('@/contexts/AccountContentScope')
   const React = await import('react')
   const { useState, useRef, useEffect } = React
   const { jsx, jsxs } = await import('react/jsx-runtime')
@@ -141,25 +198,33 @@ async function harness(autoLoad = true) {
     const auth = useRequireAuth()
     const [tab, setTab] = useState('preview')
     const current = useRef<ReturnType<typeof useLatexGeneratorRecovery> | null>(null)
+    const authContext = { sessionUserId: auth.session?.user?.id ?? null, sessionLoading: auth.isPending,
+      sessionRefetching: auth.isRefetching, sessionError: auth.error }
+    const authority = actualSessionAuthority({ ...authContext, sessionData: auth.session, rememberedOfflineOwner: 'owner-A', isConfirmedSessionUnauthorized, useRef: () => offlineIdentityDeniedRef })
     const sourceScope = useEditorSourceLoadScope(auth.session?.user?.id ?? null, documentId, auth.session,
-      Boolean(auth.session?.user?.id && !auth.isPending && !auth.error))
+      actualSourceAuthReady(authContext))
     source = sourceScope
-    const { beginLoad, finishLoad } = sourceScope
+    const { beginLoad, finishLoad, ownsLoad } = sourceScope
     useEffect(() => {
-      if (!autoLoad) return
+      if (!autoLoad || !actualSourceLoadCanBegin({ sessionLoading: auth.isPending, sessionRefetching: auth.isRefetching })) return
       const ticket = beginLoad()
+      if (!ownsLoad(ticket)) return
       finishLoad(ticket, 'ready', 'server')
-    }, [beginLoad, finishLoad])
+    }, [beginLoad, finishLoad, ownsLoad, auth.isPending, auth.isRefetching])
     const sourceLoadReady = source.isSourceReady() && !isLoading && !resumeLoadError
     recovery = useLatexGeneratorRecovery({ ownerId: auth.session?.user?.id ?? null, documentId,
-      authReady: Boolean(auth.session?.user?.id && !auth.isPending && !auth.error),
+      authReady: actualGeneratorAuthReady(authContext),
       can: feature => grants.has(feature), newWorkAllowed: sourceLoadReady && sourceWritable,
       sourceLoadReady: source.isSourceReady, active: tab === 'generate' })
     current.current = recovery
+    // This hook/shell fixture already owns its synthetic source. Actual queued
+    // page content/scope publication is covered by editor-content-scope.test.ts.
+    const ownedDocument = { ownerId: authority.offlinePdfOwnerId, resumeId: documentId }
     const pageReturn = actualPageLoadGuards({ editorRecoveryLoadBoundary, latexGeneratorRecovery: recovery,
       sourceLoadStatus: source.status, isLoading, resumeLoadError, sessionData: auth.session, sessionError: auth.error,
-      offlineDraftLoaded, offlinePdfLoaded, LoadingSpinner: 'LoadingSpinner', Link: 'a', AlertCircle: 'AlertCircle',
-      SessionLoadError: 'SessionLoadError' }, React)
+      offlineDraftLoaded, offlinePdfLoaded, confirmedSessionEnded: authority.confirmedSessionEnded, LoadingSpinner: 'LoadingSpinner', Link: 'a', AlertCircle: 'AlertCircle',
+      SessionLoadError: 'SessionLoadError', loadedDocumentScopeRef: { current: ownedDocument },
+      committedDocumentContent: { scope: ownedDocument, sourceLoaded: true } }, React)
     if (pageReturn !== undefined) return pageReturn
     return jsxs('div', { children: [
       jsx('button', { children: 'Preview', onClick: () => setTab('preview') }),
@@ -173,39 +238,80 @@ async function harness(autoLoad = true) {
     if (!value || typeof value !== 'object' || !('props' in value)) return value
     const node = value as Element
     const nextPath = `${path}:${node.key ?? ''}`
+    if (node.type === AccountContentScopeProvider) {
+      const previous = accountAuthority
+      accountAuthority = node.props.value as import('@/contexts/AccountContentScope').AccountContentScope
+      lastAuthority = accountAuthority
+      accountKey = String((node.props.children as Element).key)
+      const child = walk(node.props.children, `${nextPath}/provider`)
+      accountAuthority = previous
+      return child
+    }
+    if (node.type === Editor && skipEditor) {
+      for (const key of instances.keys()) if (key.startsWith(nextPath)) seen.add(key)
+      return editorTree
+    }
     if (typeof node.type === 'function') {
       const target = instances.get(nextPath) ?? { slots: [], index: 0, alive: true }
       instances.set(nextPath, target); seen.add(nextPath); target.index = 0
       const previous = instance; instance = target
       const result = (node.type as (props: Record<string, unknown>) => unknown)(node.props)
       instance = previous
-      return walk(result, `${nextPath}/component`)
+      const rendered = walk(result, `${nextPath}/component`)
+      if (node.type === Editor) editorTree = rendered
+      return rendered
     }
     return { ...node, props: { ...node.props, children: walk(node.props.children, `${nextPath}/children`) } }
   }
   const unmount = () => {
     for (const target of instances.values()) { target.alive = false; target.slots.forEach(slot => slot.cleanup?.()) }
-    instances.clear(); effects.clear()
+    pendingUnmount.forEach(target => target.slots.forEach(slot => slot.cleanup?.())); pendingUnmount.length = 0
+    instances.clear(); effects.clear(); layouts.clear()
   }
-  function render(flushEffects = true) {
+  function render(flushEffects = true, boundaryOnly = false) {
+    skipEditor = boundaryOnly
     let tree: unknown
     for (let pass = 0; pass < 25; pass++) {
       dirty = false; seen = new Set()
-      tree = walk(jsx(Editor, {}), 'editor')
+      tree = walk(jsx(Boundary, { children: jsx(Editor, {}) }), 'root')
       for (const [key, target] of instances) if (!seen.has(key)) {
-        target.alive = false; target.slots.forEach(slot => slot.cleanup?.()); instances.delete(key); effects.delete(target)
+        target.alive = false; pendingUnmount.push(target); instances.delete(key); effects.delete(target); layouts.delete(target)
       }
-      if (!flushEffects) return tree
+      const committedLayouts = [...layouts.entries()]; layouts.clear()
+      committedLayouts.forEach(([target, callbacks]) => { if (target.alive) callbacks.forEach(effect => effect()) })
+      if (!flushEffects) { if (dirty) continue; return tree }
+      pendingUnmount.forEach(target => target.slots.forEach(slot => slot.cleanup?.())); pendingUnmount.length = 0
       const queued = [...effects.entries()]; effects.clear()
       queued.forEach(([target, callbacks]) => { if (target.alive) callbacks.forEach(effect => effect()) })
       if (!dirty) return tree
     }
     throw new Error('Component lifecycle failed to settle')
   }
-  return { render, api, result, onInsert, writeText, unmount, recovery: () => recovery,
+  return { render, renderBoundaryOnly: () => render(false, true), authority: () => lastAuthority!, api, result, onInsert, writeText, unmount, // The effective mounted key includes the real outer Fragment incarnation.
+    recovery: () => ({ ...recovery, key: `${accountKey}/${recovery.key}` }),
+    useActualSessionAtom: async () => {
+      // This is the exact installed implementation, not a re-created refresh
+      // fixture. Equal success data deliberately retains its original reference.
+      const sessionModule = path.join(path.dirname(createRequire(import.meta.url).resolve('better-auth/client')), 'session-atom.mjs')
+      const { getSessionAtom } = await import(pathToFileURL(sessionModule).href)
+      const response = deferred<{ data: SessionData | null; error: { status: number; message: string } | null }>()
+      const fetch = vi.fn(() => response.promise)
+      const { session: atom } = getSessionAtom(fetch, {}) as { session: SessionAtom }
+      const session = rawSession!
+      atom.set({ ...atom.value, data: session, isPending: false, isRefetching: false, error: null })
+      actualAtom = atom
+      return { atom, response, fetch, session, start: async () => {
+        const completion = atom.value.refetch(); await Promise.resolve()
+        expect(atom.value.isPending).toBe(false); expect(atom.value.isRefetching).toBe(true)
+        expect(atom.value.data).toBe(session)
+        return { completion }
+      } }
+    },
     sessionReference: () => rawSession,
-    authReady: () => Boolean(rawSession && !pending && !authError),
+    authReady: () => Boolean(rawSession && !pending && !refetching && !authError),
+    isPending: () => pending,
     source: () => source,
+    offlineLoaded: () => { offlineDraftLoaded = true; offlinePdfLoaded = true },
     beginLoad: () => { isLoading = true; resumeLoadError = null; return source.beginLoad() },
     finishLoad: (ticket: Parameters<typeof source.finishLoad>[0], status: 'ready' | 'error' | 'pdf-only', kind: 'server' | 'offline' = 'server') => {
       if (!source.finishLoad(ticket, status, status === 'ready' ? kind : null)) return false
@@ -219,6 +325,7 @@ async function harness(autoLoad = true) {
       rawSession = owner ? { user: { id: owner }, session: { token } } : null
     },
     readiness: (isPending: boolean, error: Error | null = null) => { pending = isPending; authError = error },
+    refetching: (active: boolean) => { refetching = active },
     document: (next: string) => { documentId = next }, token: (next: string) => {
       token = next; rawSession = rawOwner ? { user: { id: rawOwner }, session: { token } } : null
     },
@@ -271,7 +378,7 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     await click(button(tree, 'Copy fragment')); expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
     h.auth('owner-A'); h.token('rotated-token'); tree = h.render()
     expect(h.recovery().key).toBe(key); expect(label(tree)).toContain(h.result.latex)
-    expect(retainedShellInsert()).toBe(true); click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledWith(h.result.latex)
+    expect(retainedShellInsert()).toBe(false); expect(h.recovery().mayInsert()).toBe(true); click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledWith(h.result.latex)
     h.unmount()
   })
 
@@ -313,6 +420,20 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
     h.writable(true); tree = h.render(); click(insert)
     expect(h.onInsert).toHaveBeenCalledOnce(); h.unmount()
+  })
+
+  it('denies retained Generate, Insert, Copy and source finish through actual outer route ABA before passive cleanup', async () => {
+    const h = await harness(false); h.render(); const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    const tree = h.render(); const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment'); const old = h.recovery()
+    h.document('document-B'); h.render(false); expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await click(copy); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    h.document('document-A'); h.render(false); expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await click(copy); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled(); expect(h.writeText).not.toHaveBeenCalled()
+    expect(old.mayStart()).toBe(false); expect(old.mayInsert()).toBe(false)
+    const fresh = h.beginLoad(); h.finishLoad(fresh, 'ready'); h.render(); expect(textarea(enter(h)).props.value).toBe('')
+    h.unmount()
   })
 
   it.each(['document', 'owner', 'logout'])('fences pending results and retained callbacks after confirmed %s changes and ABA', async kind => {
@@ -418,7 +539,8 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     const latest = h.beginLoad(); expect(h.source().ownsLoad(latest)).toBe(true)
     expect(h.finishLoad(latest, 'ready')).toBe(true); tree = h.render(false)
     expect(h.recovery().mayStart()).toBe(true); expect(h.recovery().mayInsert()).toBe(true)
-    expect(h.recovery().key).toBe(recoveryKey); click(insert); expect(h.onInsert).toHaveBeenCalledOnce()
+    expect(h.recovery().key).toBe(recoveryKey); click(insert); expect(h.onInsert).not.toHaveBeenCalled()
+    click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce()
     h.render(); h.unmount()
   })
 
@@ -450,11 +572,209 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce(); h.render(); h.unmount()
   })
 
+  it('permanently retires admission through the actual outer refetch lease cycle when the editor never renders the intermediate state', async () => {
+    const h = await harness(false); const actual = await h.useActualSessionAtom(); h.render()
+    const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    const tree = h.render(); const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment')
+    const oldSource = h.source(); const oldRecovery = h.recovery(); const oldLease = h.authority(); const session = h.sessionReference()
+    const key = oldRecovery.key; expect(oldSource.isSourceReady()).toBe(true)
+    const { completion } = await actual.start(); h.renderBoundaryOnly()
+    expect(h.source()).toBe(oldSource); expect(h.authority()).not.toBe(oldLease)
+    expect(oldLease.isCurrent()).toBe(true); expect(oldLease.canAdmit()).toBe(false)
+    expect(h.authority().recoveryIdentity).toBe(oldLease.recoveryIdentity)
+    actual.response.resolve({ data: structuredClone(actual.session), error: null }); await completion; h.renderBoundaryOnly()
+    expect(h.source()).toBe(oldSource); expect(h.sessionReference()).toBe(session)
+    expect(h.authority().canAdmit()).toBe(true); expect(oldLease.canAdmit()).toBe(false)
+    expect(oldLoad.identity.alive).toBe(true); expect(oldSource.isSourceReady()).toBe(false)
+    expect(oldSource.ownsLoad(oldLoad)).toBe(false); expect(oldSource.finishLoad(oldLoad, 'ready', 'server')).toBe(false)
+    click(generate); click(insert); await click(copy); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
+    let current = h.render(false); expect(h.recovery().key).toBe(key); expect(label(current)).toContain(h.result.latex)
+    expect(label(current)).toContain('Create a saved fragment'); expect(h.recovery().mayStart()).toBe(false)
+    const latest = h.beginLoad(); h.finishLoad(latest, 'ready'); current = h.render(false)
+    expect(h.recovery().mayStart()).toBe(true); expect(h.recovery().mayInsert()).toBe(true)
+    expect(oldSource.isSourceReady()).toBe(false); expect(oldRecovery.mayStart()).toBe(false); expect(oldRecovery.mayInsert()).toBe(false)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    click(button(current, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce()
+    click(button(h.render(), 'Generate fragment again')); await settle(); expect(h.api.generateLatex).toHaveBeenCalledTimes(2)
+    h.unmount()
+  })
+
+  it.each(['success', 'failure'])('retires current uncertain offline tickets through actual outer %s refetch without an editor render', async outcome => {
+    const h = await harness(false); const actual = await h.useActualSessionAtom(); h.render()
+    const loaded = h.beginLoad(); h.finishLoad(loaded, 'ready'); h.render()
+    click(button(draft(h), 'Generate fragment')); await settle(); h.render()
+    const first = await actual.start(); h.render(false)
+    actual.response.resolve({ data: null, error: { status: 503, message: 'Initial uncertainty' } }); await first.completion
+    h.render(false); const cold = h.beginLoad(); expect(h.source().ownsLoad(cold)).toBe(true)
+    expect(h.finishLoad(cold, 'ready', 'offline')).toBe(true); let tree = h.render(false)
+    const copy = button(tree, 'Copy fragment'); const old = h.source(); const lease = h.authority(); const key = h.recovery().key
+    const version = cold.identity.version; const sequence = cold.identity.sequence
+    expect(old.kind).toBe('offline'); expect(old.isSourceReady()).toBe(false); expect(lease.isAdmissionCurrent()).toBe(true)
+    const retry = deferred<{ data: SessionData | null; error: { status: number; message: string } | null }>()
+    actual.fetch.mockReturnValueOnce(retry.promise); const completion = actual.atom.value.refetch(); await Promise.resolve(); h.renderBoundaryOnly()
+    expect(h.source()).toBe(old); expect(cold.identity.alive).toBe(true); expect(lease.isCurrent()).toBe(true)
+    expect(lease.isAdmissionCurrent()).toBe(false); expect(old.beginLoad().sequence).toBe(-1)
+    expect(old.ownsLoad(cold)).toBe(false); expect(old.finishLoad(cold, 'ready', 'offline')).toBe(false)
+    expect(cold.identity.version).toBe(version); expect(cold.identity.sequence).toBe(sequence)
+    retry.resolve(outcome === 'success' ? { data: structuredClone(actual.session), error: null }
+      : { data: null, error: { status: 503, message: 'Changed uncertainty' } }); await completion; h.renderBoundaryOnly()
+    expect(h.source()).toBe(old); expect(old.beginLoad().sequence).toBe(-1); expect(old.finishLoad(cold, 'ready', 'offline')).toBe(false)
+    await click(copy); expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
+    tree = h.render(false); expect(h.recovery().key).toBe(key); expect(label(tree)).toContain(h.result.latex)
+    const current = h.beginLoad(); expect(h.source().ownsLoad(current)).toBe(true)
+    expect(h.finishLoad(current, 'ready', outcome === 'success' ? 'server' : 'offline')).toBe(true); tree = h.render(false)
+    expect(old.ownsLoad(cold)).toBe(false); expect(old.isSourceReady()).toBe(false)
+    if (outcome === 'success') { expect(h.recovery().mayStart()).toBe(true); click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce() }
+    else { expect(h.recovery().mayStart()).toBe(false); expect(h.source().kind).toBe('offline') }
+    h.unmount()
+  })
+
+  it('restores anonymous cold offline source only under its current uncertain outer lease', async () => {
+    const h = await harness(false); h.auth(null, false, new Error('Cold offline503')); h.render(false)
+    const cold = h.beginLoad(); expect(cold.identity.ownerId).toBeNull(); expect(cold.identity.authReady).toBe(false)
+    expect(h.source().ownsLoad(cold)).toBe(true); expect(h.finishLoad(cold, 'ready', 'offline')).toBe(true); h.render(false)
+    const old = h.source(); const lease = h.authority(); const version = cold.identity.version; const sequence = cold.identity.sequence
+    expect(old.kind).toBe('offline'); expect(old.isSourceReady()).toBe(false); expect(lease.canAdmit()).toBe(false)
+    h.readiness(false, new Error('Different cold offline503')); h.renderBoundaryOnly()
+    expect(h.source()).toBe(old); expect(lease.isCurrent()).toBe(true); expect(lease.isAdmissionCurrent()).toBe(false)
+    expect(old.beginLoad().sequence).toBe(-1); expect(old.ownsLoad(cold)).toBe(false); expect(old.finishLoad(cold, 'ready', 'offline')).toBe(false)
+    expect(cold.identity.version).toBe(version); expect(cold.identity.sequence).toBe(sequence)
+    h.render(false); const current = h.beginLoad(); expect(h.source().ownsLoad(current)).toBe(true)
+    expect(h.finishLoad(current, 'ready', 'offline')).toBe(true); h.render(false)
+    expect(h.source().isSourceReady()).toBe(false); expect(h.recovery().mayStart()).toBe(false)
+    expect(old.beginLoad().sequence).toBe(-1); expect(old.finishLoad(cold, 'ready', 'offline')).toBe(false)
+    expect(h.api.generateLatex).not.toHaveBeenCalled(); expect(h.onInsert).not.toHaveBeenCalled(); h.unmount()
+  })
+
+  it('blocks stable-data authenticated refetch with cold pending false before effects and waits for fresh source after completion', async () => {
+    const h = await harness(false); h.render(); const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    let tree = h.render(); const insert = button(tree, 'Insert at cursor')
+    const session = h.sessionReference(); const recoveryKey = h.recovery().key; const epoch = h.source().epoch
+    h.refetching(true); tree = h.render(false)
+    expect(h.sessionReference()).toBe(session); expect(h.isPending()).toBe(false)
+    expect(h.source().epoch).toBeGreaterThan(epoch); expect(h.source().status).toBe('unresolved')
+    expect(h.recovery().key).toBe(recoveryKey); expect(label(tree)).toContain('Create a saved fragment')
+    expect(label(tree)).toContain(h.result.latex); expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(h.source().ownsLoad(oldLoad)).toBe(false); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    await click(button(tree, 'Copy fragment')); expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
+    h.refetching(false); tree = h.render(false)
+    expect(h.sessionReference()).toBe(session); expect(h.isPending()).toBe(false); expect(h.authReady()).toBe(true)
+    expect(h.source().isSourceReady()).toBe(false); expect(h.recovery().mayStart()).toBe(false)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    const currentLoad = h.beginLoad(); h.finishLoad(currentLoad, 'ready'); tree = h.render(false)
+    expect(h.recovery().mayStart()).toBe(true); expect(h.recovery().key).toBe(recoveryKey)
+    click(insert); expect(h.onInsert).not.toHaveBeenCalled()
+    click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce(); h.render(); h.unmount()
+  })
+
+  it('keeps admitted completion and Copy during real authenticated-refetch flags while a superseded source ticket cannot renew admission', async () => {
+    const h = await harness(false); h.render(); const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const pending = deferred<typeof h.result>(); h.api.generateLatex.mockReturnValueOnce(pending.promise)
+    const generate = button(draft(h), 'Generate fragment'); click(generate); h.render()
+    const session = h.sessionReference(); const key = h.recovery().key
+    h.refetching(true); h.render(false); pending.resolve(h.result); await settle(); let tree = h.render(false)
+    expect(h.sessionReference()).toBe(session); expect(h.isPending()).toBe(false)
+    expect(label(tree)).toContain(h.result.latex); expect(h.recovery().key).toBe(key)
+    expect(h.finishLoad(oldLoad, 'ready')).toBe(false); click(generate); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.recovery().mayInsert()).toBe(false)
+    await click(button(tree, 'Copy fragment')); expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
+    h.refetching(false); tree = h.render(false); expect(h.recovery().mayStart()).toBe(false)
+    const fresh = h.beginLoad(); h.finishLoad(fresh, 'ready'); tree = h.render(false)
+    expect(label(tree)).toContain(h.result.latex); click(button(tree, 'Insert at cursor'))
+    expect(h.onInsert).toHaveBeenCalledOnce(); h.render(); h.unmount()
+  })
+
+  it.each(['success', 'failure'])('executes the installed Better Auth stable-data %s refetch through actual auth/source/recovery/shell hooks', async outcome => {
+    const h = await harness(false); const actual = await h.useActualSessionAtom(); h.render()
+    const loaded = h.beginLoad(); h.finishLoad(loaded, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    let tree = h.render(); const insert = button(tree, 'Insert at cursor'); const key = h.recovery().key
+    const { completion } = await actual.start(); tree = h.render(false)
+    expect(actual.atom.value.data).toBe(actual.session); expect(actual.atom.value.isPending).toBe(false)
+    expect(h.source().isSourceReady()).toBe(false); expect(h.source().ownsLoad(loaded)).toBe(false)
+    expect(h.finishLoad(loaded, 'ready')).toBe(false); expect(loaded.identity.alive).toBe(true)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(h.recovery().key).toBe(key); expect(label(tree)).toContain('Create a saved fragment')
+    expect(label(tree)).toContain(h.result.latex)
+    await click(button(tree, 'Copy fragment')); expect(h.writeText).toHaveBeenCalledWith(h.result.latex)
+    actual.response.resolve(outcome === 'success' ? { data: structuredClone(actual.session), error: null }
+      : { data: null, error: { status: 503, message: 'Synthetic authenticated refetch failure' } })
+    await completion; tree = h.render(false)
+    expect(actual.atom.value.data).toBe(actual.session); expect(actual.atom.value.isPending).toBe(false)
+    expect(actual.atom.value.isRefetching).toBe(false); expect(h.recovery().mayStart()).toBe(false)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(label(tree)).toContain(h.result.latex); expect(h.recovery().key).toBe(key)
+    if (outcome === 'failure') {
+      actual.fetch.mockResolvedValueOnce({ data: structuredClone(actual.session), error: null })
+      await actual.atom.value.refetch(); h.render(false)
+    }
+    // Successful auth alone never reopens source writes; current source must load.
+    expect(h.recovery().mayInsert()).toBe(false)
+    const latest = h.beginLoad(); h.finishLoad(latest, 'ready'); tree = h.render(false)
+    expect(h.recovery().mayStart()).toBe(true); click(insert); expect(h.onInsert).not.toHaveBeenCalled()
+    click(button(tree, 'Insert at cursor')); expect(h.onInsert).toHaveBeenCalledOnce()
+    expect(label(tree)).toContain(h.result.latex); h.render(); h.unmount()
+  })
+
+  it('purges recovery on installed Better Auth401 and gives a fresh same-owner session a new incarnation', async () => {
+    const h = await harness(false); const actual = await h.useActualSessionAtom(); h.render()
+    const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    const resolvedTree = h.render(); const insert = button(resolvedTree, 'Insert at cursor'); const copy = button(resolvedTree, 'Copy fragment'); const oldRecovery = h.recovery(); const key = oldRecovery.key
+    const { completion } = await actual.start(); h.render(false); h.offlineLoaded()
+    actual.response.resolve({ data: null, error: { status: 401, message: 'Synthetic expired session' } }); await completion
+    let tree = h.render(false)
+    expect(actual.atom.value.data).toBeNull(); expect(label(tree)).toBe(''); expect(h.recovery().key).not.toBe(key)
+    expect(h.recovery().mounted).toBe(false); expect(h.recovery().available).toBe(false)
+    expect(recoveryContainer(tree)).toBeUndefined(); expect(label(tree)).not.toContain(h.result.latex)
+    expect(label(tree)).not.toContain('Create a saved fragment')
+    expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await click(copy); oldRecovery.onRecoveryChange(true); await settle()
+    expect(h.writeText).not.toHaveBeenCalled()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(h.source().ownsLoad(oldLoad)).toBe(false); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    actual.fetch.mockResolvedValueOnce({ data: structuredClone(actual.session), error: null })
+    await actual.atom.value.refetch(); tree = h.render(false)
+    expect(actual.atom.value.data?.user.id).toBe(actual.session.user.id)
+    expect(h.recovery().key).not.toBe(key); expect(h.recovery().mayStart()).toBe(false)
+    const freshLoad = h.beginLoad(); h.finishLoad(freshLoad, 'ready'); tree = h.render()
+    expect(label(tree)).not.toContain(h.result.latex); expect(textarea(enter(h)).props.value).toBe('')
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    expect(oldRecovery.mayStart()).toBe(false); expect(oldRecovery.mayInsert()).toBe(false)
+    h.unmount()
+  })
+
+  it('denies retained Generate, Insert, Copy and source finish through actual outer route ABA before passive cleanup', async () => {
+    const h = await harness(false); h.render(); const oldLoad = h.beginLoad(); h.finishLoad(oldLoad, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    const tree = h.render(); const insert = button(tree, 'Insert at cursor'); const copy = button(tree, 'Copy fragment'); const old = h.recovery()
+    h.document('document-B'); h.render(false); expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await click(copy); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    h.document('document-A'); h.render(false); expect(oldLoad.identity.alive).toBe(true)
+    click(generate); click(insert); await click(copy); expect(h.finishLoad(oldLoad, 'ready')).toBe(false)
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled(); expect(h.writeText).not.toHaveBeenCalled()
+    expect(old.mayStart()).toBe(false); expect(old.mayInsert()).toBe(false)
+    const fresh = h.beginLoad(); h.finishLoad(fresh, 'ready'); h.render(); expect(textarea(enter(h)).props.value).toBe('')
+    h.unmount()
+  })
+
   it.each(['document', 'owner', 'logout'])('blocks new-scope source use and rejects old load tickets after %s ABA', async kind => {
     const h = await harness(false); h.render(); const firstLoad = h.beginLoad(); h.finishLoad(firstLoad, 'ready'); h.render()
     draft(h); const oldScope = h.recovery(); const oldLoad = h.beginLoad(); h.render()
     if (kind === 'document') h.document('document-B'); else h.auth(kind === 'logout' ? null : 'owner-B')
-    let tree = h.render(); expect(elements(tree).some(node => node.type === 'LoadingSpinner')).toBe(true)
+    let tree = h.render(); if (kind === 'logout') expect(label(tree)).toBe('')
+    else expect(elements(tree).some(node => node.type === 'LoadingSpinner')).toBe(true)
     expect(recoveryContainer(tree)).toBeUndefined(); expect(h.source().isSourceReady()).toBe(false)
     const middleLoad = h.beginLoad(); h.render()
     if (kind === 'document') h.document('document-A'); else h.auth('owner-A')
@@ -467,6 +787,19 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     expect(label(enter(h))).not.toContain('Create a saved fragment'); h.unmount()
   })
 
+  it('requires a ready state commit before finishLoad can renew retained generation and insertion', async () => {
+    const h = await harness(false); h.render(); const initial = h.beginLoad(); h.finishLoad(initial, 'ready'); h.render()
+    const generate = button(draft(h), 'Generate fragment'); click(generate); await settle()
+    const insert = button(h.render(), 'Insert at cursor'); const load = h.beginLoad()
+    expect(h.finishLoad(load, 'ready')).toBe(true); expect(h.source().isSourceReady()).toBe(false)
+    click(generate); click(insert); await settle()
+    expect(h.api.generateLatex).toHaveBeenCalledOnce(); expect(h.onInsert).not.toHaveBeenCalled()
+    h.render(); expect(h.source().isSourceReady()).toBe(true)
+    expect(h.finishLoad(load, 'error')).toBe(true); expect(h.source().isSourceReady()).toBe(false)
+    expect(h.finishLoad(load, 'ready')).toBe(true); expect(h.source().isSourceReady()).toBe(false)
+    h.render(); expect(h.source().isSourceReady()).toBe(true); h.unmount()
+  })
+
   it('tags offline source success separately and never authorizes generation from a PDF-only recovery', async () => {
     const h = await harness(false); h.render(); const pdf = h.beginLoad(); h.finishLoad(pdf, 'pdf-only')
     let tree = h.render(); expect(h.source().isSourceReady()).toBe(false)
@@ -474,6 +807,22 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     const draftLoad = h.beginLoad(); h.finishLoad(draftLoad, 'ready', 'offline'); tree = h.render()
     expect(h.source().kind).toBe('offline'); expect(h.source().isSourceReady()).toBe(true)
     expect(button(tree, 'Generate LaTeX')).toBeDefined(); h.unmount()
+  })
+
+  it.each([401, 'empty'])('the actual saved editor ignores remembered offline owner and loaded flags on confirmed %s session end', status => {
+    const authority = actualSessionAuthority({ sessionUserId: null, sessionData: null, sessionLoading: false, sessionRefetching: false,
+      sessionError: status === 401 ? { status: 401 } : null, rememberedOfflineOwner: 'owner-A', isConfirmedSessionUnauthorized, useRef: () => ({ current: false }) })
+    expect(authority.confirmedSessionEnded).toBe(true); expect(authority.offlinePdfOwnerId).toBeNull()
+  })
+
+  it('the actual saved editor never revives remembered offline owner on401→503 and requires settled new owner to clear denial', () => {
+    const ref = { current: false }
+    const base = { sessionUserId: null, sessionData: null, sessionLoading: false, sessionRefetching: false,
+      rememberedOfflineOwner: 'owner-A', isConfirmedSessionUnauthorized, useRef: () => ref }
+    expect(actualSessionAuthority({ ...base, sessionError: { status: 401 } }).offlinePdfOwnerId).toBeNull()
+    expect(actualSessionAuthority({ ...base, sessionError: { status: 503 } }).offlinePdfOwnerId).toBeNull()
+    expect(actualSessionAuthority({ ...base, sessionUserId: 'owner-A', sessionData: {}, sessionRefetching: true, sessionError: null }).offlinePdfOwnerId).toBeNull()
+    expect(actualSessionAuthority({ ...base, sessionUserId: 'owner-A', sessionData: {}, sessionError: null }).offlinePdfOwnerId).toBe('owner-A')
   })
 
   it('binds the editor menu, fallback and persistent shell to the exercised recovery policy', () => {
@@ -486,6 +835,9 @@ describe('D14 editor recovery shell and keyed component lifecycle', () => {
     expect(source).toContain('newWorkAllowed: sourceLoadReady &&')
     expect(source).toContain('const canEditDocument = sourceLoadReady &&')
     expect(source).toContain('sourceLoadReady: isSourceReady')
+    expect(source).toContain('isRefetching: sessionRefetching')
+    expect(source).toContain('!sessionLoading && !sessionRefetching && !sessionError')
+    expect(source).toContain('if (sessionLoading || sessionRefetching) return')
     expect(source).toContain("finishSourceLoad(sourceLoad, 'ready', pendingDraft ? 'offline' : 'server')")
     expect(source).toContain("finishSourceLoad(sourceLoad, 'ready', 'offline')")
     expect(source).toContain('latexGeneratorRecovery.mounted && !sourceLoadReady')

@@ -13,22 +13,24 @@ import { useEffect, useRef } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { apiClient } from '@/lib/api-client'
 import { wsClient } from '@/lib/ws-client'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 
 export function AuthSync() {
-  const { data: session, isPending, error } = useSession()
+  const { data: session, isPending, isRefetching = false, error } = useSession()
   const referralClaimedFor = useRef<string | null>(null)
+  const unauthorized = isConfirmedSessionUnauthorized(error)
 
   useEffect(() => {
     // While the session request is in flight we know nothing yet — publishing a
     // null token here would open apiClient's auth-ready gate too early and let
     // mount-time fetches go out unauthenticated (401s that are never retried).
-    // A failed refresh is not a confirmed logout. Preserve the last published
+    // A non-401 failed refresh is not a confirmed logout. Preserve the last published
     // API/WS authentication state until Better Auth returns an authoritative
     // session or authoritative null response.
-    if (isPending || error) return
+    if (!unauthorized && (isPending || isRefetching || error)) return
     // session?.session?.token is the raw Better Auth session token stored
     // in the `session` table. FastAPI validates it by querying that table.
-    const token = session?.session?.token ?? null
+    const token = unauthorized ? null : session?.session?.token ?? null
     apiClient.setAuthToken(token)
     // AuthSync is the single source of truth for "the session state is known",
     // so it is the only caller of markAuthResolved() — this is what releases
@@ -37,6 +39,7 @@ export function AuthSync() {
     // Tell the WS manager only whether it should mint an authenticated one-time
     // ticket. The reusable Better Auth token must never enter a WebSocket URL.
     wsClient.setAuthenticated(Boolean(token))
+    if (!token) referralClaimedFor.current = null
 
     // Sign-up and OAuth both preserve the first-party referral cookie. Claim it
     // after Better Auth has issued a session so the backend, not the browser,
@@ -47,7 +50,7 @@ export function AuthSync() {
         // Referral capture must never block or fail authentication/navigation.
       })
     }
-  }, [session, isPending, error])
+  }, [session, isPending, isRefetching, error, unauthorized])
 
   return null
 }

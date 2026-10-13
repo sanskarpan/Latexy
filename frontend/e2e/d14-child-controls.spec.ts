@@ -21,12 +21,18 @@ async function fixture(page: Page, role = 'user') {
   const requests: string[] = []
   let responseGate: Promise<void> | null = null
   let sourceGate: Promise<void> | null = null; let sourceFailed = false
+  let sessionGate: Promise<void> | null = null
+  let sessionStatus = 200
   await page.addInitScript(() => { localStorage.setItem('latexy_auto_compile', 'false'); localStorage.setItem('latexy_onboarding_completed', 'true') })
   await page.route('**/*', async route => {
     const url = new URL(route.request().url()); const path = url.pathname
     if (path === '/api/auth/get-session') {
       authCalls += 1
-      return route.fulfill({ json: { session: { token: `${owner}-token-${sessionVersion}` }, user: { id: owner, email: `${owner}@example.test`, name: owner } } })
+      const data = { session: { token: `${owner}-token-${sessionVersion}` }, user: { id: owner, email: `${owner}@example.test`, name: owner } }
+      const status = sessionStatus
+      if (route.request().method() === 'GET' && sessionGate) await sessionGate
+      if (status !== 200) return route.fulfill({ status, json: { code: status === 401 ? 'UNAUTHORIZED' : 'TEMPORARY_FAILURE', message: `Synthetic session ${status}` } })
+      return route.fulfill({ json: data })
     }
     if (path.startsWith('/api/')) return route.fulfill({ json: {} })
     if (url.origin !== backendOrigin) return route.continue()
@@ -60,8 +66,9 @@ async function fixture(page: Page, role = 'user') {
     await page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
     await updated
   }
-  const refreshSession = async () => {
-    sessionVersion += 1; const before = authCalls
+  const refreshSession = async (rotateToken = true) => {
+    if (rotateToken) sessionVersion += 1
+    const before = authCalls
     await page.evaluate(() => {
       const message = JSON.stringify({ event: 'session', data: { trigger: 'd14-test-session-refresh' } })
       localStorage.setItem('better-auth.message', message)
@@ -72,6 +79,8 @@ async function fixture(page: Page, role = 'user') {
   return { requests, setFeatures: (next: Partial<Record<string, boolean>>) => { features = { ...all, ...next } },
     gate: (next: Promise<void> | null) => { responseGate = next }, refresh,
     sourceGate: (next: Promise<void> | null, failed = false) => { sourceGate = next; sourceFailed = failed },
+    sessionGate: (next: Promise<void> | null) => { sessionGate = next },
+    sessionStatus: (next: number) => { sessionStatus = next },
     sourceCalls: () => sourceCalls, refreshSession,
     switchOwner: async (next: string) => {
       owner = next; await refreshSession()
@@ -155,6 +164,57 @@ test('real editor preserves admitted recovery through same-owner source loading,
   await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
   expect(f.requests).toHaveLength(1)
   expect(await page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
+})
+
+test('actual authenticated GET-session refetch holds stable recovery and blocks D14 until the subsequent source reload succeeds', async ({ page }) => {
+  const f = await fixture(page); let releaseSession!: () => void; let releaseSource!: () => void
+  await openPanel(page); await (await configure(page, 'd14_latex')).click()
+  await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
+  const before = f.sourceCalls()
+  f.sessionGate(new Promise<void>(resolve => { releaseSession = resolve }))
+  f.sourceGate(new Promise<void>(resolve => { releaseSource = resolve }))
+  try {
+    // The response is unchanged, so Better Auth keeps its exact data object.
+    // While GET is held it sets isRefetching=true with isPending=false.
+    await f.refreshSession(false)
+    await expect(page.getByRole('status').filter({ hasText: 'Saved generator recovery is available' })).toBeVisible()
+    await expect(page.getByText('Create a heading', { exact: true })).toBeVisible()
+    await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Copy fragment' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Generate fragment again' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Insert at cursor' })).toHaveCount(0)
+    expect(f.sourceCalls()).toBe(before); expect(f.requests).toHaveLength(1)
+    releaseSession()
+    await expect.poll(f.sourceCalls).toBeGreaterThan(before)
+    await expect(page.getByRole('button', { name: 'Generate fragment again' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Insert at cursor' })).toHaveCount(0)
+    await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
+    releaseSource()
+    await expect(page.getByRole('button', { name: 'Generate fragment again' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Insert at cursor' })).toBeEnabled()
+    await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
+    expect(f.requests).toHaveLength(1)
+    expect(await page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
+  } finally {
+    releaseSession(); releaseSource(); f.sessionGate(null); f.sourceGate(null)
+  }
+})
+
+test('authoritative GET-session401 purges owned D14 recovery and redirects without re-admitting generation', async ({ page }) => {
+  const f = await fixture(page); let releaseSession!: () => void
+  await openPanel(page); await (await configure(page, 'd14_latex')).click()
+  await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toBeVisible()
+  f.sessionStatus(401); f.sessionGate(new Promise<void>(resolve => { releaseSession = resolve }))
+  try {
+    await f.refreshSession(false)
+    await expect(page.getByRole('button', { name: 'Generate fragment again' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Insert at cursor' })).toHaveCount(0)
+    releaseSession()
+    await expect(page).toHaveURL(/\/login\?redirect=/)
+    await expect(page.getByText('\\textbf{generate-latex}', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Generate LaTeX' })).toHaveCount(0)
+    expect(f.requests).toHaveLength(1)
+  } finally { releaseSession(); f.sessionGate(null) }
 })
 
 for (const ancestor of ['d14', 'ai_writing']) test(`owned D14 recovery survives ${ancestor} revocation and tab revisit`, async ({ page }) => {

@@ -18,11 +18,13 @@ describe('authenticated workspace route loading', () => {
     expect(route).toContain(renderGuard)
   })
 
-  it('the editor terminates confirmed signed-out loading without hiding owned offline source or PDF recovery', () => {
+  it('the editor terminates confirmed signed-out loading and preserves offline recovery only while authentication is uncertain', () => {
     const signedOut = { preserveRecovery: false, sourceStatus: 'error' as const, isLoading: false, resumeLoadError: null,
       hasSession: false, sessionError: null, offlineDraftLoaded: false, offlinePdfLoaded: false }
     expect(editorRecoveryLoadBoundary(signedOut)).toBe('empty')
     expect(editorRecoveryLoadBoundary({ ...signedOut, sourceStatus: 'ready', offlineDraftLoaded: true })).toBe('editor')
     expect(editorRecoveryLoadBoundary({ ...signedOut, sourceStatus: 'pdf-only', offlinePdfLoaded: true })).toBe('editor')
+    expect(editorRecoveryLoadBoundary({ ...signedOut, sourceStatus: 'ready', offlineDraftLoaded: true, confirmedSessionEnded: true })).toBe('empty')
+    expect(editorRecoveryLoadBoundary({ ...signedOut, preserveRecovery: true, sourceStatus: 'pdf-only', offlinePdfLoaded: true, confirmedSessionEnded: true })).toBe('empty')
   })
 })

@@ -1,0 +1,13 @@
+{
+  "version": "0.55.1",
+  "files": {
+    "esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js": {
+      "original": "507b02c2395b05aedcc3d512c6f7653bcf0e8205d4bc7af92398eafd61b31c89",
+      "patched": "886ab2952036365774f8c26bc7fe75ca4010ae97cd1cdcfd1387b441ac1ef0d0"
+    },
+    "min/vs/editor.api-CalNCsUg.js": {
+      "original": "c10d0058fe0ee5d2c46c3b6cbb28474407be5d45ada35973f3230561f82c4de5",
+      "patched": "344162ef74c225253cd14ae836a5b66b21d7055c752207cd59802d34e2a7a257"
+    }
+  }
+}

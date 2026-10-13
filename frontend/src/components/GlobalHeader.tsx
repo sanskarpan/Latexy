@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Download } from 'lucide-react'
 import { signOut, useSession } from '@/lib/auth-client'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
@@ -44,19 +45,23 @@ const fullscreenPatterns = [/^\/try$/, /^\/workspace\/[^/]+\/edit$/, /^\/workspa
 export default function GlobalHeader() {
   const { t } = useI18n()
   const pathname = usePathname()
-  const { data: session, isPending: sessionPending, error: sessionError } = useSession()
+  const { data: session, isPending: sessionPending, isRefetching: sessionRefetching = false, error: sessionError } = useSession()
+  const unauthorized = isConfirmedSessionUnauthorized(sessionError)
+  const confirmedNoSession = unauthorized || (!session && !sessionPending && !sessionRefetching && !sessionError)
   // Latch the last confirmed session: useSession() re-fetches on focus/interval,
   // and a transient failure (e.g. a rate-limited request) must not flip an
   // already-signed-in user's nav to the logged-out "Log In / Try Free" state —
   // that reads as "you got logged out" when the cookie is still perfectly valid.
-  // Only a session with no error and no user means an actual sign-out.
+  // Numeric HTTP401 or a ready, error-free empty session confirms sign-out.
   const lastKnownSessionRef = useRef<typeof session>(null)
-  if (session) {
+  if (unauthorized) {
+    lastKnownSessionRef.current = null
+  } else if (session) {
     lastKnownSessionRef.current = session
-  } else if (!sessionPending && !sessionError) {
+  } else if (confirmedNoSession) {
     lastKnownSessionRef.current = null
   }
-  const effectiveSession = session ?? ((sessionPending || sessionError) ? lastKnownSessionRef.current : null)
+  const effectiveSession = unauthorized ? null : session ?? ((sessionPending || sessionRefetching || sessionError) ? lastKnownSessionRef.current : null)
   const effectiveUserId = effectiveSession?.user?.id
   const flags = useFeatureFlags()
   const { can } = useEntitlements()
@@ -91,12 +96,14 @@ export default function GlobalHeader() {
       // Also purges stale records after a full reload, where the previous
       // owner ref is empty and an account switch cannot be observed in memory.
       void clearOfflineCompiledPdfsExcept(effectiveUserId).catch(() => {})
-    } else if (previousOwner) {
+    } else if (previousOwner || confirmedNoSession) {
       forgetOfflinePdfOwner()
+      void clearAllDrafts().catch(() => {})
+      void clearCompileQueue().catch(() => {})
       void clearAllOfflineCompiledPdfs().catch(() => {})
     }
     lastOfflinePdfOwnerRef.current = effectiveUserId ?? null
-  }, [effectiveUserId])
+  }, [effectiveUserId, confirmedNoSession])
 
   useEffect(() => {
     const readBrand = () => {

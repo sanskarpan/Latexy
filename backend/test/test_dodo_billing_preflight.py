@@ -97,7 +97,8 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0069_capability_catalog", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0070_plan_catalog", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0071_plan_quotas", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0072_capability_roles", current_columns(), "current_dodo_head"),
+    ("0072_capability_roles", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0073_d14_subfeatures", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -127,6 +128,43 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
     columns = current_columns()
     columns[table].remove(column)
     assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+
+
+def test_d14_insert_only_head_reuses_previous_schema_without_new_tables():
+    assert preflight.EXPECTED_HEAD == "0073_d14_subfeatures"
+    assert preflight.CAPABILITY_SCHEMA_COLUMNS[preflight.EXPECTED_HEAD] == {}
+    previous_columns = {
+        **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
+        "render_artifact_manifests": {"artifact_id"}, "resume_optimization_runs": {"id"},
+        **{table: set(names) for revision, tables in preflight.CAPABILITY_SCHEMA_COLUMNS.items()
+           if revision != preflight.EXPECTED_HEAD for table, names in tables.items()},
+    }
+    assert previous_columns == current_columns()
+    known = preflight.known_revisions()
+    assert preflight.classify_schema(["0072_capability_roles"], previous_columns, known) == "known_mainline_dodo_upgrade_required"
+    assert preflight.classify_schema(["0073_d14_subfeatures"], previous_columns, known) == "current_dodo_head"
+    # No revision aliases, unknown stamps or multiple heads become accepted.
+    assert preflight.classify_schema(["0073_d14_child_controls"], previous_columns, known) == "unknown_requires_review"
+    assert preflight.classify_schema(["0072_capability_roles", "0073_d14_subfeatures"], previous_columns, known) == "unknown_requires_review"
+
+
+@pytest.mark.parametrize("table,column", [
+    (table, column) for tables in preflight.CAPABILITY_SCHEMA_COLUMNS.values()
+    for table, columns in tables.items() for column in sorted(columns)
+])
+def test_d14_insert_only_head_requires_every_prior_capability_column(table, column):
+    columns = current_columns()
+    columns[table].remove(column)
+    assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
+
+
+@pytest.mark.parametrize("table", [
+    table for tables in preflight.CAPABILITY_SCHEMA_COLUMNS.values() for table in tables
+])
+def test_d14_insert_only_head_requires_every_prior_capability_table(table):
+    columns = current_columns()
+    del columns[table]
+    assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
 
 
 def fake_engine(columns=None, revision=preflight.EXPECTED_HEAD, historical=0):
@@ -569,10 +607,21 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0069_capability_catalog", "known_mainline_dodo_upgrade_required"),
     ("0070_plan_catalog", "known_mainline_dodo_upgrade_required"),
     ("0071_plan_quotas", "known_mainline_dodo_upgrade_required"),
-    ("0072_capability_roles", "current_dodo_head"),
+    ("0072_capability_roles", "known_mainline_dodo_upgrade_required"),
+    ("0073_d14_subfeatures", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
+
+
+@pytest.mark.parametrize("revision,schema", [
+    ("0072_capability_roles", "current_dodo_head"),
+    ("0073_d14_subfeatures", "known_mainline_dodo_upgrade_required"),
+])
+def test_rollout_rejects_d14_head_revision_classification_mismatch(revision, schema):
+    result = preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))
+    assert not result["safe_to_rollout"]
+    assert "rollout_database_revision_unverified" in result["reasons"]
 
 
 @pytest.mark.parametrize("schema", [

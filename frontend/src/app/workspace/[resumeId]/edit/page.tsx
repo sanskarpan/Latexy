@@ -61,6 +61,7 @@ import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSet
 import { downloadBlob } from '@/lib/download'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { editorRecoveryLoadBoundary, useEditorSourceLoadScope, useLatexGeneratorRecovery, type LatexGeneratorRecovery } from '@/hooks/useLatexGeneratorRecovery'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import LatexGeneratorRecoveryShell from '@/components/LatexGeneratorRecoveryShell'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -791,8 +792,15 @@ export default function ResumeEditPage() {
   const router = useRouter()
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
-  const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const { session: sessionData, isPending: sessionLoading, isRefetching: sessionRefetching, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  const sessionUnauthorized = isConfirmedSessionUnauthorized(sessionError)
+  const sessionSignedOut = !sessionData && !sessionLoading && !sessionRefetching && !sessionError
+  const sessionEnded = sessionUnauthorized || sessionSignedOut
+  const offlineIdentityDeniedRef = useRef(false)
+  if (sessionEnded) offlineIdentityDeniedRef.current = true
+  else if (sessionUserId && !sessionLoading && !sessionRefetching && !sessionError) offlineIdentityDeniedRef.current = false
+  const confirmedSessionEnded = offlineIdentityDeniedRef.current
   // Renew during render so an old A cannot become current after A → B → A.
   const initialPreviewIdentityRef = useRef({ ownerId: sessionUserId, resumeId, consumed: false })
   if (initialPreviewIdentityRef.current.ownerId !== sessionUserId || initialPreviewIdentityRef.current.resumeId !== resumeId) {
@@ -805,7 +813,7 @@ export default function ResumeEditPage() {
     ownerId: sessionUserId,
     authToken: sessionData?.session?.token ?? null,
     // useRequireAuth preserves a known owner during transient refresh/error.
-    confirmed: sessionUserId !== null || (!sessionLoading && !sessionError),
+    confirmed: sessionUserId !== null || confirmedSessionEnded,
   }
 
   // Core state
@@ -820,7 +828,7 @@ export default function ResumeEditPage() {
   const [offlineDraftLoaded, setOfflineDraftLoaded] = useState(false)
   const [offlinePdfLoaded, setOfflinePdfLoaded] = useState(false)
   const { status: sourceLoadStatus, beginLoad: beginSourceLoad, finishLoad: finishSourceLoad, ownsLoad: ownsSourceLoad, isSourceReady } = useEditorSourceLoadScope(
-    sessionUserId, resumeId, sessionData, Boolean(sessionUserId && !sessionLoading && !sessionError),
+    sessionUserId, resumeId, sessionData, Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
   )
   const sourceLoadReady = isSourceReady() && !isLoading && !resumeLoadError
   const [isSaving, setIsSaving] = useState(false)
@@ -1098,7 +1106,18 @@ export default function ResumeEditPage() {
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
   const [rememberedOfflineOwner, setRememberedOfflineOwner] = useState<string | null>(() => getRememberedOfflinePdfOwner())
-  const offlinePdfOwnerId = sessionUserId ?? rememberedOfflineOwner
+  const offlinePdfOwnerId = confirmedSessionEnded ? null : sessionUserId ?? rememberedOfflineOwner
+  // Pin private content to its exact owner/document incarnation before load
+  // effects run. An anonymous remembered-offline-owner change is also a boundary.
+  const loadedDocumentScopeRef = useRef({ ownerId: offlinePdfOwnerId, resumeId })
+  if (loadedDocumentScopeRef.current.ownerId !== offlinePdfOwnerId || loadedDocumentScopeRef.current.resumeId !== resumeId) {
+    loadedDocumentScopeRef.current = { ownerId: offlinePdfOwnerId, resumeId }
+  }
+  // Ownership becomes visible in the same React lane as matching source/CAS or
+  // PDF states, never through a synchronous ref ahead of queued content.
+  const [committedDocumentContent, setCommittedDocumentContent] = useState<{ scope: typeof loadedDocumentScopeRef.current; sourceLoaded: boolean } | null>(null)
+  const committedDocumentContentRef = useRef(committedDocumentContent)
+  committedDocumentContentRef.current = committedDocumentContent
   const [isMobile, setIsMobile] = useState(false)
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
 
@@ -1172,7 +1191,7 @@ export default function ResumeEditPage() {
   const latexGeneratorRecovery = useLatexGeneratorRecovery({
     ownerId: sessionUserId,
     documentId: resumeId,
-    authReady: Boolean(sessionUserId && !sessionLoading && !sessionError),
+    authReady: Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
     can,
     newWorkAllowed: sourceLoadReady && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled) && editorMode === 'source',
     sourceLoadReady: isSourceReady,
@@ -1446,26 +1465,33 @@ export default function ResumeEditPage() {
   const loadOfflinePdf = useCallback(async () => {
     const ownerId = offlinePdfOwnerId
     const generation = offlinePdfIdentityRef.current.generation
+    const documentScope = loadedDocumentScopeRef.current
     if (!ownerId) return false
     setOfflinePdfError(null)
     try {
       const cached = await getOfflineCompiledPdf(ownerId, resumeId)
-      if (!isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return false
+      if (loadedDocumentScopeRef.current !== documentScope || !isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return false
       if (cached) {
-        if (!title.trim()) setTitle(cached.title)
+        if (committedDocumentContentRef.current?.scope !== documentScope || !committedDocumentContentRef.current.sourceLoaded) {
+          setTitle(cached.title)
+          setLatexContent('')
+          setSavedSnapshot({ title: cached.title, latex: '' })
+          editorRef.current?.setValue('')
+        }
         setPreviewBlob(cached.pdf, true)
+        setCommittedDocumentContent({ scope: documentScope, sourceLoaded: committedDocumentContentRef.current?.scope === documentScope && committedDocumentContentRef.current.sourceLoaded })
         setOfflinePdfLoaded(true)
         setRightTab('preview')
         return true
       }
       return false
     } catch {
-      if (isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
+      if (loadedDocumentScopeRef.current === documentScope && isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
         setOfflinePdfError('The offline PDF could not be opened. Check storage access and retry.')
       }
       return false
     }
-  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, setPreviewBlob, title, setRightTab])
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, setPreviewBlob, setRightTab])
 
   const saveCachedPdf = useCallback(async (blob: Blob) => {
     const ownerId = sessionUserId
@@ -1849,13 +1875,16 @@ export default function ResumeEditPage() {
   // Load the server copy and prefer a pending local draft when one exists.
   // This makes offline storage recoverable after refresh instead of write-only.
   useEffect(() => {
-    if (sessionLoading) return
+    if (sessionLoading || sessionRefetching) return
     const sourceLoad = beginSourceLoad()
+    if (!ownsSourceLoad(sourceLoad)) return
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const initialPreviewIdentity = initialPreviewIdentityRef.current
-    const isActive = () => !cancelled && ownsSourceLoad(sourceLoad) && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    const documentScope = loadedDocumentScopeRef.current
+    const isActive = () => !cancelled && ownsSourceLoad(sourceLoad) && loadedDocumentScopeRef.current === documentScope
+      && initialPreviewIdentityRef.current === initialPreviewIdentity && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
 
     if (!sessionData) {
       if (typeof navigator === 'undefined' || navigator.onLine) {
@@ -1884,6 +1913,15 @@ export default function ResumeEditPage() {
             if (ownerAtStart) {
               const cachedPdf = await getOfflineCompiledPdf(ownerAtStart, resumeId).catch(() => null)
               if (isActive() && cachedPdf) {
+                if (committedDocumentContentRef.current?.scope !== documentScope || !committedDocumentContentRef.current.sourceLoaded) {
+                  setTitle(cachedPdf.title)
+                  setLatexContent('')
+                  setSavedSnapshot({ title: cachedPdf.title, latex: '' })
+                  editorRef.current?.setValue('')
+                }
+                setPreviewBlob(cachedPdf.pdf, true)
+                setRightTab('preview')
+                setCommittedDocumentContent({ scope: documentScope, sourceLoaded: committedDocumentContentRef.current?.scope === documentScope && committedDocumentContentRef.current.sourceLoaded })
                 finishSourceLoad(sourceLoad, 'pdf-only')
                 setOfflinePdfLoaded(true)
                 return
@@ -1899,6 +1937,7 @@ export default function ResumeEditPage() {
           setLatexContent(draft.latexContent)
           setSavedSnapshot({ title: draft.title, latex: draft.latexContent })
           editorRef.current?.setValue(draft.latexContent)
+          setCommittedDocumentContent({ scope: documentScope, sourceLoaded: true })
           setOfflineDraftLoaded(true)
           finishSourceLoad(sourceLoad, 'ready', 'offline')
           setLastSavedAt(new Date(draft.savedAt).getTime())
@@ -1935,6 +1974,7 @@ export default function ResumeEditPage() {
         // collaborative edit with this full-document draft.
         setSavedSnapshot({ title: data.title, latex: data.latex_content })
         editorRef.current?.setValue(effectiveLatex)
+        setCommittedDocumentContent({ scope: documentScope, sourceLoaded: true })
         if (pendingDraft) {
           setOfflineDraftLoaded(true)
           setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
@@ -2015,7 +2055,7 @@ export default function ResumeEditPage() {
     }
     void fetchResume()
     return () => { cancelled = true }
-  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionUserId])
+  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionRefetching, sessionUserId, setPreviewBlob, setRightTab])
 
   // A completed rewrite remains staged until the user explicitly applies it.
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
@@ -3382,7 +3422,7 @@ export default function ResumeEditPage() {
   const editorLoadBoundary = editorRecoveryLoadBoundary({
     preserveRecovery: latexGeneratorRecovery.mounted,
     sourceStatus: sourceLoadStatus,
-    isLoading, resumeLoadError, hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded,
+    isLoading, resumeLoadError, hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded, confirmedSessionEnded,
   })
   if (editorLoadBoundary === 'loading') {
     return (
@@ -3417,6 +3457,10 @@ export default function ResumeEditPage() {
   }
 
   if (editorLoadBoundary === 'empty') return null
+
+  if (committedDocumentContent?.scope !== loadedDocumentScopeRef.current) {
+    return <div className="flex h-screen items-center justify-center bg-bg"><LoadingSpinner /></div>
+  }
 
   return (
     <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="flex h-screen flex-col overflow-hidden bg-bg">

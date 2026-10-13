@@ -5,6 +5,8 @@ import { AlertCircle, Check, FileImage, Loader2, Sigma, Sparkles, Table2, X } fr
 import { apiClient } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useAccountContentScope } from '@/contexts/AccountContentScope'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 
 interface LatexGeneratorPanelProps {
   documentId: string
@@ -37,25 +39,31 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
   const [inserted, setInserted] = useState(false)
 
   const { can } = useEntitlements()
-  const { data: session, isPending, error: sessionError } = useSession()
-  const scope = useRef({ owner: session?.user?.id ?? 'anonymous', documentId, epoch: 0 })
+  const { data: session, isPending, isRefetching = false, error: sessionError } = useSession()
+  const accountScope = useAccountContentScope()
+  const ownsAccountScope = () => accountScope?.isCurrent() ?? false
+  const sessionUnauthorized = isConfirmedSessionUnauthorized(sessionError)
+  const recoveryIdentity = accountScope?.recoveryIdentity
+  const scope = useRef({ owner: session?.user?.id ?? 'anonymous', documentId, recoveryIdentity, epoch: 0 })
   // A missing session during a refresh/error does not establish a new owner.
   // Confirmed logout, account/document changes and ABA renew the recovery scope.
-  const owner = session?.user?.id ?? ((!isPending && !sessionError) ? 'anonymous' : scope.current.owner)
-  const ready = Boolean(session?.user?.id && !isPending && !sessionError)
+  const owner = sessionUnauthorized ? 'anonymous' : session?.user?.id
+    ?? ((!isPending && !isRefetching && !sessionError) ? 'anonymous' : scope.current.owner)
+  const ready = Boolean(session?.user?.id && !isPending && !isRefetching && !sessionError
+    && (accountScope?.canAdmit() ?? false))
   const alive = useRef(true)
   const readyRef = useRef(ready)
   readyRef.current = ready
   const requests = useRef({ sequence: 0, active: null as null | { sequence: number; epoch: number } })
   const inputScope = useRef(scope.current.epoch)
   const resultScope = useRef<number | null>(null)
-  if (scope.current.owner !== owner || scope.current.documentId !== documentId) {
-    scope.current = { owner, documentId, epoch: scope.current.epoch + 1 }
+  if (scope.current.owner !== owner || scope.current.documentId !== documentId || scope.current.recoveryIdentity !== recoveryIdentity) {
+    scope.current = { owner, documentId, recoveryIdentity, epoch: scope.current.epoch + 1 }
     requests.current.sequence += 1
     requests.current.active = null
   }
   const epoch = scope.current.epoch
-  const ownedInputs = inputScope.current === epoch && owner !== 'anonymous'
+  const ownedInputs = ownsAccountScope() && inputScope.current === epoch && owner !== 'anonymous'
   const ownedIntent = ownedInputs ? intent : ''
   const ownedTableText = ownedInputs ? tableText : ''
   const ownedTableFile = ownedInputs ? tableFile : null
@@ -98,14 +106,15 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
     }
   }, [epoch, resetResult])
 
-  const allows = (leaf: string) => alive.current && epoch === scope.current.epoch && readyRef.current && current.current.admissionAllowed && (current.current.admissionGuard?.() ?? true) && current.current.can(leaf)
+  const isCurrentCallback = () => alive.current && epoch === scope.current.epoch && ownsAccountScope()
+  const allows = (leaf: string) => isCurrentCallback() && (accountScope?.canAdmit() ?? false) && readyRef.current && current.current.admissionAllowed && (current.current.admissionGuard?.() ?? true) && current.current.can(leaf)
     && current.current.can('d14') && current.current.can('ai_writing')
   const modeAllowed = (nextMode: GeneratorMode) => nextMode === 'structure'
     ? allows('d14_latex') : nextMode === 'table'
       ? allows('d14_table_text') || allows('d14_table_image')
       : allows('d14_math_text') || allows('d14_math_image')
   const switchMode = (nextMode: GeneratorMode) => {
-    if (!alive.current || epoch !== scope.current.epoch) return
+    if (!isCurrentCallback()) return
     const savedInput = nextMode === 'structure' ? current.current.intent : nextMode === 'table'
       ? current.current.tableText || current.current.tableFile : current.current.mathText || current.current.mathFile
     if (nextMode === current.current.mode || (!modeAllowed(nextMode) && !savedInput)) return
@@ -121,10 +130,10 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
     setLoading(true)
     return request
   }
-  const ownsRequest = (request: NonNullable<typeof requests.current.active>) => alive.current && requests.current.active === request
+  const ownsRequest = (request: NonNullable<typeof requests.current.active>) => isCurrentCallback() && requests.current.active === request
     && scope.current.owner !== 'anonymous' && request.epoch === scope.current.epoch
   const finishRequest = (request: NonNullable<typeof requests.current.active>) => {
-    if (requests.current.active !== request || request.epoch !== scope.current.epoch) return
+    if (!isCurrentCallback() || requests.current.active !== request || request.epoch !== scope.current.epoch) return
     requests.current.active = null
     setLoading(false)
   }
@@ -191,22 +200,22 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
     }
   }
 
-  const visibleGenerated = owner !== 'anonymous' && resultScope.current === epoch ? generated : ''
+  const visibleGenerated = ownsAccountScope() && owner !== 'anonymous' && resultScope.current === epoch ? generated : ''
   const tableReady = Boolean(ownedTableFile) || ownedTableText.trim().length >= 3
   const mathReady = Boolean(ownedMathFile) || ownedMathText.trim().length >= 2
   const canInsert = ready && insertionAllowed && (insertionGuard?.() ?? true) && can('c01') && Boolean(visibleGenerated)
   const insertFragment = () => {
-    if (!alive.current || epoch !== scope.current.epoch || !readyRef.current || !current.current.insertionAllowed || !(current.current.insertionGuard?.() ?? true) || resultScope.current !== scope.current.epoch || !current.current.can('c01')
+    if (!isCurrentCallback() || !(accountScope?.canAdmit() ?? false) || !readyRef.current || !current.current.insertionAllowed || !(current.current.insertionGuard?.() ?? true) || resultScope.current !== scope.current.epoch || !current.current.can('c01')
       || !current.current.generated || current.current.inserted) return
     current.current.onInsert(current.current.generated)
     current.current.inserted = true
     setInserted(true)
   }
   const copyFragment = async () => {
-    if (!alive.current || epoch !== scope.current.epoch || scope.current.owner === 'anonymous' || resultScope.current !== scope.current.epoch || !current.current.generated) return
+    if (!isCurrentCallback() || scope.current.owner === 'anonymous' || resultScope.current !== scope.current.epoch || !current.current.generated) return
     const copyScope = scope.current
     try { await navigator.clipboard.writeText(current.current.generated) }
-    catch { if (!alive.current || scope.current !== copyScope) return; setError('Could not copy the fragment. You can select and copy the preview.') }
+    catch { if (!isCurrentCallback() || scope.current !== copyScope) return; setError('Could not copy the fragment. You can select and copy the preview.') }
   }
 
   const hasStructureDraft = Boolean(ownedIntent)
@@ -323,7 +332,7 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
                 <button
                   type="button"
                   onClick={() => {
-                    if (!alive.current || epoch !== scope.current.epoch) return
+                    if (!isCurrentCallback()) return
                     current.current.tableFile = null
                     setTableFile(null)
                     resetResult()
@@ -426,7 +435,7 @@ export default function LatexGeneratorPanel({ documentId, documentContext, onIns
                 <button
                   type="button"
                   onClick={() => {
-                    if (!alive.current || epoch !== scope.current.epoch) return
+                    if (!isCurrentCallback()) return
                     current.current.mathFile = null
                     setMathFile(null)
                     resetResult()
