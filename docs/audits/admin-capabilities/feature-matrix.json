@@ -812,7 +812,9 @@
         "backend/app/api/template_routes.py:_template_asset_access/get_template/use_template (academic/regional/presentation)",
         "backend/app/api/resume_routes.py:_get_builder_template (specialty selection)"
       ],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/app/templates/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [

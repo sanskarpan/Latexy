@@ -21,6 +21,9 @@ const EUROPECV_LOCALES = [
   ['sk', 'Slovak'], ['sv', 'Swedish'],
 ] as const
 
+// Match the server's category-dependent B05 admission exactly.
+const SPECIALTY_CATEGORIES = new Set(['academic', 'regional', 'presentation'])
+
 type TemplatePreviewIdentity = { templateId: string | null; generation: number }
 type TemplateUseRequest = {
   token: number
@@ -39,6 +42,7 @@ export default function TemplatesPage() {
   const canRef = useRef(can)
   canRef.current = can
   const canCreateNewDocument = can('b01') && can('c01')
+  const canUseSpecialtyTemplates = can('b05')
   const { data: session, isPending: sessionPending, error: sessionError } = useSession()
   const lastKnownSessionRef = useRef<typeof session>(null)
   if (session) {
@@ -49,6 +53,13 @@ export default function TemplatesPage() {
   const effectiveSession = session ?? ((sessionPending || sessionError) ? lastKnownSessionRef.current : null)
 
   const [templates, setTemplates] = useState<TemplateResponse[]>([])
+  const templatesRef = useRef(templates)
+  templatesRef.current = templates
+  const canAccessTemplate = useCallback((id: string) => {
+    const template = templatesRef.current.find(candidate => candidate.id === id)
+    if (!template || !canRef.current('b04')) return false
+    return !SPECIALTY_CATEGORIES.has(template.category) || canRef.current('b05')
+  }, [])
   const [categories, setCategories] = useState<TemplateCategoryCount[]>([])
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -126,11 +137,19 @@ export default function TemplatesPage() {
     return () => { cancelled = true }
   }, [loadAttempt])
 
+  // Keep stored filters/selection intact while revocation masks specialty data.
+  const availableTemplates = useMemo(() => templates.filter(template =>
+    canUseSpecialtyTemplates || !SPECIALTY_CATEGORIES.has(template.category)),
+  [templates, canUseSpecialtyTemplates])
+  const effectiveActiveCategory = !canUseSpecialtyTemplates && SPECIALTY_CATEGORIES.has(activeCategory)
+    ? 'all' : activeCategory
+  const visiblePreviewTemplateId = previewTemplateId && canAccessTemplate(previewTemplateId) ? previewTemplateId : null
+
   // Filtered templates (client-side)
   const filteredTemplates = useMemo(() => {
-    let list = templates
-    if (activeCategory !== 'all') {
-      list = list.filter(t => t.category === activeCategory)
+    let list = availableTemplates
+    if (effectiveActiveCategory !== 'all') {
+      list = list.filter(t => t.category === effectiveActiveCategory)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -142,24 +161,25 @@ export default function TemplatesPage() {
       )
     }
     return list
-  }, [templates, activeCategory, search])
+  }, [availableTemplates, effectiveActiveCategory, search])
 
   // Sorted category tabs
   const sortedCategories = useMemo(() =>
-    [...categories].sort((a, b) => {
+    categories.filter(category => canUseSpecialtyTemplates || !SPECIALTY_CATEGORIES.has(category.category)).sort((a, b) => {
       const ia = TEMPLATE_CATEGORY_ORDER.indexOf(a.category)
       const ib = TEMPLATE_CATEGORY_ORDER.indexOf(b.category)
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
     }),
-  [categories])
+  [categories, canUseSpecialtyTemplates])
 
   const handlePreview = useCallback((id: string) => {
+    if (!canAccessTemplate(id)) return
     previewIdentityRef.current = {
       templateId: id,
       generation: previewIdentityRef.current.generation + 1,
     }
     setPreviewTemplateId(id)
-  }, [])
+  }, [canAccessTemplate])
 
   const handleClosePreview = useCallback(() => {
     previewIdentityRef.current = {
@@ -170,7 +190,7 @@ export default function TemplatesPage() {
   }, [])
 
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
-    if (!canRef.current('b01') || !canRef.current('c01')) return false
+    if (!canAccessTemplate(id) || !canRef.current('b01') || !canRef.current('c01')) return false
     if (sessionPending) return false
     if (usingTemplateId) {
       if (usingTemplateId !== id) toast('Another template is already being created')
@@ -191,7 +211,7 @@ export default function TemplatesPage() {
     activeTemplateUseRef.current = request
     setUsingTemplateId(id)
     try {
-      const selected = templates.find(template => template.id === id)
+      const selected = templatesRef.current.find(template => template.id === id)
       let locale: string | undefined
       if (selected?.name === 'Europecv') {
         const choices = EUROPECV_LOCALES.map(([code, label]) => `${code} (${label})`).join(', ')
@@ -225,7 +245,7 @@ export default function TemplatesPage() {
         setUsingTemplateId(null)
       }
     }
-  }, [effectiveSession, sessionPending, router, templates, usingTemplateId, isCurrentTemplateUseOwner])
+  }, [effectiveSession, sessionPending, router, usingTemplateId, isCurrentTemplateUseOwner, canAccessTemplate])
 
   // The modal awaits this and shows its own "Creating…" state, then closes
   // itself via onClose (success navigates away, unmounting it).
@@ -313,16 +333,16 @@ export default function TemplatesPage() {
             <button
               type="button"
               onClick={() => setActiveCategory('all')}
-              className={tabClass(activeCategory === 'all')}
+              className={tabClass(effectiveActiveCategory === 'all')}
             >
-              All ({templates.length})
+              All ({availableTemplates.length})
             </button>
             {sortedCategories.map(cat => (
               <button
                 key={cat.category}
                 type="button"
                 onClick={() => setActiveCategory(cat.category)}
-                className={tabClass(activeCategory === cat.category)}
+                className={tabClass(effectiveActiveCategory === cat.category)}
               >
                 {cat.label} ({cat.count})
               </button>
@@ -387,7 +407,7 @@ export default function TemplatesPage() {
       </div>
 
       <TemplatePreviewModal
-        templateId={previewTemplateId}
+        templateId={visiblePreviewTemplateId}
         onUse={handleUseFromPreview}
         onClose={handleClosePreview}
         allowUse={canCreateNewDocument}

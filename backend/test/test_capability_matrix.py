@@ -38,3 +38,11 @@ def test_generator_includes_tenant_product_controls_but_not_admin_control_plane(
         "frontend/src/app/admin/page.tsx" not in feature["clientControls"]
         for feature in features.values()
     )
+
+
+def test_generator_includes_specialty_template_controls():
+    spec = importlib.util.spec_from_file_location("generate_capability_matrix", ROOT / "backend/scripts/generate_capability_matrix.py")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    features = {feature["key"]: feature for feature in generator.generate()["features"]}
+    assert "frontend/src/app/templates/page.tsx" in features["b05"]["clientControls"]
