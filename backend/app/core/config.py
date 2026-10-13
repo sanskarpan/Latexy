@@ -7,10 +7,13 @@ import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .disposable_cache_config import DisposableCacheEndpoint
 
 _config_logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ class Settings(BaseSettings):
         env_file=(_root_dir / ".env", _backend_dir / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
+        hide_input_in_errors=True,
         extra="ignore",   # silently ignore NEXT_PUBLIC_*, etc.
     )
 
@@ -333,6 +337,13 @@ class Settings(BaseSettings):
     REDIS_CACHE_URL: str = Field(default="redis://localhost:6379/1", description="Redis URL for caching")
     REDIS_PASSWORD: str = Field(default="", description="Redis password")
     REDIS_MAX_CONNECTIONS: int = Field(default=20, description="Redis max connections")
+
+    # Opt-in backups for explicitly disposable, content-addressed caches only.
+    # REDIS_CACHE_URL remains authoritative for quotas, OAuth and payment locks.
+    DISPOSABLE_CACHE_BACKUPS: List[DisposableCacheEndpoint] = Field(default_factory=list, max_length=3, repr=False)
+    DISPOSABLE_CACHE_QUOTA_COOLDOWN_SECONDS: int = Field(default=3600, ge=60, le=86400)
+    DISPOSABLE_CACHE_ERROR_COOLDOWN_SECONDS: int = Field(default=30, ge=1, le=3600)
+    DISPOSABLE_CACHE_TIMEOUT_SECONDS: float = Field(default=1.0, gt=0, le=5)
 
     # Upstash Redis (for Modal deployment)
     UPSTASH_REDIS_REST_URL: str = Field(default="", description="Upstash Redis REST URL")
@@ -656,6 +667,13 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
+        if self.DISPOSABLE_CACHE_BACKUPS:
+            primary = DisposableCacheEndpoint(transport="redis", url=self.REDIS_CACHE_URL)
+            hosts = [urlsplit(endpoint.url.get_secret_value()).hostname.lower().rstrip(".")
+                     for endpoint in [primary, *self.DISPOSABLE_CACHE_BACKUPS]]
+            if len(hosts) != len(set(hosts)):
+                raise ValueError("Disposable cache backups must use distinct database hosts, including the primary")
+
         billing_mode = self.normalized_billing_mode
         if billing_mode not in {"disabled", "auto", "required"}:
             raise ValueError(

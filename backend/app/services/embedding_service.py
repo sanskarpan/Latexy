@@ -17,8 +17,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..core.config import settings
+from ..core.disposable_cache import disposable_cache
 from ..core.logging import get_logger
-from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
 
@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 # not re-hit the embedding provider. Key namespace is separate from other caches.
 _EMBEDDING_CACHE_TTL = 604800  # 7 days
 _EMBEDDING_MODEL = "text-embedding-3-small"
+_EMBEDDING_DIMENSIONS = 1536
 
 # Stopwords for keyword extraction
 _STOPWORDS = {
@@ -78,8 +79,12 @@ class EmbeddingService:
 
         # Cache lookup — fall back to computing on any error / cold cache.
         try:
-            cached = await cache_manager.get(cache_key)
-            if cached:
+            cached = await disposable_cache.get(cache_key)
+            if (
+                isinstance(cached, list)
+                and len(cached) == _EMBEDDING_DIMENSIONS
+                and all(type(value) in {int, float} and math.isfinite(value) for value in cached)
+            ):
                 return cached
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
             logger.debug("Embedding cache get failed", extra={"error_type": type(exc).__name__})
@@ -92,7 +97,7 @@ class EmbeddingService:
         embedding = response.data[0].embedding
 
         try:
-            await cache_manager.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
+            await disposable_cache.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
             logger.debug("Embedding cache set failed", extra={"error_type": type(exc).__name__})
 
