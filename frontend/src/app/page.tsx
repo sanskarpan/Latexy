@@ -84,7 +84,8 @@ export default function LandingPage() {
                     Your next
                     <br />
                     <span className="lp-hero-second-line">
-                        chapter, <em>well written.</em>
+                        <span className="lp-hero-chapter">chapter,</span>
+                        <em>well written.</em>
                     </span>
                 </h1>
                 <div className="lp-hero-copy">

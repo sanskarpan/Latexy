@@ -97,3 +97,14 @@ All required CI checks passed. Downloaded artifact 11847646028 from run 38460054
 Visual acceptance remains blocked: the source comparison found a three-line hero caused by a 652px first track (italic ink already matches at 364px), undersized builder/lower headings and demo copy, cream/brown builder surfaces, and the duplicate PDF-tab preview. Corrections now preserve the 680/20/400 hero geometry, use neutral/slate specimen surfaces, restore measured type sizes, larger ATS labels, compact FAQ copy, status icons and a single expanded PDF view. Tailoring wording is constrained to the original sample claims. TypeScript, scoped ESLint and 23 existing contract tests passed unchanged. Awaiting the next actual render to verify these corrections.
 
 final result: blocked
+
+
+### Focused review of 5cdb522c
+
+Fresh source/actual comparison boards exist for all ten regions in both themes under `landing-qa/current-5c/`. Browser case passed for all five engine/device profiles. Artifact 11851111584, run 38466993607, SHA-256 `21f2b2f01af3a78159fd2e933b5fdcf526458556814e020d87d1027f1bc509ce`, verified. The full actual desktop page was 1440x2560 versus the normalized source 1440x2521. All 2,361 frontend tests and frontend lint passed on the rebased source.
+
+Independent focused reviews found no remaining P1, but retained P2 acceptance blocks: chapter/italic spacing, selected gallery widths, builder row/column/tab alignment, status icon detail, dark suggestion icon, Gaussian sample, compiler/FAQ column alignment, tailoring connectors/bullet and board border contrast. Those have now been corrected as one batch. Tablet layouts receive their own space rather than shrinking three compiler panes into a narrow column. The existing screenshot evidence case adds 768/1024/1101px checks for both compiler views and primary-action bounds, using long local sample content. All other test cases remain verbatim. Superseded CSS declarations for identical selectors/conditions were removed while preserving the final cascade.
+
+TypeScript, scoped ESLint and the 23 unchanged relevant contract tests passed. Source/asset verification is awaiting the next fresh CI render. Screenshots will be published in the PR with exact capture/source provenance.
+
+final result: blocked

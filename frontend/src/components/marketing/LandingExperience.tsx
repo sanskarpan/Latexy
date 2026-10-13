@@ -15,6 +15,10 @@ import {
     IconAlignLeft,
     IconArrowsDiagonal,
     IconCircleDot,
+    IconCircleCheckFilled,
+    IconCircleXFilled,
+    IconAlertCircleFilled,
+    IconLine,
     IconSquareFilled,
     IconDownload,
     IconBulb,
@@ -42,7 +46,7 @@ const SAMPLE_SOURCE = `\\documentclass{article}
 \\begin{document}
 \\section*{A Simple Equation}
 \\[
-  \\int_0^1 x^2 \\,dx = \\frac{1}{3}
+  \\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}
 \\]
 \\end{document}`
 
@@ -80,10 +84,10 @@ function EquationSample() {
             <div
                 className="lp-equation"
                 role="math"
-                aria-label="Integral from zero to one of x squared dx equals one third"
+                aria-label="Integral from negative infinity to infinity of e to the negative x squared dx equals the square root of pi"
                 dangerouslySetInnerHTML={{
                     __html: katex.renderToString(
-                        String.raw`\int_0^1 x^2\,dx = \frac{1}{3}\qquad(1)`,
+                        String.raw`\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}\qquad(1)`,
                         {
                             displayMode: true,
                             throwOnError: false,
@@ -513,10 +517,25 @@ function AnalysisDemo() {
                                     setCategoryTouched(true)
                                 }}
                             >
-                                <span
-                                    className={`lp-status-dot lp-status-${value} ${value}`}
-                                    aria-hidden="true"
-                                />
+                                {value === 'present' ? (
+                                    <IconCircleCheckFilled
+                                        className="lp-status-dot"
+                                        size={12}
+                                        aria-hidden="true"
+                                    />
+                                ) : value === 'partial' ? (
+                                    <IconAlertCircleFilled
+                                        className="lp-status-dot partial"
+                                        size={12}
+                                        aria-hidden="true"
+                                    />
+                                ) : (
+                                    <IconCircleXFilled
+                                        className="lp-status-dot missing"
+                                        size={12}
+                                        aria-hidden="true"
+                                    />
+                                )}
                                 {value[0].toUpperCase() + value.slice(1)}
                                 <strong>
                                     {value === 'present' ? 8 : value === 'partial' ? 4 : 6}
@@ -526,6 +545,7 @@ function AnalysisDemo() {
                     </div>
                     <div className="lp-keyword-result" aria-live="polite">
                         <strong>
+                            <IconBulb size={14} aria-hidden="true" />
                             {category === 'missing'
                                 ? 'Consider adding'
                                 : category === 'partial'
@@ -539,8 +559,8 @@ function AnalysisDemo() {
                     </div>
                 </div>
                 <p className="lp-demo-caption">
-                    Sample analysis — illustrative data. Scores are feedback, not a hiring
-                    prediction.
+                    Sample analysis — illustrative data.
+                    <span className="sr-only"> Scores are feedback, not a hiring prediction.</span>
                 </p>
             </div>
         </div>
@@ -561,12 +581,14 @@ function TailoringDemo() {
                     </h3>
                     <p>Design and build scalable, user-facing features using Python.</p>
                 </div>
-                <IconArrowRight className="lp-flow-arrow" size={20} aria-hidden="true" />
+                <IconLine className="lp-flow-arrow" size={28} aria-hidden="true" />
                 <div className="lp-tailor-cell">
                     <h3>Your matching experience</h3>
-                    <p>{decision === 'accepted' ? bullet : ORIGINAL_BULLET}</p>
+                    <ul className="lp-matching-experience">
+                        <li>{decision === 'accepted' ? bullet : ORIGINAL_BULLET}</li>
+                    </ul>
                 </div>
-                <IconArrowRight className="lp-flow-arrow" size={20} aria-hidden="true" />
+                <IconLine className="lp-flow-arrow" size={28} aria-hidden="true" />
                 <div className="lp-tailor-cell lp-tailor-suggestion">
                     <h3>Suggested rewrite</h3>
                     {editing ? (
@@ -908,7 +930,7 @@ function LatexDemo() {
                         </CapabilityGate>
                     </CapabilityGate>
                 </CapabilityGate>
-                <p className="lp-demo-caption">Fixed sample — compile in the studio.</p>
+                <p className="lp-demo-caption">A minimal example. Compile in the studio.</p>
             </div>
         </div>
     )

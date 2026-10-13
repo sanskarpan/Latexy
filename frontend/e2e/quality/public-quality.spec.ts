@@ -346,7 +346,10 @@ test('representative public surface produces non-empty visual evidence', async (
             const section = page.locator(selector)
             await section.scrollIntoViewIfNeeded()
             await settle()
-            geometry[selector] = await section.boundingBox()
+            const box = await section.boundingBox()
+            geometry[selector] = box
+                ? { ...box, y: box.y + (await page.evaluate(() => window.scrollY)) }
+                : null
             if (!testInfo.project.metadata.mobile) {
                 await testInfo.attach(`landing-${theme}-${selector.slice(1)}`, {
                     body: await section.screenshot({ animations: 'disabled', caret: 'hide' }),
@@ -395,6 +398,39 @@ test('representative public surface produces non-empty visual evidence', async (
         body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
         contentType: 'image/png',
     })
+    if (!testInfo.project.metadata.mobile) {
+        await page.getByRole('tab', { name: 'Guided builder', exact: true }).click()
+        for (const width of [768, 1024, 1101]) {
+            await page.setViewportSize({ width, height: 1000 })
+            for (const view of ['Source', 'PDF']) {
+                await page.getByRole('tab', { name: view, exact: true }).click()
+                await settle()
+                expect(
+                    await page.evaluate(() => document.documentElement.scrollWidth)
+                ).toBeLessThanOrEqual(width + 1)
+                const actionBox = await page.locator('.lp-compile-action').boundingBox()
+                expect(actionBox).not.toBeNull()
+                expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(width + 1)
+                if (view === 'Source') {
+                    const equation = await page
+                        .locator('.lp-latex-preview .lp-equation')
+                        .evaluate(element => ({
+                            width: element.clientWidth,
+                            contentWidth: element.scrollWidth,
+                        }))
+                    expect(equation.contentWidth).toBeLessThanOrEqual(equation.width + 1)
+                    await testInfo.attach(`landing-tablet-${width}-source`, {
+                        body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+                        contentType: 'image/png',
+                    })
+                }
+            }
+            await testInfo.attach(`landing-tablet-${width}`, {
+                body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+                contentType: 'image/png',
+            })
+        }
+    }
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({
