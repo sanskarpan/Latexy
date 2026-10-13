@@ -105,6 +105,12 @@
 
 ## Redis Provider Request Capacity
 
+The optional [disposable cache backup chain](../architecture/redis-failover.md)
+only protects content-addressed embedding/ESCO caches. It does not fail over
+quotas, OAuth, payment locks, Celery or job lifecycle state. A healthy cache
+backup must not be taken as evidence that these authoritative dependencies work.
+
+
 ### Environment and credential map
 
 | Environment | Queue / job state | Cache / quotas / OAuth state | Capacity metadata |
@@ -134,7 +140,8 @@ legacy values there without risking unrelated production credentials.
 - `RedisProviderCapacityCritical`: usage crossed the critical ratio (default
   95%) or the provider reports exhaustion. Treat this as an incident.
 - `RedisProviderHardExhaustion`: a real application command received
-  `ERR max requests limit exceeded`. Rotate or upgrade now.
+  `ERR max requests limit exceeded`. Restore capacity; never replace authoritative
+  state with an empty database.
 - `RedisCapacityMonitorBlind`: the management credentials are absent, invalid,
   unavailable, or point at a different database.
 - `RedisApplicationDependencyDown`: the queue or cache client is failing actual

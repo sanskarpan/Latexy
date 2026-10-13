@@ -14,8 +14,8 @@ from typing import Any
 import httpx
 
 from ..core.config import settings
+from ..core.disposable_cache import disposable_cache
 from ..core.logging import get_logger
-from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
 
@@ -83,7 +83,7 @@ class ESCOService:
         digest = hashlib.sha256(f"{ESCO_VERSION}:{language}:{query.casefold()}:{limit}".encode()).hexdigest()
         cache_key = f"esco:search:{digest}"
         try:
-            cached = await cache_manager.get(cache_key)
+            cached = await disposable_cache.get(cache_key)
             if isinstance(cached, list):
                 return cached, True
         except Exception:
@@ -143,7 +143,7 @@ class ESCOService:
                     }
                 )
             try:
-                await cache_manager.set(cache_key, results, ttl=_CACHE_TTL)
+                await disposable_cache.set(cache_key, results, ttl=_CACHE_TTL)
             except Exception:
                 pass
             return results, True

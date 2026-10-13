@@ -1095,6 +1095,7 @@ async def _async_embed_resume(resume_id: str, latex_content: str, session_factor
     *session_factory* is for dependency injection in tests; when None an engine
     is created from DATABASE_URL and disposed in the finally.
     """
+    from ..core.disposable_cache import disposable_cache
     from ..services.embedding_service import embedding_service
 
     engine = None
@@ -1113,7 +1114,7 @@ async def _async_embed_resume(resume_id: str, latex_content: str, session_factor
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
-        async with session_factory() as db:
+        async with disposable_cache.isolated(), session_factory() as db:
             await embedding_service.embed_resume(resume_id, latex_content, db)
     finally:
         if engine is not None:

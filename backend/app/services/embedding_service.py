@@ -17,8 +17,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..core.config import settings
+from ..core.disposable_cache import disposable_cache
 from ..core.logging import get_logger
-from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
 
@@ -78,7 +78,7 @@ class EmbeddingService:
 
         # Cache lookup — fall back to computing on any error / cold cache.
         try:
-            cached = await cache_manager.get(cache_key)
+            cached = await disposable_cache.get(cache_key)
             if cached:
                 return cached
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
@@ -92,7 +92,7 @@ class EmbeddingService:
         embedding = response.data[0].embedding
 
         try:
-            await cache_manager.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
+            await disposable_cache.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
             logger.debug("Embedding cache set failed", extra={"error_type": type(exc).__name__})
 
