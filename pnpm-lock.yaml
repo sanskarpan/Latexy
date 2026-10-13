@@ -27,6 +27,9 @@ patchedDependencies:
   braces@3.0.3:
     hash: 8e8e7c1d6bcfac51649d4ecfbf48034ffe1a7409587905022482c9ce83e31d83
     path: patches/braces@3.0.3.patch
+  monaco-editor@0.55.1:
+    hash: 87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d
+    path: patches/monaco-editor@0.55.1.patch
   monaco-emacs@0.3.0:
     hash: 4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18
     path: patches/monaco-emacs@0.3.0.patch
@@ -79,7 +82,7 @@ importers:
         version: 2.2.0(react@18.3.1)
       '@monaco-editor/react':
         specifier: ^4.6.0
-        version: 4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 4.7.0(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-accordion':
         specifier: ^1.2.20
         version: 1.2.21(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -223,10 +226,10 @@ importers:
         version: 1.52.0(@types/react@18.3.31)(react@18.3.1)
       monaco-emacs:
         specifier: 0.3.0
-        version: 0.3.0(patch_hash=4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18)(monaco-editor@0.55.1)
+        version: 0.3.0(patch_hash=4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18)(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))
       monaco-vim:
         specifier: 0.4.4
-        version: 0.4.4(monaco-editor@0.55.1)
+        version: 0.4.4(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))
       next:
         specifier: 15.5.27
         version: 15.5.27(patch_hash=a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4)(@babel/core@7.29.7)(@playwright/test@1.64.0)(@types/node@26.6.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -274,7 +277,7 @@ importers:
         version: 1.1.2(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       y-monaco:
         specifier: ^0.1.6
-        version: 0.1.6(monaco-editor@0.55.1)(yjs@13.6.33)
+        version: 0.1.6(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))(yjs@13.6.33)
       y-protocols:
         specifier: ^1.0.7
         version: 1.0.7(yjs@13.6.33)
@@ -320,7 +323,7 @@ importers:
         version: 6.2.5
       monaco-editor:
         specifier: 0.55.1
-        version: 0.55.1
+        version: 0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)
       postcss:
         specifier: ^8.5.24
         version: 8.5.29
@@ -8351,10 +8354,10 @@ snapshots:
     dependencies:
       state-local: 1.0.7
 
-  '@monaco-editor/react@4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@monaco-editor/react@4.7.0(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@monaco-editor/loader': 1.7.0
-      monaco-editor: 0.55.1
+      monaco-editor: 0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
@@ -12193,20 +12196,20 @@ snapshots:
       pkg-types: 1.3.1
       ufo: 1.6.4
 
-  monaco-editor@0.55.1:
+  monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d):
     dependencies:
       dompurify: 3.4.16
       marked: 14.0.0
 
-  monaco-emacs@0.3.0(patch_hash=4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18)(monaco-editor@0.55.1):
+  monaco-emacs@0.3.0(patch_hash=4c882e02a3d21fadda4b555ad3f1d728441be61e9d65b177bec5d9a9f26e6e18)(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)):
     dependencies:
       lodash.kebabcase: 4.1.1
       lodash.throttle: 4.1.1
-      monaco-editor: 0.55.1
+      monaco-editor: 0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)
 
-  monaco-vim@0.4.4(monaco-editor@0.55.1):
+  monaco-vim@0.4.4(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)):
     dependencies:
-      monaco-editor: 0.55.1
+      monaco-editor: 0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)
 
   motion-dom@12.43.0:
     dependencies:
@@ -14070,10 +14073,10 @@ snapshots:
 
   xtend@4.0.2: {}
 
-  y-monaco@0.1.6(monaco-editor@0.55.1)(yjs@13.6.33):
+  y-monaco@0.1.6(monaco-editor@0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d))(yjs@13.6.33):
     dependencies:
       lib0: 0.2.117
-      monaco-editor: 0.55.1
+      monaco-editor: 0.55.1(patch_hash=87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d)
       yjs: 13.6.33
 
   y-protocols@1.0.7(yjs@13.6.33):

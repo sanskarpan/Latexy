@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class FeatureDef:
     parent_key: str | None = None
     inventory_id: str | None = None
     always_on_reason: str | None = None
+    control_kind: Literal["parent", "product", "subfeature"] = "parent"
+    product_inventory_id: str | None = None
 
 
 # Plan families the matrix is keyed by (mirrors config.PLAN_FAMILY_ALIASES targets).
@@ -119,8 +122,18 @@ CAPABILITY_INVENTORY = json.loads(
     Path(__file__).with_name("capability_catalog.json").read_text(encoding="utf-8")
 )
 FEATURE_REGISTRY.extend(
-    FeatureDef(**{key: value for key, value in row.items() if key != "source_paths"})
+    FeatureDef(**{key: value for key, value in row.items() if key != "source_paths"},
+               control_kind="product", product_inventory_id=row["inventory_id"])
     for row in CAPABILITY_INVENTORY
+)
+
+# Child controls are a separate code-defined catalog, never extra product IDs.
+CAPABILITY_SUBFEATURES = json.loads(
+    Path(__file__).with_name("capability_subfeature_catalog.json").read_text(encoding="utf-8")
+)
+FEATURE_REGISTRY.extend(
+    FeatureDef(**{key: value for key, value in row.items() if key != "source_paths"})
+    for row in CAPABILITY_SUBFEATURES
 )
 
 # Stable concrete commercial SKUs. A SKU restriction can only narrow its family.

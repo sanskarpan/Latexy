@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { editorRecoveryLoadBoundary } from '@/hooks/useLatexGeneratorRecovery'
 
 const source = (relativePath: string) =>
   readFileSync(new URL(relativePath, import.meta.url), 'utf8')
@@ -19,13 +20,22 @@ describe('primary authenticated routes', () => {
     ['optimization', '../app/workspace/[resumeId]/optimize/page.tsx', 'Optimization workspace', 'sessionError && !session'],
     ['cover-letter workflow', '../app/workspace/[resumeId]/cover-letter/page.tsx', 'Cover-letter workspace', 'sessionError && !session'],
     ['new resume', '../app/workspace/new/page.tsx', 'New resume', 'sessionError && !session'],
-    ['resume editor', '../app/workspace/[resumeId]/edit/page.tsx', 'Resume editor', 'sessionError && !sessionData'],
+    ['resume editor', '../app/workspace/[resumeId]/edit/page.tsx', 'Resume editor', "editorLoadBoundary === 'session-error'"],
     ['tenant management', '../app/admin/tenant/page.tsx', 'Tenant management', 'sessionError && !session'],
   ])('%s distinguishes session lookup failure from signed out', (_name, path, area, errorGuard) => {
     const route = source(path)
     expect(route).toContain('error: sessionError')
     expect(route).toContain(errorGuard)
     expect(route).toContain(`<SessionLoadError area="${area}" />`)
+  })
+
+  it('the editor boundary reports an unresolved session failure while preserving same-owner recovery', () => {
+    const failed = { preserveRecovery: false, sourceStatus: 'error' as const, isLoading: false, resumeLoadError: null,
+      hasSession: false, sessionError: new Error('Session lookup failed'), offlineDraftLoaded: false, offlinePdfLoaded: false }
+    expect(editorRecoveryLoadBoundary(failed)).toBe('session-error')
+    expect(editorRecoveryLoadBoundary({ ...failed, hasSession: true, sourceStatus: 'ready' })).toBe('editor')
+    expect(editorRecoveryLoadBoundary({ ...failed, preserveRecovery: true })).toBe('editor')
+    expect(source('../app/workspace/[resumeId]/edit/page.tsx')).toContain('hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded')
   })
 
   it('offers an accessible retry without treating the failure as logout', () => {

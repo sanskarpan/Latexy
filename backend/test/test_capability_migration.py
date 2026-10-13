@@ -8,7 +8,7 @@ from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from sqlalchemy import delete, insert, select, update
 
-from app.core.feature_registry import FEATURE_REGISTRY, PLAN_MATRIX_KEYS, gateable_keys
+from app.core.feature_registry import FEATURE_REGISTRY, PLAN_MATRIX_KEYS
 from app.database.models import FeatureFlag, PlanFeature
 from app.services.entitlement_service import entitlement_service
 
@@ -41,8 +41,8 @@ async def test_capability_upgrade_preserves_denials_and_baselines(db_session):
 
         switches = dict((await db_session.execute(select(FeatureFlag.key, FeatureFlag.enabled))).all())
         grants = {(row.plan_family, row.feature_key): row.enabled for row in (await db_session.execute(select(PlanFeature))).scalars()}
-        assert set(switches) == set(gateable_keys())
-        assert set(grants) == {(plan, key) for plan in PLAN_MATRIX_KEYS for key in gateable_keys()}
+        assert set(switches) == set(migration.KEYS)
+        assert set(grants) == {(plan, key) for plan in PLAN_MATRIX_KEYS for key in migration.KEYS}
         assert not switches["llm_optimize"] and not grants["free", "llm_optimize"]
         assert not switches["b01"] and not grants["pro", "c01"]
         assert all(feature.key not in switches for feature in FEATURE_REGISTRY if not feature.gateable)
@@ -79,12 +79,13 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
     config = Config()
     config.set_main_option("script_location", str(backend / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0072_capability_roles"]
+    assert scripts.get_heads() == ["0073_d14_subfeatures"]
     expected = {
         "0069_capability_catalog": "0068",
         "0070_plan_catalog": "0069_capability_catalog",
         "0071_plan_quotas": "0070_plan_catalog",
         "0072_capability_roles": "0071_plan_quotas",
+        "0073_d14_subfeatures": "0072_capability_roles",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent

@@ -9,7 +9,7 @@ from alembic.operations import Operations
 from fastapi import HTTPException
 from sqlalchemy import delete, insert, select, update
 
-from app.core.feature_registry import CAPABILITY_ROLES, gateable_keys
+from app.core.feature_registry import CAPABILITY_ROLES
 from app.database.connection import get_async_db_session
 from app.database.models import RoleFeature, User
 from app.services.entitlement_service import entitlement_service
@@ -137,8 +137,8 @@ async def test_role_migration_preserves_denials_and_reupgrade(db_session):
         await (await db_session.connection()).run_sync(upgrade)
         await db_session.commit()
         grants = {(r.role, r.feature_key): r.enabled for r in (await db_session.execute(select(RoleFeature))).scalars()}
-        assert len(grants) == len(CAPABILITY_ROLES) * len(gateable_keys())
-        assert {key for _role, key in grants} == set(gateable_keys())
+        assert len(grants) == len(CAPABILITY_ROLES) * len(migration.KEYS)
+        assert {key for _role, key in grants} == set(migration.KEYS)
         assert not grants["user", "b03"]
         assert grants["user", "compile"] is False
     finally:

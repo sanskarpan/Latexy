@@ -60,6 +60,9 @@ import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { downloadBlob } from '@/lib/download'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { editorRecoveryLoadBoundary, useEditorSourceLoadScope, useLatexGeneratorRecovery, type LatexGeneratorRecovery } from '@/hooks/useLatexGeneratorRecovery'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
+import LatexGeneratorRecoveryShell from '@/components/LatexGeneratorRecoveryShell'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor from '@/components/DeferredLaTeXEditor'
@@ -139,7 +142,6 @@ const ProofreadPanel = dynamic(() => import('@/components/ProofreadPanel'))
 const PackageManagerPanel = dynamic(() => import('@/components/PackageManagerPanel'))
 const LinterPanel = dynamic(() => import('@/components/LinterPanel'))
 const SymbolPalette = dynamic(() => import('@/components/SymbolPalette'))
-const LatexGeneratorPanel = dynamic(() => import('@/components/LatexGeneratorPanel'))
 const CompileSettingsModal = dynamic(() => import('@/components/CompileSettingsModal'))
 const CollaboratorPanel = dynamic(() => import('@/components/CollaboratorPanel'))
 const CommentsPanel = dynamic(() => import('@/components/CommentsPanel'))
@@ -160,7 +162,8 @@ const CompileErrorHistory = dynamic(() => import('@/components/CompileErrorHisto
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'comments' | 'review' | 'chat' | 'references' | 'interview' | 'generate' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'suggestions' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
 const RIGHT_TAB_CAPABILITIES: Partial<Record<RightTab, string>> = {
-  ai: 'd01', chat: 'f05', interview: 'e02', generate: 'd14', design: 'c19',
+  // Generate uses the scoped recovery shell, rather than a coarse mount gate.
+  ai: 'd01', chat: 'f05', interview: 'e02', design: 'c19',
   proofread: 'd12', packages: 'c17', linter: 'c15', symbols: 'c18',
   changes: 'f07', suggestions: 'f07', docs: 'c17', layout: 'c19',
   snippets: 'c20', macros: 'c21', tikz: 'c18',
@@ -789,8 +792,15 @@ export default function ResumeEditPage() {
   const router = useRouter()
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
-  const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const { session: sessionData, isPending: sessionLoading, isRefetching: sessionRefetching, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  const sessionUnauthorized = isConfirmedSessionUnauthorized(sessionError)
+  const sessionSignedOut = !sessionData && !sessionLoading && !sessionRefetching && !sessionError
+  const sessionEnded = sessionUnauthorized || sessionSignedOut
+  const offlineIdentityDeniedRef = useRef(false)
+  if (sessionEnded) offlineIdentityDeniedRef.current = true
+  else if (sessionUserId && !sessionLoading && !sessionRefetching && !sessionError) offlineIdentityDeniedRef.current = false
+  const confirmedSessionEnded = offlineIdentityDeniedRef.current
   // Renew during render so an old A cannot become current after A → B → A.
   const initialPreviewIdentityRef = useRef({ ownerId: sessionUserId, resumeId, consumed: false })
   if (initialPreviewIdentityRef.current.ownerId !== sessionUserId || initialPreviewIdentityRef.current.resumeId !== resumeId) {
@@ -803,7 +813,7 @@ export default function ResumeEditPage() {
     ownerId: sessionUserId,
     authToken: sessionData?.session?.token ?? null,
     // useRequireAuth preserves a known owner during transient refresh/error.
-    confirmed: sessionUserId !== null || (!sessionLoading && !sessionError),
+    confirmed: sessionUserId !== null || confirmedSessionEnded,
   }
 
   // Core state
@@ -817,6 +827,10 @@ export default function ResumeEditPage() {
   const [resumeLoadError, setResumeLoadError] = useState<string | null>(null)
   const [offlineDraftLoaded, setOfflineDraftLoaded] = useState(false)
   const [offlinePdfLoaded, setOfflinePdfLoaded] = useState(false)
+  const { status: sourceLoadStatus, beginLoad: beginSourceLoad, finishLoad: finishSourceLoad, ownsLoad: ownsSourceLoad, isSourceReady } = useEditorSourceLoadScope(
+    sessionUserId, resumeId, sessionData, Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
+  )
+  const sourceLoadReady = isSourceReady() && !isLoading && !resumeLoadError
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Unsaved-changes guard: last-persisted snapshot + autosave status
@@ -859,15 +873,13 @@ export default function ResumeEditPage() {
 
   // Layout
   const aiRecoveryAvailableRef = useRef(false)
+  const latexGeneratorRecoveryRef = useRef<LatexGeneratorRecovery | null>(null)
   const [rightTab, setRightTabValue] = useState<RightTab>('preview')
   const setRightTab = useCallback((tab: RightTab) => {
+    if (tab === 'generate' && !latexGeneratorRecoveryRef.current?.canAccess) return
     const feature = RIGHT_TAB_CAPABILITIES[tab]
     if (!feature || canRef.current(feature) || (tab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue(tab)
   }, [])
-  useEffect(() => {
-    const feature = RIGHT_TAB_CAPABILITIES[rightTab]
-    if (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue('preview')
-  }, [can, rightTab])
   const rightTabBarRef = useRef<HTMLDivElement>(null)
   const activeRightTabRef = useRef<HTMLButtonElement>(null)
   // Keep the active right-panel tab scrolled into view within the horizontal scroller
@@ -1094,7 +1106,18 @@ export default function ResumeEditPage() {
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
   const [rememberedOfflineOwner, setRememberedOfflineOwner] = useState<string | null>(() => getRememberedOfflinePdfOwner())
-  const offlinePdfOwnerId = sessionUserId ?? rememberedOfflineOwner
+  const offlinePdfOwnerId = confirmedSessionEnded ? null : sessionUserId ?? rememberedOfflineOwner
+  // Pin private content to its exact owner/document incarnation before load
+  // effects run. An anonymous remembered-offline-owner change is also a boundary.
+  const loadedDocumentScopeRef = useRef({ ownerId: offlinePdfOwnerId, resumeId })
+  if (loadedDocumentScopeRef.current.ownerId !== offlinePdfOwnerId || loadedDocumentScopeRef.current.resumeId !== resumeId) {
+    loadedDocumentScopeRef.current = { ownerId: offlinePdfOwnerId, resumeId }
+  }
+  // Ownership becomes visible in the same React lane as matching source/CAS or
+  // PDF states, never through a synchronous ref ahead of queued content.
+  const [committedDocumentContent, setCommittedDocumentContent] = useState<{ scope: typeof loadedDocumentScopeRef.current; sourceLoaded: boolean } | null>(null)
+  const committedDocumentContentRef = useRef(committedDocumentContent)
+  committedDocumentContentRef.current = committedDocumentContent
   const [isMobile, setIsMobile] = useState(false)
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
 
@@ -1164,7 +1187,22 @@ export default function ResumeEditPage() {
   // its shared model is hidden behind the recovered, read-only source view.
   const checkpointRecoveryMobileRef = useRef(isMobile)
   const recoveryEditorIsMobile = currentCheckpointRecoveryPreview ? checkpointRecoveryMobileRef.current : isMobile
-  const canEditDocument = can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
+  const canEditDocument = sourceLoadReady && can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
+  const latexGeneratorRecovery = useLatexGeneratorRecovery({
+    ownerId: sessionUserId,
+    documentId: resumeId,
+    authReady: Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
+    can,
+    newWorkAllowed: sourceLoadReady && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled) && editorMode === 'source',
+    sourceLoadReady: isSourceReady,
+    active: editorMode === 'source' && visibleRightTab === 'generate',
+  })
+  latexGeneratorRecoveryRef.current = latexGeneratorRecovery
+  useEffect(() => {
+    const feature = RIGHT_TAB_CAPABILITIES[rightTab]
+    if ((rightTab === 'generate' && !latexGeneratorRecovery.canAccess)
+      || (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current))) setRightTabValue('preview')
+  }, [can, rightTab, latexGeneratorRecovery.canAccess])
   useEffect(() => {
     offlinePdfMountedRef.current = true
     return () => {
@@ -1427,26 +1465,33 @@ export default function ResumeEditPage() {
   const loadOfflinePdf = useCallback(async () => {
     const ownerId = offlinePdfOwnerId
     const generation = offlinePdfIdentityRef.current.generation
+    const documentScope = loadedDocumentScopeRef.current
     if (!ownerId) return false
     setOfflinePdfError(null)
     try {
       const cached = await getOfflineCompiledPdf(ownerId, resumeId)
-      if (!isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return false
+      if (loadedDocumentScopeRef.current !== documentScope || !isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) return false
       if (cached) {
-        if (!title.trim()) setTitle(cached.title)
+        if (committedDocumentContentRef.current?.scope !== documentScope || !committedDocumentContentRef.current.sourceLoaded) {
+          setTitle(cached.title)
+          setLatexContent('')
+          setSavedSnapshot({ title: cached.title, latex: '' })
+          editorRef.current?.setValue('')
+        }
         setPreviewBlob(cached.pdf, true)
+        setCommittedDocumentContent({ scope: documentScope, sourceLoaded: committedDocumentContentRef.current?.scope === documentScope && committedDocumentContentRef.current.sourceLoaded })
         setOfflinePdfLoaded(true)
         setRightTab('preview')
         return true
       }
       return false
     } catch {
-      if (isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
+      if (loadedDocumentScopeRef.current === documentScope && isCurrentOfflinePdfIdentity(ownerId, resumeId, generation)) {
         setOfflinePdfError('The offline PDF could not be opened. Check storage access and retry.')
       }
       return false
     }
-  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, setPreviewBlob, title, setRightTab])
+  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, setPreviewBlob, setRightTab])
 
   const saveCachedPdf = useCallback(async (blob: Blob) => {
     const ownerId = sessionUserId
@@ -1830,15 +1875,20 @@ export default function ResumeEditPage() {
   // Load the server copy and prefer a pending local draft when one exists.
   // This makes offline storage recoverable after refresh instead of write-only.
   useEffect(() => {
-    if (sessionLoading) return
+    if (sessionLoading || sessionRefetching) return
+    const sourceLoad = beginSourceLoad()
+    if (!ownsSourceLoad(sourceLoad)) return
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const initialPreviewIdentity = initialPreviewIdentityRef.current
-    const isActive = () => !cancelled && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
+    const documentScope = loadedDocumentScopeRef.current
+    const isActive = () => !cancelled && ownsSourceLoad(sourceLoad) && loadedDocumentScopeRef.current === documentScope
+      && initialPreviewIdentityRef.current === initialPreviewIdentity && isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
 
     if (!sessionData) {
       if (typeof navigator === 'undefined' || navigator.onLine) {
+        finishSourceLoad(sourceLoad, 'error')
         setIsLoading(false)
         return
       }
@@ -1846,6 +1896,7 @@ export default function ResumeEditPage() {
       setIsLoading(true)
       setResumeLoadError(null)
       if (!ownerAtStart) {
+        finishSourceLoad(sourceLoad, 'error')
         setResumeLoadError('No offline document is available for this browser profile.')
         setIsLoading(false)
         return
@@ -1862,11 +1913,22 @@ export default function ResumeEditPage() {
             if (ownerAtStart) {
               const cachedPdf = await getOfflineCompiledPdf(ownerAtStart, resumeId).catch(() => null)
               if (isActive() && cachedPdf) {
+                if (committedDocumentContentRef.current?.scope !== documentScope || !committedDocumentContentRef.current.sourceLoaded) {
+                  setTitle(cachedPdf.title)
+                  setLatexContent('')
+                  setSavedSnapshot({ title: cachedPdf.title, latex: '' })
+                  editorRef.current?.setValue('')
+                }
+                setPreviewBlob(cachedPdf.pdf, true)
+                setRightTab('preview')
+                setCommittedDocumentContent({ scope: documentScope, sourceLoaded: committedDocumentContentRef.current?.scope === documentScope && committedDocumentContentRef.current.sourceLoaded })
+                finishSourceLoad(sourceLoad, 'pdf-only')
                 setOfflinePdfLoaded(true)
                 return
               }
             }
             if (!isActive()) return
+            finishSourceLoad(sourceLoad, 'error')
             setResumeLoadError('No offline draft is available for this resume.')
             return
           }
@@ -1875,11 +1937,16 @@ export default function ResumeEditPage() {
           setLatexContent(draft.latexContent)
           setSavedSnapshot({ title: draft.title, latex: draft.latexContent })
           editorRef.current?.setValue(draft.latexContent)
+          setCommittedDocumentContent({ scope: documentScope, sourceLoaded: true })
           setOfflineDraftLoaded(true)
+          finishSourceLoad(sourceLoad, 'ready', 'offline')
           setLastSavedAt(new Date(draft.savedAt).getTime())
         })
         .catch(() => {
-          if (isActive()) setResumeLoadError('The offline draft could not be loaded from this device.')
+          if (isActive()) {
+            finishSourceLoad(sourceLoad, 'error')
+            setResumeLoadError('The offline draft could not be loaded from this device.')
+          }
         })
         .finally(() => {
           if (isActive()) setIsLoading(false)
@@ -1907,6 +1974,7 @@ export default function ResumeEditPage() {
         // collaborative edit with this full-document draft.
         setSavedSnapshot({ title: data.title, latex: data.latex_content })
         editorRef.current?.setValue(effectiveLatex)
+        setCommittedDocumentContent({ scope: documentScope, sourceLoaded: true })
         if (pendingDraft) {
           setOfflineDraftLoaded(true)
           setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
@@ -1950,6 +2018,7 @@ export default function ResumeEditPage() {
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionUserId)
         setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
+        finishSourceLoad(sourceLoad, 'ready', pendingDraft ? 'offline' : 'server')
 
         const nextParentResumeId = data.parent_resume_id ?? null
         setParentResumeId(nextParentResumeId)
@@ -1977,6 +2046,7 @@ export default function ResumeEditPage() {
         }
       } catch (error) {
         if (isActive()) {
+          finishSourceLoad(sourceLoad, 'error')
           setResumeLoadError(error instanceof Error ? error.message : 'Resume could not be loaded.')
         }
       } finally {
@@ -1985,7 +2055,7 @@ export default function ResumeEditPage() {
     }
     void fetchResume()
     return () => { cancelled = true }
-  }, [isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionUserId])
+  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionRefetching, sessionUserId, setPreviewBlob, setRightTab])
 
   // A completed rewrite remains staged until the user explicitly applies it.
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
@@ -3349,7 +3419,12 @@ export default function ResumeEditPage() {
   // a "More" overflow menu (Finding: 17 equally-weighted tabs).
   const moreTabIds: RightTab[] = ['generate', 'comments', 'review', 'chat', 'references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'suggestions', 'docs', 'layout', 'snippets', 'macros', 'tikz']
 
-  if (isLoading) {
+  const editorLoadBoundary = editorRecoveryLoadBoundary({
+    preserveRecovery: latexGeneratorRecovery.mounted,
+    sourceStatus: sourceLoadStatus,
+    isLoading, resumeLoadError, hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded, confirmedSessionEnded,
+  })
+  if (editorLoadBoundary === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-bg">
         <LoadingSpinner />
@@ -3357,7 +3432,7 @@ export default function ResumeEditPage() {
     )
   }
 
-  if (resumeLoadError) {
+  if (editorLoadBoundary === 'error') {
     return (
       <div className="flex h-screen items-center justify-center bg-bg px-6">
         <div role="alert" className="max-w-md rounded-[var(--radius-xl)] border border-line bg-surface p-6 text-center shadow-[var(--shadow-2)]">
@@ -3377,14 +3452,25 @@ export default function ResumeEditPage() {
     )
   }
 
-  if (sessionError && !sessionData && !offlineDraftLoaded && !offlinePdfLoaded) {
+  if (editorLoadBoundary === 'session-error') {
     return <SessionLoadError area="Resume editor" />
   }
 
-  if (!sessionData && !offlineDraftLoaded && !offlinePdfLoaded) return null
+  if (editorLoadBoundary === 'empty') return null
+
+  if (committedDocumentContent?.scope !== loadedDocumentScopeRef.current) {
+    return <div className="flex h-screen items-center justify-center bg-bg"><LoadingSpinner /></div>
+  }
 
   return (
     <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="flex h-screen flex-col overflow-hidden bg-bg">
+
+      {latexGeneratorRecovery.mounted && !sourceLoadReady && (
+        <div role={resumeLoadError ? 'alert' : 'status'} className="shrink-0 border-b border-line bg-surface-2 px-4 py-2 text-xs text-fg-2">
+          {resumeLoadError ? `Document reload failed: ${resumeLoadError}` : 'Loading the current document…'}
+          {' '}Saved generator recovery is available. New generation and insertion wait for the document to load.
+        </div>
+      )}
 
       {/* ── TOP HEADER ── */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
@@ -4272,7 +4358,7 @@ export default function ResumeEditPage() {
                     style={{ position: 'fixed', top: moreTabsPos.top, right: moreTabsPos.right }}
                   >
                     {([
-                      { id: 'generate', label: 'Generate LaTeX', icon: Sparkles },
+                      { id: 'generate', label: latexGeneratorRecovery.canStart ? 'Generate LaTeX' : 'Recover LaTeX', icon: Sparkles },
                       { id: 'comments', label: 'Comments', icon: MessageSquare },
                       { id: 'review', label: 'Review', icon: MessageSquare },
                       { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -4289,7 +4375,7 @@ export default function ResumeEditPage() {
                       { id: 'snippets', label: 'Snippets', icon: Package },
                       { id: 'macros', label: 'Macros', icon: Keyboard },
                       { id: 'tikz', label: 'TikZ', icon: Pencil },
-                    ] as const).filter(({ id }) => (!RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
+                    ] as const).filter(({ id }) => (id === 'generate' ? latexGeneratorRecovery.canAccess : !RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
                         role="menuitem"
@@ -4500,12 +4586,13 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {canEditDocument && editorMode === 'source' && visibleRightTab === 'generate' && (
-              <CapabilityGate feature="d14"><LatexGeneratorPanel
-                documentContext={latexContent}
-                onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
-              /></CapabilityGate>
-            )}
+            <LatexGeneratorRecoveryShell
+              recovery={latexGeneratorRecovery}
+              active={editorMode === 'source' && visibleRightTab === 'generate'}
+              documentId={resumeId}
+              documentContext={latexContent}
+              onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
+            />
 
             {visibleRightTab === 'interview' && (
               <div className="min-h-0 flex-1 overflow-hidden">

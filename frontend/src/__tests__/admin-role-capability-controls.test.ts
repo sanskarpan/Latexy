@@ -5,11 +5,11 @@ import { createEntitlementWriteLock, patchEntitlementCell } from '@/lib/admin-en
 import type { AdminEntitlementsState } from '@/lib/api-client'
 
 const source = ts.createSourceFile('admin.tsx', readFileSync(new URL('../app/admin/page.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
-function fixture() {
-  return { registry: [], kill_switches: { b03: true }, matrix: { pro: { b03: true } }, plan_families: ['pro'], roles: ['user', 'admin'], role_matrix: { user: { b03: true }, admin: { b03: true } } } as AdminEntitlementsState
+function fixture(key = 'b03') {
+  return { registry: [], kill_switches: { [key]: true }, matrix: { pro: { [key]: true }, pro_annual: { [key]: true } }, plan_families: ['pro'], roles: ['user', 'admin'], role_matrix: { user: { [key]: true }, admin: { [key]: true } } } as AdminEntitlementsState
 }
-function harness() {
-  let data = fixture()
+function harness(key = 'b03') {
+  let data = fixture(key)
   let expression = ''
   function visit(node: ts.Node) {
     if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'toggle' && node.initializer && ts.isCallExpression(node.initializer)) expression = node.initializer.arguments[0].getText(source)
@@ -54,5 +54,36 @@ describe('admin role control dispatch and conflicts', () => {
     const h = harness(); h.apiClient.updateRoleCell.mockRejectedValue(new Error('offline')); h.apiClient.getAdminEntitlements.mockRejectedValue(new Error('offline'))
     await h.run('role:user', 'b03', false)
     expect(h.setError).toHaveBeenCalledWith(expect.stringContaining('Reload this page'))
+  })
+})
+
+
+describe('real admin child operation writes', () => {
+  const leaves = ['d14_latex', 'd14_table_text', 'd14_table_image', 'd14_math_text', 'd14_math_image']
+  it.each(leaves.flatMap((key) => ['global', 'pro', 'pro_annual', 'role:admin'].map((scope) => [key, scope])))('writes %s in %s with expected-state comparison', async (key, scope) => {
+    const h = harness(key); const response = fixture(key)
+    response.kill_switches[key] = false; response.matrix.pro[key] = false; response.matrix.pro_annual[key] = false; response.role_matrix!.admin[key] = false
+    h.apiClient.updateKillSwitch.mockResolvedValue(response); h.apiClient.updateMatrixCell.mockResolvedValue(response); h.apiClient.updateRoleCell.mockResolvedValue(response)
+    await h.run(scope, key, false)
+    const method = scope === 'global' ? h.apiClient.updateKillSwitch : scope.startsWith('role:') ? h.apiClient.updateRoleCell : h.apiClient.updateMatrixCell
+    expect(method).toHaveBeenCalledWith(...(scope === 'global' ? [key, false, true] : [scope.startsWith('role:') ? 'admin' : scope, key, false, true]))
+    expect(h.state().kill_switches[key]).toBe(scope !== 'global')
+    expect(h.state().matrix.pro[key]).toBe(scope !== 'pro')
+    expect(h.state().matrix.pro_annual[key]).toBe(scope !== 'pro_annual')
+    expect(h.state().role_matrix!.admin[key]).toBe(scope !== 'role:admin')
+  })
+  it('serializes repeated writes to the same child cell and refreshes conflicts', async () => {
+    const key = leaves[0]; const h = harness(key); let resolve: (state: AdminEntitlementsState) => void = () => {}
+    h.apiClient.updateRoleCell.mockImplementation(() => new Promise((done) => { resolve = done }))
+    const first = h.run('role:admin', key, false)
+    await h.run('role:admin', key, false)
+    expect(h.apiClient.updateRoleCell).toHaveBeenCalledOnce()
+    const updated = fixture(key); updated.role_matrix!.admin[key] = false; resolve(updated)
+    await first
+    h.apiClient.updateRoleCell.mockRejectedValue(new Error('HTTP 409: another operator changed the child'))
+    h.apiClient.getAdminEntitlements.mockResolvedValue(updated)
+    await h.run('role:admin', key, true)
+    expect(h.state().role_matrix!.admin[key]).toBe(false)
+    expect(h.toast.error).toHaveBeenCalledWith(expect.stringContaining('changed elsewhere'))
   })
 })

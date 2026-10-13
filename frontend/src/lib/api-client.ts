@@ -748,6 +748,8 @@ export interface EntitlementFeatureDef {
   description?: string | null
   parent_key?: string | null
   inventory_id?: string | null
+  control_kind?: 'parent' | 'product' | 'subfeature'
+  product_inventory_id?: string | null
   always_on_reason?: string | null
 }
 
