@@ -88,3 +88,12 @@ The existing CI landing screenshot case now records both themes at a 1440x1000 d
 Current blocker: fresh browser-rendered CI evidence and post-fix focused comparison are pending. Do not hand off as passed until the revised captures have been reviewed. Actual light/dark page screenshots will be included in the PR after commits, as explicitly requested.
 
 final result: blocked
+
+
+### Fresh CI review of 5b5fc51a
+
+All required CI checks passed. Downloaded artifact 11847646028 from run 38460054031; archive SHA-256 `bb493a24e81e101c729454b5c21bb41ea7250985330067519269f94788745383` verified. Actual landing screenshots passed across desktop Chromium, Firefox, WebKit, mobile Chromium and mobile WebKit, in both themes and long-content states. These are app renders, not mockups.
+
+Visual acceptance remains blocked: the source comparison found a three-line hero caused by a 652px first track (italic ink already matches at 364px), undersized builder/lower headings and demo copy, cream/brown builder surfaces, and the duplicate PDF-tab preview. Corrections now preserve the 680/20/400 hero geometry, use neutral/slate specimen surfaces, restore measured type sizes, larger ATS labels, compact FAQ copy, status icons and a single expanded PDF view. Tailoring wording is constrained to the original sample claims. TypeScript, scoped ESLint and 23 existing contract tests passed unchanged. Awaiting the next actual render to verify these corrections.
+
+final result: blocked

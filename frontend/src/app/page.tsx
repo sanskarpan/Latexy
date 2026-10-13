@@ -34,11 +34,11 @@ const faq = [
         answer: 'No. Use familiar fields in the guided builder, or edit visually in the studio. The LaTeX source editor is available when you want detailed control.',
     },
     {
-        question: 'Can I try without creating an account?',
+        question: 'Can I try Latexy without creating an account?',
         answer: 'Yes. Try the guest studio and edit a sample résumé with limited guest usage. Professional PDF output is available in the studio. A saved workspace and the guided builder require an account. Feature availability depends on your plan.',
     },
     {
-        question: 'Will AI change my résumé without asking?',
+        question: 'Will AI change my résumé without asking me?',
         answer: 'You review suggestions and choose what to accept, edit, or keep. Check that every suggestion accurately reflects your real experience.',
     },
     {
@@ -83,7 +83,9 @@ export default function LandingPage() {
                 <h1 id="landing-title">
                     Your next
                     <br />
-                    chapter, <em>well written.</em>
+                    <span className="lp-hero-second-line">
+                        chapter, <em>well written.</em>
+                    </span>
                 </h1>
                 <div className="lp-hero-copy">
                     <p>

@@ -15,6 +15,7 @@ import {
     IconAlignLeft,
     IconArrowsDiagonal,
     IconCircleDot,
+    IconSquareFilled,
     IconDownload,
     IconBulb,
     IconBriefcase,
@@ -35,7 +36,7 @@ const SAMPLE_SUMMARY =
 const ORIGINAL_BULLET =
     'Built and maintained user-facing products in Python with a focus on performance.'
 const SUGGESTED_BULLET =
-    'Designed and built scalable, user-facing features using Python, with a focus on performance and reliability.'
+    'Built and maintained user-facing features using Python, with a focus on performance.'
 const SAMPLE_SOURCE = `\\documentclass{article}
 \\usepackage{amsmath}
 \\begin{document}
@@ -436,7 +437,7 @@ function AnalysisDemo() {
     }
     const point = (index: number, radius: number): [number, number] => [
         140 + Math.sin((index * Math.PI * 2) / 5) * radius,
-        114 - Math.cos((index * Math.PI * 2) / 5) * radius,
+        118 - Math.cos((index * Math.PI * 2) / 5) * radius,
     ]
     return (
         <div className="lp-analysis-demo">
@@ -444,25 +445,25 @@ function AnalysisDemo() {
                 <h3>ATS analysis</h3>
                 <svg
                     className="lp-radar-chart"
-                    viewBox="0 0 280 228"
+                    viewBox="0 0 280 236"
                     role="img"
                     aria-label="Illustrative scores: Grammar 70, Keywords 61, Density 80, Sections 72, Bullets 86 out of 100"
                 >
                     {[0.25, 0.5, 0.75, 1].map(scale => (
                         <Polygon
                             key={scale}
-                            points={DIMENSIONS.map((_, index) => point(index, 90 * scale))}
+                            points={DIMENSIONS.map((_, index) => point(index, 96 * scale))}
                             fill="none"
                             stroke="var(--lp-chart-grid)"
                             strokeWidth={1}
                         />
                     ))}
                     {DIMENSIONS.map((_, index) => {
-                        const [x, y] = point(index, 90)
+                        const [x, y] = point(index, 96)
                         return (
                             <Line
                                 key={index}
-                                from={{ x: 140, y: 114 }}
+                                from={{ x: 140, y: 118 }}
                                 to={{ x, y }}
                                 stroke="var(--lp-chart-grid)"
                             />
@@ -470,7 +471,7 @@ function AnalysisDemo() {
                     })}
                     <Polygon
                         points={DIMENSIONS.map((dimension, index) =>
-                            point(index, dimension.score * 0.9)
+                            point(index, dimension.score * 0.96)
                         )}
                         fill="var(--lp-chart-fill)"
                         fillOpacity={0.55}
@@ -478,7 +479,7 @@ function AnalysisDemo() {
                         strokeWidth={1.8}
                     />
                     {DIMENSIONS.map((dimension, index) => {
-                        const [x, y] = point(index, dimension.score * 0.9)
+                        const [x, y] = point(index, dimension.score * 0.96)
                         const [labelX, labelY] = point(index, 109)
                         return (
                             <g key={dimension.label}>
@@ -489,7 +490,7 @@ function AnalysisDemo() {
                                     textAnchor="middle"
                                     dominantBaseline="middle"
                                     fill="var(--lp-muted)"
-                                    fontSize={11}
+                                    fontSize={17}
                                 >
                                     {dimension.label}
                                 </text>
@@ -692,7 +693,11 @@ function ApplicationDemo() {
                     <section className="lp-demo lp-board-column" key={status}>
                         <h3>
                             <span className="lp-board-heading">
-                                <IconFileText size={14} aria-hidden="true" />
+                                {status === 'Interview' ? (
+                                    <IconSquareFilled size={12} aria-hidden="true" />
+                                ) : (
+                                    <IconCircleDot size={14} aria-hidden="true" />
+                                )}
                                 {status}
                                 <span className="lp-board-count">
                                     {
@@ -806,7 +811,7 @@ function LatexDemo() {
         lualatex: 'A modern compiler with Unicode and Lua support.',
     }
     return (
-        <div className="lp-demo lp-latex-demo">
+        <div className="lp-demo lp-latex-demo" data-view={sampleView}>
             <div className="lp-latex-source">
                 <div className="lp-latex-tabs" role="tablist" aria-label="Explore the LaTeX sample">
                     {(['source', 'pdf'] as const).map(value => (
