@@ -45,6 +45,8 @@ DYNAMIC = {
     "f04": ["middleware/capability_router.py:payload_capabilities (collaborator role increase; viewer downgrade exempt)", "api/resume_routes.py:_get_resume_document_access/update_resume (current collaborator and owner grants on reads and writes)"],
     "f05": ["middleware/capability_router.py:payload_capabilities (collaboration ticket)", "api/ws_routes.py:collab_websocket/_collab_live_access_callback (entry, current ACL, every frame and idle heartbeat)", "services/collab_manager.py:CollabRoom.has_access/broadcast/send_to (current recipient authorization before outbound data)", "services/entitlement_service.py:users_have_feature (fresh batched owner/participant grants)"],
     "f08": ["middleware/capability_router.py:payload_capabilities (workspace role increase; viewer downgrade exempt)", "api/workspace_routes.py:_workspace_use_allowed/_require_workspace_use (actor and workspace owner; owned source/removal preserved)"],
+    "f10": ["middleware/capability_router.py:payload_capabilities (update_tenant branding/reactivation; removal/disable recovery exempt)"],
+    "f11": ["middleware/capability_router.py:payload_capabilities (update_tenant new domain; domain removal recovery exempt)"],
     "g12": ["middleware/capability_router.py:payload_capabilities (enable portfolio/source visibility; disable exempt)", "api/portfolio_routes.py:get_portfolio/contact_portfolio_owner/resolve_domain (existing owner's grant)"],
     "g13": ["api/portfolio_routes.py:resolve_domain (custom-domain owner's current grant)"],
     "h01": ["middleware/capability_router.py:payload_capabilities (premium saved/raw format conversion; tex/pdf exempt)"],
@@ -106,7 +108,7 @@ def generate() -> dict:
     # Find direct component gates and dynamic editor-tool maps too. Test files
     # and the admin catalog are excluded: listing a key is not a user gate.
     for path in (ROOT / "frontend/src").rglob("*.tsx"):
-        if "__tests__" in path.parts or "admin" in path.parts:
+        if "__tests__" in path.parts or path == ROOT / "frontend/src/app/admin/page.tsx":
             continue
         source = path.read_text(encoding="utf-8")
         for key in re.findall(r"(?:can|canUseFeature)\(\s*['\"]([a-i]\d\d)['\"]|feature=['\"]([a-i]\d\d)['\"]", source):

@@ -10,7 +10,7 @@
  *  - Aggregate stats (members, resumes, compilations)
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, type MutableRefObject } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
@@ -25,6 +25,7 @@ import {
 import { applyTenantTheme } from '@/lib/tenant-theme'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 
 // ── Minimal icon components ───────────────────────────────────────────────────
 
@@ -56,8 +57,39 @@ function safeHttpUrl(value: string): string | null {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+type TenantOwnerScope = { ownerId: string | null; generation: number; ready: boolean }
+
 export default function TenantAdminPage() {
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const ownerScopeRef = useRef<TenantOwnerScope>({ ownerId: session?.user?.id ?? null, generation: 0, ready: false })
+  const ownerId = session?.user?.id ?? ((sessionLoading || sessionError) ? ownerScopeRef.current.ownerId : null)
+  if (ownerId !== ownerScopeRef.current.ownerId) {
+    ownerScopeRef.current = { ownerId, generation: ownerScopeRef.current.generation + 1, ready: false }
+  }
+  ownerScopeRef.current.ready = Boolean(session?.user && !sessionLoading && !sessionError)
+  if (!ownerId) {
+    if (sessionError) return <SessionLoadError area="Tenant management" />
+    if (sessionLoading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner /></div>
+    return null
+  }
+  // Reset private state on confirmed identity changes, including A → B → A.
+  // The shared ref also fences retained callbacks before effect cleanup.
+  return <TenantAdminContent key={`${ownerId}:${ownerScopeRef.current.generation}`} ownerId={ownerId}
+    ownerGeneration={ownerScopeRef.current.generation} ownerScopeRef={ownerScopeRef} sessionLoading={sessionLoading} sessionReady={ownerScopeRef.current.ready} />
+}
+
+function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, sessionLoading, sessionReady }: {
+  ownerId: string; ownerGeneration: number; ownerScopeRef: MutableRefObject<TenantOwnerScope>; sessionLoading: boolean; sessionReady: boolean
+}) {
+  const mountedRef = useRef(true)
+  const isCurrentOwner = useCallback(() => mountedRef.current && ownerScopeRef.current.ownerId === ownerId
+    && ownerScopeRef.current.generation === ownerGeneration, [ownerId, ownerGeneration, ownerScopeRef])
+  const canActForOwner = useCallback(() => isCurrentOwner() && ownerScopeRef.current.ready, [isCurrentOwner, ownerScopeRef])
+  const { can } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const canSetup = can('f10')
+  const canSetupDomain = can('f11')
   const [tenants, setTenants] = useState<TenantResponse[] | null>(null)
   const [selected, setSelected] = useState<TenantResponse | null>(null)
   const [members, setMembers] = useState<MemberResponse[]>([])
@@ -75,6 +107,9 @@ export default function TenantAdminPage() {
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [savingDomain, setSavingDomain] = useState(false)
+  const [verifyingDomain, setVerifyingDomain] = useState(false)
+  const tenantPatchPendingRef = useRef(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
@@ -96,35 +131,35 @@ export default function TenantAdminPage() {
   const selectedTenantIdRef = useRef<string | null>(null)
 
   const loadTenants = useCallback(async () => {
+    if (!canActForOwner()) return
     setLoading(true)
     setTenantListError(null)
     try {
       const data = await apiClient.listMyTenants()
+      if (!isCurrentOwner()) return
       setTenants(data)
       if (data.length > 0 && !selectedTenantIdRef.current) {
         void selectTenant(data[0])
       }
     } catch (error) {
+      if (!isCurrentOwner()) return
       setTenantListError(error instanceof Error ? error.message : 'Failed to load tenants')
     } finally {
-      setLoading(false)
+      if (isCurrentOwner()) setLoading(false)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (sessionLoading) return
-    if (!session?.user) {
-      setLoading(false)
-      return
-    }
+    if (sessionLoading || !canActForOwner()) return
     loadTenants()
     apiClient.getMe().then(
-      (account) => setCanProvisionTenant(account.role === 'admin' || account.plan === 'team'),
-      () => setCanProvisionTenant(false),
+      (account) => { if (isCurrentOwner()) setCanProvisionTenant(account.role === 'admin' || account.plan === 'team') },
+      () => { if (isCurrentOwner()) setCanProvisionTenant(false) },
     )
-  }, [loadTenants, session, sessionLoading])
+  }, [loadTenants, sessionLoading, sessionReady, canActForOwner, isCurrentOwner])
 
   const selectTenant = useCallback(async (tenant: TenantResponse) => {
+    if (!canActForOwner()) return
     const requestId = ++detailRequestRef.current
     selectedTenantIdRef.current = tenant.id
     setSelected(tenant)
@@ -147,7 +182,7 @@ export default function TenantAdminPage() {
       apiClient.getTenantStats(tenant.id),
       apiClient.listTenantCohorts(tenant.id),
     ])
-    if (requestId !== detailRequestRef.current) return
+    if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
 
     if (membersResult.status === 'fulfilled') {
       setMembers(membersResult.value)
@@ -162,22 +197,31 @@ export default function TenantAdminPage() {
     if (cohortsResult.status === 'fulfilled') setCohorts(cohortsResult.value)
     setMembersLoading(false)
     setStatsLoading(false)
+  }, [canActForOwner, isCurrentOwner])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false; detailRequestRef.current += 1 }
   }, [])
 
-  useEffect(() => () => { detailRequestRef.current += 1 }, [])
-
   const saveBranding = async () => {
-    if (!selected) return
+    if (!canActForOwner() || !canRef.current('f10') || !selected || tenantPatchPendingRef.current) return
+    const tenantId = selected.id
+    const requestId = detailRequestRef.current
+    if (selectedTenantIdRef.current !== tenantId) return
+    const isCurrent = () => isCurrentOwner() && requestId === detailRequestRef.current && selectedTenantIdRef.current === tenantId
+    tenantPatchPendingRef.current = true
     setSaving(true)
     try {
-      const updated = await apiClient.updateTenant(selected.id, {
+      const updated = await apiClient.updateTenant(tenantId, {
         name: name || undefined,
         logo_url: logoUrl || null,
         primary_color: primaryColor || null,
-        custom_domain: customDomain || null,
       })
-      setSelected(updated)
+      if (!isCurrentOwner()) return
       setTenants((prev) => prev?.map((t) => (t.id === updated.id ? updated : t)) ?? null)
+      if (!isCurrent()) return
+      setSelected(updated)
       applyTenantTheme({
         ...updated,
         logo_url: updated.logo_url ?? null,
@@ -186,15 +230,73 @@ export default function TenantAdminPage() {
       })
       toast.success('Branding saved')
     } catch (err: unknown) {
+      if (!isCurrent()) return
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to save branding')
     } finally {
-      setSaving(false)
+      tenantPatchPendingRef.current = false
+      if (isCurrentOwner()) setSaving(false)
+    }
+  }
+
+  // Domain setup is independent of branding. A domain-only request must not
+  // retransmit unchanged F10 fields; removing an existing domain is recovery.
+  const saveDomain = async () => {
+    if (!canActForOwner() || !selected || (customDomain.trim() && !canRef.current('f11')) || tenantPatchPendingRef.current) return
+    const tenantId = selected.id
+    const requestId = detailRequestRef.current
+    if (selectedTenantIdRef.current !== tenantId) return
+    const isCurrent = () => isCurrentOwner() && requestId === detailRequestRef.current && selectedTenantIdRef.current === tenantId
+    tenantPatchPendingRef.current = true
+    setSavingDomain(true)
+    try {
+      const updated = await apiClient.updateTenant(tenantId, { custom_domain: customDomain.trim() || null })
+      if (!isCurrentOwner()) return
+      setTenants((prev) => prev?.map((t) => (t.id === updated.id ? updated : t)) ?? null)
+      if (!isCurrent()) return
+      setSelected(updated)
+      setCustomDomain(updated.custom_domain ?? '')
+      setDnsInfo(null)
+      applyTenantTheme({ ...updated, logo_url: updated.logo_url ?? null, primary_color: updated.primary_color ?? null, custom_domain: updated.custom_domain ?? null })
+      toast.success(updated.custom_domain ? 'Domain saved' : 'Domain removed')
+    } catch (error) {
+      if (!isCurrent()) return
+      toast.error(error instanceof Error ? error.message : 'Failed to save domain')
+    } finally {
+      tenantPatchPendingRef.current = false
+      if (isCurrentOwner()) setSavingDomain(false)
+    }
+  }
+
+  const removeDomain = async () => {
+    if (!canActForOwner() || !selected?.custom_domain || tenantPatchPendingRef.current) return
+    const tenantId = selected.id
+    const requestId = detailRequestRef.current
+    if (selectedTenantIdRef.current !== tenantId) return
+    const isCurrent = () => isCurrentOwner() && requestId === detailRequestRef.current && selectedTenantIdRef.current === tenantId
+    tenantPatchPendingRef.current = true
+    setSavingDomain(true)
+    try {
+      const updated = await apiClient.updateTenant(tenantId, { custom_domain: null })
+      if (!isCurrentOwner()) return
+      setTenants((prev) => prev?.map((t) => (t.id === updated.id ? updated : t)) ?? null)
+      if (!isCurrent()) return
+      setSelected(updated)
+      setCustomDomain('')
+      setDnsInfo(null)
+      applyTenantTheme({ ...updated, logo_url: updated.logo_url ?? null, primary_color: updated.primary_color ?? null, custom_domain: null })
+      toast.success('Domain removed')
+    } catch (error) {
+      if (!isCurrent()) return
+      toast.error(error instanceof Error ? error.message : 'Failed to remove domain')
+    } finally {
+      tenantPatchPendingRef.current = false
+      if (isCurrentOwner()) setSavingDomain(false)
     }
   }
 
   const invite = async () => {
-    if (!selected || !inviteEmail.trim()) return
+    if (!canActForOwner() || !canRef.current('f10') || !selected || !inviteEmail.trim()) return
     setInviting(true)
     try {
       const member = await apiClient.inviteTenantMember(
@@ -203,100 +305,125 @@ export default function TenantAdminPage() {
         inviteRole,
         inviteCohortId || undefined,
       )
+      if (!isCurrentOwner()) return
       setInviteEmail('')
       toast.success(`Invitation sent to ${member.email}`)
     } catch (err: unknown) {
+      if (!isCurrentOwner()) return
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to invite member')
     } finally {
-      setInviting(false)
+      if (isCurrentOwner()) setInviting(false)
     }
   }
 
   const createCohort = async () => {
-    if (!selected || !newCohortName.trim()) return
+    if (!canActForOwner() || !canRef.current('f10') || !selected || !newCohortName.trim()) return
     setCreatingCohort(true)
     try {
       const cohort = await apiClient.createTenantCohort(selected.id, newCohortName.trim())
+      if (!isCurrentOwner()) return
       setCohorts((current) => [...current, cohort])
       setNewCohortName('')
       toast.success(`Cohort “${cohort.name}” created`)
     } catch (error) {
+      if (!isCurrentOwner()) return
       toast.error(error instanceof Error ? error.message : 'Cohort creation failed')
     } finally {
-      setCreatingCohort(false)
+      if (isCurrentOwner()) setCreatingCohort(false)
     }
   }
 
   const loadCohortSubmissions = async (cohortId: string) => {
-    if (!selected) return
+    if (!canActForOwner() || !selected) return
+    const requestId = detailRequestRef.current
     try {
       const submissions = await apiClient.listCohortSubmissions(selected.id, cohortId)
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
       setCohortSubmissions((current) => ({ ...current, [cohortId]: submissions }))
     } catch (error) {
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
       toast.error(error instanceof Error ? error.message : 'Cohort submissions failed to load')
     }
   }
 
   const removeMember = async (userId: string) => {
-    if (!selected) return
+    if (!canActForOwner() || !selected) return
+    const requestId = detailRequestRef.current
     try {
       await apiClient.removeTenantMember(selected.id, userId)
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
       setMembers((prev) => prev.filter((m) => m.user_id !== userId))
       toast.success('Member removed')
     } catch {
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
       toast.error('Failed to remove member')
     }
   }
 
   const verifyDomain = async () => {
-    if (!selected) return
+    if (!canActForOwner() || !canRef.current('f11') || !selected?.custom_domain || tenantPatchPendingRef.current) return
+    const tenantId = selected.id
+    const requestId = detailRequestRef.current
+    if (selectedTenantIdRef.current !== tenantId) return
+    const isCurrent = () => isCurrentOwner() && requestId === detailRequestRef.current && selectedTenantIdRef.current === tenantId
+    tenantPatchPendingRef.current = true
+    setVerifyingDomain(true)
     try {
-      const info = await apiClient.verifyTenantDomain(selected.id)
+      const info = await apiClient.verifyTenantDomain(tenantId)
+      if (!isCurrentOwner()) return
+      if (info.verified) {
+        setTenants((current) => current?.map((tenant) => (
+          tenant.id === tenantId ? { ...tenant, domain_verified: true } : tenant
+        )) ?? null)
+      }
+      if (!isCurrent()) return
       setDnsInfo(info)
       if (info.verified) {
         setSelected((current) => current ? { ...current, domain_verified: true } : current)
-        setTenants((current) => current?.map((tenant) => (
-          tenant.id === selected.id ? { ...tenant, domain_verified: true } : tenant
-        )) ?? null)
         toast.success('Domain ownership verified')
       } else {
         toast.info('DNS record is not visible yet. Add the record and retry.')
       }
     } catch (err: unknown) {
+      if (!isCurrent()) return
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to fetch DNS instructions')
+    } finally {
+      tenantPatchPendingRef.current = false
+      if (isCurrentOwner()) setVerifyingDomain(false)
     }
   }
 
   const createTenant = async () => {
-    if (!newName.trim() || !newSlug.trim()) return
+    if (!canActForOwner() || !canRef.current('f10') || !canProvisionTenant || !newName.trim() || !newSlug.trim()) return
     setCreating(true)
     try {
       const tenant = await apiClient.createTenant({ name: newName, slug: newSlug })
+      if (!isCurrentOwner()) return
       setTenants((prev) => [...(prev ?? []), tenant])
       setShowCreate(false)
       setNewName('')
       setNewSlug('')
       await selectTenant(tenant)
+      if (!isCurrentOwner()) return
       toast.success(`Tenant "${tenant.name}" created`)
     } catch (err: unknown) {
+      if (!isCurrentOwner()) return
       const msg = err instanceof Error ? err.message : String(err)
       toast.error(msg || 'Failed to create tenant')
     } finally {
-      setCreating(false)
+      if (isCurrentOwner()) setCreating(false)
     }
   }
 
-  if (sessionLoading || (session && loading)) {
+  if (sessionLoading || loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner />
       </div>
     )
   }
-  if (sessionError && !session) return <SessionLoadError area="Tenant management" />
-  if (!session?.user) return null
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 space-y-10">
@@ -306,7 +433,7 @@ export default function TenantAdminPage() {
           <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Admin</p>
           <h1 className="mt-1 text-xl font-semibold text-fg">Tenant Management</h1>
         </div>
-        {canProvisionTenant && (
+        {canProvisionTenant && canSetup && (
           <button
             onClick={() => setShowCreate(true)}
             className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110"
@@ -317,7 +444,7 @@ export default function TenantAdminPage() {
       </div>
 
       {/* Create tenant modal */}
-      {showCreate && canProvisionTenant && (
+      {showCreate && canProvisionTenant && canSetup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]">
           <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-bg p-6 shadow-[var(--shadow-2)]">
             <h2 className="mb-5 text-base font-semibold text-fg">Create New Tenant</h2>
@@ -437,7 +564,7 @@ export default function TenantAdminPage() {
           {/* Right column — branding + members + domain */}
           <div className="space-y-6 lg:col-span-2">
             {/* Branding */}
-            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            {canSetup && <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
               <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Branding</p>
               <div className="space-y-3">
                 <div>
@@ -481,13 +608,13 @@ export default function TenantAdminPage() {
                 </div>
                 <button
                   onClick={saveBranding}
-                  disabled={saving}
+                  disabled={saving || savingDomain || verifyingDomain}
                   className="w-full rounded-[var(--radius-md)] bg-accent-soft py-2 text-sm font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
                 >
                   {saving ? 'Saving…' : 'Save Branding'}
                 </button>
               </div>
-            </section>
+            </section>}
 
             {/* Custom domain */}
             <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
@@ -497,17 +624,21 @@ export default function TenantAdminPage() {
                   type="text"
                   value={customDomain}
                   onChange={(e) => setCustomDomain(e.target.value)}
+                  readOnly={!canSetupDomain}
                   placeholder="resumes.acme.com"
                   className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
-                <button
+                {canSetupDomain && <button
                   onClick={verifyDomain}
-                  disabled={!selected.custom_domain || customDomain !== selected.custom_domain}
+                  disabled={saving || savingDomain || verifyingDomain || !selected.custom_domain || customDomain !== selected.custom_domain}
                   className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 transition hover:text-fg disabled:opacity-30"
                 >
-                  {selected.domain_verified ? 'Recheck DNS' : 'Verify DNS'}
-                </button>
+                  {verifyingDomain ? 'Checking DNS…' : selected.domain_verified ? 'Recheck DNS' : 'Verify DNS'}
+                </button>}
               </div>
+
+              {canSetupDomain && <button type="button" onClick={() => void saveDomain()} disabled={saving || savingDomain || verifyingDomain || customDomain === (selected.custom_domain ?? '')} className="mt-3 rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 disabled:opacity-30">{savingDomain ? 'Saving…' : 'Save Domain'}</button>}
+              {selected.custom_domain && <button type="button" onClick={() => { void removeDomain() }} disabled={saving || savingDomain || verifyingDomain} className="mt-3 ml-3 rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 disabled:opacity-30">Remove Domain</button>}
 
               {dnsInfo && (
                 <div className="mt-4 rounded-[var(--radius-md)] border border-line bg-bg p-4 space-y-2 text-xs text-fg-2">
@@ -530,14 +661,14 @@ export default function TenantAdminPage() {
                 </div>
               )}
               {customDomain !== (selected.custom_domain ?? '') && (
-                <p className="mt-2 text-xs text-fg-3">Save branding before verifying a changed domain.</p>
+                <p className="mt-2 text-xs text-fg-3">Save the domain before verifying a changed domain.</p>
               )}
             </section>
 
             {/* Career-centre cohorts */}
             <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
               <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Student Cohorts</p>
-              <div className="mb-4 flex gap-2">
+              {canSetup && <div className="mb-4 flex gap-2">
                 <input
                   value={newCohortName}
                   onChange={(event) => setNewCohortName(event.target.value)}
@@ -553,7 +684,7 @@ export default function TenantAdminPage() {
                 >
                   {creatingCohort ? 'Creating…' : 'Create cohort'}
                 </button>
-              </div>
+              </div>}
               {cohorts.length === 0 ? (
                 <p className="text-sm text-fg-3">No cohorts yet.</p>
               ) : (
@@ -600,7 +731,7 @@ export default function TenantAdminPage() {
               </p>
 
               {/* Invite */}
-              <div className="mb-4 flex gap-2">
+              {canSetup && <div className="mb-4 flex gap-2">
                 <input
                   type="email"
                   value={inviteEmail}
@@ -615,7 +746,7 @@ export default function TenantAdminPage() {
                   className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-2 text-sm text-fg-2 focus:outline-none"
                 >
                   <option value="member">Member</option>
-                  {session.user.id === selected.owner_id && <option value="admin">Admin</option>}
+                  {ownerId === selected.owner_id && <option value="admin">Admin</option>}
                 </select>
                 {cohorts.length > 0 && (
                   <select
@@ -635,7 +766,7 @@ export default function TenantAdminPage() {
                 >
                   {inviting ? 'Inviting…' : 'Invite'}
                 </button>
-              </div>
+              </div>}
 
               {/* Member list */}
               <div className="space-y-2">

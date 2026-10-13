@@ -5818,8 +5818,12 @@
         "backend/app/api/team_routes.py:invite_team_member",
         "backend/app/api/team_routes.py:join_team_seat"
       ],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (update_tenant branding/reactivation; removal/disable recovery exempt)"
+      ],
+      "clientControls": [
+        "frontend/src/app/admin/tenant/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
@@ -5873,8 +5877,12 @@
       "serverHandlers": [
         "backend/app/api/tenant_routes.py:verify_domain"
       ],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (update_tenant new domain; domain removal recovery exempt)"
+      ],
+      "clientControls": [
+        "frontend/src/app/admin/tenant/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
