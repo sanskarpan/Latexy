@@ -1,121 +1,65 @@
 # Landing page design QA
 
-Date: 2026-10-13. Selected target: the third displayed concept from the second ideation set (Document House). Implementation branch: `codex/landing-document-house`, based on `7d1365bc` from `origin/main`.
+Reviewed: 2026-10-14. Scope: homepage marketing surface only. Branch: `codex/landing-document-house`, rebased onto main `d22998e0f45d55fd0a675e4cc622ab603c612d23` in the isolated worktree.
 
-## Visual truth and evidence
+## Evidence and comparison method
 
-- Source: `C:/Users/Sansk/.codex/generated_images/01a111a6-7bd6-7a81-9f26-b61e551a5767/exec-5ebff909-b113-416f-a1dd-3dfcc450d4dc.png`.
-- Browser evidence directory: `C:/Users/Sansk/.codex/visualizations/2026/10/06/01a111a6-7bd6-7a81-9f26-b61e551a5767/landing-qa/`.
-- Full views: `desktop-light.png`, `desktop-dark.png`, `mobile-light.png`, `mobile-dark.png`.
-- Focused dark views: `dark-builder-focused.png`, `dark-compiler-focused.png`.
-- Interaction evidence: `interactive-desktop.png`, `gallery-classic-focused.png`.
-- Normalized source views: `reference-light-normalized.png`, `reference-dark-normalized.png`.
+Selected target: the third displayed Document House reference, `exec-5ebff909-b113-416f-a1dd-3dfcc450d4dc.png` in the task's generated_images directory. The 1341 x 1173 paired image is split into light/dark halves and proportionally normalized to 1440px wide (2521/2517px tall). No vertical stretching is used.
 
-The source is a 1341 × 1173 paired theme image. Each half was cropped and proportionally resized to 1440 pixels wide: light 1440 × 2521, dark 1440 × 2517. Desktop captures use a 1440 × 1000 CSS viewport, device scale factor 1, with full-page height approximately 2767. Mobile uses 390 × 844 at scale factor 1. Default state is Modern gallery, guided authoring, collapsed personal details, expanded experience, and illustrative ATS findings. The source and rendered views were inspected together, then checked by a separate visual reviewer.
+Final actual source: `acc6c07f0ed3f706e832560040047b23597f6da7`. [Capture run](https://github.com/sanskarpan/Latexy/actions/runs/38476370222), artifact `11856236842`, archive SHA256 `5864b030dfae07febe48ea78022ce7d7680c7b3c32398741a94a4d06e8b66cf2` verified on download. Captured frontend tree: `3f47e634e3aea80e41a7aafd4e0d9a41c2c87a18`.
 
-Full-page Chromium capture occasionally omitted off-screen text immediately after changing themes. Focused screenshots taken after scrolling into each preview prove all document text renders. Image completion, font readiness, two animation frames, and descendant color/visibility checks precede captures. White papers have RGB 255/255/255 backgrounds and RGB 32/35/41 text in dark mode.
+The source and latest actual renders were opened together in full-page comparison boards and focused section boards. The comparison directory is `C:/Users/Sansk/.codex/visualizations/2026/10/06/01a111a6-7bd6-7a81-9f26-b61e551a5767/landing-qa/current-acc/`. Focused captures cover all ten regions below in both themes, after loading fonts/images and scrolling each region into view. Their layout JSON uses document coordinates. Default state: Modern gallery, guided Visual builder, expanded experience, neutral illustrative keyword status, Source compiler view, collapsed FAQ.
+
+The committed raw captures are [desktop light](docs/design/landing/desktop-light.png), [desktop dark](docs/design/landing/desktop-dark.png), [mobile light](docs/design/landing/mobile-light.png) and [mobile dark](docs/design/landing/mobile-dark.png). Desktop is 1440 x 2553 pixels from a 1440 x 1000 CSS viewport at scale 1. Mobile is 1082 x 13170 pixels from the Pixel 7 profile, approximately 412 x 5015 CSS pixels. Mobile inspection boards normalize density to 412px. Exact hashes and provenance are in [capture metadata](docs/design/landing/capture.json).
+
+## Findings, corrections and post-fix review
+
+The earlier broad sign-off was withdrawn after user feedback. Fresh renders were used to identify and fix remaining differences; build success was never substituted for visual acceptance.
+
+| Region | Corrected detail | Final visual evidence / result |
+| --- | --- | --- |
+| Hero and header | Two-line headline, chapter/emphasis proportions and baselines, copy position, navy/amber actions, approved Imprint logo | Full boards and `*-lp-hero-comparison.png`; both themes preserve the selected hierarchy and wrapping. |
+| Gallery | Exact supplied gallery crop, paper dimensions, pale steel/gold palette, three selectors and selection border | `*-lp-gallery-comparison.png`; Modern now aligns beneath the center paper. Offset applies above 700px; mobile stays centered. |
+| Guided builder | Serif heading scale, rail, toolbar tabs, neutral/slate selection, preview proportions, role/company/date and three semantic bullets | `*-lp-builder-section-comparison.png`; final date/list fix is visible in both themes. Editor, source and preview share three bullets. No resize handle remains. |
+| ATS and keywords | Separate equal cards, chart scale/labels/fill, status icons and counts, dark recommendation bulb, neutral initial filters | `*-lp-analysis-section-comparison.png`; content is legible, theme contrast and card split match the composition. |
+| Tailoring | Inset cells, connector dots, bullet treatment, compact actions | `*-lp-tailoring-section-comparison.png`; no invented achievement is added by the suggested rewrite. |
+| Applications | Heading and three columns, count placement, stage symbols, document icons, softened nested borders | `*-lp-applications-section-comparison.png`; titles and dates fit at desktop and wrap on smaller widths. |
+| General LaTeX | Source/PDF/Compiler widths, syntax colors, Gaussian equation, actual PDF tab behavior and compile route | `*-lp-latex-section-comparison.png`; current Source boundary is within a few pixels of target. An older claimed 38px offset was rejected against current evidence. |
+| FAQ | Four source questions, heading and question column, rule spacing, right-hand plus/minus | `*-lp-faq-comparison.png`; collapsed and expanded states render correctly. |
+| Closing action | Compact heading, explanatory copy and primary action | `*-lp-closing-comparison.png`; desktop composition retained; mobile stacks controls. |
+| Footer | Brand/tagline group, navigation, sign-in, final action and legal row | `*-lp-footer-comparison.png`; logo and links are visible in both themes. Copyright correctly uses 2026. |
+
+No actionable P0/P1/P2 finding remains in the inspected final states. Independent focused review of the final gallery/builder captures also passed and found no new regression.
 
 ## Required fidelity surfaces
 
-- **Typography:** Bricolage display headline, serif italic emphasis, bold editorial section headings, Geist interface/body copy. Heading wrapping and weight were corrected to match the selected composition. Existing Imprint logo is reused.
-- **Layout:** preserved hero → gallery → authoring → ATS → tailoring → applications → LaTeX → FAQ → centered closing action → footer. The first implementation was 4008px tall; repeated revisions reduced it to approximately 2767px. The remaining height difference accommodates working controls, clearly labelled sample disclosures, and one additional LaTeX FAQ, without changing the principal composition.
-- **Colors:** paper/ink/navy in light mode; neutral charcoal, warm white headings, amber actions in dark mode. Gallery assets preserve white document paper. Semantic tokens support the existing high-contrast preference; reduced-motion CSS disables gallery transitions.
-- **Imagery:** optimized 1440 × 580 WebP gallery assets, approximately 82KB each. Source gallery geometry and pale steel blue center panel retained. Assets are illustrative samples, not actual customer documents. Product demos are editable interface content, not raster screenshots of controls.
-- **Copy:** selected headline and section framing retained. Removed invented metrics and unsupported rewrite claims; all samples and analysis are labelled. Compiler action opens the actual studio instead of presenting simulated compilation success. Guest limits/account requirements and ATS limitations remain explicit.
+- Typography: matched bold sans hero, self-hosted Tinos serif emphasis and section headings, interface/body hierarchy. Font readiness is awaited. Small raster-source glyph/antialiasing differences remain acceptable.
+- Spacing/layout: all ten sections retain their order, relative widths and compact vertical rhythm. Final desktop height differs from normalized reference by 32-36px; functioning controls and readable sample content account for the small difference.
+- Colors/tokens: navy/paper light mode, charcoal/warm-white/amber dark mode, restrained dividers, neutral/slate builder selection and white document papers checked in actual renders. Existing high-contrast and reduced-motion preferences remain supported.
+- Image quality: the supplied gallery art is reused as lossless 1440 x 561 WebP crops, without replacing editable UI with a screenshot. Mobile uses an intentional centered gallery crop. No generic substitute imagery or emoji is used.
+- Copy/content: resume-led framing includes guided building, ATS/keywords, tailoring, applications and general LaTeX. Examples are labelled; the rewrite preserves stated experience. Guest/account limits and actual guarded destinations remain truthful.
 
-## Comparison history
+## Responsive and interaction verification
 
-1. P1: excessive vertical density, centered section headings, thin typography, amber dark headings, exposed status selects. Fixed compact spacing, top alignment, bold headings, separate dark heading token, collapsed disclosures, and accessible overflow menus.
-2. P2: saturated gallery center, missing builder rail, unstyled source commands, loose FAQ/footer, missing footer CTA. Fixed pale steel gallery, functional icon rail, source syntax colors, compact FAQ/footer, centered final action, and gated footer CTA.
-3. Apparent P1: missing dark preview text in full-page capture. Verified complete visible text with scrolled focused captures and computed descendant styles; no application CSS workaround was necessary.
-4. P2: gallery selection changed only labels and implied a filtered destination. Fixed real selected-layout focus transform and a plainly named template-library link. Browser verification exercises both selected state and rendered transform.
-5. CI/review found optional entry links missing capability gates and the application schema resolving its origin too early. Restored template/builder/studio gates, render-time schema origin, and the unchanged generic footer. All 23 existing tests covering these contracts pass without test edits.
-6. The generated capability audit required six additional frontend control-path entries after the refactor. Regenerated the matrix using its existing script; its existing contract passes. No backend policy or tests changed. Linux CI on `8f5498e2` passed all 2197 frontend unit tests and ESLint.
+CI uses isolated synthetic anonymous-session and feature-grant fixtures, not personal browser data or a claim of production backend availability. Chromium, Firefox and WebKit desktop plus mobile Chromium/WebKit all passed the representative visual case. Both themes and long name/role/bullet input were captured. Tablet widths 768, 1024 and 1101px exercise Source and PDF states, expanded FAQ and long input, with document overflow, equation bounds and Compile action bounds assertions. Latest mobile sections and tablet compiler/FAQ/footer renders were visually inspected.
 
-## Interaction verification
+Existing browser contracts cover gallery selection, builder editing and keyboard tabs, analysis filters, rewrite edit/accept/keep-original, application-stage menus, compiler tabs/actual studio destination, FAQ, navigation and access-denied states. No assertion was relaxed or unrelated failing test patched.
 
-Playwright was authorized after the app browser automation retry timed out. Verification uses an isolated anonymous-session fixture and explicit allowed feature grants; application access policy is unchanged. It checks:
+All required CI checks passed on the captured source, including production build, frontend/backend lint, backend tests, cross-browser quality, real compile/preview, full-stack smoke and security checks. Local TypeScript, formatting and 23 unchanged relevant contract tests passed. Frozen dependency installation and Next hydration integrity verification passed after rebasing. CodeRabbit skips draft reviews; that status is not a code review approval.
 
-- Gallery selection changes preview focus; library link remains truthful.
-- Builder input changes appear in the document; tabs support keyboard Home navigation.
-- ATS category controls change the displayed explanation.
-- Tailoring edits, approval, and keeping the original work locally.
-- Application menu moves a card between stages, retaining keyboard focus.
-- Compiler selection changes its explanation; actual compilation remains in the studio.
-- FAQ expansion, canonical URL, FAQ JSON-LD, and the primary studio navigation.
-- No horizontal overflow at 1440px and 390px; no browser page errors during these checks.
-- Tablet 768px/high-contrast capture and denied capability fixtures confirm no overflow and no optional template, builder, or studio entry actions when access is denied.
+## Acceptable differences and follow-up polish
 
-TypeScript and scoped ESLint pass. Production compilation and all 44 static routes succeeded; Windows standalone packaging failed with EPERM creating dependency symlinks. Linux CI remains the release packaging gate. Local source and tests were not changed to bypass that failure. The installed Next hydration patch was repaired only in this worktree's node_modules after proving normalized files exactly matched the existing integrity hashes.
+P3 only: browser glyph rasterization, reference microcopy artifacts, tiny chart-grid/icon-shape differences, and tablet closing-heading wrapping. The reference supplies desktop theme states only; mobile/tablet adaptations are checked for readable layout and working controls rather than an invented pixel-perfect mobile reference. These do not justify another fidelity loop.
 
-## Follow-up polish and limits
+The publication commit changes only this report and screenshot documentation; its frontend tree must remain identical to the captured tree. This remains a draft PR for user review and has not been merged.
 
-- P3: tiny text in gallery documents is illustrative raster microcopy; editable sample content and accessible descriptions are provided separately.
-- Backend authentication, compilation, billing, and persistence are existing product behavior and were not reimplemented by the landing-page samples. Visual checks with service fixtures do not establish backend availability.
-- CI and code review must pass before the draft is considered ready for merge.
+## Implementation checklist
 
-## Mobile navigation regression follow-up
+- [x] Exact selected reference resolved and paired with current actual captures.
+- [x] All ten sections checked in light and dark mode, with focused evidence.
+- [x] Earlier actionable findings corrected and freshly recaptured.
+- [x] Mobile/tablet, long input, disclosures and key interactions verified.
+- [x] Actual post-commit page screenshots published in the PR with provenance.
+- [x] Main checkout left untouched; captured source CI passed.
 
-Cross-browser CI exposed the missing homepage menu after sign-out. The homepage now consumes the existing GlobalHeader mobile panel, session handling, capability filtering, focus trap, Escape behavior, and sign-out logic. Only its trigger is styled for the selected landing design. Desktop composition is unchanged. Existing tests remain unchanged. On `6d5fc743`, all 21 CI checks passed, CodeQL completed neutral, Vercel deployed, and no checks failed. The cross-browser job passed all five configurations, including authenticated sign-out to the homepage guest menu, plus builder/editor/source-PDF and hydration regressions. Real native compilation and full-stack smoke also passed.
-
-Fresh screenshots were recovered through GitHub workflow artifact `11835391088` for run `38437552149`, with archive SHA256 `c3d1112e20b161e98342245589935250b7ce6a0189e285e2dd27e1f9cb81de4b` verified locally. Evidence: `ci-desktop-chromium-6d5fc743.png`, `ci-mobile-chromium-6d5fc743.png`, and `ci-mobile-webkit-6d5fc743.png` in the evidence directory above. Chromium and WebKit mobile headers fit the logo, theme controls, sign-in, and Menu without crowding. All document and equation previews remain visible. Independent visual review found no new P0/P1/P2 issues. Closed-menu visual evidence is separate from the passing menu behavior tests. The prior full light/dark and high-contrast comparisons remain applicable to the unchanged page composition; the trigger uses the existing theme foreground and border tokens.
-
-The final documentation commit changes this report only; application code and assets remain exactly those tested on `6d5fc743`.
-
-final result: blocked
-
-## Reopened precision review - 2026-10-14
-
-The user identified remaining visual drift. The earlier broad-view approval was insufficient. This pass compares the exact selected source and implementation together, then uses focused region boards for every section. The previous reports above are retained as iteration history, not the current acceptance result.
-
-Evidence directory: `landing-qa/precision-review/` alongside the earlier evidence directory. Full comparisons: `light-full-comparison.png`, `dark-full-comparison.png`; focused comparisons: `light-hero-focused.png`, `light-ats-focused.png`, `dark-ats-focused.png`, `lower-light-crop.png`, `lower-dark-crop.png`. These boards put normalized source and implementation at the same 1440px width without stretching their heights.
-
-### Findings and corrections in progress
-
-- P1 hero/header: source starts near x170, implementation x96. Narrow the header/hero to 1100px, preserve the supporting-copy column near x870, restore headline scale/weight and narrower Times italic metrics, and include the secondary arrow.
-- P2 gallery: generated approximation changes the center-panel width and outer rotations. Extract the exact gallery artwork from the supplied source, measured at source light `(0,120)-(670,381)` and dark `(671,120)-(1341,381)`, then losslessly store resized 1440x561 assets. Center only the three layout controls; retain specimen disclosure for assistive technology.
-- P2 builder: restore Summary, selected experience card and bullet presentation, six rail controls, outlined Export PDF entry, and solid active tab. Match PDF body typography and blue section labels. Export still opens the guarded product flow, accurately labelled for assistive technology.
-- P1 ATS: split into two equal separate cards, use the existing Visx chart primitives, restore scale, grid, vertex dots and strong blue/gold fill, brighten category markers, remove initial selected-row highlight, and restore the subtle result panel. Scores remain explicitly illustrative.
-- P2 tailoring: restore inset cells, subtle connectors, requirement marker, plain initial Accept, and compact default specimen disclosure. Keep genuine editable/reviewed wording.
-- P2 application board: restore inline count badges, nested cards, illustrative company/status/date metadata, colored document icons, and source panel height. Existing variant information remains in the menu/accessible title.
-- P2 LaTeX: restore one-line heading, separate panels, Source/PDF controls, numbered source, compact Compiler label, full-width action, and restrained blue syntax. Compilation still opens the actual guarded studio; no simulated successful compilation.
-- P2 FAQ/closing/footer: restore four FAQ rows and right-side plus/minus indicators; compact closing typography, button and padding; group the smaller logo/tagline, restore Sign in, and reduce footer height. Current copyright year is retained.
-
-### Required post-fix evidence
-
-The existing CI landing screenshot case now records both themes at a 1440x1000 desktop CSS viewport, focused captures for all ten regions, layout measurements, mobile captures, and long-name/role/bullet plus disclosure/tab states. Assertions were extended, not relaxed. The in-app browser remains on a blocked `data:` error page; CI rendering uses isolated synthetic service fixtures and does not inspect that page or personal browser data.
-
-Current blocker: fresh browser-rendered CI evidence and post-fix focused comparison are pending. Do not hand off as passed until the revised captures have been reviewed. Actual light/dark page screenshots will be included in the PR after commits, as explicitly requested.
-
-final result: blocked
-
-
-### Fresh CI review of 5b5fc51a
-
-All required CI checks passed. Downloaded artifact 11847646028 from run 38460054031; archive SHA-256 `bb493a24e81e101c729454b5c21bb41ea7250985330067519269f94788745383` verified. Actual landing screenshots passed across desktop Chromium, Firefox, WebKit, mobile Chromium and mobile WebKit, in both themes and long-content states. These are app renders, not mockups.
-
-Visual acceptance remains blocked: the source comparison found a three-line hero caused by a 652px first track (italic ink already matches at 364px), undersized builder/lower headings and demo copy, cream/brown builder surfaces, and the duplicate PDF-tab preview. Corrections now preserve the 680/20/400 hero geometry, use neutral/slate specimen surfaces, restore measured type sizes, larger ATS labels, compact FAQ copy, status icons and a single expanded PDF view. Tailoring wording is constrained to the original sample claims. TypeScript, scoped ESLint and 23 existing contract tests passed unchanged. Awaiting the next actual render to verify these corrections.
-
-final result: blocked
-
-
-### Focused review of 5cdb522c
-
-Fresh source/actual comparison boards exist for all ten regions in both themes under `landing-qa/current-5c/`. Browser case passed for all five engine/device profiles. Artifact 11851111584, run 38466993607, SHA-256 `21f2b2f01af3a78159fd2e933b5fdcf526458556814e020d87d1027f1bc509ce`, verified. The full actual desktop page was 1440x2560 versus the normalized source 1440x2521. All 2,361 frontend tests and frontend lint passed on the rebased source.
-
-Independent focused reviews found no remaining P1, but retained P2 acceptance blocks: chapter/italic spacing, selected gallery widths, builder row/column/tab alignment, status icon detail, dark suggestion icon, Gaussian sample, compiler/FAQ column alignment, tailoring connectors/bullet and board border contrast. Those have now been corrected as one batch. Tablet layouts receive their own space rather than shrinking three compiler panes into a narrow column. The existing screenshot evidence case adds 768/1024/1101px checks for both compiler views and primary-action bounds, using long local sample content. All other test cases remain verbatim. Superseded CSS declarations for identical selectors/conditions were removed while preserving the final cascade.
-
-TypeScript, scoped ESLint and the 23 unchanged relevant contract tests passed. Source/asset verification is awaiting the next fresh CI render. Screenshots will be published in the PR with exact capture/source provenance.
-
-final result: blocked
-
-
-### Review capture publication - d36723f8
-
-All required CI checks passed on d36723f8, including 2,361 frontend tests, production build, backend tests, real compilation/preview and full-stack smoke. Browser artifact 11852589080 from run 38472114434 has verified SHA-256 `9be15c1c7effa1842e2bdb7c66628cb362e3bdeab834f767fda3ed8f740b0a52`. All five browser/device profiles passed, including the added tablet Source/PDF equation and action bounds assertions. Ten focused source/actual boards and full comparisons were reviewed in both themes. Lower sections pass the P0/P1/P2 gate.
-
-Two final P2 corrections remain to be recaptured: move the row-style gallery selectors 48px left to align Modern with its paper; and restore the builder's company/date plus three semantic bullets in editor, source and preview. Both are now implemented. A stale compiler-offset observation was checked against the actual current board and existing 370px+40px layout; no additional compiler layout patch was made.
-
-Actual d36723f8 screenshots are now saved under `docs/design/landing/` for PR review, copied unchanged from the browser artifact. Their metadata clearly identifies the captured source, not the subsequent alignment/list revision. They will be refreshed after that revision is captured.
-
-final result: blocked
+final result: passed

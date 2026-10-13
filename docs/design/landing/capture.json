@@ -1,29 +1,29 @@
 {
-  "source_commit": "d36723f83b05023a475426eb91bcfe20084c7171",
-  "frontend_tree": "16e58af129ee94a8ea2c156b8b80c3122c6bf4bf",
-  "workflow_run": 38472114434,
-  "artifact_id": 11852589080,
-  "artifact_sha256": "9be15c1c7effa1842e2bdb7c66628cb362e3bdeab834f767fda3ed8f740b0a52",
+  "source_commit": "acc6c07f0ed3f706e832560040047b23597f6da7",
+  "frontend_tree": "3f47e634e3aea80e41a7aafd4e0d9a41c2c87a18",
+  "workflow_run": 38476370222,
+  "artifact_id": 11856236842,
+  "artifact_sha256": "5864b030dfae07febe48ea78022ce7d7680c7b3c32398741a94a4d06e8b66cf2",
   "files": {
     "desktop-light.png": {
       "width": 1440,
-      "height": 2541,
-      "sha256": "4bd96b8efd971d9f9e96eaa878ab1c191b046daa81d71c3992cdba7e8ca56a49"
+      "height": 2553,
+      "sha256": "d213f18ef26e8e9acdce3459fa544566ed41f072bb44aef06b40eaf44ecd3b6e"
     },
     "desktop-dark.png": {
       "width": 1440,
-      "height": 2541,
-      "sha256": "f3b224e568f8a35c0d7e5cdcbb4094e385386c56c3db956665df579d1a0792db"
+      "height": 2553,
+      "sha256": "831e25dd96b05260e18cc7d1349ce413b4ad1b8c0c5952fb1dca1c64661139f8"
     },
     "mobile-light.png": {
       "width": 1082,
-      "height": 13183,
-      "sha256": "468c300e5b6a4dca2b9097b459e2842d05efed887b8b68d1c816bcc1346872e3"
+      "height": 13170,
+      "sha256": "f1e3841c25c26cf41c9a9c667e39e6161dd187bd569e05af7d733a26f929488c"
     },
     "mobile-dark.png": {
       "width": 1082,
-      "height": 13183,
-      "sha256": "33dba6caf02d7d6627c246d50e8802f72e98260feb6612d09e39707fc39f69ae"
+      "height": 13170,
+      "sha256": "93189250ddb997eca4381c13998f8bbc2a96f00df39ad70708700edfde2c4a3f"
     }
   }
 }
