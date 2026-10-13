@@ -54,4 +54,8 @@ TypeScript and scoped ESLint pass. Production compilation and all 44 static rout
 - Backend authentication, compilation, billing, and persistence are existing product behavior and were not reimplemented by the landing-page samples. Visual checks with service fixtures do not establish backend availability.
 - CI and code review must pass before the draft is considered ready for merge.
 
-final result: passed
+## Mobile navigation regression follow-up
+
+Cross-browser CI exposed the missing homepage menu after sign-out. The homepage now consumes the existing GlobalHeader mobile panel, session handling, capability filtering, focus trap, Escape behavior, and sign-out logic. Only its trigger is styled for the selected landing design. Desktop composition is unchanged. Existing tests remain unchanged; fresh CI and rendered evidence are pending.
+
+final result: pending mobile navigation verification

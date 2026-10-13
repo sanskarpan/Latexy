@@ -6,8 +6,25 @@ import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import { MarketingCTA } from './MarketingSections'
 import CapabilityGate from '@/components/CapabilityGate'
+import type { ReactNode, RefObject } from 'react'
 
-export default function LandingHeader({ signedIn }: { signedIn: boolean }) {
+export default function LandingHeader({
+    signedIn,
+    menuOpen,
+    menuTriggerRef,
+    menuLabel,
+    menuText,
+    onMenuToggle,
+    mobileNavigation,
+}: {
+    signedIn: boolean
+    menuOpen: boolean
+    menuTriggerRef: RefObject<HTMLButtonElement>
+    menuLabel: string
+    menuText: string
+    onMenuToggle: () => void
+    mobileNavigation: ReactNode
+}) {
     return (
         <header className="lp-header">
             <Link href="/" aria-label="Latexy home">
@@ -28,7 +45,18 @@ export default function LandingHeader({ signedIn }: { signedIn: boolean }) {
                     {signedIn ? 'Dashboard' : 'Sign in'}
                 </Link>
                 <MarketingCTA />
+                <button
+                    ref={menuTriggerRef}
+                    type="button"
+                    className="lp-menu-trigger"
+                    aria-label={menuLabel}
+                    aria-expanded={menuOpen}
+                    onClick={onMenuToggle}
+                >
+                    {menuText}
+                </button>
             </div>
+            <div className="lp-mobile-navigation">{mobileNavigation}</div>
         </header>
     )
 }
