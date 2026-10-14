@@ -128,13 +128,22 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
             and call.func.attr == "from_name"] == [
                 "latexy-backend-secrets", "latexy-storage", "latexy-redis",
             ]
+    api_secrets_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_api_secrets" for target in node.targets)
+    )
+    assert (isinstance(api_secrets_assignment.value, ast.List)
+            and len(api_secrets_assignment.value.elts) == 1
+            and isinstance(api_secrets_assignment.value.elts[0], ast.Starred)
+            and isinstance(api_secrets_assignment.value.elts[0].value, ast.Name)
+            and api_secrets_assignment.value.elts[0].value.id == "_secrets")
     overlay = next(
         node for node in tree.body if isinstance(node, ast.If)
         and isinstance(node.test, ast.Name) and node.test.id == "_billing_secret_name"
     )
     assert any(
         isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name) and node.func.value.id == "_secrets"
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "_api_secrets"
         and node.func.attr == "append"
         and len(node.args) == 1 and isinstance(node.args[0], ast.Call)
         and isinstance(node.args[0].func, ast.Attribute)
@@ -183,17 +192,51 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
         node.name: node for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    for name in ("run_latex_task", "renderer_preflight", "billing_preflight", "migrate", "fastapi_app"):
-        assert any(
-            isinstance(decorator, ast.Call)
+    def function_secrets(name):
+        bindings = [
+            keyword.value.id
+            for decorator in functions[name].decorator_list
+            if isinstance(decorator, ast.Call)
             and isinstance(decorator.func, ast.Attribute)
             and isinstance(decorator.func.value, ast.Name)
             and decorator.func.value.id == "app"
             and decorator.func.attr == "function"
-            and any(keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)
-                    and keyword.value.id == "_secrets" for keyword in decorator.keywords)
-            for decorator in functions[name].decorator_list
-        ), name
+            for keyword in decorator.keywords
+            if keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)
+        ]
+        assert len(bindings) == 1, name
+        return bindings[0]
+
+    expected_secret_bindings = {
+        "run_latex_task": "_secrets",
+        "renderer_preflight": "_api_secrets",
+        "billing_preflight": "_api_secrets",
+        "migrate": "_secrets",
+        "sync_templates": "_secrets",
+        "fastapi_app": "_api_secrets",
+    }
+    for name, expected in expected_secret_bindings.items():
+        assert function_secrets(name) == expected, name
+    all_function_bindings = {}
+    for name, function in functions.items():
+        for decorator in function.decorator_list:
+            if (not isinstance(decorator, ast.Call)
+                    or not isinstance(decorator.func, ast.Attribute)
+                    or not isinstance(decorator.func.value, ast.Name)
+                    or decorator.func.value.id != "app"
+                    or decorator.func.attr != "function"):
+                continue
+            secrets = [keyword.value.id for keyword in decorator.keywords
+                       if keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)]
+            if secrets:
+                assert len(secrets) == 1, name
+                all_function_bindings[name] = secrets[0]
+    api_secret_functions = {
+        name for name, secrets in all_function_bindings.items() if secrets == "_api_secrets"
+    }
+    assert api_secret_functions == {"renderer_preflight", "billing_preflight", "fastapi_app"}
+    assert all(secrets == "_secrets" for name, secrets in all_function_bindings.items()
+               if name not in api_secret_functions)
     workflow = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
     assert "MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}" in workflow
 

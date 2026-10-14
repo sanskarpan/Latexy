@@ -316,10 +316,16 @@ _secrets = [
     # legacy Redis values still present in latexy-backend-secrets.
     modal.Secret.from_name("latexy-redis"),
 ]
+
+# Dodo credentials are needed by the public API and its read-only billing
+# preflight. Keep them out of unrelated render, worker, scheduler, and migration
+# containers; renderer_preflight uses this same full API configuration by design.
+_api_secrets = [*_secrets]
 if _billing_secret_name:
     # Append last so its Dodo variables override any legacy values in the opaque
-    # backend secret while preserving every unrelated key in that secret.
-    _secrets.append(modal.Secret.from_name(_billing_secret_name))
+    # backend secret while preserving every unrelated key in that secret. This
+    # list is only attached to API and billing-configuration preflight functions.
+    _api_secrets.append(modal.Secret.from_name(_billing_secret_name))
 
 
 # ---------------------------------------------------------------------------
@@ -837,9 +843,9 @@ def scheduled_minute_recovery() -> None:
 # ---------------------------------------------------------------------------
 # Deployment preflight and migrations
 # ---------------------------------------------------------------------------
-@app.function(image=api_image, secrets=_secrets, timeout=60)
+@app.function(image=api_image, secrets=_api_secrets, timeout=60)
 def renderer_preflight() -> dict:
-    """Validate candidate configuration only; never certify or start a VM."""
+    """Validate actual API configuration only; never certify or start a VM."""
     import contextlib
     import json
     import logging
@@ -912,7 +918,7 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=120)
+@app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
 def billing_preflight(
     source_revision: str, expected_environment: str = "main", purpose: str = "report",
     allow_configured_live: bool = False,
@@ -1037,7 +1043,7 @@ def sync_templates() -> None:
 
 @app.function(
     image=api_image,
-    secrets=_secrets,
+    secrets=_api_secrets,
     min_containers=1,
     timeout=3600,
     scaledown_window=300,

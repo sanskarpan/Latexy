@@ -65,9 +65,12 @@ dashboard's secret editor, entering values there rather than in Git, a shell
 command, or CLI arguments. Give it the name stored in the GitHub Actions
 repository variable `MODAL_BILLING_SECRET_NAME`. The variable contains only the
 Modal secret label, not credential material. The deployment attaches the named
-secret after the existing backend, storage, and Redis secrets, so its Dodo
-settings take precedence while unrelated settings in the backend secret remain
-available. Leave the variable empty to preserve the current deployment
+secret after the existing backend, storage, and Redis secrets for the API and
+its billing/configuration preflights, so its Dodo settings take precedence while
+unrelated settings in the backend secret remain available. Unrelated workers,
+schedulers and migrations retain the original bindings. The non-secret label is
+preserved in every image so remote module imports reconstruct consistent
+dependencies. Leave the variable empty to preserve the current deployment
 configuration.
 
 For live billing, the overlay should contain the expected names such as
