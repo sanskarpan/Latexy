@@ -6,14 +6,12 @@ volumes, networking or OIDC. Only booleans and fabricated probe text printed.
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
-import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
