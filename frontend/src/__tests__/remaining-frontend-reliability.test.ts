@@ -17,8 +17,8 @@ describe('remaining frontend reliability guards', () => {
     const interviewPrep = source('../components/InterviewPrepPanel.tsx')
 
     expect(interviewPrep).toContain('const loadGenerationRef = useRef(0)')
-    expect(interviewPrep).toContain('if (generation !== loadGenerationRef.current) return')
-    expect(interviewPrep).toContain('if (generation === loadGenerationRef.current) setIsLoading(false)')
+    expect(interviewPrep).toContain('if (!isCurrentOwner() || generation !== loadGenerationRef.current) return')
+    expect(interviewPrep).toContain('if (isCurrentOwner() && generation === loadGenerationRef.current) setIsLoading(false)')
     expect(interviewPrep).toContain('Loading interview-prep sessions')
     expect(interviewPrep).toContain('Retry')
   })

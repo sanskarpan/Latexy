@@ -490,6 +490,8 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
             keys.append("h02")
         elif fmt not in {"tex", "pdf"}:
             keys.append("h01")
+        if fmt == "json":
+            keys.append("b07")
     if (module, name) == ("resume_routes", "bulk_export"):
         keys.append("h04")
         if query.get("format", "tex") not in {"tex", "pdf"}:

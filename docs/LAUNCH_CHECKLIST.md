@@ -78,6 +78,7 @@ Priority is release risk, not proof of a current production outage.
 | L13 | P1 paid launch / OPERATOR | Accept live Dodo merchant/products/tax/currency/recurrence, signed lifecycle events, payment/recovery/refund and servicing. Unaccepted products remain unavailable. | BILL + QA + OPS; separately approved transactions | [Dodo operations](BILLING_DODO.md), [#1866](https://github.com/sanskarpan/Latexy/issues/1866) |
 | L14 | P2 / GAP | Correct private-route indexing, auth-only sitemap entry, setup instructions, page metadata and reduced-motion gaps; verify actual production responses. | ENG + QA; source/test/browser work | [public audit](audits/launch-2026-10-13/public-surfaces.md) |
 | L15 | DEFERRED | Hindi logical PDF text extraction is not certified in affected readers. Do not promise universal ATS/text-layer/language correctness. | ENG + PRODUCT; explicitly scoped follow-up | [#1820](https://github.com/sanskarpan/Latexy/issues/1820) |
+| L16 | P1 / PARTIAL + DECISION + OPERATOR | The opt-in embedding/ESCO disposable-cache backup chain is implemented and tested. Before any whole-application failover, choose and verify coherent authority for jobs/leases/quota/OAuth state, durable recovery and duplicate-work prevention. No backup is enabled by source changes. | ENG + OPS + PRODUCT; no credentials in source or reports | [Redis architecture and remaining acceptance](architecture/redis-failover.md), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity) |
 
 No missing provider configuration is solved by setting an acceptance boolean,
 loosening authorization, mapping unknown legacy grants to allow, disabling a
@@ -308,6 +309,15 @@ This checklist contains outcomes, not credentials or exploit instructions.
 - [ ] Investigate command load from HTTP admission, job polling, streaming events,
   maintenance and cold-start PINGs. Application counters are partial; batching
   network requests does not prove reduced provider billable commands.
+- [ ] Backup Redis transport matches actual native clients; REST endpoints/tokens
+  are not assumed interchangeable with native TLS Redis URLs. Keep configuration
+  values in approved secret handling, not code, documentation or test logs.
+- [ ] Automatic failover never treats quota/OAuth state on the cache client as
+  disposable. Require one active writer, ownership epochs/fencing, bounded
+  circuit-breaking, health criteria, coherent state and a failback plan.
+- [ ] Fault-injected isolated tests prove no duplicate paid work/refund, quota
+  reset, lost cancellation, cross-owner access or stuck admitted jobs across
+  primary failure, partial recovery and failback. Do not test this on live data.
 - [ ] Pre-agree exhaustion response and spend approvals. Do not run MONITOR on user
   traffic or rotate databases casually: in-flight jobs/tickets/counters can be lost.
 - [ ] Capture DB backups/PITR plus object-store consistency, encryption/access,

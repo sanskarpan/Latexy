@@ -80,12 +80,12 @@ download_from_s3() {
     local s3_key="$1"
     local local_file="$BACKUP_DIR/temp_$(basename "$s3_key")"
     
-    log "Downloading backup from S3: s3://$S3_BUCKET/$s3_key"
+    log "Downloading backup from S3: s3://$S3_BUCKET/$s3_key" >&2
     
-    if aws s3 cp "s3://$S3_BUCKET/$s3_key" "$local_file"; then
+    if aws s3 cp "s3://$S3_BUCKET/$s3_key" "$local_file" >&2; then
         echo "$local_file"
     else
-        log "ERROR: Failed to download backup from S3"
+        log "ERROR: Failed to download backup from S3" >&2
         return 1
     fi
 }
@@ -127,7 +127,10 @@ create_pre_restore_backup() {
     log "Creating pre-restore backup: $(basename "$pre_restore_backup")"
     
     if pg_dump "$DATABASE_URL" > "$pre_restore_backup"; then
-        gzip "$pre_restore_backup"
+        if ! gzip "$pre_restore_backup"; then
+            log "ERROR: Failed to compress pre-restore backup"
+            return 1
+        fi
         log "Pre-restore backup created: ${pre_restore_backup}.gz"
         return 0
     else
@@ -158,7 +161,8 @@ restore_database() {
     
     # Create pre-restore backup
     if ! create_pre_restore_backup; then
-        log "WARNING: Could not create pre-restore backup, continuing anyway"
+        log "ERROR: Could not create pre-restore backup; refusing to replace database"
+        return 1
     fi
     
     # Parse database URL to get connection details
@@ -179,15 +183,21 @@ restore_database() {
     
     # Drop and recreate database
     log "Dropping existing database: $db_name"
-    psql "$db_url_without_name" -c "DROP DATABASE IF EXISTS \"$db_name\";"
+    if ! psql "$db_url_without_name" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$db_name\";"; then
+        log "ERROR: Failed to drop database; refusing to continue"
+        return 1
+    fi
     
     log "Creating new database: $db_name"
-    psql "$db_url_without_name" -c "CREATE DATABASE \"$db_name\";"
+    if ! psql "$db_url_without_name" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$db_name\";"; then
+        log "ERROR: Failed to recreate database; refusing to restore"
+        return 1
+    fi
     
     # Restore from backup
     log "Restoring data from backup"
     if [[ "$backup_file" == *.gz ]]; then
-        if gunzip -c "$backup_file" | psql "$DATABASE_URL"; then
+        if gunzip -c "$backup_file" | psql "$DATABASE_URL" -v ON_ERROR_STOP=1; then
             log "Database restored successfully"
             return 0
         else
@@ -195,7 +205,7 @@ restore_database() {
             return 1
         fi
     else
-        if psql "$DATABASE_URL" < "$backup_file"; then
+        if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$backup_file"; then
             log "Database restored successfully"
             return 0
         else

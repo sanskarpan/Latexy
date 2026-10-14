@@ -24,7 +24,7 @@ DYNAMIC = {
     "a09": ["middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark, semantic projection/field editing and premium raw export)"],
     "b02": ["middleware/capability_router.py:payload_capabilities (nonempty tags in source create/update; explicit tag changes; clearing tags exempt)"],
     "b05": ["api/template_routes.py:list_categories/list_templates (filter specialty catalog)", "api/template_routes.py:_template_asset_access/get_template/use_template (academic/regional/presentation)", "api/resume_routes.py:_get_builder_template (specialty selection)"],
-    "b07": ["api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)"],
+    "b07": ["api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)", "middleware/capability_router.py:payload_capabilities (JSON raw/saved/builder export also requires h01)"],
     "b09": ["middleware/capability_router.py:payload_capabilities (normalized force_reattach; content changes also require c01)"],
     "b12": ["api/resume_routes.py:fork_resume (source-linked builder variant)", "api/resume_routes.py:_sync_linked_variants (new automatic refresh admission)"],
     "c22": ["workers/auto_save_worker.py:submit_auto_save_checkpoint (new automatic checkpoint admission)"],
@@ -46,6 +46,8 @@ DYNAMIC = {
     "f05": ["middleware/capability_router.py:payload_capabilities (collaboration ticket)", "api/ws_routes.py:collab_websocket/_collab_live_access_callback (entry, current ACL, every frame and idle heartbeat)", "services/collab_manager.py:CollabRoom.has_access/broadcast/send_to (current recipient authorization before outbound data)", "services/entitlement_service.py:users_have_feature (fresh batched owner/participant grants)"],
     "f07": ["middleware/capability_router.py:payload_capabilities (accepted POST requires f07+c01; rejection/conflict and GET recovery exempt)", "api/suggestion_routes.py:_access_role (acceptance checks current actor/owner grants; F04/ACL remains independent for editor recovery)"],
     "f08": ["middleware/capability_router.py:payload_capabilities (workspace role increase; viewer downgrade exempt)", "api/workspace_routes.py:_require_workspace_use (actor and workspace owner; owned source/removal preserved)"],
+    "f10": ["middleware/capability_router.py:payload_capabilities (update_tenant branding/reactivation; removal/disable recovery exempt)"],
+    "f11": ["middleware/capability_router.py:payload_capabilities (update_tenant new domain; domain removal recovery exempt)"],
     "g12": ["middleware/capability_router.py:payload_capabilities (enable portfolio/source visibility; disable exempt)", "api/portfolio_routes.py:get_portfolio/contact_portfolio_owner/resolve_domain (existing owner's grant)"],
     "g13": ["api/portfolio_routes.py:resolve_domain (custom-domain owner's current grant)"],
     "h01": ["middleware/capability_router.py:payload_capabilities (premium saved/raw format conversion; tex/pdf exempt)"],
@@ -65,7 +67,7 @@ FOCUSED_TESTS = {
     "i01": ["test_plan_catalog.py::test_purchase_capability_disables_new_checkout_without_hiding_billing_recovery"],
     "a09": ["test_capability_route_policy.py::test_anonymous_studio_gate_covers_alternate_guest_admissions"],
     "b05": ["test_capability_route_policy.py::test_specialty_template_asset_rechecks_category_capability"],
-    "b07": ["test_capability_route_policy.py::test_structured_import_checks_interchange_capability"],
+    "b07": ["test_capability_route_policy.py::test_structured_import_checks_interchange_capability", "test_capability_route_policy.py::test_json_export_composes_interchange_and_export_grants_before_data_access", "test_capability_route_policy.py::test_json_export_allows_the_composed_grants"],
     "c12": ["test_capability_route_policy.py::test_multiplexed_jobs_cannot_bypass_disabled_feature"],
     "d01": ["test_capability_route_policy.py::test_multiplexed_jobs_cannot_bypass_disabled_feature", "test_capability_job_admission.py::test_admitted_job_survives_toggle_and_worker_failure_refunds_once"],
     "d18": ["test_capability_route_policy.py::test_multiplexed_jobs_cannot_bypass_disabled_feature", "test_capability_route_policy.py::test_public_api_gate_runs_before_job_record_creation"],
@@ -125,7 +127,7 @@ def declared_client_controls(known_keys: set[str], subfeature_keys: set[str]) ->
                 raise RuntimeError(f"Missing child client grant: {key}: {relative}")
             client[key].append(path.relative_to(ROOT).as_posix())
     for path in (ROOT / "frontend/src").rglob("*.tsx"):
-        if "__tests__" in path.parts or "admin" in path.parts:
+        if "__tests__" in path.parts or path == ROOT / "frontend/src/app/admin/page.tsx":
             continue
         for key in client_grants(path.read_text(encoding="utf-8"), known_keys):
             client.setdefault(key, []).append(path.relative_to(ROOT).as_posix())
