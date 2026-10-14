@@ -84,7 +84,7 @@ import ImportProjectsModal from '@/components/ImportProjectsModal'
 import type { TrackedChange } from '@/lib/yjs-track-changes'
 import CollaboratorChat, { useCollaboratorChat } from '@/components/CollaboratorChat'
 import type { ChatTransport } from '@/lib/collab-chat'
-import { boundSuggestionPresence, canCreateSuggestion, canResolveSuggestion, createSuggestion, mergeSuggestionPresence, type Suggestion, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
+import { useSuggestionRecovery } from '@/hooks/useSuggestionRecovery'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
@@ -165,7 +165,7 @@ const RIGHT_TAB_CAPABILITIES: Partial<Record<RightTab, string>> = {
   // Generate uses the scoped recovery shell, rather than a coarse mount gate.
   ai: 'd01', chat: 'f05', interview: 'e02', design: 'c19',
   proofread: 'd12', packages: 'c17', linter: 'c15', symbols: 'c18',
-  changes: 'f07', suggestions: 'f07', docs: 'c17', layout: 'c19',
+  changes: 'f07', docs: 'c17', layout: 'c19', // Suggestions stays reachable for recovery.
   snippets: 'c20', macros: 'c21', tikz: 'c18',
 }
 
@@ -1137,13 +1137,6 @@ export default function ResumeEditPage() {
 
   // Track Changes (Feature 41)
   const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [remoteSuggestionPeers, setRemoteSuggestionPeers] = useState<SuggestionPresence[]>([])
-  const [suggestionDecisions, setSuggestionDecisions] = useState<SuggestionDecision[]>([])
-  const [suggestionMode, setSuggestionMode] = useState(false)
-  const [suggestionError, setSuggestionError] = useState<string | null>(null)
-  const lastSuggestionDraftRef = useRef<{ findText: string; replacementText: string } | null>(null)
-  const lastSuggestionActionRef = useRef<{ kind: 'accept' | 'reject'; id: string } | null>(null)
 
   const searchParams = useSearchParams()
   // Mention email deep links should open the Comments panel so the highlighted
@@ -1203,6 +1196,30 @@ export default function ResumeEditPage() {
     if ((rightTab === 'generate' && !latexGeneratorRecovery.canAccess)
       || (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current))) setRightTabValue('preview')
   }, [can, rightTab, latexGeneratorRecovery.canAccess])
+
+  const suggestionRecovery = useSuggestionRecovery({
+    ownerId: sessionUserId, documentId: resumeId, authToken: sessionData?.session?.token ?? null,
+    authReady: Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError), sourceVersion: sessionData,
+    role: collabRole, can: (feature) => canRef.current(feature), canEdit: canEditDocument,
+    authorName: sessionData?.user?.name || sessionData?.user?.email || 'You',
+    readSource: () => editorRef.current?.getValue() ?? sourceAtRenderRef.current,
+    applyAccepted: (expected, result) => {
+      if (!(editorRef.current?.applySuggestionResult(expected, result.latex_content) ?? false)) return false
+      setLatexContent(result.latex_content)
+      setSavedSnapshot({ title, latex: result.latex_content })
+      setLastSavedAt(Date.now())
+      return true
+    },
+  })
+  const {
+    suggestions, allSuggestions, decisions: suggestionDecisions, presence: suggestionPresence,
+    mode: suggestionMode, error: suggestionError, canSuggest,
+    create: handleCreateSuggestion, accept: handleAcceptSuggestion, reject: handleRejectSuggestion,
+    retry: retrySuggestion, remotePresence: handleRemoteSuggestionPresence,
+    confirmRemoteDecisions: confirmRemoteSuggestionDecisions,
+    beginDocumentLoad: beginSuggestionDocumentLoad, finishDocumentLoad: finishSuggestionDocumentLoad,
+  } = suggestionRecovery
+
   useEffect(() => {
     offlinePdfMountedRef.current = true
     return () => {
@@ -1289,167 +1306,6 @@ export default function ResumeEditPage() {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
-  // Only server-confirmed local decisions affect status. The Y.Map is a live
-  // notification transport, not an authorization or decision source; trusting
-  // peer-written accepted values would let any document editor forge outcomes.
-  const allSuggestions = useMemo(() => mergeSuggestionPresence(suggestions, remoteSuggestionPeers, suggestionDecisions), [remoteSuggestionPeers, suggestionDecisions, suggestions])
-  const suggestionPresence = useMemo<SuggestionPresence>(() => boundSuggestionPresence({
-    items: suggestions.filter((item) => item.status === 'pending').slice(0, 50),
-    // Proposals are awareness-only; resolver decisions come from the server
-    // and are mirrored through the Y.Map only as a live UI notification.
-    decisions: [],
-  }), [suggestions])
-
-  const handleRemoteSuggestionPresence = useCallback((peers: SuggestionPresence[]) => {
-    setRemoteSuggestionPeers(peers)
-  }, [])
-
-  const confirmRemoteSuggestionDecisions = useCallback((decisions: SuggestionDecision[]) => {
-    // Y.Map values are only hints. Confirm each one through the authenticated
-    // REST authority before allowing it to hide a pending proposal.
-    for (const candidate of decisions) {
-      void apiClient.getSuggestionDecision(resumeId, candidate.id)
-        .then((confirmed) => {
-          setSuggestionDecisions((current) => current.some((item) => item.id === confirmed.suggestion_id)
-            ? current
-            : [...current, {
-              id: confirmed.suggestion_id,
-              status: confirmed.status,
-              decidedByRole: confirmed.decided_by_role,
-              decidedAt: Date.parse(confirmed.decided_at),
-            }])
-        })
-        .catch(() => {
-          // Stale/forged notifications have no effect on suggestion state.
-        })
-    }
-  }, [resumeId])
-
-  const canSuggest = canCreateSuggestion(collabRole)
-  const handleCreateSuggestion = useCallback((findText: string, replacementText: string) => {
-    if (!canSuggest) {
-      setSuggestionError('Viewers cannot create suggestions.')
-      return
-    }
-    lastSuggestionDraftRef.current = { findText, replacementText }
-    const source = editorRef.current?.getValue() ?? latexContent
-    const suggestion = createSuggestion({
-      source,
-      findText,
-      replacementText,
-      authorId: sessionUserId ?? 'current-user',
-      authorName: sessionData?.user?.name || sessionData?.user?.email || 'You',
-    })
-    if (!suggestion) {
-      setSuggestionError('That text is not present in the current document. Edit the text or retry.')
-      return
-    }
-    setSuggestions((current) => [...current, suggestion])
-    setSuggestionError(null)
-  }, [canSuggest, latexContent, sessionData?.user?.email, sessionData?.user?.name, sessionUserId])
-
-  const handleAcceptSuggestion = useCallback(async (id: string) => {
-    if (!canResolveSuggestion(collabRole) || !canEditDocument) {
-      setSuggestionError('Only owners and editors can accept suggestions.')
-      return
-    }
-    const suggestion = allSuggestions.find((item) => item.id === id && item.status === 'pending')
-    if (!suggestion) return
-    const source = editorRef.current?.getValue() ?? latexContent
-    lastSuggestionActionRef.current = { kind: 'accept', id }
-    try {
-      const result = await apiClient.decideSuggestion(resumeId, {
-        suggestion_id: id,
-        status: 'accepted',
-        expected_content: source,
-        original_text: suggestion.originalText,
-        replacement_text: suggestion.replacementText,
-        prefix: suggestion.prefix,
-        suffix: suggestion.suffix,
-      })
-      const decision = { id, status: result.status, decidedByRole: result.decided_by_role, decidedAt: Date.parse(result.decided_at) }
-      if (result.status !== 'accepted') {
-        setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: result.status, conflictReason: 'Another decision already won for this suggestion.' } : item))
-        setSuggestionDecisions((current) => [...current, decision])
-        lastSuggestionActionRef.current = null
-        return
-      }
-      // The server already committed this exact source. Apply it once to the
-      // local Y.Text only if no collaborative edit arrived while the request
-      // was in flight; never overwrite newer local content.
-      const applied = editorRef.current?.applySuggestionResult(source, result.latex_content) ?? false
-      if (!applied) {
-        setSuggestionError('The suggestion was accepted on the server, but this editor changed concurrently. Reload to reconcile it safely.')
-        setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'accepted' } : item))
-        setSuggestionDecisions((current) => [...current, decision])
-        return
-      }
-      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'accepted' } : item))
-      setSuggestionDecisions((current) => [...current, decision])
-      // The authoritative result is now the CAS baseline for subsequent
-      // autosaves. Without this update, the next debounced save could send
-      // the pre-suggestion source and overwrite the accepted document.
-      setLatexContent(result.latex_content)
-      setSavedSnapshot({ title, latex: result.latex_content })
-      setLastSavedAt(Date.now())
-      setSuggestionError(null)
-      lastSuggestionActionRef.current = null
-    } catch (error) {
-      // CAS conflicts and transport failures leave the awareness proposal
-      // pending so the user can retry against the latest source.
-      setSuggestionError(error instanceof Error ? error.message : 'Could not decide this suggestion. It remains pending.')
-    }
-  }, [allSuggestions, canEditDocument, collabRole, latexContent, resumeId, title])
-
-  const handleRejectSuggestion = useCallback(async (id: string) => {
-    const suggestion = allSuggestions.find((item) => item.id === id && item.status === 'pending')
-    if (!suggestion) return
-    const canWithdrawOwn = suggestion?.authorId === sessionUserId
-    if ((!canResolveSuggestion(collabRole) || !canEditDocument) && !canWithdrawOwn) {
-      setSuggestionError('Only owners and editors can reject suggestions; authors can withdraw their own.')
-      return
-    }
-    const isResolver = collabRole === 'owner' || collabRole === 'editor'
-    if (!isResolver) {
-      // Authors may withdraw their own ephemeral proposal without creating a
-      // shared resolver decision.
-      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: 'rejected' } : item))
-      setSuggestionError(null)
-      return
-    }
-    const source = editorRef.current?.getValue() ?? latexContent
-    lastSuggestionActionRef.current = { kind: 'reject', id }
-    try {
-      const result = await apiClient.decideSuggestion(resumeId, {
-        suggestion_id: id,
-        status: 'rejected',
-        expected_content: source,
-        original_text: suggestion?.originalText ?? '',
-        replacement_text: suggestion?.replacementText ?? '',
-        prefix: suggestion?.prefix ?? '',
-        suffix: suggestion?.suffix ?? '',
-      })
-      const decision = { id, status: result.status, decidedByRole: result.decided_by_role, decidedAt: Date.parse(result.decided_at) }
-      setSuggestions((current) => current.map((item) => item.id === id ? { ...item, status: result.status } : item))
-      setSuggestionDecisions((current) => [...current, decision])
-      setSuggestionError(null)
-      lastSuggestionActionRef.current = null
-    } catch (error) {
-      setSuggestionError(error instanceof Error ? error.message : 'Could not reject this suggestion. It remains pending.')
-    }
-  }, [allSuggestions, canEditDocument, collabRole, latexContent, resumeId, sessionUserId])
-
-  const retrySuggestion = useCallback(() => {
-    const action = lastSuggestionActionRef.current
-    if (action) {
-      if (action.kind === 'accept') void handleAcceptSuggestion(action.id)
-      else void handleRejectSuggestion(action.id)
-      return
-    }
-    const draft = lastSuggestionDraftRef.current
-    if (draft) handleCreateSuggestion(draft.findText, draft.replacementText)
-    else setSuggestionError(null)
-  }, [handleAcceptSuggestion, handleCreateSuggestion, handleRejectSuggestion])
 
   const setPreviewBlob = useCallback((blob: Blob, fromOffline = false, renderedJobId: string | null = null) => {
     const nextUrl = URL.createObjectURL(blob)
@@ -1878,6 +1734,7 @@ export default function ResumeEditPage() {
     if (sessionLoading || sessionRefetching) return
     const sourceLoad = beginSourceLoad()
     if (!ownsSourceLoad(sourceLoad)) return
+    const suggestionLoad = beginSuggestionDocumentLoad()
     let cancelled = false
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
@@ -2017,7 +1874,9 @@ export default function ResumeEditPage() {
 
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionUserId)
-        setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
+        const loadedRole = data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer')
+        setCollabRole(loadedRole)
+        finishSuggestionDocumentLoad(suggestionLoad, true, loadedRole)
         finishSourceLoad(sourceLoad, 'ready', pendingDraft ? 'offline' : 'server')
 
         const nextParentResumeId = data.parent_resume_id ?? null
@@ -2055,7 +1914,7 @@ export default function ResumeEditPage() {
     }
     void fetchResume()
     return () => { cancelled = true }
-  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionRefetching, sessionUserId, setPreviewBlob, setRightTab])
+  }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, beginSuggestionDocumentLoad, finishSuggestionDocumentLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionRefetching, sessionError, sessionUserId, setPreviewBlob, setRightTab])
 
   // A completed rewrite remains staged until the user explicitly applies it.
   // Streaming tokens never touch Monaco/React state, so autosave and collaboration
@@ -4716,14 +4575,16 @@ export default function ResumeEditPage() {
               />
             )}
 
-            {can('f07') && editorMode === 'source' && visibleRightTab === 'suggestions' && (
+            {editorMode === 'source' && visibleRightTab === 'suggestions' && (
               <SuggestionsPanel
+                key={suggestionRecovery.key}
                 suggestions={allSuggestions}
                 canSuggest={canSuggest}
-                canResolve={canResolveSuggestion(collabRole) && canEditDocument}
-                canReject={(suggestion) => (canResolveSuggestion(collabRole) && canEditDocument) || suggestion.authorId === sessionUserId}
+                admissionsEnabled={can('f07')}
+                canResolve={suggestionRecovery.canAccept}
+                canReject={suggestionRecovery.canReject}
                 modeEnabled={suggestionMode}
-                onToggleMode={() => setSuggestionMode((enabled) => !enabled)}
+                onToggleMode={suggestionRecovery.toggleMode}
                 onCreate={handleCreateSuggestion}
                 onAccept={handleAcceptSuggestion}
                 onReject={handleRejectSuggestion}

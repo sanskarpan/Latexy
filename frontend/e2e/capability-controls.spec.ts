@@ -130,3 +130,44 @@ test('editor gates optional keyboard and toolbar features while preserving sourc
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('capability-editor.png'), fullPage: true })
 })
+
+test('suggestion rejection stays reachable after F07 and C01 are disabled', async ({ page }, testInfo) => {
+  const f = await fixture(page)
+  f.setFeatures({ f07: true, c01: true })
+  let decided = 0
+  await page.route((url) => url.pathname === `/resumes/${ID}/suggestion-decisions`, async (route) => {
+    const body = route.request().postDataJSON()
+    expect(body.status).toBe('rejected')
+    expect(body.expected_content).toBe(SOURCE)
+    decided++
+    await route.fulfill({ json: { suggestion_id: body.suggestion_id, status: 'rejected',
+      decided_by_role: 'owner', decided_at: '2026-10-13T12:00:00Z', latex_content: '', replayed: false } })
+  })
+  await page.goto(`/workspace/${ID}/edit`)
+  await expect.poll(() => page.evaluate(() => (window as any).__latexyMonacoEditor?.getValue()), { timeout: 60_000 }).toBe(SOURCE)
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Suggestions', exact: true }).click()
+  await page.getByRole('button', { name: 'Turn on', exact: true }).click()
+  await page.getByLabel('Existing text').fill('Keep this source.')
+  await page.getByLabel('Suggested replacement').fill('Proposed replacement.')
+  await page.getByRole('button', { name: 'Create suggestion', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeEnabled()
+
+  f.setFeatures({ f07: false, c01: false }); await f.refresh()
+  await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled()
+  await expect(page.getByText('New suggestions and acceptance are disabled.', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('Existing text')).toHaveCount(0)
+  // Recovery is reachable again after leaving the panel, not merely kept open.
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  // The pending-count badge is part of this menu item's accessible name.
+  await page.getByRole('menuitem', { name: 'Suggestions 1', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Suggestions', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled()
+  await page.screenshot({ path: testInfo.outputPath('suggestion-recovery-off.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Reject', exact: true }).click()
+  await expect(page.getByText('No pending suggestions', { exact: true })).toBeVisible()
+  expect(decided).toBe(1)
+  expect(await page.evaluate(() => (window as any).__latexyMonacoEditor.getValue())).toBe(SOURCE)
+})
