@@ -17,6 +17,9 @@ are included in this report.
   the provisioning read found the existing managed products, without duplicates.
 - Dodo's live checkout preview returned HTTP 200 and the expected gross INR amount
   for every product. A preview does not charge a card or prove paid fulfillment.
+- The owner signed in to the Latexy merchant dashboard. Its verification page
+  reports verification complete and live payments active. This confirms merchant
+  status, not a completed application payment or entitlement.
 - The production webhook is registered for the 16 payment/subscription/refund
   events documented in the billing runbook. It remains **disabled** until the
   receiving deployment is ready. Its live signing key was saved only in ignored
@@ -116,6 +119,36 @@ was running. Separately, all 142 deployment/wrapper/renderer-configuration tests
 passed. Full CI must run the actual PostgreSQL cases. Initial CI identified stale
 static fixture expectations after the binding split; those expectations were
 updated to model the actual API bindings and image environment.
+
+The full CI run on `b172fff6886d1b3629090eedfde8b5a337cf05f9` passed, including
+backend PostgreSQL tests, full-stack smoke, isolated real compile/preview,
+cross-browser quality, security analysis and the Vercel preview. Main then
+advanced through #1886 and #1882; these were integrated without conflicts and
+the final combined head requires its own CI.
+
+## Recovery and isolated migration rehearsal
+
+With the owner-signed-in Neon session, a manual production snapshot was created
+at **2026-10-14 10:58:18 UTC**, with expiry shown as **never**. The snapshot was
+restored through Neon's multi-step recovery into a separate validation branch;
+production remained the default branch and no application connections were
+switched. The validation branch is `codex-dodo-validation-20261014`. Endpoint,
+role, credentials, account identifiers and table counts remain private.
+
+The restored copy passed the read-only diagnostic at revision `0059`. An explicit
+rehearsal helper allowed only its literal, independently observed clone endpoint,
+rejected the normalized production endpoint and query routing overrides, required
+the reviewed source fingerprint and zero billing/access holds, and then ran the
+ordinary Alembic upgrade against the clone. On source
+`b172fff6886d1b3629090eedfde8b5a337cf05f9`, candidate migration image
+`im-54PEANIGv3SWAzZzYdBCGd`, it reached `0073_d14_subfeatures` with a complete
+read-only post-check and equal before/after row counts for users, subscriptions,
+team seats and resumes. Row-count equality does not establish byte-for-byte row
+identity. No production migration or financial-history rewrite was performed.
+
+Redis failover and the existing second Redis instance are being handled by a
+separate owner-authorized agent. This work does not reconfigure those resources
+or treat the backup instance as an isolated acceptance database.
 
 ## Production holds
 
