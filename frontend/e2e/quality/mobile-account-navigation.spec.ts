@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Request } from './quality-test'
 import { fulfillQualityJson, qualityOrigins, QUALITY_PLANS } from './mock-api'
+import {
+  candidatePrefetchUrl, classifySignOutPageErrors, connectionPolicyUnrestricted, installSignOutProvenance,
+  type NavigationLedger, type ObservedPageError, type SignOutNavigation,
+} from '../helpers/webkit-signout-provenance'
 
 const authenticatedSession = {
   user: { id: 'mobile-account-owner', email: 'mobile@example.com', name: 'Mobile Owner' },
@@ -8,6 +12,11 @@ const authenticatedSession = {
 
 const diagnosticsByPage = new WeakMap<Page, {
   pageErrors: string[]
+  pageErrorDetails: ObservedPageError[]
+  browserRequestUrls: string[]
+  runId: string
+  storageKey: string
+  getSignOutNavigation: () => SignOutNavigation | null
   authTimeline: string[]
   unmockedApiRequests: string[]
   unexpectedAuthRequests: Map<Request, string>
@@ -20,6 +29,12 @@ async function mockHeaderDependencies(
   options: { authenticated: boolean; role?: string; billing?: boolean; features?: Record<string, boolean> },
 ) {
   const pageErrors: string[] = []
+  const pageErrorDetails: ObservedPageError[] = []
+  const browserRequestUrls: string[] = []
+  const runId = crypto.randomUUID()
+  const storageKey = `latexy-signout-provenance:${runId}`
+  let signOutNavigation: SignOutNavigation | null = null
+  let platformPolicyUnrestricted = false
   const authTimeline: string[] = []
   const unmockedApiRequests: string[] = []
   const unexpectedAuthRequests = new Map<Request, string>()
@@ -28,6 +43,7 @@ async function mockHeaderDependencies(
   let sessionReads = 0
   let guestSessionReads = 0
   const { appOrigin, backendOrigin } = qualityOrigins()
+  await page.addInitScript(installSignOutProvenance, { storageKey, runId })
   const startedAt = Date.now()
   const timeline = (event: string, method: string, path: string, status?: number) => {
     const elapsedMs = Date.now() - startedAt
@@ -36,11 +52,22 @@ async function mockHeaderDependencies(
 
   page.on('pageerror', error => {
     pageErrors.push(error.message)
+    pageErrorDetails.push({ name: error.name, message: error.message, stack: error.stack ?? '', url: page.url(), observedAt: Date.now() })
     const path = error.message.match(/\/api\/auth\/[A-Za-z0-9/_-]+/)?.[0] ?? '(path unavailable)'
     timeline('PAGEERROR', '-', path)
   })
   page.on('request', request => {
     const url = new URL(request.url())
+    const candidate = candidatePrefetchUrl(request.url(), appOrigin)
+    if (candidate) {
+      if (browserRequestUrls.length < 128) browserRequestUrls.push(candidate)
+      timeline('RSC_REQUEST', request.method(), `${url.pathname}${url.search}`)
+    }
+    if (signOutNavigation && signOutNavigation.postSucceededAt !== null
+      && signOutNavigation.replacementStartedAt === null && request.isNavigationRequest()
+      && request.frame() === page.mainFrame() && url.href === `${appOrigin}/`) {
+      signOutNavigation.replacementStartedAt = Date.now()
+    }
     if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
     unexpectedAuthRequests.set(request, `${request.method()} ${url.pathname} (pending)`)
     timeline('REQUEST', request.method(), url.pathname)
@@ -48,8 +75,14 @@ async function mockHeaderDependencies(
   page.on('response', response => {
     const request = response.request()
     const url = new URL(request.url())
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame() && url.href === `${appOrigin}/platform`) {
+      platformPolicyUnrestricted = connectionPolicyUnrestricted(response.headers()['content-security-policy'] ?? '')
+    }
+    if (candidatePrefetchUrl(request.url(), appOrigin)) timeline('RSC_RESPONSE', request.method(), `${url.pathname}${url.search}`, response.status())
     if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
     timeline('RESPONSE', request.method(), url.pathname, response.status())
+    if (signOutNavigation && url.pathname === '/api/auth/sign-out'
+      && request.method() === 'POST' && response.status() === 200) signOutNavigation.postSucceededAt = Date.now()
     if (!unexpectedAuthRequests.has(request)) return
     if (mockedAuthRequests.has(request)) {
       unexpectedAuthRequests.delete(request)
@@ -59,6 +92,7 @@ async function mockHeaderDependencies(
   })
   page.on('requestfailed', request => {
     const url = new URL(request.url())
+    if (candidatePrefetchUrl(request.url(), appOrigin)) timeline('RSC_REQUEST_FAILED', request.method(), `${url.pathname}${url.search} (${request.failure()?.errorText ?? 'unknown'})`)
     if (url.origin !== appOrigin || !url.pathname.startsWith('/api/auth/')) return
     timeline('REQUEST_FAILED', request.method(), url.pathname)
     if (!unexpectedAuthRequests.has(request)) return
@@ -67,6 +101,15 @@ async function mockHeaderDependencies(
       return
     }
     unexpectedAuthRequests.set(request, `${request.method()} ${url.pathname} -> failed`)
+  })
+  page.on('framenavigated', frame => {
+    if (frame !== page.mainFrame()) return
+    const url = new URL(frame.url())
+    timeline('DOCUMENT', 'GET', `${url.origin}${url.pathname}`)
+    if (signOutNavigation && signOutNavigation.replacementStartedAt !== null
+      && signOutNavigation.replacementCommittedAt === null && url.href === `${appOrigin}/`) {
+      signOutNavigation.replacementCommittedAt = Date.now()
+    }
   })
 
   // Fail and record any backend request this header-focused fixture did not
@@ -109,6 +152,20 @@ async function mockHeaderDependencies(
 
   const diagnostics = {
     pageErrors,
+    pageErrorDetails,
+    browserRequestUrls,
+    runId,
+    storageKey,
+    getSignOutNavigation() { return signOutNavigation },
+    async beginSignOutNavigation() {
+      const intent = await page.evaluate(() => {
+        const control = (window as Window & { __latexySignOutProvenance?: { arm(): { documentId: string; intentAt: number } } }).__latexySignOutProvenance
+        if (!control) throw new Error('Sign-out provenance is unavailable')
+        return control.arm()
+      })
+      signOutNavigation = { ...intent, connectionPolicyUnrestricted: platformPolicyUnrestricted,
+        postSucceededAt: null, replacementStartedAt: null, replacementCommittedAt: null }
+    },
     authTimeline,
     unmockedApiRequests,
     unexpectedAuthRequests,
@@ -147,16 +204,30 @@ async function expectGuestAccountNavigation(page: Page) {
 }
 
 test.describe('mobile account navigation', () => {
-  test.afterEach(async ({ page }, testInfo) => {
+  test.afterEach(async ({ page, browserName }, testInfo) => {
     // Finish in-flight mock responses before Playwright closes the page. Do not
     // ignore handler errors: they belong in the test result and diagnostics.
     await page.unrouteAll({ behavior: 'wait' })
     const diagnostics = diagnosticsByPage.get(page)
     if (!diagnostics) return
+    const ledger = await page.evaluate(key => {
+      const raw = sessionStorage.getItem(key)
+      return raw ? JSON.parse(raw) as NavigationLedger : null
+    }, diagnostics.storageKey)
+    const classification = classifySignOutPageErrors({
+      browserName, appOrigin: qualityOrigins().appOrigin, runId: diagnostics.runId,
+      ledger, navigation: diagnostics.getSignOutNavigation(), errors: diagnostics.pageErrorDetails,
+      browserRequestUrls: diagnostics.browserRequestUrls,
+    })
 
     await testInfo.attach('mobile-account-navigation-diagnostics.json', {
       body: Buffer.from(JSON.stringify({
         pageErrors: diagnostics.pageErrors,
+        pageErrorDetails: diagnostics.pageErrorDetails,
+        ledger,
+        classification,
+        signOutNavigation: diagnostics.getSignOutNavigation(),
+        browserRequestUrls: diagnostics.browserRequestUrls,
         authTimeline: diagnostics.authTimeline,
         unmockedApiRequests: diagnostics.unmockedApiRequests,
         unexpectedAuthRequests: [...diagnostics.unexpectedAuthRequests.values()],
@@ -165,7 +236,14 @@ test.describe('mobile account navigation', () => {
       }, null, 2)),
       contentType: 'application/json',
     })
-    expect(diagnostics.pageErrors).toEqual([])
+    // Raw errors remain attached. Only positively proven upstream refusals
+    // are classified; genuine window/rejection/CSP errors always fail.
+    expect(ledger?.version).toBe(1)
+    expect(ledger?.runId).toBe(diagnostics.runId)
+    expect(ledger?.overflow).toBe(false)
+    expect(ledger?.documents.length ?? 0).toBeGreaterThan(0)
+    expect(ledger?.documents.flatMap(doc => doc.windowErrors) ?? []).toEqual([])
+    expect(classification.unclassified).toEqual([])
     expect(diagnostics.unmockedApiRequests).toEqual([])
     expect([...diagnostics.unexpectedAuthRequests.values()]).toEqual([])
   })
@@ -210,6 +288,7 @@ test.describe('mobile account navigation', () => {
     await expect(menuButton).toBeFocused()
 
     await menuButton.click()
+    await fixture.beginSignOutNavigation()
     await page.getByRole('button', { name: 'Sign Out', exact: true }).click()
     await expect.poll(() => signOutCalls).toBe(1)
     expect(signOutMethods).toEqual(['POST'])
