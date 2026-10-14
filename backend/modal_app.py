@@ -24,7 +24,10 @@ from app.core.engine_capacity import capacity_options
 # Constants
 # ---------------------------------------------------------------------------
 _APP_NAME = "latexy-backend"
-_BACKEND_DIR = Path(__file__).parent  # backend/
+# Modal's module file is imported from /root/modal_app.py remotely, while the
+# source tree is baked at /backend. During local build/deploy, use this file's
+# checkout path so image copy operations read the actual backend directory.
+_BACKEND_DIR = Path(__file__).parent if modal.is_local() else Path("/backend")
 
 
 def _validated_optional_billing_secret_name(value: str | None) -> str | None:

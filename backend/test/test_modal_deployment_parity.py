@@ -70,6 +70,32 @@ def _extract_optional_billing_secret_name():
     return namespace["_validated_optional_billing_secret_name"]
 
 
+def _evaluate_backend_dir(is_local: bool) -> Path:
+    """Evaluate only the path assignment with Modal state stubbed."""
+    from types import SimpleNamespace
+
+    tree = _parse(MODAL_APP)
+    assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_BACKEND_DIR" for target in node.targets)
+    )
+    isolated = ast.Module(
+        body=[ast.ImportFrom(module="pathlib", names=[ast.alias(name="Path")], level=0), assignment],
+        type_ignores=[],
+    )
+    namespace = {
+        "modal": SimpleNamespace(is_local=lambda: is_local),
+        "__file__": "/checkout/backend/modal_app.py",
+    }
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+    return namespace["_BACKEND_DIR"]
+
+
+def test_modal_backend_dir_uses_baked_path_only_in_remote_runtime():
+    assert _evaluate_backend_dir(is_local=True) == Path("/checkout/backend")
+    assert _evaluate_backend_dir(is_local=False) == Path("/backend")
+
+
 def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
     validator = _extract_optional_billing_secret_name()
     assert validator(None) is None
