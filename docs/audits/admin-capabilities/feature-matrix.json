@@ -509,6 +509,7 @@
         "frontend/src/app/pricing/page.tsx",
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
+        "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
@@ -605,6 +606,7 @@
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
+        "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
@@ -836,6 +838,8 @@
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
+        "frontend/src/components/marketing/LandingFooter.tsx",
+        "frontend/src/components/marketing/LandingHeader.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -1617,6 +1621,7 @@
         "frontend/src/components/PDFPreview.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/SemanticOptimizationPanel.tsx",
+        "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx",
