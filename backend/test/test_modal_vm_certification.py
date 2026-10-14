@@ -2,8 +2,10 @@
 
 import io
 import os
+import subprocess
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -75,9 +77,15 @@ def _install_fake_pdftotext(monkeypatch, output_by_name, *, returncode=0):
         assert command[0] == "/fake/bin/pdftotext"
         assert command[1:4] == ["-layout", "-enc", "UTF-8"]
         assert command[-1] == "-"
-        return _FakeTextProcess(output_by_name.get(command[-2].split("/")[-1], b""), returncode)
+        return _FakeTextProcess(output_by_name.get(Path(command[-2]).name, b""), returncode)
 
     monkeypatch.setattr(certification.shutil, "which", lambda name: "/fake/bin/pdftotext" if name == "pdftotext" else None)
+    monkeypatch.setattr(
+        certification.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout=b"pdftotext version 26.09.0\nThe Poppler Developers", stderr=b""
+        ),
+    )
     monkeypatch.setattr(certification.subprocess, "Popen", fake_popen)
     return calls
 
@@ -313,6 +321,35 @@ def test_verify_fixture_rejects_nonzero_pdftotext_exit(monkeypatch, tmp_path):
     _install_fake_pdftotext(monkeypatch, {"hindi.pdf": "हिंदी".encode("utf-8")}, returncode=1)
 
     assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
+
+
+def test_extract_fixture_text_reads_a_real_subprocess_pipe(monkeypatch, tmp_path):
+    """Windows cannot select() a subprocess pipe; extraction must still work."""
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    real_popen = subprocess.Popen
+
+    def synthetic_extractor(_command, **kwargs):
+        return real_popen(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'Latin Bold')"],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(certification.subprocess, "Popen", synthetic_extractor)
+    assert certification._extract_fixture_text(pdf, "/fake/bin/pdftotext") == "Latin Bold"
+
+
+def test_certification_rejects_xpdf_before_modal_work(monkeypatch):
+    monkeypatch.setattr(certification.shutil, "which", lambda _name: "/fake/bin/pdftotext")
+    monkeypatch.setattr(
+        certification.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout=b"pdftotext version 4.00\nGlyph & Cog, LLC", stderr=b""
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(App=lambda _name: pytest.fail("Modal must not run")))
+    with pytest.raises(RuntimeError, match="pdftotext \\(Poppler\\) is required"):
+        certification.main()
 
 
 def test_verify_fixture_bounds_pdftotext_output(monkeypatch, tmp_path):
