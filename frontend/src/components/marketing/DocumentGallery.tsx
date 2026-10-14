@@ -1,10 +1,8 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import type { DocumentStageState } from './DocumentStage'
 import './document-scene.css'
-
-const DocumentStage = dynamic(() => import('./DocumentStage'), { ssr: false })
 
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 type Layout = (typeof layouts)[number]
@@ -58,10 +56,32 @@ export default function DocumentGallery() {
     const [reducedMotion, setReducedMotion] = useState(true)
     const [dark, setDark] = useState(false)
     const scene = useRef<HTMLDivElement>(null)
+    const stage = useRef<HTMLDivElement>(null)
+    const stageState = useRef<DocumentStageState>({ dark: false, selected: 0, reducedMotion: true })
     const controls = useRef<Partial<Record<Layout, HTMLButtonElement>>>({})
     const pointer = useRef({ x: 0, y: 0 })
     const invalidate = useRef<(() => void) | null>(null)
     const pointerFrame = useRef<number | null>(null)
+    useEffect(() => {
+        stageState.current = { dark, selected: layouts.indexOf(layout), reducedMotion }
+        invalidate.current?.()
+    }, [dark, layout, reducedMotion])
+    useEffect(() => {
+        let cancelled = false
+        let cleanup = () => {}
+        import('./DocumentStage')
+            .then(({ mountDocumentStage }) => {
+                if (!cancelled && stage.current)
+                    cleanup = mountDocumentStage(stage.current, stageState, pointer, invalidate)
+            })
+            .catch(() => {
+                if (!cancelled && stage.current) stage.current.dataset.renderer = 'unavailable'
+            })
+        return () => {
+            cancelled = true
+            cleanup()
+        }
+    }, [])
     useEffect(() => {
         const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
         const update = () => {
@@ -116,15 +136,7 @@ export default function DocumentGallery() {
                     })
                 }}
             >
-                <div className="lp-document-stage" aria-hidden="true">
-                    <DocumentStage
-                        dark={dark}
-                        selected={layouts.indexOf(layout)}
-                        reducedMotion={reducedMotion}
-                        pointer={pointer}
-                        invalidateRef={invalidate}
-                    />
-                </div>
+                <div className="lp-document-stage" ref={stage} aria-hidden="true" />
                 {layouts.map((name, index) => {
                     const offset = (index - layouts.indexOf(layout) + 3) % 3
                     const slot = offset === 0 ? 'center' : offset === 1 ? 'right' : 'left'
