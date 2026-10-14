@@ -161,7 +161,9 @@ test('suggestion rejection stays reachable after F07 and C01 are disabled', asyn
   // Recovery is reachable again after leaving the panel, not merely kept open.
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Suggestions', exact: true }).click()
+  // The pending-count badge is part of this menu item's accessible name.
+  await page.getByRole('menuitem', { name: 'Suggestions 1', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Suggestions', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled()
   await page.screenshot({ path: testInfo.outputPath('suggestion-recovery-off.png'), fullPage: true })
   await page.getByRole('button', { name: 'Reject', exact: true }).click()
