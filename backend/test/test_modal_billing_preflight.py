@@ -33,7 +33,7 @@ def wrapper():
     fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "billing_preflight")
     decorator = fn.decorator_list[0]
     assert {kw.arg: ast.unparse(kw.value) for kw in decorator.keywords} == {
-        "image": "migrate_image", "secrets": "_secrets", "timeout": "120",
+        "image": "migrate_image", "secrets": "_api_secrets", "timeout": "120",
     }
     fn.decorator_list = []
     namespace = {"_APP_NAME": "latexy-backend", "Path": SyntheticPath}

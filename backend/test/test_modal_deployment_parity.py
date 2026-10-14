@@ -57,6 +57,207 @@ def _extract_modal_string_constant(name: str) -> str:
     raise AssertionError(f"modal_app.py has no literal {name}")
 
 
+def _extract_optional_billing_secret_name():
+    """Compile only the pure validator, without importing Modal or building images."""
+    tree = _parse(MODAL_APP)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_validated_optional_billing_secret_name"
+    )
+    isolated = ast.Module(body=[ast.Import(names=[ast.alias(name="re")]), function], type_ignores=[])
+    namespace: dict[str, object] = {}
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+    return namespace["_validated_optional_billing_secret_name"]
+
+
+def _evaluate_backend_dir(is_local: bool) -> Path:
+    """Evaluate only the path assignment with Modal state stubbed."""
+    from types import SimpleNamespace
+
+    tree = _parse(MODAL_APP)
+    assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_BACKEND_DIR" for target in node.targets)
+    )
+    isolated = ast.Module(
+        body=[ast.ImportFrom(module="pathlib", names=[ast.alias(name="Path")], level=0), assignment],
+        type_ignores=[],
+    )
+    namespace = {
+        "modal": SimpleNamespace(is_local=lambda: is_local),
+        "__file__": "/checkout/backend/modal_app.py",
+    }
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+    return namespace["_BACKEND_DIR"]
+
+
+def test_modal_backend_dir_uses_baked_path_only_in_remote_runtime():
+    assert _evaluate_backend_dir(is_local=True) == Path("/checkout/backend")
+    assert _evaluate_backend_dir(is_local=False) == Path("/backend")
+
+
+def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
+    validator = _extract_optional_billing_secret_name()
+    assert validator(None) is None
+    assert validator("") is None
+    assert validator("latexy-live-billing") == "latexy-live-billing"
+    for invalid in (" leading", "trailing ", "../secret", "bad/name", "x" * 65):
+        with pytest.raises(ValueError, match="valid Modal secret label"):
+            validator(invalid)
+
+    tree = _parse(MODAL_APP)
+    ignore_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_IGNORE" for target in node.targets)
+    )
+    ignored = ast.literal_eval(ignore_assignment.value)
+    assert "**/temp/**" in ignored
+    assert "**/.venv/**" in ignored
+    assert "**/.pytest_cache/**" in ignored
+
+    secrets_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_secrets" for target in node.targets)
+    )
+    assert [call.args[0].value for call in ast.walk(secrets_assignment)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Attribute)
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "modal"
+            and call.func.value.attr == "Secret"
+            and call.func.attr == "from_name"] == [
+                "latexy-backend-secrets", "latexy-storage", "latexy-redis",
+            ]
+    api_secrets_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_api_secrets" for target in node.targets)
+    )
+    assert (isinstance(api_secrets_assignment.value, ast.List)
+            and len(api_secrets_assignment.value.elts) == 1
+            and isinstance(api_secrets_assignment.value.elts[0], ast.Starred)
+            and isinstance(api_secrets_assignment.value.elts[0].value, ast.Name)
+            and api_secrets_assignment.value.elts[0].value.id == "_secrets")
+    overlay = next(
+        node for node in tree.body if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Name) and node.test.id == "_billing_secret_name"
+    )
+    assert any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "_api_secrets"
+        and node.func.attr == "append"
+        and len(node.args) == 1 and isinstance(node.args[0], ast.Call)
+        and isinstance(node.args[0].func, ast.Attribute)
+        and isinstance(node.args[0].func.value, ast.Attribute)
+        and isinstance(node.args[0].func.value.value, ast.Name)
+        and node.args[0].func.value.value.id == "modal"
+        and node.args[0].func.value.attr == "Secret"
+        and node.args[0].func.attr == "from_name"
+        and len(node.args[0].args) == 1
+        and isinstance(node.args[0].args[0], ast.Name)
+        and node.args[0].args[0].id == "_billing_secret_name"
+        for node in ast.walk(overlay)
+    )
+    binding_env = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_billing_secret_binding_env"
+                for target in node.targets)
+    )
+    assert any(
+        isinstance(key, ast.Constant) and key.value == "MODAL_BILLING_SECRET_NAME"
+        and isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or)
+        and len(value.values) == 2
+        and isinstance(value.values[0], ast.Name)
+        and value.values[0].id == "_billing_secret_name"
+        and isinstance(value.values[1], ast.Constant) and value.values[1].value == ""
+        for key, value in zip(binding_env.value.keys, binding_env.value.values)
+    )
+    image_assignments = {
+        name: next(
+            node for node in tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+        )
+        for name in ("api_image", "latex_image", "worker_image", "migrate_image")
+    }
+    for name, assignment in image_assignments.items():
+        assert any(
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "env" and call.args
+            and isinstance(call.args[0], ast.Dict)
+            and any(key is None and isinstance(value, ast.Name)
+                    and value.id == "_billing_secret_binding_env"
+                    for key, value in zip(call.args[0].keys, call.args[0].values))
+            for call in ast.walk(assignment)
+        ), f"{name} does not snapshot the Modal billing secret name into its image environment"
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    def function_binding(name):
+        bindings = [
+            (decorator.func.value.id, keyword.value.id)
+            for decorator in functions[name].decorator_list
+            if isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and isinstance(decorator.func.value, ast.Name)
+            and decorator.func.attr == "function"
+            for keyword in decorator.keywords
+            if keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)
+        ]
+        assert len(bindings) == 1, name
+        return bindings[0]
+
+    expected_secret_bindings = {
+        "run_latex_task": ("app", "_secrets"),
+        "renderer_preflight": ("operations_app", "_api_secrets"),
+        "billing_preflight": ("operations_app", "_api_secrets"),
+        "migrate": ("operations_app", "_secrets"),
+        "sync_templates": ("operations_app", "_secrets"),
+        "fastapi_app": ("app", "_api_secrets"),
+    }
+    for name, expected in expected_secret_bindings.items():
+        assert function_binding(name) == expected, name
+    all_function_bindings = {}
+    for name, function in functions.items():
+        for decorator in function.decorator_list:
+            if (not isinstance(decorator, ast.Call)
+                    or not isinstance(decorator.func, ast.Attribute)
+                    or not isinstance(decorator.func.value, ast.Name)
+                    or decorator.func.attr != "function"):
+                continue
+            secrets = [keyword.value.id for keyword in decorator.keywords
+                       if keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)]
+            if secrets:
+                assert len(secrets) == 1, name
+                all_function_bindings[name] = (decorator.func.value.id, secrets[0])
+    api_secret_functions = {
+        name for name, binding in all_function_bindings.items() if binding[1] == "_api_secrets"
+    }
+    assert api_secret_functions == {"renderer_preflight", "billing_preflight", "fastapi_app"}
+    assert all(binding[1] == "_secrets" for name, binding in all_function_bindings.items()
+               if name not in api_secret_functions)
+    assert {name for name, binding in all_function_bindings.items() if binding[0] == "operations_app"} == {
+        "renderer_preflight", "billing_preflight", "migrate", "sync_templates",
+    }
+    assert all(binding[0] == "app" for name, binding in all_function_bindings.items()
+               if name not in {"renderer_preflight", "billing_preflight", "migrate", "sync_templates"})
+    fastapi_decorator = next(
+        decorator for decorator in functions["fastapi_app"].decorator_list
+        if isinstance(decorator, ast.Call)
+        and isinstance(decorator.func, ast.Attribute)
+        and isinstance(decorator.func.value, ast.Name)
+        and decorator.func.value.id == "app"
+        and decorator.func.attr == "function"
+    )
+    assert any(
+        keyword.arg == "min_containers"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value == 1
+        for keyword in fastapi_decorator.keywords
+    )
+    workflow = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+    assert "MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}" in workflow
+
+
 def _extract_modal_shell_encoder():
     """Extract only the encoder so this test never imports modal_app.py."""
     tree = _parse(MODAL_APP)
@@ -76,15 +277,16 @@ def _extract_modal_shell_encoder():
     return encoder
 
 
-def _modal_function_names() -> set[str]:
-    """Names of every ``@app.function``-decorated function in modal_app.py."""
+def _modal_function_names(app_name: str = "app") -> set[str]:
+    """Functions registered on the selected serving or operator App."""
     names = set()
     for node in ast.walk(_parse(MODAL_APP)):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for dec in node.decorator_list:
             target = dec.func if isinstance(dec, ast.Call) else dec
-            if isinstance(target, ast.Attribute) and target.attr == "function":
+            if (isinstance(target, ast.Attribute) and target.attr == "function"
+                    and isinstance(target.value, ast.Name) and target.value.id == app_name):
                 names.add(node.name)
     return names
 
@@ -183,14 +385,14 @@ def _dispatch_sites() -> list[tuple[str, str, bool]]:
 def test_modal_delivery_synchronizes_templates_and_assets_after_deploy():
     """New source templates must become usable without a manual production repair."""
     workflow = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
-    deploy = workflow.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py')
+    deploy = workflow.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app')
     sync = workflow.index("modal run --env main modal_app.py::sync_templates")
     backfill = workflow.index("modal run --env main scripts/backfill_template_assets.py")
     health = workflow.index("Verify production backend health")
     catalog = workflow.index("Verify source template catalog and assets")
 
     assert deploy < sync < backfill < health < catalog
-    assert "sync_templates" in _modal_function_names()
+    assert "sync_templates" in _modal_function_names("operations_app")
 
     tree = _parse(MODAL_APP)
     sync_fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "sync_templates")
@@ -209,7 +411,7 @@ def test_every_dispatcher_has_a_modal_branch():
     """A Celery dispatch with no Modal branch silently never runs in production.
 
     On Modal there is no Celery worker process at all — modal_app.py wraps each
-    task in an ``@app.function`` and the submit helper must route to it. A helper
+    task in an App function and the submit helper must route to it. A helper
     that only calls ``apply_async`` enqueues to a broker with no consumer, so the
     caller gets a job id for work that will never happen.
     """
@@ -220,7 +422,7 @@ def test_every_dispatcher_has_a_modal_branch():
         "New Celery dispatcher(s) with no Modal branch — these will silently never "
         f"run in production: {sorted(new)}. Add an "
         '`if os.environ.get("DEPLOY_TARGET") == "modal": spawn(...)` branch and a '
-        "matching @app.function in backend/modal_app.py."
+        "matching App function in backend/modal_app.py."
     )
 
     fixed = KNOWN_UNWIRED_DISPATCHERS - unwired
@@ -231,7 +433,7 @@ def test_every_dispatcher_has_a_modal_branch():
 
 
 def test_every_spawned_function_exists_in_modal_app():
-    """``spawn("run_x_task", ...)`` must name a real @app.function.
+    """``spawn("run_x_task", ...)`` must name a real Modal App function.
 
     A typo here fails only in production, and only at dispatch time.
     """
@@ -244,7 +446,7 @@ def test_every_spawned_function_exists_in_modal_app():
     assert spawned, "no spawn() call sites found — the detection regex is stale"
     missing = spawned - declared
     assert not missing, (
-        f"spawn() targets with no matching @app.function in modal_app.py: {sorted(missing)}. "
+        f"spawn() targets with no matching App function in modal_app.py: {sorted(missing)}. "
         f"Declared: {sorted(declared)}"
     )
 

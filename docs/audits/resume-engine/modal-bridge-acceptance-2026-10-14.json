@@ -1,0 +1,109 @@
+{
+  "api_image_id": "im-CkIUs7hj3yJ0ArBga2KqXm",
+  "assets_fingerprint": "db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9",
+  "database_redis_storage_provider_calls": false,
+  "environment": "billing-acceptance-20261014",
+  "failure_stage": "none",
+  "fixture_sha256": "a8f725c29dcbc39c1a654e9e51d6a61482c4d3607445f9f18ffc52985be29912",
+  "fixtures": {
+    "absolute_session_deadline": {
+      "deadline_elapsed_before_measurement": true,
+      "expired_session_reuse_result": "modal_engine_unavailable",
+      "no_artifacts_returned_before_deadline": true,
+      "pending_before_deadline": true,
+      "sandbox_terminal_after_finally_cleanup": "terminal",
+      "sandbox_terminal_before_manual_cleanup": "terminal",
+      "session_closed_flag_observed": false,
+      "session_deadline_seconds": 20,
+      "status": "passed"
+    },
+    "bounded_wait_timeout": {
+      "sandbox_terminal": "terminal",
+      "sandbox_terminal_after_finally_cleanup": "terminal",
+      "session_closed": true,
+      "status": "passed",
+      "three_second_wait_expired": true
+    },
+    "cancel_pending_compile": {
+      "pending_before_cancel": true,
+      "sandbox_terminal_after_finally_cleanup": "terminal",
+      "sandbox_terminal_after_kill": "terminal",
+      "session_closed": true,
+      "status": "passed"
+    },
+    "lua_bibtex_convergence": {
+      "actual_engine_calls": [
+        "lualatex",
+        "bibtex",
+        "lualatex",
+        "lualatex"
+      ],
+      "bibliography_artifact_present": true,
+      "bibtex_log_lines": 4,
+      "cross_reference_and_citation_resolved": true,
+      "elapsed_seconds": 11.259,
+      "geometry_pages": 101,
+      "geometry_pdf_sha256_matches": true,
+      "geometry_sha256": "8ec6272d9bc98a632e0e644f7479e58eeacc70e0b98c0f25dcc8cc9fcc287caa",
+      "geometry_size": 5790,
+      "log_gating": "passed",
+      "lualatex_log_lines": 4145,
+      "observed_vm_policy": "credential_free_vm",
+      "observed_vm_policy_identity": "lua-credential-free-vm-v1",
+      "original_session_deadline_preserved": true,
+      "pdf_sha256": "6b8b0abded8ad230ed46e221c5e9cb5e5cd539754a3cc5efd9738ec8a0f9b7c5",
+      "pdf_size": 258345,
+      "recorder_confinement": "passed",
+      "requested_cpu_and_memory": {
+        "cpu": [
+          1,
+          2
+        ],
+        "memory_mib": [
+          1024,
+          2048
+        ]
+      },
+      "returned_artifacts_are_bounded": true,
+      "same_vm_and_session_for_all_passes": true,
+      "sandbox_terminal_after_cleanup": "terminal",
+      "status": "passed",
+      "synctex_sha256": "4e4a98a85e188e20ea24f741352feecd5a913a52862d1a507cb336b4f9ba2f27",
+      "synctex_size": 691017,
+      "tex_page_count_reported": 101
+    }
+  },
+  "full_owner_pipeline_certified": false,
+  "renderer_image": "im-mF0rpCXgH2MBjw3TKMYXEf",
+  "requested_resource_limits": {
+    "function_seconds": 300,
+    "requested_as_source": true,
+    "vm_cpu": [
+      1,
+      2
+    ],
+    "vm_memory_mib": [
+      1024,
+      2048
+    ],
+    "vm_network_blocked": true,
+    "vm_policy": "credential_free_vm",
+    "vm_secrets": 0,
+    "vm_volumes": 0
+  },
+  "source_revision": "2c1061129ba3f22431ca78e69817dd9a43954823",
+  "source_revision_verified_by_hashes": true,
+  "source_sha256": {
+    "app/services/latex_service.py": "5d1bac3499404656ed185461e4f1685752eb0c4d48bb9b8bbd185b23e9a7a8b3",
+    "app/services/render_engine/backend.py": "50d673af3e225f124d5e49af404e7f4a4c0787c95ac34ebe6162269655d53e55",
+    "app/services/render_engine/geometry.py": "81f41d5a5fc8622a429cedb405002ab23f5d80594663687d5014c0023c6da189",
+    "app/services/render_engine/log_gating.py": "d11275972a5501517767711e1a85e4ae6df26a46e2e4d4d1bd4dddbc58c45b47",
+    "app/services/render_engine/modal_sandbox.py": "fa336649d944b3ded240193aaffba2adbf846e7b7c49c34d3bbf902f39b196db",
+    "app/services/render_engine/passes.py": "b5f8fd429d2d7374ab0b21c6e5982b3243e7164e74392cb807ee1a8edab1cedf",
+    "app/services/render_engine/trusted_profiles.py": "ff0c91bcd768e8a2424dd79d241529bdb604575f879e3bfe31b17bebb9833a10",
+    "app/utils/linux_engine_sandbox.py": "430aa6017a56122f48fa5ad2c2c3f1cd887ce69bd656587db10f1f005ff722de",
+    "app/utils/sandbox_io_bridge.py": "7439c33aa6674cd69ed28869dd8d49250412f04bd62e13970a0eaa8682597558"
+  },
+  "status": "passed",
+  "trusted_profiles_sha256": "ff0c91bcd768e8a2424dd79d241529bdb604575f879e3bfe31b17bebb9833a10"
+}

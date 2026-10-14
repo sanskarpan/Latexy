@@ -2,8 +2,8 @@
 Latexy backend — Modal deployment.
 
 Run from the backend/ directory:
-  modal deploy modal_app.py          # deploy to production
-  modal serve  modal_app.py          # live-reload dev mode
+  modal deploy modal_app.py::app     # deploy the serving and worker App to production
+  modal serve  modal_app.py::app     # live-reload dev mode
 
 Environment variables are loaded from the Modal secrets "latexy-backend-secrets"
 (app config) and "latexy-storage" (object storage).
@@ -13,6 +13,7 @@ DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 import base64
 import hashlib
 import os
+import re
 from pathlib import Path
 
 import modal
@@ -23,9 +24,35 @@ from app.core.engine_capacity import capacity_options
 # Constants
 # ---------------------------------------------------------------------------
 _APP_NAME = "latexy-backend"
-_BACKEND_DIR = Path(__file__).parent  # backend/
+# Modal's module file is imported from /root/modal_app.py remotely, while the
+# source tree is baked at /backend. During local build/deploy, use this file's
+# checkout path so image copy operations read the actual backend directory.
+_BACKEND_DIR = Path(__file__).parent if modal.is_local() else Path("/backend")
+
+
+def _validated_optional_billing_secret_name(value: str | None) -> str | None:
+    """Return a Modal secret label when configured, rejecting unsafe labels."""
+    if value is None or value == "":
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", value):
+        raise ValueError("MODAL_BILLING_SECRET_NAME must be a valid Modal secret label")
+    return value
+
+
+# Snapshot the non-secret binding label into every image. Modal imports this
+# module remotely to resolve function definitions, and that process does not
+# inherit the local deploy command's environment.
+_billing_secret_name = _validated_optional_billing_secret_name(
+    os.environ.get("MODAL_BILLING_SECRET_NAME")
+)
+_billing_secret_binding_env = {
+    "MODAL_BILLING_SECRET_NAME": _billing_secret_name or "",
+}
 
 app = modal.App(_APP_NAME)
+# Operator-only tasks run under a separate Modal App so ephemeral preflight and
+# migration invocations cannot warm fastapi_app's min_containers=1 API service.
+operations_app = modal.App(f"{_APP_NAME}-operations")
 
 # Directories to exclude from the code snapshot (security + size)
 _IGNORE = [
@@ -35,6 +62,9 @@ _IGNORE = [
     "**/alembic/**",
     "**/test/**",
     "**/.git/**",
+    "**/temp/**",
+    "**/.venv/**",
+    "**/.pytest_cache/**",
 ]
 
 # ---------------------------------------------------------------------------
@@ -247,14 +277,16 @@ _renderer_capability_env = {
 api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_billing_secret_binding_env})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
 latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_billing_secret_binding_env})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)
@@ -263,7 +295,7 @@ worker_image = (
     .apt_install(*_APT_BASE)
     .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
 )
 
 # ---------------------------------------------------------------------------
@@ -287,6 +319,16 @@ _secrets = [
     # legacy Redis values still present in latexy-backend-secrets.
     modal.Secret.from_name("latexy-redis"),
 ]
+
+# Dodo credentials are needed by the public API and its read-only billing
+# preflight. Keep them out of unrelated render, worker, scheduler, and migration
+# containers; renderer_preflight uses this same full API configuration by design.
+_api_secrets = [*_secrets]
+if _billing_secret_name:
+    # Append last so its Dodo variables override any legacy values in the opaque
+    # backend secret while preserving every unrelated key in that secret. This
+    # list is only attached to API and billing-configuration preflight functions.
+    _api_secrets.append(modal.Secret.from_name(_billing_secret_name))
 
 
 # ---------------------------------------------------------------------------
@@ -804,9 +846,9 @@ def scheduled_minute_recovery() -> None:
 # ---------------------------------------------------------------------------
 # Deployment preflight and migrations
 # ---------------------------------------------------------------------------
-@app.function(image=api_image, secrets=_secrets, timeout=60)
+@operations_app.function(image=api_image, secrets=_api_secrets, timeout=60)
 def renderer_preflight() -> dict:
-    """Validate candidate configuration only; never certify or start a VM."""
+    """Validate actual API configuration only; never certify or start a VM."""
     import contextlib
     import json
     import logging
@@ -858,11 +900,11 @@ migrate_image = (
         copy=True,
         ignore=[p for p in _IGNORE if "alembic" not in p],
     )
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
 )
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=900)
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
 def migrate() -> None:
     """Apply Alembic migrations to the production database."""
     import subprocess
@@ -879,7 +921,7 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=120)
+@operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
 def billing_preflight(
     source_revision: str, expected_environment: str = "main", purpose: str = "report",
     allow_configured_live: bool = False,
@@ -980,7 +1022,7 @@ def billing_preflight(
         raise RuntimeError("Billing preflight requires review; see the redacted JSON report")
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=900)
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
 def sync_templates() -> None:
     """Reconcile the production template catalog with the source-owned seed files."""
     import subprocess
@@ -1004,7 +1046,7 @@ def sync_templates() -> None:
 
 @app.function(
     image=api_image,
-    secrets=_secrets,
+    secrets=_api_secrets,
     min_containers=1,
     timeout=3600,
     scaledown_window=300,
