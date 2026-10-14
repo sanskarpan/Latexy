@@ -1,6 +1,7 @@
 """Contract tests for the disabled durable quota ledger."""
 
 import asyncio
+import hashlib
 import importlib.util
 import os
 import unittest
@@ -23,6 +24,7 @@ from app.core.durable_quota_ledger import (
     record_reconciled_opening,
     refund_quota_reservation,
     reserve_quota,
+    settle_quota_reservation,
     stage_unknown_account,
 )
 
@@ -58,10 +60,35 @@ async def _open_account(session, user_id, *, opening=3):
     )
 
 
-async def _reserve(session, user_id, reservation_id, *, cost=1, limit=5):
+def _fingerprint(reservation_id):
+    return hashlib.sha256(f"persisted-intent:{reservation_id}".encode()).hexdigest()
+
+
+async def _reserve(session, user_id, reservation_id, *, cost=1, limit=5, window="day", fingerprint=None):
     return await reserve_quota(
         session, reservation_id=reservation_id, user_id=user_id,
-        dimension="ai", period="20261014", cost=cost, limit=limit,
+        dimension="ai", period="20261014", window=window, cost=cost, limit=limit,
+        intent_fingerprint=_fingerprint(reservation_id) if fingerprint is None else fingerprint,
+    )
+
+
+async def _read(session, user_id, reservation_id, *, cost=1, limit=5, window="day", fingerprint=None):
+    return await read_quota_reservation(
+        session, reservation_id, user_id=user_id, dimension="ai", period="20261014",
+        window=window, cost=cost, limit=limit,
+        intent_fingerprint=_fingerprint(reservation_id) if fingerprint is None else fingerprint,
+    )
+
+
+async def _refund(session, reservation_id):
+    return await refund_quota_reservation(
+        session, reservation_id, intent_fingerprint=_fingerprint(reservation_id),
+    )
+
+
+async def _settle(session, reservation_id):
+    return await settle_quota_reservation(
+        session, reservation_id, intent_fingerprint=_fingerprint(reservation_id),
     )
 
 
@@ -138,7 +165,7 @@ class DurableQuotaLedgerTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(QuotaBalanceUnknown):
                 await _reserve(session, self.user_id, uuid4())
             with self.assertRaises(QuotaBalanceUnknown):
-                await refund_quota_reservation(session, reservation_id)
+                await _refund(session, reservation_id)
 
     async def test_near_limit_denial_and_sticky_idempotency(self):
         allowed_id, denied_id = uuid4(), uuid4()
@@ -153,11 +180,71 @@ class DurableQuotaLedgerTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(QuotaReplayConflict):
                 await _reserve(session, self.user_id, allowed_id, cost=1)
             self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 5)
-            self.assertTrue(await refund_quota_reservation(session, allowed_id))
-            self.assertFalse(await refund_quota_reservation(session, allowed_id))
-            self.assertFalse(await refund_quota_reservation(session, denied_id))
+            self.assertTrue(await _refund(session, allowed_id))
+            self.assertFalse(await _refund(session, allowed_id))
+            self.assertFalse(await _refund(session, denied_id))
             self.assertEqual(await _reserve(session, self.user_id, denied_id), denied)
             self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 3)
+
+    async def test_settlement_blocks_every_later_refund_or_duplicate_dispatch(self):
+        successful_id, failed_id, denied_id = uuid4(), uuid4(), uuid4()
+        with self.engine.begin() as connection:
+            session = _AsyncConnection(connection)
+            await _open_account(session, self.user_id, opening=0)
+            self.assertTrue((await _reserve(session, self.user_id, successful_id)).allowed)
+            with self.assertRaises(QuotaReplayConflict):
+                await settle_quota_reservation(session, successful_id, intent_fingerprint="b" * 64)
+            with self.assertRaises(QuotaReplayConflict):
+                await refund_quota_reservation(session, successful_id, intent_fingerprint="b" * 64)
+            self.assertTrue(await _settle(session, successful_id))
+            self.assertFalse(await _settle(session, successful_id))
+            self.assertFalse(await _refund(session, successful_id))
+            self.assertEqual((await _reserve(session, self.user_id, successful_id)).state, "settled")
+            self.assertFalse((await _read(session, self.user_id, successful_id)).allowed)
+
+            self.assertTrue((await _reserve(session, self.user_id, failed_id)).allowed)
+            self.assertTrue(await _refund(session, failed_id))
+            self.assertFalse(await _settle(session, failed_id))
+            self.assertFalse(await _refund(session, failed_id))
+
+            self.assertFalse((await _reserve(session, self.user_id, denied_id, limit=0)).allowed)
+            self.assertFalse(await _settle(session, denied_id))
+            self.assertFalse(await _refund(session, denied_id))
+            self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 1)
+
+    async def test_replay_checks_all_inputs_and_unique_persisted_intent(self):
+        reservation_id = uuid4()
+        with self.engine.begin() as connection:
+            session = _AsyncConnection(connection)
+            await _open_account(session, self.user_id, opening=0)
+            await _reserve(session, self.user_id, reservation_id)
+            for changed in (
+                {"user_id": str(uuid4())}, {"dimension": "other"},
+                {"period": "202610"}, {"cost": 2}, {"limit": 4},
+                {"intent_fingerprint": "b" * 64},
+            ):
+                original = {
+                    "user_id": self.user_id, "dimension": "ai", "period": "20261014",
+                    "window": "day", "cost": 1, "limit": 5,
+                    "intent_fingerprint": _fingerprint(reservation_id),
+                }
+                original.update(changed)
+                if changed.get("period") == "202610":
+                    original["window"] = "month"
+                with self.assertRaises(QuotaReplayConflict):
+                    await read_quota_reservation(session, reservation_id, **original)
+            with self.assertRaises(QuotaReplayConflict):
+                await _reserve(session, str(uuid4()), reservation_id)
+            with self.assertRaises(QuotaReplayConflict):
+                await _reserve(session, self.user_id, reservation_id, fingerprint="b" * 64)
+            with self.assertRaises(QuotaReplayConflict):
+                await _reserve(session, self.user_id, uuid4(), fingerprint=_fingerprint(reservation_id))
+            with self.assertRaises(ValueError):
+                await _reserve(session, self.user_id, uuid4(), window="month")
+            with self.assertRaises(ValueError):
+                await _reserve(session, self.user_id, uuid4(), fingerprint="not-a-digest")
+            self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 1)
+            self.assertEqual(connection.scalar(text("SELECT count(*) FROM quota_ledger_reservations")), 1)
 
     async def test_uncertain_commit_and_rollback_reuse_same_id(self):
         committed_id, rolled_back_id = uuid4(), uuid4()
@@ -171,7 +258,9 @@ class DurableQuotaLedgerTests(unittest.IsolatedAsyncioTestCase):
             pass
         with self.engine.begin() as connection:
             session = _AsyncConnection(connection)
-            self.assertTrue((await read_quota_reservation(session, committed_id)).allowed)
+            self.assertTrue((await _read(session, self.user_id, committed_id)).allowed)
+            with self.assertRaises(QuotaReplayConflict):
+                await _read(session, self.user_id, committed_id, fingerprint="b" * 64)
             self.assertEqual((await _reserve(session, self.user_id, committed_id)).used_after, 1)
         try:
             with self.engine.begin() as connection:
@@ -181,14 +270,14 @@ class DurableQuotaLedgerTests(unittest.IsolatedAsyncioTestCase):
             pass
         with self.engine.begin() as connection:
             session = _AsyncConnection(connection)
-            self.assertIsNone(await read_quota_reservation(session, rolled_back_id))
+            self.assertIsNone(await _read(session, self.user_id, rolled_back_id))
             self.assertEqual((await _reserve(session, self.user_id, rolled_back_id)).used_after, 2)
             self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 2)
 
     async def test_missing_refund_and_database_outage_fail_closed(self):
         with self.engine.begin() as connection:
             with self.assertRaises(QuotaReservationUnknown):
-                await refund_quota_reservation(_AsyncConnection(connection), uuid4())
+                await _refund(_AsyncConnection(connection), uuid4())
         connection = self.engine.connect()
         connection.close()
         with self.assertRaises(ResourceClosedError):
@@ -214,7 +303,7 @@ def _local_postgres_url():
 
 @unittest.skipUnless(_local_postgres_url(), "requires explicitly enabled loopback test PostgreSQL")
 class PostgresQuotaConcurrencyTests(unittest.TestCase):
-    def test_concurrent_reservations_and_refunds_are_serialized(self):
+    def test_concurrent_reservations_settlement_refunds_and_readback(self):
         # Never run against a production host. Each invocation owns one schema.
         schema = "quota_test_" + uuid4().hex
         admin = create_engine(_local_postgres_url())
@@ -260,11 +349,81 @@ class PostgresQuotaConcurrencyTests(unittest.TestCase):
                 repeated = list(pool.map(reserve_one, [shared_id, shared_id]))
             self.assertEqual(repeated[0], repeated[1])
             self.assertTrue(repeated[0].allowed)
+
+            terminal_barrier = Barrier(2)
+
+            def finish(kind):
+                with engine.begin() as connection:
+                    terminal_barrier.wait(timeout=10)
+                    session = _AsyncConnection(connection)
+                    return asyncio.run(_settle(session, shared_id) if kind == "settle" else _refund(session, shared_id))
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                outcomes = list(pool.map(finish, ["settle", "refund"]))
+            self.assertCountEqual(outcomes, [True, False])
             with engine.connect() as connection:
-                self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")), 1)
+                terminal = asyncio.run(_read(_AsyncConnection(connection), user_id, shared_id, limit=1))
+                self.assertIn(terminal.state, {"settled", "refunded"})
+                self.assertFalse(terminal.allowed)
+                self.assertEqual(connection.scalar(text("SELECT used FROM quota_ledger_accounts")),
+                                 1 if terminal.state == "settled" else 0)
                 self.assertEqual(connection.scalar(text(
                     "SELECT count(*) FROM quota_ledger_reservations WHERE id = :id"
                 ), {"id": str(shared_id)}), 1)
+
+            committed_id = uuid4()
+            try:
+                with engine.begin() as connection:
+                    asyncio.run(_reserve(
+                        _AsyncConnection(connection), user_id, committed_id, limit=None,
+                    ))
+                raise ConnectionError("commit acknowledgement lost")
+            except ConnectionError:
+                pass
+            with engine.begin() as connection:
+                session = _AsyncConnection(connection)
+                prior = asyncio.run(_read(session, user_id, committed_id, limit=None))
+                self.assertTrue(prior.allowed)
+                for changed in (
+                    {"user_id": str(uuid4())}, {"cost": 2}, {"limit": 5},
+                    {"period": "202610", "window": "month"},
+                    {"intent_fingerprint": "b" * 64},
+                ):
+                    expected = {
+                        "user_id": user_id, "dimension": "ai", "period": "20261014",
+                        "window": "day", "cost": 1, "limit": None,
+                        "intent_fingerprint": _fingerprint(committed_id),
+                    }
+                    expected.update(changed)
+                    with self.assertRaises(QuotaReplayConflict):
+                        asyncio.run(read_quota_reservation(session, committed_id, **expected))
+                self.assertEqual(asyncio.run(_reserve(session, user_id, committed_id, limit=None)), prior)
+                with self.assertRaises(QuotaReplayConflict):
+                    asyncio.run(_reserve(
+                        session, user_id, uuid4(), limit=None, fingerprint=_fingerprint(committed_id),
+                    ))
+
+            settled_id = uuid4()
+            with engine.begin() as connection:
+                asyncio.run(_reserve(_AsyncConnection(connection), user_id, settled_id, limit=None))
+            try:
+                with engine.begin() as connection:
+                    self.assertTrue(asyncio.run(_settle(_AsyncConnection(connection), settled_id)))
+                raise ConnectionError("settlement commit acknowledgement lost")
+            except ConnectionError:
+                pass
+            with engine.begin() as connection:
+                session = _AsyncConnection(connection)
+                self.assertFalse(asyncio.run(_settle(session, settled_id)))
+                self.assertFalse(asyncio.run(_refund(session, settled_id)))
+                self.assertEqual(asyncio.run(_read(session, user_id, settled_id, limit=None)).state, "settled")
+                with self.assertRaises(IntegrityError):
+                    with connection.begin_nested():
+                        connection.execute(text(
+                            "UPDATE quota_ledger_reservations "
+                            "SET state = 'refunded', refunded_at = CURRENT_TIMESTAMP "
+                            "WHERE id = :id"
+                        ), {"id": str(settled_id)})
         finally:
             engine.dispose()
             with admin.begin() as connection:
@@ -274,4 +433,4 @@ class PostgresQuotaConcurrencyTests(unittest.TestCase):
 
 async def _refund_in_new_transaction(engine, reservation_id):
     with engine.begin() as connection:
-        return await refund_quota_reservation(_AsyncConnection(connection), reservation_id)
+        return await _refund(_AsyncConnection(connection), reservation_id)

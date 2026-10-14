@@ -131,6 +131,9 @@ def test_stamped_capability_revision_requires_its_schema(revision, table):
     ("0074_redis_authority_freeze", "redis_authority_control", "generation"),
     ("0075_durable_quota_ledger", "quota_ledger_accounts", "opening_used"),
     ("0075_durable_quota_ledger", "quota_ledger_reservations", "id"),
+    ("0075_durable_quota_ledger", "quota_ledger_reservations", "window"),
+    ("0075_durable_quota_ledger", "quota_ledger_reservations", "intent_fingerprint"),
+    ("0075_durable_quota_ledger", "quota_ledger_reservations", "settled_at"),
 ])
 def test_stamped_capability_revision_rejects_partial_columns(revision, table, column):
     columns = current_columns()

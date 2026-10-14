@@ -65,11 +65,14 @@ _reservations = Table(
     Column("user_id", String(36)),
     Column("dimension", String(64)),
     Column("period", String(8)),
+    Column("window", String(8)),
+    Column("intent_fingerprint", String(64)),
     Column("cost", BigInteger),
     Column("limit_value", BigInteger),
     Column("state", String(16)),
     Column("used_after", BigInteger),
     Column("refunded_at", DateTime(timezone=True)),
+    Column("settled_at", DateTime(timezone=True)),
 )
 
 
@@ -134,9 +137,42 @@ def _validated_reservation_id(reservation_id: UUID) -> str:
     return str(reservation_id)
 
 
+def _validated_fingerprint(intent_fingerprint: str) -> str:
+    if not isinstance(intent_fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", intent_fingerprint) is None:
+        raise ValueError("intent_fingerprint must be a lowercase SHA-256 digest")
+    return intent_fingerprint
+
+
+def _reservation_inputs(
+    *, user_id: str, dimension: str, period: str, window: str,
+    cost: int, limit: int | None, intent_fingerprint: str,
+) -> dict:
+    identity = _identity(user_id, dimension, period)
+    if not isinstance(window, str) or window not in {"day", "month"} or len(period) != (8 if window == "day" else 6):
+        raise ValueError("quota window does not match period")
+    if isinstance(cost, bool) or not isinstance(cost, int) or cost < 1:
+        raise ValueError("cost must be positive")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
+        raise ValueError("limit must be nonnegative or unlimited")
+    return {
+        **identity, "window": window, "cost": cost, "limit_value": limit,
+        "intent_fingerprint": _validated_fingerprint(intent_fingerprint),
+    }
+
+
+def _verify_intent(row, expected: dict) -> None:
+    if any(row[name] != value for name, value in expected.items()):
+        raise QuotaReplayConflict("reservation ID has different immutable intent inputs")
+
+
 def _decision(row) -> QuotaDecision:
     state = row["state"]
-    if state not in {"allowed", "denied", "refunded"} or row["used_after"] < 0:
+    valid_terminal = (
+        state in {"allowed", "denied"} and row["refunded_at"] is None and row["settled_at"] is None
+        or state == "refunded" and row["refunded_at"] is not None and row["settled_at"] is None
+        or state == "settled" and row["settled_at"] is not None and row["refunded_at"] is None
+    )
+    if not valid_terminal or row["used_after"] is None or row["used_after"] < 0:
         raise QuotaLedgerInvariantError("reservation state is incompatible")
     return QuotaDecision(row["id"], state, row["used_after"], state == "allowed")
 
@@ -158,26 +194,51 @@ def _reconciled_used(account) -> int:
     return used
 
 
-async def read_quota_reservation(session: _Session, reservation_id: UUID) -> QuotaDecision | None:
-    """Resolve an ambiguous commit by ID, using a fresh primary DB transaction."""
+async def read_quota_reservation(
+    session: _Session, reservation_id: UUID, *, user_id: str, dimension: str,
+    period: str, window: str, cost: int, limit: int | None,
+    intent_fingerprint: str,
+) -> QuotaDecision | None:
+    """Resolve an ambiguous commit by ID and its original immutable inputs.
+
+    The caller must use a fresh primary DB transaction and the same persisted
+    request/job intent, never infer success from an ID belonging to another
+    request. A missing row does not prove an earlier external effect failed.
+    """
     key = _validated_reservation_id(reservation_id)
+    expected = _reservation_inputs(
+        user_id=user_id, dimension=dimension, period=period, window=window,
+        cost=cost, limit=limit, intent_fingerprint=intent_fingerprint,
+    )
     row = (await session.execute(
         select(_reservations).where(_reservations.c.id == key)
     )).mappings().first()
-    return _decision(row) if row is not None else None
+    if row is None:
+        return None
+    _verify_intent(row, expected)
+    return _decision(row)
 
 
 async def reserve_quota(
     session: _Session, *, reservation_id: UUID, user_id: str, dimension: str,
-    period: str, cost: int, limit: int | None,
+    period: str, window: str, cost: int, limit: int | None,
+    intent_fingerprint: str,
 ) -> QuotaDecision:
-    """Debit once under the account row lock; denied attempts are also sticky."""
+    """Debit once under the account row lock; terminal/denied retries stay closed."""
     key = _validated_reservation_id(reservation_id)
-    identity = _identity(user_id, dimension, period)
-    if isinstance(cost, bool) or not isinstance(cost, int) or cost < 1:
-        raise ValueError("cost must be positive")
-    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
-        raise ValueError("limit must be nonnegative or unlimited")
+    expected = _reservation_inputs(
+        user_id=user_id, dimension=dimension, period=period, window=window,
+        cost=cost, limit=limit, intent_fingerprint=intent_fingerprint,
+    )
+    identity = {name: expected[name] for name in ("user_id", "dimension", "period")}
+
+    # Catch a committed ID reused for another account before treating that
+    # account's missing balance as the primary error. Recheck after the lock.
+    prior = (await session.execute(
+        select(_reservations).where(_reservations.c.id == key)
+    )).mappings().first()
+    if prior is not None:
+        _verify_intent(prior, expected)
 
     account = (await session.execute(
         select(_accounts).where(_account_where(identity)).with_for_update()
@@ -188,17 +249,22 @@ async def reserve_quota(
         select(_reservations).where(_reservations.c.id == key)
     )).mappings().first()
     if prior is not None:
-        if any(prior[name] != value for name, value in {
-            "user_id": user_id, "dimension": dimension, "period": period,
-            "cost": cost, "limit_value": limit,
-        }.items()):
-            raise QuotaReplayConflict("reservation ID has different inputs")
+        _verify_intent(prior, expected)
         return _decision(prior)
+
+    prior_intent = (await session.execute(select(_reservations.c.id).where(
+        (_reservations.c.user_id == user_id)
+        & (_reservations.c.dimension == dimension)
+        & (_reservations.c.period == period)
+        & (_reservations.c.intent_fingerprint == intent_fingerprint)
+    ))).first()
+    if prior_intent is not None:
+        raise QuotaReplayConflict("intent already has a different reservation ID")
 
     allowed = limit is None or used + cost <= limit
     new_used = used + cost if allowed else used
     await session.execute(insert(_reservations).values(
-        id=key, **identity, cost=cost, limit_value=limit,
+        id=key, **expected,
         state="allowed" if allowed else "denied", used_after=new_used,
     ))
     if allowed:
@@ -208,9 +274,9 @@ async def reserve_quota(
     return QuotaDecision(key, "allowed" if allowed else "denied", new_used, allowed)
 
 
-async def refund_quota_reservation(session: _Session, reservation_id: UUID) -> bool:
-    """Refund the exact original cost once; a missing receipt never refunds."""
-    key = _validated_reservation_id(reservation_id)
+async def _locked_receipt(session: _Session, key: str, intent_fingerprint: str):
+    """Lock account first, then re-read receipt so settle/refund serialize."""
+    _validated_fingerprint(intent_fingerprint)
     receipt = (await session.execute(
         select(_reservations).where(_reservations.c.id == key)
     )).mappings().first()
@@ -226,7 +292,37 @@ async def refund_quota_reservation(session: _Session, reservation_id: UUID) -> b
     )).mappings().first()
     if receipt is None:
         raise QuotaReservationUnknown("reservation disappeared")
-    if receipt["state"] in {"denied", "refunded"}:
+    if receipt["intent_fingerprint"] != intent_fingerprint:
+        raise QuotaReplayConflict("reservation belongs to another intent")
+    _decision(receipt)
+    return receipt, identity, used
+
+
+async def settle_quota_reservation(
+    session: _Session, reservation_id: UUID, *, intent_fingerprint: str,
+) -> bool:
+    """Mark confirmed success once; only a durable outcome may authorize this.
+
+    Commit this transition with the job's successful finalization. A settled
+    reservation cannot be refunded or admitted again on a duplicate delivery.
+    """
+    key = _validated_reservation_id(reservation_id)
+    receipt, _, _ = await _locked_receipt(session, key, intent_fingerprint)
+    if receipt["state"] in {"denied", "refunded", "settled"}:
+        return False
+    await session.execute(update(_reservations).where(_reservations.c.id == key).values(
+        state="settled", settled_at=func.now(),
+    ))
+    return True
+
+
+async def refund_quota_reservation(
+    session: _Session, reservation_id: UUID, *, intent_fingerprint: str,
+) -> bool:
+    """Refund the stored cost once; settled or missing receipts cannot refund."""
+    key = _validated_reservation_id(reservation_id)
+    receipt, identity, used = await _locked_receipt(session, key, intent_fingerprint)
+    if receipt["state"] in {"denied", "refunded", "settled"}:
         return False
     if receipt["state"] != "allowed" or used < receipt["cost"]:
         raise QuotaLedgerInvariantError("refund would corrupt quota balance")

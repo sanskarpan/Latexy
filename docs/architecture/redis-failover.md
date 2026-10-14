@@ -157,12 +157,16 @@ SHA-256 digest. The code validates the presence and shape of this provenance;
 it cannot prove the source was complete or accurate. Redis is currently over
 quota, so opening usage cannot be verified through normal primary reads.
 
-`quota_ledger_reservations` records a globally unique request ID, immutable
-account/cost/limit inputs, and sticky allowed or denied outcome. A PostgreSQL
-account row lock serializes debits and refunds. Refunds use the exact stored
-cost and transition that reservation once; a missing receipt never refunds.
-The caller must commit before dispatch and use a fresh transaction to resolve
-an uncertain commit by the same ID. The legacy API/worker paths still use Redis
+`quota_ledger_reservations` records a globally unique reservation ID, the
+user/dimension/period/window/cost/limit inputs, and a SHA-256 fingerprint of
+the caller's persisted intent. The fingerprint is unique per account/period;
+a retry with changed inputs or another reservation ID is rejected. Allowed and
+denied decisions are sticky. A PostgreSQL account row lock serializes debits,
+settlement and refunds. A confirmed success can transition to `settled` once;
+it cannot later refund or dispatch again. A failed reservation can refund its
+exact stored cost once; a missing receipt never refunds. The caller must
+commit before dispatch and use a fresh transaction to resolve an uncertain
+commit by the same ID **and full immutable inputs**. The legacy API/worker paths still use Redis
 and do not call this ledger. This is a disabled building block, not a live
 double-write path or an assertion that existing counters have migrated.
 Neither migration has an automatic downgrade because a check/drop sequence can
@@ -171,9 +175,9 @@ race a writer and destroy authoritative state.
 The current tests exercise concurrent compare-and-swap coordinators, exhausted
 primary freeze, stale generation, lost freeze response readback, database
 failure, unknown quota balances, near-limit admission, duplicate reservations,
-refund idempotency, uncertain-commit readback and downgrade protection against
-SQLite. A loopback-only PostgreSQL test is provided for concurrent debits and
-refunds but requires an explicitly enabled local server. Mixed API/Modal
+changed-intent replay, settlement/refund idempotency, uncertain-commit readback
+and downgrade protection against SQLite. The PR's disposable PostgreSQL CI
+service runs concurrent debit, settlement and refund tests. Mixed API/Modal
 workers, backup transport and partition injection are still required before
 any activation.
 

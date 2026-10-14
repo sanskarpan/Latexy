@@ -140,8 +140,8 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "source_sha256", "reconciled_at", "created_at", "updated_at",
         },
         "quota_ledger_reservations": {
-            "id", "user_id", "dimension", "period", "cost", "limit_value", "state", "used_after",
-            "created_at", "refunded_at",
+            "id", "user_id", "dimension", "period", "window", "intent_fingerprint",
+            "cost", "limit_value", "state", "used_after", "created_at", "refunded_at", "settled_at",
         },
     },
 }

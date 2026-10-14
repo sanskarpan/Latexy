@@ -2024,9 +2024,20 @@ class QuotaLedgerReservation(Base):
         CheckConstraint("limit_value IS NULL OR limit_value >= 0", name="ck_quota_reservation_limit"),
         CheckConstraint("used_after >= 0", name="ck_quota_reservation_used"),
         CheckConstraint(
-            "(state IN ('allowed', 'denied') AND refunded_at IS NULL) OR "
-            "(state = 'refunded' AND refunded_at IS NOT NULL)",
+            "(window = 'day' AND length(period) = 8) OR "
+            "(window = 'month' AND length(period) = 6)",
+            name="ck_quota_reservation_window",
+        ),
+        CheckConstraint("length(intent_fingerprint) = 64", name="ck_quota_reservation_intent"),
+        CheckConstraint(
+            "(state IN ('allowed', 'denied') AND refunded_at IS NULL AND settled_at IS NULL) OR "
+            "(state = 'refunded' AND refunded_at IS NOT NULL AND settled_at IS NULL) OR "
+            "(state = 'settled' AND settled_at IS NOT NULL AND refunded_at IS NULL)",
             name="ck_quota_reservation_state",
+        ),
+        UniqueConstraint(
+            "user_id", "dimension", "period", "intent_fingerprint",
+            name="uq_quota_reservation_intent",
         ),
         Index("ix_quota_reservations_account", "user_id", "dimension", "period"),
     )
@@ -2035,9 +2046,12 @@ class QuotaLedgerReservation(Base):
     user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     dimension: Mapped[str] = mapped_column(String(64), nullable=False)
     period: Mapped[str] = mapped_column(String(8), nullable=False)
+    window: Mapped[str] = mapped_column(String(8), nullable=False)
+    intent_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     cost: Mapped[int] = mapped_column(BigInteger, nullable=False)
     limit_value: Mapped[Optional[int]] = mapped_column(BigInteger)
     state: Mapped[str] = mapped_column(String(16), nullable=False)
     used_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

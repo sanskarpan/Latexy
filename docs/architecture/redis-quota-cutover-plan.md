@@ -21,8 +21,9 @@ The worker seam is `workers/quota_refund.py`. It currently trusts a serialized
 cost and a job-scoped Redis marker. `workers/cleanup_worker.py` scans pending
 Redis receipts and combines them with lifecycle state; its orphan/recovery
 branches must move to a durable pending-reservation query and terminal proof.
-`clear_quota_refund_receipt` must become a durable `settled` transition so a
-successful job cannot later be refunded. Refunds must use the stored cost, not
+`clear_quota_refund_receipt` must call the dormant durable `settled` transition
+in the same transaction as job success so a successful job cannot later be
+refunded. Refunds must use the stored cost, not
 the worker payload. BYOK paths that skip platform plan quota retain that policy.
 
 For background work, allocate one stable reservation ID before charging,
@@ -64,11 +65,12 @@ reinterpret its `user_id` column as a scope or create a fabricated user.
    reads currently rejected by quota, this step is blocked. Keep missing or
    unverifiable current-period balances closed.
 3. Reconcile old receipts to one stable reservation identity and terminal job
-   outcome. Persist `allowed`, `denied`, `settled`, or `refunded` state. Bind each
-   reservation to the job/outbox or synchronous request intent and immutable
-   fingerprint. An uncertain commit is read back by that same ID in a fresh
-   transaction. A successful/settled action cannot later refund; a failed one
-   cannot refund twice.
+   outcome. Migration 0075 now supports `allowed`, `denied`, `settled`, and
+   `refunded` states, but no runtime path uses them. Bind each reservation to
+   the job/outbox or synchronous request intent and its immutable fingerprint.
+   An uncertain commit is read back by that same ID and all immutable inputs
+   in a fresh transaction. Commit settlement with durable success, so it
+   cannot later refund; a failed action cannot refund twice.
 4. In one PostgreSQL admission transaction, decide policy, lock all relevant
    rows, spend plan allowance and any developer/external budgets, and persist
    the job/outbox or synchronous intent. Commit before dispatching work. A

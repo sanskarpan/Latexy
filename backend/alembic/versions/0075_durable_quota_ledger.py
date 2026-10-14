@@ -46,12 +46,15 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(36), nullable=False),
         sa.Column("dimension", sa.String(64), nullable=False),
         sa.Column("period", sa.String(8), nullable=False),
+        sa.Column("window", sa.String(8), nullable=False),
+        sa.Column("intent_fingerprint", sa.String(64), nullable=False),
         sa.Column("cost", sa.BigInteger(), nullable=False),
         sa.Column("limit_value", sa.BigInteger(), nullable=True),
         sa.Column("state", sa.String(16), nullable=False),
         sa.Column("used_after", sa.BigInteger(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("refunded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("settled_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id", "dimension", "period"],
             ["quota_ledger_accounts.user_id", "quota_ledger_accounts.dimension", "quota_ledger_accounts.period"],
@@ -61,9 +64,20 @@ def upgrade() -> None:
         sa.CheckConstraint("limit_value IS NULL OR limit_value >= 0", name="ck_quota_reservation_limit"),
         sa.CheckConstraint("used_after >= 0", name="ck_quota_reservation_used"),
         sa.CheckConstraint(
-            "(state IN ('allowed', 'denied') AND refunded_at IS NULL) OR "
-            "(state = 'refunded' AND refunded_at IS NOT NULL)",
+            "(window = 'day' AND length(period) = 8) OR "
+            "(window = 'month' AND length(period) = 6)",
+            name="ck_quota_reservation_window",
+        ),
+        sa.CheckConstraint("length(intent_fingerprint) = 64", name="ck_quota_reservation_intent"),
+        sa.CheckConstraint(
+            "(state IN ('allowed', 'denied') AND refunded_at IS NULL AND settled_at IS NULL) OR "
+            "(state = 'refunded' AND refunded_at IS NOT NULL AND settled_at IS NULL) OR "
+            "(state = 'settled' AND settled_at IS NOT NULL AND refunded_at IS NULL)",
             name="ck_quota_reservation_state",
+        ),
+        sa.UniqueConstraint(
+            "user_id", "dimension", "period", "intent_fingerprint",
+            name="uq_quota_reservation_intent",
         ),
     )
     op.create_index(
