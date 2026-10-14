@@ -9,12 +9,12 @@ from pathlib import Path
 from threading import Barrier
 from uuid import UUID, uuid4
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import ResourceClosedError
-
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError, ResourceClosedError
+
 from app.core.durable_quota_ledger import (
     QuotaBalanceUnknown,
     QuotaReplayConflict,
@@ -118,6 +118,28 @@ class DurableQuotaLedgerTests(unittest.IsolatedAsyncioTestCase):
                     opening_used=0, source_ref="different", source_sha256="b" * 64,
                 )
 
+    async def test_null_opening_is_rejected_by_schema_and_read_path(self):
+        reservation_id = uuid4()
+        with self.engine.begin() as connection:
+            session = _AsyncConnection(connection)
+            await _open_account(session, self.user_id, opening=0)
+            self.assertTrue((await _reserve(session, self.user_id, reservation_id)).allowed)
+            with self.assertRaises(IntegrityError):
+                connection.execute(text(
+                    "UPDATE quota_ledger_accounts SET opening_used = NULL"
+                ))
+            with self.assertRaises(IntegrityError):
+                connection.execute(text(
+                    "UPDATE quota_ledger_accounts SET source_ref = ''"
+                ))
+            connection.execute(text("PRAGMA ignore_check_constraints = ON"))
+            connection.execute(text("UPDATE quota_ledger_accounts SET opening_used = NULL"))
+            connection.execute(text("PRAGMA ignore_check_constraints = OFF"))
+            with self.assertRaises(QuotaBalanceUnknown):
+                await _reserve(session, self.user_id, uuid4())
+            with self.assertRaises(QuotaBalanceUnknown):
+                await refund_quota_reservation(session, reservation_id)
+
     async def test_near_limit_denial_and_sticky_idempotency(self):
         allowed_id, denied_id = uuid4(), uuid4()
         with self.engine.begin() as connection:
@@ -204,6 +226,17 @@ class PostgresQuotaConcurrencyTests(unittest.TestCase):
             with engine.begin() as connection:
                 _upgrade(connection)
                 asyncio.run(_open_account(_AsyncConnection(connection), user_id, opening=0))
+            with engine.begin() as connection:
+                with self.assertRaises(IntegrityError):
+                    with connection.begin_nested():
+                        connection.execute(text(
+                            "UPDATE quota_ledger_accounts SET opening_used = NULL"
+                        ))
+                with self.assertRaises(IntegrityError):
+                    with connection.begin_nested():
+                        connection.execute(text(
+                            "UPDATE quota_ledger_accounts SET source_ref = ''"
+                        ))
             barrier = Barrier(2)
 
             def reserve_one(reservation_id):

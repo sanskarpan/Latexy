@@ -1988,8 +1988,11 @@ class QuotaLedgerAccount(Base):
         CheckConstraint(
             "(status = 'unknown' AND used IS NULL AND opening_used IS NULL AND "
             "source_ref IS NULL AND source_sha256 IS NULL AND reconciled_at IS NULL) OR "
-            "(status = 'reconciled' AND used >= 0 AND opening_used >= 0 AND "
-            "source_ref IS NOT NULL AND source_sha256 IS NOT NULL AND reconciled_at IS NOT NULL)",
+            "(status = 'reconciled' AND used IS NOT NULL AND used >= 0 AND "
+            "opening_used IS NOT NULL AND opening_used >= 0 AND "
+            "source_ref IS NOT NULL AND length(trim(source_ref)) > 0 AND "
+            "source_sha256 IS NOT NULL AND length(source_sha256) = 64 AND "
+            "reconciled_at IS NOT NULL)",
             name="ck_quota_account_reconciliation",
         ),
     )

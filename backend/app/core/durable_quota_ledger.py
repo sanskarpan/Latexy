@@ -141,6 +141,23 @@ def _decision(row) -> QuotaDecision:
     return QuotaDecision(row["id"], state, row["used_after"], state == "allowed")
 
 
+def _reconciled_used(account) -> int:
+    """Defend admission even if an old or malformed database CHECK was bypassed."""
+    if account is None or account["status"] != "reconciled":
+        raise QuotaBalanceUnknown("quota balance is missing or unreconciled")
+    used, opening = account["used"], account["opening_used"]
+    source_ref, source_sha256 = account["source_ref"], account["source_sha256"]
+    if (
+        used is None or opening is None or used < 0 or opening < 0
+        or not isinstance(source_ref, str) or not source_ref.strip()
+        or not isinstance(source_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", source_sha256) is None
+        or account["reconciled_at"] is None
+    ):
+        raise QuotaBalanceUnknown("quota opening or provenance is incomplete")
+    return used
+
+
 async def read_quota_reservation(session: _Session, reservation_id: UUID) -> QuotaDecision | None:
     """Resolve an ambiguous commit by ID, using a fresh primary DB transaction."""
     key = _validated_reservation_id(reservation_id)
@@ -165,11 +182,7 @@ async def reserve_quota(
     account = (await session.execute(
         select(_accounts).where(_account_where(identity)).with_for_update()
     )).mappings().first()
-    if account is None or account["status"] != "reconciled" or account["used"] is None:
-        raise QuotaBalanceUnknown("quota balance is missing or unreconciled")
-    used = account["used"]
-    if used < 0:
-        raise QuotaLedgerInvariantError("negative quota balance")
+    used = _reconciled_used(account)
 
     prior = (await session.execute(
         select(_reservations).where(_reservations.c.id == key)
@@ -207,8 +220,7 @@ async def refund_quota_reservation(session: _Session, reservation_id: UUID) -> b
     account = (await session.execute(
         select(_accounts).where(_account_where(identity)).with_for_update()
     )).mappings().first()
-    if account is None or account["status"] != "reconciled" or account["used"] is None:
-        raise QuotaBalanceUnknown("quota balance is missing or unreconciled")
+    used = _reconciled_used(account)
     receipt = (await session.execute(
         select(_reservations).where(_reservations.c.id == key)
     )).mappings().first()
@@ -216,10 +228,10 @@ async def refund_quota_reservation(session: _Session, reservation_id: UUID) -> b
         raise QuotaReservationUnknown("reservation disappeared")
     if receipt["state"] in {"denied", "refunded"}:
         return False
-    if receipt["state"] != "allowed" or account["used"] < receipt["cost"]:
+    if receipt["state"] != "allowed" or used < receipt["cost"]:
         raise QuotaLedgerInvariantError("refund would corrupt quota balance")
     await session.execute(update(_accounts).where(_account_where(identity)).values(
-        used=account["used"] - receipt["cost"],
+        used=used - receipt["cost"],
         updated_at=func.now(),
     ))
     await session.execute(update(_reservations).where(_reservations.c.id == key).values(

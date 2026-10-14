@@ -11,12 +11,12 @@ from pathlib import Path
 from threading import Barrier
 from uuid import uuid4
 
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError, ResourceClosedError
 
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from app.core.redis_authority import (
     AuthorityStateUnavailable,
     StaleAuthorityGeneration,
