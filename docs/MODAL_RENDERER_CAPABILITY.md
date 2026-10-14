@@ -103,3 +103,17 @@ The image is not certified for a broad multilingual production default. A new
 TeX image or asset fingerprint must receive its own certification; passing local
 TeX Live 2025 tests does not attest this cloud image. Keep the production gate
 closed until the intended supported profile and actual asset marker are verified.
+
+On 2026-10-14, a bounded credential-free VM proof of candidate bare image
+`im-nFc3OihYUMHilHye862xr4` matched the independently recorded asset
+fingerprint `eb86522f62932c1869ce57bebae109c36199bf6fa47255d1ea64fdb9e5753d29`.
+The VM boundary preflight passed, all three hostile-read probes were denied,
+and the fontspec, Hindi and CJK fixtures each exited 0, produced a PDF and
+passed extracted-text checks using Poppler 26.09.0. This is a candidate image
+fixture result, not certification of the default resume flow or the complete
+supported profile; the script explicitly reported
+`default_resume_flow_certified: false`. Keep the production capability gate
+closed until that separate acceptance is complete. The Windows operator host's
+preinstalled `pdftotext` was Xpdf 4.00, which incorrectly split the Hindi
+fixture in layout mode. The certification harness now verifies that its
+`pdftotext` is Poppler before starting Modal work.
