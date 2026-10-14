@@ -3069,10 +3069,11 @@ class ApiClient {
     return this.request<TemplateDetailResponse>(`/templates/${encodeURIComponent(id)}`)
   }
 
-  async useTemplate(id: string, title?: string, locale?: string): Promise<{ resume_id: string; title: string }> {
+  async useTemplate(id: string, title?: string, locale?: string, accountContext?: AccountPreferenceRequestContext): Promise<{ resume_id: string; title: string }> {
     return this.request<{ resume_id: string; title: string }>(
       `/templates/${encodeURIComponent(id)}/use`,
-      { method: 'POST', body: JSON.stringify({ title: title || null, locale: locale || null }) }
+      { method: 'POST', body: JSON.stringify({ title: title || null, locale: locale || null }) },
+      accountContext,
     )
   }
 
@@ -3881,25 +3882,25 @@ class ApiClient {
   //  Interview Prep                                                  //
   // ---------------------------------------------------------------- //
 
-  async generateInterviewPrep(body: GenerateInterviewPrepRequest): Promise<GenerateInterviewPrepApiResponse> {
+  async generateInterviewPrep(body: GenerateInterviewPrepRequest, accountContext?: AccountPreferenceRequestContext): Promise<GenerateInterviewPrepApiResponse> {
     return this.request<GenerateInterviewPrepApiResponse>('/interview-prep/generate', {
       method: 'POST',
       body: JSON.stringify(body),
-    })
+    }, accountContext)
   }
 
   async getInterviewPrep(prepId: string): Promise<InterviewPrepResponse> {
     return this.request<InterviewPrepResponse>(`/interview-prep/${encodeURIComponent(prepId)}`)
   }
 
-  async listInterviewPrep(resumeId: string): Promise<InterviewPrepResponse[]> {
-    return this.request<InterviewPrepResponse[]>(`/resumes/${encodeURIComponent(resumeId)}/interview-prep`)
+  async listInterviewPrep(resumeId: string, accountContext?: AccountPreferenceRequestContext): Promise<InterviewPrepResponse[]> {
+    return this.request<InterviewPrepResponse[]>(`/resumes/${encodeURIComponent(resumeId)}/interview-prep`, {}, accountContext)
   }
 
-  async deleteInterviewPrep(prepId: string): Promise<void> {
+  async deleteInterviewPrep(prepId: string, accountContext?: AccountPreferenceRequestContext): Promise<void> {
     const res = await this.authedFetch(`${API_BASE}/interview-prep/${encodeURIComponent(prepId)}`, {
       method: 'DELETE',
-    })
+    }, accountContext)
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
@@ -3909,10 +3910,12 @@ class ApiClient {
   async evaluateInterviewSimulation(
     prepId: string,
     body: EvaluateInterviewSimulationRequest,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<EvaluateInterviewSimulationResponse> {
     return this.request<EvaluateInterviewSimulationResponse>(
       `/interview-prep/${encodeURIComponent(prepId)}/simulate`,
       { method: 'POST', body: JSON.stringify(body) },
+      accountContext,
     )
   }
 
@@ -4743,15 +4746,15 @@ class ApiClient {
     plan_id?: string
     logo_url?: string | null
     primary_color?: string | null
-  }): Promise<TenantResponse> {
+  }, accountContext?: AccountPreferenceRequestContext): Promise<TenantResponse> {
     return this.request<TenantResponse>('/tenants', {
       method: 'POST',
       body: JSON.stringify(body),
-    })
+    }, accountContext)
   }
 
-  async listMyTenants(): Promise<TenantResponse[]> {
-    return this.request<TenantResponse[]>('/tenants/my')
+  async listMyTenants(accountContext?: AccountPreferenceRequestContext): Promise<TenantResponse[]> {
+    return this.request<TenantResponse[]>('/tenants/my', {}, accountContext)
   }
 
   async updateTenant(
@@ -4762,16 +4765,17 @@ class ApiClient {
       primary_color?: string | null
       custom_domain?: string | null
       active?: boolean
-    }
+    },
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<TenantResponse> {
     return this.request<TenantResponse>(`/tenants/${tenantId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
-    })
+    }, accountContext)
   }
 
-  async listTenantMembers(tenantId: string): Promise<MemberResponse[]> {
-    return this.request<MemberResponse[]>(`/tenants/${tenantId}/members`)
+  async listTenantMembers(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<MemberResponse[]> {
+    return this.request<MemberResponse[]>(`/tenants/${tenantId}/members`, {}, accountContext)
   }
 
   async inviteTenantMember(
@@ -4779,17 +4783,18 @@ class ApiClient {
     email: string,
     role: 'admin' | 'member' = 'member',
     cohortId?: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<TenantInvitationResponse> {
     return this.request<TenantInvitationResponse>(`/tenants/${tenantId}/members/invite`, {
       method: 'POST',
       body: JSON.stringify({ email, role, cohort_id: cohortId }),
-    })
+    }, accountContext)
   }
 
-  async removeTenantMember(tenantId: string, userId: string): Promise<void> {
+  async removeTenantMember(tenantId: string, userId: string, accountContext?: AccountPreferenceRequestContext): Promise<void> {
     await this.request<void>(`/tenants/${tenantId}/members/${userId}`, {
       method: 'DELETE',
-    })
+    }, accountContext)
   }
 
   async acceptTenantInvitation(token: string): Promise<MemberResponse> {
@@ -4802,31 +4807,31 @@ class ApiClient {
     await this.request<void>(`/tenants/${tenantId}/membership`, { method: 'DELETE' })
   }
 
-  async createTenantCohort(tenantId: string, name: string): Promise<TenantCohort> {
+  async createTenantCohort(tenantId: string, name: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantCohort> {
     return this.request<TenantCohort>(`/tenants/${tenantId}/cohorts`, {
       method: 'POST',
       body: JSON.stringify({ name }),
-    })
+    }, accountContext)
   }
 
-  async listTenantCohorts(tenantId: string): Promise<TenantCohort[]> {
-    return this.request<TenantCohort[]>(`/tenants/${tenantId}/cohorts`)
+  async listTenantCohorts(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantCohort[]> {
+    return this.request<TenantCohort[]>(`/tenants/${tenantId}/cohorts`, {}, accountContext)
   }
 
-  async listCohortSubmissions(tenantId: string, cohortId: string): Promise<CohortSubmission[]> {
+  async listCohortSubmissions(tenantId: string, cohortId: string, accountContext?: AccountPreferenceRequestContext): Promise<CohortSubmission[]> {
     return this.request<CohortSubmission[]>(
-      `/tenants/${tenantId}/cohorts/${cohortId}/submissions`,
+      `/tenants/${tenantId}/cohorts/${cohortId}/submissions`, {}, accountContext,
     )
   }
 
-  async getTenantStats(tenantId: string): Promise<TenantStats> {
-    return this.request<TenantStats>(`/tenants/${tenantId}/stats`)
+  async getTenantStats(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantStats> {
+    return this.request<TenantStats>(`/tenants/${tenantId}/stats`, {}, accountContext)
   }
 
-  async verifyTenantDomain(tenantId: string): Promise<DomainVerifyResponse> {
+  async verifyTenantDomain(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<DomainVerifyResponse> {
     return this.request<DomainVerifyResponse>(`/tenants/${tenantId}/domain/verify`, {
       method: 'POST',
-    })
+    }, accountContext)
   }
 
   // ── Feature 87 — One-Click Job Applications ──────────────────────────────

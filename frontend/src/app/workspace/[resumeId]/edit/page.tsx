@@ -2,8 +2,9 @@
 
 import CapabilityGate from '@/components/CapabilityGate'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useInterviewPrepRecovery } from '@/hooks/useInterviewPrepRecovery'
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -831,6 +832,12 @@ export default function ResumeEditPage() {
     sessionUserId, resumeId, sessionData, Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
   )
   const sourceLoadReady = isSourceReady() && !isLoading && !resumeLoadError
+  const interviewRecovery = useInterviewPrepRecovery({
+    ownerId: sessionUserId, resumeId, authToken: sessionData?.session?.token ?? null,
+    authReady: Boolean(sessionUserId && !sessionLoading && !sessionRefetching && !sessionError),
+    sourceReady: isSourceReady, can,
+  })
+  const activateInterview = interviewRecovery.activate
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Unsaved-changes guard: last-persisted snapshot + autosave status
@@ -876,10 +883,14 @@ export default function ResumeEditPage() {
   const latexGeneratorRecoveryRef = useRef<LatexGeneratorRecovery | null>(null)
   const [rightTab, setRightTabValue] = useState<RightTab>('preview')
   const setRightTab = useCallback((tab: RightTab) => {
+    if (tab === 'interview') {
+      if (activateInterview()) setRightTabValue(tab)
+      return
+    }
     if (tab === 'generate' && !latexGeneratorRecoveryRef.current?.canAccess) return
     const feature = RIGHT_TAB_CAPABILITIES[tab]
     if (!feature || canRef.current(feature) || (tab === 'ai' && aiRecoveryAvailableRef.current)) setRightTabValue(tab)
-  }, [])
+  }, [activateInterview])
   const rightTabBarRef = useRef<HTMLDivElement>(null)
   const activeRightTabRef = useRef<HTMLButtonElement>(null)
   // Keep the active right-panel tab scrolled into view within the horizontal scroller
@@ -1192,10 +1203,14 @@ export default function ResumeEditPage() {
   })
   latexGeneratorRecoveryRef.current = latexGeneratorRecovery
   useEffect(() => {
+    if (rightTab === 'interview') {
+      if (!interviewRecovery.canAccess) setRightTabValue('preview')
+      return
+    }
     const feature = RIGHT_TAB_CAPABILITIES[rightTab]
     if ((rightTab === 'generate' && !latexGeneratorRecovery.canAccess)
       || (feature && !can(feature) && !(rightTab === 'ai' && aiRecoveryAvailableRef.current))) setRightTabValue('preview')
-  }, [can, rightTab, latexGeneratorRecovery.canAccess])
+  }, [can, rightTab, latexGeneratorRecovery.canAccess, interviewRecovery.canAccess])
 
   const suggestionRecovery = useSuggestionRecovery({
     ownerId: sessionUserId, documentId: resumeId, authToken: sessionData?.session?.token ?? null,
@@ -3279,7 +3294,7 @@ export default function ResumeEditPage() {
   const moreTabIds: RightTab[] = ['generate', 'comments', 'review', 'chat', 'references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'suggestions', 'docs', 'layout', 'snippets', 'macros', 'tikz']
 
   const editorLoadBoundary = editorRecoveryLoadBoundary({
-    preserveRecovery: latexGeneratorRecovery.mounted,
+    preserveRecovery: latexGeneratorRecovery.mounted || interviewRecovery.mounted,
     sourceStatus: sourceLoadStatus,
     isLoading, resumeLoadError, hasSession: Boolean(sessionData), sessionError, offlineDraftLoaded, offlinePdfLoaded, confirmedSessionEnded,
   })
@@ -3324,6 +3339,12 @@ export default function ResumeEditPage() {
   return (
     <div data-editor-mode={editorMode === 'source' ? 'source' : 'visual'} className="flex h-screen flex-col overflow-hidden bg-bg">
 
+      {interviewRecovery.mounted && !sourceLoadReady && (
+        <p role={resumeLoadError ? 'alert' : 'status'} className="shrink-0 border-b border-line bg-surface-2 px-4 py-2 text-xs text-fg-2">
+          {resumeLoadError ? `Resume refresh failed: ${resumeLoadError}.` : 'Loading the current document…'}
+          {' '}Your existing interview work is still here. New interview work waits for the document to load.
+        </p>
+      )}
       {latexGeneratorRecovery.mounted && !sourceLoadReady && (
         <div role={resumeLoadError ? 'alert' : 'status'} className="shrink-0 border-b border-line bg-surface-2 px-4 py-2 text-xs text-fg-2">
           {resumeLoadError ? `Document reload failed: ${resumeLoadError}` : 'Loading the current document…'}
@@ -4234,7 +4255,7 @@ export default function ResumeEditPage() {
                       { id: 'snippets', label: 'Snippets', icon: Package },
                       { id: 'macros', label: 'Macros', icon: Keyboard },
                       { id: 'tikz', label: 'TikZ', icon: Pencil },
-                    ] as const).filter(({ id }) => (id === 'generate' ? latexGeneratorRecovery.canAccess : !RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
+                    ] as const).filter(({ id }) => (id === 'interview' ? interviewRecovery.canAccess : id === 'generate' ? latexGeneratorRecovery.canAccess : !RIGHT_TAB_CAPABILITIES[id] || can(RIGHT_TAB_CAPABILITIES[id]!)) && (editorMode === 'source' || (editorMode === 'pdf' ? id === 'comments' || id === 'interview' : visualPanels.includes(id)))).map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
                         role="menuitem"
@@ -4453,12 +4474,16 @@ export default function ResumeEditPage() {
               onInsert={(fragment) => { if (canRef.current('c01')) editorRef.current?.insertAtCursor(fragment) }}
             />
 
-            {visibleRightTab === 'interview' && (
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <CapabilityGate feature="e02"><InterviewPrepPanel
-                  resumeId={resumeId}
-                  defaultJobDescription={jobDescription}
-                /></CapabilityGate>
+            {interviewRecovery.mounted && (
+              <div className={visibleRightTab === 'interview' ? 'min-h-0 flex-1 overflow-hidden' : 'hidden'}>
+                <Suspense fallback={<LoadingSpinner />}>
+                  <InterviewPrepPanel
+                    resumeId={resumeId}
+                    defaultJobDescription={jobDescription}
+                    ownerScopeRef={interviewRecovery.scopeRef}
+                    sourceReady={isSourceReady}
+                  />
+                </Suspense>
               </div>
             )}
 

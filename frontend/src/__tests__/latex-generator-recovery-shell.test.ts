@@ -220,7 +220,7 @@ async function harness(autoLoad = true) {
     // This hook/shell fixture already owns its synthetic source. Actual queued
     // page content/scope publication is covered by editor-content-scope.test.ts.
     const ownedDocument = { ownerId: authority.offlinePdfOwnerId, resumeId: documentId }
-    const pageReturn = actualPageLoadGuards({ editorRecoveryLoadBoundary, latexGeneratorRecovery: recovery,
+    const pageReturn = actualPageLoadGuards({ editorRecoveryLoadBoundary, latexGeneratorRecovery: recovery, interviewRecovery: { mounted: false },
       sourceLoadStatus: source.status, isLoading, resumeLoadError, sessionData: auth.session, sessionError: auth.error,
       offlineDraftLoaded, offlinePdfLoaded, confirmedSessionEnded: authority.confirmedSessionEnded, LoadingSpinner: 'LoadingSpinner', Link: 'a', AlertCircle: 'AlertCircle',
       SessionLoadError: 'SessionLoadError', loadedDocumentScopeRef: { current: ownedDocument },
