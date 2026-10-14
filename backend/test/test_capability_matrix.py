@@ -26,6 +26,28 @@ def test_audit_matrix_is_current_and_covers_all_inventory_ids():
         assert feature["verification"]["liveProviderOrManualEndToEnd"] == "not verified by this change"
 
 
+def test_generator_includes_tenant_product_controls_but_not_admin_control_plane():
+    spec = importlib.util.spec_from_file_location("generate_capability_matrix", ROOT / "backend/scripts/generate_capability_matrix.py")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    features = {feature["key"]: feature for feature in generator.generate()["features"]}
+    for key in ("f10", "f11"):
+        assert "frontend/src/app/admin/tenant/page.tsx" in features[key]["clientControls"], key
+        assert any("update_tenant" in gate for gate in features[key]["dynamicOrServiceGates"]), key
+    assert all(
+        "frontend/src/app/admin/page.tsx" not in feature["clientControls"]
+        for feature in features.values()
+    )
+
+
+def test_generator_includes_specialty_template_controls():
+    spec = importlib.util.spec_from_file_location("generate_capability_matrix", ROOT / "backend/scripts/generate_capability_matrix.py")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    features = {feature["key"]: feature for feature in generator.generate()["features"]}
+    assert "frontend/src/app/templates/page.tsx" in features["b05"]["clientControls"]
+
+
 def test_d14_nested_operations_preserve_129_products_and_parent_surface():
     spec = importlib.util.spec_from_file_location("d14_capability_matrix", ROOT / "backend/scripts/generate_capability_matrix.py")
     generator = importlib.util.module_from_spec(spec)

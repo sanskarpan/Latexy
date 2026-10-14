@@ -21,7 +21,7 @@ describe('primary authenticated routes', () => {
     ['cover-letter workflow', '../app/workspace/[resumeId]/cover-letter/page.tsx', 'Cover-letter workspace', 'sessionError && !session'],
     ['new resume', '../app/workspace/new/page.tsx', 'New resume', 'sessionError && !session'],
     ['resume editor', '../app/workspace/[resumeId]/edit/page.tsx', 'Resume editor', "editorLoadBoundary === 'session-error'"],
-    ['tenant management', '../app/admin/tenant/page.tsx', 'Tenant management', 'sessionError && !session'],
+    ['tenant management', '../app/admin/tenant/page.tsx', 'Tenant management', 'sessionError && !unauthorized'],
   ])('%s distinguishes session lookup failure from signed out', (_name, path, area, errorGuard) => {
     const route = source(path)
     expect(route).toContain('error: sessionError')

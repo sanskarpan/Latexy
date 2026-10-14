@@ -218,14 +218,24 @@ def fake_engine(columns=None, revision=preflight.EXPECTED_HEAD, historical=0):
 def test_database_transaction_is_read_only_rolled_back_and_aggregated():
     engine, connection, transaction, captured = fake_engine()
     factory = MagicMock(return_value=engine)
-    report = preflight.database_report("postgresql+asyncpg://user:secret@host/database", engine_factory=factory)
-    assert captured[0] == "SET TRANSACTION READ ONLY"
+    report = preflight.database_report(
+        "postgresql+asyncpg://user:secret@db.example.test/database"
+        "?sslmode=require&options=-c%20endpoint%3Dep-fixture",
+        engine_factory=factory,
+    )
+    assert captured[:3] == [
+        "SET TRANSACTION READ ONLY",
+        "SET LOCAL statement_timeout = '10s'",
+        "SET LOCAL lock_timeout = '2s'",
+    ]
     assert factory.call_args.kwargs["hide_parameters"] is True
-    assert factory.call_args.kwargs["connect_args"] == {
-        "connect_timeout": 5,
-        "options": "-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000",
-    }
+    assert factory.call_args.kwargs["connect_args"] == {"connect_timeout": 5}
     assert factory.call_args.kwargs["isolation_level"] == "REPEATABLE READ"
+    assert factory.call_args.kwargs["execution_options"] == {"postgresql_readonly": True}
+    routed_url = factory.call_args.args[0]
+    assert routed_url.drivername == "postgresql+psycopg2"
+    assert routed_url.host == "db.example.test"
+    assert routed_url.query == {"sslmode": "require", "options": "-c endpoint=ep-fixture"}
     transaction.rollback.assert_called_once()
     transaction.commit.assert_not_called()
     engine.dispose.assert_called_once()
@@ -297,8 +307,12 @@ async def test_real_postgres_read_only_report_contains_only_aggregate_counts(db_
         VALUES(:id,:uid,'razorpay',:pid,'team','active')"""),
         {"id": sid, "uid": uid, "pid": f"sub_{uid}"})
     await db_session.commit()
+    before = (await db_session.execute(text("""SELECT u.subscription_plan,u.subscription_id,s.status,s.provider
+        FROM users u JOIN subscriptions s ON s.user_id=u.id WHERE u.id=:uid AND s.id=:sid"""),
+        {"uid": uid, "sid": sid})).one()
+    await db_session.rollback()
     statements = []
-    read_only_seen = []
+    transaction_settings_seen = []
 
     def factory(*args, **kwargs):
         engine = create_engine(*args, **kwargs)
@@ -306,17 +320,28 @@ async def test_real_postgres_read_only_report_contains_only_aggregate_counts(db_
         @event.listens_for(engine, "before_cursor_execute")
         def record(_connection, _cursor, statement, _parameters, _context, _executemany):
             statements.append(statement)
-            if statement.startswith("SELECT table_name"):
-                read_only_seen.append(_connection.scalar(text("SHOW transaction_read_only")))
+            if statement.lstrip().upper().startswith("SELECT"):
+                transaction_settings_seen.append((
+                    _connection.exec_driver_sql("SHOW transaction_read_only").scalar_one(),
+                    _connection.exec_driver_sql("SHOW transaction_isolation").scalar_one(),
+                    _connection.exec_driver_sql("SHOW statement_timeout").scalar_one(),
+                    _connection.exec_driver_sql("SHOW lock_timeout").scalar_one(),
+                ))
         return engine
 
     report = preflight.database_report(os.environ["DATABASE_URL"], engine_factory=factory)
-    assert read_only_seen == ["on"]
+    assert transaction_settings_seen
+    assert all(value == ("on", "repeatable read", "10s", "2s") for value in transaction_settings_seen)
     assert report["schema_classification"] == "current_dodo_head"
     assert report["counts"]["historical_paid_pointer_users"] >= 1
     assert report["counts"]["historical_team_owners"] >= 1
     assert all(not sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "ALTER", "CREATE", "DROP")) for sql in statements)
     assert uid not in json.dumps(report) and sid not in json.dumps(report)
+    after = (await db_session.execute(text("""SELECT u.subscription_plan,u.subscription_id,s.status,s.provider
+        FROM users u JOIN subscriptions s ON s.user_id=u.id WHERE u.id=:uid AND s.id=:sid"""),
+        {"uid": uid, "sid": sid})).one()
+    await db_session.rollback()
+    assert tuple(after) == tuple(before)
 
 
 @pytest.mark.parametrize("billing,mode,api,webhook,startup_valid,checkout_available", [
@@ -770,6 +795,7 @@ DATABASE_FAILURE_CASES = [
     ("connect", "connect"), ("enter", "connect"),
     ("begin", "read_only_setup"), ("set_read_only", "read_only_setup"),
     ("show_read_only", "read_only_setup"), ("read_only_off", "read_only_setup"),
+    ("set_statement_timeout", "read_only_setup"), ("set_lock_timeout", "read_only_setup"),
     ("metadata_query", "schema_metadata"), ("metadata_rows", "schema_metadata"),
     ("revision_query", "schema_revision"), ("revision_rows", "schema_revision"),
     ("revision_files", "schema_revision"), ("schema_classification", "schema_revision"),
@@ -800,6 +826,8 @@ def test_each_database_failure_stage_is_fixed_redacted_and_blocks_rollout(monkey
     query_failures = {
         "set_read_only": "SET TRANSACTION", "metadata_query": "information_schema.columns",
         "aggregate_query": "historical_paid_pointer_users",
+        "set_statement_timeout": "SET LOCAL statement_timeout",
+        "set_lock_timeout": "SET LOCAL lock_timeout",
     }
     if failure_point == "missing_url":
         env.pop("DATABASE_URL")

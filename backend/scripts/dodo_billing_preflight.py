@@ -409,9 +409,11 @@ def database_report(database_url: str, *, backend_root: Path = BACKEND_ROOT, eng
             raise ValueError("unsupported_database")
         url = url.set(drivername="postgresql+psycopg2")
     with database_step("engine"):
+        # Preserve URL-supplied TLS/routing options. Poolers may reject injected
+        # startup GUCs; enforce read-only state and bounds on this transaction.
         engine = engine_factory(url, echo=False, hide_parameters=True, isolation_level="REPEATABLE READ",
-                                connect_args={"connect_timeout": 5, "options":
-                                    "-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000"})
+                                execution_options={"postgresql_readonly": True},
+                                connect_args={"connect_timeout": 5})
     connection_stage = "connect"
     try:
         with engine.connect() as connection:
@@ -425,6 +427,8 @@ def database_report(database_url: str, *, backend_root: Path = BACKEND_ROOT, eng
                     connection.execute(text("SET TRANSACTION READ ONLY"))
                     if connection.scalar(text("SHOW transaction_read_only")) != "on":
                         raise ValueError("read_only_required")
+                    connection.execute(text("SET LOCAL statement_timeout = '10s'"))
+                    connection.execute(text("SET LOCAL lock_timeout = '2s'"))
                 with database_step("schema_metadata"):
                     rows = connection.execute(text("""SELECT table_name,column_name FROM information_schema.columns
                         WHERE table_schema='public' AND table_name = ANY(:tables)"""), {"tables": list(TABLES)})

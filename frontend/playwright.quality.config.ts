@@ -25,7 +25,11 @@ export default defineConfig({
         // bypasses page.route in WebKit; the dedicated PWA spec tests its lifecycle.
         serviceWorkers: 'block',
         actionTimeout: 12_000,
-        trace: 'on-first-retry',
+        // These synthetic contracts run with --retries=0 in required CI. Keep
+        // the original failed run's trace instead of waiting for a retry that
+        // will never happen; passing traces are discarded and CI artifacts
+        // already have a bounded 14-day retention period.
+        trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
     },
 

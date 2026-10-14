@@ -4,6 +4,7 @@ import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
+import LandingFooter from './LandingFooter'
 
 export default function MarketingFooter() {
   const pathname = usePathname()
@@ -17,6 +18,7 @@ export default function MarketingFooter() {
   if (hidden) return null
 
   const year = new Date().getFullYear()
+  if (pathname === '/') return <LandingFooter year={year} />
 
   return (
     <footer className="mt-10 border-t border-line bg-surface-2">

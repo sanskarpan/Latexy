@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useAccountContentScope } from '@/contexts/AccountContentScope'
 import { BrainCircuit, CheckCircle2, Loader2, RotateCcw } from 'lucide-react'
 import {
   apiClient,
@@ -11,12 +13,33 @@ import {
 
 interface InterviewSimulationProps {
   prepId: string
+  authToken: string | null
   questions: InterviewQuestion[]
+  isCurrentSession: () => boolean
+  canActForOwner: () => boolean
 }
 
 type Phase = 'setup' | 'answering' | 'feedback' | 'complete'
 
-export default function InterviewSimulation({ prepId, questions }: InterviewSimulationProps) {
+export default function InterviewSimulation({ prepId, authToken, questions, isCurrentSession, canActForOwner }: InterviewSimulationProps) {
+  const accountScope = useAccountContentScope()
+  const mountedRef = useRef(true)
+  const prepScopeRef = useRef({ prepId })
+  if (prepScopeRef.current.prepId !== prepId) prepScopeRef.current = { prepId }
+  const prepScope = prepScopeRef.current
+  // Retained callbacks belong to this exact mounted prep, not just an equal id.
+  const isCurrent = () => mountedRef.current && prepScopeRef.current === prepScope
+    && Boolean(accountScope?.isCurrent()) && isCurrentSession()
+  // Never replace a retained callback's admission with the newest prop lease.
+  const canAct = () => isCurrent() && Boolean(authToken) && Boolean(accountScope?.canAdmit()) && canActForOwner()
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  const { can } = useEntitlements()
+  const allowed = can('e03') && canAct()
+  const canRef = useRef(can)
+  canRef.current = can
   const [mode, setMode] = useState<InterviewSimulationMode>('coach')
   const [phase, setPhase] = useState<Phase>('setup')
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -24,10 +47,12 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [feedback, setFeedback] = useState<InterviewSimulationFeedback[]>([])
   const [overallFeedback, setOverallFeedback] = useState('')
+  const pendingRef = useRef(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const start = () => {
+    if (!canAct() || !canRef.current('e03')) return
     setCurrentIndex(0)
     setCurrentAnswer('')
     setAnswers({})
@@ -38,6 +63,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
   }
 
   const evaluate = async (submitted: Record<number, string>) => {
+    if (!canAct() || !canRef.current('e03')) return null
     const indexes = Object.keys(submitted).map(Number).sort((a, b) => a - b)
     return apiClient.evaluateInterviewSimulation(prepId, {
       mode,
@@ -45,12 +71,13 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
         question_index: questionIndex,
         answer: submitted[questionIndex],
       })),
-    })
+    }, { authToken: authToken!, isCurrent: () => canAct() && canRef.current('e03') })
   }
 
   const submitAnswer = async () => {
     const answer = currentAnswer.trim()
-    if (answer.length < 20 || loading) return
+    if (!canAct() || !canRef.current('e03') || answer.length < 20 || pendingRef.current) return
+    pendingRef.current = true
     const submitted = { ...answers, [currentIndex]: answer }
     setAnswers(submitted)
     setLoading(true)
@@ -58,11 +85,13 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
     try {
       if (mode === 'coach') {
         const result = await evaluate({ [currentIndex]: answer })
+        if (!result || !isCurrent()) return
         setFeedback(current => [...current, ...result.feedback])
         setOverallFeedback(result.overall_feedback)
         setPhase('feedback')
       } else if (currentIndex === questions.length - 1) {
         const result = await evaluate(submitted)
+        if (!result || !isCurrent()) return
         setFeedback(result.feedback)
         setOverallFeedback(result.overall_feedback)
         setPhase('complete')
@@ -71,13 +100,15 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
         setCurrentAnswer('')
       }
     } catch (caught) {
+      if (!isCurrent()) return
       setError(caught instanceof Error ? caught.message : 'Practice feedback could not be generated')
     } finally {
-      setLoading(false)
+      if (isCurrent()) { pendingRef.current = false; setLoading(false) }
     }
   }
 
   const continueAfterFeedback = () => {
+    if (!isCurrent() || (currentIndex < questions.length - 1 && (!canAct() || !canRef.current('e03')))) return
     if (currentIndex === questions.length - 1) {
       setPhase('complete')
     } else {
@@ -87,12 +118,18 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
     }
   }
 
+  const restart = () => {
+    if (!canAct() || !canRef.current('e03')) return
+    setPhase('setup')
+  }
+
   const currentFeedback = feedback.find(item => item.question_index === currentIndex)
   const averageScore = feedback.length
     ? Math.round(feedback.reduce((sum, item) => sum + item.score, 0) / feedback.length)
     : 0
 
   if (phase === 'setup') {
+    if (!allowed) return null
     return (
       <div className="border-b border-line bg-surface px-3 py-3 space-y-2.5">
         <div className="flex items-center gap-2">
@@ -108,7 +145,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
               key={value}
               type="button"
               aria-pressed={mode === value}
-              onClick={() => setMode(value)}
+              onClick={() => { if (canAct() && canRef.current('e03')) setMode(value) }}
               className={`rounded-[var(--radius-md)] border px-2.5 py-2 text-left transition ${
                 mode === value ? 'border-accent bg-accent-soft' : 'border-line bg-surface-2'
               }`}
@@ -143,13 +180,13 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
         </div>
         <p className="text-[10px] leading-relaxed text-fg-2">{overallFeedback}</p>
         {feedback.map(item => <FeedbackCard key={item.question_index} feedback={item} />)}
-        <button
+        {allowed && <button
           type="button"
-          onClick={() => setPhase('setup')}
+          onClick={restart}
           className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line py-1.5 text-[10px] text-fg-2 hover:bg-surface-2"
         >
           <RotateCcw size={10} /> Start another session
-        </button>
+        </button>}
       </div>
     )
   }
@@ -167,7 +204,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
           <textarea
             aria-label={`Answer to question ${currentIndex + 1}`}
             value={currentAnswer}
-            onChange={event => setCurrentAnswer(event.target.value)}
+            onChange={event => { if (isCurrent()) setCurrentAnswer(event.target.value) }}
             maxLength={1200}
             rows={5}
             placeholder="Type the answer you would give in the interview…"
@@ -176,8 +213,9 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
           <div className="flex items-center justify-between text-[9px] text-fg-3">
             <span>Minimum 20 characters</span><span>{currentAnswer.length}/1200</span>
           </div>
+          {!allowed && <p role="status" className="text-[10px] text-fg-3">Interview simulation is unavailable. Your current answer is still here.</p>}
           {error && <p role="alert" className="text-[10px] text-err">{error}</p>}
-          <button
+          {allowed && <button
             type="button"
             onClick={() => { void submitAnswer() }}
             disabled={currentAnswer.trim().length < 20 || loading}
@@ -185,18 +223,18 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
           >
             {loading && <Loader2 size={10} className="animate-spin" />}
             {loading ? 'Evaluating…' : currentIndex === questions.length - 1 ? 'Finish session' : 'Submit answer'}
-          </button>
+          </button>}
         </>
       ) : currentFeedback ? (
         <>
           <FeedbackCard feedback={currentFeedback} />
-          <button
+          {(allowed || currentIndex === questions.length - 1) && <button
             type="button"
             onClick={continueAfterFeedback}
             className="w-full rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent"
           >
             {currentIndex === questions.length - 1 ? 'View session summary' : 'Continue to next question'}
-          </button>
+          </button>}
         </>
       ) : null}
     </div>

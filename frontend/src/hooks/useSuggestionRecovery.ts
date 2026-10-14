@@ -52,6 +52,9 @@ export function useSuggestionRecovery(options: Options) {
   useLayoutEffect(() => {
     committedSource.current = readySource
     if (readySource) refresh(value => value + 1)
+    // Suspense can hide a committed editor without unmounting its recovery
+    // state. Retire source admission until this exact snapshot commits again.
+    return () => { if (committedSource.current === readySource) committedSource.current = null }
   }, [readySource])
   if (identity.sourceVersion !== options.sourceVersion || identity.authReady !== options.authReady || identity.authToken !== options.authToken
     || identity.authority !== authority) {

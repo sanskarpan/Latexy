@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import re
-import selectors
 import shutil
 import subprocess
 import sys
@@ -27,6 +26,22 @@ MAX_FIXTURE_TEXT_BYTES = 256 * 1024
 PDFTOTEXT_TIMEOUT_SECONDS = 10
 
 
+def _require_poppler_pdftotext() -> str:
+    """Reject Xpdf, whose layout extraction can misread shaped Hindi text."""
+    binary = shutil.which("pdftotext")
+    if binary:
+        try:
+            version = subprocess.run(
+                [binary, "-v"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=5, check=False,
+            )
+            if version.returncode == 0 and b"The Poppler Developers" in version.stdout + version.stderr:
+                return binary
+        except (OSError, subprocess.SubprocessError):
+            pass
+    raise RuntimeError("pdftotext (Poppler) is required in the operator environment before VM certification")
+
+
 def audit_denials(output: bytes, expected: int) -> bool:
     # TeX can append page/font diagnostics to the same line after a marker.
     audits = re.findall(r"(?m)^\s*AUDIT [A-Z]+ (DENIED|ALLOWED)\b", output.decode("utf-8", "replace"))
@@ -39,7 +54,6 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
         return None
 
     process = None
-    selector = None
     output = bytearray()
     deadline = time.monotonic() + PDFTOTEXT_TIMEOUT_SECONDS
     try:
@@ -51,13 +65,22 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
         )
         if process.stdout is None:
             return None
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
+
+        # Python 3.12 supports nonblocking pipes on Windows. Do not use
+        # selectors (Windows pipes are unsupported), or a blocking reader
+        # thread: closing its buffered stream can hang if a descendant keeps
+        # the write end open after the extractor exits.
+        fd = process.stdout.fileno()
+        os.set_blocking(fd, False)
         while True:
             remaining = deadline - time.monotonic()
-            if remaining <= 0 or not selector.select(remaining):
+            if remaining <= 0:
                 return None
-            chunk = os.read(process.stdout.fileno(), min(8192, MAX_FIXTURE_TEXT_BYTES + 1 - len(output)))
+            try:
+                chunk = os.read(fd, min(8192, MAX_FIXTURE_TEXT_BYTES + 1 - len(output)))
+            except BlockingIOError:
+                time.sleep(min(0.01, remaining))
+                continue
             if not chunk:
                 process.wait(timeout=max(0, deadline - time.monotonic()))
                 if process.returncode != 0:
@@ -69,8 +92,6 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
     except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
         return None
     finally:
-        if selector is not None:
-            selector.close()
         if process is not None:
             if process.poll() is None:
                 process.kill()
@@ -112,9 +133,7 @@ def main(argv=None):
         parser.error("--image-id must be an immutable Modal image ID")
     if options.expected_assets and not re.fullmatch(r"[0-9a-f]{64}", options.expected_assets):
         parser.error("--expected-assets must be a lowercase SHA-256 fingerprint")
-    pdftotext_bin = shutil.which("pdftotext")
-    if not pdftotext_bin:
-        raise RuntimeError("pdftotext (Poppler) is required in the operator environment before VM certification")
+    pdftotext_bin = _require_poppler_pdftotext()
 
     import modal
 
@@ -171,7 +190,7 @@ audit('BOOTSTRAP',function() return io.open('/tmp/latexy-sandbox-bootstrap/sandb
                 if code or not denied or not text_checked:
                     evidence = Path(__file__).resolve().parents[1] / "temp" / ("vm-certification-failure-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
                     evidence.mkdir(parents=True, exist_ok=False)
-                    for name in ("resume.tex", "resume.log", "resume.fls"):
+                    for name in ("resume.tex", "resume.log", "resume.fls", "resume.pdf"):
                         if (workspace / name).is_file():
                             shutil.copyfile(workspace / name, evidence / name)
                     (evidence / "engine.stdout").write_bytes(output)
