@@ -45,6 +45,14 @@ The full light/dark pages, focused footer captures, mobile top/bottom inspection
 
 P3: browser font rasterization, tiny chart/icon differences from the raster reference, and natural text wrapping at narrow widths. The source reference supplies desktop states; mobile adapts the composition for readability. No additional fidelity loop is justified by these differences.
 
-This remains a draft PR for user review and has not been merged. CodeRabbit skips draft review; its status is not a code-review approval.
+The user approved the visual result on 2026-10-14 and authorized merging once checks are clear. The PR is now ready for review.
+
+## Merge verification follow-up
+
+Latest main `9b9abb6a` was integrated without conflicts. The failed CI at `3a9138f1` reported one Firefox keyboard-focus failure in the new landing sample test; 167 other quality cases passed. The downloaded trace (artifact `11897061442`, SHA256 `be067b2067cbb67b30751387001e47b0195d0c3e91dcc85d4767fb429554f844`) shows rendered tab ID `_R_4eav5nb_-source`, while the updated panel label uses `_R_13inpdb_-source`. The keyboard lookup cannot find the rendered element under the client ID.
+
+Commit `839719e7` gives each singleton homepage sample a stable page-specific ID prefix, preserving post-commit keyboard focus and matching labels/controls. The existing focus assertions are retained; repeated navigation now additionally checks the actual tab-panel ID relationships. Scoped lint and nine relevant unit tests passed locally. This does not alter the approved visual layout, so the published captures remain explicitly attributed to source `2e77fe73`.
+
+Final merge is gated on fresh exact-head CI and applicable review findings. The earlier draft-skipped CodeRabbit status is not a review approval.
 
 final result: passed
