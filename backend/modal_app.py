@@ -13,6 +13,7 @@ DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 import base64
 import hashlib
 import os
+import re
 from pathlib import Path
 
 import modal
@@ -25,6 +26,15 @@ from app.core.engine_capacity import capacity_options
 _APP_NAME = "latexy-backend"
 _BACKEND_DIR = Path(__file__).parent  # backend/
 
+
+def _validated_optional_billing_secret_name(value: str | None) -> str | None:
+    """Return a Modal secret label when configured, rejecting unsafe labels."""
+    if value is None or value == "":
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", value):
+        raise ValueError("MODAL_BILLING_SECRET_NAME must be a valid Modal secret label")
+    return value
+
 app = modal.App(_APP_NAME)
 
 # Directories to exclude from the code snapshot (security + size)
@@ -35,6 +45,9 @@ _IGNORE = [
     "**/alembic/**",
     "**/test/**",
     "**/.git/**",
+    "**/temp/**",
+    "**/.venv/**",
+    "**/.pytest_cache/**",
 ]
 
 # ---------------------------------------------------------------------------
@@ -287,6 +300,13 @@ _secrets = [
     # legacy Redis values still present in latexy-backend-secrets.
     modal.Secret.from_name("latexy-redis"),
 ]
+_billing_secret_name = _validated_optional_billing_secret_name(
+    os.environ.get("MODAL_BILLING_SECRET_NAME")
+)
+if _billing_secret_name:
+    # Append last so its Dodo variables override any legacy values in the opaque
+    # backend secret while preserving every unrelated key in that secret.
+    _secrets.append(modal.Secret.from_name(_billing_secret_name))
 
 
 # ---------------------------------------------------------------------------

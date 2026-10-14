@@ -57,6 +57,90 @@ def _extract_modal_string_constant(name: str) -> str:
     raise AssertionError(f"modal_app.py has no literal {name}")
 
 
+def _extract_optional_billing_secret_name():
+    """Compile only the pure validator, without importing Modal or building images."""
+    tree = _parse(MODAL_APP)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_validated_optional_billing_secret_name"
+    )
+    isolated = ast.Module(body=[ast.Import(names=[ast.alias(name="re")]), function], type_ignores=[])
+    namespace: dict[str, object] = {}
+    exec(compile(ast.fix_missing_locations(isolated), str(MODAL_APP), "exec"), namespace)
+    return namespace["_validated_optional_billing_secret_name"]
+
+
+def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
+    validator = _extract_optional_billing_secret_name()
+    assert validator(None) is None
+    assert validator("") is None
+    assert validator("latexy-live-billing") == "latexy-live-billing"
+    for invalid in (" leading", "trailing ", "../secret", "bad/name", "x" * 65):
+        with pytest.raises(ValueError, match="valid Modal secret label"):
+            validator(invalid)
+
+    tree = _parse(MODAL_APP)
+    ignore_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_IGNORE" for target in node.targets)
+    )
+    ignored = ast.literal_eval(ignore_assignment.value)
+    assert "**/temp/**" in ignored
+    assert "**/.venv/**" in ignored
+    assert "**/.pytest_cache/**" in ignored
+
+    secrets_assignment = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_secrets" for target in node.targets)
+    )
+    assert [call.args[0].value for call in ast.walk(secrets_assignment)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Attribute)
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "modal"
+            and call.func.value.attr == "Secret"
+            and call.func.attr == "from_name"] == [
+                "latexy-backend-secrets", "latexy-storage", "latexy-redis",
+            ]
+    overlay = next(
+        node for node in tree.body if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Name) and node.test.id == "_billing_secret_name"
+    )
+    assert any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "_secrets"
+        and node.func.attr == "append"
+        and len(node.args) == 1 and isinstance(node.args[0], ast.Call)
+        and isinstance(node.args[0].func, ast.Attribute)
+        and isinstance(node.args[0].func.value, ast.Attribute)
+        and isinstance(node.args[0].func.value.value, ast.Name)
+        and node.args[0].func.value.value.id == "modal"
+        and node.args[0].func.value.attr == "Secret"
+        and node.args[0].func.attr == "from_name"
+        and len(node.args[0].args) == 1
+        and isinstance(node.args[0].args[0], ast.Name)
+        and node.args[0].args[0].id == "_billing_secret_name"
+        for node in ast.walk(overlay)
+    )
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    for name in ("run_latex_task", "renderer_preflight", "billing_preflight", "migrate", "fastapi_app"):
+        assert any(
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and isinstance(decorator.func.value, ast.Name)
+            and decorator.func.value.id == "app"
+            and decorator.func.attr == "function"
+            and any(keyword.arg == "secrets" and isinstance(keyword.value, ast.Name)
+                    and keyword.value.id == "_secrets" for keyword in decorator.keywords)
+            for decorator in functions[name].decorator_list
+        ), name
+    workflow = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+    assert "MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}" in workflow
+
+
 def _extract_modal_shell_encoder():
     """Extract only the encoder so this test never imports modal_app.py."""
     tree = _parse(MODAL_APP)
