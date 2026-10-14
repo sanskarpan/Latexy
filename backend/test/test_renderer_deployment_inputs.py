@@ -46,7 +46,7 @@ def test_workflow_maps_all_inputs_to_every_modal_command_before_cloud_work():
     billing = source.index("modal run --env main modal_app.py::billing_preflight")
     renderer = source.index("modal run --env main modal_app.py::renderer_preflight")
     migration = source.index("modal run --env main modal_app.py::migrate")
-    deploy = source.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py')
+    deploy = source.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app')
     assert check < install < billing < renderer < migration < deploy
     step = source[check:install]
     assert "if: steps.freshness.outputs.current == 'true'" in step

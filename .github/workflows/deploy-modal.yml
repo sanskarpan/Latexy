@@ -166,7 +166,7 @@ jobs:
       - name: Deploy backend with a rolling update
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
-        run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py
+        run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app
 
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'

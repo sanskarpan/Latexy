@@ -2,8 +2,8 @@
 Latexy backend — Modal deployment.
 
 Run from the backend/ directory:
-  modal deploy modal_app.py          # deploy to production
-  modal serve  modal_app.py          # live-reload dev mode
+  modal deploy modal_app.py::app     # deploy the serving and worker App to production
+  modal serve  modal_app.py::app     # live-reload dev mode
 
 Environment variables are loaded from the Modal secrets "latexy-backend-secrets"
 (app config) and "latexy-storage" (object storage).
@@ -50,6 +50,9 @@ _billing_secret_binding_env = {
 }
 
 app = modal.App(_APP_NAME)
+# Operator-only tasks run under a separate Modal App so ephemeral preflight and
+# migration invocations cannot warm fastapi_app's min_containers=1 API service.
+operations_app = modal.App(f"{_APP_NAME}-operations")
 
 # Directories to exclude from the code snapshot (security + size)
 _IGNORE = [
@@ -843,7 +846,7 @@ def scheduled_minute_recovery() -> None:
 # ---------------------------------------------------------------------------
 # Deployment preflight and migrations
 # ---------------------------------------------------------------------------
-@app.function(image=api_image, secrets=_api_secrets, timeout=60)
+@operations_app.function(image=api_image, secrets=_api_secrets, timeout=60)
 def renderer_preflight() -> dict:
     """Validate actual API configuration only; never certify or start a VM."""
     import contextlib
@@ -901,7 +904,7 @@ migrate_image = (
 )
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=900)
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
 def migrate() -> None:
     """Apply Alembic migrations to the production database."""
     import subprocess
@@ -918,7 +921,7 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
-@app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
+@operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
 def billing_preflight(
     source_revision: str, expected_environment: str = "main", purpose: str = "report",
     allow_configured_live: bool = False,
@@ -1019,7 +1022,7 @@ def billing_preflight(
         raise RuntimeError("Billing preflight requires review; see the redacted JSON report")
 
 
-@app.function(image=migrate_image, secrets=_secrets, timeout=900)
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
 def sync_templates() -> None:
     """Reconcile the production template catalog with the source-owned seed files."""
     import subprocess

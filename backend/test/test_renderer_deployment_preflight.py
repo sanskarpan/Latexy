@@ -228,7 +228,7 @@ def test_workflow_checks_existing_api_binding_before_migrations_and_deployment()
     billing = workflow.index("modal run --env main modal_app.py::billing_preflight")
     preflight = workflow.index("modal run --env main modal_app.py::renderer_preflight")
     migration = workflow.index("modal run --env main modal_app.py::migrate")
-    deploy = workflow.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py')
+    deploy = workflow.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app')
     assert billing < preflight < migration < deploy
     step = workflow[workflow.rfind("      - name:", 0, preflight):preflight]
     assert "if: steps.freshness.outputs.current == 'true'" in step
