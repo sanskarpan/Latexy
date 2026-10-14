@@ -98,7 +98,9 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0070_plan_catalog", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0071_plan_quotas", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0072_capability_roles", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0073_d14_subfeatures", current_columns(), "current_dodo_head"),
+    ("0073_d14_subfeatures", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0074_redis_authority_freeze", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0075_durable_quota_ledger", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -111,6 +113,9 @@ def test_revision_collision_classification(revision, columns, expected):
     ("0070_plan_catalog", "plan_catalog"),
     ("0071_plan_quotas", "plan_quota_overrides"),
     ("0072_capability_roles", "role_features"),
+    ("0074_redis_authority_freeze", "redis_authority_control"),
+    ("0075_durable_quota_ledger", "quota_ledger_accounts"),
+    ("0075_durable_quota_ledger", "quota_ledger_reservations"),
 ])
 def test_stamped_capability_revision_requires_its_schema(revision, table):
     columns = current_columns()
@@ -123,6 +128,9 @@ def test_stamped_capability_revision_requires_its_schema(revision, table):
     ("0070_plan_catalog", "plan_catalog", "purchase_enabled"),
     ("0071_plan_quotas", "plan_quota_revisions", "limit_value"),
     ("0072_capability_roles", "role_features", "feature_key"),
+    ("0074_redis_authority_freeze", "redis_authority_control", "generation"),
+    ("0075_durable_quota_ledger", "quota_ledger_accounts", "opening_used"),
+    ("0075_durable_quota_ledger", "quota_ledger_reservations", "id"),
 ])
 def test_stamped_capability_revision_rejects_partial_columns(revision, table, column):
     columns = current_columns()
@@ -130,29 +138,40 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
     assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
 
 
-def test_d14_insert_only_head_reuses_previous_schema_without_new_tables():
-    assert preflight.EXPECTED_HEAD == "0073_d14_subfeatures"
-    assert preflight.CAPABILITY_SCHEMA_COLUMNS[preflight.EXPECTED_HEAD] == {}
+def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
+    assert preflight.EXPECTED_HEAD == "0075_durable_quota_ledger"
+    assert preflight.CAPABILITY_SCHEMA_COLUMNS["0073_d14_subfeatures"] == {}
     previous_columns = {
         **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
         "render_artifact_manifests": {"artifact_id"}, "resume_optimization_runs": {"id"},
         **{table: set(names) for revision, tables in preflight.CAPABILITY_SCHEMA_COLUMNS.items()
-           if revision != preflight.EXPECTED_HEAD for table, names in tables.items()},
+           if revision not in {"0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger"}
+           for table, names in tables.items()},
     }
-    assert previous_columns == current_columns()
+    assert previous_columns == {table: names for table, names in current_columns().items()
+                                if table not in {"redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations"}}
     known = preflight.known_revisions()
     assert preflight.classify_schema(["0072_capability_roles"], previous_columns, known) == "known_mainline_dodo_upgrade_required"
-    assert preflight.classify_schema(["0073_d14_subfeatures"], previous_columns, known) == "current_dodo_head"
+    assert preflight.classify_schema(["0073_d14_subfeatures"], previous_columns, known) == "known_mainline_dodo_upgrade_required"
+    assert preflight.classify_schema(["0074_redis_authority_freeze"], previous_columns, known) == "schema_revision_mismatch_requires_review"
+    assert preflight.classify_schema(["0075_durable_quota_ledger"], previous_columns, known) == "schema_revision_mismatch_requires_review"
     # No revision aliases, unknown stamps or multiple heads become accepted.
     assert preflight.classify_schema(["0073_d14_child_controls"], previous_columns, known) == "unknown_requires_review"
     assert preflight.classify_schema(["0072_capability_roles", "0073_d14_subfeatures"], previous_columns, known) == "unknown_requires_review"
+
+
+def test_future_revision_is_not_implicitly_approved_by_known_files():
+    future = "0076_unreviewed"
+    known = preflight.known_revisions() | {future}
+    assert preflight.classify_schema([future], current_columns(), known) == "schema_revision_mismatch_requires_review"
+    assert {"redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations"} <= set(preflight.TABLES)
 
 
 @pytest.mark.parametrize("table,column", [
     (table, column) for tables in preflight.CAPABILITY_SCHEMA_COLUMNS.values()
     for table, columns in tables.items() for column in sorted(columns)
 ])
-def test_d14_insert_only_head_requires_every_prior_capability_column(table, column):
+def test_current_head_requires_every_prior_capability_column(table, column):
     columns = current_columns()
     columns[table].remove(column)
     assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
@@ -161,7 +180,7 @@ def test_d14_insert_only_head_requires_every_prior_capability_column(table, colu
 @pytest.mark.parametrize("table", [
     table for tables in preflight.CAPABILITY_SCHEMA_COLUMNS.values() for table in tables
 ])
-def test_d14_insert_only_head_requires_every_prior_capability_table(table):
+def test_current_head_requires_every_prior_capability_table(table):
     columns = current_columns()
     del columns[table]
     assert preflight.classify_schema([preflight.EXPECTED_HEAD], columns, preflight.known_revisions()) == "schema_revision_mismatch_requires_review"
@@ -608,7 +627,9 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0070_plan_catalog", "known_mainline_dodo_upgrade_required"),
     ("0071_plan_quotas", "known_mainline_dodo_upgrade_required"),
     ("0072_capability_roles", "known_mainline_dodo_upgrade_required"),
-    ("0073_d14_subfeatures", "current_dodo_head"),
+    ("0073_d14_subfeatures", "known_mainline_dodo_upgrade_required"),
+    ("0074_redis_authority_freeze", "known_mainline_dodo_upgrade_required"),
+    ("0075_durable_quota_ledger", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -616,9 +637,10 @@ def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, s
 
 @pytest.mark.parametrize("revision,schema", [
     ("0072_capability_roles", "current_dodo_head"),
-    ("0073_d14_subfeatures", "known_mainline_dodo_upgrade_required"),
+    ("0075_durable_quota_ledger", "known_mainline_dodo_upgrade_required"),
+    ("0073_d14_subfeatures", "current_dodo_head"),
 ])
-def test_rollout_rejects_d14_head_revision_classification_mismatch(revision, schema):
+def test_rollout_rejects_head_revision_classification_mismatch(revision, schema):
     result = preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))
     assert not result["safe_to_rollout"]
     assert "rollout_database_revision_unverified" in result["reasons"]

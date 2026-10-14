@@ -21,11 +21,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0073_d14_subfeatures"
+EXPECTED_HEAD = "0075_durable_quota_ledger"
 DODO_MAINLINE_REVISIONS = {
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
-    "0073_d14_subfeatures",
+    "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -63,7 +63,8 @@ PAID_PLANS = (*PRODUCT_KEYS, "basic_monthly", "pro_monthly", "byok_monthly", "st
 TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_optimization_runs",
           "render_artifact_manifests", "billing_webhook_events", "payment_refunds", "payments", "coupon_redemptions",
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
-          "plan_quota_overrides", "plan_quota_revisions", "role_features")
+          "plan_quota_overrides", "plan_quota_revisions", "role_features",
+          "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "provider_subscription_id",
@@ -126,6 +127,23 @@ CAPABILITY_SCHEMA_COLUMNS = {
     # Insert-only seed migration: no new tables or columns. The ordered entry
     # still requires every preceding capability and billing fingerprint.
     "0073_d14_subfeatures": {},
+    # These are disabled Redis cutover foundations. The preflight must still
+    # verify their actual schema before accepting the current Alembic stamp.
+    "0074_redis_authority_freeze": {
+        "redis_authority_control": {
+            "id", "generation", "phase", "active_backend", "freeze_reason", "freeze_id", "updated_at",
+        },
+    },
+    "0075_durable_quota_ledger": {
+        "quota_ledger_accounts": {
+            "user_id", "dimension", "period", "status", "used", "opening_used", "source_ref",
+            "source_sha256", "reconciled_at", "created_at", "updated_at",
+        },
+        "quota_ledger_reservations": {
+            "id", "user_id", "dimension", "period", "cost", "limit_value", "state", "used_after",
+            "created_at", "refunded_at",
+        },
+    },
 }
 
 
