@@ -556,6 +556,78 @@ test('landing sample controls change their visible state by keyboard and pointer
     await expect(manage).toBeFocused()
 })
 
+test('landing sample tabs align selection and focus for repeated keyboard navigation', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const neutral = page.getByRole('group', { name: 'Sample résumé layouts' })
+        .getByRole('button', { name: /Modern/ })
+    const authoring = page.getByRole('tablist', { name: 'Explore authoring modes' })
+    const guided = authoring.getByRole('tab', { name: 'Guided builder' })
+    const source = authoring.getByRole('tab', { name: 'LaTeX source' })
+    const studio = authoring.getByRole('tab', { name: 'Visual studio' })
+    const workspace = page.locator('.lp-builder-workspace')
+
+    await expect(guided).toHaveAttribute('aria-selected', 'true')
+    await expect(guided).not.toBeFocused()
+    await studio.click()
+    await expect(studio).toHaveAttribute('aria-selected', 'true')
+    await neutral.focus()
+    await source.evaluate(button => (button as HTMLButtonElement).click())
+    await expect(source).toHaveAttribute('aria-selected', 'true')
+    await expect(neutral).toBeFocused()
+
+    await guided.focus()
+    for (const { key, tab, mode } of [
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'ArrowRight', tab: source, mode: 'source' },
+        { key: 'ArrowRight', tab: studio, mode: 'studio' },
+        { key: 'ArrowRight', tab: guided, mode: 'guided' },
+        { key: 'ArrowLeft', tab: studio, mode: 'studio' },
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'End', tab: studio, mode: 'studio' },
+        { key: 'End', tab: studio, mode: 'studio' },
+        { key: 'ArrowLeft', tab: source, mode: 'source' },
+    ]) {
+        await page.keyboard.press(key)
+        await expect(tab).toBeFocused()
+        await expect(tab).toHaveAttribute('aria-selected', 'true')
+        await expect(workspace).toHaveAttribute('data-mode', mode)
+    }
+
+    const latexTabs = page.getByRole('tablist', { name: 'Explore the LaTeX sample' })
+    const latexSource = latexTabs.getByRole('tab', { name: 'Source' })
+    const pdf = latexTabs.getByRole('tab', { name: 'PDF' })
+    const latexDemo = page.locator('.lp-latex-demo')
+    await expect(latexSource).toHaveAttribute('aria-selected', 'true')
+    await expect(latexSource).not.toBeFocused()
+    await pdf.click()
+    await expect(pdf).toHaveAttribute('aria-selected', 'true')
+    await neutral.focus()
+    await latexSource.evaluate(button => (button as HTMLButtonElement).click())
+    await expect(latexSource).toHaveAttribute('aria-selected', 'true')
+    await expect(neutral).toBeFocused()
+
+    await latexSource.focus()
+    for (const { key, tab, view } of [
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'ArrowRight', tab: pdf, view: 'pdf' },
+        { key: 'ArrowRight', tab: latexSource, view: 'source' },
+        { key: 'ArrowLeft', tab: pdf, view: 'pdf' },
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'End', tab: pdf, view: 'pdf' },
+        { key: 'End', tab: pdf, view: 'pdf' },
+        { key: 'ArrowLeft', tab: latexSource, view: 'source' },
+    ]) {
+        await page.keyboard.press(key)
+        await expect(tab).toBeFocused()
+        await expect(tab).toHaveAttribute('aria-selected', 'true')
+        await expect(latexDemo).toHaveAttribute('data-view', view)
+    }
+})
+
 test('mobile studio keeps primary controls reachable without document overflow', async ({
     page,
 }, testInfo) => {

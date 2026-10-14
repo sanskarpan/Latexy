@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Circle, Line, Polygon } from '@visx/shape'
 import katex from 'katex'
@@ -170,6 +170,13 @@ function SampleResume({
 function BuilderDemo() {
     const id = useId()
     const [mode, setMode] = useState<'guided' | 'source' | 'studio'>('guided')
+    const pendingKeyboardFocus = useRef<typeof mode | null>(null)
+    useLayoutEffect(() => {
+        const target = pendingKeyboardFocus.current
+        if (target !== mode) return
+        pendingKeyboardFocus.current = null
+        document.getElementById(`${id}-${target}`)?.focus()
+    }, [id, mode])
     const [name, setName] = useState('Alex Morgan')
     const [summary, setSummary] = useState(SAMPLE_SUMMARY)
     const [role, setRole] = useState('Senior Software Engineer')
@@ -199,7 +206,10 @@ function BuilderDemo() {
                             aria-selected={mode === value}
                             aria-label={modeNames[value]}
                             aria-controls={`${id}-panel`}
-                            onClick={() => setMode(value)}
+                            onClick={() => {
+                                pendingKeyboardFocus.current = null
+                                setMode(value)
+                            }}
                             tabIndex={mode === value ? 0 : -1}
                             onKeyDown={event => {
                                 if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key))
@@ -216,8 +226,12 @@ function BuilderDemo() {
                                                     (event.key === 'ArrowRight' ? 1 : 2)) %
                                                     3
                                             ]
+                                if (next === mode) {
+                                    document.getElementById(`${id}-${next}`)?.focus()
+                                    return
+                                }
+                                pendingKeyboardFocus.current = next
                                 setMode(next)
-                                document.getElementById(`${id}-${next}`)?.focus()
                             }}
                         >
                             {value === 'guided'
@@ -885,6 +899,13 @@ function LatexDemo() {
     const id = useId()
     const [engine, setEngine] = useState('pdflatex')
     const [sampleView, setSampleView] = useState<'source' | 'pdf'>('source')
+    const pendingKeyboardFocus = useRef<typeof sampleView | null>(null)
+    useLayoutEffect(() => {
+        const target = pendingKeyboardFocus.current
+        if (target !== sampleView) return
+        pendingKeyboardFocus.current = null
+        document.getElementById(`${id}-latex-${target}`)?.focus()
+    }, [id, sampleView])
     const engineNotes: Record<string, string> = {
         pdflatex: 'The classic compiler for everyday LaTeX documents.',
         xelatex: 'A compiler suited to Unicode text and system fonts.',
@@ -903,7 +924,10 @@ function LatexDemo() {
                             aria-controls={`${id}-latex-panel`}
                             aria-selected={sampleView === value}
                             tabIndex={sampleView === value ? 0 : -1}
-                            onClick={() => setSampleView(value)}
+                            onClick={() => {
+                                pendingKeyboardFocus.current = null
+                                setSampleView(value)
+                            }}
                             onKeyDown={event => {
                                 if (
                                     ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
@@ -917,8 +941,12 @@ function LatexDemo() {
                                               : value === 'source'
                                                 ? 'pdf'
                                                 : 'source'
+                                    if (next === sampleView) {
+                                        document.getElementById(`${id}-latex-${next}`)?.focus()
+                                        return
+                                    }
+                                    pendingKeyboardFocus.current = next
                                     setSampleView(next)
-                                    document.getElementById(`${id}-latex-${next}`)?.focus()
                                 }
                             }}
                         >
