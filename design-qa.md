@@ -1,78 +1,50 @@
 # Landing page design QA
 
-Reviewed: 2026-10-14. Scope: homepage marketing surface only. Branch: `codex/landing-document-house`, rebased onto main `d22998e0f45d55fd0a675e4cc622ab603c612d23` in the isolated worktree.
+Reviewed: 2026-10-14. Scope: homepage marketing surface only, in the isolated landing-redesign worktree. Base: main `7cb1c8b7c58a3b4227c2d7a3a344c6300397a82f`. Existing pricing-navigation and interaction updates on the PR branch were preserved.
 
-## Evidence and comparison method
+## Reference and actual evidence
 
-Selected target: the third displayed Document House reference, `exec-5ebff909-b113-416f-a1dd-3dfcc450d4dc.png` in the task's generated_images directory. The 1341 x 1173 paired image is split into light/dark halves and proportionally normalized to 1440px wide (2521/2517px tall). No vertical stretching is used.
+The selected third Document House image remains the body reference. Its paired 1341 x 1173 light/dark image was proportionally normalized to 1440px for section comparisons, without vertical stretching. Earlier section corrections and full-gallery overview were reviewed in source `036eed8e`; fresh integrated-source full-page and footer captures confirm those details remain intact.
 
-Final actual source: `acc6c07f0ed3f706e832560040047b23597f6da7`. [Capture run](https://github.com/sanskarpan/Latexy/actions/runs/38476370222), artifact `11856236842`, archive SHA256 `5864b030dfae07febe48ea78022ce7d7680c7b3c32398741a94a4d06e8b66cf2` verified on download. Captured frontend tree: `3f47e634e3aea80e41a7aafd4e0d9a41c2c87a18`.
+The user explicitly amended the design: adjacent mobile hero actions, consistent header utilities, Classic first/default, interactive visualizations, and a stronger footer inspired by [Footer.design](https://www.footer.design/). Browser inspection covered Trove, Aperios, Nothin and Decimals. The footer adapts their large brand-signature and restrained navigation patterns; external images/code were not copied into the product. The approved Imprint mark and Latexy wordmark are unchanged.
 
-The source and latest actual renders were opened together in full-page comparison boards and focused section boards. The comparison directory is `C:/Users/Sansk/.codex/visualizations/2026/10/06/01a111a6-7bd6-7a81-9f26-b61e551a5767/landing-qa/current-acc/`. Focused captures cover all ten regions below in both themes, after loading fonts/images and scrolling each region into view. Their layout JSON uses document coordinates. Default state: Modern gallery, guided Visual builder, expanded experience, neutral illustrative keyword status, Source compiler view, collapsed FAQ.
+Captured source: `2e77fe739cf99ea808acc2e94a0841055ba7a6a7`.
+Frontend tree: `d01ba777b9aa7efb92b677ffb0034528824dd9cb`.
+[CI capture run](https://github.com/sanskarpan/Latexy/actions/runs/38551530713), artifact `11887583747`.
+Verified archive SHA256: `989136f6e9be0bf1db7908fbfd08307d31887e69509659ce81b33fc1a15c1a15`.
 
-The committed raw captures are [desktop light](docs/design/landing/desktop-light.png), [desktop dark](docs/design/landing/desktop-dark.png), [mobile light](docs/design/landing/mobile-light.png) and [mobile dark](docs/design/landing/mobile-dark.png). Desktop is 1440 x 2553 pixels from a 1440 x 1000 CSS viewport at scale 1. Mobile is 1082 x 13170 pixels from the Pixel 7 profile, approximately 412 x 5015 CSS pixels. Mobile inspection boards normalize density to 412px. Exact hashes and provenance are in [capture metadata](docs/design/landing/capture.json).
+Actual post-commit captures are published in `docs/design/landing/`: desktop light/dark (1440 x 3420), mobile light/dark (1082 x 14792), and focused footer light/dark (1440 x 934). Exact file hashes and provenance are recorded in `capture.json`. These are browser renders, not generated mockups. Synthetic anonymous-session and feature fixtures isolate CI from personal data; screenshots do not imply production backend availability.
 
-## Findings, corrections and post-fix review
+## Section review
 
-The earlier broad sign-off was withdrawn after user feedback. Fresh renders were used to identify and fix remaining differences; build success was never substituted for visual acceptance.
+| Region | Actual review result |
+| --- | --- |
+| Header and hero | Approved logo, two-line hierarchy, coherent borderless utility controls; mobile actions share a row at 412px and 320px. |
+| Gallery | Classic is first and selected by default; the initial complete overview remains visible. Selection and keyboard interaction are covered. |
+| Guided builder | Existing visual/source/studio tabs, sample preview, date and semantic bullets retained; long content captured. |
+| ATS and keywords | Chart and keyword cards remain legible in both themes; metric selection exposes the sample score/explanation with a live region. Scores remain explicitly illustrative. |
+| Tailoring | Existing content and actions retained; accept, edit and keep-original interaction sequences covered by focused browser cases. |
+| Applications | Three stages retain readable cards; stage-menu interactions covered. |
+| General LaTeX | Source/PDF/compiler composition retained, including equation and action bounds at 768/1024/1101px. |
+| FAQ | Existing question hierarchy and collapsed/expanded disclosures retained. |
+| Closing action | Integrated editorial footer heading and guarded build action; paper imagery supports the call to action. |
+| Footer | Oversized approved brand signature, three compact link columns and legal row checked in both themes. At 320px, longer links wrap naturally without overlap; wordmark fits inside the container. |
 
-| Region | Corrected detail | Final visual evidence / result |
-| --- | --- | --- |
-| Hero and header | Two-line headline, chapter/emphasis proportions and baselines, copy position, navy/amber actions, approved Imprint logo | Full boards and `*-lp-hero-comparison.png`; both themes preserve the selected hierarchy and wrapping. |
-| Gallery | Exact supplied gallery crop, paper dimensions, pale steel/gold palette, three selectors and selection border | `*-lp-gallery-comparison.png`; Modern now aligns beneath the center paper. Offset applies above 700px; mobile stays centered. |
-| Guided builder | Serif heading scale, rail, toolbar tabs, neutral/slate selection, preview proportions, role/company/date and three semantic bullets | `*-lp-builder-section-comparison.png`; final date/list fix is visible in both themes. Editor, source and preview share three bullets. No resize handle remains. |
-| ATS and keywords | Separate equal cards, chart scale/labels/fill, status icons and counts, dark recommendation bulb, neutral initial filters | `*-lp-analysis-section-comparison.png`; content is legible, theme contrast and card split match the composition. |
-| Tailoring | Inset cells, connector dots, bullet treatment, compact actions | `*-lp-tailoring-section-comparison.png`; no invented achievement is added by the suggested rewrite. |
-| Applications | Heading and three columns, count placement, stage symbols, document icons, softened nested borders | `*-lp-applications-section-comparison.png`; titles and dates fit at desktop and wrap on smaller widths. |
-| General LaTeX | Source/PDF/Compiler widths, syntax colors, Gaussian equation, actual PDF tab behavior and compile route | `*-lp-latex-section-comparison.png`; current Source boundary is within a few pixels of target. An older claimed 38px offset was rejected against current evidence. |
-| FAQ | Four source questions, heading and question column, rule spacing, right-hand plus/minus | `*-lp-faq-comparison.png`; collapsed and expanded states render correctly. |
-| Closing action | Compact heading, explanatory copy and primary action | `*-lp-closing-comparison.png`; desktop composition retained; mobile stacks controls. |
-| Footer | Brand/tagline group, navigation, sign-in, final action and legal row | `*-lp-footer-comparison.png`; logo and links are visible in both themes. Copyright correctly uses 2026. |
+The full light/dark pages, focused footer captures, mobile top/bottom inspection boards and narrow-mobile footer were opened and inspected. No actionable P0/P1/P2 issue remains in these states. The taller footer is an intentional user-authorized departure from the original compact reference.
 
-No actionable P0/P1/P2 finding remains in the inspected final states. Independent focused review of the final gallery/builder captures also passed and found no new regression.
+## Verification
 
-## Required fidelity surfaces
+- All CI checks passed on the captured source: production build, frontend/backend lint, backend tests, cross-browser quality, real compile/preview, full-stack smoke, contracts and security checks. Vercel deployment also succeeded.
+- Representative visual evidence passed in desktop Chromium, Firefox and WebKit, and mobile Chromium/WebKit, in both themes.
+- Browser assertions cover mobile action placement, header borders, default layout, pricing flags, gallery keys, tabs, metric selection, tailoring/application interactions, overflow, long input and FAQ states.
+- Motion uses finite paper movement and brief section entrances. Browser checks verify motion starts when visible and stops under reduced motion. Content remains visible without animation.
+- Nine focused marketing contract tests passed locally after the footer revision, including pricing-navigation tests. No unrelated functional tests were patched.
+- The screenshot publication changes only documentation and image evidence; its frontend tree must equal the captured tree above.
 
-- Typography: matched bold sans hero, self-hosted Tinos serif emphasis and section headings, interface/body hierarchy. Font readiness is awaited. Small raster-source glyph/antialiasing differences remain acceptable.
-- Spacing/layout: all ten sections retain their order, relative widths and compact vertical rhythm. Final desktop height differs from normalized reference by 32-36px; functioning controls and readable sample content account for the small difference.
-- Colors/tokens: navy/paper light mode, charcoal/warm-white/amber dark mode, restrained dividers, neutral/slate builder selection and white document papers checked in actual renders. Existing high-contrast and reduced-motion preferences remain supported.
-- Image quality: the supplied gallery art is reused as lossless 1440 x 561 WebP crops, without replacing editable UI with a screenshot. Mobile uses an intentional centered gallery crop. No generic substitute imagery or emoji is used.
-- Copy/content: resume-led framing includes guided building, ATS/keywords, tailoring, applications and general LaTeX. Examples are labelled; the rewrite preserves stated experience. Guest/account limits and actual guarded destinations remain truthful.
+## Accepted minor differences
 
-## Responsive and interaction verification
+P3: browser font rasterization, tiny chart/icon differences from the raster reference, and natural text wrapping at narrow widths. The source reference supplies desktop states; mobile adapts the composition for readability. No additional fidelity loop is justified by these differences.
 
-CI uses isolated synthetic anonymous-session and feature-grant fixtures, not personal browser data or a claim of production backend availability. Chromium, Firefox and WebKit desktop plus mobile Chromium/WebKit all passed the representative visual case. Both themes and long name/role/bullet input were captured. Tablet widths 768, 1024 and 1101px exercise Source and PDF states, expanded FAQ and long input, with document overflow, equation bounds and Compile action bounds assertions. Latest mobile sections and tablet compiler/FAQ/footer renders were visually inspected.
+This remains a draft PR for user review and has not been merged. CodeRabbit skips draft review; its status is not a code-review approval.
 
-On the captured source, browser contracts covered the default gallery, direct builder/compiler tab clicks, analysis selection, long builder input, FAQ disclosure, navigation and access-denied states. They did not explicitly exercise gallery keyboard selection, tailoring accept/keep-original, or the application-stage menu. Focused browser cases for those interactions are now added to `frontend/e2e/quality/public-quality.spec.ts`; their execution requires exact-head CI.
-
-All required CI checks passed on the captured source, including production build, frontend/backend lint, backend tests, cross-browser quality, real compile/preview, full-stack smoke and security checks. Local TypeScript, formatting and 23 unchanged relevant contract tests passed. Frozen dependency installation and Next hydration integrity verification passed after rebasing. CodeRabbit skips draft reviews; that status is not a code review approval.
-
-## Acceptable differences and follow-up polish
-
-P3 only: browser glyph rasterization, reference microcopy artifacts, tiny chart-grid/icon-shape differences, and tablet closing-heading wrapping. The reference supplies desktop theme states only; mobile/tablet adaptations are checked for readable layout and working controls rather than an invented pixel-perfect mobile reference. These do not justify another fidelity loop.
-
-The publication commit changes only this report and screenshot documentation; its frontend tree must remain identical to the captured tree. This remains a draft PR for user review and has not been merged.
-
-## Implementation checklist
-
-- [x] Exact selected reference resolved and paired with current actual captures.
-- [x] All ten sections checked in light and dark mode, with focused evidence.
-- [x] Earlier actionable findings corrected and freshly recaptured.
-- [x] Mobile/tablet, long input, disclosures and key interactions verified.
-- [x] Actual post-commit page screenshots published in the PR with provenance.
-- [x] Main checkout left untouched; captured source CI passed.
-
-Historical visual result for `acc6c07f`: accepted in the states listed above.
-
-## User refinement in progress
-
-User approved the overall page and requested adjacent mobile hero actions, consistent header controls, Classic as the first/default layout, dynamic visualizations and a stronger animated footer. The branch implements these scoped amendments. The closing CTA is integrated into the new footer, with a transparent floating-paper asset and grouped links. Metric exploration and progressive section motion honor reduced motion.
-
-An independent reviewer inspected current-refinement head `036eed8e1f4ac61537a937f26783c2c0c945f0e2` in [CI run 38544202053](https://github.com/sanskarpan/Latexy/actions/runs/38544202053), artifact `11885260182` (SHA-256 `6c90b20f6e8364c988feab329d3ca37f352cfd4a0819676a1f061db3cffd7829`). The reviewed evidence includes Chromium desktop light/dark, a dark builder view in three engines, WebKit mobile light/dark and a 320px narrow capture. No additional visual blocker was found in those states. The committed screenshots in `docs/design/landing/` remain historical captures of `acc6c07f`, not captures of `036eed8e`.
-
-The subsequent billing-navigation correction hides both landing pricing links when the existing billing flag is false, and new focused browser tests cover that gate and the interaction sequences named above. These additions have not yet passed exact-head CI; the reviewed `036eed8e` visuals are not a substitute for that run.
-## Footer.design refinement
-
-The user explicitly supplied https://www.footer.design/ and requested a further footer redesign. Current-run browser inspection covered Trove, Aperios, Nothin and Decimals. The chosen adaptation uses an oversized approved Latexy logo as the closing signature, a compact editorial CTA, smaller supporting paper imagery, and restrained link columns. Brand geometry and routes are preserved; the external sites supply inspiration only, not copied assets or code. Source reference images observed in the browser are saved in the task evidence directory under footer-references. Rebased base is main 7cb1c8b7; fresh rendered acceptance is pending for this refinement.
-
-final result: blocked — fresh integrated footer captures pending.
+final result: passed
