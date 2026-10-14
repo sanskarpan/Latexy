@@ -179,19 +179,21 @@ selectors.
 
 Both diagnostics were repeated with native Python 3.12 and pinned Modal 1.5.4.
 Only the four operator functions were created; the serving web function and its
-startup/admin bootstrap did not run. The retained billing decision now binds
-this source and image `im-VI3aHDZLsEgjYVsdz5K9v2`, again reporting safe disabled
-rollout and unverified live acceptance. The renderer configuration diagnostic
+startup/admin bootstrap did not run. That initial operator-isolated billing
+decision bound source `8c1ecd99` and image `im-VI3aHDZLsEgjYVsdz5K9v2`, again
+reporting safe disabled rollout and unverified live acceptance. The final
+integrated-source result is retained below. The renderer configuration diagnostic
 returned `configuration_ready=true`, all configuration checks true, and
 `certification_verified=false`. It used the independently checked bare image
 only for this configuration invocation; no production certification flags were
 set. All 142 local deployment/wrapper/renderer configuration tests passed again.
 Independent source and Modal CLI review found no operator-selector regression.
 
-The previous integrated head `021dbdf2337556d04c24ba4227cfffab207dc2fc` passed
-all PR checks. This last operator isolation change requires CI on its own final
-head before merge. Production migrations, serving deployment and paid
-fulfillment acceptance remain pending.
+The final integrated head `62a92cc7ade16f8cd62b0948fd6002f482384571` passed
+all PR checks, including Cross-Browser Quality and Isolated Real Compile and
+Preview. PR #1888 merged as `9b9abb6ac045812443c71bc673982774fa420b20`.
+Production migrations, serving deployment and paid fulfillment acceptance
+remain pending.
 
 ## Actual bridge acceptance and fresh application validation
 
@@ -228,5 +230,44 @@ part of the database name. A private reproduction confirmed both the changed
 database path and lost TLS query. Structural URL conversion now preserves
 credentials and query boundaries, translates SSL options without changing
 their requested mode, and rejects conflicting options. Production was not
-changed to mask the defect. Full application/browser acceptance remains pending
-a healthy deployment with this repair.
+changed to mask the defect. The later acceptance below uses this repair.
+
+## Final reviewed-source evidence and remaining acceptance
+
+The read-only production billing diagnostic was repeated on final source
+`62a92cc7ade16f8cd62b0948fd6002f482384571`, candidate image
+`im-pPDLwuZunoMm6lHZnSHMdb`, in Modal `main`. Its exact sanitized result is
+[rollout-preflight.json](rollout-preflight.json): `safe_to_rollout=true`,
+`sales_state=safe_disabled`, no decision reasons and
+`live_sales_acceptance=unverified`. Only the four operator functions were
+created. This diagnostic did not migrate or deploy production.
+
+The isolated application then returned healthy/ready checks and completed one
+normal free-plan owner compile from a saved minimal guided-builder resume.
+Its stored default was LuaLaTeX; submission omitted a compiler. Compilation
+quota moved from zero to one. Durable finalization, Redis and private object
+storage agreed with the same source, PDF, SyncTeX, geometry and pinned renderer.
+All ten anonymous/second-user access checks were denied. The
+[owner execution report](../resume-engine/owner-acceptance-2026-10-14.json) and
+[scope notes](../resume-engine/owner-acceptance-2026-10-14.md) retain this subset
+separately from CI results. The merge commit has the same backend tree,
+`25ea300185880cbebce5fd1c9c076dd5a78f7393`.
+
+The temporary frontend initially nested its public assets one directory too
+deep. Repairing only that private packaging reused the existing immutable
+frontend build. The Studio shell and an authenticated owner workspace shell
+subsequently rendered. Browser workspace requests still aborted, and directly
+opening the staging API readiness URL in the in-app browser returned
+`net::ERR_BLOCKED_BY_CLIENT`. The reason is undetermined; independent HTTPS
+health, readiness and job-health checks were all HTTP 200 and healthy/ready.
+Browser editing and painted/downloaded PDFs therefore remain unverified.
+
+All owned acceptance Apps were confirmed stopped with zero running tasks at
+14:00:20 UTC. Both temporary Redis/storage sessions ended. The recovery snapshot
+and validation branch remain available. This work did not change the second
+Redis instance owned by the separate failover effort.
+
+Keep #1865 and #1866 open. Broad template/language and browser acceptance,
+production readiness and serving rollout verification remain incomplete. Live
+sales and the webhook stay disabled; no live payment, cancellation or refund
+was executed. Student checkout remains pending as requested by the owner.
