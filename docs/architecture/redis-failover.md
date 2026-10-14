@@ -125,6 +125,32 @@ reports the existing authoritative dependencies, even when cache backups work.
 
 ## Full automatic failover: concrete next implementation
 
+### Disabled authority-freeze foundation (migration 0074)
+
+`redis_authority_control` adds a Postgres singleton with an integer generation,
+the current primary identity, and a frozen phase. It is seeded at generation 0
+with the primary and **is not read by application admission or worker code**.
+`freeze_primary_authority` can atomically reserve the next generation with a
+caller-owned UUID; a second or stale coordinator cannot reserve another. A
+caller that loses the transaction response must read back the UUID before
+deciding whether its freeze committed. Database failure or a missing row has no
+synthetic healthy state. This first migration structurally forbids a backup as
+active and refuses to erase a frozen generation on downgrade.
+
+This is a coordination primitive, not a recovery switch. The current exhausted
+primary cannot supply quota counters, receipts, consume-once tokens or job
+leases through normal Redis reads. No code path may treat an empty backup as a
+reconstructed authority. A later migration must add promotion/failback states
+only after the durable quota ledger, one-time consumption, job outbox, worker
+fencing and state reconciliation below are implemented and validated. Failback
+must allocate a new forward generation, never resurrect an old one.
+
+The current tests exercise concurrent compare-and-swap coordinators, exhausted
+primary freeze, stale generation, lost freeze response readback, database
+failure and downgrade protection against SQLite. Real PostgreSQL with mixed
+API/Modal workers, backup transport and partition injection is still required
+before any activation.
+
 The user-level goal of automatic whole-application continuity is **not accepted
 by this patch**. Choose and verify one authority model before implementing it:
 
