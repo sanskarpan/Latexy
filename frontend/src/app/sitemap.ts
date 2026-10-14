@@ -9,7 +9,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '/pricing',
         '/resources',
         '/faq',
-        '/developer',
         '/updates',
     ].map(path => ({
         url: `${siteUrl()}${path === '/' ? '' : path}`,

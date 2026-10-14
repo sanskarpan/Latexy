@@ -13,7 +13,7 @@ export function GET() {
 - [Pricing](${origin}/pricing): Plan overview; billing displays current prices and limits.
 - [Guides](${origin}/resources): Practical résumé writing and job tailoring guidance.
 - [FAQ](${origin}/faq): Product questions and score limitations.
-- [Developer tools](${origin}/developer): Advanced integrations and source-oriented workflows.
+- [Developer tools](${origin}/developer): Account-only API key management and usage documentation. Sign in to use this portal; it is not public developer documentation.
 
 ## Interpretation
 Résumé and keyword scores are guidance based on document checks, not an employer's ATS score or a hiring prediction. Visual editing supports recognised text and preserves custom layout elements; PDF preview is the final layout reference. AI suggestions require review for factual accuracy.

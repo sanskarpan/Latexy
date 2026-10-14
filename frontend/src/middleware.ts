@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { negotiateUiLocale } from '@/lib/i18n'
+import { APP_ROBOTS_DIRECTIVE, isNonIndexableAppPath } from '@/lib/search-indexing'
 
 const LATEXY_DOMAINS = new Set([
   'latexy.xyz',
@@ -11,6 +12,13 @@ const LATEXY_DOMAINS = new Set([
   '127.0.0.1',
 ])
 const CUSTOM_DOMAIN_TIMEOUT_MS = 2_000
+
+function withAppIndexingPolicy(response: NextResponse, pathname: string): NextResponse {
+  if (isNonIndexableAppPath(pathname)) {
+    response.headers.set('X-Robots-Tag', APP_ROBOTS_DIRECTIVE)
+  }
+  return response
+}
 
 interface TenantHostResponse {
   tenant: { slug: string } | null
@@ -68,7 +76,7 @@ export async function middleware(request: NextRequest) {
   // primary marketing domain → skip (these are NOT custom portfolio domains,
   // so we must not do a per-request resolve-domain lookup or rewrite them).
   if (shouldBypassPortfolioResolution(hostname, request.nextUrl.pathname)) {
-    return NextResponse.next({ request: { headers: requestHeaders } })
+    return withAppIndexingPolicy(NextResponse.next({ request: { headers: requestHeaders } }), request.nextUrl.pathname)
   }
 
   // Attempt to resolve domain → username via backend API.
@@ -96,7 +104,7 @@ export async function middleware(request: NextRequest) {
           secure: request.nextUrl.protocol === 'https:',
           path: '/',
         })
-        return next
+        return withAppIndexingPolicy(next, request.nextUrl.pathname)
       }
     }
 
@@ -109,6 +117,8 @@ export async function middleware(request: NextRequest) {
       if (username) {
         const url = request.nextUrl.clone()
         url.pathname = `/u/${username}`
+        // The resolved destination is a deliberately public portfolio, even if
+        // its custom-domain incoming path resembles an application route.
         return NextResponse.rewrite(url)
       }
     }
@@ -116,7 +126,7 @@ export async function middleware(request: NextRequest) {
     // DNS resolution or network error — pass through
   }
 
-  return NextResponse.next({ request: { headers: requestHeaders } })
+  return withAppIndexingPolicy(NextResponse.next({ request: { headers: requestHeaders } }), request.nextUrl.pathname)
 }
 
 export const config = {

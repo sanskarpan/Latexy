@@ -6,6 +6,8 @@ import { Search, ShieldCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/lib/auth-client'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useAccountContentScope } from '@/contexts/AccountContentScope'
+import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 
 import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
@@ -21,11 +23,15 @@ const EUROPECV_LOCALES = [
   ['sk', 'Slovak'], ['sv', 'Swedish'],
 ] as const
 
+// Match the server's category-dependent B05 admission exactly.
+const SPECIALTY_CATEGORIES = new Set(['academic', 'regional', 'presentation'])
+
 type TemplatePreviewIdentity = { templateId: string | null; generation: number }
 type TemplateUseRequest = {
   token: number
   ownerId: string | null
   ownerGeneration: number
+  isOwnerCurrent: () => boolean
   preview?: { templateId: string; generation: number }
 }
 
@@ -38,17 +44,30 @@ export default function TemplatesPage() {
   const { can } = useEntitlements()
   const canRef = useRef(can)
   canRef.current = can
-  const canCreateNewDocument = can('b01') && can('c01')
-  const { data: session, isPending: sessionPending, error: sessionError } = useSession()
+  const canUseSpecialtyTemplates = can('b05')
+  const { data: session, isPending: sessionPending, isRefetching: sessionRefetching = false, error: sessionError } = useSession()
+  const accountScope = useAccountContentScope()
+  const unauthorized = isConfirmedSessionUnauthorized(sessionError)
   const lastKnownSessionRef = useRef<typeof session>(null)
-  if (session) {
+  if (unauthorized) {
+    lastKnownSessionRef.current = null
+  } else if (session) {
     lastKnownSessionRef.current = session
-  } else if (!sessionPending && !sessionError) {
+  } else if (!sessionPending && !sessionRefetching && !sessionError) {
     lastKnownSessionRef.current = null
   }
-  const effectiveSession = session ?? ((sessionPending || sessionError) ? lastKnownSessionRef.current : null)
+  const effectiveSession = unauthorized ? null : session ?? ((sessionPending || sessionRefetching || sessionError) ? lastKnownSessionRef.current : null)
+
+  const sessionToken = effectiveSession?.session?.token ?? ''
 
   const [templates, setTemplates] = useState<TemplateResponse[]>([])
+  const templatesRef = useRef(templates)
+  templatesRef.current = templates
+  const canAccessTemplate = useCallback((id: string) => {
+    const template = templatesRef.current.find(candidate => candidate.id === id)
+    if (!template || !canRef.current('b04')) return false
+    return !SPECIALTY_CATEGORIES.has(template.category) || canRef.current('b05')
+  }, [])
   const [categories, setCategories] = useState<TemplateCategoryCount[]>([])
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -59,13 +78,29 @@ export default function TemplatesPage() {
   const [usingTemplateId, setUsingTemplateId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const templateOwnerId = effectiveSession?.user?.id ?? null
-  const templateIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
-  if (templateIdentityRef.current.ownerId !== templateOwnerId) {
+  const recoveryIdentity = accountScope?.recoveryIdentity ?? null
+  const templateIdentityRef = useRef<{ ownerId: string | null; generation: number; recoveryIdentity: object | null }>({ ownerId: null, generation: 0, recoveryIdentity })
+  if (templateIdentityRef.current.ownerId !== templateOwnerId || templateIdentityRef.current.recoveryIdentity !== recoveryIdentity) {
     templateIdentityRef.current = {
-      ownerId: templateOwnerId,
+      ownerId: templateOwnerId, recoveryIdentity,
       generation: templateIdentityRef.current.generation + 1,
     }
   }
+  const templateIdentity = templateIdentityRef.current
+  // Recovery survives same-owner refreshes; each admission lease is one-use in time
+  // and never revives after uncertainty, even when this child misses a render.
+  const admission = useRef({ session, sessionPending, sessionRefetching, sessionError, accountScope, identity: {} })
+  if (admission.current.session !== session || admission.current.sessionPending !== sessionPending
+    || admission.current.sessionRefetching !== sessionRefetching || admission.current.sessionError !== sessionError
+    || admission.current.accountScope !== accountScope) {
+    admission.current = { session, sessionPending, sessionRefetching, sessionError, accountScope, identity: {} }
+  }
+  const admissionIdentity = admission.current.identity
+  const canAdmitTemplateUse = useCallback(() => templateIdentityRef.current === templateIdentity
+    && admission.current.identity === admissionIdentity && !sessionPending && !sessionRefetching && !sessionError
+    && (!templateOwnerId || (Boolean(sessionToken) && Boolean(accountScope?.canAdmit()))) && (!accountScope || accountScope.isAdmissionCurrent()),
+  [templateIdentity, admissionIdentity, sessionPending, sessionRefetching, sessionError, accountScope, templateOwnerId, sessionToken])
+  const canCreateNewDocument = can('b01') && can('c01') && canAdmitTemplateUse()
   const currentTemplateIdentityGeneration = templateIdentityRef.current.generation
   const previewIdentityRef = useRef<TemplatePreviewIdentity>({ templateId: null, generation: 0 })
   const templateUseTokenRef = useRef(0)
@@ -73,7 +108,7 @@ export default function TemplatesPage() {
 
   const isCurrentTemplateUseOwner = useCallback((request: TemplateUseRequest) => {
     const active = activeTemplateUseRef.current
-    return active?.token === request.token &&
+    return active?.token === request.token && request.isOwnerCurrent() &&
       templateIdentityRef.current.ownerId === request.ownerId &&
       templateIdentityRef.current.generation === request.ownerGeneration
   }, [])
@@ -104,33 +139,56 @@ export default function TemplatesPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Fetch templates on mount
+  // Server catalogs are capability-filtered. A catalog read while B05 was off
+  // cannot satisfy a later wider grant; a complete cached catalog can still be
+  // locally masked and restored without discarding search/preview preferences.
+  const canBrowseTemplates = can('b04')
+  const catalogPermissionRef = useRef({ identity: templateIdentity, browse: canBrowseTemplates, specialty: canUseSpecialtyTemplates })
+  if (catalogPermissionRef.current.identity !== templateIdentity || catalogPermissionRef.current.browse !== canBrowseTemplates
+    || catalogPermissionRef.current.specialty !== canUseSpecialtyTemplates) {
+    catalogPermissionRef.current = { identity: templateIdentity, browse: canBrowseTemplates, specialty: canUseSpecialtyTemplates }
+  }
+  const catalogPermission = catalogPermissionRef.current
+  const catalogCoverageRef = useRef<{ identity: typeof templateIdentity; specialty: boolean; attempt: number } | null>(null)
   useEffect(() => {
+    if (!catalogPermission.browse) { setLoading(false); return }
+    const coverage = catalogCoverageRef.current
+    if (coverage?.identity === catalogPermission.identity && coverage.attempt === loadAttempt
+      && (coverage.specialty || !catalogPermission.specialty)) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
-    setLoading(true)
+    setLoading(templatesRef.current.length === 0)
     setLoadError(null)
+    const isCurrent = () => !cancelled && catalogPermissionRef.current === catalogPermission
     Promise.all([apiClient.getTemplates(), apiClient.getTemplateCategories()])
       .then(([tmpl, cats]) => {
-        if (cancelled) return
+        if (!isCurrent()) return
         setTemplates(tmpl)
         setCategories(cats)
+        catalogCoverageRef.current = { identity: catalogPermission.identity, specialty: catalogPermission.specialty, attempt: loadAttempt }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : 'Failed to load templates')
-        }
+        if (isCurrent()) setLoadError(error instanceof Error ? error.message : 'Failed to load templates')
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      .finally(() => { if (isCurrent()) setLoading(false) })
     return () => { cancelled = true }
-  }, [loadAttempt])
+  }, [loadAttempt, catalogPermission])
+
+  // Keep stored filters/selection intact while revocation masks specialty data.
+  const availableTemplates = useMemo(() => templates.filter(template =>
+    canUseSpecialtyTemplates || !SPECIALTY_CATEGORIES.has(template.category)),
+  [templates, canUseSpecialtyTemplates])
+  const effectiveActiveCategory = !canUseSpecialtyTemplates && SPECIALTY_CATEGORIES.has(activeCategory)
+    ? 'all' : activeCategory
+  const visiblePreviewTemplateId = previewTemplateId && canAccessTemplate(previewTemplateId) ? previewTemplateId : null
 
   // Filtered templates (client-side)
   const filteredTemplates = useMemo(() => {
-    let list = templates
-    if (activeCategory !== 'all') {
-      list = list.filter(t => t.category === activeCategory)
+    let list = availableTemplates
+    if (effectiveActiveCategory !== 'all') {
+      list = list.filter(t => t.category === effectiveActiveCategory)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -142,24 +200,25 @@ export default function TemplatesPage() {
       )
     }
     return list
-  }, [templates, activeCategory, search])
+  }, [availableTemplates, effectiveActiveCategory, search])
 
   // Sorted category tabs
   const sortedCategories = useMemo(() =>
-    [...categories].sort((a, b) => {
+    categories.filter(category => canUseSpecialtyTemplates || !SPECIALTY_CATEGORIES.has(category.category)).sort((a, b) => {
       const ia = TEMPLATE_CATEGORY_ORDER.indexOf(a.category)
       const ib = TEMPLATE_CATEGORY_ORDER.indexOf(b.category)
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
     }),
-  [categories])
+  [categories, canUseSpecialtyTemplates])
 
   const handlePreview = useCallback((id: string) => {
+    if (!canAccessTemplate(id)) return
     previewIdentityRef.current = {
       templateId: id,
       generation: previewIdentityRef.current.generation + 1,
     }
     setPreviewTemplateId(id)
-  }, [])
+  }, [canAccessTemplate])
 
   const handleClosePreview = useCallback(() => {
     previewIdentityRef.current = {
@@ -170,9 +229,8 @@ export default function TemplatesPage() {
   }, [])
 
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
-    if (!canRef.current('b01') || !canRef.current('c01')) return false
-    if (sessionPending) return false
-    if (usingTemplateId) {
+    if (!canAdmitTemplateUse() || !canAccessTemplate(id) || !canRef.current('b01') || !canRef.current('c01')) return false
+    if (activeTemplateUseRef.current) {
       if (usingTemplateId !== id) toast('Another template is already being created')
       return false
     }
@@ -184,14 +242,15 @@ export default function TemplatesPage() {
     }
     const request: TemplateUseRequest = {
       token: ++templateUseTokenRef.current,
-      ownerId: templateIdentityRef.current.ownerId,
-      ownerGeneration: templateIdentityRef.current.generation,
+      ownerId: templateIdentity.ownerId,
+      ownerGeneration: templateIdentity.generation,
+      isOwnerCurrent: () => Boolean(accountScope?.isCurrent()),
       preview,
     }
     activeTemplateUseRef.current = request
     setUsingTemplateId(id)
     try {
-      const selected = templates.find(template => template.id === id)
+      const selected = templatesRef.current.find(template => template.id === id)
       let locale: string | undefined
       if (selected?.name === 'Europecv') {
         const choices = EUROPECV_LOCALES.map(([code, label]) => `${code} (${label})`).join(', ')
@@ -203,8 +262,13 @@ export default function TemplatesPage() {
         }
         locale = requested
       }
-      const result = await apiClient.useTemplate(id, undefined, locale)
-      if (!canRef.current('b01') || !canRef.current('c01') || !isCurrentTemplateUseOwner(request) ||
+      const result = await apiClient.useTemplate(id, undefined, locale, {
+        authToken: sessionToken,
+        isCurrent: () => canAdmitTemplateUse() && canAccessTemplate(id) && canRef.current('b01') && canRef.current('c01')
+          && (!request.preview || (previewIdentityRef.current.templateId === request.preview.templateId
+            && previewIdentityRef.current.generation === request.preview.generation)),
+      })
+      if (!isCurrentTemplateUseOwner(request) ||
         (request.preview && (previewIdentityRef.current.templateId !== request.preview.templateId ||
           previewIdentityRef.current.generation !== request.preview.generation))) {
         return false
@@ -225,7 +289,7 @@ export default function TemplatesPage() {
         setUsingTemplateId(null)
       }
     }
-  }, [effectiveSession, sessionPending, router, templates, usingTemplateId, isCurrentTemplateUseOwner])
+  }, [effectiveSession, router, usingTemplateId, isCurrentTemplateUseOwner, canAccessTemplate, canAdmitTemplateUse, templateIdentity, accountScope, sessionToken])
 
   // The modal awaits this and shows its own "Creating…" state, then closes
   // itself via onClose (success navigates away, unmounting it).
@@ -238,13 +302,13 @@ export default function TemplatesPage() {
   // Resume the "Use Template" flow after returning from login (?use=<id>).
   const [autoUseHandled, setAutoUseHandled] = useState(false)
   useEffect(() => {
-    if (autoUseHandled || loading || sessionPending) return
+    if (autoUseHandled || loading || !canCreateNewDocument || !canAdmitTemplateUse()) return
     const useId = new URLSearchParams(window.location.search).get('use')
-    if (!useId) return
+    if (!useId || !canAccessTemplate(useId)) return
     setAutoUseHandled(true)
     router.replace('/templates')
     if (effectiveSession) handleUseTemplate(useId)
-  }, [autoUseHandled, loading, effectiveSession, sessionPending, router, handleUseTemplate])
+  }, [autoUseHandled, loading, effectiveSession, router, handleUseTemplate, canCreateNewDocument, canAdmitTemplateUse, canAccessTemplate])
 
   const tabClass = (isActive: boolean) =>
     `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
@@ -313,16 +377,16 @@ export default function TemplatesPage() {
             <button
               type="button"
               onClick={() => setActiveCategory('all')}
-              className={tabClass(activeCategory === 'all')}
+              className={tabClass(effectiveActiveCategory === 'all')}
             >
-              All ({templates.length})
+              All ({availableTemplates.length})
             </button>
             {sortedCategories.map(cat => (
               <button
                 key={cat.category}
                 type="button"
                 onClick={() => setActiveCategory(cat.category)}
-                className={tabClass(activeCategory === cat.category)}
+                className={tabClass(effectiveActiveCategory === cat.category)}
               >
                 {cat.label} ({cat.count})
               </button>
@@ -387,7 +451,7 @@ export default function TemplatesPage() {
       </div>
 
       <TemplatePreviewModal
-        templateId={previewTemplateId}
+        templateId={visiblePreviewTemplateId}
         onUse={handleUseFromPreview}
         onClose={handleClosePreview}
         allowUse={canCreateNewDocument}

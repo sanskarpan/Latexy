@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { siteUrl } from '@/lib/site-url'
+import { NON_INDEXABLE_APP_ROOTS } from '@/lib/search-indexing'
 
 export default function robots(): MetadataRoute.Robots {
     return {
@@ -8,16 +9,8 @@ export default function robots(): MetadataRoute.Robots {
             allow: '/',
             disallow: [
                 '/api/',
-            '/workspace/',
-            '/r/',
-                '/dashboard',
-                '/admin/',
-                '/billing',
-                '/settings',
-                '/login',
-                '/signup',
-                '/reset-password',
-                '/verify-email',
+                '/r/',
+                ...NON_INDEXABLE_APP_ROOTS,
             ],
         },
         sitemap: `${siteUrl()}/sitemap.xml`,

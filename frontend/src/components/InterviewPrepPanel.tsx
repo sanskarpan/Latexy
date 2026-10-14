@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react'
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Trash2, BrainCircuit, BookOpen, HelpCircle, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type InterviewPrepResponse, type InterviewQuestion } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import InterviewSimulation from '@/components/InterviewSimulation'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useAccountContentScope, type AccountContentScope } from '@/contexts/AccountContentScope'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -96,110 +98,237 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
 
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 
+export type InterviewPrepScope = {
+  ownerId: string | null
+  authToken: string | null
+  resumeId: string
+  generation: number
+  ready: boolean
+  authReady: boolean
+  recoveryAvailable: boolean
+  recoveryIdentity: object | null
+}
+
 interface InterviewPrepPanelProps {
   resumeId: string
   defaultJobDescription?: string
+  ownerScopeRef: MutableRefObject<InterviewPrepScope>
+  sourceReady: () => boolean
 }
 
-export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '' }: InterviewPrepPanelProps) {
+export default function InterviewPrepPanel(props: InterviewPrepPanelProps) {
+  const accountScope = useAccountContentScope()
+  const scope = props.ownerScopeRef.current
+  if (!accountScope?.isCurrent() || scope.recoveryIdentity !== accountScope.recoveryIdentity
+    || !scope.ownerId || scope.resumeId !== props.resumeId) return null
+  // The parent renews the scope during render, before old effect cleanup.
+  // Returning to the same account/document gets a fresh private subtree.
+  return <InterviewPrepContent key={`${scope.ownerId}:${scope.resumeId}:${scope.generation}`}
+    {...props} ownerScope={scope} accountScope={accountScope} />
+}
+
+function InterviewPrepContent({ resumeId, defaultJobDescription = '', ownerScopeRef, ownerScope, sourceReady, accountScope }: InterviewPrepPanelProps & { ownerScope: InterviewPrepScope; accountScope: AccountContentScope }) {
+  const mountedRef = useRef(true)
+  const authToken = ownerScope.authToken
+  // Recovery outlives same-owner uncertainty. Admission is pinned to the exact
+  // outer account/source leases, including snapshots this child never rendered.
+  const isCurrentOwner = useCallback(() => mountedRef.current && accountScope.isCurrent()
+    && accountScope.recoveryIdentity === ownerScope.recoveryIdentity && ownerScopeRef.current === ownerScope,
+  [accountScope, ownerScope, ownerScopeRef])
+  const canActForOwner = useCallback(() => isCurrentOwner() && accountScope.canAdmit()
+    && Boolean(authToken) && ownerScope.authToken === authToken && ownerScope.ready && sourceReady(),
+  [accountScope, authToken, isCurrentOwner, ownerScope, sourceReady])
+  const canRecoverForOwner = useCallback(() => isCurrentOwner() && accountScope.canAdmit()
+    && Boolean(authToken) && ownerScope.authToken === authToken && ownerScope.authReady,
+  [accountScope, authToken, isCurrentOwner, ownerScope])
+  const { can, loading: entitlementsLoading } = useEntitlements()
+  const canRef = useRef(can)
+  canRef.current = can
+  const generatingRef = useRef(false)
+  const deletingRef = useRef(new Set<string>())
   const [sessions, setSessions] = useState<InterviewPrepResponse[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  // A second admission must not displace the only watched generation.
+  const activeJobIdRef = useRef<string | null>(null)
+  const canGenerate = can('e02') && canActForOwner() && activeJobId === null
   const [jobDescription, setJobDescription] = useState(defaultJobDescription)
   const [companyName, setCompanyName] = useState('')
   const [roleTitleInput, setRoleTitleInput] = useState('')
   const [activeCategory, setActiveCategory] = useState<QuestionCategory>('behavioral')
   const loadGenerationRef = useRef(0)
+  const readGenerationRef = useRef<number | null>(null)
+  const completionRefreshPendingRef = useRef(false)
+  const deletedPrepIdsRef = useRef(new Set<string>())
+  const generationPlaceholdersRef = useRef(new Map<string, InterviewPrepResponse>())
+  // Mutations can finish in the same React batch. Keep the owned collection and
+  // selection authoritative synchronously so each completion sees the last one.
+  const sessionsRef = useRef(sessions)
+  const selectedSessionIdRef = useRef(selectedSessionId)
+  const selectSession = (id: string | null) => {
+    if (!isCurrentOwner()) return
+    selectedSessionIdRef.current = id
+    setSelectedSessionId(id)
+  }
 
   const { state: jobStream } = useJobStream(activeJobId)
 
-  // Load existing sessions on mount
-  useEffect(() => {
-    void loadSessions()
-    return () => {
-      loadGenerationRef.current += 1
-    }
-  }, [resumeId]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const loadSessions = useCallback(async () => {
+    if (!canRecoverForOwner()) return
     const generation = ++loadGenerationRef.current
+    readGenerationRef.current = generation
     setIsLoading(true)
     setLoadError(null)
     try {
-      const data = await apiClient.listInterviewPrep(resumeId)
-      if (generation !== loadGenerationRef.current) return
-      setSessions(data)
-      setSelectedSessionId((current) => data.some(session => session.id === current) ? current : data[0]?.id ?? null)
+      const data = await apiClient.listInterviewPrep(resumeId, {
+        authToken: authToken!,
+        isCurrent: () => canRecoverForOwner() && generation === loadGenerationRef.current,
+      })
+      if (!isCurrentOwner() || generation !== loadGenerationRef.current) return
+      // Even a replacement recovery read must not reverse admitted mutations.
+      for (const session of data) generationPlaceholdersRef.current.delete(session.id)
+      const recovered = [
+        ...Array.from(generationPlaceholdersRef.current.values()).reverse(),
+        ...data.filter(session => !deletedPrepIdsRef.current.has(session.id)),
+      ]
+      completionRefreshPendingRef.current = false
+      sessionsRef.current = recovered
+      setSessions(recovered)
+      const selected = recovered.some(session => session.id === selectedSessionIdRef.current)
+        ? selectedSessionIdRef.current : recovered[0]?.id ?? null
+      selectedSessionIdRef.current = selected
+      setSelectedSessionId(selected)
     } catch (error) {
-      if (generation === loadGenerationRef.current) {
+      if (isCurrentOwner() && generation === loadGenerationRef.current) {
+        // A request still waiting for auth may be rejected before dispatch.
+        // Keep admitted completion recovery pending for the next valid lease.
+        if (!canRecoverForOwner()) {
+          sessionsLoadedRef.current = false
+          return
+        }
+        completionRefreshPendingRef.current = false
         setLoadError(error instanceof Error ? error.message : 'Failed to load interview-prep sessions')
       }
     } finally {
-      if (generation === loadGenerationRef.current) setIsLoading(false)
+      if (readGenerationRef.current === generation) readGenerationRef.current = null
+      if (isCurrentOwner() && generation === loadGenerationRef.current) setIsLoading(false)
     }
-  }, [resumeId])
+  }, [authToken, resumeId, canRecoverForOwner, isCurrentOwner])
+
+  const sessionsLoadedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      loadGenerationRef.current += 1
+      readGenerationRef.current = null
+      sessionsLoadedRef.current = false
+    }
+  }, [])
+  useEffect(() => {
+    if (!canRecoverForOwner() || sessionsLoadedRef.current) return
+    sessionsLoadedRef.current = true
+    void loadSessions()
+  }, [ownerScope.authReady, canRecoverForOwner, loadSessions, isLoading])
 
   // When generation job completes, reload sessions to get saved questions
   useEffect(() => {
+    if (!canRecoverForOwner()) return
     if (jobStream.status === 'completed' && activeJobId) {
+      completionRefreshPendingRef.current = true
+      activeJobIdRef.current = null
       setActiveJobId(null)
       loadSessions()
-    } else if (jobStream.status === 'failed' && activeJobId) {
+    } else if ((jobStream.status === 'failed' || jobStream.status === 'cancelled') && activeJobId) {
+      activeJobIdRef.current = null
       setActiveJobId(null)
-      toast.error('Interview question generation failed')
+      if (jobStream.status === 'failed') toast.error('Interview question generation failed')
+    } else if (completionRefreshPendingRef.current && readGenerationRef.current === null) {
+      void loadSessions()
     }
-  }, [jobStream.status, activeJobId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobStream.status, activeJobId, canRecoverForOwner, loadSessions, ownerScope.authReady, isLoading])
 
   const handleGenerate = async () => {
-    if (isGenerating) return
+    if (!canActForOwner() || !canRef.current('e02') || generatingRef.current || activeJobIdRef.current !== null) return
+    generatingRef.current = true
     setIsGenerating(true)
+    const request = {
+      resume_id: resumeId,
+      job_description: jobDescription.trim() || undefined,
+      company_name: companyName.trim() || undefined,
+      role_title: roleTitleInput.trim() || undefined,
+    }
     try {
-      const resp = await apiClient.generateInterviewPrep({
-        resume_id: resumeId,
-        job_description: jobDescription.trim() || undefined,
-        company_name: companyName.trim() || undefined,
-        role_title: roleTitleInput.trim() || undefined,
+      const resp = await apiClient.generateInterviewPrep(request, {
+        authToken: authToken!,
+        isCurrent: () => canActForOwner() && canRef.current('e02'),
       })
+      if (!isCurrentOwner()) return
+      // A list admitted before this mutation cannot erase its new placeholder.
+      loadGenerationRef.current += 1
+      readGenerationRef.current = null
+      setIsLoading(false)
+      activeJobIdRef.current = resp.job_id
       setActiveJobId(resp.job_id)
-      setSelectedSessionId(resp.prep_id)
-      // Add a placeholder session so progress is visible
-      setSessions(prev => [{
+      selectSession(resp.prep_id)
+      // Add a placeholder session so progress is visible.
+      const placeholder: InterviewPrepResponse = {
         id: resp.prep_id,
         user_id: null,
         resume_id: resumeId,
-        job_description: jobDescription.trim() || null,
-        company_name: companyName.trim() || null,
-        role_title: roleTitleInput.trim() || null,
+        job_description: request.job_description ?? null,
+        company_name: request.company_name ?? null,
+        role_title: request.role_title ?? null,
         questions: [],
         generation_job_id: resp.job_id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }, ...prev])
+      }
+      generationPlaceholdersRef.current.set(placeholder.id, placeholder)
+      const nextSessions = [placeholder, ...sessionsRef.current]
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
+      if (completionRefreshPendingRef.current) void loadSessions()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to start generation')
+      if (isCurrentOwner()) toast.error(e instanceof Error ? e.message : 'Failed to start generation')
     } finally {
-      setIsGenerating(false)
+      if (isCurrentOwner()) { generatingRef.current = false; setIsGenerating(false) }
     }
   }
 
   const handleDelete = async (prepId: string) => {
+    if (!canRecoverForOwner() || deletingRef.current.has(prepId) || !sessionsRef.current.some(session => session.id === prepId)) return
+    deletingRef.current.add(prepId)
     try {
-      await apiClient.deleteInterviewPrep(prepId)
-      setSessions(prev => prev.filter(s => s.id !== prepId))
-      if (selectedSessionId === prepId) {
-        const remaining = sessions.filter(s => s.id !== prepId)
-        setSelectedSessionId(remaining[0]?.id ?? null)
-      }
+      await apiClient.deleteInterviewPrep(prepId, { authToken: authToken!, isCurrent: canRecoverForOwner })
+      if (!isCurrentOwner()) return
+      // Invalidate older reads; they may still contain the deleted prep.
+      loadGenerationRef.current += 1
+      readGenerationRef.current = null
+      deletedPrepIdsRef.current.add(prepId)
+      generationPlaceholdersRef.current.delete(prepId)
+      setIsLoading(false)
+      const remaining = sessionsRef.current.filter(session => session.id !== prepId)
+      sessionsRef.current = remaining
+      setSessions(remaining)
+      if (selectedSessionIdRef.current === prepId) selectSession(remaining[0]?.id ?? null)
       toast.success('Deleted')
+      if (completionRefreshPendingRef.current) void loadSessions()
     } catch {
-      toast.error('Failed to delete')
+      if (isCurrentOwner()) toast.error('Failed to delete')
+    } finally {
+      if (isCurrentOwner()) deletingRef.current.delete(prepId)
     }
   }
 
-  const isJobRunning = jobStream.status === 'queued' || jobStream.status === 'processing'
+  const updateDraft = (update: (value: string) => void) => (value: string) => {
+    if (isCurrentOwner()) update(value)
+  }
+
+  const isJobRunning = activeJobId !== null
   const currentSession = sessions.find(s => s.id === selectedSessionId) ?? null
   const questionsByCategory = currentSession?.questions?.reduce<Record<string, InterviewQuestion[]>>(
     (acc, q) => {
@@ -215,7 +344,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
 
   // ─── Empty state ─────────────────────────────────────────────────────────
 
-  if (isLoading) {
+  if (isLoading && sessions.length === 0) {
     return (
       <div role="status" className="flex h-full items-center justify-center px-4 py-8 text-center text-[11px] text-fg-3">
         Loading interview-prep sessions…
@@ -243,13 +372,15 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       <div className="flex h-full flex-col">
         <GenerateForm
           jobDescription={jobDescription}
-          setJobDescription={setJobDescription}
+          setJobDescription={updateDraft(setJobDescription)}
           companyName={companyName}
-          setCompanyName={setCompanyName}
+          setCompanyName={updateDraft(setCompanyName)}
           roleTitle={roleTitleInput}
-          setRoleTitle={setRoleTitleInput}
+          setRoleTitle={updateDraft(setRoleTitleInput)}
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
+          canGenerate={canGenerate}
+          availabilityLoading={entitlementsLoading}
         />
       </div>
     )
@@ -257,12 +388,15 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {loadError && <div role="alert" className="shrink-0 px-3 py-2 text-[11px] text-err">
+        {loadError} <button type="button" onClick={() => void loadSessions()} className="underline">Retry</button>
+      </div>}
       {/* Header: session selector + controls */}
       <div className="shrink-0 border-b border-line bg-surface px-3 py-2 space-y-2">
         {sessions.length > 0 && (
           <select
             value={selectedSessionId ?? ''}
-            onChange={e => setSelectedSessionId(e.target.value)}
+            onChange={e => selectSession(e.target.value)}
             className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-[11px] text-fg-2 outline-none"
           >
             {sessions.map((s, i) => (
@@ -273,14 +407,14 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
           </select>
         )}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSelectedSessionId(null)}
+          {canGenerate && <button
+            onClick={() => { if (canActForOwner() && canRef.current('e02') && activeJobIdRef.current === null) selectSession(null) }}
             className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
             title="Generate new set"
           >
             <RefreshCw size={10} />
             New
-          </button>
+          </button>}
           {currentSession && (
             <button
               onClick={() => handleDelete(currentSession.id)}
@@ -315,13 +449,15 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       {selectedSessionId === null && (
         <GenerateForm
           jobDescription={jobDescription}
-          setJobDescription={setJobDescription}
+          setJobDescription={updateDraft(setJobDescription)}
           companyName={companyName}
-          setCompanyName={setCompanyName}
+          setCompanyName={updateDraft(setCompanyName)}
           roleTitle={roleTitleInput}
-          setRoleTitle={setRoleTitleInput}
+          setRoleTitle={updateDraft(setRoleTitleInput)}
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
+          canGenerate={canGenerate}
+          availabilityLoading={entitlementsLoading}
         />
       )}
 
@@ -332,13 +468,16 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
             Practice each answer aloud in the suggested time. Latexy does not record,
             transcribe, or rate your audio/video, and this is not a live employer screening.
           </div>
-          <InterviewSimulation prepId={currentSession.id} questions={currentSession.questions} />
+          <InterviewSimulation key={currentSession.id} prepId={currentSession.id} questions={currentSession.questions}
+            authToken={authToken}
+            isCurrentSession={() => isCurrentOwner() && selectedSessionIdRef.current === currentSession.id}
+            canActForOwner={canActForOwner} />
           {/* Category tabs */}
           <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5">
             {CATEGORIES.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveCategory(key)}
+                onClick={() => { if (isCurrentOwner()) setActiveCategory(key) }}
                 className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1 text-[10px] font-medium transition whitespace-nowrap ${
                   activeCategory === key
                     ? 'bg-surface-2 text-fg'
@@ -387,7 +526,7 @@ function GenerateForm({
   jobDescription, setJobDescription,
   companyName, setCompanyName,
   roleTitle, setRoleTitle,
-  onGenerate, isGenerating,
+  onGenerate, isGenerating, canGenerate, availabilityLoading,
 }: {
   jobDescription: string
   setJobDescription: (v: string) => void
@@ -397,6 +536,8 @@ function GenerateForm({
   setRoleTitle: (v: string) => void
   onGenerate: () => void
   isGenerating: boolean
+  canGenerate: boolean
+  availabilityLoading: boolean
 }) {
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -470,7 +611,8 @@ function GenerateForm({
         </div>
       </div>
 
-      <button
+      {!canGenerate && <p role="status" className="text-[11px] text-fg-3">{availabilityLoading ? 'Checking interview-prep availability…' : 'New interview-prep generation is unavailable. Your draft and saved practice remain available.'}</p>}
+      {canGenerate && <button
         onClick={onGenerate}
         disabled={isGenerating}
         className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent-soft py-2.5 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:opacity-50"
@@ -480,7 +622,7 @@ function GenerateForm({
         ) : (
           <><BrainCircuit size={12} /> Generate Screening Practice</>
         )}
-      </button>
+      </button>}
     </div>
   )
 }

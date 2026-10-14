@@ -834,6 +834,7 @@
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/page.tsx",
+        "frontend/src/app/templates/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
@@ -903,7 +904,9 @@
         "backend/app/api/template_routes.py:_template_asset_access/get_template/use_template (academic/regional/presentation)",
         "backend/app/api/resume_routes.py:_get_builder_template (specialty selection)"
       ],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/app/templates/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
@@ -1035,7 +1038,8 @@
       ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
-        "backend/app/api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)"
+        "backend/app/api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)",
+        "backend/app/middleware/capability_router.py:payload_capabilities (JSON raw/saved/builder export also requires h01)"
       ],
       "clientControls": [
         "frontend/src/app/workspace/builder/new/page.tsx",
@@ -1045,7 +1049,9 @@
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
-          "backend/test/test_capability_route_policy.py::test_structured_import_checks_interchange_capability"
+          "backend/test/test_capability_route_policy.py::test_structured_import_checks_interchange_capability",
+          "backend/test/test_capability_route_policy.py::test_json_export_composes_interchange_and_export_grants_before_data_access",
+          "backend/test/test_capability_route_policy.py::test_json_export_allows_the_composed_grants"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
@@ -5372,7 +5378,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/components/InterviewPrepPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -5434,7 +5440,9 @@
         "backend/app/api/interview_routes.py:evaluate_interview_simulation"
       ],
       "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "clientControls": [
+        "frontend/src/components/InterviewSimulation.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
@@ -6749,8 +6757,12 @@
         "backend/app/api/team_routes.py:invite_team_member",
         "backend/app/api/team_routes.py:join_team_seat"
       ],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (update_tenant branding/reactivation; removal/disable recovery exempt)"
+      ],
+      "clientControls": [
+        "frontend/src/app/admin/tenant/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
@@ -6810,8 +6822,12 @@
       "serverHandlers": [
         "backend/app/api/tenant_routes.py:verify_domain"
       ],
-      "dynamicOrServiceGates": [],
-      "clientControls": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (update_tenant new domain; domain removal recovery exempt)"
+      ],
+      "clientControls": [
+        "frontend/src/app/admin/tenant/page.tsx"
+      ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
