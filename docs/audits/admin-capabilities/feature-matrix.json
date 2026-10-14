@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "accountContexts": [
     "anonymous",
     "user",
@@ -10,8 +10,12 @@
   "inventorySource": "backend/app/core/capability_catalog.json",
   "generator": "backend/scripts/generate_capability_matrix.py",
   "inventoryCount": 129,
+  "subfeatureSource": "backend/app/core/capability_subfeature_catalog.json",
+  "subfeatureCount": 5,
   "gateableCount": 113,
   "alwaysOnCount": 16,
+  "runtimeRegistryCount": 165,
+  "runtimeGateableCount": 149,
   "semantics": "Stop new admissions and external actions. Already admitted jobs retain existing completion/finalization/refund behavior; owners retain source/results/recovery/deletion/revocation. Previously issued presigned URLs last until expiry.",
   "verificationScope": "Automated policy, selected real-infrastructure admission/refund and existing regression coverage. Not a claim that all 129 features were manually QA-tested or that live providers/payments were exercised.",
   "features": [
@@ -22,6 +26,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Public information, legal documents and accessibility help remain reachable.",
+      "controlKind": "product",
+      "productInventoryId": "A01",
+      "operationCapabilities": [
+        "a01"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -64,7 +73,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A02",
@@ -73,6 +83,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Authentication, account verification and recovery are security baselines.",
+      "controlKind": "product",
+      "productInventoryId": "A02",
+      "operationCapabilities": [
+        "a02"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -123,7 +138,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A03",
@@ -132,6 +148,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Existing authentication and institutional access must remain recoverable.",
+      "controlKind": "product",
+      "productInventoryId": "A03",
+      "operationCapabilities": [
+        "a03"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -174,7 +195,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A04",
@@ -183,6 +205,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Multi-factor protection and recovery must never become optional entitlements.",
+      "controlKind": "product",
+      "productInventoryId": "A04",
+      "operationCapabilities": [
+        "a04"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -225,7 +252,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A05",
@@ -234,6 +262,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Passkey authentication and recovery must remain available.",
+      "controlKind": "product",
+      "productInventoryId": "A05",
+      "operationCapabilities": [
+        "a05"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -276,7 +309,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A06",
@@ -285,6 +319,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "A06",
+      "operationCapabilities": [
+        "a06"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -332,7 +371,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A07",
@@ -341,6 +381,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Accessibility, contrast, language and user preferences remain available.",
+      "controlKind": "product",
+      "productInventoryId": "A07",
+      "operationCapabilities": [
+        "a07"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -383,7 +428,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A08",
@@ -392,6 +438,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Users must retain notification consent and opt-out controls.",
+      "controlKind": "product",
+      "productInventoryId": "A08",
+      "operationCapabilities": [
+        "a08"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -434,7 +485,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "A09",
@@ -443,6 +495,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "A09",
+      "operationCapabilities": [
+        "a09"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:_route_gate (all anonymous AI/ATS/reference/import admissions, Studio compilation/jobs/watermark, semantic projection/field editing and premium raw export)"
@@ -506,7 +563,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B01",
@@ -515,6 +573,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B01",
+      "operationCapabilities": [
+        "b01"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
         "backend/app/api/resume_routes.py:create_builder_resume",
@@ -588,7 +651,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B02",
@@ -597,6 +661,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B02",
+      "operationCapabilities": [
+        "b02"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:pin_resume",
         "backend/app/api/resume_routes.py:archive_resume"
@@ -649,7 +718,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B03",
@@ -658,6 +728,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B03",
+      "operationCapabilities": [
+        "b03"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:search_resumes"
       ],
@@ -723,7 +798,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B04",
@@ -732,6 +808,11 @@
       "parentKey": "templates",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B04",
+      "operationCapabilities": [
+        "b04"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:list_builder_templates",
         "backend/app/api/pdf_import_routes.py:adapt_import",
@@ -751,6 +832,7 @@
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/page.tsx",
+        "frontend/src/app/templates/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
@@ -797,7 +879,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B05",
@@ -806,6 +889,11 @@
       "parentKey": "templates",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B05",
+      "operationCapabilities": [
+        "b05"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/api/template_routes.py:list_categories/list_templates (filter specialty catalog)",
@@ -856,7 +944,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B06",
@@ -865,6 +954,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B06",
+      "operationCapabilities": [
+        "b06"
+      ],
       "serverHandlers": [
         "backend/app/api/format_routes.py:detect_file_format",
         "backend/app/api/format_routes.py:validate_file_format",
@@ -923,7 +1017,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B07",
@@ -932,6 +1027,11 @@
       "parentKey": "resume_builder",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B07",
+      "operationCapabilities": [
+        "b07"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/api/resume_routes.py:seed_builder_from_upload (detected JSON interchange)",
@@ -985,7 +1085,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B08",
@@ -994,6 +1095,11 @@
       "parentKey": "resume_builder",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B08",
+      "operationCapabilities": [
+        "b08"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:list_builder_templates",
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
@@ -1053,7 +1159,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B09",
@@ -1062,6 +1169,11 @@
       "parentKey": "resume_builder",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B09",
+      "operationCapabilities": [
+        "b09"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach; content changes also require c01)"
@@ -1108,7 +1220,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B10",
@@ -1117,6 +1230,11 @@
       "parentKey": "resume_builder",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B10",
+      "operationCapabilities": [
+        "b10"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_engine_routes.py:patch_guest",
         "backend/app/api/resume_engine_routes.py:patch_document",
@@ -1169,7 +1287,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B11",
@@ -1178,6 +1297,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B11",
+      "operationCapabilities": [
+        "b11"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:fork_resume",
         "backend/app/api/element_version_routes.py:fork_element_version"
@@ -1229,7 +1353,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B12",
@@ -1238,6 +1363,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B12",
+      "operationCapabilities": [
+        "b12"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:update_variant_visibility"
       ],
@@ -1290,7 +1420,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B13",
@@ -1299,6 +1430,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B13",
+      "operationCapabilities": [
+        "b13"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:merge_resumes"
       ],
@@ -1348,7 +1484,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "B14",
@@ -1357,6 +1494,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "B14",
+      "operationCapabilities": [
+        "b14"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:get_academic_cv_report",
         "backend/app/api/resume_routes.py:convert_academic_cv"
@@ -1406,7 +1548,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C01",
@@ -1415,6 +1558,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C01",
+      "operationCapabilities": [
+        "c01"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:seed_builder_from_upload",
         "backend/app/api/resume_routes.py:create_builder_resume",
@@ -1463,6 +1611,7 @@
         "frontend/src/components/CompareModal.tsx",
         "frontend/src/components/DiffViewerModal.tsx",
         "frontend/src/components/ImportedOptimizationPanel.tsx",
+        "frontend/src/components/LatexGeneratorPanel.tsx",
         "frontend/src/components/PDFPreview.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/SemanticOptimizationPanel.tsx",
@@ -1521,7 +1670,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C02",
@@ -1530,6 +1680,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C02",
+      "operationCapabilities": [
+        "c02"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -1575,7 +1730,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C03",
@@ -1584,6 +1740,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C03",
+      "operationCapabilities": [
+        "c03"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -1636,7 +1797,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C04",
@@ -1645,6 +1807,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C04",
+      "operationCapabilities": [
+        "c04"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -1698,7 +1865,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C05",
@@ -1707,6 +1875,11 @@
       "parentKey": "compile",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C05",
+      "operationCapabilities": [
+        "c05"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
@@ -1774,7 +1947,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C06",
@@ -1783,6 +1957,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C06",
+      "operationCapabilities": [
+        "c06"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -1839,7 +2018,8 @@
         ],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C07",
@@ -1848,6 +2028,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C07",
+      "operationCapabilities": [
+        "c07"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:update_resume_settings"
       ],
@@ -1896,7 +2081,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C08",
@@ -1905,6 +2091,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Job progress, cancellation and retrieval are required for safe completion and recovery.",
+      "controlKind": "product",
+      "productInventoryId": "C08",
+      "operationCapabilities": [
+        "c08"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -1947,7 +2138,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C09",
@@ -1956,6 +2148,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Users retain viewing and retrieval of their existing PDF artifacts.",
+      "controlKind": "product",
+      "productInventoryId": "C09",
+      "operationCapabilities": [
+        "c09"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -1998,7 +2195,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C10",
@@ -2007,6 +2205,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C10",
+      "operationCapabilities": [
+        "c10"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2054,7 +2257,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C11",
@@ -2063,6 +2267,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C11",
+      "operationCapabilities": [
+        "c11"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2107,7 +2316,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C12",
@@ -2116,6 +2326,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C12",
+      "operationCapabilities": [
+        "c12"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (jobs/submit auto_fit)"
@@ -2167,7 +2382,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C13",
@@ -2176,6 +2392,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C13",
+      "operationCapabilities": [
+        "c13"
+      ],
       "serverHandlers": [
         "backend/app/api/job_routes.py:compile_watermarked"
       ],
@@ -2224,7 +2445,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C14",
@@ -2233,6 +2455,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C14",
+      "operationCapabilities": [
+        "c14"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (presentation document type)",
@@ -2280,7 +2507,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C15",
@@ -2289,6 +2517,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C15",
+      "operationCapabilities": [
+        "c15"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2333,7 +2566,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C16",
@@ -2342,6 +2576,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C16",
+      "operationCapabilities": [
+        "c16"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:spell_check"
       ],
@@ -2395,7 +2634,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C17",
@@ -2404,6 +2644,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C17",
+      "operationCapabilities": [
+        "c17"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2449,7 +2694,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C18",
@@ -2458,6 +2704,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C18",
+      "operationCapabilities": [
+        "c18"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2502,7 +2753,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C19",
@@ -2511,6 +2763,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C19",
+      "operationCapabilities": [
+        "c19"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2555,7 +2812,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C20",
@@ -2564,6 +2822,11 @@
       "parentKey": "snippets",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C20",
+      "operationCapabilities": [
+        "c20"
+      ],
       "serverHandlers": [
         "backend/app/api/snippet_routes.py:create_snippet",
         "backend/app/api/snippet_routes.py:update_snippet",
@@ -2615,7 +2878,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C21",
@@ -2624,6 +2888,11 @@
       "parentKey": "macros",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C21",
+      "operationCapabilities": [
+        "c21"
+      ],
       "serverHandlers": [
         "backend/app/api/macro_routes.py:create_macro",
         "backend/app/api/macro_routes.py:update_macro",
@@ -2674,7 +2943,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C22",
@@ -2683,6 +2953,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C22",
+      "operationCapabilities": [
+        "c22"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:create_checkpoint"
       ],
@@ -2733,7 +3008,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C23",
@@ -2742,6 +3018,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C23",
+      "operationCapabilities": [
+        "c23"
+      ],
       "serverHandlers": [
         "backend/app/api/element_version_routes.py:create_element_version",
         "backend/app/api/element_version_routes.py:fork_element_version"
@@ -2791,7 +3072,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C24",
@@ -2800,6 +3082,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "C24",
+      "operationCapabilities": [
+        "c24"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -2844,7 +3131,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C25",
@@ -2853,6 +3141,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Offline drafts and reconnect recovery must not strand user-authored work.",
+      "controlKind": "product",
+      "productInventoryId": "C25",
+      "operationCapabilities": [
+        "c25"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -2895,7 +3188,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "C26",
@@ -2904,6 +3198,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Offline saved-document access and accessibility remain available.",
+      "controlKind": "product",
+      "productInventoryId": "C26",
+      "operationCapabilities": [
+        "c26"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -2946,7 +3245,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D01",
@@ -2955,6 +3255,11 @@
       "parentKey": "llm_optimize",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D01",
+      "operationCapabilities": [
+        "d01"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:quick_tailor_resume",
         "backend/app/api/resume_routes.py:convert_academic_cv",
@@ -3016,7 +3321,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D02",
@@ -3025,6 +3331,11 @@
       "parentKey": "llm_optimize",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D02",
+      "operationCapabilities": [
+        "d02"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (guided industry/seniority/tone/emphasize/downplay)"
@@ -3073,7 +3384,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D03",
@@ -3082,6 +3394,11 @@
       "parentKey": "llm_optimize",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D03",
+      "operationCapabilities": [
+        "d03"
+      ],
       "serverHandlers": [
         "backend/app/api/optimize_routes.py:segment_changes_endpoint",
         "backend/app/api/optimize_routes.py:apply_changes_endpoint"
@@ -3139,7 +3456,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D04",
@@ -3148,6 +3466,11 @@
       "parentKey": "llm_optimize",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D04",
+      "operationCapabilities": [
+        "d04"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:quick_tailor_resume"
       ],
@@ -3196,7 +3519,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D05",
@@ -3205,6 +3529,11 @@
       "parentKey": "batch_tailor",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D05",
+      "operationCapabilities": [
+        "d05"
+      ],
       "serverHandlers": [
         "backend/app/api/job_routes.py:create_batch_tailor"
       ],
@@ -3251,7 +3580,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D06",
@@ -3260,6 +3590,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D06",
+      "operationCapabilities": [
+        "d06"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:rewrite_text"
       ],
@@ -3308,7 +3643,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D07",
@@ -3317,6 +3653,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D07",
+      "operationCapabilities": [
+        "d07"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:suggest_synonyms"
       ],
@@ -3365,7 +3706,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D08",
@@ -3374,6 +3716,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D08",
+      "operationCapabilities": [
+        "d08"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:document_assistant"
       ],
@@ -3422,7 +3769,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D09",
@@ -3431,6 +3779,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D09",
+      "operationCapabilities": [
+        "d09"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:generate_bullets",
         "backend/app/api/ai_routes.py:generate_phrase_library"
@@ -3480,7 +3833,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D10",
@@ -3489,6 +3843,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D10",
+      "operationCapabilities": [
+        "d10"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:generate_bullet_variants"
       ],
@@ -3537,7 +3896,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D11",
@@ -3546,6 +3906,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D11",
+      "operationCapabilities": [
+        "d11"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:generate_summary"
       ],
@@ -3594,7 +3959,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D12",
@@ -3603,6 +3969,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D12",
+      "operationCapabilities": [
+        "d12"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:proofread_resume"
       ],
@@ -3651,7 +4022,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D13",
@@ -3660,6 +4032,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D13",
+      "operationCapabilities": [
+        "d13"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:explain_latex_error"
       ],
@@ -3709,7 +4086,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D14",
@@ -3718,6 +4096,16 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D14",
+      "operationCapabilities": [
+        "d14",
+        "d14_latex",
+        "d14_math_image",
+        "d14_math_text",
+        "d14_table_image",
+        "d14_table_text"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:generate_latex",
         "backend/app/api/ai_routes.py:generate_table_from_text",
@@ -3727,7 +4115,7 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/components/LatexGeneratorPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -3770,7 +4158,329 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": [
+        {
+          "inventoryId": null,
+          "key": "d14_latex",
+          "label": "Generate LaTeX structure",
+          "parentKey": "d14",
+          "gateable": true,
+          "baselineReason": null,
+          "controlKind": "subfeature",
+          "productInventoryId": "D14",
+          "operationCapabilities": [
+            "d14_latex"
+          ],
+          "serverHandlers": [
+            "backend/app/api/ai_routes.py:generate_latex"
+          ],
+          "dynamicOrServiceGates": [],
+          "clientControls": [
+            "frontend/src/components/LatexGeneratorPanel.tsx"
+          ],
+          "verification": {
+            "status": "automated_backend_policy_coverage",
+            "automatedBackendEvidence": [
+              "backend/test/test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+              "backend/test/test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)",
+              "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+            ],
+            "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+            "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
+            "roleCoverage": [
+              {
+                "role": "anonymous",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "user",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "support",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "admin",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              }
+            ],
+            "representativeRealFullStackEvidence": [],
+            "automatedBrowserEvidence": [],
+            "liveProviderOrManualEndToEnd": "not verified by this change",
+            "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
+          }
+        },
+        {
+          "inventoryId": null,
+          "key": "d14_table_text",
+          "label": "Generate table from text",
+          "parentKey": "d14",
+          "gateable": true,
+          "baselineReason": null,
+          "controlKind": "subfeature",
+          "productInventoryId": "D14",
+          "operationCapabilities": [
+            "d14_table_text"
+          ],
+          "serverHandlers": [
+            "backend/app/api/ai_routes.py:generate_table_from_text"
+          ],
+          "dynamicOrServiceGates": [],
+          "clientControls": [
+            "frontend/src/components/LatexGeneratorPanel.tsx"
+          ],
+          "verification": {
+            "status": "automated_backend_policy_coverage",
+            "automatedBackendEvidence": [
+              "backend/test/test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+              "backend/test/test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)",
+              "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+            ],
+            "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+            "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
+            "roleCoverage": [
+              {
+                "role": "anonymous",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "user",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "support",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "admin",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              }
+            ],
+            "representativeRealFullStackEvidence": [],
+            "automatedBrowserEvidence": [],
+            "liveProviderOrManualEndToEnd": "not verified by this change",
+            "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
+          }
+        },
+        {
+          "inventoryId": null,
+          "key": "d14_table_image",
+          "label": "Generate table from image",
+          "parentKey": "d14",
+          "gateable": true,
+          "baselineReason": null,
+          "controlKind": "subfeature",
+          "productInventoryId": "D14",
+          "operationCapabilities": [
+            "d14_table_image"
+          ],
+          "serverHandlers": [
+            "backend/app/api/ai_routes.py:generate_table_from_image"
+          ],
+          "dynamicOrServiceGates": [],
+          "clientControls": [
+            "frontend/src/components/LatexGeneratorPanel.tsx"
+          ],
+          "verification": {
+            "status": "automated_backend_policy_coverage",
+            "automatedBackendEvidence": [
+              "backend/test/test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+              "backend/test/test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)",
+              "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+            ],
+            "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+            "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
+            "roleCoverage": [
+              {
+                "role": "anonymous",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "user",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "support",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "admin",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              }
+            ],
+            "representativeRealFullStackEvidence": [],
+            "automatedBrowserEvidence": [],
+            "liveProviderOrManualEndToEnd": "not verified by this change",
+            "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
+          }
+        },
+        {
+          "inventoryId": null,
+          "key": "d14_math_text",
+          "label": "Generate math from text",
+          "parentKey": "d14",
+          "gateable": true,
+          "baselineReason": null,
+          "controlKind": "subfeature",
+          "productInventoryId": "D14",
+          "operationCapabilities": [
+            "d14_math_text"
+          ],
+          "serverHandlers": [
+            "backend/app/api/ai_routes.py:generate_math_from_text"
+          ],
+          "dynamicOrServiceGates": [],
+          "clientControls": [
+            "frontend/src/components/LatexGeneratorPanel.tsx"
+          ],
+          "verification": {
+            "status": "automated_backend_policy_coverage",
+            "automatedBackendEvidence": [
+              "backend/test/test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+              "backend/test/test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)",
+              "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+            ],
+            "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+            "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
+            "roleCoverage": [
+              {
+                "role": "anonymous",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "user",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "support",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "admin",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              }
+            ],
+            "representativeRealFullStackEvidence": [],
+            "automatedBrowserEvidence": [],
+            "liveProviderOrManualEndToEnd": "not verified by this change",
+            "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
+          }
+        },
+        {
+          "inventoryId": null,
+          "key": "d14_math_image",
+          "label": "Generate math from image",
+          "parentKey": "d14",
+          "gateable": true,
+          "baselineReason": null,
+          "controlKind": "subfeature",
+          "productInventoryId": "D14",
+          "operationCapabilities": [
+            "d14_math_image"
+          ],
+          "serverHandlers": [
+            "backend/app/api/ai_routes.py:generate_math_from_image"
+          ],
+          "dynamicOrServiceGates": [],
+          "clientControls": [
+            "frontend/src/components/LatexGeneratorPanel.tsx"
+          ],
+          "verification": {
+            "status": "automated_backend_policy_coverage",
+            "automatedBackendEvidence": [
+              "backend/test/test_d14_capability_policy.py (leaf/ancestor axis intersection and sibling isolation)",
+              "backend/test/test_d14_capability_routes.py (valid registered JSON/multipart admission and fail-on-use side-effect doubles)",
+              "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+            ],
+            "catalogCoverage": "backend/test/test_entitlement_wiring.py",
+            "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
+            "roleCoverage": [
+              {
+                "role": "anonymous",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "user",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "support",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              },
+              {
+                "role": "admin",
+                "effectivePolicy": "tested_off_on_and_cross_role_isolation",
+                "ui": "not individually browser-tested for this role",
+                "api": "policy and registered-route denial tested separately; not exhaustive role-by-endpoint execution",
+                "authorization": "Restricts product use only; authentication, document/workspace/tenant ACLs, quotas and provider constraints remain independent."
+              }
+            ],
+            "representativeRealFullStackEvidence": [],
+            "automatedBrowserEvidence": [],
+            "liveProviderOrManualEndToEnd": "not verified by this change",
+            "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
+          }
+        }
+      ]
     },
     {
       "inventoryId": "D15",
@@ -3779,6 +4489,11 @@
       "parentKey": "ai_writing",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D15",
+      "operationCapabilities": [
+        "d15"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:translate_resume"
       ],
@@ -3827,7 +4542,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D16",
@@ -3836,6 +4552,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D16",
+      "operationCapabilities": [
+        "d16"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:standardize_dates",
         "backend/app/api/ai_routes.py:age_analysis",
@@ -3887,7 +4608,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D17",
@@ -3896,6 +4618,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D17",
+      "operationCapabilities": [
+        "d17"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:get_confidence_score"
       ],
@@ -3945,7 +4672,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D18",
@@ -3954,6 +4682,11 @@
       "parentKey": "ats_score",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D18",
+      "operationCapabilities": [
+        "d18"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:score_resume_ats",
         "backend/app/api/ats_routes.py:analyze_job_description_ats",
@@ -4020,7 +4753,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D19",
@@ -4029,6 +4763,11 @@
       "parentKey": "ats_score",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D19",
+      "operationCapabilities": [
+        "d19"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:get_industry_keywords"
       ],
@@ -4089,7 +4828,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D20",
@@ -4098,6 +4838,11 @@
       "parentKey": "ats_deep",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D20",
+      "operationCapabilities": [
+        "d20"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:deep_analyze_resume"
       ],
@@ -4147,7 +4892,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D21",
@@ -4156,6 +4902,11 @@
       "parentKey": "ats_deep",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D21",
+      "operationCapabilities": [
+        "d21"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:semantic_match_resumes"
       ],
@@ -4206,7 +4957,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D22",
@@ -4215,6 +4967,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D22",
+      "operationCapabilities": [
+        "d22"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:simulate_ats"
       ],
@@ -4264,7 +5021,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D23",
@@ -4273,6 +5031,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D23",
+      "operationCapabilities": [
+        "d23"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:keyword_density"
       ],
@@ -4321,7 +5084,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D24",
@@ -4330,6 +5094,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D24",
+      "operationCapabilities": [
+        "d24"
+      ],
       "serverHandlers": [
         "backend/app/api/ats_routes.py:get_ats_benchmark"
       ],
@@ -4378,7 +5147,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D25",
@@ -4387,6 +5157,11 @@
       "parentKey": "byok",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D25",
+      "operationCapabilities": [
+        "d25"
+      ],
       "serverHandlers": [
         "backend/app/api/byok_routes.py:add_api_key",
         "backend/app/api/byok_routes.py:validate_api_key",
@@ -4444,7 +5219,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "D26",
@@ -4453,6 +5229,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "D26",
+      "operationCapabilities": [
+        "d26"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:salary_estimate"
       ],
@@ -4501,7 +5282,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E01",
@@ -4510,6 +5292,11 @@
       "parentKey": "cover_letters",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E01",
+      "operationCapabilities": [
+        "e01"
+      ],
       "serverHandlers": [
         "backend/app/api/cover_letter_routes.py:generate_cover_letter",
         "backend/app/api/cover_letter_routes.py:update_cover_letter"
@@ -4559,7 +5346,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E02",
@@ -4568,12 +5356,17 @@
       "parentKey": "interview_prep",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E02",
+      "operationCapabilities": [
+        "e02"
+      ],
       "serverHandlers": [
         "backend/app/api/interview_routes.py:generate_interview_prep"
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/components/InterviewPrepPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -4616,7 +5409,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E03",
@@ -4625,6 +5419,11 @@
       "parentKey": "interview_prep",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E03",
+      "operationCapabilities": [
+        "e03"
+      ],
       "serverHandlers": [
         "backend/app/api/interview_routes.py:evaluate_interview_simulation"
       ],
@@ -4673,7 +5472,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E04",
@@ -4682,6 +5482,11 @@
       "parentKey": "career_paths",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E04",
+      "operationCapabilities": [
+        "e04"
+      ],
       "serverHandlers": [
         "backend/app/api/career_routes.py:analyze_career_path"
       ],
@@ -4730,7 +5535,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E05",
@@ -4739,6 +5545,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E05",
+      "operationCapabilities": [
+        "e05"
+      ],
       "serverHandlers": [
         "backend/app/api/tracker_routes.py:create_application",
         "backend/app/api/tracker_routes.py:update_application",
@@ -4792,7 +5603,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E06",
@@ -4801,6 +5613,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E06",
+      "operationCapabilities": [
+        "e06"
+      ],
       "serverHandlers": [
         "backend/app/api/tracker_workflow_routes.py:create_saved_job",
         "backend/app/api/tracker_workflow_routes.py:update_saved_job",
@@ -4856,7 +5673,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E07",
@@ -4865,6 +5683,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E07",
+      "operationCapabilities": [
+        "e07"
+      ],
       "serverHandlers": [
         "backend/app/api/tracker_workflow_routes.py:create_reminder",
         "backend/app/api/tracker_workflow_routes.py:update_reminder",
@@ -4916,7 +5739,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E08",
@@ -4925,6 +5749,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E08",
+      "operationCapabilities": [
+        "e08"
+      ],
       "serverHandlers": [
         "backend/app/api/tracker_workflow_routes.py:create_company",
         "backend/app/api/tracker_workflow_routes.py:update_company",
@@ -4976,7 +5805,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E09",
@@ -4985,6 +5815,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E09",
+      "operationCapabilities": [
+        "e09"
+      ],
       "serverHandlers": [
         "backend/app/api/outreach_routes.py:generate_outreach_draft"
       ],
@@ -5033,7 +5868,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E10",
@@ -5042,6 +5878,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E10",
+      "operationCapabilities": [
+        "e10"
+      ],
       "serverHandlers": [
         "backend/app/api/email_status_routes.py:parse_email_status"
       ],
@@ -5090,7 +5931,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E11",
@@ -5099,6 +5941,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E11",
+      "operationCapabilities": [
+        "e11"
+      ],
       "serverHandlers": [
         "backend/app/api/scraper_routes.py:scrape_job_description"
       ],
@@ -5148,7 +5995,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E12",
@@ -5157,6 +6005,11 @@
       "parentKey": "one_click_apply",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E12",
+      "operationCapabilities": [
+        "e12"
+      ],
       "serverHandlers": [
         "backend/app/api/application_routes.py:detect_platform",
         "backend/app/api/application_routes.py:preview_greenhouse_job",
@@ -5209,7 +6062,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "E13",
@@ -5218,6 +6072,11 @@
       "parentKey": "application_tracker",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "E13",
+      "operationCapabilities": [
+        "e13"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [
@@ -5266,7 +6125,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F01",
@@ -5275,6 +6135,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F01",
+      "operationCapabilities": [
+        "f01"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (share creation)",
@@ -5326,7 +6191,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F02",
@@ -5335,6 +6201,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F02",
+      "operationCapabilities": [
+        "f02"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (anonymous sharing/regeneration)",
@@ -5384,7 +6255,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F03",
@@ -5393,6 +6265,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F03",
+      "operationCapabilities": [
+        "f03"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (enable public reviews)",
@@ -5444,7 +6321,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F04",
@@ -5453,6 +6331,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F04",
+      "operationCapabilities": [
+        "f04"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:invite_collaborator"
       ],
@@ -5505,7 +6388,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F05",
@@ -5514,6 +6398,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F05",
+      "operationCapabilities": [
+        "f05"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (collaboration ticket)",
@@ -5567,7 +6456,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F06",
@@ -5576,6 +6466,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F06",
+      "operationCapabilities": [
+        "f06"
+      ],
       "serverHandlers": [
         "backend/app/api/comment_routes.py:add_comment",
         "backend/app/api/comment_routes.py:update_comment",
@@ -5626,7 +6521,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F07",
@@ -5635,6 +6531,11 @@
       "parentKey": "collaboration",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F07",
+      "operationCapabilities": [
+        "f07"
+      ],
       "serverHandlers": [
         "backend/app/api/suggestion_routes.py:decide_suggestion"
       ],
@@ -5683,7 +6584,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F08",
@@ -5692,6 +6594,11 @@
       "parentKey": "team_workspaces",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F08",
+      "operationCapabilities": [
+        "f08"
+      ],
       "serverHandlers": [
         "backend/app/api/workspace_routes.py:create_workspace",
         "backend/app/api/workspace_routes.py:update_workspace",
@@ -5700,7 +6607,7 @@
       ],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (workspace role increase; viewer downgrade exempt)",
-        "backend/app/api/workspace_routes.py:_workspace_use_allowed/_require_workspace_use (actor and workspace owner; owned source/removal preserved)"
+        "backend/app/api/workspace_routes.py:_require_workspace_use (actor and workspace owner; owned source/removal preserved)"
       ],
       "clientControls": [
         "frontend/src/app/workspaces/[workspaceId]/page.tsx",
@@ -5748,7 +6655,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F09",
@@ -5757,6 +6665,11 @@
       "parentKey": "team_workspaces",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F09",
+      "operationCapabilities": [
+        "f09"
+      ],
       "serverHandlers": [
         "backend/app/api/workspace_routes.py:create_recruiter_note",
         "backend/app/api/workspace_routes.py:update_recruiter_note"
@@ -5806,7 +6719,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F10",
@@ -5815,6 +6729,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F10",
+      "operationCapabilities": [
+        "f10"
+      ],
       "serverHandlers": [
         "backend/app/api/tenant_routes.py:create_tenant",
         "backend/app/api/tenant_routes.py:create_cohort",
@@ -5870,7 +6789,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "F11",
@@ -5879,6 +6799,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "F11",
+      "operationCapabilities": [
+        "f11"
+      ],
       "serverHandlers": [
         "backend/app/api/tenant_routes.py:verify_domain"
       ],
@@ -5929,7 +6854,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G01",
@@ -5938,6 +6864,11 @@
       "parentKey": "integration_github",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G01",
+      "operationCapabilities": [
+        "g01"
+      ],
       "serverHandlers": [
         "backend/app/api/github_routes.py:github_connect",
         "backend/app/api/github_routes.py:github_complete",
@@ -5991,7 +6922,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G02",
@@ -6000,6 +6932,11 @@
       "parentKey": "ai_import_github",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G02",
+      "operationCapabilities": [
+        "g02"
+      ],
       "serverHandlers": [
         "backend/app/api/github_routes.py:import_github_projects"
       ],
@@ -6046,7 +6983,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G03",
@@ -6055,6 +6993,11 @@
       "parentKey": "ai_import_url",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G03",
+      "operationCapabilities": [
+        "g03"
+      ],
       "serverHandlers": [
         "backend/app/api/sources_routes.py:import_from_url"
       ],
@@ -6101,7 +7044,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G04",
@@ -6110,6 +7054,11 @@
       "parentKey": "ai_import_linkedin",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G04",
+      "operationCapabilities": [
+        "g04"
+      ],
       "serverHandlers": [
         "backend/app/api/sources_routes.py:import_linkedin"
       ],
@@ -6158,7 +7107,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G05",
@@ -6167,6 +7117,11 @@
       "parentKey": "integration_dropbox",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G05",
+      "operationCapabilities": [
+        "g05"
+      ],
       "serverHandlers": [
         "backend/app/api/dropbox_routes.py:dropbox_connect",
         "backend/app/api/dropbox_routes.py:dropbox_complete",
@@ -6220,7 +7175,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G06",
@@ -6229,6 +7185,11 @@
       "parentKey": "integration_google_drive",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G06",
+      "operationCapabilities": [
+        "g06"
+      ],
       "serverHandlers": [
         "backend/app/api/google_drive_routes.py:google_drive_connect",
         "backend/app/api/google_drive_routes.py:google_drive_complete",
@@ -6279,7 +7240,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G07",
@@ -6288,6 +7250,11 @@
       "parentKey": "integration_zotero",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G07",
+      "operationCapabilities": [
+        "g07"
+      ],
       "serverHandlers": [
         "backend/app/api/zotero_routes.py:zotero_connect",
         "backend/app/api/zotero_routes.py:zotero_complete",
@@ -6339,7 +7306,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G08",
@@ -6348,6 +7316,11 @@
       "parentKey": "integration_mendeley",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G08",
+      "operationCapabilities": [
+        "g08"
+      ],
       "serverHandlers": [
         "backend/app/api/mendeley_routes.py:mendeley_connect",
         "backend/app/api/mendeley_routes.py:mendeley_complete",
@@ -6398,7 +7371,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G09",
@@ -6407,6 +7381,11 @@
       "parentKey": "references",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G09",
+      "operationCapabilities": [
+        "g09"
+      ],
       "serverHandlers": [
         "backend/app/api/reference_routes.py:fetch_references",
         "backend/app/api/reference_routes.py:verify_citations",
@@ -6456,7 +7435,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G10",
@@ -6465,6 +7445,11 @@
       "parentKey": "references",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G10",
+      "operationCapabilities": [
+        "g10"
+      ],
       "serverHandlers": [
         "backend/app/api/ai_routes.py:generate_publications"
       ],
@@ -6514,7 +7499,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G11",
@@ -6523,6 +7509,11 @@
       "parentKey": "references",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G11",
+      "operationCapabilities": [
+        "g11"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:generate_references"
       ],
@@ -6571,7 +7562,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G12",
@@ -6580,6 +7572,11 @@
       "parentKey": "portfolio",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G12",
+      "operationCapabilities": [
+        "g12"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:generate_portfolio"
       ],
@@ -6632,7 +7629,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "G13",
@@ -6641,6 +7639,11 @@
       "parentKey": "portfolio",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "G13",
+      "operationCapabilities": [
+        "g13"
+      ],
       "serverHandlers": [
         "backend/app/api/portfolio_routes.py:verify_domain"
       ],
@@ -6689,7 +7692,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H01",
@@ -6698,6 +7702,11 @@
       "parentKey": "exports",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H01",
+      "operationCapabilities": [
+        "h01"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (premium saved/raw format conversion; tex/pdf exempt)"
@@ -6744,7 +7753,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H02",
@@ -6753,6 +7763,11 @@
       "parentKey": "exports",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H02",
+      "operationCapabilities": [
+        "h02"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (saved SVG/JPEG conversion)"
@@ -6799,7 +7814,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H03",
@@ -6808,6 +7824,11 @@
       "parentKey": "exports",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H03",
+      "operationCapabilities": [
+        "h03"
+      ],
       "serverHandlers": [
         "backend/app/api/export_routes.py:export_canva",
         "backend/app/api/export_routes.py:export_figma"
@@ -6855,7 +7876,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H04",
@@ -6864,6 +7886,11 @@
       "parentKey": "exports",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H04",
+      "operationCapabilities": [
+        "h04"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/middleware/capability_router.py:payload_capabilities (bulk ZIP export)"
@@ -6910,7 +7937,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H05",
@@ -6919,6 +7947,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H05",
+      "operationCapabilities": [
+        "h05"
+      ],
       "serverHandlers": [
         "backend/app/api/document_delivery_routes.py:email_compiled_document",
         "backend/app/api/document_delivery_routes.py:retry_email_compiled_document"
@@ -6966,7 +7999,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H06",
@@ -6975,6 +8009,11 @@
       "parentKey": "analytics",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H06",
+      "operationCapabilities": [
+        "h06"
+      ],
       "serverHandlers": [
         "backend/app/api/analytics_routes.py:get_my_analytics",
         "backend/app/api/analytics_routes.py:get_my_analytics_timeseries"
@@ -7024,7 +8063,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H07",
@@ -7033,6 +8073,11 @@
       "parentKey": "analytics",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H07",
+      "operationCapabilities": [
+        "h07"
+      ],
       "serverHandlers": [
         "backend/app/api/resume_routes.py:get_resume_analytics"
       ],
@@ -7081,7 +8126,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H08",
@@ -7090,6 +8136,11 @@
       "parentKey": "developer_api",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H08",
+      "operationCapabilities": [
+        "h08"
+      ],
       "serverHandlers": [
         "backend/app/api/developer_routes.py:create_developer_key",
         "backend/app/api/developer_routes.py:rename_developer_key"
@@ -7139,7 +8190,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H09",
@@ -7148,6 +8200,11 @@
       "parentKey": "developer_api",
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "H09",
+      "operationCapabilities": [
+        "h09"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/api/public_api_routes.py:require_developer_operation/_authorize (existing API keys; before job record/quota/dispatch)"
@@ -7195,7 +8252,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H10",
@@ -7204,6 +8262,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "CLI is a client channel; each server operation inherits its own capability and security checks.",
+      "controlKind": "product",
+      "productInventoryId": "H10",
+      "operationCapabilities": [
+        "h10"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -7246,7 +8309,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H11",
@@ -7255,6 +8319,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "MCP is a client channel; each server operation inherits its own capability and security checks.",
+      "controlKind": "product",
+      "productInventoryId": "H11",
+      "operationCapabilities": [
+        "h11"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -7297,7 +8366,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H12",
@@ -7306,6 +8376,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "The action is a client channel; developer API and operation-specific server checks still apply.",
+      "controlKind": "product",
+      "productInventoryId": "H12",
+      "operationCapabilities": [
+        "h12"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -7348,7 +8423,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "H13",
@@ -7357,6 +8433,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Self-hosted deployment and security settings are operator configuration.",
+      "controlKind": "product",
+      "productInventoryId": "H13",
+      "operationCapabilities": [
+        "h13"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -7399,7 +8480,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "I01",
@@ -7408,6 +8490,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "I01",
+      "operationCapabilities": [
+        "i01"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
         "backend/app/services/plan_catalog_service.py:require_new_purchase (new target-SKU checkout and token-owner Student verification)"
@@ -7457,7 +8544,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "I02",
@@ -7466,6 +8554,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "I02",
+      "operationCapabilities": [
+        "i02"
+      ],
       "serverHandlers": [
         "backend/app/api/team_routes.py:invite_team_member",
         "backend/app/api/team_routes.py:join_team_seat"
@@ -7518,7 +8611,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "I03",
@@ -7527,6 +8621,11 @@
       "parentKey": null,
       "gateable": true,
       "baselineReason": null,
+      "controlKind": "product",
+      "productInventoryId": "I03",
+      "operationCapabilities": [
+        "i03"
+      ],
       "serverHandlers": [
         "backend/app/api/referral_routes.py:claim_referral"
       ],
@@ -7576,7 +8675,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     },
     {
       "inventoryId": "I04",
@@ -7585,6 +8685,11 @@
       "parentKey": null,
       "gateable": false,
       "baselineReason": "Administrative recovery and access controls must remain available to authorized administrators.",
+      "controlKind": "product",
+      "productInventoryId": "I04",
+      "operationCapabilities": [
+        "i04"
+      ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [],
       "clientControls": [],
@@ -7627,7 +8732,8 @@
         "automatedBrowserEvidence": [],
         "liveProviderOrManualEndToEnd": "not verified by this change",
         "notes": "Policy denial tests verify real registered ASGI dependencies and no handler DB writes; they do not prove complete successful provider workflows."
-      }
+      },
+      "subfeatures": []
     }
   ]
 }

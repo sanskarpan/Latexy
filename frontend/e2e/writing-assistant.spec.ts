@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 // ------------------------------------------------------------------ //
 //  Fixtures                                                           //
@@ -69,6 +71,13 @@ async function mockAuth(page: import('@playwright/test').Page) {
 }
 
 async function mockCommonRoutes(page: import('@playwright/test').Page) {
+  // These tests exercise admitted tools. Include the independent D14 children
+  // and their ancestors rather than relying on a live entitlement endpoint.
+  const catalog = ['capability_catalog.json', 'capability_subfeature_catalog.json'].flatMap(name =>
+    JSON.parse(readFileSync(resolve(__dirname, '../../backend/app/core', name), 'utf8')) as Array<{ key: string; parent_key?: string | null }>)
+  const keys = new Set(catalog.flatMap(item => [item.key, ...(item.parent_key ? [item.parent_key] : [])]))
+  await page.route((url) => url.pathname === '/config/entitlements', route =>
+    route.fulfill({ json: { features: Object.fromEntries([...keys].map(key => [key, true])) } }))
   await page.route((url) => url.pathname.startsWith('/analytics'), (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"message":"ok"}' })
   )

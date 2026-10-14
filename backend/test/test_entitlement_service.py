@@ -316,8 +316,29 @@ class TestEffectiveFeaturesAndState:
 
         # registry entries carry the expected fields.
         assert len(state["registry"]) == len(FEATURE_REGISTRY)
-        sample = state["registry"][0]
-        assert set(sample.keys()) == {"key", "label", "category", "gateable", "description", "parent_key", "inventory_id", "always_on_reason"}
+        expected_fields = {"key", "label", "category", "gateable", "description", "parent_key", "inventory_id",
+                           "always_on_reason", "control_kind", "product_inventory_id"}
+        registry = {entry["key"]: entry for entry in state["registry"]}
+        assert set(registry) == {feature.key for feature in FEATURE_REGISTRY}
+        for entry in state["registry"]:
+            assert set(entry) == expected_fields
+
+        parents = [entry for entry in registry.values() if entry["control_kind"] == "parent"]
+        products = [entry for entry in registry.values() if entry["control_kind"] == "product"]
+        children = [entry for entry in registry.values() if entry["control_kind"] == "subfeature"]
+        assert (len(parents), len(products), len(children)) == (31, 129, 5)
+        assert all(entry["inventory_id"] is None and entry["product_inventory_id"] is None for entry in parents)
+        assert all(entry["inventory_id"] and entry["product_inventory_id"] == entry["inventory_id"] for entry in products)
+        assert registry["d14"]["inventory_id"] == "D14"
+        assert registry["d14"]["parent_key"] == "ai_writing"
+        assert {entry["key"] for entry in children} == {
+            "d14_latex", "d14_table_text", "d14_table_image", "d14_math_text", "d14_math_image",
+        }
+        for child in children:
+            assert child["inventory_id"] is None
+            assert child["parent_key"] == "d14"
+            assert child["product_inventory_id"] == registry[child["parent_key"]]["inventory_id"] == "D14"
+            assert child["gateable"] is True
 
 
 # ── sync_has_feature (worker path via Redis blob) ────────────────────────────

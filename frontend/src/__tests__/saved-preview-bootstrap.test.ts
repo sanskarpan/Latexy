@@ -22,6 +22,9 @@ const bootstrapEffect = (find((node) => ts.isCallExpression(node) && node.expres
   && node.arguments[0]?.getText(source).includes('const request = initialPreviewRequest'))[0] as ts.CallExpression).arguments[0]
 const loadEffect = find((node) => ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect'
   && node.arguments[0]?.getText(source).includes('const fetchResume ='))[0] as ts.CallExpression
+const loadActive = ((loadEffect.arguments[0] as ts.ArrowFunction).body as ts.Block).statements
+  .filter(ts.isVariableStatement).flatMap(statement => [...statement.declarationList.declarations])
+  .find(declaration => declaration.name.getText(source) === 'isActive')!.initializer!
 const identityStatement = statements.find((node) => ts.isVariableStatement(node)
   && node.declarationList.declarations.some((item) => item.name.getText(source) === 'initialPreviewIdentityRef'))!
 const identityIf = statements[statements.indexOf(identityStatement) + 1]
@@ -39,11 +42,14 @@ function deferred<T>() {
 
 type Identity = { ownerId: string | null; resumeId: string; consumed: boolean }
 type Admission = { success: boolean; job_id?: string }
+type SourceLoadTicket = { ownerId: string | null; resumeId: string; generation: number; sequence: number }
 const initialSource = '\\documentclass{article}\n\\begin{document}\nA sufficiently long managed resume source with verified ownership and revision.\n\\end{document}'
 
 function harness() {
   const grants = new Set<string>()
   let generation = 1
+  let sourceLoadSequence = 0
+  let currentSourceLoad: SourceLoadTicket | null = null
   let identityRef: { current: Identity } | undefined
   const auth = deferred<void>(), response = deferred<Admission>()
   const dispatch = vi.fn()
@@ -59,10 +65,21 @@ function harness() {
   const admissions: Promise<string | null>[] = []
   const editor = { setValue: vi.fn(), getValue: vi.fn<() => string | undefined>(() => undefined), markAutoCompileCompiled: vi.fn() }
   const setCompileJobId = vi.fn(), setLastStartedJobKind = vi.fn()
+  const finishSourceLoad = vi.fn((ticket: SourceLoadTicket, status: string, kind: string | null = null) => {
+    if (ticket !== currentSourceLoad || ticket.ownerId !== context.sessionUserId
+      || ticket.resumeId !== context.resumeId || ticket.generation !== generation) return false
+    context.sourceLoadStatus = status
+    context.sourceLoadKind = kind
+    context.sourceLoadReady = status === 'ready'
+    return true
+  })
   const context: Record<string, unknown> = {
     Error, performance, navigator: { onLine: true },
     sessionUserId: 'owner-A', resumeId: 'resume-A', isLoading: false, sessionLoading: false, initialPreviewRequest: null,
     entitlementsLoading: true, entitlementsLoaded: false,
+    sourceLoadStatus: 'unresolved', sourceLoadKind: null, sourceLoadReady: false, finishSourceLoad,
+    ownsSourceLoad: (ticket: SourceLoadTicket) => ticket === currentSourceLoad && ticket.ownerId === context.sessionUserId
+      && ticket.resumeId === context.resumeId && ticket.generation === generation,
     can: (key: string) => grants.has(key), canRef: { current: (key: string) => grants.has(key) },
     editorMode: 'pdf', latexContent: initialSource, sourceAtRenderRef: { current: initialSource },
     editorRef: { current: editor }, compiler: 'pdflatex', initialPreviewCompilerRef: { current: 'pdflatex' }, isOnline: true,
@@ -79,7 +96,9 @@ function harness() {
     },
     getDraft: () => Promise.resolve(null),
     isActive: () => true,
+    loadedDocumentScopeRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A' } },
     setResumeLoadError: (error: unknown) => { if (error) throw new Error(String(error)) },
+    setIsLoading: (value: boolean) => { context.isLoading = value },
   }
   for (const node of find((node) => ts.isIdentifier(node) && /^set[A-Z]/.test(node.text))) {
     const name = (node as ts.Identifier).text
@@ -94,6 +113,11 @@ function harness() {
       ...context, useRef: (current: Identity) => identityRef ?? { current },
     })
     context.initialPreviewIdentityRef = identityRef
+    const documentScopeRef = context.loadedDocumentScopeRef as { current: { ownerId: string; resumeId: string } }
+    if (documentScopeRef.current.ownerId !== owner || documentScopeRef.current.resumeId !== resume) {
+      documentScopeRef.current = { ownerId: owner, resumeId: resume }
+    }
+    context.documentScope = documentScopeRef.current
     return identityRef!.current
   }
   renderIdentity()
@@ -108,18 +132,25 @@ function harness() {
   }
   exposeQueue()
   return {
-    context, grants, auth, response, submit, dispatch, automatic, editor, setCompileJobId, setLastStartedJobKind,
+    context, grants, auth, response, submit, dispatch, automatic, editor, setCompileJobId, setLastStartedJobKind, finishSourceLoad,
     get scheduler() { return scheduler }, get identity() { return identityRef!.current },
     effect: () => evaluate(`(${bootstrapEffect.getText(source)})()`, context),
     async load() {
+      currentSourceLoad = { ownerId: context.sessionUserId as string | null, resumeId: context.resumeId as string,
+        generation, sequence: ++sourceLoadSequence }
+      context.sourceLoad = currentSourceLoad
+      context.sourceLoadStatus = 'loading'; context.sourceLoadKind = null; context.sourceLoadReady = false
       context.initialPreviewIdentity = identityRef!.current
       context.generationAtStart = generation
-      await evaluate(`(${fetchResume.getText(source)})()`, context)
+      const loadContext: Record<string, unknown> = { ...context, cancelled: false, ownerAtStart: context.sessionUserId }
+      loadContext.isActive = evaluate(`(${loadActive.getText(source)})`, loadContext)
+      await evaluate(`(${fetchResume.getText(source)})()`, loadContext)
     },
     grant() { grants.add('c05'); context.entitlementsLoading = false; context.entitlementsLoaded = true },
     edit(source: string) { (context.setLatexContent as (value: string) => void)(source) },
     switchOwner(owner: string, resume = context.resumeId as string) {
       generation++; renderIdentity(owner, resume)
+      currentSourceLoad = null; context.sourceLoadReady = false; context.sourceLoadStatus = 'unresolved'
       scheduler.dispose(); scheduler = new PreviewScheduler(automatic, () => Date.now()); scheduler.update(false, false); exposeQueue()
       context.compileJobId = null; context.aiJobId = null; context.isSubmitting = false
     },
@@ -152,6 +183,8 @@ describe('saved initial preview entitlement readiness and admission', () => {
     const h = harness()
     await h.load(); h.effect()
     expect(h.context.latexContent).toBe(initialSource)
+    expect(h.finishSourceLoad).toHaveBeenCalledExactlyOnceWith(h.context.sourceLoad, 'ready', 'server')
+    expect(h.context.sourceLoadReady).toBe(true)
     expect(h.submit).not.toHaveBeenCalled()
     expect(h.identity.consumed).toBe(false)
     h.grant(); h.effect()
@@ -177,6 +210,17 @@ describe('saved initial preview entitlement readiness and admission', () => {
     expect(loadEffect.arguments[1].getText(source)).not.toMatch(/\b(can|entitlementsLoaded|entitlementsLoading)\b/)
     expect(loadEffect.arguments[0].getText(source)).not.toContain('apiClient.compileLatex')
     h.dispose()
+  })
+
+  it('tags the restored pending local source as offline without admitting preview before grants resolve', async () => {
+    const h = harness()
+    h.context.getDraft = () => Promise.resolve({ title: 'Local draft', latexContent: initialSource, syncStatus: 'pending', savedAt: new Date().toISOString() })
+    await h.load(); h.effect()
+    expect(h.context.latexContent).toBe(initialSource)
+    expect(h.finishSourceLoad).toHaveBeenCalledExactlyOnceWith(h.context.sourceLoad, 'ready', 'offline')
+    expect(h.context.sourceLoadReady).toBe(true); expect(h.context.sourceLoadKind).toBe('offline')
+    expect(h.submit).not.toHaveBeenCalled()
+    h.grant(); h.effect(); await h.settle(); expect(h.submit).toHaveBeenCalledOnce(); h.dispose()
   })
 
   it.each(['denied', 'failed'])('consumes a settled %s capability decision without compiling after regrant', async (outcome) => {

@@ -31,9 +31,11 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         "generate_bullets": ("d09",), "generate_phrase_library": ("d09",),
         "generate_summary": ("d11",), "proofread_resume": ("d12",),
         "explain_latex_error": ("d13",), "generate_bullet_variants": ("d10",),
-        "generate_latex": ("d14",), "generate_table_from_text": ("d14",),
-        "generate_table_from_image": ("d14",), "generate_math_from_text": ("d14",),
-        "generate_math_from_image": ("d14",), "rewrite_text": ("d06",),
+        # Each generation admission intersects its leaf, D14, and ai_writing.
+        # Ancestry is evaluated by EntitlementService, never flattened here.
+        "generate_latex": ("d14_latex",), "generate_table_from_text": ("d14_table_text",),
+        "generate_table_from_image": ("d14_table_image",), "generate_math_from_text": ("d14_math_text",),
+        "generate_math_from_image": ("d14_math_image",), "rewrite_text": ("d06",),
         "document_assistant": ("d08",), "suggest_synonyms": ("d07",),
         "spell_check": ("c16",), "get_confidence_score": ("d17",),
         "standardize_dates": ("d16",), "salary_estimate": ("d26",),

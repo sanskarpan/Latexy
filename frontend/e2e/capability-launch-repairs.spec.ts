@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page, type Route } from '@playwright/test'
+import { installMockWorkboxRegistration } from './helpers/mock-workbox-registration'
 
 // Real production React/DOM and Better Auth notifications; synthetic HTTP only.
 // This does not exercise server grants, PostgreSQL, DNS, AI, PDF compilation or providers.
@@ -13,7 +14,8 @@ const TEMPLATE_FEATURES = { b01: true, b04: true, b05: true, c01: true }
 
 test.use({ serviceWorkers: 'block' })
 const pageErrors = new WeakMap<Page, string[]>()
-test.beforeEach(({ page }) => {
+test.beforeEach(async ({ page }) => {
+  await installMockWorkboxRegistration(page)
   const errors: string[] = []; pageErrors.set(page, errors)
   page.on('pageerror', error => errors.push(error.message))
 })
@@ -172,17 +174,191 @@ test('E03 live revocation retains local answers and admitted feedback while hidi
     expect(simulations).toBe(0)
     await h.refreshGrants({ e03: true })
     await page.getByRole('button', { name: 'Finish session', exact: true }).click(); await started.promise
-    await h.refreshGrants({ e03: false }); gate.release(); await finished.promise
+    await h.refreshGrants({ e02: false, e03: false }); gate.release(); await finished.promise
     await expect(page.getByText('Answer feedback', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'View session summary' }).click()
     await expect(page.getByText('Practice score 84/100')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Start another session' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
     expect(simulations).toBe(1)
     await h.refreshGrants({ e03: true })
     await page.getByRole('button', { name: 'Start another session' }).click()
     await expect(page.getByRole('button', { name: /Start Coach session/ })).toBeVisible()
   } finally { gate.release() }
 })
+
+function interviewPrepFor(owner: string, incarnation = 0) {
+  return {
+    id: '22222222-2222-2222-2222-222222222222', resume_id: RESUME_ID, user_id: owner,
+    job_description: null, company_name: null, role_title: `${owner} prep ${incarnation}`, generation_job_id: null,
+    questions: [{ category: 'behavioral', question: `${owner} question ${incarnation}`, what_interviewer_assesses: 'Evidence' }],
+    created_at: '2026-10-13T00:00:00Z', updated_at: '2026-10-13T00:00:00Z',
+  }
+}
+
+async function openInterview(page: Page) {
+  await page.getByRole('button', { name: /^More$/i }).click()
+  await page.getByRole('menuitem', { name: /^Interview Prep$/i }).click()
+}
+
+async function savedInterview(h: Fixture) {
+  await h.backendRoute(path => path === `/resumes/${RESUME_ID}/interview-prep`, route =>
+    route.fulfill({ json: [interviewPrepFor(h.state.owner!, h.state.incarnation)] }))
+}
+
+// Entry is allowed by either independent grant. Recovery never creates a new AI action.
+test('E03-only saved prep survives refresh loading and both-off denial with read/delete recovery', async ({ page }) => {
+  const h = await fixture(page, { c01: true, e02: false, e03: true }); await savedInterview(h)
+  let generations = 0; let simulations = 0; let deletions = 0
+  const refreshGate = deferred(); const refreshStarted = deferred()
+  let holdRefresh = false
+  await h.backendRoute(path => path === '/config/entitlements', async route => {
+    const features = { ...h.state.features }
+    if (holdRefresh) { holdRefresh = false; refreshStarted.release(); await refreshGate.promise }
+    await route.fulfill({ json: { features } })
+  })
+  await h.backendRoute(path => path === '/interview-prep/generate' || path.endsWith('/simulate') || path === '/interview-prep/22222222-2222-2222-2222-222222222222', async route => {
+    if (route.request().method() === 'DELETE') { deletions += 1; await route.fulfill({ status: 204 }); return }
+    if (new URL(route.request().url()).pathname.endsWith('/simulate')) simulations += 1
+    else generations += 1
+    await route.fulfill({ status: 403, json: { detail: 'No new AI request is authorized by this fixture' } })
+  })
+  try {
+    await page.goto(`/workspace/${RESUME_ID}/edit`); await openInterview(page)
+    await expect(page.getByText('owner-a question 0', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: /Start Coach session/ }).click()
+    const answer = page.getByRole('textbox', { name: 'Answer to question 1' })
+    await answer.fill('An owned answer preserved throughout grant refresh and denial.')
+    holdRefresh = true
+    const refreshing = h.refreshGrants({ e03: false })
+    await refreshStarted.promise
+    await expect(answer).toHaveValue('An owned answer preserved throughout grant refresh and denial.')
+    await expect(page.getByRole('button', { name: 'Finish session', exact: true })).toHaveCount(0)
+    refreshGate.release(); await refreshing
+    await expect(answer).toHaveValue('An owned answer preserved throughout grant refresh and denial.')
+    await expect(page.getByRole('button', { name: /Generate Screening Practice|Finish session|Start another session/ })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(page.getByText('owner-a question 0', { exact: true })).toHaveCount(0)
+    await expect(page.getByText(/New interview-prep generation is unavailable/)).toBeVisible()
+    expect({ generations, simulations, deletions }).toEqual({ generations: 0, simulations: 0, deletions: 1 })
+  } finally { refreshGate.release() }
+})
+
+test('E02 draft and E03 answer survive same-owner auth failure and token refresh', async ({ page }) => {
+  const h = await fixture(page, INTERVIEW_FEATURES); await savedInterview(h)
+  await page.goto(`/workspace/${RESUME_ID}/edit`); await openInterview(page)
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  const jobDescription = page.getByPlaceholder('Paste the job description here for tailored questions…')
+  await jobDescription.fill('Owned role description with an unsaved preparation draft.')
+  h.state.authError = true; await h.refreshSession()
+  await expect(jobDescription).toHaveValue('Owned role description with an unsaved preparation draft.')
+  await expect(page.getByRole('button', { name: 'Generate Screening Practice', exact: true })).toHaveCount(0)
+  h.state.authError = false; h.state.incarnation += 1; await h.refreshSession()
+  await expect(page.getByRole('button', { name: 'Generate Screening Practice', exact: true })).toBeVisible()
+  await expect(jobDescription).toHaveValue('Owned role description with an unsaved preparation draft.')
+  await page.locator('select').filter({ has: page.locator('option[value="22222222-2222-2222-2222-222222222222"]') }).selectOption('22222222-2222-2222-2222-222222222222')
+  await page.getByRole('button', { name: /Start Coach session/ }).click()
+  const answer = page.getByRole('textbox', { name: 'Answer to question 1' })
+  await answer.fill('An owned simulation answer that survives a new same-owner token.')
+  h.state.incarnation += 1; await h.refreshSession()
+  await expect(page.getByRole('button', { name: 'Finish session', exact: true })).toBeVisible()
+  await expect(answer).toHaveValue('An owned simulation answer that survives a new same-owner token.')
+})
+
+for (const recovery of ['generation draft', 'simulation answer'] as const) {
+  test(`E02/E03 ${recovery} stays readable while new actions wait for the latest resume refresh`, async ({ page }) => {
+    const h = await fixture(page, INTERVIEW_FEATURES); await savedInterview(h)
+    const gate = deferred(); const started = deferred(); const finished = deferred()
+    let holdNextRead = false; let resumeReads = 0; let generations = 0; let evaluations = 0
+    await h.backendRoute(path => path === `/resumes/${RESUME_ID}`, async route => {
+      resumeReads += 1
+      if (holdNextRead) {
+        holdNextRead = false; started.release(); await gate.promise
+        await route.fulfill({ status: 503, json: { detail: 'Controlled latest resume refresh failure' } })
+        finished.release(); return
+      }
+      await route.fulfill({ json: { id: RESUME_ID, user_id: h.state.owner, title: 'Owned source', latex_content: SOURCE,
+        access_role: 'owner', created_at: '2026-10-13T00:00:00Z', updated_at: '2026-10-13T00:00:00Z' } })
+    })
+    await h.backendRoute(path => path === '/interview-prep/generate' || path.endsWith('/simulate'), async route => {
+      if (new URL(route.request().url()).pathname.endsWith('/simulate')) {
+        evaluations += 1
+        await route.fulfill({ json: { mode: 'coach', feedback: [{ question_index: 0, score: 84, strengths: ['Latest source confirmed'], improvements: ['Scope'], suggested_outline: ['Context'] }], average_score: 84, overall_feedback: 'Allowed after the latest resume refresh succeeds.' } })
+      } else {
+        generations += 1
+        await route.fulfill({ json: { success: true, prep_id: '33333333-3333-3333-3333-333333333333', job_id: '44444444-4444-4444-4444-444444444444', message: 'Synthetic generation admitted' } })
+      }
+    })
+    try {
+      await page.goto(`/workspace/${RESUME_ID}/edit`); await openInterview(page)
+      const recoveringGeneration = recovery === 'generation draft'
+      if (recoveringGeneration) await page.getByRole('button', { name: 'New', exact: true }).click()
+      else await page.getByRole('button', { name: /Start Coach session/ }).click()
+      const draft = recoveringGeneration ? page.getByPlaceholder('Paste the job description here for tailored questions…')
+        : page.getByRole('textbox', { name: 'Answer to question 1' })
+      const ownedText = 'A valid owned draft that stays visible while the latest resume load is pending or failed.'
+      await draft.fill(ownedText)
+      holdNextRead = true; h.state.incarnation += 1; await h.refreshSession(); await started.promise
+      // Fully resolve the effective grants while the separate resume read stays pending.
+      await h.refreshGrants({ e02: true, e03: true })
+      await expect(draft).toHaveValue(ownedText)
+      await expect(page.getByRole('button', { name: /^(Generate Screening Practice|Finish session|New)$/ })).toHaveCount(0)
+      expect({ generations, evaluations }).toEqual({ generations: 0, evaluations: 0 })
+      gate.release(); await finished.promise
+      await expect(page.getByRole('alert').filter({ hasText: 'Controlled latest resume refresh failure' })).toBeVisible()
+      await expect(draft).toHaveValue(ownedText)
+      await expect(page.getByRole('button', { name: /^(Generate Screening Practice|Finish session|New)$/ })).toHaveCount(0)
+      expect({ generations, evaluations }).toEqual({ generations: 0, evaluations: 0 })
+      h.state.incarnation += 1; await h.refreshSession()
+      const action = page.getByRole('button', { name: recoveringGeneration ? 'Generate Screening Practice' : 'Finish session', exact: true })
+      await expect(action).toBeVisible()
+      await expect(draft).toHaveValue(ownedText)
+      expect(resumeReads).toBeGreaterThanOrEqual(3)
+      await action.click()
+      await expect.poll(() => recoveringGeneration ? generations : evaluations).toBe(1)
+      expect(recoveringGeneration ? evaluations : generations).toBe(0)
+    } finally { gate.release() }
+  })
+}
+
+for (const transition of ['A→B', 'A→B→A', 'logout→A'] as const) {
+  test(`E03 admitted feedback and local draft cannot cross ${transition}`, async ({ page }) => {
+    const h = await fixture(page, INTERVIEW_FEATURES); await savedInterview(h)
+    const gate = deferred(); const started = deferred(); const finished = deferred()
+    let evaluations = 0
+    await h.backendRoute(path => path.endsWith('/simulate'), async route => {
+      evaluations += 1; started.release(); await gate.promise
+      await route.fulfill({ json: { mode: 'coach', feedback: [{ question_index: 0, score: 84, strengths: ['Old owner private strength'], improvements: ['Scope'], suggested_outline: ['Context'] }], average_score: 84, overall_feedback: 'Old owner private feedback' } })
+      finished.release()
+    })
+    try {
+      await page.goto(`/workspace/${RESUME_ID}/edit`); await openInterview(page)
+      await page.getByRole('button', { name: /Start Coach session/ }).click()
+      await page.getByRole('textbox', { name: 'Answer to question 1' }).fill('Old owner private draft longer than twenty characters.')
+      await page.getByRole('button', { name: 'Finish session', exact: true }).click(); await started.promise
+      if (transition === 'logout→A') {
+        h.state.owner = null; await h.refreshSession(); await expect(page).toHaveURL(/\/login/)
+        h.state.owner = 'owner-a'; h.state.incarnation += 1
+        await page.goto(`/workspace/${RESUME_ID}/edit`)
+      } else {
+        await h.switchOwner('owner-b')
+        await expect.poll(() => page.evaluate(() => (window as typeof window & { __latexyMonacoEditor?: { getValue(): string } }).__latexyMonacoEditor?.getValue())).toBe(SOURCE)
+        if (transition === 'A→B→A') await h.switchOwner('owner-a')
+      }
+      await openInterview(page)
+      const current = interviewPrepFor(h.state.owner!, h.state.incarnation)
+      await expect(page.getByText(current.questions[0].question, { exact: true })).toBeVisible()
+      gate.release(); await finished.promise; await settleFrame(page)
+      await expect(page.getByText('Old owner private strength', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Old owner private feedback', { exact: true })).toHaveCount(0)
+      await expect(page.getByRole('textbox', { name: 'Answer to question 1' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /Start Coach session/ })).toBeVisible()
+      expect(evaluations).toBe(1)
+    } finally { gate.release() }
+  })
+}
 
 test('tenant F10/F11 toggle independently and preserve domain/member removal recovery', async ({ page }) => {
   const h = await fixture(page, TENANT_FEATURES); const t = await tenants(page, h)

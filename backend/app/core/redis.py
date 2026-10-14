@@ -218,6 +218,10 @@ class RedisManager:
         # without this shutdown pass accidentally closing it later.
         self.close_sync_redis()
 
+        from .disposable_cache import disposable_cache
+
+        await disposable_cache.aclose()
+
         for client in async_clients.values():
             try:
                 await client.aclose()

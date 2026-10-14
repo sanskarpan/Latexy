@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useAccountContentScope } from '@/contexts/AccountContentScope'
 import { BrainCircuit, CheckCircle2, Loader2, RotateCcw } from 'lucide-react'
 import {
   apiClient,
@@ -12,14 +13,31 @@ import {
 
 interface InterviewSimulationProps {
   prepId: string
+  authToken: string | null
   questions: InterviewQuestion[]
+  isCurrentSession: () => boolean
+  canActForOwner: () => boolean
 }
 
 type Phase = 'setup' | 'answering' | 'feedback' | 'complete'
 
-export default function InterviewSimulation({ prepId, questions }: InterviewSimulationProps) {
+export default function InterviewSimulation({ prepId, authToken, questions, isCurrentSession, canActForOwner }: InterviewSimulationProps) {
+  const accountScope = useAccountContentScope()
+  const mountedRef = useRef(true)
+  const prepScopeRef = useRef({ prepId })
+  if (prepScopeRef.current.prepId !== prepId) prepScopeRef.current = { prepId }
+  const prepScope = prepScopeRef.current
+  // Retained callbacks belong to this exact mounted prep, not just an equal id.
+  const isCurrent = () => mountedRef.current && prepScopeRef.current === prepScope
+    && Boolean(accountScope?.isCurrent()) && isCurrentSession()
+  // Never replace a retained callback's admission with the newest prop lease.
+  const canAct = () => isCurrent() && Boolean(authToken) && Boolean(accountScope?.canAdmit()) && canActForOwner()
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const { can } = useEntitlements()
-  const allowed = can('e03')
+  const allowed = can('e03') && canAct()
   const canRef = useRef(can)
   canRef.current = can
   const [mode, setMode] = useState<InterviewSimulationMode>('coach')
@@ -29,11 +47,12 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [feedback, setFeedback] = useState<InterviewSimulationFeedback[]>([])
   const [overallFeedback, setOverallFeedback] = useState('')
+  const pendingRef = useRef(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const start = () => {
-    if (!canRef.current('e03')) return
+    if (!canAct() || !canRef.current('e03')) return
     setCurrentIndex(0)
     setCurrentAnswer('')
     setAnswers({})
@@ -44,7 +63,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
   }
 
   const evaluate = async (submitted: Record<number, string>) => {
-    if (!canRef.current('e03')) return null
+    if (!canAct() || !canRef.current('e03')) return null
     const indexes = Object.keys(submitted).map(Number).sort((a, b) => a - b)
     return apiClient.evaluateInterviewSimulation(prepId, {
       mode,
@@ -52,12 +71,13 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
         question_index: questionIndex,
         answer: submitted[questionIndex],
       })),
-    })
+    }, { authToken: authToken!, isCurrent: () => canAct() && canRef.current('e03') })
   }
 
   const submitAnswer = async () => {
     const answer = currentAnswer.trim()
-    if (!canRef.current('e03') || answer.length < 20 || loading) return
+    if (!canAct() || !canRef.current('e03') || answer.length < 20 || pendingRef.current) return
+    pendingRef.current = true
     const submitted = { ...answers, [currentIndex]: answer }
     setAnswers(submitted)
     setLoading(true)
@@ -65,13 +85,13 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
     try {
       if (mode === 'coach') {
         const result = await evaluate({ [currentIndex]: answer })
-        if (!result) return
+        if (!result || !isCurrent()) return
         setFeedback(current => [...current, ...result.feedback])
         setOverallFeedback(result.overall_feedback)
         setPhase('feedback')
       } else if (currentIndex === questions.length - 1) {
         const result = await evaluate(submitted)
-        if (!result) return
+        if (!result || !isCurrent()) return
         setFeedback(result.feedback)
         setOverallFeedback(result.overall_feedback)
         setPhase('complete')
@@ -80,14 +100,15 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
         setCurrentAnswer('')
       }
     } catch (caught) {
+      if (!isCurrent()) return
       setError(caught instanceof Error ? caught.message : 'Practice feedback could not be generated')
     } finally {
-      setLoading(false)
+      if (isCurrent()) { pendingRef.current = false; setLoading(false) }
     }
   }
 
   const continueAfterFeedback = () => {
-    if (currentIndex < questions.length - 1 && !canRef.current('e03')) return
+    if (!isCurrent() || (currentIndex < questions.length - 1 && (!canAct() || !canRef.current('e03')))) return
     if (currentIndex === questions.length - 1) {
       setPhase('complete')
     } else {
@@ -98,7 +119,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
   }
 
   const restart = () => {
-    if (!canRef.current('e03')) return
+    if (!canAct() || !canRef.current('e03')) return
     setPhase('setup')
   }
 
@@ -124,7 +145,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
               key={value}
               type="button"
               aria-pressed={mode === value}
-              onClick={() => setMode(value)}
+              onClick={() => { if (canAct() && canRef.current('e03')) setMode(value) }}
               className={`rounded-[var(--radius-md)] border px-2.5 py-2 text-left transition ${
                 mode === value ? 'border-accent bg-accent-soft' : 'border-line bg-surface-2'
               }`}
@@ -183,7 +204,7 @@ export default function InterviewSimulation({ prepId, questions }: InterviewSimu
           <textarea
             aria-label={`Answer to question ${currentIndex + 1}`}
             value={currentAnswer}
-            onChange={event => setCurrentAnswer(event.target.value)}
+            onChange={event => { if (isCurrent()) setCurrentAnswer(event.target.value) }}
             maxLength={1200}
             rows={5}
             placeholder="Type the answer you would give in the interview…"

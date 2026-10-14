@@ -12,7 +12,7 @@ import {
 import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
-import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock } from '@/lib/admin-entitlements'
+import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
   key: string
@@ -208,9 +208,7 @@ function MatrixTab() {
     for (const feat of state.registry) {
       if (!matchesFeatureSearch(feat, query)) continue
       if (categoryFilter !== 'all' && feat.category !== categoryFilter) continue
-      if (kindFilter === 'controlled' && !feat.gateable) continue
-      if (kindFilter === 'always-on' && feat.gateable) continue
-      if (kindFilter === 'groups' && feat.inventory_id) continue
+      if (!matchesFeatureKind(feat, kindFilter)) continue
       const list = byCat.get(feat.category) ?? []
       list.push(feat)
       byCat.set(feat.category, list)
@@ -268,13 +266,14 @@ function MatrixTab() {
   const families = planView === 'roles' ? (state.roles ?? []) : planView === 'skus' ? (state.plan_keys ?? state.plan_families) : state.plan_families
   const categories = [...new Set(state.registry.map((feature) => feature.category))]
   const visibleCount = grouped.reduce((total, group) => total + group.features.length, 0)
+  const controlCounts = registryControlCounts(state.registry)
 
   return (
     <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="space-y-4 border-b border-line p-4">
         <div>
           <h2 className="font-semibold text-fg">Capability inventory</h2>
-          <p className="mt-1 text-xs text-fg-3">Control individual capabilities and parent feature groups. Global, plan and account-role restrictions all apply. Parent restrictions always apply to their children.</p>
+          <p className="mt-1 text-xs text-fg-3">Control product capabilities, child operations and parent feature groups. Switches show stored permissions; effective use also requires every ancestor. Global, plan and account-role restrictions all apply. Parent restrictions always apply to their children.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <input type="search" aria-label="Search capabilities" placeholder="Search features, IDs, or descriptions…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-48 flex-1 rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg" />
@@ -283,11 +282,11 @@ function MatrixTab() {
             {categories.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}
           </select>
           <select aria-label="Capability control type" value={kindFilter} onChange={(event) => setKindFilter(event.target.value)} className="rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg">
-            <option value="all">All capabilities</option><option value="controlled">Controllable</option><option value="always-on">Always on</option><option value="groups">Parent groups</option>
+            <option value="all">All capabilities</option><option value="controlled">Controllable</option><option value="always-on">Always on</option><option value="groups">Parent groups</option><option value="products">Audited products</option><option value="subfeatures">Child operations</option>
           </select>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p role="status" className="text-xs text-fg-3">{visibleCount} of {state.registry.length} capabilities · {state.registry.filter((feature) => feature.inventory_id).length} audited features</p>
+          <p role="status" className="text-xs text-fg-3">{visibleCount} of {state.registry.length} capabilities · {controlCounts.product} audited products · {controlCounts.subfeature} child operations · {controlCounts.parent} parent groups</p>
           <div className="flex gap-2" role="group" aria-label="Permission control scope">
             <button type="button" aria-pressed={planView === 'families'} onClick={() => setPlanView('families')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'families' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Family defaults</button>
             <button type="button" aria-pressed={planView === 'skus'} onClick={() => setPlanView('skus')} className={`rounded-md border px-3 py-1.5 text-xs ${planView === 'skus' ? 'border-accent text-accent-strong' : 'border-line text-fg-3'}`}>Individual plans</button>
@@ -390,15 +389,16 @@ function FragmentGroup({
             <td className="sticky left-0 z-10 w-[280px] min-w-[280px] bg-surface px-4 py-3 group-hover:bg-surface-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-fg">{feat.label}</span>
+                {entitlementControlKind(feat) === 'subfeature' && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-strong">child operation</span>}
                 {!feat.gateable && (
                   <span className="rounded bg-ok/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ok">
                     always on
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-[10px] text-fg-3">{feat.inventory_id ? `${feat.inventory_id} · ` : ''}{feat.key}</p>
+              <p className="mt-1 text-[10px] text-fg-3">{feat.inventory_id ? `${feat.inventory_id} · ` : feat.product_inventory_id ? `${feat.product_inventory_id} child · ` : ''}{feat.key}</p>
               {feat.description && <p className="mt-1 max-w-md text-[11px] font-normal leading-relaxed text-fg-3">{feat.description}</p>}
-              {feat.parent_key && <p className="mt-1 text-[10px] text-fg-3">Requires: {state.registry.find((item) => item.key === feat.parent_key)?.label ?? feat.parent_key}</p>}
+              {feat.parent_key && <p className="mt-1 text-[10px] text-fg-3">Requires: {entitlementAncestryLabels(state, feat)}</p>}
               {feat.always_on_reason && <p className="mt-1 text-[11px] text-ok">{feat.always_on_reason}</p>}
               {globalBlocker && <p className="mt-1 text-[10px] text-warn">{globalBlocker}</p>}
             </td>
@@ -412,6 +412,7 @@ function FragmentGroup({
                     busy={busyCells.has(`global:${feat.key}`)}
                     onClick={() => onToggleGlobal(feat.key, !globalOn)}
                     label={`${feat.label} global kill-switch`}
+                    description={globalBlocker ?? 'Stored global permission; plan and role restrictions still apply'}
                   />
                 </div>
               ) : (

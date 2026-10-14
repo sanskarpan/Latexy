@@ -107,6 +107,8 @@ _TEST_REDIS_CACHE_URL = os.environ.get(
 )
 os.environ["REDIS_URL"] = _TEST_REDIS_URL
 os.environ["REDIS_CACHE_URL"] = _TEST_REDIS_CACHE_URL
+# Never load operator backup endpoints into tests, even from a developer .env.
+os.environ["DISPOSABLE_CACHE_BACKUPS"] = "[]"
 os.environ["CELERY_BROKER_URL"] = _TEST_REDIS_URL
 os.environ["CELERY_RESULT_BACKEND"] = _TEST_REDIS_URL
 os.environ["OPENAI_API_KEY"] = ""  # always disable live LLM in tests — use mocks instead

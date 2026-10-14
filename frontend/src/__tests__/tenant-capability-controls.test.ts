@@ -18,10 +18,11 @@ function findButton(tree: unknown, text: string) {
   return elements(tree).find(node => node.type === 'button' && label(node).replace(/\s+/g, ' ').trim() === text)
 }
 function click(node: Element) { return (node.props.onClick as () => unknown)() }
+const expectedContext = expect.objectContaining({ authToken: 'owner-token', isCurrent: expect.any(Function) })
 const tenant = { id: 'tenant', name: 'Owned tenant', owner_id: 'owner', primary_color: '#19375d', logo_url: null, custom_domain: 'old.example.com', max_members: 50, plan_id: 'agency', slug: 'owned', domain_verified: false }
 
 type HookState = { slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }>; effects: Array<() => void>; mounted: boolean }
-type TenantAuth = { session: { user: { id: string } } | null; isPending: boolean; error: unknown }
+type TenantAuth = { session: { user: { id: string }; session?: { token: string } } | null; isPending: boolean; isRefetching?: boolean; error: unknown }
 async function harness(configure?: (api: Record<string, ReturnType<typeof vi.fn>>) => void, initialAuth?: TenantAuth) {
   vi.resetModules()
   let index = 0
@@ -59,8 +60,17 @@ async function harness(configure?: (api: Record<string, ReturnType<typeof vi.fn>
   vi.doMock('@/contexts/EntitlementsContext', () => ({ useEntitlements: () => {
     const snapshot = grants; return { can: (key: string) => snapshot.has(key) }
   } }))
-  let auth: TenantAuth = initialAuth ?? { session: { user: { id: 'owner' } }, isPending: false, error: null }
+  let auth: TenantAuth = initialAuth ?? { session: { user: { id: 'owner' }, session: { token: 'owner-token' } }, isPending: false, error: null }
   vi.doMock('@/hooks/useRequireAuth', () => ({ useRequireAuth: () => auth }))
+  let recoveryIdentity = {}; let admissionIdentity = {}
+  const makeScope = () => {
+    const recovery = recoveryIdentity; const admission = admissionIdentity
+    return { recoveryIdentity: recovery, isCurrent: () => recovery === recoveryIdentity,
+      isAdmissionCurrent: () => recovery === recoveryIdentity && admission === admissionIdentity,
+      canAdmit: () => recovery === recoveryIdentity && admission === admissionIdentity }
+  }
+  let accountScope: ReturnType<typeof makeScope> | null = makeScope()
+  vi.doMock('@/contexts/AccountContentScope', () => ({ useAccountContentScope: () => accountScope }))
   vi.doMock('next/link', () => ({ default: 'a' }))
   const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() }
   vi.doMock('sonner', () => ({ toast }))
@@ -97,13 +107,19 @@ async function harness(configure?: (api: Record<string, ReturnType<typeof vi.fn>
   }
   render(); await flush()
   return { api, toast, applyTenantTheme, render, flush,
-    switchOwner: (id: string | null) => { auth = { session: id ? { user: { id } } : null, isPending: false, error: null } },
+    switchOwner: (id: string | null) => { auth = { session: id ? { user: { id }, session: { token: `${id}-token` } } : null, isPending: false, error: null } },
     readiness: (isPending: boolean, error: unknown = null) => { auth = { ...auth, isPending, error } },
+    refetch: (isRefetching: boolean) => { auth = { ...auth, isRefetching } },
+    removeOuterScope: () => { accountScope = null },
+    advanceOuterScope: (newRecovery = false) => {
+      if (newRecovery) recoveryIdentity = {}
+      admissionIdentity = {}; accountScope = makeScope()
+    },
     key: () => inner?.key, allow: (keys: string[]) => { grants = new Set(keys) } }
 }
 
 afterEach(() => {
-  for (const name of ['react', '@/contexts/EntitlementsContext', '@/hooks/useRequireAuth', '@/lib/api-client', 'next/link', 'sonner', '@/lib/tenant-theme']) vi.doUnmock(name)
+  for (const name of ['react', '@/contexts/AccountContentScope', '@/contexts/EntitlementsContext', '@/hooks/useRequireAuth', '@/lib/api-client', 'next/link', 'sonner', '@/lib/tenant-theme']) vi.doUnmock(name)
   vi.resetModules()
 })
 
@@ -114,7 +130,7 @@ it('hides denied tenant setup controls even for a team admin and retains existin
   for (const name of ['+ New Tenant', 'Save Branding', 'Create cohort', 'Invite', 'Verify DNS']) expect(findButton(tree, name), name).toBeUndefined()
   expect(label(tree)).toContain('Owned tenant')
   await click(findButton(tree, 'Remove')!)
-  expect(h.api.removeTenantMember).toHaveBeenCalledExactlyOnceWith('tenant', 'member')
+  expect(h.api.removeTenantMember).toHaveBeenCalledExactlyOnceWith('tenant', 'member', expectedContext)
 })
 
 it('independently gates F10 setup and F11 domain verification', async () => {
@@ -148,7 +164,7 @@ function action(name: string, context: Record<string, unknown>) {
   }
   visit(source); expect(expression, name).toBeDefined()
   const javascript = ts.transpileModule(`const run = ${expression!.getText(source)}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-  const scope = { canActForOwner: () => true, isCurrentOwner: () => true, ...context }
+  const scope = { canActForOwner: () => true, isCurrentOwner: () => true, isCurrentSelection: () => true, requestContext: (isCurrent: () => boolean) => ({ authToken: 'owner-token', isCurrent }), ...context }
   return new Function(...Object.keys(scope), `${javascript}; return run`)(...Object.values(scope)) as () => Promise<void>
 }
 
@@ -163,10 +179,10 @@ it('saves a domain without retransmitting branding and can remove it when setup 
   const updateTenant = vi.fn().mockResolvedValue({ ...tenant, custom_domain: 'new.example.com' })
   const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' }, selected: tenant, canRef: { current: (key: string) => key === 'f11' }, customDomain: 'new.example.com', setSavingDomain: vi.fn(), setSelected: vi.fn(), setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain: vi.fn(), applyTenantTheme: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
   await action('saveDomain', scope)()
-  expect(updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'new.example.com' })
+  expect(updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'new.example.com' }, expectedContext)
   updateTenant.mockClear()
   await action('saveDomain', { ...scope, customDomain: '', canRef: { current: () => false } })()
-  expect(updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: null })
+  expect(updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: null }, expectedContext)
   updateTenant.mockClear()
   await action('saveDomain', { ...scope, canRef: { current: () => false } })()
   expect(updateTenant).not.toHaveBeenCalled()
@@ -178,7 +194,7 @@ it('retains explicit existing-domain removal while F10 and F11 are both denied',
   const remove = findButton(h.render(), 'Remove Domain')
   expect(remove).toBeDefined()
   click(remove!)
-  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: null })
+  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: null }, expectedContext)
 })
 
 it('does not add a domain grant requirement to branding-only requests', async () => {
@@ -187,7 +203,7 @@ it('does not add a domain grant requirement to branding-only requests', async ()
   await click(findButton(h.render(), 'Save Branding')!)
   expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', {
     name: 'Owned tenant', logo_url: null, primary_color: '#19375d',
-  })
+  }, expectedContext)
 })
 
 it('does not apply a domain response after the selected tenant changes', async () => {
@@ -327,7 +343,7 @@ it('preserves same-owner draft state during transient session loading while reta
   expect(h.key()).toBe(key)
   expect(elements(restored).some(node => node.props.value === 'unsaved.example.com')).toBe(true)
   await click(findButton(h.render(), 'Save Domain')!)
-  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'unsaved.example.com' })
+  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'unsaved.example.com' }, expectedContext)
 })
 
 it.each(['saveBranding', 'saveDomain', 'removeDomain', 'invite', 'createCohort', 'loadCohortSubmissions', 'removeMember', 'verifyDomain', 'createTenant'])('%s rejects a callback from a prior owner before any state/network access', async name => {
@@ -395,3 +411,163 @@ it('discards private state and old recovery callbacks after confirmed signout, i
 function domainField(tree: unknown) {
   return elements(tree).find(node => node.type === 'input' && node.props.placeholder === 'resumes.acme.com')
 }
+
+it('retires callbacks through isRefetching-only uncertainty without losing the same-owner domain draft', async () => {
+  const h = await harness()
+  const domain = domainField(h.render())!
+  ;(domain.props.onChange as (event: unknown) => void)({ target: { value: 'pending.example.com' } })
+  const before = h.render(); const key = h.key()
+  const retained = ['Save Domain', 'Remove Domain', 'Remove'].map(name => findButton(before, name)!)
+  h.refetch(true)
+  const pending = h.render()
+  expect(h.key()).toBe(key)
+  expect(domainField(pending)?.props.value).toBe('pending.example.com')
+  expect(findButton(pending, 'Save Domain')).toBeUndefined()
+  for (const button of retained) await click(button)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  expect(h.api.removeTenantMember).not.toHaveBeenCalled()
+  h.refetch(false); h.render(); await h.flush()
+  for (const button of retained) await click(button)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  expect(h.api.removeTenantMember).not.toHaveBeenCalled()
+  expect(domainField(h.render())?.props.value).toBe('pending.example.com')
+  await click(findButton(h.render(), 'Save Domain')!)
+  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'pending.example.com' }, expectedContext)
+})
+
+it('treats a completed 401 as signout even when the session hook still exposes the old owner', async () => {
+  const h = await harness()
+  const old = findButton(h.render(), 'Remove Domain')!
+  h.readiness(false, { status: 401 })
+  expect(h.render()).toBeNull()
+  await click(old)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  h.api.listMyTenants.mockResolvedValue([])
+  h.readiness(false); h.render(); await h.flush()
+  expect(label(h.render())).not.toContain('Existing member')
+  await click(old)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+})
+
+it('honors a retired outer admission lease before this child renders and does not revive it', async () => {
+  const h = await harness()
+  const old = findButton(h.render(), 'Remove Domain')!
+  h.advanceOuterScope()
+  await click(old)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  h.render(); await h.flush()
+  await click(old)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  await click(findButton(h.render(), 'Remove Domain')!)
+  expect(h.api.updateTenant).toHaveBeenCalledOnce()
+})
+
+it('resets private tenant state for a new outer recovery identity even if the owner string repeats', async () => {
+  const h = await harness()
+  const old = findButton(h.render(), 'Remove Domain')!; const key = h.key()
+  h.api.listMyTenants.mockResolvedValue([])
+  h.advanceOuterScope(true)
+  h.render(); await h.flush()
+  expect(h.key()).not.toBe(key)
+  expect(label(h.render())).not.toContain('Existing member')
+  await click(old)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+})
+
+it('fails closed when the authenticated tenant page loses its outer account scope', async () => {
+  const h = await harness()
+  h.api.listMyTenants.mockClear(); h.api.getMe.mockClear()
+  h.removeOuterScope(); h.render(); await h.flush()
+  expect(h.api.listMyTenants).not.toHaveBeenCalled()
+  expect(h.api.getMe).not.toHaveBeenCalled()
+})
+
+it.each(['invite', 'createCohort'])('%s cannot clear or insert into a different selected tenant after completion', async name => {
+  let resolve!: (value: unknown) => void
+  const api = { [name === 'invite' ? 'inviteTenantMember' : 'createTenantCohort']: vi.fn(() => new Promise(done => { resolve = done })) }
+  let selected = true
+  const setInviteEmail = vi.fn(); const setCohorts = vi.fn(); const setNewCohortName = vi.fn()
+  const scope = { selected: tenant, canRef: { current: () => true }, isCurrentSelection: () => selected,
+    inviteEmail: 'a@example.com', inviteRole: 'member', inviteCohortId: '', newCohortName: 'A cohort',
+    setInviting: vi.fn(), setCreatingCohort: vi.fn(), setInviteEmail, setCohorts, setNewCohortName,
+    apiClient: api, toast: { success: vi.fn(), error: vi.fn() } }
+  const pending = action(name, scope)()
+  selected = false
+  resolve({ id: 'cohort-a', name: 'A cohort', email: 'a@example.com' }); await pending
+  expect(setInviteEmail).not.toHaveBeenCalled()
+  expect(setCohorts).not.toHaveBeenCalled()
+  expect(setNewCohortName).not.toHaveBeenCalled()
+  expect(scope.toast.success).not.toHaveBeenCalled()
+})
+
+it.each(['saveBranding', 'saveDomain', 'removeDomain', 'invite', 'createCohort', 'loadCohortSubmissions', 'removeMember', 'verifyDomain'])('%s rejects a retained callback from an earlier tenant selection before network work', async name => {
+  await action(name, { isCurrentSelection: () => false })()
+})
+
+it('keeps an already-admitted same-owner patch outcome through an authentication refresh', async () => {
+  const h = await harness()
+  let resolve!: (value: typeof tenant) => void
+  h.api.updateTenant.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const pending = click(findButton(h.render(), 'Save Branding')!)
+  h.refetch(true); h.render()
+  resolve({ ...tenant, name: 'Admitted branding' }); await pending
+  expect(h.applyTenantTheme).toHaveBeenCalledOnce()
+  h.refetch(false); h.render(); await h.flush()
+  expect(h.toast.success).toHaveBeenCalledWith('Branding saved')
+})
+
+it('pins real retained domain callbacks to their rendered tenant selection, including selection ABA', async () => {
+  const second = { ...tenant, id: 'second', name: 'Second tenant' }
+  const h = await harness(api => api.listMyTenants.mockResolvedValue([tenant, second]))
+  const retained = findButton(h.render(), 'Remove Domain')!
+  await click(findButton(h.render(), 'Second tenant')!); h.render()
+  await click(retained)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  await click(findButton(h.render(), 'Owned tenant')!); h.render()
+  await click(retained)
+  expect(h.api.updateTenant).not.toHaveBeenCalled()
+  await click(findButton(h.render(), 'Remove Domain')!)
+  expect(h.api.updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: null }, expectedContext)
+})
+
+it('keeps a delayed first-tenant cohort out of the second tenant and preserves its newer draft', async () => {
+  const second = { ...tenant, id: 'second', name: 'Second tenant' }
+  const h = await harness(api => api.listMyTenants.mockResolvedValue([tenant, second]))
+  let resolve!: (value: unknown) => void
+  h.api.createTenantCohort.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const field = () => elements(h.render()).find(node => node.props.placeholder === 'e.g. Class of 2027')!
+  ;(field().props.onChange as (event: unknown) => void)({ target: { value: 'First-tenant cohort' } })
+  click(findButton(h.render(), 'Create cohort')!)
+  expect(h.api.createTenantCohort).toHaveBeenCalledExactlyOnceWith('tenant', 'First-tenant cohort', expectedContext)
+  await click(findButton(h.render(), 'Second tenant')!)
+  ;(field().props.onChange as (event: unknown) => void)({ target: { value: 'Second-tenant draft' } })
+  resolve({ id: 'first-cohort', name: 'First-tenant cohort' }); await h.flush()
+  expect(label(h.render())).not.toContain('First-tenant cohort')
+  expect(field().props.value).toBe('Second-tenant draft')
+  expect(h.toast.success).not.toHaveBeenCalled()
+})
+
+it.each(['f11', 'refetch', 'outer lease', 'selection'] as const)('rechecks %s before a queued domain patch dispatches with the captured session token', async change => {
+  const second = { ...tenant, id: 'second', name: 'Second tenant' }
+  const h = await harness(api => api.listMyTenants.mockResolvedValue([tenant, second]))
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const dispatch = vi.fn()
+  h.api.updateTenant.mockImplementationOnce(async (_id, patch, context) => {
+    expect(context.authToken).toBe('owner-token')
+    await gate
+    if (!context.isCurrent()) throw new Error('Account request context changed before dispatch')
+    dispatch()
+    return { ...tenant, ...patch }
+  })
+  const field = domainField(h.render())!
+  ;(field.props.onChange as (event: unknown) => void)({ target: { value: 'queued.example.com' } })
+  click(findButton(h.render(), 'Save Domain')!)
+  if (change === 'outer lease') h.advanceOuterScope()
+  else if (change === 'refetch') { h.refetch(true); h.render() }
+  else if (change === 'f11') { h.allow(['f10']); h.render() }
+  else { await click(findButton(h.render(), 'Second tenant')!); h.render() }
+  release(); await h.flush()
+  expect(dispatch).not.toHaveBeenCalled()
+  expect(h.applyTenantTheme).not.toHaveBeenCalled()
+})

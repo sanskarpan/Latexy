@@ -1,0 +1,67 @@
+[
+  {
+    "key": "d14_latex",
+    "label": "Generate LaTeX structure",
+    "category": "editor",
+    "description": "Generate a new LaTeX fragment from a natural-language description.",
+    "gateable": true,
+    "parent_key": "d14",
+    "inventory_id": null,
+    "control_kind": "subfeature",
+    "product_inventory_id": "D14",
+    "always_on_reason": null,
+    "source_paths": ["backend/app/api/ai_routes.py", "frontend/src/components/LatexGeneratorPanel.tsx"]
+  },
+  {
+    "key": "d14_table_text",
+    "label": "Generate table from text",
+    "category": "editor",
+    "description": "Convert CSV or TSV text to a LaTeX table without an AI provider or AI quota.",
+    "gateable": true,
+    "parent_key": "d14",
+    "inventory_id": null,
+    "control_kind": "subfeature",
+    "product_inventory_id": "D14",
+    "always_on_reason": null,
+    "source_paths": ["backend/app/api/ai_routes.py", "frontend/src/components/LatexGeneratorPanel.tsx"]
+  },
+  {
+    "key": "d14_table_image",
+    "label": "Generate table from image",
+    "category": "editor",
+    "description": "Transcribe a bounded image upload into a new LaTeX table.",
+    "gateable": true,
+    "parent_key": "d14",
+    "inventory_id": null,
+    "control_kind": "subfeature",
+    "product_inventory_id": "D14",
+    "always_on_reason": null,
+    "source_paths": ["backend/app/api/ai_routes.py", "frontend/src/components/LatexGeneratorPanel.tsx"]
+  },
+  {
+    "key": "d14_math_text",
+    "label": "Generate math from text",
+    "category": "editor",
+    "description": "Generate a new LaTeX math fragment from a text description.",
+    "gateable": true,
+    "parent_key": "d14",
+    "inventory_id": null,
+    "control_kind": "subfeature",
+    "product_inventory_id": "D14",
+    "always_on_reason": null,
+    "source_paths": ["backend/app/api/ai_routes.py", "frontend/src/components/LatexGeneratorPanel.tsx"]
+  },
+  {
+    "key": "d14_math_image",
+    "label": "Generate math from image",
+    "category": "editor",
+    "description": "Transcribe a bounded image upload into a new LaTeX math fragment.",
+    "gateable": true,
+    "parent_key": "d14",
+    "inventory_id": null,
+    "control_kind": "subfeature",
+    "product_inventory_id": "D14",
+    "always_on_reason": null,
+    "source_paths": ["backend/app/api/ai_routes.py", "frontend/src/components/LatexGeneratorPanel.tsx"]
+  }
+]
