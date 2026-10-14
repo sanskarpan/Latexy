@@ -148,6 +148,37 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
         and node.args[0].args[0].id == "_billing_secret_name"
         for node in ast.walk(overlay)
     )
+    binding_env = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_billing_secret_binding_env"
+                for target in node.targets)
+    )
+    assert any(
+        isinstance(key, ast.Constant) and key.value == "MODAL_BILLING_SECRET_NAME"
+        and isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or)
+        and len(value.values) == 2
+        and isinstance(value.values[0], ast.Name)
+        and value.values[0].id == "_billing_secret_name"
+        and isinstance(value.values[1], ast.Constant) and value.values[1].value == ""
+        for key, value in zip(binding_env.value.keys, binding_env.value.values)
+    )
+    image_assignments = {
+        name: next(
+            node for node in tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+        )
+        for name in ("api_image", "latex_image", "worker_image", "migrate_image")
+    }
+    for name, assignment in image_assignments.items():
+        assert any(
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "env" and call.args
+            and isinstance(call.args[0], ast.Dict)
+            and any(key is None and isinstance(value, ast.Name)
+                    and value.id == "_billing_secret_binding_env"
+                    for key, value in zip(call.args[0].keys, call.args[0].values))
+            for call in ast.walk(assignment)
+        ), f"{name} does not snapshot the Modal billing secret name into its image environment"
     functions = {
         node.name: node for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

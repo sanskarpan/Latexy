@@ -38,6 +38,17 @@ def _validated_optional_billing_secret_name(value: str | None) -> str | None:
         raise ValueError("MODAL_BILLING_SECRET_NAME must be a valid Modal secret label")
     return value
 
+
+# Snapshot the non-secret binding label into every image. Modal imports this
+# module remotely to resolve function definitions, and that process does not
+# inherit the local deploy command's environment.
+_billing_secret_name = _validated_optional_billing_secret_name(
+    os.environ.get("MODAL_BILLING_SECRET_NAME")
+)
+_billing_secret_binding_env = {
+    "MODAL_BILLING_SECRET_NAME": _billing_secret_name or "",
+}
+
 app = modal.App(_APP_NAME)
 
 # Directories to exclude from the code snapshot (security + size)
@@ -263,14 +274,16 @@ _renderer_capability_env = {
 api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_billing_secret_binding_env})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
 latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_billing_secret_binding_env})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)
@@ -279,7 +292,7 @@ worker_image = (
     .apt_install(*_APT_BASE)
     .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
 )
 
 # ---------------------------------------------------------------------------
@@ -303,9 +316,6 @@ _secrets = [
     # legacy Redis values still present in latexy-backend-secrets.
     modal.Secret.from_name("latexy-redis"),
 ]
-_billing_secret_name = _validated_optional_billing_secret_name(
-    os.environ.get("MODAL_BILLING_SECRET_NAME")
-)
 if _billing_secret_name:
     # Append last so its Dodo variables override any legacy values in the opaque
     # backend secret while preserving every unrelated key in that secret.
@@ -881,7 +891,7 @@ migrate_image = (
         copy=True,
         ignore=[p for p in _IGNORE if "alembic" not in p],
     )
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal"})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
 )
 
 
