@@ -44,6 +44,8 @@
     top: 26px;
     width: 360px;
     z-index: 2;
+    /* Keep the reading surface flat; depth and pointer response surround it. */
+    transform: translateX(-50%);
 }
 .lp-document-card figcaption {
     display: flex;

@@ -133,6 +133,7 @@ export default function DocumentGallery() {
                             className="lp-document-card"
                             data-slot={slot}
                             data-template={name}
+                            aria-hidden={name !== layout}
                             key={name}
                             style={{ '--card-index': index } as CSSProperties}
                         >
