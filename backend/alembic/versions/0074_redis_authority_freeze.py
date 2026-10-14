@@ -42,11 +42,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    conn = op.get_bind()
-    row = conn.execute(sa.text(
-        "SELECT generation, phase FROM redis_authority_control WHERE id = 1"
-    )).first()
-    if row is None or row.generation != 0 or row.phase != "legacy":
-        # Never erase evidence that a cutover was attempted.
-        raise RuntimeError("redis_authority_control requires an explicit recovery migration")
-    op.drop_table("redis_authority_control")
+    # A read/check/drop sequence races a concurrent freeze even when the row
+    # still looks legacy.  No generic downgrade can prove that no coordinator
+    # used this table, so recovery requires a separate operator-reviewed plan.
+    raise RuntimeError("redis_authority_control requires an explicit recovery migration")

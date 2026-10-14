@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.util
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ from threading import Barrier
 from uuid import uuid4
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError, ResourceClosedError
 
 from alembic.migration import MigrationContext
@@ -107,6 +109,17 @@ class RedisAuthorityFreezeTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(AuthorityStateUnavailable):
                 await read_redis_authority(_AsyncConnection(connection))
 
+        with self.engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO redis_authority_control (id, generation, phase, active_backend) "
+                "VALUES (1, 0, 'legacy', 'primary')"
+            ))
+            connection.execute(text("PRAGMA ignore_check_constraints = ON"))
+            connection.execute(text("UPDATE redis_authority_control SET active_backend = 'backup'"))
+            connection.execute(text("PRAGMA ignore_check_constraints = OFF"))
+            with self.assertRaises(AuthorityStateUnavailable):
+                await read_redis_authority(_AsyncConnection(connection))
+
     async def test_invalid_freeze_inputs_do_not_write(self):
         with self.engine.begin() as connection:
             session = _AsyncConnection(connection)
@@ -141,6 +154,14 @@ class RedisAuthorityFreezeTests(unittest.IsolatedAsyncioTestCase):
             migration.op = Operations(MigrationContext.configure(connection))
             with self.assertRaises(RuntimeError):
                 migration.downgrade()
+
+    async def test_downgrade_refuses_even_before_freeze_to_avoid_race(self):
+        with self.engine.begin() as connection:
+            migration = _migration()
+            migration.op = Operations(MigrationContext.configure(connection))
+            with self.assertRaises(RuntimeError):
+                migration.downgrade()
+            self.assertEqual((await read_redis_authority(_AsyncConnection(connection))).generation, 0)
 
 
 class ConcurrentRedisAuthorityFreezeTests(unittest.TestCase):
@@ -178,3 +199,65 @@ class ConcurrentRedisAuthorityFreezeTests(unittest.TestCase):
                                  (1, "frozen", "primary"))
             finally:
                 engine.dispose()
+
+
+def _local_postgres_url():
+    value = os.getenv("TEST_POSTGRES_URL")
+    if not value or os.getenv("TEST_POSTGRES_ALLOW_SCHEMA_CREATE") != "1":
+        return None
+    url = make_url(value)
+    if url.host not in {"localhost", "127.0.0.1", "::1"}:
+        return None
+    return value
+
+
+@unittest.skipUnless(_local_postgres_url(), "requires explicitly enabled loopback test PostgreSQL")
+class PostgresAuthorityFreezeTests(unittest.TestCase):
+    def test_concurrent_freeze_and_rollback(self):
+        schema = "authority_test_" + uuid4().hex
+        admin = create_engine(_local_postgres_url())
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_engine(_local_postgres_url(), connect_args={"options": f"-c search_path={schema}"})
+        try:
+            with engine.begin() as connection:
+                _upgrade(connection)
+            try:
+                with engine.begin() as connection:
+                    asyncio.run(freeze_primary_authority(
+                        _AsyncConnection(connection), expected_generation=0,
+                        reason="manual", freeze_id=uuid4(),
+                    ))
+                    raise ConnectionError("transaction abandoned before commit")
+            except ConnectionError:
+                pass
+            with engine.connect() as connection:
+                state = asyncio.run(read_redis_authority(_AsyncConnection(connection)))
+                self.assertEqual((state.generation, state.phase), (0, "legacy"))
+
+            barrier = Barrier(2)
+
+            def attempt():
+                with engine.begin() as connection:
+                    barrier.wait(timeout=10)
+                    try:
+                        asyncio.run(freeze_primary_authority(
+                            _AsyncConnection(connection), expected_generation=0,
+                            reason="quota_exhausted", freeze_id=uuid4(),
+                        ))
+                        return "won"
+                    except StaleAuthorityGeneration:
+                        return "closed"
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda _: attempt(), range(2)))
+            self.assertCountEqual(results, ["won", "closed"])
+            with engine.connect() as connection:
+                state = asyncio.run(read_redis_authority(_AsyncConnection(connection)))
+                self.assertEqual((state.generation, state.phase, state.active_backend),
+                                 (1, "frozen", "primary"))
+        finally:
+            engine.dispose()
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+            admin.dispose()

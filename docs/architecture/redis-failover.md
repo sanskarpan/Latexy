@@ -135,21 +135,47 @@ caller-owned UUID; a second or stale coordinator cannot reserve another. A
 caller that loses the transaction response must read back the UUID before
 deciding whether its freeze committed. Database failure or a missing row has no
 synthetic healthy state. This first migration structurally forbids a backup as
-active and refuses to erase a frozen generation on downgrade.
+active and refuses every generic downgrade, including before a freeze, because
+a state check followed by a table drop would race a concurrent coordinator.
 
 This is a coordination primitive, not a recovery switch. The current exhausted
 primary cannot supply quota counters, receipts, consume-once tokens or job
 leases through normal Redis reads. No code path may treat an empty backup as a
 reconstructed authority. A later migration must add promotion/failback states
-only after the durable quota ledger, one-time consumption, job outbox, worker
+only after durable quota cutover, one-time consumption, job outbox, worker
 fencing and state reconciliation below are implemented and validated. Failback
 must allocate a new forward generation, never resurrect an old one.
 
+### Disabled quota ledger (migration 0075)
+
+`quota_ledger_accounts` represents each user, dimension and period as either
+`unknown` or `reconciled`. A missing or unknown account rejects reservations.
+The migration creates no balances. An operator must first fence every legacy
+writer, obtain a consistent account snapshot, verify outstanding refund
+receipts, and record the opening usage plus a nonsecret evidence reference and
+SHA-256 digest. The code validates the presence and shape of this provenance;
+it cannot prove the source was complete or accurate. Redis is currently over
+quota, so opening usage cannot be verified through normal primary reads.
+
+`quota_ledger_reservations` records a globally unique request ID, immutable
+account/cost/limit inputs, and sticky allowed or denied outcome. A PostgreSQL
+account row lock serializes debits and refunds. Refunds use the exact stored
+cost and transition that reservation once; a missing receipt never refunds.
+The caller must commit before dispatch and use a fresh transaction to resolve
+an uncertain commit by the same ID. The legacy API/worker paths still use Redis
+and do not call this ledger. This is a disabled building block, not a live
+double-write path or an assertion that existing counters have migrated.
+Neither migration has an automatic downgrade because a check/drop sequence can
+race a writer and destroy authoritative state.
+
 The current tests exercise concurrent compare-and-swap coordinators, exhausted
 primary freeze, stale generation, lost freeze response readback, database
-failure and downgrade protection against SQLite. Real PostgreSQL with mixed
-API/Modal workers, backup transport and partition injection is still required
-before any activation.
+failure, unknown quota balances, near-limit admission, duplicate reservations,
+refund idempotency, uncertain-commit readback and downgrade protection against
+SQLite. A loopback-only PostgreSQL test is provided for concurrent debits and
+refunds but requires an explicitly enabled local server. Mixed API/Modal
+workers, backup transport and partition injection are still required before
+any activation.
 
 The user-level goal of automatic whole-application continuity is **not accepted
 by this patch**. Choose and verify one authority model before implementing it:
