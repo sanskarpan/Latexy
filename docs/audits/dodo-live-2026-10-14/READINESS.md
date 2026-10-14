@@ -24,7 +24,9 @@ are included in this report.
 - `latexy-live-billing` was created in Modal `main` with the mode-separated live
   credentials/product mappings and **`BILLING_MODE=disabled`**. The existing opaque
   backend, storage and Redis secrets were not replaced. The new optional binding
-  must be selected explicitly with `MODAL_BILLING_SECRET_NAME`.
+  is selected by the non-secret repository variable
+  `MODAL_BILLING_SECRET_NAME=latexy-live-billing`; this takes effect only in source
+  containing the new workflow binding. Renderer/live-acceptance flags remain unset.
 - Weekly and Lifetime were not provisioned. Real academic-mailbox Student checkout
   remains pending under the owner's earlier instruction; catalog preparation and
   preview are not Student verification acceptance.
@@ -67,9 +69,53 @@ Actual cloud diagnostics found and prompted repairs for:
    the dependency count when the remote module imports. The validated binding
    name must be snapshotted into every application image for consistent imports.
 
-Linux deployment parity passed 30 tests after the initial overlay, then 31 after
-the source-path repair. Final integrated parity/CI and fresh read-only production
-diagnostics remain required after subsequent changes.
+The latest main changes from #1885 (`7cb1c8b7`) were integrated without conflicts.
+Linux deployment parity passed all 31 tests after the source-path and binding
+repairs, and all 31 again after the independent review narrowed live credential
+bindings to the API, billing preflight and API-configuration renderer preflight.
+Unrelated workers, schedulers and migrations retain their original bindings.
+Ruff and whitespace checks passed. Full PR CI remains required on the final head.
+
+The repaired read-only billing preflight executed on reviewed source
+`cae711323ce928d935e1615e1fe7b27d196bc7e2`, candidate migration image
+`im-cFrimampsDvyo8zpPzmEXe`, in actual Modal `main`. Its source-files fingerprint
+was `07edc8e81e039dca52eccc9ee08392efacaba3b36ec95bfbdb567276b9aae1a0`.
+It confirmed production classification, strict billing configuration validity,
+live-mode key/product configuration and disabled new purchases. It returned
+`diagnostic_error`, with `database.failure_stage=connect`; no schema revision or
+historical-account counts were established. This is a connection-stage finding,
+not permission to migrate or an assertion of the underlying cause.
+
+A separate fresh task using the existing base, storage and Redis bindings made
+only bounded connectivity reads. Cache and Celery broker PINGs passed. Job-state
+Redis returned a Redis error; a PostgreSQL connection attempt timed out. These
+results do not certify Redis capacity, existing job recovery or database safety.
+
+The next private comparison found the same Neon connection could complete a
+read-only repeatable-read transaction without the diagnostic's injected startup
+GUCs, while the startup-options attempt timed out even with a 15-second bound.
+The latest job-state PING passed; the earlier Redis error is not a proven quota
+or credential fault. The diagnostic now preserves URL TLS/routing options and
+uses SQLAlchemy's read-only transaction setting, an explicit read-only check and
+transaction-local statement/lock timeouts. It still rolls back and never commits.
+See [Neon's startup-parameter guidance](https://neon.com/docs/connect/connection-errors#unsupported-startup-parameter)
+and [SQLAlchemy's read-only support](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#setting-read-only-deferrable).
+
+On source `eaa31fc27f11be1f2537a3abc34b3dba8e7d41a8`, the repaired diagnostic
+completed schema and aggregate reads against recognized production revision
+`0059`. Its actual rollout invocation then exited successfully with
+`safe_to_rollout=true`, `sales_state=safe_disabled`, no rollout reasons and live
+acceptance unverified. [The exact public-safe workflow decision](rollout-preflight.json)
+retains the source/image/environment/fingerprint; detailed configuration and
+aggregate counts remain private. This permits the billing portion of a disabled
+rollout, not live sales or bypass of independent release checks.
+
+Local Linux verification: 490 billing-preflight tests passed; two PostgreSQL
+integration tests were deliberately deselected because no local disposable DB
+was running. Separately, all 142 deployment/wrapper/renderer-configuration tests
+passed. Full CI must run the actual PostgreSQL cases. Initial CI identified stale
+static fixture expectations after the binding split; those expectations were
+updated to model the actual API bindings and image environment.
 
 ## Production holds
 

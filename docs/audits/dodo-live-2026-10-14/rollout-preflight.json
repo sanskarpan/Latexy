@@ -1,0 +1,19 @@
+{
+  "execution_context": {
+    "application": "latexy-backend",
+    "expected_environment": "main",
+    "expected_repository_head": "0073_d14_subfeatures",
+    "image_id": "im-MDENpt6B7J9YSUq0QfgUif",
+    "image_role": "candidate_migration_preflight",
+    "purpose": "rollout",
+    "selected_environment": "main",
+    "source_files_sha256": "6a6400158c56692d41309efc70f721ffccb1d0b323e0ca24062a93397355c743",
+    "source_revision_reported": "eaa31fc27f11be1f2537a3abc34b3dba8e7d41a8"
+  },
+  "rollout_safety": {
+    "live_sales_acceptance": "unverified",
+    "reasons": [],
+    "safe_to_rollout": true,
+    "sales_state": "safe_disabled"
+  }
+}

@@ -107,11 +107,14 @@ def test_well_formed_inputs_continue_without_claiming_certification(tmp_path):
 def test_invoking_tuple_reaches_both_api_and_compile_worker_images(monkeypatch):
     for key, value in VALID.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("MODAL_BILLING_SECRET_NAME", "synthetic-billing-secret")
     tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
-    names = {"_renderer_capability_env", "api_image", "latex_image"}
-    nodes = [node for node in tree.body if isinstance(node, ast.Assign)
-             and any(isinstance(target, ast.Name) and target.id in names for target in node.targets)]
-    assert len(nodes) == 3
+    names = {"_billing_secret_name", "_billing_secret_binding_env", "_renderer_capability_env", "api_image", "latex_image"}
+    nodes = [node for node in tree.body
+             if (isinstance(node, ast.FunctionDef) and node.name == "_validated_optional_billing_secret_name")
+             or (isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id in names for target in node.targets))]
+    assert len(nodes) == 6
 
     class Image:
         def pip_install_from_requirements(self, *args, **kwargs):
@@ -124,10 +127,14 @@ def test_invoking_tuple_reaches_both_api_and_compile_worker_images(monkeypatch):
             self.values = values
             return self
 
-    namespace = {"os": os, "texlive_image": Image(), "_BACKEND_DIR": ROOT / "backend", "_IGNORE": []}
+    namespace = {"os": os, "re": __import__("re"), "texlive_image": Image(),
+                 "_BACKEND_DIR": ROOT / "backend", "_IGNORE": []}
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), "image_inputs", "exec"), namespace)
     for image_name in ("api_image", "latex_image"):
-        assert namespace[image_name].values == {"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **VALID}
+        assert namespace[image_name].values == {
+            "PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal",
+            "MODAL_BILLING_SECRET_NAME": "synthetic-billing-secret", **VALID,
+        }
     for function_name in ("run_latex_task", "run_orchestrator_task"):
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function_name)
         decorator = function.decorator_list[0]

@@ -240,5 +240,5 @@ def test_workflow_checks_existing_api_binding_before_migrations_and_deployment()
     assert isinstance(decorator, ast.Call)
     keywords = {item.arg: item.value for item in decorator.keywords}
     assert isinstance(keywords["image"], ast.Name) and keywords["image"].id == "api_image"
-    assert isinstance(keywords["secrets"], ast.Name) and keywords["secrets"].id == "_secrets"
+    assert isinstance(keywords["secrets"], ast.Name) and keywords["secrets"].id == "_api_secrets"
     assert ast.literal_eval(keywords["timeout"]) == 60
