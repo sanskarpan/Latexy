@@ -1998,7 +1998,7 @@
 .lp-footer-art img {
     width: 100%;
     height: auto;
-    animation: lp-paper-float 9s ease-in-out infinite;
+    animation: lp-paper-float 4.5s ease-in-out 1;
     animation-play-state: paused;
 }
 .lp-footer[data-inview='true'] .lp-footer-art img {
@@ -2060,7 +2060,7 @@
     gap: 20px;
 }
 .lp-gallery[data-inview='true'] .lp-gallery-art {
-    animation: lp-paper-float 8s ease-in-out infinite;
+    animation: lp-paper-float 4.5s ease-in-out 1;
 }
 .lp-feature-row[data-revealed='true'] > .lp-demo,
 .lp-feature-row[data-revealed='true'] > .lp-analysis-demo,
