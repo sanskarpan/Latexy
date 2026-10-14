@@ -6,6 +6,7 @@ import ModeToggle from '@/components/theme/ModeToggle'
 import ContrastToggle from '@/components/theme/ContrastToggle'
 import { MarketingCTA } from './MarketingSections'
 import CapabilityGate from '@/components/CapabilityGate'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import type { ReactNode, RefObject } from 'react'
 
 export default function LandingHeader({
@@ -25,6 +26,7 @@ export default function LandingHeader({
     onMenuToggle: () => void
     mobileNavigation: ReactNode
 }) {
+    const { billing } = useFeatureFlags()
     return (
         <header className="lp-header">
             <Link href="/" aria-label="Latexy home">
@@ -36,7 +38,7 @@ export default function LandingHeader({
                     <Link href="/templates">Templates</Link>
                 </CapabilityGate>
                 <Link href="/resources">Resources</Link>
-                <Link href="/pricing">Pricing</Link>
+                {billing && <Link href="/pricing">Pricing</Link>}
             </nav>
             <div className="lp-header-actions">
                 <ContrastToggle className="lp-header-control" />

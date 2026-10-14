@@ -1,10 +1,14 @@
+'use client'
+
 import Link from 'next/link'
 import Image from 'next/image'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 export default function LandingFooter({ year }: { year: number }) {
+    const { billing } = useFeatureFlags()
     return (
         <footer className="lp-footer">
             <div className="lp-container">
@@ -49,7 +53,7 @@ export default function LandingFooter({ year }: { year: number }) {
                             <CapabilityGate feature="b04">
                                 <Link href="/templates">Templates</Link>
                             </CapabilityGate>
-                            <Link href="/pricing">Pricing</Link>
+                            {billing && <Link href="/pricing">Pricing</Link>}
                         </div>
                         <div>
                             <h3>Find your way</h3>

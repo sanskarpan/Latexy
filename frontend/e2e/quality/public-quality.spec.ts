@@ -479,6 +479,83 @@ test('representative public surface produces non-empty visual evidence', async (
     await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
 })
 
+test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
+    const { backendOrigin } = qualityOrigins()
+    const featureFlags = (billing: boolean) =>
+        page.route(url => url.origin === backendOrigin && url.pathname === '/config/feature-flags', route =>
+            fulfillQualityJson(route, { billing })
+        )
+    await featureFlags(false)
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const headerPricing = page.locator('.lp-navigation a[href="/pricing"]')
+    const footerPricing = page.locator('.lp-footer-links a[href="/pricing"]')
+    await expect(headerPricing).toHaveCount(0)
+    await expect(footerPricing).toHaveCount(0)
+    if (testInfo.project.metadata.mobile) {
+        await page.locator('.lp-menu-trigger').click()
+        await expect(page.locator('.lp-mobile-navigation a[href="/pricing"]')).toHaveCount(0)
+    }
+
+    await featureFlags(true)
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(headerPricing).toHaveCount(1)
+    await expect(footerPricing).toHaveCount(1)
+    if (testInfo.project.metadata.mobile) {
+        await page.locator('.lp-menu-trigger').click()
+        await expect(page.locator('.lp-mobile-navigation a[href="/pricing"]')).toHaveCount(1)
+    }
+})
+
+test('landing sample controls change their visible state by keyboard and pointer', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const gallery = page.getByRole('group', { name: 'Sample résumé layouts' })
+    const modern = gallery.getByRole('button', { name: /Modern/ })
+    const minimal = gallery.getByRole('button', { name: /Minimal/ })
+    await modern.focus()
+    await page.keyboard.press('Enter')
+    await expect(modern).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-gallery-art')).toHaveAttribute('data-layout', 'Modern')
+    await minimal.focus()
+    await page.keyboard.press('Space')
+    await expect(minimal).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-gallery-art')).toHaveAttribute('data-layout', 'Minimal')
+
+    const authoring = page.getByRole('tablist', { name: 'Explore authoring modes' })
+    const guided = authoring.getByRole('tab', { name: 'Guided builder' })
+    const source = authoring.getByRole('tab', { name: 'LaTeX source' })
+    await guided.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(source).toBeFocused()
+    await expect(source).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('.lp-builder-workspace')).toHaveAttribute('data-mode', 'source')
+    await page.keyboard.press('Home')
+    await expect(guided).toBeFocused()
+    await expect(guided).toHaveAttribute('aria-selected', 'true')
+
+    const tailoring = page.locator('.lp-tailor-demo')
+    const revisedBullet = 'Built accessible Python tools for a cross-functional team.'
+    await tailoring.getByRole('button', { name: 'Edit', exact: true }).click()
+    await tailoring.getByRole('textbox', { name: 'Edit suggested rewrite' }).fill(revisedBullet)
+    await tailoring.getByRole('button', { name: 'Accept', exact: true }).click()
+    await expect(tailoring.locator('.lp-matching-experience')).toContainText(revisedBullet)
+    await expect(tailoring).toContainText('Sample updated with your approved wording.')
+    await tailoring.getByRole('button', { name: 'Keep original' }).click()
+    await expect(tailoring.locator('.lp-matching-experience')).toContainText(
+        'Built and maintained user-facing products in Python with a focus on performance.'
+    )
+    await expect(tailoring).toContainText('Original wording kept. You decide what changes.')
+
+    const board = page.locator('.lp-application-demo')
+    const manage = board.getByRole('button', { name: 'Manage Senior Software Engineer at Acme' })
+    await manage.click()
+    await page.getByRole('menuitemradio', { name: 'Applied' }).click()
+    await expect(board.locator('.lp-board-column').nth(0)).not.toContainText('Acme')
+    await expect(board.locator('.lp-board-column').nth(1)).toContainText('Acme')
+    await expect(manage).toBeFocused()
+})
+
 test('mobile studio keeps primary controls reachable without document overflow', async ({
     page,
 }, testInfo) => {

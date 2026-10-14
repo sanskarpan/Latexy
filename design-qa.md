@@ -43,7 +43,7 @@ No actionable P0/P1/P2 finding remains in the inspected final states. Independen
 
 CI uses isolated synthetic anonymous-session and feature-grant fixtures, not personal browser data or a claim of production backend availability. Chromium, Firefox and WebKit desktop plus mobile Chromium/WebKit all passed the representative visual case. Both themes and long name/role/bullet input were captured. Tablet widths 768, 1024 and 1101px exercise Source and PDF states, expanded FAQ and long input, with document overflow, equation bounds and Compile action bounds assertions. Latest mobile sections and tablet compiler/FAQ/footer renders were visually inspected.
 
-Existing browser contracts cover gallery selection, builder editing and keyboard tabs, analysis filters, rewrite edit/accept/keep-original, application-stage menus, compiler tabs/actual studio destination, FAQ, navigation and access-denied states. No assertion was relaxed or unrelated failing test patched.
+On the captured source, browser contracts covered the default gallery, direct builder/compiler tab clicks, analysis selection, long builder input, FAQ disclosure, navigation and access-denied states. They did not explicitly exercise gallery keyboard selection, tailoring accept/keep-original, or the application-stage menu. Focused browser cases for those interactions are now added to `frontend/e2e/quality/public-quality.spec.ts`; their execution requires exact-head CI.
 
 All required CI checks passed on the captured source, including production build, frontend/backend lint, backend tests, cross-browser quality, real compile/preview, full-stack smoke and security checks. Local TypeScript, formatting and 23 unchanged relevant contract tests passed. Frozen dependency installation and Next hydration integrity verification passed after rebasing. CodeRabbit skips draft reviews; that status is not a code review approval.
 
@@ -62,8 +62,12 @@ The publication commit changes only this report and screenshot documentation; it
 - [x] Actual post-commit page screenshots published in the PR with provenance.
 - [x] Main checkout left untouched; captured source CI passed.
 
-final result: blocked
+Historical visual result for `acc6c07f`: accepted in the states listed above.
 
 ## User refinement in progress
 
-User approved the overall page and requested adjacent mobile hero actions, consistent header controls, Classic as the first/default layout, dynamic visualizations and a stronger animated footer. The branch now implements these scoped amendments; old screenshots above remain explicitly historical until fresh CI renders are inspected. The closing CTA is integrated into the new footer, with a transparent floating-paper asset and grouped links. Metric exploration and progressive section motion honor reduced motion. Final visual acceptance awaits new captures.
+User approved the overall page and requested adjacent mobile hero actions, consistent header controls, Classic as the first/default layout, dynamic visualizations and a stronger animated footer. The branch implements these scoped amendments. The closing CTA is integrated into the new footer, with a transparent floating-paper asset and grouped links. Metric exploration and progressive section motion honor reduced motion.
+
+An independent reviewer inspected current-refinement head `036eed8e1f4ac61537a937f26783c2c0c945f0e2` in [CI run 38544202053](https://github.com/sanskarpan/Latexy/actions/runs/38544202053), artifact `11885260182` (SHA-256 `6c90b20f6e8364c988feab329d3ca37f352cfd4a0819676a1f061db3cffd7829`). The reviewed evidence includes Chromium desktop light/dark, a dark builder view in three engines, WebKit mobile light/dark and a 320px narrow capture. No additional visual blocker was found in those states. The committed screenshots in `docs/design/landing/` remain historical captures of `acc6c07f`, not captures of `036eed8e`.
+
+The subsequent billing-navigation correction hides both landing pricing links when the existing billing flag is false, and new focused browser tests cover that gate and the interaction sequences named above. These additions have not yet passed exact-head CI; the reviewed `036eed8e` visuals are not a substitute for that run.
