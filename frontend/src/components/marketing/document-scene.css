@@ -203,7 +203,7 @@
     border-bottom: 1px solid #d8dce0;
     padding-bottom: 4px;
 }
-.lp-gallery .lp-gallery-controls button {
+.lp-gallery .lp-gallery-controls button[type='button'] {
     min-width: 112px;
     justify-content: center;
     gap: 10px;
@@ -261,7 +261,7 @@
         font-size: 11px;
         padding: 22px 18px;
     }
-    .lp-gallery .lp-gallery-controls button {
+    .lp-gallery .lp-gallery-controls button[type='button'] {
         min-width: 0;
     }
 }
