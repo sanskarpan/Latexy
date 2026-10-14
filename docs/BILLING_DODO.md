@@ -57,6 +57,32 @@ when startup validation is skipped. Unconfigured `auto` billing stays unavailabl
 Disabling new sales does not prevent authenticated servicing of existing live
 Dodo subscriptions through cancellation or verified checkout recovery.
 
+### Optional Modal billing secret overlay
+
+Modal deployments retain the existing `latexy-backend-secrets` bundle and can
+optionally attach a separate billing secret. Create that secret in the Modal
+dashboard's secret editor, entering values there rather than in Git, a shell
+command, or CLI arguments. Give it the name stored in the GitHub Actions
+repository variable `MODAL_BILLING_SECRET_NAME`. The variable contains only the
+Modal secret label, not credential material. The deployment attaches the named
+secret after the existing backend, storage, and Redis secrets for the API and
+its billing/configuration preflights, so its Dodo settings take precedence while
+unrelated settings in the backend secret remain available. Unrelated workers,
+schedulers and migrations retain the original bindings. The non-secret label is
+preserved in every image so remote module imports reconstruct consistent
+dependencies. Leave the variable empty to preserve the current deployment
+configuration.
+
+For live billing, the overlay should contain the expected names such as
+`DODO_MODE=live`, `DODO_LIVE_API_KEY`, `DODO_LIVE_WEBHOOK_KEY`, the live
+business ID, and only the accepted live product IDs. Add the corresponding
+amount/currency/tax expectations through the application's supported
+configuration. Do not pass credential values through GitHub variables or
+Modal CLI arguments. The optional overlay only supplies configuration: it does
+not assert live billing acceptance, enable purchases by itself, or bypass the
+renderer preflight, database/schema checks, historical-account holds, or the
+live-sales rollout hold.
+
 ### Read-only production preflight
 
 Before merging a release that triggers automatic production deployment, inspect

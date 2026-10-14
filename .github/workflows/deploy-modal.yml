@@ -39,6 +39,8 @@ jobs:
       MODAL_ENGINE_VM_CERTIFIED: ${{ vars.MODAL_ENGINE_VM_CERTIFIED }}
       MODAL_ENGINE_VM_IMAGE_ID: ${{ vars.MODAL_ENGINE_VM_IMAGE_ID }}
       MODAL_ENGINE_VM_ASSETS_FINGERPRINT: ${{ vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT }}
+      # Optional name of a dedicated Modal secret containing Dodo settings.
+      MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}
 
     steps:
       - name: Check out the CI-validated revision
@@ -164,7 +166,7 @@ jobs:
       - name: Deploy backend with a rolling update
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
-        run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py
+        run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app
 
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'
