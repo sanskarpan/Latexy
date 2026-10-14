@@ -2024,8 +2024,8 @@ class QuotaLedgerReservation(Base):
         CheckConstraint("limit_value IS NULL OR limit_value >= 0", name="ck_quota_reservation_limit"),
         CheckConstraint("used_after >= 0", name="ck_quota_reservation_used"),
         CheckConstraint(
-            "(window = 'day' AND length(period) = 8) OR "
-            "(window = 'month' AND length(period) = 6)",
+            "(\"window\" = 'day' AND length(period) = 8) OR "
+            "(\"window\" = 'month' AND length(period) = 6)",
             name="ck_quota_reservation_window",
         ),
         CheckConstraint("length(intent_fingerprint) = 64", name="ck_quota_reservation_intent"),

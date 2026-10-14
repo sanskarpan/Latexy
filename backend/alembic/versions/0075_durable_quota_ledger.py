@@ -64,8 +64,8 @@ def upgrade() -> None:
         sa.CheckConstraint("limit_value IS NULL OR limit_value >= 0", name="ck_quota_reservation_limit"),
         sa.CheckConstraint("used_after >= 0", name="ck_quota_reservation_used"),
         sa.CheckConstraint(
-            "(window = 'day' AND length(period) = 8) OR "
-            "(window = 'month' AND length(period) = 6)",
+            "(\"window\" = 'day' AND length(period) = 8) OR "
+            "(\"window\" = 'month' AND length(period) = 6)",
             name="ck_quota_reservation_window",
         ),
         sa.CheckConstraint("length(intent_fingerprint) = 64", name="ck_quota_reservation_intent"),
