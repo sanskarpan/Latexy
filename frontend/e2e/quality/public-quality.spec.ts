@@ -633,6 +633,55 @@ test('landing sample tabs align selection and focus for repeated keyboard naviga
     }
 })
 
+test('hero documents stay readable and selectable without WebGL', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(() => {
+        const original = HTMLCanvasElement.prototype.getContext
+        HTMLCanvasElement.prototype.getContext = function (
+            this: HTMLCanvasElement,
+            type: string,
+            options?: unknown
+        ) {
+            if (['webgl', 'webgl2', 'experimental-webgl'].includes(type)) return null
+            return Reflect.apply(original, this, [type, options])
+        } as typeof original
+    })
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const gallery = page.locator('.lp-gallery')
+    await expect(gallery.locator('img')).toHaveCount(0)
+    await expect(gallery.locator('canvas')).toHaveCount(0)
+    const controls = gallery.getByRole('group', { name: 'Sample résumé layouts' })
+    await controls.getByRole('button', { name: /Classic/ }).focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(controls.getByRole('button', { name: /Modern/ })).toBeFocused()
+    await expect(controls.getByRole('button', { name: /Modern/ })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+    )
+    await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
+    await page.setViewportSize({ width: 320, height: 900 })
+    for (const layout of ['Classic', 'Modern', 'Minimal']) {
+        await controls.getByRole('button', { name: new RegExp(layout) }).click()
+        const paper = gallery.getByRole('article', { name: `${layout} sample résumé` })
+        await expect(paper).toBeVisible()
+        await expect(paper.getByRole('heading', { name: 'Alex Morgan' })).toBeVisible()
+        await expect(paper.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible()
+        expect(
+            await paper.evaluate(element => element.scrollHeight - element.clientHeight)
+        ).toBeLessThanOrEqual(1)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            321
+        )
+    }
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(gallery.locator('.lp-document-scene')).toHaveAttribute(
+        'data-reduced-motion',
+        'true'
+    )
+    expect(errors).toEqual([])
+})
+
 test('mobile studio keeps primary controls reachable without document overflow', async ({
     page,
 }, testInfo) => {
