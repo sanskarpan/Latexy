@@ -594,6 +594,8 @@ test('landing sample tabs align selection and focus for repeated keyboard naviga
         await expect(tab).toBeFocused()
         await expect(tab).toHaveAttribute('aria-selected', 'true')
         await expect(workspace).toHaveAttribute('data-mode', mode)
+        await expect(workspace).toHaveAttribute('aria-labelledby', (await tab.getAttribute('id'))!)
+        await expect(tab).toHaveAttribute('aria-controls', (await workspace.getAttribute('id'))!)
     }
 
     const latexTabs = page.getByRole('tablist', { name: 'Explore the LaTeX sample' })
@@ -625,6 +627,9 @@ test('landing sample tabs align selection and focus for repeated keyboard naviga
         await expect(tab).toBeFocused()
         await expect(tab).toHaveAttribute('aria-selected', 'true')
         await expect(latexDemo).toHaveAttribute('data-view', view)
+        const panel = latexDemo.getByRole('tabpanel')
+        await expect(panel).toHaveAttribute('aria-labelledby', (await tab.getAttribute('id'))!)
+        await expect(tab).toHaveAttribute('aria-controls', (await panel.getAttribute('id'))!)
     }
 })
 

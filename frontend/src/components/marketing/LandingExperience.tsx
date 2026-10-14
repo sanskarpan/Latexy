@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
-import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Circle, Line, Polygon } from '@visx/shape'
 import katex from 'katex'
@@ -168,7 +168,9 @@ function SampleResume({
 }
 
 function BuilderDemo() {
-    const id = useId()
+    // This sample occurs once on the homepage. Keep SSR relationships and
+    // keyboard lookups stable when the surrounding streamed tree hydrates.
+    const id = 'landing-builder'
     const [mode, setMode] = useState<'guided' | 'source' | 'studio'>('guided')
     const pendingKeyboardFocus = useRef<typeof mode | null>(null)
     useLayoutEffect(() => {
@@ -640,7 +642,7 @@ function AnalysisDemo() {
 }
 
 function TailoringDemo() {
-    const id = useId()
+    const id = 'landing-tailoring'
     const [bullet, setBullet] = useState(SUGGESTED_BULLET)
     const [editing, setEditing] = useState(false)
     const [decision, setDecision] = useState<'pending' | 'accepted' | 'original'>('pending')
@@ -896,7 +898,7 @@ function ApplicationDemo() {
 }
 
 function LatexDemo() {
-    const id = useId()
+    const id = 'landing-document'
     const [engine, setEngine] = useState('pdflatex')
     const [sampleView, setSampleView] = useState<'source' | 'pdf'>('source')
     const pendingKeyboardFocus = useRef<typeof sampleView | null>(null)
