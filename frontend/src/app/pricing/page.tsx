@@ -61,7 +61,7 @@ const tiers: Tier[] = [
     id: 'byok',
     name: 'Your AI key',
     tagline: 'Your key, your models.',
-    features: ['Bring your own OpenAI / Anthropic / Gemini key', 'Use the models you choose', 'Your usage billed to you', 'All Pro features'],
+    features: ['Bring your own OpenAI / Anthropic / OpenRouter key', 'Use the models you choose', 'Your usage billed to you', 'All Pro features'],
     cta: { label: 'Use your key', href: '/billing' },
   },
 ]

@@ -97,6 +97,9 @@ function harness() {
     getDraft: () => Promise.resolve(null),
     isActive: () => true,
     loadedDocumentScopeRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A' } },
+    // This harness executes the preview/source loader; the real suggestion
+    // authority and lifecycle boundary are exercised in suggestion-owner-scope.
+    suggestionLoad: {}, finishSuggestionDocumentLoad: vi.fn(() => true),
     setResumeLoadError: (error: unknown) => { if (error) throw new Error(String(error)) },
     setIsLoading: (value: boolean) => { context.isLoading = value },
   }

@@ -161,3 +161,12 @@ async def test_admin_registry_exports_explicit_control_kinds_and_product_owners(
         assert registry[key]["inventory_id"] is None
         assert all(state["matrix"][plan][key] for plan in PLAN_MATRIX_KEYS)
         assert all(state["role_matrix"][role][key] for role in CAPABILITY_ROLES)
+
+
+def test_byok_catalog_matches_registered_provider_families():
+    from app.services.api_key_service import api_key_service
+
+    description = get_feature("d25").description
+    assert set(api_key_service.provider_classes) == {"openai", "anthropic", "openrouter"}
+    assert "supported BYOK provider families are OpenAI, Anthropic and OpenRouter" in description
+    assert "Gemini BYOK is not supported" in description

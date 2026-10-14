@@ -135,7 +135,9 @@ def _resolve_unique(source: str, original: str, prefix: str, suffix: str) -> Opt
     return (best[0], best[0] + len(original)) if len(best) == 1 else None
 
 
-async def _access_role(db: AsyncSession, resume_id: str, user_id: str) -> str:
+async def _access_role(
+    db: AsyncSession, resume_id: str, user_id: str, *, accepts_source: bool = False,
+) -> str:
     ensure_uuid(resume_id, "Resume not found")
     row = (
         await db.execute(
@@ -154,10 +156,16 @@ async def _access_role(db: AsyncSession, resume_id: str, user_id: str) -> str:
         raise HTTPException(status_code=404, detail="Resume not found")
     owner_id, collaborator_role = row
     if owner_id == user_id:
+        if accepts_source:
+            await enforce_capabilities(("f07", "c01"), user_id)
         return "owner"
     if collaborator_role in _RESOLVER_ROLES:
-        await enforce_capabilities(("f04", "f07"), user_id)
-        await enforce_capabilities(("f04", "f07"), owner_id)
+        # Document access remains independent of suggestion/source admission.
+        # Existing proposals may be rejected or marked conflicted after F07
+        # or C01 is disabled, but both actor and owner must still allow F04.
+        keys = ("f04", "f07", "c01") if accepts_source else ("f04",)
+        await enforce_capabilities(keys, user_id)
+        await enforce_capabilities(keys, owner_id)
         return "editor"
     raise HTTPException(status_code=403, detail="Only owners and editors can decide suggestions")
 
@@ -217,7 +225,7 @@ async def decide_suggestion(
     user_id: str = Depends(get_current_user_required),
 ) -> SuggestionDecisionResponse:
     """Atomically accept/reject one suggestion and return its exact result."""
-    role = await _access_role(db, resume_id, user_id)
+    role = await _access_role(db, resume_id, user_id, accepts_source=body.status == "accepted")
     if body.status == "accepted" and role not in _RESOLVER_ROLES:
         raise HTTPException(status_code=403, detail="Only owners and editors can accept suggestions")
     if body.status == "conflicted" and role not in _RESOLVER_ROLES:
@@ -239,7 +247,7 @@ async def decide_suggestion(
     # Re-check after acquiring the resume lock. A collaborator can be revoked
     # while the initial permission query is in flight; never commit a decision
     # based solely on that stale authorization result.
-    role = await _access_role(db, resume_id, user_id)
+    role = await _access_role(db, resume_id, user_id, accepts_source=body.status == "accepted")
     if body.status == "accepted" and role not in _RESOLVER_ROLES:
         raise HTTPException(status_code=403, detail="Only owners and editors can accept suggestions")
     if body.status == "conflicted" and role not in _RESOLVER_ROLES:
