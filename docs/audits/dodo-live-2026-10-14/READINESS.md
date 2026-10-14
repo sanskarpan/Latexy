@@ -192,3 +192,41 @@ The previous integrated head `021dbdf2337556d04c24ba4227cfffab207dc2fc` passed
 all PR checks. This last operator isolation change requires CI on its own final
 head before merge. Production migrations, serving deployment and paid
 fulfillment acceptance remain pending.
+
+## Actual bridge acceptance and fresh application validation
+
+On source `2c1061129ba3f22431ca78e69817dd9a43954823`, a separate credential-free
+operator function exercised the actual Lua renderer bridge against the pinned
+bare image. [The sanitized execution report](../resume-engine/modal-bridge-acceptance-2026-10-14.json)
+binds source-file byte hashes, image/assets, fixtures, requested limits and
+observed results. The pass coordinator ran LuaLaTeX, BibTeX, LuaLaTeX and
+LuaLaTeX in the same VM/session with the original deadline. Its 101-page PDF was
+258,345 bytes, and PDF/SyncTeX/geometry hashes and resolved references/citation
+were checked. Cancellation, a bounded wait and a natural absolute deadline each
+reached an observed terminal sandbox state. Expired-session reuse was rejected;
+cleanup was confirmed. This is bridge acceptance, not owner-flow certification,
+a broad template/language profile or a performance SLO.
+
+A fresh empty database was separately created within the validation branch and
+migrated normally to `0073_d14_subfeatures` using an expiring, restricted QA role.
+Actual reads against the restored copy's users/subscriptions/resumes tables
+were denied with SQLSTATE 42501. Its dedicated Modal acceptance environment uses
+only generated QA credentials, private temporary object storage and a distinct
+TLS-protected temporary Redis service with a one-hour bound. It does not use the
+owner's backup Redis instance or bind production credentials to the application.
+
+The workspace's scheduled-function limit prevented a second complete App
+deployment. The temporary acceptance assembly therefore registers the exact
+source API and unscheduled worker callables with their source images/resources,
+while omitting periodic invocations. It is confined to the acceptance environment
+and does not change production scheduling or certify periodic recovery behavior.
+
+The first application readiness check then exposed `InvalidCatalogNameError`:
+the former regex-based async database URL conversion deleted a leading
+`channel_binding` query delimiter and treated the remaining `&ssl=require` as
+part of the database name. A private reproduction confirmed both the changed
+database path and lost TLS query. Structural URL conversion now preserves
+credentials and query boundaries, translates SSL options without changing
+their requested mode, and rejects conflicting options. Production was not
+changed to mask the defect. Full application/browser acceptance remains pending
+a healthy deployment with this repair.
