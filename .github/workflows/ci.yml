@@ -247,6 +247,10 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/latexy_test
+      # These tests create and drop UUID-named schemas only on this job's
+      # disposable loopback PostgreSQL service.
+      TEST_POSTGRES_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/latexy_test
+      TEST_POSTGRES_ALLOW_SCHEMA_CREATE: "1"
       REDIS_URL: redis://localhost:6379/0
       TEST_REDIS_URL: redis://localhost:6379/15
       TEST_REDIS_CACHE_URL: redis://localhost:6379/14
