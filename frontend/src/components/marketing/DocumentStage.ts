@@ -118,7 +118,7 @@ export function mountDocumentStage(
         podiums.forEach((mesh, index) => {
             const offset = (index - prefs.selected + 3) % 3
             const side = offset === 0 ? 0 : offset === 1 ? 1 : -1
-            const narrow = width <= 700
+            const narrow = width <= 1000
             mesh.visible = !narrow || side === 0
             mesh.position.set(
                 ((side * width) / 80) * (width <= 1100 ? 0.3 : 0.27),

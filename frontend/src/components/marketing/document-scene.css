@@ -22,7 +22,7 @@
     position: absolute;
     width: 320px;
     margin: 0;
-    top: 76px;
+    top: 40px;
     left: 50%;
     z-index: 1;
     transform-origin: 50% 100%;
@@ -240,6 +240,14 @@
     .lp-document-card:not([data-slot='center']) .lp-hero-paper-role {
         flex-wrap: wrap;
         gap: 0;
+    }
+}
+@media (max-width: 1000px) {
+    .lp-document-card:not([data-slot='center']) {
+        display: none;
+    }
+    .lp-document-card[data-slot='center'] {
+        width: 360px;
     }
 }
 @media (max-width: 700px) {

@@ -305,6 +305,18 @@ test('representative public surface produces non-empty visual evidence', async (
     const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
     await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
     await expect(layouts.getByRole('button').first()).toContainText('Classic')
+    const expectHeroCardsInsideScene = async () => {
+        await expect.poll(() => page.locator('.lp-document-card').evaluateAll(cards => {
+            const visible = cards.filter(card => card.getBoundingClientRect().width > 0)
+            if (!visible.length) return Infinity
+            return Math.max(...visible.map(card => {
+                const bounds = card.getBoundingClientRect()
+                const scene = card.closest('.lp-document-scene')!.getBoundingClientRect()
+                return Math.max(scene.left - bounds.left, bounds.right - scene.right, scene.top - bounds.top, bounds.bottom - scene.bottom)
+            }))
+        })).toBeLessThanOrEqual(1)
+    }
+    await expectHeroCardsInsideScene()
     const utilityBorders = await page.locator('.lp-header-control').evaluateAll(elements =>
         elements.map(element => getComputedStyle(element).borderTopWidth)
     )
@@ -428,6 +440,7 @@ test('representative public surface produces non-empty visual evidence', async (
         await page.getByRole('tab', { name: 'Guided builder', exact: true }).click()
         for (const width of [768, 1024, 1101]) {
             await page.setViewportSize({ width, height: 1000 })
+            await expectHeroCardsInsideScene()
             for (const view of ['Source', 'PDF']) {
                 await page.getByRole('tab', { name: view, exact: true }).click()
                 await settle()
