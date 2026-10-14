@@ -633,7 +633,7 @@ test('landing sample tabs align selection and focus for repeated keyboard naviga
     }
 })
 
-test('hero documents stay readable and selectable without WebGL', async ({ page }) => {
+test('hero documents stay readable and selectable without WebGL', async ({ page }, testInfo) => {
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
     await page.addInitScript(() => {
@@ -667,12 +667,21 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
         await expect(paper).toBeVisible()
         await expect(paper.getByRole('heading', { name: 'Alex Morgan' })).toBeVisible()
         await expect(paper.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible()
+        await expect.poll(() => paper.evaluate(element => {
+            const paperBounds = element.getBoundingClientRect()
+            const sceneBounds = element.closest('.lp-document-scene')!.getBoundingClientRect()
+            return Math.max(sceneBounds.left - paperBounds.left, paperBounds.right - sceneBounds.right, paperBounds.bottom - sceneBounds.bottom)
+        })).toBeLessThanOrEqual(1)
         expect(
             await paper.evaluate(element => element.scrollHeight - element.clientHeight)
         ).toBeLessThanOrEqual(1)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
             321
         )
+        await testInfo.attach(`hero-no-webgl-${layout.toLowerCase()}`, {
+            body: await gallery.screenshot({ animations: 'disabled', caret: 'hide' }),
+            contentType: 'image/png',
+        })
     }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(gallery.locator('.lp-document-scene')).toHaveAttribute(
