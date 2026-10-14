@@ -302,6 +302,23 @@ test('representative public surface produces non-empty visual evidence', async (
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
+    await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(layouts.getByRole('button').first()).toContainText('Classic')
+    const utilityBorders = await page.locator('.lp-header-control').evaluateAll(elements =>
+        elements.map(element => getComputedStyle(element).borderTopWidth)
+    )
+    expect(utilityBorders.every(border => border === '0px')).toBe(true)
+    if (testInfo.project.metadata.mobile) {
+        const actions = await page.locator('.lp-hero-actions > a').all()
+        const primary = await actions[0].boundingBox()
+        const secondary = await actions[1].boundingBox()
+        expect(primary).not.toBeNull()
+        expect(secondary).not.toBeNull()
+        expect(Math.abs(primary!.y - secondary!.y)).toBeLessThan(1)
+        expect(secondary!.x).toBeGreaterThanOrEqual(primary!.x + primary!.width)
+    }
+
     const viewport = page.viewportSize()
     const mainBox = await page.locator('#main-content').boundingBox()
     expect(viewport).not.toBeNull()
@@ -325,7 +342,10 @@ test('representative public surface produces non-empty visual evidence', async (
         await page.evaluate(() => document.fonts.ready)
         await page.waitForFunction(() =>
             [...document.images]
-                .filter(image => image.getBoundingClientRect().width > 0)
+                .filter(image => {
+                    const rect = image.getBoundingClientRect()
+                    return rect.width > 0 && rect.bottom > 0 && rect.top < window.innerHeight
+                })
                 .every(image => image.complete && image.naturalWidth > 0)
         )
         await page.evaluate(
@@ -378,6 +398,12 @@ test('representative public surface produces non-empty visual evidence', async (
             currentViewport.width + 1
         )
     }
+    await page.getByRole('button', { name: 'Keywords', exact: true }).click()
+    await expect(page.locator('.lp-radar-insight')).toContainText('Keywords · 61/100')
+    await testInfo.attach('landing-analysis-selected', {
+        body: await page.locator('.lp-analysis-section').screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
+    })
     // Exercise long sample content and disclosure states without changing any
     // product data. These states must not push persistent controls off-screen.
     await page
@@ -430,7 +456,27 @@ test('representative public surface produces non-empty visual evidence', async (
                 contentType: 'image/png',
             })
         }
+        await page.setViewportSize({ width: 320, height: 900 })
+        const actionBoxes = await Promise.all(
+            (await page.locator('.lp-hero-actions > a').all()).map(action => action.boundingBox())
+        )
+        expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
+        await testInfo.attach('landing-narrow-mobile', {
+            body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+            contentType: 'image/png',
+        })
     }
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    const footer = page.locator('.lp-footer')
+    await footer.scrollIntoViewIfNeeded()
+    await expect(footer).toHaveAttribute('data-inview', 'true')
+    const artwork = page.locator('.lp-footer-art img')
+    await expect.poll(() => artwork.evaluate(element =>
+        element.getAnimations().some(animation => animation.playState === 'running')
+    )).toBe(true)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({

@@ -435,16 +435,33 @@ function BuilderDemo() {
 }
 
 const DIMENSIONS = [
-    { label: 'Grammar', score: 70 },
-    { label: 'Keywords', score: 61 },
-    { label: 'Density', score: 80 },
-    { label: 'Sections', score: 72 },
-    { label: 'Bullets', score: 86 },
+    {
+        label: 'Grammar',
+        score: 70,
+        detail: 'Look for clear sentences, consistent tense and punctuation.',
+    },
+    {
+        label: 'Keywords',
+        score: 61,
+        detail: 'Compare relevant terms with the job description. Include only skills you have.',
+    },
+    { label: 'Density', score: 80, detail: 'Give the important information room to breathe.' },
+    {
+        label: 'Sections',
+        score: 72,
+        detail: 'Use familiar headings so your experience is easy to find.',
+    },
+    {
+        label: 'Bullets',
+        score: 86,
+        detail: 'Describe what you did with specific, truthful examples.',
+    },
 ]
 
 function AnalysisDemo() {
     const [category, setCategory] = useState<'present' | 'partial' | 'missing'>('missing')
     const [categoryTouched, setCategoryTouched] = useState(false)
+    const [metric, setMetric] = useState<number | null>(null)
     const keywords = {
         present: ['Python', 'TypeScript', 'Product development'],
         partial: ['Scalable systems', 'Collaboration'],
@@ -498,7 +515,13 @@ function AnalysisDemo() {
                         const [labelX, labelY] = point(index, 109)
                         return (
                             <g key={dimension.label}>
-                                <Circle cx={x} cy={y} r={2.6} fill="var(--lp-chart-stroke)" />
+                                <Circle
+                                    cx={x}
+                                    cy={y}
+                                    r={metric === index ? 6 : 2.6}
+                                    fill="var(--lp-chart-stroke)"
+                                    className="lp-radar-point"
+                                />
                                 <text
                                     x={labelX}
                                     y={labelY}
@@ -513,6 +536,30 @@ function AnalysisDemo() {
                         )
                     })}
                 </svg>
+                <div className="lp-radar-metrics" role="group" aria-label="Explore sample analysis">
+                    {DIMENSIONS.map((dimension, index) => (
+                        <button
+                            key={dimension.label}
+                            type="button"
+                            aria-pressed={metric === index}
+                            onClick={() => setMetric(index)}
+                        >
+                            {dimension.label}
+                        </button>
+                    ))}
+                </div>
+                <p className="lp-radar-insight" aria-live="polite">
+                    {metric === null ? (
+                        'Select a metric to explore the sample.'
+                    ) : (
+                        <>
+                            <strong>
+                                {DIMENSIONS[metric].label} · {DIMENSIONS[metric].score}/100
+                            </strong>{' '}
+                            {DIMENSIONS[metric].detail}
+                        </>
+                    )}
+                </p>
             </div>
             <div className="lp-demo lp-keyword-panel">
                 <h3>Keyword analysis</h3>

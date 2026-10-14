@@ -62,4 +62,8 @@ The publication commit changes only this report and screenshot documentation; it
 - [x] Actual post-commit page screenshots published in the PR with provenance.
 - [x] Main checkout left untouched; captured source CI passed.
 
-final result: passed
+final result: blocked
+
+## User refinement in progress
+
+User approved the overall page and requested adjacent mobile hero actions, consistent header controls, Classic as the first/default layout, dynamic visualizations and a stronger animated footer. The branch now implements these scoped amendments; old screenshots above remain explicitly historical until fresh CI renders are inspected. The closing CTA is integrated into the new footer, with a transparent floating-paper asset and grouped links. Metric exploration and progressive section motion honor reduced motion. Final visual acceptance awaits new captures.

@@ -6,7 +6,7 @@ import { useState } from 'react'
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
 export default function DocumentGallery() {
-    const [layout, setLayout] = useState<(typeof layouts)[number]>('Modern')
+    const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
     return (
         <div className="lp-gallery">
             <div className="lp-gallery-art" data-layout={layout}>

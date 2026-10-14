@@ -4,6 +4,7 @@ import { IconArrowRight as ArrowRight, IconMinus, IconPlus } from '@tabler/icons
 import CapabilityGate from '@/components/CapabilityGate'
 import DocumentGallery from '@/components/marketing/DocumentGallery'
 import LandingExperience from '@/components/marketing/LandingExperience'
+import LandingMotion from '@/components/marketing/LandingMotion'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { siteUrl } from '@/lib/site-url'
 import './landing.css'
@@ -67,6 +68,7 @@ export default function LandingPage() {
     }
     return (
         <div className="lp-page">
+            <LandingMotion />
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -123,11 +125,6 @@ export default function LandingPage() {
                         </details>
                     ))}
                 </div>
-            </section>
-            <section className="lp-closing lp-container" aria-labelledby="landing-closing">
-                <h2 id="landing-closing">Start with what you know.</h2>
-                <p>Open a sample, make it yours, and see where it takes you.</p>
-                <MarketingCTA />
             </section>
         </div>
     )

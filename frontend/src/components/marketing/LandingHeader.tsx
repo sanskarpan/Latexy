@@ -39,16 +39,19 @@ export default function LandingHeader({
                 <Link href="/pricing">Pricing</Link>
             </nav>
             <div className="lp-header-actions">
-                <ContrastToggle />
-                <ModeToggle />
-                <Link className="lp-account-link" href={signedIn ? '/dashboard' : '/login'}>
+                <ContrastToggle className="lp-header-control" />
+                <ModeToggle className="lp-header-control" />
+                <Link
+                    className="lp-account-link lp-header-control"
+                    href={signedIn ? '/dashboard' : '/login'}
+                >
                     {signedIn ? 'Dashboard' : 'Sign in'}
                 </Link>
                 <MarketingCTA />
                 <button
                     ref={menuTriggerRef}
                     type="button"
-                    className="lp-menu-trigger"
+                    className="lp-menu-trigger lp-header-control"
                     aria-label={menuLabel}
                     aria-expanded={menuOpen}
                     onClick={onMenuToggle}
