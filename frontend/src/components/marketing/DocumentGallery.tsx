@@ -7,9 +7,10 @@ const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
 export default function DocumentGallery() {
     const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
+    const [focused, setFocused] = useState(false)
     return (
         <div className="lp-gallery">
-            <div className="lp-gallery-art" data-layout={layout}>
+            <div className="lp-gallery-art" data-layout={layout} data-focused={focused}>
                 <Image
                     className="lp-gallery-light"
                     src="/marketing/document-gallery-light.webp?v=document-house-reference-2"
@@ -38,7 +39,10 @@ export default function DocumentGallery() {
                             type="button"
                             key={name}
                             aria-pressed={layout === name}
-                            onClick={() => setLayout(name)}
+                            onClick={() => {
+                                setLayout(name)
+                                setFocused(true)
+                            }}
                         >
                             <span>0{index + 1}</span>
                             {name}

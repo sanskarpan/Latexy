@@ -289,10 +289,10 @@
     object-fit: cover;
     transition: transform 0.35s ease;
 }
-.lp-gallery-art[data-layout='Classic'] img {
+.lp-gallery-art[data-layout='Classic'][data-focused='true'] img {
     transform: scale(1.18) translateX(9%);
 }
-.lp-gallery-art[data-layout='Minimal'] img {
+.lp-gallery-art[data-layout='Minimal'][data-focused='true'] img {
     transform: scale(1.18) translateX(-9%);
 }
 .lp-gallery-dark {
