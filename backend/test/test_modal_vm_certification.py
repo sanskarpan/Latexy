@@ -4,6 +4,7 @@ import io
 import os
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -375,3 +376,69 @@ def test_verify_fixture_times_out_and_kills_pdftotext(monkeypatch, tmp_path):
 
     assert not certification.verify_fixture(tmp_path, "hindi", "हिंदी")
     assert process.killed
+
+
+def test_extract_fixture_text_bounds_cleanup_with_inherited_pipe(monkeypatch, tmp_path):
+    """A real descendant holds stdout after its extractor parent exits."""
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    release = tmp_path / "release-child"
+    finished = tmp_path / "child-finished"
+    child_code = (
+        "import pathlib,sys,time; "
+        "release=pathlib.Path(sys.argv[1]); finished=pathlib.Path(sys.argv[2]); "
+        "deadline=time.monotonic()+5\n"
+        "while not release.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+        "finished.touch()\n"
+    )
+    parent_code = (
+        "import subprocess,sys; "
+        "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2], sys.argv[3]])"
+    )
+    real_popen = subprocess.Popen
+    processes = []
+
+    def synthetic_extractor(_command, **kwargs):
+        process = real_popen(
+            [sys.executable, "-c", parent_code, child_code, str(release), str(finished)],
+            **kwargs,
+        )
+        processes.append(process)
+        # Ensure the parent has launched its descendant and exited before
+        # extraction begins. Its inherited stdout remains open in the child.
+        process.wait(timeout=3)
+        return process
+
+    monkeypatch.setattr(certification.subprocess, "Popen", synthetic_extractor)
+    monkeypatch.setattr(certification, "PDFTOTEXT_TIMEOUT_SECONDS", 0.2)
+    started = time.monotonic()
+    try:
+        assert certification._extract_fixture_text(pdf, "/fake/bin/pdftotext") is None
+        assert time.monotonic() - started < 2
+        assert processes[0].poll() == 0
+        assert processes[0].stdout.closed
+        assert not finished.exists(), "extraction must return before the descendant releases stdout"
+    finally:
+        release.touch()
+        deadline = time.monotonic() + 6
+        while not finished.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert finished.exists(), "the synthetic descendant must finish"
+
+
+def test_extract_fixture_text_real_timeout_kills_and_reaps(monkeypatch, tmp_path):
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"nonempty synthetic PDF")
+    real_popen = subprocess.Popen
+    processes = []
+
+    def synthetic_extractor(_command, **kwargs):
+        process = real_popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(certification.subprocess, "Popen", synthetic_extractor)
+    monkeypatch.setattr(certification, "PDFTOTEXT_TIMEOUT_SECONDS", 0.05)
+    assert certification._extract_fixture_text(pdf, "/fake/bin/pdftotext") is None
+    assert processes[0].poll() is not None
+    assert processes[0].stdout.closed

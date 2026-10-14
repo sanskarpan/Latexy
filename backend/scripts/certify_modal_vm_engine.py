@@ -6,12 +6,13 @@ volumes, networking or OIDC. Only booleans and fabricated probe text printed.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import threading
+import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,9 +55,7 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
 
     process = None
     output = bytearray()
-    too_large = threading.Event()
-    read_failed = threading.Event()
-    reader = None
+    deadline = time.monotonic() + PDFTOTEXT_TIMEOUT_SECONDS
     try:
         process = subprocess.Popen(
             [pdftotext_bin, "-layout", "-enc", "UTF-8", str(pdf), "-"],
@@ -67,30 +66,29 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
         if process.stdout is None:
             return None
 
-        # Windows selectors cannot wait on subprocess pipes. Drain on one
-        # thread while wait() enforces the deadline on every platform.
-        def drain_stdout():
+        # Python 3.12 supports nonblocking pipes on Windows. Do not use
+        # selectors (Windows pipes are unsupported), or a blocking reader
+        # thread: closing its buffered stream can hang if a descendant keeps
+        # the write end open after the extractor exits.
+        fd = process.stdout.fileno()
+        os.set_blocking(fd, False)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
             try:
-                while chunk := process.stdout.read(min(8192, MAX_FIXTURE_TEXT_BYTES + 1 - len(output))):
-                    output.extend(chunk)
-                    if len(output) > MAX_FIXTURE_TEXT_BYTES:
-                        too_large.set()
-                        process.kill()
-                        return
-            except (OSError, ValueError):
-                read_failed.set()
-                if process.poll() is None:
-                    process.kill()
-
-        reader = threading.Thread(target=drain_stdout, daemon=True)
-        reader.start()
-        process.wait(timeout=PDFTOTEXT_TIMEOUT_SECONDS)
-        if process.poll() is None:
-            return None
-        reader.join(timeout=1)
-        if reader.is_alive() or too_large.is_set() or read_failed.is_set() or process.returncode != 0:
-            return None
-        return output.decode("utf-8", errors="strict")
+                chunk = os.read(fd, min(8192, MAX_FIXTURE_TEXT_BYTES + 1 - len(output)))
+            except BlockingIOError:
+                time.sleep(min(0.01, remaining))
+                continue
+            if not chunk:
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+                if process.returncode != 0:
+                    return None
+                return output.decode("utf-8", errors="strict")
+            output.extend(chunk)
+            if len(output) > MAX_FIXTURE_TEXT_BYTES:
+                return None
     except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
         return None
     finally:
@@ -103,8 +101,6 @@ def _extract_fixture_text(pdf: Path, pdftotext_bin: str) -> str | None:
                     pass
             if process.stdout is not None:
                 process.stdout.close()
-        if reader is not None:
-            reader.join(timeout=1)
 
 
 def verify_fixture(
