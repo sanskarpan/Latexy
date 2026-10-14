@@ -164,3 +164,31 @@ its demonstrated blockers and production Redis readiness, follow the reviewed
 migration/deployment sequence, then verify serving identity and owned recovery.
 Live payment, webhook delivery, entitlement, cancellation and refund acceptance
 require an explicitly authorized transaction and remain separate from previews.
+
+## Operator application isolation
+
+A later diagnostic showed that running an operator on the serving Modal App
+also warmed its minimum API container, which ran ordinary application startup.
+The read-only diagnostic function itself remained read-only, but the enclosing
+App was not an isolated operator boundary. Source `8c1ecd99066be0a4aae3c2952a07b50535fbb649`
+moves billing/renderer preflights, migrations and template sync to a separate
+`latexy-backend-operations` App. The API and workers retain their original App,
+bindings and warm-container settings. Production deployment explicitly selects
+`modal_app.py::app`; unique operator commands retain their existing function
+selectors.
+
+Both diagnostics were repeated with native Python 3.12 and pinned Modal 1.5.4.
+Only the four operator functions were created; the serving web function and its
+startup/admin bootstrap did not run. The retained billing decision now binds
+this source and image `im-VI3aHDZLsEgjYVsdz5K9v2`, again reporting safe disabled
+rollout and unverified live acceptance. The renderer configuration diagnostic
+returned `configuration_ready=true`, all configuration checks true, and
+`certification_verified=false`. It used the independently checked bare image
+only for this configuration invocation; no production certification flags were
+set. All 142 local deployment/wrapper/renderer configuration tests passed again.
+Independent source and Modal CLI review found no operator-selector regression.
+
+The previous integrated head `021dbdf2337556d04c24ba4227cfffab207dc2fc` passed
+all PR checks. This last operator isolation change requires CI on its own final
+head before merge. Production migrations, serving deployment and paid
+fulfillment acceptance remain pending.
