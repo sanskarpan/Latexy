@@ -1592,7 +1592,9 @@
         "backend/app/api/github_routes.py:pull_from_github"
       ],
       "dynamicOrServiceGates": [
-        "backend/app/middleware/capability_router.py:ROUTE_CAPABILITIES (source/metadata/builder writes, optimization history recording, accepted suggestions, GitHub pull)",
+        "backend/app/middleware/capability_router.py:ROUTE_CAPABILITIES (source/metadata/builder writes, optimization history recording, GitHub pull)",
+        "backend/app/middleware/capability_router.py:payload_capabilities (accepted suggestion POST requires f07+c01; reject/conflict exempt)",
+        "backend/app/api/suggestion_routes.py:_access_role (accepted source writes recheck actor/owner grants after row lock)",
         "backend/app/services/collab_manager.py:handle_collab_message (before Yjs source persistence and relay)"
       ],
       "clientControls": [
@@ -1617,13 +1619,16 @@
         "frontend/src/components/SemanticOptimizationPanel.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
-        "frontend/src/components/onboarding/OnboardingFlow.tsx"
+        "frontend/src/components/onboarding/OnboardingFlow.tsx",
+        "frontend/src/hooks/useSuggestionRecovery.ts"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
           "backend/test/test_capability_route_policy.py::test_optimization_history_write_is_gated_but_restore_remains_recovery",
           "backend/test/test_capability_route_policy.py::test_existing_optimization_restore_succeeds_while_source_edit_is_disabled",
+          "backend/test/test_suggestion_capability_recovery.py (complete registered decision route OFF/ON, ACL, ownership, validation, CAS and idempotency with database doubles)",
+          "backend/test/test_suggestion_capability_recovery_integration.py (real PostgreSQL/Redis auth and user/support/admin global/role/exact-SKU OFF-recovery-ON; no providers)",
           "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
@@ -5170,6 +5175,7 @@
         "backend/app/api/byok_routes.py:load_user_providers"
       ],
       "dynamicOrServiceGates": [
+        "backend/app/services/api_key_service.py:APIKeyService.__init__ (BYOK provider families: OpenAI/Anthropic/OpenRouter; Gemini BYOK unsupported)",
         "backend/app/services/api_key_service.py:get_user_provider (before decrypting existing key)",
         "backend/app/services/api_key_service.py:load_user_providers (before cached provider loading)",
         "backend/app/api/ai_routes.py:_resolve_ai_api_key (propagates denial, no platform fallback)"
@@ -5181,6 +5187,7 @@
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
           "backend/test/test_capability_route_policy.py::test_stored_byok_key_is_not_decrypted_or_replaced_with_platform_key",
+          "backend/test/test_feature_registry.py::test_byok_catalog_matches_registered_provider_families",
           "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
@@ -6536,17 +6543,20 @@
       "operationCapabilities": [
         "f07"
       ],
-      "serverHandlers": [
-        "backend/app/api/suggestion_routes.py:decide_suggestion"
+      "serverHandlers": [],
+      "dynamicOrServiceGates": [
+        "backend/app/middleware/capability_router.py:payload_capabilities (accepted POST requires f07+c01; rejection/conflict and GET recovery exempt)",
+        "backend/app/api/suggestion_routes.py:_access_role (acceptance checks current actor/owner grants; F04/ACL remains independent for editor recovery)"
       ],
-      "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/hooks/useSuggestionRecovery.ts"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
-          "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)"
+          "backend/test/test_suggestion_capability_recovery.py (complete registered decision route OFF/ON, ACL, ownership, validation, CAS and idempotency with database doubles)",
+          "backend/test/test_suggestion_capability_recovery_integration.py (real PostgreSQL/Redis auth and user/support/admin global/role/exact-SKU OFF-recovery-ON; no providers)"
         ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",

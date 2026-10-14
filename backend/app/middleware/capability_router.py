@@ -148,7 +148,7 @@ ROUTE_CAPABILITIES: dict[str, dict[str, tuple[str, ...]]] = {
         "add_comment": ("f06",), "update_comment": ("f06",),
         "list_comment_participants": ("f06",),
     },
-    "suggestion_routes": {"decide_suggestion": ("f07",)},
+    "suggestion_routes": {},  # Accept-only admission is selected from the payload below.
     "element_version_routes": {
         "create_element_version": ("c23",), "fork_element_version": ("c23", "b11"),
     },
@@ -509,7 +509,9 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
     if (module, name) == ("resume_routes", "update_collaborator_role") and body.get("role") not in ("viewer", "commenter"):
         keys.append("f04")
     if (module, name) == ("suggestion_routes", "decide_suggestion") and body.get("status") == "accepted":
-        keys.append("c01")
+        # Reject/conflict and authenticated decision reads are recovery. An
+        # accepted POST (including retries) is still a source-write admission.
+        keys.extend(("f07", "c01"))
     if (module, name) == ("workspace_routes", "update_member_role") and body.get("role") != "viewer":
         keys.append("f08")
     if (module, name) == ("tenant_routes", "update_tenant") and any(

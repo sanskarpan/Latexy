@@ -1870,6 +1870,7 @@ class ApiClient {
   async decideSuggestion(
     resumeId: string,
     decision: SuggestionDecisionRequest,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<SuggestionDecisionResponse> {
     return this.request<SuggestionDecisionResponse>(
       `/resumes/${encodeURIComponent(resumeId)}/suggestion-decisions`,
@@ -1877,6 +1878,7 @@ class ApiClient {
         method: 'POST',
         body: JSON.stringify(decision),
       },
+      accountContext,
     )
   }
 
@@ -1884,9 +1886,11 @@ class ApiClient {
   async getSuggestionDecision(
     resumeId: string,
     suggestionId: string,
+    accountContext?: AccountPreferenceRequestContext,
   ): Promise<SuggestionDecisionResponse> {
     return this.request<SuggestionDecisionResponse>(
       `/resumes/${encodeURIComponent(resumeId)}/suggestion-decisions/${encodeURIComponent(suggestionId)}`,
+      {}, accountContext,
     )
   }
 
