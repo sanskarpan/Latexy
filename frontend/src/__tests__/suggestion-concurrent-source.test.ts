@@ -1,8 +1,10 @@
 import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import React from 'react'
+import React, { act } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { useSuggestionRecovery } from '@/hooks/useSuggestionRecovery'
+import { useEditorSourceLoadScope } from '@/hooks/useLatexGeneratorRecovery'
+import { useInterviewPrepRecovery } from '@/hooks/useInterviewPrepRecovery'
 import { AccountContentScopeProvider } from '@/contexts/AccountContentScope'
 
 const requests = vi.hoisted(() => ({ decide: vi.fn(), get: vi.fn() }))
@@ -20,6 +22,7 @@ function concurrentRenderer() {
     appendInitialChild: () => {}, finalizeInitialChildren: () => false,
     appendChild: () => {}, appendChildToContainer: () => {}, removeChild: () => {}, removeChildFromContainer: () => {},
     clearContainer: () => {}, prepareUpdate: () => null, commitUpdate: () => {}, commitTextUpdate: () => {},
+    hideInstance: () => {}, unhideInstance: () => {}, hideTextInstance: () => {}, unhideTextInstance: () => {},
     scheduleTimeout: setTimeout, cancelTimeout: clearTimeout, noTimeout: -1,
     getCurrentEventPriority: () => constants.DefaultEventPriority, detachDeletedInstance: () => {},
   })
@@ -65,6 +68,77 @@ describe('actual suggestion source readiness at React commit', () => {
       expect(hook.suggestions[1].offset).toBe('New Before '.length)
     } finally {
       renderer.flushSync(() => renderer.updateContainer(null, root, null, null)); requests.decide.mockReset()
+    }
+  })
+
+  it('retires hidden Suspense source admission while preserving same-owner recovery and safe reveal', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const { renderer, root } = concurrentRenderer()
+    const sourceVersion = {}, authority = { recoveryIdentity: {}, isAdmissionCurrent: () => true, isCurrent: () => true, canAdmit: () => true }
+    let source!: ReturnType<typeof useEditorSourceLoadScope>
+    let suggestion!: ReturnType<typeof useSuggestionRecovery>, interview!: ReturnType<typeof useInterviewPrepRecovery>
+    let setHidden!: React.Dispatch<React.SetStateAction<boolean>>
+    const applyAccepted = vi.fn(() => true)
+    const hideGate = new Promise<void>(() => {})
+    function Deferred({ hidden }: { hidden: boolean }) {
+      if (hidden) throw hideGate
+      return React.createElement('ready')
+    }
+    function Editor() {
+      const [hidden, updateHidden] = React.useState(false); setHidden = updateHidden
+      source = useEditorSourceLoadScope('owner-a', 'document-a', sourceVersion, true)
+      interview = useInterviewPrepRecovery({ ownerId: 'owner-a', resumeId: 'document-a', authToken: 'token-a',
+        authReady: true, sourceReady: source.isSourceReady, can: () => true })
+      suggestion = useSuggestionRecovery({ ownerId: 'owner-a', documentId: 'document-a', authToken: 'token-a', authReady: true,
+        sourceVersion, role: 'owner', can: () => true, canEdit: source.isSourceReady(), authorName: 'Owner',
+        readSource: () => 'Before Target After', applyAccepted })
+      return React.createElement('editor', null, React.createElement(Deferred, { hidden }))
+    }
+    try {
+      await act(async () => renderer.updateContainer(React.createElement(AccountContentScopeProvider, { value: authority },
+        React.createElement(React.Suspense, { fallback: 'loading' }, React.createElement(Editor))), root, null, null))
+      await act(async () => {
+        const load = source.beginLoad(), proposalLoad = suggestion.beginDocumentLoad()
+        expect(source.finishLoad(load, 'ready', 'server')).toBe(true)
+        expect(suggestion.finishDocumentLoad(proposalLoad, true, 'owner')).toBe(true)
+      })
+      expect(source.isSourceReady()).toBe(true); expect(suggestion.canSuggest).toBe(true); expect(suggestion.canAccept).toBe(true)
+      await act(async () => { expect(interview.activate()).toBe(true); suggestion.create('Target', 'Changed') })
+      const retained = suggestion, proposal = retained.suggestions[0], recovery = interview.scopeRef.current
+      const ready = source.isSourceReady
+      await act(async () => renderer.flushSync(() => setHidden(true)))
+      expect(ready()).toBe(false)
+      await act(async () => { retained.create('Target', 'Hidden'); await retained.accept(proposal.id) })
+      expect(requests.decide).not.toHaveBeenCalled(); expect(applyAccepted).not.toHaveBeenCalled()
+      expect(suggestion.suggestions).toHaveLength(1); expect(retained.canReject(proposal)).toBe(true)
+      requests.decide.mockResolvedValueOnce({ suggestion_id: proposal.id, status: 'rejected', decided_by_role: 'owner', decided_at: '2026-10-14T00:00:00Z' })
+      await act(async () => retained.reject(proposal.id))
+      expect(requests.decide).toHaveBeenCalledOnce()
+      expect(requests.decide.mock.calls[0][1].status).toBe('rejected')
+      expect(requests.decide.mock.calls[0][2].isCurrent()).toBe(true)
+      await act(async () => renderer.flushSync(() => setHidden(false)))
+      expect(source.isSourceReady()).toBe(true); expect(suggestion.canSuggest).toBe(true); expect(suggestion.canAccept).toBe(true)
+      expect(suggestion.suggestions).toHaveLength(1); expect(suggestion.suggestions[0].status).toBe('rejected')
+      expect(interview.scopeRef.current).toBe(recovery); expect(interview.mounted).toBe(true)
+      await act(async () => retained.create('Target', 'After reveal'))
+      expect(suggestion.suggestions).toHaveLength(2)
+
+      // Reconnecting an older committed snapshot cannot revive a newer pending load.
+      await act(async () => renderer.flushSync(() => setHidden(true)))
+      const load = source.beginLoad(), proposalLoad = suggestion.beginDocumentLoad()
+      await act(async () => renderer.flushSync(() => setHidden(false)))
+      expect(source.isSourceReady()).toBe(false); expect(suggestion.canSuggest).toBe(false); expect(suggestion.canAccept).toBe(false)
+      await act(async () => retained.create('Target', 'Still loading'))
+      expect(suggestion.suggestions).toHaveLength(2)
+      await act(async () => {
+        expect(source.finishLoad(load, 'ready', 'server')).toBe(true)
+        expect(suggestion.finishDocumentLoad(proposalLoad, true, 'owner')).toBe(true)
+      })
+      expect(source.isSourceReady()).toBe(true); expect(suggestion.canSuggest).toBe(true); expect(suggestion.canAccept).toBe(true)
+      expect(interview.scopeRef.current).toBe(recovery)
+    } finally {
+      await act(async () => renderer.updateContainer(null, root, null, null))
+      requests.decide.mockReset(); vi.unstubAllGlobals()
     }
   })
 

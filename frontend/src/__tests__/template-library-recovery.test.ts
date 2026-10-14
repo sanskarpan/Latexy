@@ -18,7 +18,7 @@ describe('template library recovery', () => {
 
   it('does not send a previously authenticated user to login on a transient session refresh error', () => {
     expect(SOURCE).toContain('lastKnownSessionRef')
-    expect(SOURCE).toContain('(sessionPending || sessionError) ? lastKnownSessionRef.current : null')
+    expect(SOURCE).toContain('(sessionPending || sessionRefetching || sessionError) ? lastKnownSessionRef.current : null')
     expect(SOURCE).toContain('if (!effectiveSession)')
     expect(SOURCE).toContain('if (effectiveSession) handleUseTemplate(useId)')
   })

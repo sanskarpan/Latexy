@@ -526,3 +526,74 @@ async def test_owner_can_still_read_source_after_sharing_and_builder_disabled(po
         response = await client.get(f"/resumes/{USER_ID}")
     assert response.status_code == 200
     assert response.json()["latex_content"] == "my source"
+
+
+@pytest.mark.parametrize("role", ["anonymous", "user", "support", "admin"])
+@pytest.mark.parametrize("disabled_key", ["b07", "h01"])
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/export/content/json"),
+    ("GET", f"/export/{USER_ID}/json"),
+    ("GET", f"/export/builder/v1/{USER_ID}/json"),
+])
+async def test_json_export_composes_interchange_and_export_grants_before_data_access(
+    role, disabled_key, method, path, policy_app, monkeypatch,
+):
+    if role == "anonymous" and method != "POST":
+        pytest.skip("Saved and builder exports require authenticated ownership")
+    from app.api import export_routes
+    from app.services.entitlement_service import EntitlementService
+    from test.test_capability_resolution import allowed_blob
+
+    app, db = policy_app
+    if role == "anonymous":
+        app.dependency_overrides[get_current_user_optional] = lambda: None
+    # Exercise the real policy decision, including the admin/support role axis;
+    # only the authoritative snapshot I/O is replaced with a synthetic record.
+    blob = allowed_blob()
+    blob["roles"][role][disabled_key] = False
+    monkeypatch.setattr(entitlement_service, "_snapshot_for_user", AsyncMock(return_value=(role, "pro", blob)))
+    monkeypatch.setattr(entitlement_service, "has_feature", EntitlementService.has_feature.__get__(entitlement_service))
+    db.get.side_effect = AssertionError("Denied JSON export read the saved document")
+    convert = MagicMock(side_effect=AssertionError("Denied JSON export converted source"))
+    structured = MagicMock(side_effect=AssertionError("Denied JSON export converted builder fields"))
+    monkeypatch.setattr(export_routes, "_convert_latex", convert)
+    monkeypatch.setattr(export_routes.json_resume_interchange_service, "to_json_resume", structured)
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        response = await client.request(method, path, json={"latex_content": "owned source"} if method == "POST" else None)
+    assert response.status_code == 403, response.text
+    assert disabled_key in response.text
+    db.get.assert_not_awaited()
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()
+    convert.assert_not_called()
+    structured.assert_not_called()
+
+
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/export/content/json"),
+    ("GET", f"/export/{USER_ID}/json"),
+    ("GET", f"/export/builder/v1/{USER_ID}/json"),
+])
+async def test_json_export_allows_the_composed_grants(method, path, policy_app, monkeypatch):
+    from app.api import export_routes
+
+    app, db = policy_app
+    db.get.return_value = SimpleNamespace(
+        user_id=USER_ID, latex_content="owned source", structured_content=None, content_source="manual_latex",
+    )
+    convert = MagicMock(return_value=b'{"basics": {}}')
+    monkeypatch.setattr(export_routes, "_convert_latex", convert)
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        response = await client.request(method, path, json={"latex_content": "owned source"} if method == "POST" else None)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"basics": {}}
+    assert {call.args[0] for call in entitlement_service.has_feature.await_args_list} >= {"h01", "b07"}
+    convert.assert_called_once_with("owned source", "json")
+
+
+def test_json_export_gate_does_not_change_other_export_or_source_recovery_policies():
+    assert payload_capabilities("export_routes", "export_content", {}, {"fmt": "json"}, {}) == ("h01", "b07")
+    assert payload_capabilities("export_routes", "export_resume", {}, {"fmt": "docx"}, {}) == ("h01",)
+    assert payload_capabilities("export_routes", "export_resume", {}, {"fmt": "svg"}, {}) == ("h02",)
+    assert payload_capabilities("export_routes", "export_resume", {}, {"fmt": "tex"}, {}) == ()
+    assert payload_capabilities("export_routes", "export_resume", {}, {"fmt": "pdf"}, {}) == ()
