@@ -61,6 +61,7 @@ function harness() {
     isConfirmedSessionUnauthorized,
     isCurrentOfflinePdfIdentity: (owner: string | null, id: string) => owner === context.offlinePdfOwnerId && id === context.resumeId,
     offlinePdfIdentityRef: { current: { generation: 1 } },
+    beginSuggestionDocumentLoad: () => ({}), finishSuggestionDocumentLoad: () => true,
     beginSourceLoad: () => { context.sourceLoadStatus = 'loading'; return {} },
     finishSourceLoad: (_ticket: unknown, status: string) => { context.sourceLoadStatus = status; return true }, ownsSourceLoad: () => true,
     editorRecoveryLoadBoundary, latexGeneratorRecovery: { mounted: false }, sourceLoadStatus: 'ready',

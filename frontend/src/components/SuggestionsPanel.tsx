@@ -7,6 +7,7 @@ import type { Suggestion } from '@/lib/suggestions'
 interface SuggestionsPanelProps {
   suggestions: Suggestion[]
   canSuggest: boolean
+  admissionsEnabled: boolean
   canResolve: boolean
   canReject: (suggestion: Suggestion) => boolean
   modeEnabled: boolean
@@ -21,6 +22,7 @@ interface SuggestionsPanelProps {
 export default function SuggestionsPanel({
   suggestions,
   canSuggest,
+  admissionsEnabled,
   canResolve,
   canReject,
   modeEnabled,
@@ -57,8 +59,9 @@ export default function SuggestionsPanel({
         <p className="mt-2 text-[10px] leading-relaxed text-fg-3">
           Suggestions are drafts only. They never change the shared document until an owner or editor accepts one.
         </p>
-        {!canSuggest && <p className="mt-1 text-[10px] text-warn">Viewers cannot suggest.</p>}
-        {canSuggest && !canResolve && <p className="mt-1 text-[10px] text-fg-3">Owners and editors accept or reject proposals.</p>}
+        {!admissionsEnabled && <p className="mt-1 text-[10px] text-warn">New suggestions and acceptance are disabled. Existing proposals can still be rejected.</p>}
+        {admissionsEnabled && !canSuggest && <p className="mt-1 text-[10px] text-warn">Viewers cannot suggest.</p>}
+        {admissionsEnabled && canSuggest && !canResolve && <p className="mt-1 text-[10px] text-fg-3">Acceptance requires owner or editor access and source editing permission.</p>}
       </div>
 
       {error && (
