@@ -917,6 +917,12 @@
         object-fit: cover;
         object-position: center;
     }
+    .lp-gallery-art[data-layout='Classic'] img {
+        object-position: left;
+    }
+    .lp-gallery-art[data-layout='Minimal'] img {
+        object-position: right;
+    }
     .lp-gallery-controls {
         flex-wrap: wrap;
         gap: 12px;
