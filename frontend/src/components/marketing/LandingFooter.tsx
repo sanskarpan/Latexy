@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { IconArrowUpRight } from '@tabler/icons-react'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
@@ -38,12 +39,10 @@ export default function LandingFooter({ year }: { year: number }) {
                 </section>
                 <div className="lp-footer-directory">
                     <div className="lp-footer-brand">
-                        <Link href="/" aria-label="Latexy home">
-                            <BrandLogo small />
-                        </Link>
+                        <h3>The document studio</h3>
                         <p>
-                            Build a résumé you’re proud to share — with precision for modern
-                            applicants.
+                            Résumés, applications, and LaTeX documents — from a first draft to a
+                            finished PDF.
                         </p>
                     </div>
                     <nav aria-label="Footer navigation" className="lp-footer-links">
@@ -65,10 +64,15 @@ export default function LandingFooter({ year }: { year: number }) {
                             <h3>Stay in touch</h3>
                             <Link href="/updates">Product updates</Link>
                             <a href="mailto:support@latexy.com">Contact us</a>
-                            <a href="#landing-title">Back to top</a>
+                            <a className="lp-footer-top-link" href="#landing-title">
+                                Back to top <IconArrowUpRight size={14} aria-hidden="true" />
+                            </a>
                         </div>
                     </nav>
                 </div>
+                <Link className="lp-footer-signature" href="/" aria-label="Latexy home">
+                    <BrandLogo />
+                </Link>
                 <div className="lp-footer-row">
                     <p>© {year} Latexy. All rights reserved.</p>
                     <nav aria-label="Legal navigation">
