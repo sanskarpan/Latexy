@@ -4,7 +4,7 @@
     --scene-y: 0deg;
     position: relative;
     width: min(1248px, 100%);
-    height: 590px;
+    height: 610px;
     margin-inline: auto;
     overflow: clip;
     perspective: 1400px;
