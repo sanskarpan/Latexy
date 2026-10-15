@@ -4,3 +4,4 @@
 - Three.js may enhance lighting, depth and interaction. Render document content in accessible HTML even without WebGL or JavaScript. Layout controls must support keyboard/touch and work without WebGL.
 - Keep the approved brand mark and light/dark tokens. Support reduced motion, touch, keyboard selection, 320px layouts and high pixel density.
 - Inspect actual desktop/mobile renders at full resolution before shipping. Build and screenshot existence alone do not establish visual acceptance.
+- Review phone composition separately in both themes. Full desktop workspaces must not become long stacks of editor and preview panels; use accessible controls to focus the sample without losing edits. Public marketing navigation must remain available when product capabilities cannot resolve.
