@@ -117,3 +117,16 @@ closed until that separate acceptance is complete. The Windows operator host's
 preinstalled `pdftotext` was Xpdf 4.00, which incorrectly split the Hindi
 fixture in layout mode. The certification harness now verifies that its
 `pdftotext` is Poppler before starting Modal work.
+
+A later October 14 acceptance used bare image `im-mF0rpCXgH2MBjw3TKMYXEf`
+and assets `db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9`.
+The [actual bridge execution report](audits/resume-engine/modal-bridge-acceptance-2026-10-14.json)
+records multipass/BibTeX output, cancellation, bounded waits and the original
+absolute session deadline with observed termination. A separate
+[normal owner acceptance](audits/resume-engine/owner-acceptance-2026-10-14.md)
+passed a saved minimal guided-builder resume through admission, quota, workers
+and matching private artifacts on reviewed source `62a92cc7`.
+The authenticated browser shell rendered, but the in-app browser blocked
+requests to the staging API. Browser PDF/editing and the broader supported
+template/language matrix remain unverified. These results do not authorize
+setting production certification or live-sales flags.
