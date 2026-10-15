@@ -65,4 +65,6 @@ Twenty-two actual PNGs are copied unchanged to [the capture directory](docs/desi
 
 Before final verification, main advanced to `482a9b17` with the multilingual renderer VM memory reservation and its backend contract test. That update was integrated without conflicts. The captured frontend tree remains identical; the combined revision runs the required CI before merge.
 
+Main subsequently advanced to `a03ca9de` with the multilingual LaTeX language/font setup and backend tests. It was also integrated without conflicts or frontend changes; required checks run on that latest combined revision.
+
 final result: passed — mobile composition and interactions accepted in both themes, with source CI green and evidence saved.
