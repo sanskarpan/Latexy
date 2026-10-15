@@ -117,9 +117,9 @@ export function mountDocumentStage(
         group.rotation.y = prefs.reducedMotion
             ? 0
             : MathUtils.damp(group.rotation.y, target, 14, delta)
-        materials[0].color.set(prefs.dark ? '#947044' : '#173a60')
-        materials[1].color.set(prefs.dark ? '#b18a55' : '#254f77')
-        materials[2].color.set(prefs.dark ? '#60482c' : '#102c4b')
+        materials[0].color.set(prefs.dark ? '#3c362d' : '#173a60')
+        materials[1].color.set(prefs.dark ? '#484035' : '#19375d')
+        materials[2].color.set(prefs.dark ? '#29251f' : '#102c4b')
         light.color.set(prefs.dark ? '#fff0d5' : '#ffffff')
         try {
             renderer.render(scene, camera)
