@@ -1,6 +1,6 @@
 # Mobile landing-page QA
 
-Scope: mobile homepage, keeping the approved logo, native document hero and desktop composition. Isolated worktree, branch `codex/mobile-landing`, based on current main `253c5f63`.
+Scope: mobile homepage, keeping the approved logo, native document hero and desktop composition. Isolated worktree, branch `codex/mobile-landing`, started at `253c5f63` and integrated current main `2e77a1ca` without conflicts. That main update changed documentation only.
 
 ## Current-run audit
 
@@ -39,6 +39,28 @@ The new mobile interaction cases passed in Chromium and WebKit, as did all no-We
 
 Visual review identified a duplicate mobile document caption caused by CSS ordering, a list marker against its container border, extra analysis switch padding, and inconsistent Source/PDF control styling. These are corrected together with header label sizing and readable rewrite inputs. The mobile browser contract now covers caption suppression and a full rewrite edit/accept flow.
 
-Fresh renders and required checks for the corrected source remain pending. No visual acceptance is claimed from source code or build output.
+## Corrected capture review
 
-final result: blocked — corrected phone renders and required checks pending.
+Source `4996cff1`, artifact `11982989437` from run `38753709994`, archive SHA256 `ed07495127e9cc7ec815f606127e5842ec75b81aac29de65c4e8074be43b6d71`, was verified and opened. Both phone engines passed the representative evidence, new six-width/theme combinations, touch-target, edit-preservation, rewrite and public fallback contracts. Full quality result: 178 passed, 2 failed, 10 skipped, no flaky cases.
+
+1. Header and hero: 390/430px composition is readable; CTAs share a row. Chromium at 320px exposed doubled header gutters that wrapped utilities. Source `393214f5` removes the extra inset, retains 44px targets and asserts the brand/utilities share a horizontal center line in all six phone combinations. Fresh confirmation is pending.
+2. Document gallery: duplicate caption removed; Classic remains first/default. Classic, Modern and Minimal have readable native text and a reachable full-sample expansion, including without WebGL. No clipping observed in opened gallery captures.
+3. Builder: the editor and preview are distinct focused views in both themes. The edited synthetic bullet appears in the actual preview and survives return to the editor/source. No second full document underneath the editor.
+4. ATS: overview and keyword panels use consistent selection controls and full panel width. Chart labels, metric controls and keyword results are readable in both themes.
+5. Tailoring and applications: list markers sit inside their container; rewrite editing uses 16px text and passes the edit/accept flow. The board shows one stage plus the next-stage edge; menus remain reachable by horizontal scrolling.
+6. LaTeX: Source/PDF controls match the other secondary views; readable source, 44px compile action and no duplicate PDF panel on phones. The native PDF tab works.
+7. FAQ and footer: legible disclosures, large link targets, compact three-column directory and approved brand signature. Both theme footer captures were inspected. Desktop retains its illustration.
+
+The two failures are desktop motion checks introduced by the additional target scroll. The Chromium trace records that scrolling the animated image waited 4,640ms for stable geometry, consuming the 4,500ms float before testing whether it was running. The test now scrolls the static footer on desktop (as before) and only scrolls the phone signature. The animation-running assertion and reduced-motion zero-animation assertion remain. No production motion code was changed to address this test issue.
+
+## Final capture acceptance
+
+Source `393214f5957c68fac7fda8d5fb96326934587a9e`, artifact `11985179689` from [run `38757881363`](https://github.com/sanskarpan/Latexy/actions/runs/38757881363), archive SHA256 `5269682dba8b78af5cd8e3c72f20de4c74202bba230cc40c602a6aeb33da9869`, was downloaded and verified. Quality report: **180 passed, 10 intentionally skipped, 0 failed, 0 flaky** across five profiles. Every reported source CI check passed, including build, lint/unit, backend, full-stack smoke, isolated real compilation and browser quality. CodeRabbit's draft status is a skipped review, not a code-review approval.
+
+The six Chromium first screens and WebKit 320px dark first screen were opened. The header now stays on one row with aligned controls in both themes. Fresh section captures were compared with the inspected `4996cff1` captures: gallery, builder, ATS, applications, FAQ and footer have identical pixels. The changed tailoring/LaTeX captures and interactive builder/keyword states were opened again and accepted. Desktop rendering and all three no-WebGL layouts retain their earlier composition and passed their browser contracts.
+
+Seven steps above are healthy within the inspected scope. Remaining evidence limits: screenshots use anonymous-session and feature fixtures; they do not establish production service health or full accessibility conformance. Production verification and the final publication revision's required CI are recorded in the PR before merge.
+
+Twenty-two actual PNGs are copied unchanged to [the capture directory](docs/design/landing-mobile/README.md). [Capture metadata](docs/design/landing-mobile/capture.json) records source, archive digest, original attachment names, dimensions and image hashes. The publication commit retains source frontend tree `f003165b661e39f7170cb8b4b39679452c8d3f9d`; only documentation and captures are added after visual acceptance.
+
+final result: passed — mobile composition and interactions accepted in both themes, with source CI green and evidence saved.
