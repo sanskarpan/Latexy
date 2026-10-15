@@ -41,7 +41,33 @@
         "app/utils/process_watchdog.py": "a40eeafbd0cca8f431569e6a66915e99b437fff0d48227ffa98367b7219f45fb"
       }
     },
-    "shipped_template_manifest_sha256": "328f6135fe8f11dea9dd2e6c19e25c52d49f0e5c0208fe370eb4491879615f57"
+    "shipped_template_manifest_sha256": "328f6135fe8f11dea9dd2e6c19e25c52d49f0e5c0208fe370eb4491879615f57",
+    "checkout_provenance": {
+      "operator_uploaded_line_endings": "CRLF",
+      "git_blob_line_endings": "LF",
+      "git_blob_sha256": {
+        "app/core/config.py": "9bae4327485265953832714fe8db4b2fa1d7a88264db3f7d75adefe8cd27303a",
+        "app/scripts/compile_templates.py": "b92c84b24d2b437ea67dc9e98e38e1b0f2be629a60a969dd530f4b4da31d1cbc",
+        "app/services/europecv.py": "e4c255b605151fe32139981e6c1439b47740a26493585977d1d1398f2b0149e4",
+        "app/services/latex_service.py": "9815abb18435022722b66ba576dad1a4993c3dea1d3e00fb509edff20a0a6fb9",
+        "app/services/multilingual_latex.py": "e1fa88fbcd9096cd65ac7091766d78d340d74ba375dbb2a40ec5b6dab8e5bae6",
+        "app/services/render_engine/backend.py": "eebd023cf0c6dcf541193fef9876ab91037c6a34f4eb053caf3cc07f2200ceb7",
+        "app/services/render_engine/geometry.py": "43709c6f3d695d03777ce699c436a74922e7d4414de4e857560b9327b2d58ba6",
+        "app/services/render_engine/log_gating.py": "612c52a11e120f881cf96c0b9d6b7a2aa158ebee6b4f4fbf74ce6ab623363bba",
+        "app/services/render_engine/managed_preamble.py": "ae8d41ce45365cdd8cd3b65846d65324558cd03f36fd62156b3b6e3b4d898bf9",
+        "app/services/render_engine/modal_sandbox.py": "491e424303357a277d07a97c3fafc45d2cd5e990469eab5c573294b632366114",
+        "app/services/render_engine/passes.py": "c08d377fc2c899be35e2bbb5628d2c2ba2ebb4cb357652207e2e0fcb974c6855",
+        "app/services/render_engine/trusted_profiles.py": "458b2ca0e5346553b03cfd08e7583909fa6cf4cfc12f5bc07dc69fa5fbfa6c8c",
+        "app/services/resume_builder_service.py": "ff0a75b92c4411c6c901caa7a384967db48d0bdde76f2f58d14035372a378cfc",
+        "app/utils/bounded_io.py": "d5491c09aeedff64d1d9f7a8a868c95fe55c3d1c27eafb0ac48be6598b453eb4",
+        "app/utils/linux_engine_sandbox.py": "53a2be151c1f4d9bbfd21b4b2f585ac14660659c78a203522977622520ed85d2",
+        "app/utils/process_watchdog.py": "b2063711e30993c121c59a4590508594e13a923e819e794cf90026bcbdfbcb26",
+        "app/utils/sandbox_io_bridge.py": "7949b82db11d61bb6d2c85ad003f11a95c94d070f3e75c5a5af66addde9f2be6"
+      },
+      "all_17_operator_files_match_git_blobs_after_crlf_to_lf": true,
+      "all_17_python_asts_match_git_blobs": true,
+      "scope": "support_sha256 records actual operator-uploaded bytes verified remotely. Git blob hashes enable independent source comparison. This is a newline/AST comparison, not certification of a later build or serving deployment."
+    }
   },
   "renderer": {
     "modal_image_id": "im-mF0rpCXgH2MBjw3TKMYXEf",

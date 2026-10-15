@@ -52,6 +52,13 @@ renderer checkout and `f77de0bd`. The intervening backend differences are
 reuse of the renderer evidence; it does not attest the changed route behavior or
 claim equality of the complete backend trees.
 
+The operator uploaded Windows CRLF source bytes; `support_sha256` records those
+actual bytes, verified in the remote function. `checkout_provenance` also records
+the canonical LF Git-blob SHA-256 values for all 17 files. Removing CRLF line
+endings reproduces those Git blobs exactly, and their parsed Python ASTs match.
+This makes the source comparison reproducible without claiming that a later
+Linux build or serving deployment was exercised by the Windows operator run.
+
 | Run | Result | Scope |
 |---|---|---|
 | Representative profile matrix | 15/15 passed | Five builder categories, Chinese variants, Japanese, Korean, Hindi, Marathi, Arabic, Hebrew and two mixed-script profiles. |
