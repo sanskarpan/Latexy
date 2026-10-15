@@ -3,12 +3,12 @@
     "application": "latexy-backend",
     "expected_environment": "main",
     "expected_repository_head": "0073_d14_subfeatures",
-    "image_id": "im-VI3aHDZLsEgjYVsdz5K9v2",
+    "image_id": "im-pPDLwuZunoMm6lHZnSHMdb",
     "image_role": "candidate_migration_preflight",
     "purpose": "rollout",
     "selected_environment": "main",
     "source_files_sha256": "6a6400158c56692d41309efc70f721ffccb1d0b323e0ca24062a93397355c743",
-    "source_revision_reported": "8c1ecd99066be0a4aae3c2952a07b50535fbb649"
+    "source_revision_reported": "62a92cc7ade16f8cd62b0948fd6002f482384571"
   },
   "rollout_safety": {
     "live_sales_acceptance": "unverified",

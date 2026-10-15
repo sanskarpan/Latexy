@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "scope": "minimal guided-builder owner compile on isolated billing-acceptance staging",
+  "source": {
+    "commit": "62a92cc7ade16f8cd62b0948fd6002f482384571",
+    "merged_pull_request": 1888,
+    "merge_commit": "9b9abb6ac045812443c71bc673982774fa420b20",
+    "exact_62a_check_run": "passed: Isolated Real Compile and Preview; Cross-Browser Quality",
+    "backend_tree": "25ea300185880cbebce5fd1c9c076dd5a78f7393",
+    "preflight_source_files_sha256": "6a6400158c56692d41309efc70f721ffccb1d0b323e0ca24062a93397355c743"
+  },
+  "readiness": {
+    "healthy": true,
+    "ready": true,
+    "database": "ok",
+    "redis": "ok",
+    "redis_cache": "ok",
+    "object_storage": "ok",
+    "latex_available": true
+  },
+  "owner_compile": {
+    "synthetic_accounts_created": 2,
+    "builder_template_category": "minimal",
+    "resume_saved_and_reloaded": true,
+    "stored_default_compiler": "lualatex",
+    "submitted_without_explicit_compiler": true,
+    "compiler_observed": "lualatex",
+    "compile_succeeded": true,
+    "quota_dimension": "compilations",
+    "quota_used_before": 0,
+    "quota_used_after": 1,
+    "source_sha256": "9f8d86ca7f28dd7770cbc94a1d0138ebf0a6fd83e00f2fb139d9e2b1c8cc0cc8",
+    "pdf_sha256": "37bc175ae97b2de7342ba68a8b92d61bb9e2a48ecd3b5ebf2ba7a9df5b94646c"
+  },
+  "renderer": {
+    "image_id": "im-mF0rpCXgH2MBjw3TKMYXEf",
+    "assets_fingerprint": "db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9",
+    "manifest_engine_fingerprint": "modal-vm-assets:f6d903591cfce0c4e04f2874bf8c99eeb688e9a55543f344d5edcecb514e2856",
+    "pinned_identity_matched_manifest": true
+  },
+  "artifacts_and_ownership": {
+    "pdf_hash_and_size_match_manifest": true,
+    "geometry_identity_and_coordinates_verified": true,
+    "synctex_header_and_payload_verified": true,
+    "database_finalization_matches_owner_resume_and_result": true,
+    "redis_manifest_matches_artifact": true,
+    "private_object_store_manifest_matches_redis": true,
+    "private_object_store_pdf_bytes_match_download": true,
+    "private_object_store_synctex_bytes_match_download": true,
+    "private_object_store_geometry_matches_download": true,
+    "owner_access_denials_expected": 10,
+    "owner_access_denials_observed": 10
+  },
+  "independent_https_cookiejar": {
+    "runs": 2,
+    "sign_in_http_statuses": [
+      200,
+      200
+    ],
+    "get_session_http_statuses": [
+      200,
+      200
+    ],
+    "returned_user_and_session": true,
+    "set_cookie_count_per_signin": 1,
+    "cookie_type": "Better Auth session cookie",
+    "cookie_attributes": [
+      "HttpOnly",
+      "Max-Age",
+      "Path",
+      "SameSite",
+      "Secure"
+    ],
+    "secure": true,
+    "same_site": "Lax",
+    "path": "/",
+    "cookie_domain_attribute": false
+  },
+  "browser_and_coverage": {
+    "other_builder_templates": "not tested",
+    "paid_flows_or_charges": "not tested",
+    "production_data_or_services": "not used",
+    "broad_profile_or_full_pipeline_certification": false,
+    "public_visual_route": "post-repair: Résumé Studio shell rendered with fields and PDF placeholders; functional editing was not verified",
+    "public_visual_route_initial_attempt": "initially rendered an error boundary with ChunkLoadError 4430 and a service worker 404; the route rendered after the private packaging repair",
+    "browser_owner_authentication": "synthetic owner sign-in succeeded; authenticated workspace shell rendered",
+    "browser_workspace_api": "GET requests aborted; direct IAB navigation to observed API readiness endpoint reported net::ERR_BLOCKED_BY_CLIENT; reason undetermined",
+    "crossbrowser_session_check": "passed in exact 62a check run",
+    "visual_route_diagnostics": [
+      "initial ChunkLoadError 4430",
+      "initial service worker 404",
+      "packaging repair applied; later route rendered Studio shell"
+    ],
+    "visual_route_root_cause": "public asset nesting in the private harness was verified and repaired; the initial chunk failure cause remains undetermined",
+    "in_app_browser_session_persistence": "owner sign-in and authenticated workspace shell observed after repair",
+    "browser_interactive_editing": "unverified; workspace API requests aborted while QA backend was unavailable to browser",
+    "browser_pdf_preview_or_download": "unverified",
+    "api_readiness": "HTTPS health, readiness, and job-health endpoints returned 200 and reported healthy/ready on acceptance revision 62a; browser-side request block remained"
+  },
+  "cleanup": {
+    "checked_at_utc": "2026-10-14T14:00:20Z",
+    "all_owned_acceptance_apps_stopped": true,
+    "all_owned_acceptance_app_running_tasks": 0,
+    "production_and_backup_redis_modified": false
+  },
+  "overall": "isolated minimal owner acceptance and exact 62a CI checks passed; post-repair browser auth shell observed; interactive editing and PDF remain unverified"
+}
