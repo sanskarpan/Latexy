@@ -291,8 +291,45 @@ test('representative public surface produces non-empty visual evidence', async (
     page,
 }, testInfo) => {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
+    if (!testInfo.project.metadata.mobile) await page.setViewportSize({ width: 1440, height: 1000 })
+    const { backendOrigin } = qualityOrigins()
+    // This visual specimen uses allowed marketing entry points, independently
+    // of the denied-capability tests below. No live services are contacted.
+    await page.route(
+        url => url.origin === backendOrigin && url.pathname === '/config/entitlements',
+        route => fulfillQualityJson(route, { features: { ...PUBLIC_ENGINE_FEATURES, b08: true } })
+    )
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
+    await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(layouts.getByRole('button').first()).toContainText('Classic')
+    const expectHeroCardsInsideScene = async () => {
+        await expect.poll(() => page.locator('.lp-document-card').evaluateAll(cards => {
+            const visible = cards.filter(card => card.getBoundingClientRect().width > 0)
+            if (!visible.length) return Infinity
+            return Math.max(...visible.map(card => {
+                const bounds = card.getBoundingClientRect()
+                const scene = card.closest('.lp-document-scene')!.getBoundingClientRect()
+                return Math.max(scene.left - bounds.left, bounds.right - scene.right, scene.top - bounds.top, bounds.bottom - scene.bottom)
+            }))
+        })).toBeLessThanOrEqual(1)
+    }
+    await expectHeroCardsInsideScene()
+    const utilityBorders = await page.locator('.lp-header-control').evaluateAll(elements =>
+        elements.map(element => getComputedStyle(element).borderTopWidth)
+    )
+    expect(utilityBorders.every(border => border === '0px')).toBe(true)
+    if (testInfo.project.metadata.mobile) {
+        const actions = await page.locator('.lp-hero-actions > a').all()
+        const primary = await actions[0].boundingBox()
+        const secondary = await actions[1].boundingBox()
+        expect(primary).not.toBeNull()
+        expect(secondary).not.toBeNull()
+        expect(Math.abs(primary!.y - secondary!.y)).toBeLessThan(1)
+        expect(secondary!.x).toBeGreaterThanOrEqual(primary!.x + primary!.width)
+    }
 
     const viewport = page.viewportSize()
     const mainBox = await page.locator('#main-content').boundingBox()
@@ -301,13 +338,370 @@ test('representative public surface produces non-empty visual evidence', async (
     expect(mainBox!.width).toBeLessThanOrEqual(viewport!.width + 1)
     expect(mainBox!.height).toBeGreaterThan(300)
 
-    const screenshot = await page.screenshot({
-        fullPage: true,
-        animations: 'disabled',
-        caret: 'hide',
+    const sections = [
+        '.lp-hero',
+        '.lp-gallery',
+        '.lp-builder-section',
+        '.lp-analysis-section',
+        '.lp-tailoring-section',
+        '.lp-applications-section',
+        '.lp-latex-section',
+        '.lp-faq',
+        '.lp-closing',
+        '.lp-footer',
+    ]
+    const settle = async () => {
+        await page.evaluate(() => document.fonts.ready)
+        await page.waitForFunction(() =>
+            [...document.images]
+                .filter(image => {
+                    const rect = image.getBoundingClientRect()
+                    return rect.width > 0 && rect.bottom > 0 && rect.top < window.innerHeight
+                })
+                .every(image => image.complete && image.naturalWidth > 0)
+        )
+        await page.evaluate(
+            () =>
+                new Promise<void>(resolve =>
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+                )
+        )
+    }
+    for (const theme of ['light', 'dark'] as const) {
+        if ((await page.locator('html').getAttribute('data-mode')) !== theme) {
+            await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
+        }
+        await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+        await settle()
+        const geometry: Record<string, unknown> = { viewport: page.viewportSize(), theme }
+        for (const selector of sections) {
+            const section = page.locator(selector)
+            await section.scrollIntoViewIfNeeded()
+            await settle()
+            const box = await section.boundingBox()
+            geometry[selector] = box
+                ? { ...box, y: box.y + (await page.evaluate(() => window.scrollY)) }
+                : null
+            if (!testInfo.project.metadata.mobile) {
+                await testInfo.attach(`landing-${theme}-${selector.slice(1)}`, {
+                    body: await section.screenshot({ animations: 'disabled', caret: 'hide' }),
+                    contentType: 'image/png',
+                })
+            }
+        }
+        await page.evaluate(() => scrollTo(0, 0))
+        await settle()
+        const screenshot = await page.screenshot({
+            fullPage: true,
+            animations: 'disabled',
+            caret: 'hide',
+        })
+        expect(screenshot.byteLength).toBeGreaterThan(20_000)
+        await testInfo.attach(theme === 'light' ? 'landing-page' : 'landing-page-dark', {
+            body: screenshot,
+            contentType: 'image/png',
+        })
+        await testInfo.attach(`landing-layout-${theme}`, {
+            body: Buffer.from(JSON.stringify(geometry, null, 2)),
+            contentType: 'application/json',
+        })
+        const currentViewport = page.viewportSize()!
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            currentViewport.width + 1
+        )
+    }
+    await page.getByRole('button', { name: 'Keywords', exact: true }).click()
+    await expect(page.locator('.lp-radar-insight')).toContainText('Keywords · 61/100')
+    await testInfo.attach('landing-analysis-selected', {
+        body: await page.locator('.lp-analysis-section').screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
     })
-    expect(screenshot.byteLength).toBeGreaterThan(20_000)
-    await testInfo.attach('landing-page', { body: screenshot, contentType: 'image/png' })
+    // Exercise long sample content and disclosure states without changing any
+    // product data. These states must not push persistent controls off-screen.
+    await page
+        .locator('.lp-builder-fields details')
+        .filter({ has: page.locator('summary', { hasText: 'Personal details' }) })
+        .locator('summary')
+        .click()
+    await page.getByLabel('Name', { exact: true }).fill('W'.repeat(50))
+    await page.getByLabel('Role', { exact: true }).fill('W'.repeat(70))
+    await page.getByLabel('What did you do?', { exact: true }).fill('W'.repeat(300))
+    await page.getByRole('tab', { name: 'LaTeX source', exact: true }).click()
+    await page.getByRole('tab', { name: 'PDF', exact: true }).click()
+    await page.locator('.lp-faq summary').first().click()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        page.viewportSize()!.width + 1
+    )
+    await testInfo.attach('landing-long-content', {
+        body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+        contentType: 'image/png',
+    })
+    if (!testInfo.project.metadata.mobile) {
+        await page.getByRole('tab', { name: 'Guided builder', exact: true }).click()
+        for (const width of [768, 1024, 1101]) {
+            await page.setViewportSize({ width, height: 1000 })
+            await expectHeroCardsInsideScene()
+            for (const view of ['Source', 'PDF']) {
+                await page.getByRole('tab', { name: view, exact: true }).click()
+                await settle()
+                expect(
+                    await page.evaluate(() => document.documentElement.scrollWidth)
+                ).toBeLessThanOrEqual(width + 1)
+                const actionBox = await page.locator('.lp-compile-action').boundingBox()
+                expect(actionBox).not.toBeNull()
+                expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(width + 1)
+                if (view === 'Source') {
+                    const equation = await page
+                        .locator('.lp-latex-preview .lp-equation')
+                        .evaluate(element => ({
+                            width: element.clientWidth,
+                            contentWidth: element.scrollWidth,
+                        }))
+                    expect(equation.contentWidth).toBeLessThanOrEqual(equation.width + 1)
+                    await testInfo.attach(`landing-tablet-${width}-source`, {
+                        body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+                        contentType: 'image/png',
+                    })
+                }
+            }
+            await testInfo.attach(`landing-tablet-${width}`, {
+                body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+                contentType: 'image/png',
+            })
+        }
+        await page.setViewportSize({ width: 320, height: 900 })
+        const actionBoxes = await Promise.all(
+            (await page.locator('.lp-hero-actions > a').all()).map(action => action.boundingBox())
+        )
+        expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
+        await testInfo.attach('landing-narrow-mobile', {
+            body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+            contentType: 'image/png',
+        })
+    }
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    const footer = page.locator('.lp-footer')
+    await footer.scrollIntoViewIfNeeded()
+    await expect(footer).toHaveAttribute('data-inview', 'true')
+    const artwork = page.locator('.lp-footer-art img')
+    await expect.poll(() => artwork.evaluate(element =>
+        element.getAnimations().some(animation => animation.playState === 'running')
+    )).toBe(true)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
+})
+
+test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
+    const { backendOrigin } = qualityOrigins()
+    const featureFlags = (billing: boolean) =>
+        page.route(url => url.origin === backendOrigin && url.pathname === '/config/feature-flags', route =>
+            fulfillQualityJson(route, { billing })
+        )
+    await featureFlags(false)
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const headerPricing = page.locator('.lp-navigation a[href="/pricing"]')
+    const footerPricing = page.locator('.lp-footer-links a[href="/pricing"]')
+    await expect(headerPricing).toHaveCount(0)
+    await expect(footerPricing).toHaveCount(0)
+    if (testInfo.project.metadata.mobile) {
+        await page.locator('.lp-menu-trigger').click()
+        await expect(page.locator('.lp-mobile-navigation a[href="/pricing"]')).toHaveCount(0)
+    }
+
+    await featureFlags(true)
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(headerPricing).toHaveCount(1)
+    await expect(footerPricing).toHaveCount(1)
+    if (testInfo.project.metadata.mobile) {
+        await page.locator('.lp-menu-trigger').click()
+        await expect(page.locator('.lp-mobile-navigation a[href="/pricing"]')).toHaveCount(1)
+    }
+})
+
+test('landing sample controls change their visible state by keyboard and pointer', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const gallery = page.getByRole('group', { name: 'Sample résumé layouts' })
+    const modern = gallery.getByRole('button', { name: /Modern/ })
+    const minimal = gallery.getByRole('button', { name: /Minimal/ })
+    await modern.focus()
+    await page.keyboard.press('Enter')
+    await expect(modern).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-gallery-art')).toHaveAttribute('data-layout', 'Modern')
+    await minimal.focus()
+    await page.keyboard.press('Space')
+    await expect(minimal).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-gallery-art')).toHaveAttribute('data-layout', 'Minimal')
+
+    const authoring = page.getByRole('tablist', { name: 'Explore authoring modes' })
+    const guided = authoring.getByRole('tab', { name: 'Guided builder' })
+    const source = authoring.getByRole('tab', { name: 'LaTeX source' })
+    await guided.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(source).toBeFocused()
+    await expect(source).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('.lp-builder-workspace')).toHaveAttribute('data-mode', 'source')
+    await page.keyboard.press('Home')
+    await expect(guided).toBeFocused()
+    await expect(guided).toHaveAttribute('aria-selected', 'true')
+
+    const tailoring = page.locator('.lp-tailor-demo')
+    const revisedBullet = 'Built accessible Python tools for a cross-functional team.'
+    await tailoring.getByRole('button', { name: 'Edit', exact: true }).click()
+    await tailoring.getByRole('textbox', { name: 'Edit suggested rewrite' }).fill(revisedBullet)
+    await tailoring.getByRole('button', { name: 'Accept', exact: true }).click()
+    await expect(tailoring.locator('.lp-matching-experience')).toContainText(revisedBullet)
+    await expect(tailoring).toContainText('Sample updated with your approved wording.')
+    await tailoring.getByRole('button', { name: 'Keep original' }).click()
+    await expect(tailoring.locator('.lp-matching-experience')).toContainText(
+        'Built and maintained user-facing products in Python with a focus on performance.'
+    )
+    await expect(tailoring).toContainText('Original wording kept. You decide what changes.')
+
+    const board = page.locator('.lp-application-demo')
+    const manage = board.getByRole('button', { name: 'Manage Senior Software Engineer at Acme' })
+    await manage.click()
+    await page.getByRole('menuitemradio', { name: 'Applied' }).click()
+    await expect(board.locator('.lp-board-column').nth(0)).not.toContainText('Acme')
+    await expect(board.locator('.lp-board-column').nth(1)).toContainText('Acme')
+    await expect(manage).toBeFocused()
+})
+
+test('landing sample tabs align selection and focus for repeated keyboard navigation', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const neutral = page.getByRole('group', { name: 'Sample résumé layouts' })
+        .getByRole('button', { name: /Modern/ })
+    const authoring = page.getByRole('tablist', { name: 'Explore authoring modes' })
+    const guided = authoring.getByRole('tab', { name: 'Guided builder' })
+    const source = authoring.getByRole('tab', { name: 'LaTeX source' })
+    const studio = authoring.getByRole('tab', { name: 'Visual studio' })
+    const workspace = page.locator('.lp-builder-workspace')
+
+    await expect(guided).toHaveAttribute('aria-selected', 'true')
+    await expect(guided).not.toBeFocused()
+    await studio.click()
+    await expect(studio).toHaveAttribute('aria-selected', 'true')
+    await neutral.focus()
+    await source.evaluate(button => (button as HTMLButtonElement).click())
+    await expect(source).toHaveAttribute('aria-selected', 'true')
+    await expect(neutral).toBeFocused()
+
+    await guided.focus()
+    for (const { key, tab, mode } of [
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'ArrowRight', tab: source, mode: 'source' },
+        { key: 'ArrowRight', tab: studio, mode: 'studio' },
+        { key: 'ArrowRight', tab: guided, mode: 'guided' },
+        { key: 'ArrowLeft', tab: studio, mode: 'studio' },
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'Home', tab: guided, mode: 'guided' },
+        { key: 'End', tab: studio, mode: 'studio' },
+        { key: 'End', tab: studio, mode: 'studio' },
+        { key: 'ArrowLeft', tab: source, mode: 'source' },
+    ]) {
+        await page.keyboard.press(key)
+        await expect(tab).toBeFocused()
+        await expect(tab).toHaveAttribute('aria-selected', 'true')
+        await expect(workspace).toHaveAttribute('data-mode', mode)
+        await expect(workspace).toHaveAttribute('aria-labelledby', (await tab.getAttribute('id'))!)
+        await expect(tab).toHaveAttribute('aria-controls', (await workspace.getAttribute('id'))!)
+    }
+
+    const latexTabs = page.getByRole('tablist', { name: 'Explore the LaTeX sample' })
+    const latexSource = latexTabs.getByRole('tab', { name: 'Source' })
+    const pdf = latexTabs.getByRole('tab', { name: 'PDF' })
+    const latexDemo = page.locator('.lp-latex-demo')
+    await expect(latexSource).toHaveAttribute('aria-selected', 'true')
+    await expect(latexSource).not.toBeFocused()
+    await pdf.click()
+    await expect(pdf).toHaveAttribute('aria-selected', 'true')
+    await neutral.focus()
+    await latexSource.evaluate(button => (button as HTMLButtonElement).click())
+    await expect(latexSource).toHaveAttribute('aria-selected', 'true')
+    await expect(neutral).toBeFocused()
+
+    await latexSource.focus()
+    for (const { key, tab, view } of [
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'ArrowRight', tab: pdf, view: 'pdf' },
+        { key: 'ArrowRight', tab: latexSource, view: 'source' },
+        { key: 'ArrowLeft', tab: pdf, view: 'pdf' },
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'Home', tab: latexSource, view: 'source' },
+        { key: 'End', tab: pdf, view: 'pdf' },
+        { key: 'End', tab: pdf, view: 'pdf' },
+        { key: 'ArrowLeft', tab: latexSource, view: 'source' },
+    ]) {
+        await page.keyboard.press(key)
+        await expect(tab).toBeFocused()
+        await expect(tab).toHaveAttribute('aria-selected', 'true')
+        await expect(latexDemo).toHaveAttribute('data-view', view)
+        const panel = latexDemo.getByRole('tabpanel')
+        await expect(panel).toHaveAttribute('aria-labelledby', (await tab.getAttribute('id'))!)
+        await expect(tab).toHaveAttribute('aria-controls', (await panel.getAttribute('id'))!)
+    }
+})
+
+test('hero documents stay readable and selectable without WebGL', async ({ page }, testInfo) => {
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(() => {
+        const original = HTMLCanvasElement.prototype.getContext
+        HTMLCanvasElement.prototype.getContext = function (
+            this: HTMLCanvasElement,
+            type: string,
+            options?: unknown
+        ) {
+            if (['webgl', 'webgl2', 'experimental-webgl'].includes(type)) return null
+            return Reflect.apply(original, this, [type, options])
+        } as typeof original
+    })
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const gallery = page.locator('.lp-gallery')
+    await expect(gallery.locator('img')).toHaveCount(0)
+    await expect(gallery.locator('canvas')).toHaveCount(0)
+    const controls = gallery.getByRole('group', { name: 'Sample résumé layouts' })
+    await controls.getByRole('button', { name: /Classic/ }).focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(controls.getByRole('button', { name: /Modern/ })).toBeFocused()
+    await expect(controls.getByRole('button', { name: /Modern/ })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+    )
+    await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
+    await page.setViewportSize({ width: 320, height: 900 })
+    for (const layout of ['Classic', 'Modern', 'Minimal']) {
+        await controls.getByRole('button', { name: new RegExp(layout) }).click()
+        const paper = gallery.getByRole('article', { name: `${layout} sample résumé` })
+        await expect(paper).toBeVisible()
+        await expect(paper.getByRole('heading', { name: 'Alex Morgan' })).toBeVisible()
+        await expect(paper.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible()
+        await expect.poll(() => paper.evaluate(element => {
+            const paperBounds = element.getBoundingClientRect()
+            const sceneBounds = element.closest('.lp-document-scene')!.getBoundingClientRect()
+            return Math.max(sceneBounds.left - paperBounds.left, paperBounds.right - sceneBounds.right, paperBounds.bottom - sceneBounds.bottom)
+        })).toBeLessThanOrEqual(1)
+        expect(
+            await paper.evaluate(element => element.scrollHeight - element.clientHeight)
+        ).toBeLessThanOrEqual(1)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            321
+        )
+        await testInfo.attach(`hero-no-webgl-${layout.toLowerCase()}`, {
+            body: await gallery.screenshot({ animations: 'disabled', caret: 'hide' }),
+            contentType: 'image/png',
+        })
+    }
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(gallery.locator('.lp-document-scene')).toHaveAttribute(
+        'data-reduced-motion',
+        'true'
+    )
+    expect(errors).toEqual([])
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({

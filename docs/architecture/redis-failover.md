@@ -125,6 +125,62 @@ reports the existing authoritative dependencies, even when cache backups work.
 
 ## Full automatic failover: concrete next implementation
 
+### Disabled authority-freeze foundation (migration 0074)
+
+`redis_authority_control` adds a Postgres singleton with an integer generation,
+the current primary identity, and a frozen phase. It is seeded at generation 0
+with the primary and **is not read by application admission or worker code**.
+`freeze_primary_authority` can atomically reserve the next generation with a
+caller-owned UUID; a second or stale coordinator cannot reserve another. A
+caller that loses the transaction response must read back the UUID before
+deciding whether its freeze committed. Database failure or a missing row has no
+synthetic healthy state. This first migration structurally forbids a backup as
+active and refuses every generic downgrade, including before a freeze, because
+a state check followed by a table drop would race a concurrent coordinator.
+
+This is a coordination primitive, not a recovery switch. The current exhausted
+primary cannot supply quota counters, receipts, consume-once tokens or job
+leases through normal Redis reads. No code path may treat an empty backup as a
+reconstructed authority. A later migration must add promotion/failback states
+only after durable quota cutover, one-time consumption, job outbox, worker
+fencing and state reconciliation below are implemented and validated. Failback
+must allocate a new forward generation, never resurrect an old one.
+
+### Disabled quota ledger (migration 0075)
+
+`quota_ledger_accounts` represents each user, dimension and period as either
+`unknown` or `reconciled`. A missing or unknown account rejects reservations.
+The migration creates no balances. An operator must first fence every legacy
+writer, obtain a consistent account snapshot, verify outstanding refund
+receipts, and record the opening usage plus a nonsecret evidence reference and
+SHA-256 digest. The code validates the presence and shape of this provenance;
+it cannot prove the source was complete or accurate. Redis is currently over
+quota, so opening usage cannot be verified through normal primary reads.
+
+`quota_ledger_reservations` records a globally unique reservation ID, the
+user/dimension/period/window/cost/limit inputs, and a SHA-256 fingerprint of
+the caller's persisted intent. The fingerprint is unique per account/period;
+a retry with changed inputs or another reservation ID is rejected. Allowed and
+denied decisions are sticky. A PostgreSQL account row lock serializes debits,
+settlement and refunds. A confirmed success can transition to `settled` once;
+it cannot later refund or dispatch again. A failed reservation can refund its
+exact stored cost once; a missing receipt never refunds. The caller must
+commit before dispatch and use a fresh transaction to resolve an uncertain
+commit by the same ID **and full immutable inputs**. The legacy API/worker paths still use Redis
+and do not call this ledger. This is a disabled building block, not a live
+double-write path or an assertion that existing counters have migrated.
+Neither migration has an automatic downgrade because a check/drop sequence can
+race a writer and destroy authoritative state.
+
+The current tests exercise concurrent compare-and-swap coordinators, exhausted
+primary freeze, stale generation, lost freeze response readback, database
+failure, unknown quota balances, near-limit admission, duplicate reservations,
+changed-intent replay, settlement/refund idempotency, uncertain-commit readback
+and downgrade protection against SQLite. The PR's disposable PostgreSQL CI
+service runs concurrent debit, settlement and refund tests. Mixed API/Modal
+workers, backup transport and partition injection are still required before
+any activation.
+
 The user-level goal of automatic whole-application continuity is **not accepted
 by this patch**. Choose and verify one authority model before implementing it:
 

@@ -79,13 +79,15 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
     config = Config()
     config.set_main_option("script_location", str(backend / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0073_d14_subfeatures"]
+    assert scripts.get_heads() == ["0075_durable_quota_ledger"]
     expected = {
         "0069_capability_catalog": "0068",
         "0070_plan_catalog": "0069_capability_catalog",
         "0071_plan_quotas": "0070_plan_catalog",
         "0072_capability_roles": "0071_plan_quotas",
         "0073_d14_subfeatures": "0072_capability_roles",
+        "0074_redis_authority_freeze": "0073_d14_subfeatures",
+        "0075_durable_quota_ledger": "0074_redis_authority_freeze",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent

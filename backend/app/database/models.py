@@ -6,15 +6,18 @@ from uuid import uuid4
 
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
     PrimaryKeyConstraint,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -1949,3 +1952,106 @@ class PlanQuotaRevision(Base):
     limit_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     changed_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RedisAuthorityControl(Base):
+    """Primary-only, disabled failover generation in PostgreSQL."""
+
+    __tablename__ = "redis_authority_control"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_redis_authority_singleton"),
+        CheckConstraint("generation >= 0", name="ck_redis_authority_generation"),
+        CheckConstraint("phase IN ('legacy', 'frozen')", name="ck_redis_authority_phase"),
+        CheckConstraint("active_backend = 'primary'", name="ck_redis_authority_primary_only"),
+        CheckConstraint(
+            "(phase = 'legacy' AND freeze_reason IS NULL AND freeze_id IS NULL) OR "
+            "(phase = 'frozen' AND freeze_reason IS NOT NULL AND freeze_id IS NOT NULL)",
+            name="ck_redis_authority_freeze_reason",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False)
+    active_backend: Mapped[str] = mapped_column(String(16), nullable=False)
+    freeze_reason: Mapped[Optional[str]] = mapped_column(String(32))
+    freeze_id: Mapped[Optional[str]] = mapped_column(String(36))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class QuotaLedgerAccount(Base):
+    """Disabled durable account; missing or unknown balances cannot admit work."""
+
+    __tablename__ = "quota_ledger_accounts"
+    __table_args__ = (
+        CheckConstraint("status IN ('unknown', 'reconciled')", name="ck_quota_account_status"),
+        CheckConstraint(
+            "(status = 'unknown' AND used IS NULL AND opening_used IS NULL AND "
+            "source_ref IS NULL AND source_sha256 IS NULL AND reconciled_at IS NULL) OR "
+            "(status = 'reconciled' AND used IS NOT NULL AND used >= 0 AND "
+            "opening_used IS NOT NULL AND opening_used >= 0 AND "
+            "source_ref IS NOT NULL AND length(trim(source_ref)) > 0 AND "
+            "source_sha256 IS NOT NULL AND length(source_sha256) = 64 AND "
+            "reconciled_at IS NOT NULL)",
+            name="ck_quota_account_reconciliation",
+        ),
+    )
+
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    dimension: Mapped[str] = mapped_column(String(64), primary_key=True)
+    period: Mapped[str] = mapped_column(String(8), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    used: Mapped[Optional[int]] = mapped_column(BigInteger)
+    opening_used: Mapped[Optional[int]] = mapped_column(BigInteger)
+    source_ref: Mapped[Optional[str]] = mapped_column(String(255))
+    source_sha256: Mapped[Optional[str]] = mapped_column(String(64))
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class QuotaLedgerReservation(Base):
+    """One immutable request fingerprint and its terminal refund outcome."""
+
+    __tablename__ = "quota_ledger_reservations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "dimension", "period"],
+            ["quota_ledger_accounts.user_id", "quota_ledger_accounts.dimension", "quota_ledger_accounts.period"],
+            name="fk_quota_reservation_account", ondelete="RESTRICT",
+        ),
+        CheckConstraint("cost > 0", name="ck_quota_reservation_cost"),
+        CheckConstraint("limit_value IS NULL OR limit_value >= 0", name="ck_quota_reservation_limit"),
+        CheckConstraint("used_after >= 0", name="ck_quota_reservation_used"),
+        CheckConstraint(
+            "(\"window\" = 'day' AND length(period) = 8) OR "
+            "(\"window\" = 'month' AND length(period) = 6)",
+            name="ck_quota_reservation_window",
+        ),
+        CheckConstraint("length(intent_fingerprint) = 64", name="ck_quota_reservation_intent"),
+        CheckConstraint(
+            "(state IN ('allowed', 'denied') AND refunded_at IS NULL AND settled_at IS NULL) OR "
+            "(state = 'refunded' AND refunded_at IS NOT NULL AND settled_at IS NULL) OR "
+            "(state = 'settled' AND settled_at IS NOT NULL AND refunded_at IS NULL)",
+            name="ck_quota_reservation_state",
+        ),
+        UniqueConstraint(
+            "user_id", "dimension", "period", "intent_fingerprint",
+            name="uq_quota_reservation_intent",
+        ),
+        Index("ix_quota_reservations_account", "user_id", "dimension", "period"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    dimension: Mapped[str] = mapped_column(String(64), nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    window: Mapped[str] = mapped_column(String(8), nullable=False)
+    intent_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    cost: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_value: Mapped[Optional[int]] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    used_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

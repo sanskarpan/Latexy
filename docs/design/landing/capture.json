@@ -1,0 +1,64 @@
+{
+  "source_commit": "5f6803960196da3241a202842dff71698695d6af",
+  "frontend_tree": "de0ad31803e95da12c305c1e4b7c0cab0977ff9f",
+  "workflow_run": 38694684031,
+  "artifact_id": 11955036885,
+  "artifact_sha256": "d391c4269146b54ba0453f83093ead85c570397cc68e25325612a70eeb778024",
+  "files": {
+    "desktop-light.png": {
+      "width": 1440,
+      "height": 3495,
+      "sha256": "d7a247d19ef055232f6654e5a7268fe88f43661e451aed5c0c34319541d618ae"
+    },
+    "desktop-dark.png": {
+      "width": 1440,
+      "height": 3495,
+      "sha256": "3532caa20b0cdfb5b19a26afaa7fc6c3538ffb7f2a84770fad257d1c91c50359"
+    },
+    "mobile-light.png": {
+      "width": 1082,
+      "height": 15684,
+      "sha256": "d041a3af278a4b3c02f90967cd467985c08c6c82e43c7ba09d759ed7161e6137"
+    },
+    "mobile-dark.png": {
+      "width": 1082,
+      "height": 15684,
+      "sha256": "a6a041852a12c98e53d1f904ef4c891b518313d67353c16cf8c743cf85cf0d6d"
+    },
+    "hero-light.png": {
+      "width": 1440,
+      "height": 703,
+      "sha256": "98232066a569534356fe68aa9ec7ad0d545435d8ebccfad3032806905affe28b"
+    },
+    "hero-dark.png": {
+      "width": 1440,
+      "height": 703,
+      "sha256": "f1b842eb08062ab19b76995ae528185f951a9668deb31b07c963e254fb4b7573"
+    },
+    "hero-narrow-classic.png": {
+      "width": 320,
+      "height": 699,
+      "sha256": "f6994ac365c1c522e3667925783529e40caf7bcbe2a35e2dda96192f41005663"
+    },
+    "hero-narrow-modern.png": {
+      "width": 320,
+      "height": 699,
+      "sha256": "25218384f696a89aa1ba3f971c7d031866215647b1e3d26f8aee3c4002c93b60"
+    },
+    "hero-narrow-minimal.png": {
+      "width": 320,
+      "height": 699,
+      "sha256": "dadb6b94ff20a0a6d90d1f7675f612df9e53e29742978e8d4fe1f56083110243"
+    },
+    "footer-light.png": {
+      "width": 1440,
+      "height": 934,
+      "sha256": "9f648092c2edace004a5119bd762ae48609b5c8c27a57d815535f06ec2bd7ca0"
+    },
+    "footer-dark.png": {
+      "width": 1440,
+      "height": 934,
+      "sha256": "35908e9c5e387c695d5da1b18ed84229c368b486373f89793f206abb8e0cff84"
+    }
+  }
+}
