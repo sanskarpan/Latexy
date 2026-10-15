@@ -23,7 +23,7 @@ function builder(status = 'active') {
 
 async function setup(page: Page, status = 'active') {
   const calls = { templates: 0, reads: 0, writes: 0, legacyWrites: 0, compiles: 0, exports: 0 }
-  await page.route('**/config/entitlements', route => route.fulfill({ json: { features: {
+  await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({ json: { features: {
     b01: true, // create a builder document in create/import scenarios
     b06: true, // reach the upload handler before compatibility is revoked
     b07: true, // allow JSON Resume import scenarios to reach their handler

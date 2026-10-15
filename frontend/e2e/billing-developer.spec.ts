@@ -99,7 +99,7 @@ test.describe('Billing page', () => {
   test.beforeEach(async ({ page }) => {
     // Exercise billing behavior with explicit effective commercial grants;
     // absent permissions remain denied, including in synthetic browser tests.
-    await page.route('**/config/entitlements', route => route.fulfill({
+    await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({
       json: { features: { i01: true, i02: true } },
     }))
   })
@@ -502,7 +502,7 @@ test.describe('Billing page', () => {
 
 test.describe('Developer portal', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/config/entitlements', route => route.fulfill({
+    await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({
       json: { features: { h08: true } },
     }))
   })

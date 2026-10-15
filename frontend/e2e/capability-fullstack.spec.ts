@@ -77,7 +77,9 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
       expect(denied.status()).toBe(403)
       expect(await denied.text()).toContain('feature_disabled')
       const disabledMap = actorPage.waitForResponse(
-        (response) => response.url().endsWith('/config/entitlements') && response.status() === 200,
+        (response) => new URL(response.url()).pathname === '/config/entitlements'
+          && new URL(response.url()).searchParams.get('include_quotas') === 'false'
+          && response.status() === 200,
         { timeout: 45_000 },
       )
       // The user case proves another tab's admin edit reaches an already-open
