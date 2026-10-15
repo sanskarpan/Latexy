@@ -172,6 +172,7 @@ function BuilderDemo() {
     // keyboard lookups stable when the surrounding streamed tree hydrates.
     const id = 'landing-builder'
     const [mode, setMode] = useState<'guided' | 'source' | 'studio'>('guided')
+    const [mobileView, setMobileView] = useState<'edit' | 'preview'>('edit')
     const pendingKeyboardFocus = useRef<typeof mode | null>(null)
     useLayoutEffect(() => {
         const target = pendingKeyboardFocus.current
@@ -193,7 +194,7 @@ function BuilderDemo() {
         { key: 'education', label: 'Education', icon: IconSchool },
     ]
     return (
-        <div className="lp-demo lp-builder-demo">
+        <div className="lp-demo lp-builder-demo" data-mobile-view={mobileView}>
             <div className="lp-demo-toolbar">
                 <span>
                     <IconLayout size={15} aria-hidden="true" />
@@ -211,6 +212,7 @@ function BuilderDemo() {
                             onClick={() => {
                                 pendingKeyboardFocus.current = null
                                 setMode(value)
+                                setMobileView('edit')
                             }}
                             tabIndex={mode === value ? 0 : -1}
                             onKeyDown={event => {
@@ -234,6 +236,7 @@ function BuilderDemo() {
                                 }
                                 pendingKeyboardFocus.current = next
                                 setMode(next)
+                                setMobileView('edit')
                             }}
                         >
                             {value === 'guided'
@@ -262,6 +265,22 @@ function BuilderDemo() {
                         </CapabilityGate>
                     </CapabilityGate>
                 </CapabilityGate>
+            </div>
+            <div className="lp-mobile-demo-switch" role="group" aria-label="Sample editor view">
+                <button
+                    type="button"
+                    aria-pressed={mobileView === 'edit'}
+                    onClick={() => setMobileView('edit')}
+                >
+                    Edit content
+                </button>
+                <button
+                    type="button"
+                    aria-pressed={mobileView === 'preview'}
+                    onClick={() => setMobileView('preview')}
+                >
+                    Preview résumé
+                </button>
             </div>
             <div
                 className="lp-builder-workspace"
@@ -475,6 +494,7 @@ const DIMENSIONS = [
 ]
 
 function AnalysisDemo() {
+    const [mobileView, setMobileView] = useState<'overview' | 'keywords'>('overview')
     const [category, setCategory] = useState<'present' | 'partial' | 'missing'>('missing')
     const [categoryTouched, setCategoryTouched] = useState(false)
     const [metric, setMetric] = useState<number | null>(null)
@@ -488,7 +508,23 @@ function AnalysisDemo() {
         118 - Math.cos((index * Math.PI * 2) / 5) * radius,
     ]
     return (
-        <div className="lp-analysis-demo">
+        <div className="lp-analysis-demo" data-mobile-view={mobileView}>
+            <div className="lp-mobile-demo-switch" role="group" aria-label="Analysis report view">
+                <button
+                    type="button"
+                    aria-pressed={mobileView === 'overview'}
+                    onClick={() => setMobileView('overview')}
+                >
+                    ATS overview
+                </button>
+                <button
+                    type="button"
+                    aria-pressed={mobileView === 'keywords'}
+                    onClick={() => setMobileView('keywords')}
+                >
+                    Keyword report
+                </button>
+            </div>
             <div className="lp-demo lp-radar-panel">
                 <h3>ATS analysis</h3>
                 <svg
@@ -784,7 +820,12 @@ function ApplicationDemo() {
     const [applications, setApplications] = useState(INITIAL_APPLICATIONS)
     return (
         <div className="lp-application-demo">
-            <div className="lp-application-board">
+            <p className="lp-mobile-scroll-hint">Scroll through your application stages</p>
+            <div
+                className="lp-application-board"
+                tabIndex={0}
+                aria-label="Sample application stages"
+            >
                 {(['Saved', 'Applied', 'Interview'] as const).map(status => (
                     <section className="lp-demo lp-board-column" key={status}>
                         <h3>

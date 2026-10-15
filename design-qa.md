@@ -1,35 +1,36 @@
-# Hero document scene QA
+# Mobile landing-page QA
 
-## Scope and production diagnosis
+Scope: mobile homepage, keeping the approved logo, native document hero and desktop composition. Isolated worktree, branch `codex/mobile-landing`, based on current main `253c5f63`.
 
-Homepage hero/gallery only, in the isolated `codex/hero-document-scene` worktree. Current main `24278325` is integrated; the primary checkout is untouched.
+## Current-run audit
 
-Production browser inspection confirmed that the old demonstration enlarged a 960 x 374 raster to approximately 1265 x 499 CSS pixels. Its document text was baked in and visibly soft. The previous hero visual acceptance is withdrawn.
+The live homepage was inspected through the in-app browser at a requested 390 x 844 phone viewport (375px content width with its scrollbar). Fresh light/dark screenshots were opened for the hero, builder, analysis and footer. The authenticated browser also showed a feature-access recovery banner; public PR screenshots will use isolated anonymous fixtures and will not publish account state.
 
-## Implementation
+Findings:
 
-- Native HTML Classic, Modern and Minimal resumes with selectable text, headings, dates and complete sample content. Classic is first/default. Keyboard arrows/Home/End and touch controls move the chosen document to centre.
-- Optional direct Three.js podium geometry, bounded pointer response, capped DPR, on-demand frames, offscreen/hidden-page suspension and resource cleanup. The selected reading surface stays flat.
-- Server-rendered documents remain visible without JavaScript. Missing WebGL, failed graphics imports, renderer failure and context loss retain native content. Reduced motion and high contrast are supported.
-- Removed both hero raster assets and crop/zoom rules. Scoped marketing instructions require native hero demonstrations and actual visual inspection.
-- Installed and applied `threejs-fundamentals` and `threejs-interaction` from CloudAI-X/threejs-skills. No dependency or React package changes.
+1. Hero: headline line breaks and a nearly 700px document gallery dominate the first screens. Product CTAs disappear while capability access cannot resolve. Severity P1 for the missing marketing path, P2 for composition.
+2. Builder: editor and full paper stack to over 1,000px. The miniature desktop rail adds controls without labels. P2.
+3. Analysis: two stacked panels consume about 775px; keyword content is squeezed into narrow columns and metrics wrap awkwardly. P2.
+4. Applications and LaTeX: the board stacks to about 706px, and the code/equation workspace takes about 590px. P2.
+5. Footer: about 925px, with a large decorative illustration and small links. Header utility controls also crowd account navigation. P2.
 
-## Findings resolved
+Screenshot inspection alone does not establish accessibility compliance. Keyboard, state preservation, overflow, capability handling and browser behavior require the tests below.
 
-An initial React Three Fiber v8 integration failed under Next App Router's bundled React 19 runtime. The browser run caught the 500 fallback; no assertion was relaxed. Graphics now mount through a caught, isolated direct Three.js import.
+## Changes
 
-Actual renders then revealed clipped side-frame edges, tablet occlusion and crowded captions near 1101px. Side papers moved up, widths up to 1000px show only the selected document, and compact card sizing extends through 1200px. Native and graphics breakpoints agree.
+- Two-line mobile heading, consistent margins, side-by-side conversion actions and larger touch controls. Public platform/demo links remain available when product-entry gates are closed; all existing product capability gates stay intact.
+- Native compact resume preview with layout controls above it and an explicit full-sample expansion. No raster documents or clipped content. The full resume stays available on demand.
+- Edit/preview controls preserve builder state and eliminate the stacked full document; Visual/Source/Studio modes remain available. Mobile rail is removed from display.
+- ATS overview and keyword report switch between focused panels. Keyword filters use the full panel width and metric controls remain reachable.
+- Horizontally scrollable application stages with the next stage visible; existing card menus remain functional. LaTeX uses its existing Source/PDF selection without a duplicated second preview.
+- Consistent section spacing, readable light/dark surfaces, larger controls and a shorter footer with the approved logo. The decorative footer illustration remains on desktop.
 
-One earlier unchanged backend launcher test exceeded its existing 10-second setup budget. It was not patched. Backend tests passed unchanged on both subsequent source revisions after current main was integrated.
+## Verification
 
-## Final evidence
+Existing marketing unit tests: 9 passed. Scoped ESLint and TypeScript passed. No existing unit-test assertions were changed; implementation preserved the existing CTA contract after the local checks identified an API/fixture mismatch.
 
-- Captured source: `5f6803960196da3241a202842dff71698695d6af`.
-- [CI run 38694684031](https://github.com/sanskarpan/Latexy/actions/runs/38694684031): all source checks passed, including backend, build, lint, full-stack smoke, isolated real compile, browser quality and Vercel.
-- Browser quality: 173 passed, 7 skipped, 0 failed, 0 flaky across desktop Chromium/Firefox/WebKit and mobile Chromium/WebKit profiles.
-- Artifact `11955036885`, SHA256 `d391c4269146b54ba0453f83093ead85c570397cc68e25325612a70eeb778024`, downloaded and verified before extraction.
-- Inspected full-resolution light/dark gallery renders, Firefox/WebKit native text, 768/1024/1101px layouts and all three 320px no-WebGL layouts. Text and frame edges are complete; final caption spacing is clear. Existing full-page/section, keyboard, overflow, long-content and reduced-motion coverage remains intact.
-- `docs/design/landing/` contains actual unchanged browser PNGs from that artifact. `capture.json` records source/frontend tree, dimensions and file hashes. The screenshot publication commit preserves the captured frontend tree; its required exact-head checks remain a merge gate.
-- Public CI captures use isolated anonymous-session/allowed-feature fixtures. They do not claim live production backend contact. Production deployment is verified separately after merge.
+New browser coverage exercises 320/390/430px in both themes, compact/full samples, edit/preview state preservation, analysis views, horizontally reachable card menus, native PDF tabs and public navigation when capabilities are unavailable. Existing five-profile, desktop keyboard, long-content, no-WebGL and reduced-motion assertions are retained. Fresh screenshots are captured per section on mobile as well as desktop.
 
-final result: passed
+Browser checks, actual final render inspection and PR screenshots are pending. No visual acceptance is claimed from source code or build output.
+
+final result: blocked — fresh phone renders and required checks pending.

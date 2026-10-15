@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { IconArrowUpRight } from '@tabler/icons-react'
+import { IconArrowUpRight, IconArrowRight } from '@tabler/icons-react'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
@@ -26,6 +26,9 @@ export default function LandingFooter({ year }: { year: number }) {
                             place to shine.
                         </p>
                         <MarketingCTA />
+                        <Link className="lp-primary-fallback" href="/platform">
+                            Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
+                        </Link>
                     </div>
                     <div className="lp-footer-art" aria-hidden="true">
                         <Image

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { IconChevronDown } from '@tabler/icons-react'
 import type { DocumentStageState } from './DocumentStage'
 import './document-scene.css'
 
@@ -15,7 +16,7 @@ function ResumePaper({ layout }: { layout: Layout }) {
                 <p>Senior Software Engineer</p>
                 <small>London · alex@example.com</small>
             </header>
-            <section>
+            <section className="lp-hero-paper-profile">
                 <h3>Profile</h3>
                 <p>Building thoughtful products, accessible interfaces, and dependable systems.</p>
             </section>
@@ -29,14 +30,16 @@ function ResumePaper({ layout }: { layout: Layout }) {
                 <ul>
                     <li>Built user-facing products in Python.</li>
                     <li>Partnered with design and engineering.</li>
-                    <li>Improved accessibility and tooling.</li>
+                    <li className="lp-hero-paper-extra">Improved accessibility and tooling.</li>
                 </ul>
-                <div className="lp-hero-paper-role">
+                <div className="lp-hero-paper-role lp-hero-paper-extra">
                     <strong>Software Engineer</strong>
                     <span>2018 — 2021</span>
                 </div>
-                <p className="lp-hero-paper-company">Northwind</p>
-                <p>Delivered product features and improved engineering practices.</p>
+                <p className="lp-hero-paper-company lp-hero-paper-extra">Northwind</p>
+                <p className="lp-hero-paper-extra">
+                    Delivered product features and improved engineering practices.
+                </p>
             </section>
             <section>
                 <h3>Education</h3>
@@ -53,6 +56,7 @@ function ResumePaper({ layout }: { layout: Layout }) {
 
 export default function DocumentGallery() {
     const [layout, setLayout] = useState<Layout>('Classic')
+    const [expanded, setExpanded] = useState(false)
     const [reducedMotion, setReducedMotion] = useState(true)
     const [dark, setDark] = useState(false)
     const scene = useRef<HTMLDivElement>(null)
@@ -113,9 +117,10 @@ export default function DocumentGallery() {
         invalidate.current?.()
     }
     return (
-        <div className="lp-gallery">
+        <div className="lp-gallery" data-mobile-expanded={expanded}>
             <div
                 className="lp-gallery-art lp-document-scene"
+                id="landing-document-samples"
                 ref={scene}
                 data-layout={layout}
                 data-reduced-motion={reducedMotion}
@@ -196,6 +201,20 @@ export default function DocumentGallery() {
                     ))}
                 </div>
             </div>
+            <button
+                type="button"
+                className="lp-mobile-sample-toggle"
+                aria-expanded={expanded}
+                aria-controls="landing-document-samples"
+                onClick={() => setExpanded(value => !value)}
+            >
+                {expanded ? 'Show compact preview' : 'Read the full sample'}
+                <IconChevronDown
+                    size={16}
+                    aria-hidden="true"
+                    style={{ transform: expanded ? 'rotate(180deg)' : undefined }}
+                />
+            </button>
             <p className="sr-only" aria-live="polite">
                 {layout} selected. The résumé moves to the centre. Sample content, not your
                 document.

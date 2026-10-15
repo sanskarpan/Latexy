@@ -322,7 +322,7 @@ test('representative public surface produces non-empty visual evidence', async (
     )
     expect(utilityBorders.every(border => border === '0px')).toBe(true)
     if (testInfo.project.metadata.mobile) {
-        const actions = await page.locator('.lp-hero-actions > a').all()
+        const actions = await page.locator('.lp-hero-actions > a:visible').all()
         const primary = await actions[0].boundingBox()
         const secondary = await actions[1].boundingBox()
         expect(primary).not.toBeNull()
@@ -382,12 +382,10 @@ test('representative public surface produces non-empty visual evidence', async (
             geometry[selector] = box
                 ? { ...box, y: box.y + (await page.evaluate(() => window.scrollY)) }
                 : null
-            if (!testInfo.project.metadata.mobile) {
-                await testInfo.attach(`landing-${theme}-${selector.slice(1)}`, {
-                    body: await section.screenshot({ animations: 'disabled', caret: 'hide' }),
-                    contentType: 'image/png',
-                })
-            }
+            await testInfo.attach(`landing-${theme}-${selector.slice(1)}`, {
+                body: await section.screenshot({ animations: 'disabled', caret: 'hide' }),
+                contentType: 'image/png',
+            })
         }
         await page.evaluate(() => scrollTo(0, 0))
         await settle()
@@ -702,6 +700,115 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
         'true'
     )
     expect(errors).toEqual([])
+})
+
+test('mobile landing presents focused demos in both themes and preserves edits', async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.metadata.mobile !== true, 'Phone composition contract')
+    await page.goto('/', { waitUntil: 'networkidle' })
+    for (const width of [320, 390, 430]) {
+        await page.setViewportSize({ width, height: 844 })
+        for (const theme of ['light', 'dark']) {
+            if ((await page.locator('html').getAttribute('data-mode')) !== theme) {
+                await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
+            }
+            await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+            const gallery = page.locator('.lp-gallery')
+            expect((await gallery.boundingBox())!.height).toBeLessThan(550)
+            const actions = page.locator('.lp-hero-actions > a:visible')
+            await expect(actions).toHaveCount(2)
+            for (const action of await actions.all()) {
+                expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+            }
+            expect(
+                await page.evaluate(() => document.documentElement.scrollWidth)
+            ).toBeLessThanOrEqual(width + 1)
+            await page.evaluate(() => scrollTo(0, 0))
+            await testInfo.attach(`mobile-${width}-${theme}-first-screen`, {
+                body: await page.screenshot({ animations: 'disabled' }),
+                contentType: 'image/png',
+            })
+        }
+    }
+    await page.setViewportSize({ width: 390, height: 844 })
+    const gallery = page.locator('.lp-gallery')
+    await gallery.getByRole('button', { name: 'Read the full sample' }).click()
+    await expect(
+        gallery
+            .locator('[data-slot="center"]')
+            .getByRole('heading', { name: 'Profile', exact: true })
+    ).toBeVisible()
+    await expect(
+        gallery.locator('[data-slot="center"]').getByText('Northwind', { exact: true })
+    ).toBeVisible()
+    await gallery.getByRole('button', { name: 'Show compact preview' }).click()
+    await expect(
+        gallery
+            .locator('[data-slot="center"]')
+            .getByRole('heading', { name: 'Profile', exact: true })
+    ).toBeHidden()
+    const builder = page.locator('.lp-builder-demo')
+    await expect(builder.locator('.lp-builder-preview')).toBeHidden()
+    await builder
+        .getByLabel('What did you do?', { exact: true })
+        .fill('Built accessible document tools with the design team.')
+    await builder.getByRole('button', { name: 'Preview résumé', exact: true }).click()
+    await expect(builder.locator('.lp-builder-fields')).toBeHidden()
+    await expect(
+        builder.getByRole('article', { name: 'Live sample résumé preview' })
+    ).toContainText('Built accessible document tools with the design team.')
+    await testInfo.attach('mobile-builder-preview', {
+        body: await builder.screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
+    })
+    await builder.getByRole('button', { name: 'Edit content', exact: true }).click()
+    await expect(builder.getByLabel('What did you do?', { exact: true })).toHaveValue(
+        'Built accessible document tools with the design team.'
+    )
+    await builder.getByRole('tab', { name: 'LaTeX source', exact: true }).click()
+    await expect(builder.locator('.lp-builder-fields')).toContainText(
+        'Built accessible document tools'
+    )
+    const analysis = page.locator('.lp-analysis-demo')
+    await analysis.getByRole('button', { name: 'Keyword report', exact: true }).click()
+    await expect(analysis.locator('.lp-radar-panel')).toBeHidden()
+    await analysis.getByRole('button', { name: /^Present/ }).click()
+    await expect(analysis.locator('.lp-keyword-result')).toContainText('Python')
+    await testInfo.attach('mobile-keyword-report', {
+        body: await analysis.screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
+    })
+    const board = page.locator('.lp-application-board')
+    expect(await board.evaluate(n => n.scrollWidth)).toBeGreaterThan(
+        (await board.boundingBox())!.width
+    )
+    await page
+        .getByRole('button', { name: 'Manage Senior Software Engineer at Notion', exact: true })
+        .click()
+    await expect(page.getByRole('menu')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.getByRole('tab', { name: 'PDF', exact: true }).click()
+    await expect(
+        page.locator('.lp-latex-source').getByRole('heading', { name: 'A Simple Equation' })
+    ).toBeVisible()
+})
+
+test('landing keeps a public entry point when capabilities are unavailable', async ({ page }) => {
+    const { backendOrigin } = qualityOrigins()
+    await page.route(
+        url => url.origin === backendOrigin && url.pathname === '/config/entitlements',
+        route => fulfillQualityJson(route, { features: {} })
+    )
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const hero = page.locator('.lp-hero-actions')
+    await expect(hero.getByRole('link', { name: 'Build my résumé' })).toHaveCount(0)
+    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toBeVisible()
+    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toHaveAttribute(
+        'href',
+        '/platform'
+    )
+    await expect(hero.getByRole('link', { name: 'See it in action' })).toBeVisible()
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({
