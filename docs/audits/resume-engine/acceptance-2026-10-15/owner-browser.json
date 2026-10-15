@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "title": "Sanitized owner and browser acceptance evidence",
+  "tested_source": {
+    "commit": "fa22e002380982faaa772c7f541e3ba6dbc96094",
+    "root_tree": "26af29d60cd0678756eda76a001c7a26b2ee2954",
+    "backend_tree": "d3f7c4390090038f7d54e9d253944f5a8775dc5c",
+    "frontend_tree": "407d6a84826ac08370628cb147820cfa54e7dbef",
+    "current_main_note": "This evidence is from fa22. origin/main is f4c3f7873da5986893578a63aa23b36a2e1aa3aa (#1893); combined candidate f77de0bdc6b9e9ebe28403964d632e5752f134d4 is pushed with CI rerunning."
+  },
+  "recovery": {
+    "status": "completed_read_only",
+    "elapsed_seconds": 64.203,
+    "existing_job_completed": true,
+    "recovery_http_methods": [
+      "GET"
+    ],
+    "submission_attempted_during_recovery": false,
+    "interrupted_initial_submission": true,
+    "quota_before": 0,
+    "quota_after": 1,
+    "quota_increment": 1,
+    "quota_increment_exactly_one": true,
+    "pdf_sha256": "5da1784c0b6fc15ffe8a31a015f700edda18d3ab18be001969d663a98eb00765",
+    "pdf_bytes": 93093,
+    "normal_download_matches_manifest": true,
+    "geometry_verified": true,
+    "geometry_sha256": "df5f27670d1e4dbc19e5ff93b71606cdfc64f5229ffb3f9156966bae9664f316",
+    "synctex_bytes": 12738,
+    "synctex_sha256": "0a36dcc0d2ae366c80b7a4c17d1e0810790689bfa0d0e6dc16cb1a684c563b7a",
+    "source_sha256": "b052270b13e6afc3aca533c4f6560f0f391ffbddf8ce3508767dac69a86b55a9",
+    "other_owner_resume_404": true,
+    "other_owner_pdf_404": true,
+    "other_owner_geometry_404": true,
+    "other_owner_synctex_404": true
+  },
+  "browser": {
+    "download_completed": true,
+    "pdf_header_valid": true,
+    "pdf_bytes": 93093,
+    "pdf_sha256": "5da1784c0b6fc15ffe8a31a015f700edda18d3ab18be001969d663a98eb00765",
+    "preview_painted": true,
+    "zoom_115_and_fit_100_verified": true,
+    "two_jobs_completed": true,
+    "job_identity_matches_manifest": true,
+    "download_hash_matches_manifest": true,
+    "download_size_matches_manifest": true,
+    "source_hash_matches": true,
+    "document_identity_matches": true,
+    "compiler": "lualatex",
+    "compiler_identity_matches": true,
+    "download_report_agrees": true
+  },
+  "scope": {
+    "qa_only": true,
+    "production_deployment_verified": false,
+    "production_migration_performed": false,
+    "production_billing_enabled": false,
+    "student_checkout_completed": false,
+    "live_charge_performed": false,
+    "full_product_certification": false,
+    "small_synthetic_owner_browser_flow_complete": true,
+    "qa_resources_confirmed_stopped": true,
+    "limitations": [
+      "Evidence applies to the fa22 snapshot and isolated QA acceptance path.",
+      "The initial compile POST response timed out; read-only recovery confirmed the existing completed job and quota movement. No compile was resubmitted during recovery.",
+      "Production database remains at the pre-Dodo baseline and production billing remains disabled.",
+      "Heavy-page and cross-platform checks are separate renderer/CI evidence; this is not blanket production acceptance."
+    ]
+  },
+  "source_report_bindings": {
+    "owner-compile-recovery-20261015-20261015T160906357738Z.private.json": "2b0bbc742855c570dde4a802e5bbba76dec1eaf66b00593655f1260525cb1587",
+    "browser-download-manifest-proof-fa22-20261015.private.json": "fefd4b85a3fdad86e4457340f740f2f8ab9a80ad574c4c21d28d3396039ae891",
+    "browser-download-proof-fa22-20261015.private.json": "ce00c404a83aed80b999ca5aca69813389b475b2dfc45c7e4e178c158adb999f"
+  }
+}

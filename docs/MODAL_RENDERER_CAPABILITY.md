@@ -130,3 +130,15 @@ The authenticated browser shell rendered, but the in-app browser blocked
 requests to the staging API. Browser PDF/editing and the broader supported
 template/language matrix remain unverified. These results do not authorize
 setting production certification or live-sales flags.
+
+The [October 15 execution record](audits/resume-engine/acceptance-2026-10-15/README.md)
+updates functional coverage for that same bare image/assets tuple after the
+2 GiB reservation and multilingual source repairs in #1895/#1896. All 15
+representative profiles, 61 shipped LuaLaTeX templates and four actual bridge
+scenarios passed. A small synthetic guided-builder owner flow also reached a
+painted and downloaded browser PDF with matching job/artifact identities.
+Those records bind their distinct tested source snapshots; later landing-page
+integration is not silently relabeled as the browser-tested source. The new
+boundary-certification harness remains separately authorization-gated and was
+not run as part of this functional acceptance. Keep the production capability
+gate closed until its remaining independent evidence and rollout checks pass.

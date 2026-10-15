@@ -68,9 +68,9 @@ Priority is release risk, not proof of a current production outage.
 | L03 | P0 / OPERATOR | Verify matching frontend/backend capability and mutation contracts on the serving deployment; fail-closed controls must not leave advertised core flows unavailable. | OPS + ENG + QA; rollout acceptance | [deploy workflow](../.github/workflows/deploy-modal.yml), [feature controls](audits/launch-2026-10-13/feature-controls.md) |
 | L04 | P0 / OPERATOR | Verify historical exposed-account remediation with private rotation/disablement evidence; repository sanitization alone is insufficient. | SEC; no credentials in evidence | [#1683](https://github.com/sanskarpan/Latexy/issues/1683) |
 | L05 | P0 / OPERATOR | Establish current Redis database binding, command headroom, authoritative monitoring and an approved exhaustion response before new traffic. Health/PING does not establish monthly capacity. | OPS + PRODUCT; paid changes need separate approval | [#1628](https://github.com/sanskarpan/Latexy/issues/1628), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity) |
-| L06 | P1 / GAP | Compose B07 structured interchange with H01 for all new JSON export admissions; retain ordinary owned source/PDF recovery. Repair and regression review in progress, not deployed. | ENG; code + tests | [route policy](../backend/app/middleware/capability_router.py), feature matrix B07 |
-| L07 | P1 / GAP | Hide/recheck E03 simulation and F10/F11 tenant new actions after denial/revocation; preserve admitted results and permitted recovery. Repair and regressions in progress. | ENG; code + tests | Feature matrix E03/F10/F11 |
-| L08 | P1 / GAP | Fail closed before destructive restore when the safety backup/recreation fails; treat SQL restore errors as failure. Local fake-command repair is not a restore drill. | ENG + OPS; code + isolated recovery exercise | [restore script](../scripts/backup/restore-database.sh) |
+| L06 | P1 / SOURCE + OPERATOR | B07/H01 JSON admission composition and recovery repairs merged in #1882 (`8f73b0c6`). Verify the actual serving contract before launch. | ENG + OPS; deployed acceptance | [route policy](../backend/app/middleware/capability_router.py), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), feature matrix B07 |
+| L07 | P1 / SOURCE + OPERATOR | E03 simulation and F10/F11 tenant visibility/revocation repairs merged in #1882 (`8f73b0c6`). Actual deployed denial/recovery acceptance remains pending. | ENG + QA + OPS | [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), feature matrix E03/F10/F11 |
+| L08 | P1 / SOURCE + OPERATOR | Restore now stops after safety-backup/recreation or SQL failure; source and fake-command regressions merged in #1882 (`8f73b0c6`). An isolated restore drill remains pending. | ENG + OPS; isolated recovery exercise | [restore script](../scripts/backup/restore-database.sh), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882) |
 | L09 | P1 / OPERATOR | Run real saved-owner create/edit/save/reload/conflict/preview/export flow against final integrated source; cover rapid replacement, reconnect and account changes. | QA + ENG; isolated E2E then deployed acceptance | [#1819](https://github.com/sanskarpan/Latexy/issues/1819) |
 | L10 | P1 / OPERATOR | Verify bounded conversion success/failure, reconnect, cancellation and exactly-once refund on deployed runtime. | QA + OPS; synthetic data, approved provider budget | [#1863](https://github.com/sanskarpan/Latexy/issues/1863), [#1818](https://github.com/sanskarpan/Latexy/issues/1818) |
 | L11 | P1 / DECISION | Approve end-to-visible-PDF budgets, then measure cold/warm/cache/overlap/burst distributions and resolve unexplained regressions. | PRODUCT + ENG + QA | [#1820](https://github.com/sanskarpan/Latexy/issues/1820), [SLOs](observability/slos.md) |
@@ -99,8 +99,20 @@ Completed baseline checks (scope is deliberately bounded):
   tests pass after the local repair, with independent review. The repair is not
   in this documentation-only change and is not deployed or a real restore drill.
 
-Local UI/indexing and admission repairs are being reviewed separately. References
-to their new tests describe work in progress until a repair PR/source SHA is linked.
+The October 13 source audit remains the baseline. UI/indexing, admission and
+restore repairs subsequently merged in [#1882](https://github.com/sanskarpan/Latexy/pull/1882)
+at `8f73b0c6`; suggestion recovery followed in
+[#1885](https://github.com/sanskarpan/Latexy/pull/1885) at `7cb1c8b7`, and D14 child
+controls in [#1883](https://github.com/sanskarpan/Latexy/pull/1883) at `d22998e0`.
+These source references do not prove production deployment or a restore drill.
+
+The [October 15 acceptance record](audits/resume-engine/acceptance-2026-10-15/README.md)
+adds 15 representative renderer profiles, all 61 shipped LuaLaTeX templates,
+four actual bridge scenarios and one small synthetic owner/browser flow. It
+also records a fresh safe-disabled rollout diagnostic and recovery branch.
+Source snapshots and limitations are explicit. L01/L02/L03 and broad L09
+acceptance remain open; live sales, Student checkout and production rollout
+are not signed off by those isolated results.
 
 
 - Baseline main [CI 38185842538](https://github.com/sanskarpan/Latexy/actions/runs/38185842538)
