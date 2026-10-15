@@ -29,17 +29,17 @@ Full-view comparisons and focused hero, builder, ATS, tailoring, board, LaTeX, F
 
 ## Verification
 
-Local ESLint and TypeScript checks pass. The final targeted browser run reports 9 passed, 3 device-inapplicable skips, 0 failed, 0 flaky. Production compilation and type checking completed locally; Windows standalone packaging requires symlinks unavailable in this session. Linux CI remains the packaging gate.
+Local ESLint and TypeScript checks pass. The final targeted browser run reports 9 passed, 3 device-inapplicable skips, 0 failed, 0 flaky. Linux CI run `38783439606` passes the production build, lint, cross-browser quality, real compile/preview and security checks for source commit `5bbf7fa80dd4f924c392fc0c75768f81e07a6715`. The quality report records 195 total: 185 passed, 10 device-inapplicable skips, 0 failed and 0 flaky. Vercel also deployed that revision successfully. Windows local standalone packaging is limited by unavailable symlink permissions; no packaging or test gate was changed to work around it.
 
 ## Remaining review notes
 
 The native scene has simpler paper shadows than the photographic reference (P3). Resume text and layout details are genuine HTML and differ from the raster mockup. The previously approved footer remains intentionally larger than the original reference footer. These are disclosed differences, not a claim of pixel-identical reproduction or user aesthetic approval.
 
-Final evidence links and CI status are added with the committed screenshots.
+Production screenshots were downloaded from the completed source CI run, verified against artifact SHA-256 `1ae9b190e4296aae195440c2a8a212c63b4703bd943c56b7e3bcddaed3b75327`, and inspected in both themes. Fresh 1440px source/production comparisons were opened together; phone 320px Chromium and 390px WebKit renders and the WebKit builder were also inspected at full resolution. The corrected document bounds, narrow date line, reduced-motion angles and restrained dark palette remain intact.
 
 ## Saved evidence
 
-See docs/design/landing-art-direction/README.md and provenance.json. The twelve post-commit screenshots are actual development renders, with the Next indicator retained. The Linux production frontend build and Vercel deployment passed for source 5bbf7fa8; broader browser/real-compile CI is still running. The QA pass assesses visual/interaction readiness for user review, not user aesthetic approval or permission to merge.
+See [screenshots](docs/design/landing-art-direction/README.md) and [provenance](docs/design/landing-art-direction/provenance.json). The twelve post-commit screenshots are actual production-bundle renders from source CI; they supersede the earlier development captures. Hero crops are documented derivatives of full-page screenshots; the other images are unchanged extracted PNGs. This evidence branch has exactly the same frontend tree as the tested PR: `de1c3ded008dd226dfb446322068e4563166e575`. The QA pass assesses visual/interaction readiness for user review, not user aesthetic approval or permission to merge.
 
 final result: passed
 
