@@ -312,6 +312,15 @@ class TestConfigEntitlements:
         assert len(body["features"]) == len(FEATURE_REGISTRY)
         assert body["features"]["compile"] is True
 
+    async def test_authed_user_can_skip_quota_snapshot(self, client: AsyncClient, db_session: AsyncSession):
+        _, headers = await _user_headers(db_session)
+        resp = await client.get("/config/entitlements?include_quotas=false", headers=headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["features"]) == len(FEATURE_REGISTRY)
+        assert body["features"]["compile"] is True
+        assert "quotas" not in body
+
     async def test_anonymous(self, client: AsyncClient):
         resp = await client.get("/config/entitlements")
         assert resp.status_code == 200

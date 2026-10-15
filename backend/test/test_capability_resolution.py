@@ -283,3 +283,70 @@ async def test_config_route_reports_policy_outage_instead_of_false_plan_limits(m
         await get_entitlements_for_user(db=AsyncMock(), user_id=None)
     assert unavailable.value.status_code == 503
     quota.assert_not_awaited()
+
+
+async def test_config_route_includes_quotas_by_default(monkeypatch):
+    from app.api import routes
+    from app.services.entitlement_service import entitlement_service
+
+    features = {"compile": True, "d01": False}
+    quota_payload = {"dimensions": {"compilations": {"used": 2}}}
+    monkeypatch.setattr(entitlement_service, "effective_snapshot", AsyncMock(return_value={
+        "available": True, "features": features,
+    }))
+    quota = AsyncMock(return_value=quota_payload)
+    resolve_plan = AsyncMock(return_value="basic")
+    monkeypatch.setattr(entitlement_service, "quota_snapshot", quota)
+    monkeypatch.setattr(routes, "_resolve_user_plan", resolve_plan)
+
+    result = await routes.get_entitlements_for_user(db=AsyncMock(), user_id="user-1")
+
+    assert result == {"features": features, "quotas": quota_payload}
+    resolve_plan.assert_awaited_once()
+    quota.assert_awaited_once_with("user-1", "basic")
+
+
+async def test_config_route_can_skip_quota_work_without_changing_features(monkeypatch):
+    from app.api import routes
+    from app.services.entitlement_service import entitlement_service
+
+    features = {"compile": True, "d01": False}
+    monkeypatch.setattr(entitlement_service, "effective_snapshot", AsyncMock(return_value={
+        "available": True, "features": features,
+    }))
+    quota = AsyncMock()
+    resolve_plan = AsyncMock()
+    monkeypatch.setattr(entitlement_service, "quota_snapshot", quota)
+    monkeypatch.setattr(routes, "_resolve_user_plan", resolve_plan)
+
+    result = await routes.get_entitlements_for_user(
+        db=AsyncMock(), user_id="user-1", include_quotas=False,
+    )
+
+    assert result == {"features": features}
+    quota.assert_not_awaited()
+    resolve_plan.assert_not_awaited()
+
+
+async def test_config_route_keeps_feature_lookup_fail_closed_when_quotas_skipped(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.api import routes
+    from app.services.entitlement_service import entitlement_service
+
+    monkeypatch.setattr(entitlement_service, "effective_snapshot", AsyncMock(return_value={
+        "available": False, "features": {"compile": False},
+    }))
+    quota = AsyncMock()
+    resolve_plan = AsyncMock()
+    monkeypatch.setattr(entitlement_service, "quota_snapshot", quota)
+    monkeypatch.setattr(routes, "_resolve_user_plan", resolve_plan)
+
+    with pytest.raises(HTTPException) as unavailable:
+        await routes.get_entitlements_for_user(
+            db=AsyncMock(), user_id="user-1", include_quotas=False,
+        )
+
+    assert unavailable.value.status_code == 503
+    quota.assert_not_awaited()
+    resolve_plan.assert_not_awaited()
