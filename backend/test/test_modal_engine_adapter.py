@@ -78,7 +78,10 @@ def test_sdk_contract_has_no_credentials_network_or_mounts(tmp_path):
         assert options["block_network"] is True
         assert options["secrets"] == [] and options["volumes"] == {} and options["network_file_systems"] == {}
         assert options["include_oidc_identity_token"] is False
-        assert options["cpu"] == (1, 2) and options["memory"] == (1024, 2048)
+        assert options["cpu"] == (1, 2)
+        # Keep the VM request aligned with its 2 GiB hard ceiling. VM Sandbox
+        # RAM is static; the synthetic zh-Hans renderer case needed 2 GiB.
+        assert options["memory"] == (2048, 2048)
         assert sandbox.calls[0][0][0:2] == ("python3", "-c")
         assert "/workspace/resume.tex" in sandbox.uploads
         assert sandbox.calls[1][0][1].endswith("sandbox_io_bridge.py")

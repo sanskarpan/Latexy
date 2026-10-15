@@ -440,7 +440,11 @@ def create_modal_engine(
         "network_file_systems": {},
         "include_oidc_identity_token": False,
         "cpu": (1, 2),
-        "memory": (1024, 2048),
+        # VM Sandboxes use static guest RAM: the requested amount is the VM's
+        # total, while the tuple ceiling remains a hard cap. A bounded
+        # synthetic zh-Hans run had a kernel OOM kill matching LuaTeX at 1024
+        # MiB and completed at 2048 MiB. Keep the request and cap aligned at 2 GiB.
+        "memory": (2048, 2048),
         "env": {
             "TEXMFCACHE": "/var/lib/texmf",
             "openin_any": "p",
