@@ -89,6 +89,24 @@ def test_0065_backfill_does_not_classify_later_legacy_writes(isolated_schema):
             migration.downgrade()
 
 
+def test_0065_refuses_downgrade_after_new_dodo_payment(isolated_schema):
+    with isolated_schema.begin() as connection:
+        connection.execute(text("CREATE TABLE subscriptions (id uuid PRIMARY KEY, razorpay_subscription_id varchar(255))"))
+        connection.execute(text("CREATE TABLE payments (id uuid PRIMARY KEY, razorpay_payment_id varchar(255))"))
+        migration = _migration("0065_provider_neutral_billing.py")
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+        payment_id = str(uuid4())
+        connection.execute(text(
+            "INSERT INTO payments (id, provider, provider_payment_id) "
+            "VALUES (:id, 'dodo', 'pay_new_dodo')"
+        ), {"id": payment_id})
+        with pytest.raises(RuntimeError, match="cannot downgrade billing revision 0065"):
+            migration.downgrade()
+        assert connection.scalar(text("SELECT provider_payment_id FROM payments WHERE id=:id"),
+                                 {"id": payment_id}) == "pay_new_dodo"
+
+
 def test_old_completed_reader_selects_unaccepted_candidate(isolated_schema):
     """Prove why rollback requires a build with the acceptance filter."""
     with isolated_schema.begin() as connection:
@@ -123,5 +141,7 @@ def test_deployment_cutover_gate_precedes_migration():
     assert workflow.index("Require schema cutover and recovery approval") < workflow.index(
         "Apply production database migrations"
     )
-    assert '"$MODAL_SCHEMA_CUTOVER_APPROVED_SHA" != "$DEPLOY_SHA"' in workflow
+    assert "python backend/scripts/check_modal_schema_cutover.py" in workflow
+    assert "MODAL_SCHEMA_CUTOVER_APPROVED_SHA" in workflow
     assert "MODAL_FORWARD_ROLLBACK_SHA" in workflow
+    assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in workflow

@@ -280,6 +280,9 @@ jobs:
       - name: Run database migrations
         run: uv run alembic upgrade head
 
+      - name: Verify schema cutover compatibility on disposable PostgreSQL
+        run: uv run pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
+
       - name: Run tests
         run: >-
           uv run pytest --tb=short -q

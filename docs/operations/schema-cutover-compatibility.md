@@ -51,16 +51,23 @@ this compatibility plan before automatic migration or deployment.
    pending intents, and unaccepted compilations. A backup and restore rehearsal
    must be available. Do not assume the latest GitHub run changed production.
 3. Identify a previously built, deployable **forward-compatible** recovery SHA
-   on main. Verify successful canonical CI, Dodo-only billing code, and accepted
-   artifact filters on all share/export paths. Verify its image and Modal
-   deployment availability separately. `dec5ca62` passes the source and CI
-   checks, but image availability and production provenance are unverified.
+   on main, distinct from the candidate SHA. Verify successful canonical CI,
+   Dodo-only billing code, and accepted artifact filters on **every** public
+   share/export path. Verify its image and Modal deployment availability
+   separately. The automated source checks cover only two known reader queries
+   and legacy billing ID references; they do not prove full reader coverage or
+   image availability. `dec5ca62` passes those minimum source and CI checks,
+   but image availability and production provenance are unverified.
 4. Review the exact candidate SHA and recovery SHA, then set Production
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
-   `MODAL_FORWARD_ROLLBACK_SHA` to those immutable values. The workflow checks
-   their relationship, source filters, and rollback CI before migration. Change
-   the approval SHA for each release. This attestation only permits the
-   workflow to proceed; it does not itself prove the fleet was drained.
+   `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and
+   `MODAL_FORWARD_ROLLBACK_SHA` to the distinct recovery SHA. Set the first
+   only after identifying and draining the fleet; set the second only after
+   verifying the recovery image and every public artifact reader. The workflow
+   checks exact SHA matches, ancestry, minimum source filters, and rollback CI
+   before migration. Refresh both candidate-scoped attestations for each
+   release. The variables record operator assertions; the workflow cannot
+   independently prove traffic drain or image availability.
 5. Complete renderer input certification and read-only billing preflight. Apply
    ordinary Alembic upgrades only from the identified, compatible revision.
    Keep ingress held across migration and the rolling deploy until old instances
@@ -86,10 +93,13 @@ CI provides a disposable loopback PostgreSQL service and runs the focused tests:
 cd backend
 TEST_POSTGRES_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/latexy_test \
 TEST_POSTGRES_ALLOW_SCHEMA_CREATE=1 SKIP_INFRA_CHECK=1 \
-pytest -q test/test_schema_rollout_compatibility.py
+pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 ```
 
-The tests create UUID-named schemas, run the real `0065` upgrade on minimal
-tables, insert representative pre- and post-upgrade legacy rows, and compare
-old versus accepted-only compilation selection. They drop their schemas even
-on assertion failure. Keep these URLs on a disposable loopback instance.
+Three tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
+upgrade on minimal tables, check legacy/new billing writes and downgrade
+refusal, and compare old versus accepted-only compilation selection. They drop
+their schemas even on assertion failure. The gate tests run with mocked GitHub
+and Git commands and need no external service. CI has a dedicated verbose step
+so each database test reports PASS or SKIP by name. Keep database URLs on a
+disposable loopback instance.
