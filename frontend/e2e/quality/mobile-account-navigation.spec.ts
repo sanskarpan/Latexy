@@ -307,6 +307,15 @@ test.describe('mobile account navigation', () => {
     await expect.poll(() => fixture.getGuestSessionReads()).toBeGreaterThan(guestSessionReadsBeforeReload)
     await waitForHeaderSession(page, fixture)
     await expectGuestAccountNavigation(page)
+    const signOutDocument = await page.evaluate(({ storageKey, documentId }) => {
+      const raw = sessionStorage.getItem(storageKey)
+      const ledger = raw ? JSON.parse(raw) as NavigationLedger : null
+      return ledger?.documents.find(doc => doc.id === documentId) ?? null
+    }, { storageKey: fixture.storageKey, documentId: fixture.getSignOutNavigation()!.documentId })
+    expect(signOutDocument).not.toBeNull()
+    // Transient-menu destinations must not enqueue speculative /byok or /terms
+    // work before sign-out, either. Keep the strict error classifier unchanged.
+    expect(signOutDocument?.fetches).toEqual([])
     expect(signOutCalls).toBe(1)
   })
 
@@ -323,6 +332,24 @@ test.describe('mobile account navigation', () => {
     await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'AI Providers', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toHaveCount(0)
+  })
+
+  test('account links still navigate on click without speculative route loads', async ({ page }) => {
+    await page.setViewportSize({ width: 627, height: 780 })
+    const fixture = await mockHeaderDependencies(page, { authenticated: true, features: { a09: true } })
+    await page.goto('/platform', { waitUntil: 'domcontentloaded' })
+    await waitForHeaderSession(page, fixture)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await page.getByRole('link', { name: 'Terms', exact: true }).click()
+    await expect(page).toHaveURL(/\/terms$/)
+    await expect(page.getByRole('heading', { name: 'Terms of Service', level: 1 })).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    const prefetches = await page.evaluate(storageKey => {
+      const raw = sessionStorage.getItem(storageKey)
+      const ledger = raw ? JSON.parse(raw) as NavigationLedger : null
+      return ledger?.documents.flatMap(doc => doc.fetches) ?? null
+    }, fixture.storageKey)
+    expect(prefetches).toEqual([])
   })
 
   test('guests with Studio disabled retain login but no optional Studio or template entry points', async ({ page }) => {

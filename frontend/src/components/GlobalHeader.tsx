@@ -265,6 +265,8 @@ export default function GlobalHeader() {
   const menuLink =
     'block rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg-2 transition hover:bg-surface-2 hover:text-fg'
 
+  // Opening a transient menu should not enqueue route loads that can race the
+  // full-document sign-out redirect. Destinations still navigate on click.
   const mobileNavigation = (
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -283,6 +285,7 @@ export default function GlobalHeader() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={false}
                     aria-current={active ? 'page' : undefined}
                     className={`block rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm transition ${
                       active
@@ -314,6 +317,7 @@ export default function GlobalHeader() {
                 <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
                   <Link
                     href="/login"
+                    prefetch={false}
                     className="rounded-[var(--radius-md)] border border-line py-2.5 text-center font-ui text-sm font-medium text-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
@@ -321,6 +325,7 @@ export default function GlobalHeader() {
                   </Link>
                   <CapabilityGate feature="a09"><Link
                     href="/try"
+                    prefetch={false}
                     className="rounded-[var(--radius-md)] bg-accent py-2.5 text-center font-ui text-sm font-semibold text-accent-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
@@ -337,16 +342,16 @@ export default function GlobalHeader() {
                   </div>
                   <div className="space-y-1">
                     {flags.billing && (
-                      <Link href="/billing" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.billing')}</Link>
+                      <Link href="/billing" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.billing')}</Link>
                     )}
-                    <Link href="/developer" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.developerApi')}</Link>
-                    <Link href="/byok" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.aiProviders')}</Link>
-                    <Link href="/settings" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.settings')}</Link>
+                    <Link href="/developer" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.developerApi')}</Link>
+                    <Link href="/byok" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.aiProviders')}</Link>
+                    <Link href="/settings" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.settings')}</Link>
                     {isAdmin && (
-                      <Link href="/admin" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.admin')}</Link>
+                      <Link href="/admin" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.admin')}</Link>
                     )}
-                    <Link href="/privacy" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.privacy')}</Link>
-                    <Link href="/terms" className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.terms')}</Link>
+                    <Link href="/privacy" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.privacy')}</Link>
+                    <Link href="/terms" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.terms')}</Link>
                     <button
                       type="button"
                       onClick={() => {
@@ -479,21 +484,21 @@ export default function GlobalHeader() {
                         <p className="mt-1 truncate text-sm font-semibold text-fg">{resolvedUser?.email || 'Unknown account'}</p>
                       </div>
                       <div className="my-1 h-px bg-line" />
-                      <Link href="/dashboard" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.dashboard')}</Link>
+                      <Link href="/dashboard" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.dashboard')}</Link>
                       {flags.billing && (
-                        <Link href="/billing" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.billing')}</Link>
+                        <Link href="/billing" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.billing')}</Link>
                       )}
-                      <Link href="/developer" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.developerApi')}</Link>
+                      <Link href="/developer" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.developerApi')}</Link>
                        {/* Source-contract markers retained for route reachability tests: >AI Providers</Link> and >Settings</Link>. */}
-                       <Link href="/byok" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.aiProviders')}</Link>
-                       <Link href="/settings" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.settings')}</Link>
+                       <Link href="/byok" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.aiProviders')}</Link>
+                       <Link href="/settings" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.settings')}</Link>
                       {isAdmin && (
-                        <Link href="/admin" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.admin')}</Link>
+                        <Link href="/admin" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.admin')}</Link>
                       )}
                       <div className="my-1 h-px bg-line" />
                       {/* Legal links, reachable from every app surface (the marketing footer is hidden here). */}
-                      <Link href="/privacy" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.privacy')}</Link>
-                      <Link href="/terms" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.terms')}</Link>
+                      <Link href="/privacy" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.privacy')}</Link>
+                      <Link href="/terms" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.terms')}</Link>
                       <div className="my-1 h-px bg-line" />
                       <button
                         role="menuitem"

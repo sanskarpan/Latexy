@@ -58,4 +58,12 @@ describe('mobile account navigation fixture sequencing', () => {
     expect(fixture).toContain('request.frame() === page.mainFrame()')
     expect(fixture).not.toContain("trace: 'retain-on-failure'")
   })
+
+  it('requires zero transient-menu prefetches and real click navigation', () => {
+    expect(signOutFlow).toContain('expect(signOutDocument).not.toBeNull()')
+    expect(signOutFlow).toContain('expect(signOutDocument?.fetches).toEqual([])')
+    expect(fixture).toContain("getByRole('link', { name: 'Terms', exact: true }).click()")
+    expect(fixture).toContain("getByRole('heading', { name: 'Terms of Service', level: 1 })).toBeVisible()")
+    expect(fixture).toContain('expect(prefetches).toEqual([])')
+  })
 })

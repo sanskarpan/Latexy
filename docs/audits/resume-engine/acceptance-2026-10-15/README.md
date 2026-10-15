@@ -40,6 +40,26 @@ The squash merge's complete root tree matches the tested candidate:
 merge time, not production deployment. Its frontend tree includes #1893 and
 differs from the earlier `fa22e002` browser snapshot.
 
+## Account-menu follow-up
+
+A later [canonical CI run](https://github.com/sanskarpan/Latexy/actions/runs/38773429241)
+on evidence head `1fd71318` failed the mobile WebKit sign-out case with an
+unclassified speculative `/byok` load refusal. Its quality matrix recorded
+179 passes, 10 skips and that one failure. The runtime sources were unchanged
+from the earlier green `f77de0bd` run; the failed attempt remains evidence and
+is not reclassified as a pass.
+
+The follow-up disables automatic prefetch on transient mobile/account menu
+links. Normal destination clicks, capability visibility, focus behavior and
+sign-out remain intact. This avoids initiating menu-owned speculative work
+that can race document replacement, at the cost of fetching an uncached
+destination when it is selected. The strict WebKit error classifier is
+unchanged. Regression checks cover all 18 menu links, require zero recorded
+menu prefetches across sign-out, and exercise actual Terms-link navigation.
+Focused source/session/provenance tests pass; final browser acceptance belongs
+to the final PR revision's canonical checks, separately from the earlier
+owner/browser execution record below.
+
 ## Actual renderer results
 
 The [renderer execution record](renderer.json) binds the intended immutable bare
