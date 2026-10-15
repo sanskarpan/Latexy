@@ -491,7 +491,10 @@ test('representative public surface produces non-empty visual evidence', async (
     const motionTarget = testInfo.project.metadata.mobile
         ? page.locator('.lp-footer-signature > span')
         : artwork
-    await motionTarget.scrollIntoViewIfNeeded()
+    // Scrolling an animated element waits for its geometry to become stable,
+    // consuming the finite desktop float before the running-state assertion.
+    // The static footer is already in view; only the phone signature needs focus.
+    if (testInfo.project.metadata.mobile) await motionTarget.scrollIntoViewIfNeeded()
     await expect(motionTarget).toBeVisible()
     if (testInfo.project.metadata.mobile) {
         await expect(artwork).toBeHidden()
@@ -734,6 +737,13 @@ test('mobile landing presents focused demos in both themes and preserves edits',
                 await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
             }
             await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+            const brand = (await page.locator('.lp-header > a').boundingBox())!
+            const utilities = (await page.locator('.lp-header-actions').boundingBox())!
+            expect(Math.abs(brand.y + brand.height / 2 - utilities.y - utilities.height / 2)).toBeLessThan(1)
+            expect(brand.height).toBeGreaterThanOrEqual(44)
+            for (const control of await page.locator('.lp-header-control:visible').all()) {
+                expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+            }
             const gallery = page.locator('.lp-gallery')
             await expect(gallery.locator('[data-slot="center"] figcaption')).toBeHidden()
             expect((await gallery.boundingBox())!.height).toBeLessThan(550)
