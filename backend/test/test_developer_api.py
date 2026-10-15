@@ -361,7 +361,7 @@ class TestDeveloperAPI:
         assert response.status_code == 200
         assert response.json()["pdf_url"] is None
 
-    async def test_completed_recovery_with_live_redis_pdf_advertises_url(
+    async def test_completed_recovery_without_accepted_compilation_rejects_redis_pdf(
         self,
         client: AsyncClient,
         db_session: AsyncSession,
@@ -397,13 +397,73 @@ class TestDeveloperAPI:
             headers={"Authorization": f"Bearer {created['full_key']}"},
         )
         assert response.status_code == 200
-        assert response.json()["pdf_url"] == f"/api/v1/jobs/{job_id}/pdf"
+        assert response.json()["pdf_url"] is None
         download = await client.get(
             f"/api/v1/jobs/{job_id}/pdf",
             headers={"Authorization": f"Bearer {created['full_key']}"},
         )
-        assert download.status_code == 200
-        assert download.content == b"%PDF-1.7 live"
+        assert download.status_code == 404
+
+    async def test_unaccepted_candidate_pdf_is_not_public_through_redis(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ):
+        import base64
+
+        from app.core.redis import get_redis_client
+        from app.services.job_result_recovery import recover_terminal_job
+
+        await _ensure_developer_api_schema(db_session)
+        user_id, _ = await _create_user(db_session, plan="pro")
+        session_token = await _create_session(db_session, user_id)
+        created = await _create_key(client, session_token, name="Candidate artifact key")
+        job_id = str(uuid.uuid4())
+        candidate_path = f"compilation/{job_id}/candidate/pdf"
+        db_session.add_all(
+            [
+                JobFinalization(
+                    job_id=job_id,
+                    user_id=user_id,
+                    owner_token="latex-worker-candidate",
+                    owner_epoch=1,
+                    state="completed",
+                    terminal_result="completed",
+                    result_payload={"success": True, "pdf_job_id": job_id},
+                    pdf_path=candidate_path,
+                    pdf_size=12,
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                ),
+                Compilation(
+                    job_id=job_id,
+                    user_id=user_id,
+                    status="completed",
+                    pdf_path=candidate_path,
+                    pdf_size=12,
+                    artifact_branch="candidate",
+                    artifact_accepted=False,
+                ),
+            ]
+        )
+        await db_session.commit()
+        redis = await get_redis_client()
+        await redis.set(
+            f"latexy:job:{job_id}:pdf",
+            base64.b64encode(b"%PDF-1.7 candidate"),
+            ex=60,
+        )
+
+        recovered = await recover_terminal_job(db_session, job_id=job_id, user_id=user_id)
+        assert recovered is not None
+        assert recovered["pdf_path"] is None
+        assert recovered["pdf_size"] is None
+
+        headers = {"Authorization": f"Bearer {created['full_key']}"}
+        status = await client.get(f"/api/v1/jobs/{job_id}", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["pdf_url"] is None
+        download = await client.get(f"/api/v1/jobs/{job_id}/pdf", headers=headers)
+        assert download.status_code == 404
 
     async def test_redis_result_without_live_pdf_does_not_advertise_url(
         self,
@@ -442,6 +502,42 @@ class TestDeveloperAPI:
         assert response.status_code == 200
         assert response.json()["pdf_url"] is None
 
+    async def test_legacy_redis_only_job_can_still_serve_live_pdf(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ):
+        import base64
+
+        from app.core.redis import get_redis_client
+
+        await _ensure_developer_api_schema(db_session)
+        user_id, _ = await _create_user(db_session, plan="pro")
+        session_token = await _create_session(db_session, user_id)
+        created = await _create_key(client, session_token, name="Redis-only compatibility key")
+        job_id = str(uuid.uuid4())
+        redis = await get_redis_client()
+        await redis.set(
+            f"latexy:job:{job_id}:meta",
+            json.dumps({"job_id": job_id, "user_id": user_id}),
+            ex=60,
+        )
+        await redis.set(f"latexy:job:{job_id}:state", json.dumps({"status": "completed"}), ex=60)
+        await redis.set(
+            f"latexy:job:{job_id}:result",
+            json.dumps({"success": True, "pdf_job_id": job_id}),
+            ex=60,
+        )
+        await redis.set(f"latexy:job:{job_id}:pdf", base64.b64encode(b"%PDF-1.7 redis-only"), ex=60)
+
+        headers = {"Authorization": f"Bearer {created['full_key']}"}
+        status = await client.get(f"/api/v1/jobs/{job_id}", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["pdf_url"] == f"/api/v1/jobs/{job_id}/pdf"
+        download = await client.get(f"/api/v1/jobs/{job_id}/pdf", headers=headers)
+        assert download.status_code == 200
+        assert download.content == b"%PDF-1.7 redis-only"
+
     async def test_pdf_recovery_uses_persisted_user_owned_object(
         self,
         client: AsyncClient,
@@ -473,6 +569,8 @@ class TestDeveloperAPI:
                     status="completed",
                     pdf_path=pdf_path,
                     pdf_size=12,
+                    artifact_branch="draft",
+                    artifact_accepted=True,
                 ),
             ]
         )

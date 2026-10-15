@@ -348,7 +348,6 @@ function BuilderResumeForm({
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveAttempt, setSaveAttempt] = useState(0)
   const [saveConflict, setSaveConflict] = useState(false)
   const [conflictDraft, setConflictDraft] = useState<{ title: string; template_id: string; structured_content: StructuredResume } | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -487,6 +486,9 @@ function BuilderResumeForm({
         // Even a clean draft must recheck before previewing or exporting.
         await ensureCompatible()
         if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Your session changed. Please try again.')
+        // A successful compatibility check recovers a clean draft from a
+        // transient save failure even though there is no PATCH to send.
+        if (!dirtyRef.current) setSaveError(null)
         while (dirtyRef.current) {
           const snapshot = draftRef.current
           if (!snapshot.title.trim() || snapshot.title.length > 255) throw new Error(!snapshot.title.trim() ? 'A résumé title is required' : 'Résumé titles must be 255 characters or fewer')
@@ -547,7 +549,7 @@ function BuilderResumeForm({
     if (authUnverified || !dirty || builderStatus === 'detached' || saveConflict) return
     const timeout = window.setTimeout(() => { void flushSave().catch(() => {}) }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, saveAttempt, flushSave])
+  }, [authUnverified, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, flushSave])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
@@ -721,7 +723,7 @@ function BuilderResumeForm({
             Open Advanced Editor
           </Link>
           {saveError && !saveConflict ? (
-            <button type="button" aria-live="polite" onClick={() => setSaveAttempt(value => value + 1)} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
+            <button type="button" aria-live="polite" onClick={() => { void flushSave().catch(() => {}) }} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
               Save failed · Retry
             </button>
           ) : (

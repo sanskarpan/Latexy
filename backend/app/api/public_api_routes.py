@@ -18,7 +18,7 @@ from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import DeveloperAPIKey, User
+from ..database.models import Compilation, DeveloperAPIKey, User
 from ..middleware.auth_middleware import get_developer_api_key_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.capability_router import enforce_capabilities
@@ -207,12 +207,26 @@ async def compile_v1(
         raise HTTPException(status_code=400, detail="Unsupported compiler")
 
     job_id = str(uuid.uuid4())
-    finalization_record = _new_finalization_row(job_id, "latex_compilation", api_key.user_id, {})
+    compilation_record = Compilation(
+        user_id=api_key.user_id,
+        job_id=job_id,
+        status="processing",
+    )
+    db.add(compilation_record)
+    await db.flush()
+    finalization_record = _new_finalization_row(
+        job_id,
+        "latex_compilation",
+        api_key.user_id,
+        {},
+        compilation_id=compilation_record.id,
+    )
     db.add(finalization_record)
     await _commit_db_changes(db)
     try:
         plan_id, quota_ticket = await _authorize("compile", api_key, db, job_id=job_id)
     except Exception:
+        await db.delete(compilation_record)
         await db.delete(finalization_record)
         await _commit_db_changes(db)
         raise
@@ -249,6 +263,7 @@ async def compile_v1(
         # The job never reached the dispatch intent — give the plan allowance back.
         if quota_ticket is not None:
             await entitlement_service.refund_quota(quota_ticket)
+        await db.delete(compilation_record)
         await db.delete(finalization_record)
         await _commit_db_changes(db)
         raise
@@ -397,7 +412,7 @@ async def get_job_v1(
         # Durable recovery is authoritative. An immutable pointer remains
         # usable after cache eviction; Redis-only jobs still need a live PDF.
         pdf_available = recovery["state"] == "completed" and bool(recovery.get("pdf_path"))
-    if not pdf_available and result and result.get("success"):
+    if recovery is None and not pdf_available and result and result.get("success"):
         pdf_job_id = result.get("pdf_job_id")
         if isinstance(pdf_job_id, str) and pdf_job_id == job_id:
             try:
@@ -439,8 +454,28 @@ async def download_job_pdf_v1(
 
     recovery = await recover_terminal_job(db, job_id=job_id, user_id=api_key.user_id)
     if recovery is not None:
-        if recovery["state"] != "completed":
+        if recovery["state"] != "completed" or not recovery.get("pdf_path"):
             raise HTTPException(status_code=404, detail="PDF not found")
+
+        # A durable accepted-artifact decision is authoritative.  In
+        # particular, do not let a Redis key for an unaccepted candidate
+        # replace the accepted compilation's immutable object.
+        try:
+            from ..services.storage_service import StorageObjectTooLarge, download_bytes
+
+            content = download_bytes(recovery["pdf_path"], MAX_COMPILED_PDF_BYTES)
+            if content is not None:
+                return _Response(
+                    content=content,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="latexy-{job_id[:8]}.pdf"'},
+                )
+        except StorageObjectTooLarge as exc:
+            raise HTTPException(status_code=413, detail="Compiled PDF is too large") from exc
+        except Exception as exc:
+            logger.warning("Durable public PDF lookup failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="PDF temporarily unavailable") from exc
+        raise HTTPException(status_code=404, detail="PDF not found")
 
     # Primary: Redis cache (works in serverless / multi-container envs).
     try:
@@ -461,26 +496,6 @@ async def download_job_pdf_v1(
     except Exception as exc:
         logger.warning("Public PDF Redis lookup unavailable (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="PDF temporarily unavailable") from exc
-
-    # A durable completion can outlive both Redis result and PDF cache.  Read
-    # only the immutable, user-owned object pointer recorded by the arbiter.
-    if recovery and recovery.get("pdf_path"):
-        try:
-            from ..services.storage_service import StorageObjectTooLarge, download_bytes
-
-            content = download_bytes(recovery["pdf_path"], MAX_COMPILED_PDF_BYTES)
-            if content is not None:
-                return _Response(
-                    content=content,
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="latexy-{job_id[:8]}.pdf"'},
-                )
-        except StorageObjectTooLarge as exc:
-            raise HTTPException(status_code=413, detail="Compiled PDF is too large") from exc
-        except Exception as exc:
-            logger.warning("Durable public PDF lookup failed (%s)", type(exc).__name__)
-            raise HTTPException(status_code=503, detail="PDF temporarily unavailable") from exc
-        raise HTTPException(status_code=404, detail="PDF not found")
 
     # A terminal completed row without a durable pointer may still have a
     # currently-live Redis PDF (handled above), but must not fall back to an
