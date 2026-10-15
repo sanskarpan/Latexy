@@ -67,6 +67,41 @@ def test_mixed_setup_is_structural_deterministic_and_idempotent() -> None:
     assert configure_multilingual_latex(configured, ["ja", "ar", "he", "hi"]) == configured
 
 
+@pytest.mark.parametrize(
+    ("code", "required"),
+    [
+        ("zh-hans", r"\setCJKmainfont[AutoFakeSlant=0.15]{Noto Sans CJK SC}"),
+        ("zh-hant", r"\setCJKmainfont[AutoFakeSlant=0.15]{Noto Sans CJK TC}"),
+        ("ko", r"\setmainhangulfont{Noto Sans CJK KR}[AutoFakeSlant=0.15]"),
+    ],
+)
+def test_cjk_profiles_define_a_slanted_face_for_template_italics(code: str, required: str) -> None:
+    configured = configure_multilingual_latex(SOURCE, code)
+    assert required in configured
+    if code == "ko":
+        assert r"\setmainhanjafont{Noto Sans CJK KR}[AutoFakeSlant=0.15]" in configured
+
+
+@pytest.mark.parametrize(
+    ("code", "babel_tag", "text_command"),
+    [
+        ("hi", r"\babeltags{hindi=hindi}", r"\texthindi"),
+        ("mr", r"\babeltags{marathi=marathi}", r"\textmarathi"),
+    ],
+)
+def test_standalone_indic_profiles_define_translation_text_commands(
+    code: str, babel_tag: str, text_command: str
+) -> None:
+    translated_source = SOURCE.replace(
+        "English résumé. 日本語 العربية עברית हिंदी",
+        rf"{text_command}{{हिंदी गुणवत्ता}}",
+    )
+    configured = configure_multilingual_latex(translated_source, code)
+    assert r"\usepackage[english," in configured and ",provide=*]{babel}" in configured
+    assert babel_tag in configured
+    assert rf"{text_command}{{हिंदी गुणवत्ता}}" in configured
+
+
 def test_body_and_verbatim_text_are_not_rewritten() -> None:
     source = SOURCE.replace(
         "English résumé. 日本語 العربية עברית हिंदी",

@@ -187,7 +187,10 @@ def _setup_block(codes: tuple[str, ...]) -> str:
             lines.extend(
                 [
                     r"\usepackage[fontset=none,scheme=plain]{ctex}",
-                    rf"\setCJKmainfont{{{CJK_FONT_BY_LANGUAGE[cjk]}}}",
+                    # Noto Sans CJK has no italic face. Resume templates use
+                    # \textit for role metadata, so define a modest slant
+                    # instead of letting NFSS silently substitute upright.
+                    rf"\setCJKmainfont[AutoFakeSlant=0.15]{{{CJK_FONT_BY_LANGUAGE[cjk]}}}",
                 ]
             )
         elif cjk == "ja":
@@ -196,8 +199,11 @@ def _setup_block(codes: tuple[str, ...]) -> str:
             lines.extend(
                 [
                     r"\usepackage{luatexko}",
-                    rf"\setmainhangulfont{{{CJK_FONT_BY_LANGUAGE[cjk]}}}",
-                    rf"\setmainhanjafont{{{CJK_FONT_BY_LANGUAGE[cjk]}}}",
+                    # The Korean Noto CJK family also lacks italic shapes.
+                    # Keep Hangul and Hanja on the same pinned family while
+                    # explicitly providing the template's italic style.
+                    rf"\setmainhangulfont{{{CJK_FONT_BY_LANGUAGE[cjk]}}}[AutoFakeSlant=0.15]",
+                    rf"\setmainhanjafont{{{CJK_FONT_BY_LANGUAGE[cjk]}}}[AutoFakeSlant=0.15]",
                 ]
             )
 
@@ -227,6 +233,11 @@ def _setup_block(codes: tuple[str, ...]) -> str:
             lines.append(rf"\newfontfamily\{indic_target}font[{DEVANAGARI_FONT_OPTIONS}]{{{DEVANAGARI_FONT}}}")
         else:
             lines.append(rf"\usepackage[english,{indic_target},provide=*]{{babel}}")
+            # Babel does not create Polyglossia-style \text<hindi|marathi>
+            # commands from package language options. Explicitly map the
+            # closed language tag used by translation output to its Babel
+            # language so \texthindi / \textmarathi are defined.
+            lines.append(rf"\babeltags{{{indic_target}={indic_target}}}")
             lines.append(r"\babelprovide[onchar=ids fonts]{english}")
             lines.append(
                 rf"\babelfont[{indic_target}]{{rm}}[{DEVANAGARI_FONT_OPTIONS}]{{{DEVANAGARI_FONT}}}"
