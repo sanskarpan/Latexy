@@ -36,8 +36,18 @@ class FakeRunner:
             kind = "ancestor"
             output = ""
         elif args[:2] == ["git", "show"]:
-            kind = "routes" if args[2].endswith("resume_routes.py") else "billing"
-            output = gate.ACCEPTED_FILTER * 2 if kind == "routes" else "Dodo-only service"
+            if args[2].endswith("resume_routes.py"):
+                kind, output = "routes", gate.ACCEPTED_FILTER * 2
+            elif args[2].endswith("payment_service.py"):
+                kind, output = "billing", "Dodo-only service"
+            elif args[2].endswith("job_result_recovery.py"):
+                kind, output = "recovery", (
+                    gate.ACCEPTED_FILTER + '\n"pdf_path": None'
+                )
+            else:
+                kind, output = "public_api", (
+                    gate.PUBLIC_REDIS_FALLBACK_GUARD + "\n" + gate.PUBLIC_PDF_ACCEPTANCE_GUARD
+                )
         else:
             kind = "ci"
             output = json.dumps({"workflow_runs": [{"head_sha": RECOVERY, "head_branch": "main",
@@ -58,7 +68,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
     def test_valid_distinct_ancestor_with_ci_and_attestation_passes(self):
         runner = FakeRunner()
         gate.validate(ENV, runner)
-        self.assertEqual(len(runner.calls), 4)
+        self.assertEqual(len(runner.calls), 6)
         self.assertEqual(runner.calls[0], ["git", "merge-base", "--is-ancestor", RECOVERY, DEPLOY])
         self.assertIn(f"head_sha={RECOVERY}&branch=main", runner.calls[-1][2])
 
@@ -105,7 +115,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
                 self.assertEqual(len(runner.calls), 1)
 
     def test_missing_recovery_files_are_rejected(self):
-        for kind, count in (("routes", 2), ("billing", 3)):
+        for kind, count in (("routes", 2), ("billing", 3), ("recovery", 4), ("public_api", 5)):
             with self.subTest(kind=kind):
                 runner = FakeRunner(**{kind: response(128)})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "source is unavailable"):
@@ -114,12 +124,14 @@ class SchemaCutoverGateTests(unittest.TestCase):
 
     def test_unsafe_source_is_rejected_before_ci_lookup(self):
         for kind, source in (("routes", "completed-only reader"),
-                             ("billing", "razorpay_payment_id")):
+                             ("billing", "razorpay_payment_id"),
+                             ("recovery", "completed pointer without acceptance"),
+                             ("public_api", "unfenced Redis fallback")):
             with self.subTest(kind=kind):
                 runner = FakeRunner(**{kind: response(output=source)})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
                     gate.validate(ENV, runner)
-                self.assertEqual(len(runner.calls), 3)
+                self.assertEqual(len(runner.calls), 5)
 
     def test_failed_empty_wrong_or_malformed_ci_lookup_is_rejected(self):
         payloads = (
@@ -137,7 +149,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
                 runner = FakeRunner(ci=result)
                 with self.assertRaises(gate.CutoverBlocked):
                     gate.validate(ENV, runner)
-                self.assertEqual(len(runner.calls), 4)
+                self.assertEqual(len(runner.calls), 6)
 
     def test_command_timeout_is_rejected(self):
         runner = FakeRunner(ci=subprocess.TimeoutExpired(["gh", "api"], 20))

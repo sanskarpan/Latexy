@@ -18,6 +18,8 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 LEGACY_BILLING_ID = re.compile(r"razorpay_(?:payment|subscription)_id", re.IGNORECASE)
 ACCEPTED_FILTER = "Compilation.artifact_accepted.is_(True)"
+PUBLIC_REDIS_FALLBACK_GUARD = "if recovery is None and not pdf_available and result and result.get(\"success\")"
+PUBLIC_PDF_ACCEPTANCE_GUARD = 'if recovery["state"] != "completed" or not recovery.get("pdf_path"):'
 
 
 class CutoverBlocked(ValueError):
@@ -56,7 +58,16 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
                      "Recovery artifact reader source is unavailable")
     billing = _result(runner, ["git", "show", f"{rollback}:backend/app/services/payment_service.py"],
                       "Recovery billing source is unavailable")
-    if routes.count(ACCEPTED_FILTER) < 2 or LEGACY_BILLING_ID.search(billing):
+    recovery = _result(runner, ["git", "show", f"{rollback}:backend/app/services/job_result_recovery.py"],
+                       "Recovery job artifact source is unavailable")
+    public_api = _result(runner, ["git", "show", f"{rollback}:backend/app/api/public_api_routes.py"],
+                         "Recovery public artifact source is unavailable")
+    if (routes.count(ACCEPTED_FILTER) < 2
+            or ACCEPTED_FILTER not in recovery
+            or '"pdf_path": None' not in recovery
+            or PUBLIC_REDIS_FALLBACK_GUARD not in public_api
+            or PUBLIC_PDF_ACCEPTANCE_GUARD not in public_api
+            or LEGACY_BILLING_ID.search(billing)):
         raise CutoverBlocked("Recovery source minimum compatibility checks failed")
 
     api_path = (f"repos/{repository}/actions/workflows/ci.yml/runs?head_sha={rollback}"

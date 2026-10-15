@@ -114,6 +114,28 @@ describe('serialized builder persistence', () => {
     context.ensureCompatible.mockRejectedValue(new Error('Builder unavailable'))
     await expect(flush()).rejects.toThrow('Builder unavailable')
     expect(updateBuilderResume).not.toHaveBeenCalled()
+    expect(context.setSaveError).not.toHaveBeenCalledWith(null)
+  })
+
+  it('clears a stale save error after a clean retry passes compatibility without PATCHing', async () => {
+    const { context, flush, updateBuilderResume } = saveHarness()
+    context.dirtyRef.current = false
+    await flush()
+    expect(context.ensureCompatible).toHaveBeenCalledOnce()
+    expect(context.setSaveError).toHaveBeenCalledWith(null)
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+    expect(EDITOR).toContain('onClick={() => { void flushSave().catch(() => {}) }}')
+  })
+
+  it('keeps a clean retry error when compatibility passes but auth is no longer verified', async () => {
+    const { context, flush, updateBuilderResume } = saveHarness()
+    context.dirtyRef.current = false
+    context.ensureCompatible.mockImplementation(async () => {
+      context.authVerifiedRef.current = false
+    })
+    await expect(flush()).rejects.toThrow('Your session changed. Please try again.')
+    expect(context.setSaveError).not.toHaveBeenCalledWith(null)
+    expect(updateBuilderResume).not.toHaveBeenCalled()
   })
 
   it('waits for the first save, then flushes the newest edit using its returned version', async () => {
