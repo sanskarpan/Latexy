@@ -163,7 +163,9 @@ test('core creation, source edits and compilation can be paused without losing e
     await toggleGlobalInAdmin(adminPage, 'c05', 'New compilation jobs', false)
 
     const actorPageConfig = actorPage.waitForResponse((response) =>
-      response.url().endsWith('/config/entitlements') && response.status() === 200,
+      new URL(response.url()).pathname === '/config/entitlements'
+        && new URL(response.url()).searchParams.get('include_quotas') === 'false'
+        && response.status() === 200,
     )
     await actorPage.goto('/workspace/new')
     await actorPage.reload()

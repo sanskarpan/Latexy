@@ -26,7 +26,7 @@ async function openFlags(page: Page) {
 
 async function mockAuth(page: Page) {
   await page.route('**/me', (route) => route.fulfill({ json: { id: 'user-admin', role: 'admin', preferences: {} } }))
-  await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: {} } }))
+  await page.route((url) => url.pathname === '/config/entitlements', (route) => route.fulfill({ json: { features: {} } }))
   await page.route('**/admin/entitlements', (route) => route.fulfill({ json: { registry: [], kill_switches: {}, matrix: {}, plan_families: [] } }))
   await page.route('**/api/auth/get-session', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SESSION) })

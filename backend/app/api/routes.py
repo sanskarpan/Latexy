@@ -396,6 +396,7 @@ async def update_me_preferences(
 async def get_entitlements_for_user(
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
+    include_quotas: bool = Query(default=True),
 ) -> dict:
     """Return the effective per-feature allow map for the current user.
 
@@ -407,7 +408,7 @@ async def get_entitlements_for_user(
     if not snapshot["available"]:
         raise HTTPException(status_code=503, detail="Feature availability is temporarily unavailable. Your saved data remains accessible.")
     payload: dict = {"features": snapshot["features"]}
-    if user_id:
+    if user_id and include_quotas:
         payload["quotas"] = await entitlement_service.quota_snapshot(user_id, await _resolve_user_plan(db, user_id))
     return payload
 

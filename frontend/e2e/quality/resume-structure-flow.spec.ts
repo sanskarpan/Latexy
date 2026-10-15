@@ -58,7 +58,7 @@ test('managed PDF edits headings and moves stable sections, entries and bullets 
   // preview admission must not depend on which HTTP response wins the race.
   let releaseEntitlements!: () => void
   const entitlementsReady = new Promise<void>((resolve) => { releaseEntitlements = resolve })
-  await mockEngineRoute(page, '**/config/entitlements', async route => {
+  await mockEngineRoute(page, url => url.pathname === '/config/entitlements', async route => {
     await entitlementsReady
     await route.fallback()
   })

@@ -6,7 +6,10 @@
 # The official public Go builder's manifest digest was verified anonymously.
 FROM golang:1.24.8-bookworm@sha256:4ed690d6649d63c312b99a6120025ec79ce3b542968a37da53d6236c7c61a848 AS build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org GOBIN=/out
-RUN go install -trimpath -p 2 github.com/minio/minio@v0.0.0-20251015172955-9e49d5e7a648 \
+# The CI network intermittently resets multiplexed module/checksum downloads.
+# Restrict only this build command to HTTPS over HTTP/1.1; checksum verification
+# and the pinned official proxy/source remain enabled. This is not a runtime setting.
+RUN GODEBUG=http2client=0 go install -trimpath -p 2 github.com/minio/minio@v0.0.0-20251015172955-9e49d5e7a648 \
     && go version -m /out/minio
 
 # No shell, registry tooling, operator files, or application credentials.

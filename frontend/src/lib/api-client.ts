@@ -3562,7 +3562,7 @@ class ApiClient {
 
   /** Per-user effective feature map (auth optional; anonymous → free map). */
   async getEntitlements(signal?: AbortSignal): Promise<EntitlementsResponse> {
-    return this.request<EntitlementsResponse>('/config/entitlements', { cache: 'no-store', signal })
+    return this.request<EntitlementsResponse>('/config/entitlements?include_quotas=false', { cache: 'no-store', signal })
   }
 
   /** Full admin entitlements state: registry, kill-switches, matrix, plan families. */

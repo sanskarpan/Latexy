@@ -38,7 +38,10 @@ async function setup(page: Page) {
   } }))
   await page.route('**/me', (route) => route.fulfill({ json: { id: 'catalog-admin', role: 'admin', preferences: {} } }))
   await page.route('**/config/feature-flags', (route) => route.fulfill({ json: { billing: true, upgrade_ctas: true } }))
-  await page.route('**/config/entitlements', (route) => route.fulfill({ json: { features: { i01: true }, plan_family: 'free' } }))
+  await page.route((url) => url.pathname === '/config/entitlements', (route) => {
+    expect(new URL(route.request().url()).searchParams.get('include_quotas')).toBe('false')
+    return route.fulfill({ json: { features: { i01: true }, plan_family: 'free' } })
+  })
   await page.route('**/subscription/current', (route) => route.fulfill({ json: {
     userId: 'catalog-admin', planId: 'free', planName: 'Free', status: 'active', features: {},
   } }))
@@ -77,6 +80,7 @@ test('billing loads current catalog, retries errors and respects annual sale pau
   })
   const sessionResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/get-session' && response.status() === 200)
   const entitlementResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/config/entitlements'
+    && new URL(response.url()).searchParams.get('include_quotas') === 'false'
     && response.request().headers().authorization === 'Bearer catalog-token' && response.status() === 200)
   await page.goto('/billing')
   expect((await (await sessionResponse).json()).user.id).toBe('catalog-admin')

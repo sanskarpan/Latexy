@@ -521,7 +521,7 @@ function BuilderResumeForm({
           if (message.includes('409')) {
             conflictRef.current = true
             setSaveConflict(true)
-            setSaveError('This résumé changed in another tab. Your edits are still here.')
+            setSaveError('A newer saved version exists. Your edits are preserved here.')
           } else setSaveError(message)
         }
         throw error
@@ -747,7 +747,7 @@ function BuilderResumeForm({
       </section>}
 
       {saveConflict && <section role="alert" className="rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-5">
-        <p className="font-semibold text-fg">This résumé changed in another tab</p>
+        <p className="font-semibold text-fg">A newer saved version exists</p>
         <p className="mt-2 text-sm text-fg-2">Your edits are preserved here. Reload the saved copy to review the changes before saving or exporting.</p>
         <button type="button" disabled={saving} onClick={() => {
           setConflictDraft({ ...draftRef.current, structured_content: cloneStructuredResume(draftRef.current.structured_content) })

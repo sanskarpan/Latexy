@@ -10,7 +10,7 @@ import type {
 test.beforeEach(async ({ page }) => {
   // Keep this suite on the enabled guided-builder paths. The compatibility
   // endpoint below separately controls whether the builder API version is usable.
-  await page.route('**/config/entitlements', route => route.fulfill({ json: { features: {
+  await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({ json: { features: {
     b01: true, // create the builder document
     b06: true, // upload a seed document
     b07: true, // builder/JSON Resume import

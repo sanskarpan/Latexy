@@ -482,6 +482,8 @@ class HarnessGuards(unittest.TestCase):
         self.assertIn('GOTOOLCHAIN=local', recipe)
         self.assertIn('CGO_ENABLED=0', recipe)
         self.assertIn('go install -trimpath -p 2 github.com/minio/minio@' + harness.MINIO_MODULE_VERSION, recipe)
+        self.assertIn('RUN GODEBUG=http2client=0 go install', recipe)
+        self.assertNotIn('ENV GODEBUG=', recipe)
         self.assertIn('org.opencontainers.image.revision="' + harness.MINIO_SOURCE_COMMIT + '"', recipe)
         self.assertIn('FROM scratch', recipe)
         self.assertIn('USER 65532:65532', recipe)
