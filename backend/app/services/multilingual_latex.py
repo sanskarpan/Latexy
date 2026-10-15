@@ -233,6 +233,11 @@ def _setup_block(codes: tuple[str, ...]) -> str:
             lines.append(rf"\newfontfamily\{indic_target}font[{DEVANAGARI_FONT_OPTIONS}]{{{DEVANAGARI_FONT}}}")
         else:
             lines.append(rf"\usepackage[english,{indic_target},provide=*]{{babel}}")
+            # Babel does not create Polyglossia-style \text<hindi|marathi>
+            # commands from package language options. Explicitly map the
+            # closed language tag used by translation output to its Babel
+            # language so \texthindi / \textmarathi are defined.
+            lines.append(rf"\babeltags{{{indic_target}={indic_target}}}")
             lines.append(r"\babelprovide[onchar=ids fonts]{english}")
             lines.append(
                 rf"\babelfont[{indic_target}]{{rm}}[{DEVANAGARI_FONT_OPTIONS}]{{{DEVANAGARI_FONT}}}"
