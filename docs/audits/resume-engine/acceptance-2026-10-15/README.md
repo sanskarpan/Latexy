@@ -25,12 +25,20 @@ configuration and the Hindi/Marathi Babel commands used by generated documents.
 The final acceptance below was rerun after those repairs. PDF presence alone was
 never treated as success after a compiler error or missing-font warning.
 
-[PR #1894](https://github.com/sanskarpan/Latexy/pull/1894) supplies a feature-only
+[PR #1894](https://github.com/sanskarpan/Latexy/pull/1894), merged as
+`2c8aaa01197ca48c7850ca0e1ddd94f94c1df226`, supplies a feature-only
 entitlement request, preserving authentication, effective grants and the existing
 fail-closed timeout. It also incorporates the saved-version conflict wording
 from commit `9630bc5b`; duplicate #1897 was closed. The copy repair preserves
 version checks and draft recovery and does not establish the cause of earlier
 transport interruptions.
+
+All canonical checks passed on exact integrated candidate `f77de0bd`, including
+[Cross-Browser Quality and Isolated Real Compile and Preview](https://github.com/sanskarpan/Latexy/actions/runs/38768229282).
+The squash merge's complete root tree matches the tested candidate:
+`95bd4383fbc98e9fd22b672a712babdaa1c0b5f5`. This records source equivalence at
+merge time, not production deployment. Its frontend tree includes #1893 and
+differs from the earlier `fa22e002` browser snapshot.
 
 ## Actual renderer results
 
