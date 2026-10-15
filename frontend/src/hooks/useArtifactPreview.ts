@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import type { ArtifactReadyEvent } from '@/lib/event-types'
 
@@ -28,6 +28,7 @@ export function useArtifactPreview(options: {
 }) {
   const [verified, setVerified] = useState<{ artifact: ArtifactReadyEvent; blob: Blob; identity: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const clearError = useCallback(() => setError(null), [])
   const onReadyRef = useRef(options.onReady)
   onReadyRef.current = options.onReady
   const identityRef = useRef(options.identity)
@@ -63,5 +64,9 @@ export function useArtifactPreview(options: {
     })()
     return () => { stopped = true; controller.abort() }
   }, [artifact?.artifact_id, artifact?.job_id, artifact?.source_sha256, artifact?.pdf_sha256, artifact?.pdf_size, options.identity, options.fingerprint])
-  return { verified: verified?.identity === options.identity ? verified : null, error }
+  return {
+    verified: verified?.identity === options.identity ? verified : null,
+    error,
+    clearError,
+  }
 }

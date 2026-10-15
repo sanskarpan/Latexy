@@ -89,7 +89,8 @@ import { useSuggestionRecovery } from '@/hooks/useSuggestionRecovery'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
-import { useArtifactPreview, useSourceHash } from '@/hooks/useArtifactPreview'
+import { useArtifactPreview, useSourceHash, sha256Bytes } from '@/hooks/useArtifactPreview'
+import { isCurrentArtifactRetry, resolveCurrentArtifactRetry, type ArtifactRetryIdentity } from '@/lib/artifact-retry-guard'
 import type { ArtifactReadyEvent } from '@/lib/event-types'
 import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
 import { previewErrorMessage } from '@/lib/preview-errors'
@@ -1619,9 +1620,21 @@ export default function ResumeEditPage() {
   const ownedAiJobId = ownsRenderedJobState ? aiJobId : null
   const { state: compileStream } = useJobStream(ownedCompileJobId)
   const { state: aiStream } = useJobStream(ownedAiJobId)
+  const retryArtifact = lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact
+  const activeRetryJobId = lastStartedJobKind === 'ai' ? ownedAiJobId : ownedCompileJobId
+  const artifactRetryIdentityRef = useRef<ArtifactRetryIdentity | null>(null)
+  artifactRetryIdentityRef.current = retryArtifact ? {
+    ownerId: sessionUserId,
+    resumeId,
+    generation: offlinePdfIdentityRef.current.generation,
+    source: latexContent,
+    activeJobId: activeRetryJobId,
+    jobId: retryArtifact.job_id,
+    artifactId: retryArtifact.artifact_id,
+  } : null
   const sourceHash = useSourceHash(latexContent)
   const artifactPreview = useArtifactPreview({
-    artifact: lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact,
+    artifact: retryArtifact,
     identity: `${sessionUserId ?? 'signed-out'}:${resumeId}`, onReady: (blob, artifact) => {
       activePdfJobId.current = artifact.job_id
       setPreviewBlob(blob)
@@ -1629,6 +1642,7 @@ export default function ResumeEditPage() {
       setDisplayedArtifact(artifact)
     },
   })
+  const clearArtifactPreviewError = artifactPreview.clearError
   useEffect(() => {
     if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
   }, [artifactPreview.error, editorMode])
@@ -1664,6 +1678,48 @@ export default function ResumeEditPage() {
       ownsRenderedJobState &&
       isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart),
     )
+    const artifactIdentityAtStart = artifactRetryIdentityRef.current
+    const artifactAtStart = retryArtifact
+    const isSameArtifact = () => isCurrentArtifactRetry(artifactIdentityAtStart!, artifactRetryIdentityRef.current)
+    const authToken = apiClient.getAuthToken()
+    if (artifactAtStart) {
+      if (!artifactIdentityAtStart || !authToken || !isActive() || !isSameArtifact()) return
+      setOfflinePdfError(null)
+      try {
+        // Retry the exact immutable, owner-scoped artifact. Do not submit a
+        // compile or fall back to the mutable latest-PDF endpoint here.
+        const blob = await resolveCurrentArtifactRetry(
+          artifactIdentityAtStart,
+          () => artifactRetryIdentityRef.current,
+          apiClient.downloadArtifactPdf(
+            artifactAtStart.job_id,
+            artifactAtStart.artifact_id,
+            undefined,
+            undefined,
+            {
+              authToken,
+              isCurrent: () => isActive() && isSameArtifact() && sourceAtRenderRef.current === artifactIdentityAtStart.source,
+            },
+          ),
+        )
+        if (!blob || !isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        if (blob.size !== artifactAtStart.pdf_size
+            || await sha256Bytes(await blob.arrayBuffer()) !== artifactAtStart.pdf_sha256) {
+          throw new Error('PDF artifact integrity check failed')
+        }
+        if (!isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        setPreviewBlob(blob, false, artifactAtStart.job_id)
+        setDisplayedArtifact(artifactAtStart)
+        setRenderedPdfJobId(artifactAtStart.job_id)
+        clearArtifactPreviewError()
+        setRightTab('preview')
+        return
+      } catch {
+        if (!isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        setOfflinePdfError('Failed to load this PDF artifact. Retry to load the same compiled version.')
+        return
+      }
+    }
     const retryJobId = resolveRetryableCompletedPdfJobId(
       activePdfJobId.current,
       ownsRenderedJobState,
@@ -1696,7 +1752,7 @@ export default function ResumeEditPage() {
       setOfflinePdfError('Failed to load the PDF preview. Retry to load the latest compiled PDF.')
     }
   }, [
-    aiStream, compileStream, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId,
+    aiStream, clearArtifactPreviewError, compileStream, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId, retryArtifact,
     ownsRenderedJobState, resumeId, saveCachedPdf, sessionUserId, setPreviewBlob, setRightTab,
   ])
 
@@ -4332,7 +4388,7 @@ export default function ResumeEditPage() {
                 onDownload={handleDownload}
                 onShare={shareOrDownloadPdf}
                 isOfflinePreview={isOfflinePdf}
-                offlineError={offlinePdfError}
+                offlineError={offlinePdfError ?? artifactPreview.error}
                 onRetryOffline={retryOfflinePdf}
                 jobId={renderedPdfJobId}
                 onSyncToSource={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? handleSyncToSource : undefined}
