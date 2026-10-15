@@ -742,6 +742,13 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             for (const action of await actions.all()) {
                 expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44)
             }
+            const undersized = await page.locator('.lp-page button, .lp-page a, .lp-page input, .lp-page select, .lp-page summary').evaluateAll(elements =>
+                elements.filter(element => {
+                    const box = element.getBoundingClientRect()
+                    return box.width > 0 && box.height > 0 && box.height < 43.9
+                }).map(element => element.getAttribute('aria-label') || element.textContent?.trim())
+            )
+            expect(undersized).toEqual([])
             expect(
                 await page.evaluate(() => document.documentElement.scrollWidth)
             ).toBeLessThanOrEqual(width + 1)

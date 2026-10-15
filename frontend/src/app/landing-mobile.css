@@ -46,6 +46,13 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     .lp-header-actions {
         gap: 0;
     }
+    .lp-header .lp-mobile-navigation a,
+    .lp-page .lp-demo-add,
+    .lp-page .lp-compile-action,
+    .lp-page input,
+    .lp-page select {
+        min-height: 44px;
+    }
     .lp-page .lp-hero {
         padding-block: 30px 22px;
         gap: 20px;
