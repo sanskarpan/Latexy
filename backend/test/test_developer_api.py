@@ -465,6 +465,69 @@ class TestDeveloperAPI:
         download = await client.get(f"/api/v1/jobs/{job_id}/pdf", headers=headers)
         assert download.status_code == 404
 
+    @pytest.mark.parametrize("durable_state,expired", [
+        ("pending", False), ("committing", False), ("completed", True),
+    ])
+    async def test_existing_nonrecoverable_durable_row_blocks_legacy_pdf_transport(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        durable_state: str,
+        expired: bool,
+    ):
+        import base64
+
+        from app.core.redis import get_redis_client
+        from app.services.job_result_recovery import has_durable_job_record, recover_terminal_job
+
+        await _ensure_developer_api_schema(db_session)
+        user_id, _ = await _create_user(db_session, plan="pro")
+        session_token = await _create_session(db_session, user_id)
+        created = await _create_key(client, session_token, name="Nonterminal PDF fence")
+        job_id = str(uuid.uuid4())
+        db_session.add_all([
+            JobFinalization(
+                job_id=job_id,
+                user_id=user_id,
+                owner_token="latex-worker-unaccepted",
+                owner_epoch=1,
+                state=durable_state,
+                terminal_result="completed" if durable_state == "completed" else None,
+                result_payload={"success": True, "pdf_job_id": job_id},
+                expires_at=datetime.now(timezone.utc) + (
+                    -timedelta(seconds=1) if expired else timedelta(hours=1)
+                ),
+            ),
+            Compilation(
+                job_id=job_id,
+                user_id=user_id,
+                status="processing",
+                artifact_branch="candidate",
+                artifact_accepted=False,
+                pdf_path=f"compilation/{job_id}/candidate/pdf",
+                pdf_size=12,
+            ),
+        ])
+        await db_session.commit()
+        assert await recover_terminal_job(db_session, job_id=job_id, user_id=user_id) is None
+        assert await has_durable_job_record(db_session, job_id=job_id) is True
+
+        redis = await get_redis_client()
+        for suffix, value in {
+            "meta": {"job_id": job_id, "user_id": user_id},
+            "state": {"status": "completed"},
+            "result": {"success": True, "pdf_job_id": job_id},
+        }.items():
+            await redis.set(f"latexy:job:{job_id}:{suffix}", json.dumps(value), ex=60)
+        await redis.set(f"latexy:job:{job_id}:pdf", base64.b64encode(b"%PDF-1.7 unaccepted"), ex=60)
+
+        headers = {"Authorization": f"Bearer {created['full_key']}"}
+        status = await client.get(f"/api/v1/jobs/{job_id}", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["pdf_url"] is None
+        download = await client.get(f"/api/v1/jobs/{job_id}/pdf", headers=headers)
+        assert download.status_code == 404
+
     async def test_redis_result_without_live_pdf_does_not_advertise_url(
         self,
         client: AsyncClient,

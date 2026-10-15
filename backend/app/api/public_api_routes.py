@@ -194,6 +194,17 @@ async def _assert_job_owner(job_id: str, api_key: DeveloperAPIKey, db: AsyncSess
     raise HTTPException(status_code=404, detail="Job not found")
 
 
+async def _legacy_pdf_transport_allowed(job_id: str, db: AsyncSession) -> bool:
+    """Use Redis/local PDF fallback only for jobs with no durable authority."""
+    from ..services.job_result_recovery import has_durable_job_record
+
+    try:
+        return not await has_durable_job_record(db, job_id=job_id)
+    except Exception as exc:
+        logger.warning("Public PDF authority lookup unavailable (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Job status temporarily unavailable") from exc
+
+
 @router.post("/compile", response_model=V1QueuedResponse, dependencies=[Depends(require_developer_operation("compile"))])
 async def compile_v1(
     body: V1CompileRequest,
@@ -414,7 +425,7 @@ async def get_job_v1(
         pdf_available = recovery["state"] == "completed" and bool(recovery.get("pdf_path"))
     if recovery is None and not pdf_available and result and result.get("success"):
         pdf_job_id = result.get("pdf_job_id")
-        if isinstance(pdf_job_id, str) and pdf_job_id == job_id:
+        if isinstance(pdf_job_id, str) and pdf_job_id == job_id and await _legacy_pdf_transport_allowed(job_id, db):
             try:
                 pdf_available = bool(await r.exists(f"latexy:job:{pdf_job_id}:pdf"))
             except Exception as exc:
@@ -475,6 +486,9 @@ async def download_job_pdf_v1(
         except Exception as exc:
             logger.warning("Durable public PDF lookup failed (%s)", type(exc).__name__)
             raise HTTPException(status_code=503, detail="PDF temporarily unavailable") from exc
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    if not await _legacy_pdf_transport_allowed(job_id, db):
         raise HTTPException(status_code=404, detail="PDF not found")
 
     # Primary: Redis cache (works in serverless / multi-container envs).
