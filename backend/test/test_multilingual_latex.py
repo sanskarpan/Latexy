@@ -67,6 +67,21 @@ def test_mixed_setup_is_structural_deterministic_and_idempotent() -> None:
     assert configure_multilingual_latex(configured, ["ja", "ar", "he", "hi"]) == configured
 
 
+@pytest.mark.parametrize(
+    ("code", "required"),
+    [
+        ("zh-hans", r"\setCJKmainfont[AutoFakeSlant=0.15]{Noto Sans CJK SC}"),
+        ("zh-hant", r"\setCJKmainfont[AutoFakeSlant=0.15]{Noto Sans CJK TC}"),
+        ("ko", r"\setmainhangulfont{Noto Sans CJK KR}[AutoFakeSlant=0.15]"),
+    ],
+)
+def test_cjk_profiles_define_a_slanted_face_for_template_italics(code: str, required: str) -> None:
+    configured = configure_multilingual_latex(SOURCE, code)
+    assert required in configured
+    if code == "ko":
+        assert r"\setmainhanjafont{Noto Sans CJK KR}[AutoFakeSlant=0.15]" in configured
+
+
 def test_body_and_verbatim_text_are_not_rewritten() -> None:
     source = SOURCE.replace(
         "English résumé. 日本語 العربية עברית हिंदी",
