@@ -31,6 +31,14 @@ Existing marketing unit tests: 9 passed. Scoped ESLint and TypeScript passed. No
 
 New browser coverage exercises 320/390/430px in both themes, compact/full samples, edit/preview state preservation, analysis views, horizontally reachable card menus, native PDF tabs and public navigation when capabilities are unavailable. Existing five-profile, desktop keyboard, long-content, no-WebGL and reduced-motion assertions are retained. Fresh screenshots are captured per section on mobile as well as desktop.
 
-Browser checks, actual final render inspection and PR screenshots are pending. No visual acceptance is claimed from source code or build output.
+## First capture review
 
-final result: blocked — fresh phone renders and required checks pending.
+Source `613efd59`, artifact `11982286315` from run `38749680730`, archive SHA256 `e9fb92b75f50d9b833419d7f8cd6f582aafd08f531d11921934300ccb0bd5a65`, was downloaded, verified and inspected. Native 320/390/430px first screens, light/dark gallery, builder editor/preview, ATS/keywords, applications, tailoring, LaTeX and footer were opened at full resolution. Desktop gallery remained intact.
+
+The new mobile interaction cases passed in Chromium and WebKit, as did all no-WebGL and public fallback cases (175 passed, 10 skipped). Five representative cases failed on changed UI assumptions: a hidden fallback anchor was included in geometry, and mobile footer motion was checked on the intentionally hidden illustration. The checks now require two visible actions, restore the original device viewport for motion checks, retain desktop paper motion, and verify the visible phone brand reveal plus zero animations under reduced motion. No unrelated functional test was patched.
+
+Visual review identified a duplicate mobile document caption caused by CSS ordering, a list marker against its container border, extra analysis switch padding, and inconsistent Source/PDF control styling. These are corrected together with header label sizing and readable rewrite inputs. The mobile browser contract now covers caption suppression and a full rewrite edit/accept flow.
+
+Fresh renders and required checks for the corrected source remain pending. No visual acceptance is claimed from source code or build output.
+
+final result: blocked — corrected phone renders and required checks pending.

@@ -823,6 +823,7 @@ function ApplicationDemo() {
             <p className="lp-mobile-scroll-hint">Scroll through your application stages</p>
             <div
                 className="lp-application-board"
+                role="region"
                 tabIndex={0}
                 aria-label="Sample application stages"
             >

@@ -41,6 +41,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         min-height: 44px;
         padding: 10px;
         font-size: 13px;
+        width: auto;
     }
     .lp-header-actions {
         gap: 0;
@@ -150,7 +151,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         margin: 0 auto;
         transform: none !important;
     }
-    .lp-document-card figcaption {
+    .lp-page .lp-document-card figcaption {
         display: none;
     }
     .lp-page .lp-document-card[data-slot='center'] .lp-document-mat {
@@ -269,6 +270,9 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         color: var(--lp-fg);
         box-shadow: 0 1px 3px #00000012;
     }
+    .lp-analysis-demo > .lp-mobile-demo-switch {
+        padding: 4px;
+    }
     .lp-builder-demo .lp-builder-rail {
         display: none;
     }
@@ -383,6 +387,12 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         flex-wrap: wrap;
         gap: 6px;
     }
+    .lp-page .lp-tailor-cell > textarea {
+        font-size: 16px;
+    }
+    .lp-page .lp-matching-experience {
+        padding-left: 28px;
+    }
     .lp-page .lp-tailor-actions .lp-button-small {
         min-height: 44px;
         padding: 10px;
@@ -429,6 +439,23 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     .lp-latex-demo .lp-latex-tabs button {
         min-height: 44px;
         font-size: 13px;
+        padding: 8px;
+        border-radius: 5px;
+        color: var(--lp-muted);
+    }
+    .lp-page .lp-latex-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 12px;
+        border-radius: 7px;
+        background: var(--lp-soft);
+    }
+    .lp-page .lp-latex-tabs button[aria-selected='true'] {
+        background: var(--lp-surface);
+        color: var(--lp-fg);
+        box-shadow: 0 1px 3px #00000012;
     }
     .lp-latex-demo .lp-code-sample {
         font-size: 12px;

@@ -469,8 +469,10 @@ test('representative public surface produces non-empty visual evidence', async (
         }
         await page.setViewportSize({ width: 320, height: 900 })
         const actionBoxes = await Promise.all(
-            (await page.locator('.lp-hero-actions > a').all()).map(action => action.boundingBox())
+            (await page.locator('.lp-hero-actions > a:visible').all()).map(action => action.boundingBox())
         )
+        expect(actionBoxes).toHaveLength(2)
+        expect(actionBoxes.every(Boolean)).toBe(true)
         expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
         await testInfo.attach('landing-narrow-mobile', {
@@ -478,16 +480,34 @@ test('representative public surface produces non-empty visual evidence', async (
             contentType: 'image/png',
         })
     }
+    // Restore the device size after tablet/narrow inspection. Phones reveal
+    // the brand signature; the decorative paper motion stays on desktop.
+    await page.setViewportSize(viewport!)
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     const footer = page.locator('.lp-footer')
     await footer.scrollIntoViewIfNeeded()
     await expect(footer).toHaveAttribute('data-inview', 'true')
     const artwork = page.locator('.lp-footer-art img')
-    await expect.poll(() => artwork.evaluate(element =>
-        element.getAnimations().some(animation => animation.playState === 'running')
-    )).toBe(true)
+    const motionTarget = testInfo.project.metadata.mobile
+        ? page.locator('.lp-footer-signature > span')
+        : artwork
+    await motionTarget.scrollIntoViewIfNeeded()
+    await expect(motionTarget).toBeVisible()
+    if (testInfo.project.metadata.mobile) {
+        await expect(artwork).toBeHidden()
+        await expect.poll(() => motionTarget.evaluate(element =>
+            getComputedStyle(element).animationName
+        )).toBe('lp-section-enter')
+        await expect.poll(() => motionTarget.evaluate(element =>
+            element.getAnimations().length
+        )).toBeGreaterThan(0)
+    } else {
+        await expect.poll(() => motionTarget.evaluate(element =>
+            element.getAnimations().some(animation => animation.playState === 'running')
+        )).toBe(true)
+    }
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
+    await expect.poll(() => motionTarget.evaluate(element => element.getAnimations().length)).toBe(0)
 })
 
 test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
@@ -715,6 +735,7 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             }
             await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
             const gallery = page.locator('.lp-gallery')
+            await expect(gallery.locator('[data-slot="center"] figcaption')).toBeHidden()
             expect((await gallery.boundingBox())!.height).toBeLessThan(550)
             const actions = page.locator('.lp-hero-actions > a:visible')
             await expect(actions).toHaveCount(2)
@@ -779,7 +800,7 @@ test('mobile landing presents focused demos in both themes and preserves edits',
         body: await analysis.screenshot({ animations: 'disabled' }),
         contentType: 'image/png',
     })
-    const board = page.locator('.lp-application-board')
+    const board = page.getByRole('region', { name: 'Sample application stages' })
     expect(await board.evaluate(n => n.scrollWidth)).toBeGreaterThan(
         (await board.boundingBox())!.width
     )
@@ -788,6 +809,13 @@ test('mobile landing presents focused demos in both themes and preserves edits',
         .click()
     await expect(page.getByRole('menu')).toBeVisible()
     await page.keyboard.press('Escape')
+    const tailoring = page.locator('.lp-tailor-demo')
+    await tailoring.getByRole('button', { name: 'Edit', exact: true }).click()
+    const rewrite = tailoring.getByRole('textbox', { name: 'Edit suggested rewrite' })
+    expect(await rewrite.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16)
+    await rewrite.fill('Built clear, accessible document workflows.')
+    await tailoring.getByRole('button', { name: 'Accept', exact: true }).click()
+    await expect(tailoring.locator('.lp-matching-experience')).toContainText('Built clear, accessible document workflows.')
     await page.getByRole('tab', { name: 'PDF', exact: true }).click()
     await expect(
         page.locator('.lp-latex-source').getByRole('heading', { name: 'A Simple Equation' })
