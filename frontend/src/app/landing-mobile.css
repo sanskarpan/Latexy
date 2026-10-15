@@ -65,8 +65,8 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         gap: 20px;
     }
     .lp-page .lp-hero h1 {
-        font-size: clamp(32px, 9.8vw, 52px);
-        letter-spacing: -0.055em;
+        font-size: clamp(36px, 10.4vw, 54px);
+        letter-spacing: -0.045em;
         line-height: 1.08;
         max-width: none;
     }
@@ -106,20 +106,19 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         margin-top: 12px;
         max-width: 38ch;
     }
-    /* A readable native preview, with the full document available on demand. */
+    /* The same folded architecture, composed around one readable phone sample. */
     .lp-page .lp-gallery {
         display: flex;
         flex-direction: column;
-        width: calc(100% - 24px);
-        padding: 12px 0 0;
+        width: 100%;
+        padding: 0;
         margin-bottom: 34px;
-        background: var(--lp-tint);
-        border: 1px solid var(--lp-line);
-        border-radius: 12px;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
     }
     .lp-gallery .lp-gallery-controls {
-        order: -1;
-        padding: 0 12px 14px;
+        padding: 12px 20px 0;
         display: block;
     }
     .lp-gallery-controls > span {
@@ -128,18 +127,18 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     .lp-gallery-controls > div {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 4px;
-        padding: 4px;
-        background: var(--lp-bg);
-        border-radius: 8px;
+        gap: 6px;
+        padding: 0;
+        background: transparent;
+        border-radius: 0;
     }
     .lp-gallery .lp-gallery-controls button[type='button'] {
         min-width: 0;
         min-height: 44px;
         gap: 6px;
         padding: 8px 4px;
-        border: 0;
-        border-radius: 5px;
+        border: 1px solid var(--lp-line);
+        border-radius: 3px;
         font-size: 12px;
     }
     .lp-gallery-controls button[aria-pressed='true'] {
@@ -152,8 +151,8 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     }
     .lp-page .lp-gallery .lp-document-scene {
         height: auto;
-        padding: 0 16px 24px;
-        overflow: visible;
+        padding: 12px 40px 36px;
+        overflow: clip;
         background: none;
     }
     .lp-page .lp-document-card[data-slot='center'] {
@@ -169,13 +168,13 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         display: none;
     }
     .lp-page .lp-document-card[data-slot='center'] .lp-document-mat {
-        padding: 8px;
-        border-radius: 5px;
+        padding: 10px;
+        border-radius: 0;
     }
     .lp-page .lp-document-card[data-slot='center'] .lp-hero-paper {
         min-height: 0;
-        padding: 20px 18px;
-        font-size: 12px;
+        padding: 20px 16px;
+        font-size: 11px;
         line-height: 1.4;
     }
     .lp-gallery[data-mobile-expanded='false'] .lp-hero-paper-profile,
@@ -200,7 +199,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin: 0 16px;
+        margin: 0 20px;
         padding: 12px 4px;
         min-height: 48px;
         border-top: 1px solid var(--lp-line);

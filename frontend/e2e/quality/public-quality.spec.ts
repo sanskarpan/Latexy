@@ -513,6 +513,28 @@ test('representative public surface produces non-empty visual evidence', async (
     await expect.poll(() => motionTarget.evaluate(element => element.getAnimations().length)).toBe(0)
 })
 
+test('landing appearance keeps contrast inside the keyboard accessible menu', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expect(page.getByRole('button', { name: 'Toggle light or dark mode' })).toHaveCount(1)
+        await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
+        const trigger = page.getByRole('button', { name: 'Open navigation menu' })
+        await trigger.click()
+        const contrast = page.getByRole('button', { name: 'Turn on high contrast mode' })
+        await expect(contrast).toBeVisible()
+        await contrast.click()
+        await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high')
+        await page.keyboard.press('Escape')
+        await expect(trigger).toBeFocused()
+        await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
+        await trigger.click()
+        await page.getByRole('button', { name: 'Turn off high contrast mode' }).click()
+        await expect(page.locator('html')).toHaveAttribute('data-contrast', 'normal')
+        await page.keyboard.press('Escape')
+    }
+})
+
 test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
     const { backendOrigin } = qualityOrigins()
     const featureFlags = (billing: boolean) =>

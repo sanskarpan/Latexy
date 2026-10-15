@@ -1,7 +1,9 @@
 import {
     ACESFilmicToneMapping,
     AmbientLight,
-    BoxGeometry,
+    BufferGeometry,
+    DoubleSide,
+    Float32BufferAttribute,
     DirectionalLight,
     Group,
     MathUtils,
@@ -72,11 +74,14 @@ export function mountDocumentStage(
     light.position.set(-4, 7, 8)
     scene.add(new AmbientLight('#ffffff', 1.8), light)
     const group = new Group()
-    const geometry = new BoxGeometry(1, 1, 1)
-    const selectedMaterial = new MeshStandardMaterial({ metalness: 0.22, roughness: 0.55 })
-    const sideMaterial = new MeshStandardMaterial({ metalness: 0.22, roughness: 0.55 })
-    const podiums = [0, 1, 2].map(() => {
-        const mesh = new Mesh(geometry, sideMaterial)
+    const materials = [0, 1, 2].map(() => new MeshStandardMaterial({
+        metalness: 0.12, roughness: 0.68, side: DoubleSide,
+    }))
+    // Six folded surfaces, rather than a plinth beneath flat picture frames.
+    // Coordinates are rebuilt in CSS pixels on resize, keeping the HTML papers
+    // and the architectural surround in the same orthographic composition.
+    const folds = [0, 1, 2, 3, 4, 5].map((index) => {
+        const mesh = new Mesh(new BufferGeometry(), materials[index % 3])
         group.add(mesh)
         return mesh
     })
@@ -112,30 +117,10 @@ export function mountDocumentStage(
         group.rotation.y = prefs.reducedMotion
             ? 0
             : MathUtils.damp(group.rotation.y, target, 14, delta)
-        selectedMaterial.color.set(prefs.dark ? '#b58b53' : '#254d77')
-        sideMaterial.color.set(prefs.dark ? '#47423b' : '#bac9d6')
+        materials[0].color.set(prefs.dark ? '#947044' : '#173a60')
+        materials[1].color.set(prefs.dark ? '#b18a55' : '#254f77')
+        materials[2].color.set(prefs.dark ? '#60482c' : '#102c4b')
         light.color.set(prefs.dark ? '#fff0d5' : '#ffffff')
-        podiums.forEach((mesh, index) => {
-            const offset = (index - prefs.selected + 3) % 3
-            const side = offset === 0 ? 0 : offset === 1 ? 1 : -1
-            const narrow = width <= 1000
-            mesh.visible = !narrow || side === 0
-            mesh.position.set(
-                ((side * width) / 80) * (width <= 1200 ? 0.3 : 0.27),
-                -height / 160 + 0.48,
-                0
-            )
-            const paperWidth = narrow
-                ? Math.min(360, width - 32)
-                : side === 0
-                  ? width <= 1200 ? 320 : 360
-                  : width <= 1200
-                    ? 270
-                    : 320
-            mesh.scale.set((paperWidth + 16) / 80, side === 0 ? 0.22 : 0.14, 1.5)
-            mesh.rotation.set(0.32, -side * 0.12, 0)
-            mesh.material = side === 0 ? selectedMaterial : sideMaterial
-        })
         try {
             renderer.render(scene, camera)
         } catch {
@@ -152,7 +137,29 @@ export function mountDocumentStage(
         camera.top = height / 160
         camera.bottom = -height / 160
         camera.updateProjectionMatrix()
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+        type Point = [number, number, number]
+        const panel = (index: number, points: Point[]) => {
+            const positions = points.flatMap(([x, y, z]) => [
+                (x - 0.5) * width / 80, (0.5 - y) * height / 80, z,
+            ])
+            const geometry = new BufferGeometry()
+            geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+            geometry.setIndex([0, 1, 2, 0, 2, 3])
+            geometry.computeVertexNormals()
+            folds[index].geometry.dispose()
+            folds[index].geometry = geometry
+        }
+        const narrow = width <= 1000
+        const innerLeft = narrow ? 0.16 : 0.37
+        const innerRight = 1 - innerLeft
+        // Tall open-book wings, a folded floor, and its two visible edges.
+        panel(0, [[0.025, 0.10, 0], [innerLeft, 0.16, -0.6], [innerLeft, 0.90, -0.6], [0.025, 0.86, 0]])
+        panel(1, [[innerRight, 0.16, -0.6], [0.975, 0.10, 0], [0.975, 0.86, 0], [innerRight, 0.90, -0.6]])
+        panel(2, [[0.025, 0.86, 0], [innerLeft, 0.90, -0.6], [0.5, 0.95, 0.9], [0, 0.94, 0.9]])
+        panel(3, [[innerRight, 0.90, -0.6], [0.975, 0.86, 0], [1, 0.94, 0.9], [0.5, 0.95, 0.9]])
+        panel(4, [[0, 0.94, 0.9], [0.5, 0.95, 0.9], [0.5, 0.97, 0.9], [0, 0.985, 0.9]])
+        panel(5, [[0.5, 0.95, 0.9], [1, 0.94, 0.9], [1, 0.985, 0.9], [0.5, 0.97, 0.9]])
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         renderer.setSize(width, height, false)
         request()
     }
@@ -183,9 +190,8 @@ export function mountDocumentStage(
         document.removeEventListener('visibilitychange', visibility)
         window.removeEventListener('resize', resize)
         canvas.removeEventListener('webglcontextlost', fail)
-        geometry.dispose()
-        selectedMaterial.dispose()
-        sideMaterial.dispose()
+        folds.forEach(mesh => mesh.geometry.dispose())
+        materials.forEach(material => material.dispose())
         renderer.dispose()
         renderer.forceContextLoss()
         canvas.remove()

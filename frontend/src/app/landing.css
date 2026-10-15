@@ -1746,8 +1746,8 @@
     padding-block: 18px 5px;
 }
 .lp-hero h1 {
-    font-size: clamp(64px, 6.806vw, 98px);
-    line-height: 0.8;
+    font-size: clamp(64px, 6.25vw, 90px);
+    line-height: 0.94;
 }
 .lp-hero h1 em {
     font-size: 0.89em;
@@ -1909,7 +1909,59 @@
     color: var(--lp-accent);
 }
 .lp-header-actions .lp-menu-trigger {
-    display: none;
+    display: inline-flex;
+}
+.lp-header {
+    position: relative;
+}
+.lp-header .lp-mobile-navigation {
+    display: contents;
+}
+.lp-header .lp-mobile-navigation > div {
+    display: block;
+    position: absolute;
+    z-index: 30;
+    top: 100%;
+    right: 0;
+    width: min(360px, 100%);
+    border: 1px solid var(--lp-line);
+    background: var(--lp-surface);
+    box-shadow: 0 16px 40px #00000014;
+}
+.lp-menu-appearance {
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--lp-line);
+}
+.lp-menu-appearance > p {
+    padding-inline: 16px;
+    color: var(--lp-muted);
+    font-size: 11px;
+}
+.lp-menu-appearance > button {
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 4px;
+    padding: 10px 16px;
+    border: 0;
+    color: var(--lp-fg);
+    font-size: 13px;
+}
+.lp-menu-appearance > button > span {
+    display: flex;
+    justify-content: space-between;
+    flex: 1;
+}
+.lp-menu-appearance > button[aria-pressed='true'] {
+    color: var(--lp-accent-fg);
+    background: var(--lp-accent);
+}
+@media (max-width: 767px) {
+    .lp-header .lp-mobile-navigation > div {
+        width: 100%;
+    }
 }
 .lp-header-control:focus-visible,
 .lp-radar-metrics button:focus-visible {

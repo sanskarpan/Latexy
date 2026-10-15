@@ -270,6 +270,8 @@ export default function GlobalHeader() {
         {isMobileMenuOpen && (
           <motion.div
             ref={mobileRef}
+            id={pathname === '/' ? 'landing-navigation' : undefined}
+            aria-label={pathname === '/' ? 'Navigation and appearance' : undefined}
             initial={reduceMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
@@ -295,6 +297,13 @@ export default function GlobalHeader() {
                   </Link>
                 )
               })}
+
+              {pathname === '/' && (
+                <section className="lp-menu-appearance" aria-label="Appearance">
+                  <p>Appearance</p>
+                  <ContrastToggle showLabel />
+                </section>
+              )}
 
               {hydrated && canInstall && (
                 <button
