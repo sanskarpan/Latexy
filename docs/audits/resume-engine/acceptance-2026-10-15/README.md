@@ -60,6 +60,16 @@ Focused source/session/provenance tests pass; final browser acceptance belongs
 to the final PR revision's canonical checks, separately from the earlier
 owner/browser execution record below.
 
+The next [canonical run on `0cb7b4d6`](https://github.com/sanskarpan/Latexy/actions/runs/38777390159)
+passed real compile/preview and 180 quality cases, including all sign-out cases,
+but failed the new Terms-click case in all five browser projects (10 other cases
+were skipped). Its page-wide Terms locator matched both the Account region and
+the footer, so Playwright rejected the ambiguous click before navigation. The
+fixture now scopes that link to the named Account region, with a regression
+guard against a page-wide locator or positional selection. Product behavior and
+the strict request/error assertions are unchanged; this failed attempt remains
+separate from acceptance of the corrected fixture.
+
 ## Actual renderer results
 
 The [renderer execution record](renderer.json) binds the intended immutable bare

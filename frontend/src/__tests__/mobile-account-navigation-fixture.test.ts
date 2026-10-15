@@ -60,10 +60,16 @@ describe('mobile account navigation fixture sequencing', () => {
   })
 
   it('requires zero transient-menu prefetches and real click navigation', () => {
+    const clickFlow = fixture.slice(
+      fixture.indexOf("test('account links still navigate on click"),
+      fixture.indexOf("test('guests with Studio disabled"),
+    )
     expect(signOutFlow).toContain('expect(signOutDocument).not.toBeNull()')
     expect(signOutFlow).toContain('expect(signOutDocument?.fetches).toEqual([])')
-    expect(fixture).toContain("getByRole('link', { name: 'Terms', exact: true }).click()")
-    expect(fixture).toContain("getByRole('heading', { name: 'Terms of Service', level: 1 })).toBeVisible()")
-    expect(fixture).toContain('expect(prefetches).toEqual([])')
+    expect(clickFlow).toMatch(/page\.getByRole\('region', \{ name: 'Account', exact: true \}\)\s*\.getByRole\('link', \{ name: 'Terms', exact: true \}\)\.click\(\)/)
+    expect(clickFlow).not.toContain("page.getByRole('link', { name: 'Terms'")
+    expect(clickFlow).not.toMatch(/\.first\(|\.nth\(/)
+    expect(clickFlow).toContain("getByRole('heading', { name: 'Terms of Service', level: 1 })).toBeVisible()")
+    expect(clickFlow).toContain('expect(prefetches).toEqual([])')
   })
 })
