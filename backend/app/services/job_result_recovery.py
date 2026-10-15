@@ -20,6 +20,18 @@ _TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "fenced"})
 _OUTPUT_UNAVAILABLE_ERROR = "Completed job output unavailable"
 
 
+async def has_durable_job_record(session: AsyncSession, *, job_id: str) -> bool:
+    """Fence legacy PDF transport whenever this job has a durable authority row.
+
+    Do not filter by state or expiry: pending/committing and expired decisions
+    are still authority while the row exists. Callers enforce job ownership
+    before this lookup; a conflicting owner row must also block fallback.
+    """
+    return await session.scalar(
+        select(JobFinalization.id).where(JobFinalization.job_id == job_id).limit(1)
+    ) is not None
+
+
 async def recover_terminal_job(
     session: AsyncSession,
     *,

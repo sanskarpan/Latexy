@@ -6,6 +6,7 @@ before application imports so Pydantic never reads either workspace .env file.
 
 from __future__ import annotations
 
+import base64
 import json
 import sys
 import tempfile
@@ -90,7 +91,14 @@ class _RecoverySession:
         sql = _sql(statement)
         params = statement.compile(dialect=postgresql.dialect()).params
         if "job_finalizations." in sql:
-            if self.finalization.job_id not in params.values() or self.finalization.user_id not in params.values():
+            if self.finalization is None or self.finalization.job_id not in params.values():
+                return None
+            if sql.partition("from")[0].count("job_finalizations.") == 1:
+                return self.finalization.id
+            if self.finalization.user_id not in params.values():
+                return None
+            if (self.finalization.state not in {"completed", "failed", "cancelled", "fenced"}
+                    or self.finalization.expires_at <= datetime.now(timezone.utc)):
                 return None
             return self.finalization
         if "compilations." in sql:
@@ -137,6 +145,7 @@ class _AdmissionSession:
 
 def _finalization(**overrides):
     values = dict(
+        id="40000000-0000-4000-8000-000000000004",
         job_id=JOB_ID,
         user_id=USER_ID,
         state="completed",
@@ -168,6 +177,18 @@ def _compilation(**overrides):
 
 
 class RecoveryUnitTests(unittest.IsolatedAsyncioTestCase):
+    async def test_any_existing_durable_row_blocks_legacy_transport_regardless_of_owner_or_expiry(self):
+        session = _RecoverySession(
+            _finalization(user_id="50000000-0000-4000-8000-000000000005", state="committing",
+                          expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)),
+            None,
+        )
+        self.assertTrue(await job_result_recovery.has_durable_job_record(session, job_id=JOB_ID))
+        query = _sql(session.statements[-1])
+        self.assertIn("job_finalizations.job_id", query)
+        self.assertNotIn("job_finalizations.user_id", query)
+        self.assertNotIn("job_finalizations.expires_at", query)
+
     async def test_candidate_row_is_not_recovered_as_pdf_and_query_is_fenced(self):
         session = _RecoverySession(
             _finalization(),
@@ -213,7 +234,7 @@ class RecoveryUnitTests(unittest.IsolatedAsyncioTestCase):
 class PublicArtifactRouteTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.api_key = SimpleNamespace(user_id=USER_ID, scopes=["export"])
-        self.db = object()
+        self.db = _RecoverySession(None, None)
 
     async def test_compile_admission_binds_accepted_compilation_for_durable_recovery(self):
         db = _AdmissionSession()
@@ -292,6 +313,77 @@ class PublicArtifactRouteTests(unittest.IsolatedAsyncioTestCase):
         ):
             response = await public_api_routes.download_job_pdf_v1(JOB_ID, self.api_key, self.db)
         self.assertEqual(response.body, b"%PDF-1.7 legacy")
+
+    async def test_nonterminal_durable_authority_blocks_redis_and_local_pdf(self):
+        for state in ("pending", "committing"):
+            with self.subTest(state=state):
+                session = _RecoverySession(
+                    _finalization(state=state),
+                    _compilation(status="processing", artifact_branch="candidate", artifact_accepted=False),
+                )
+                values = {
+                    f"latexy:job:{JOB_ID}:state": json.dumps({"status": "completed"}),
+                    f"latexy:job:{JOB_ID}:result": json.dumps({"success": True, "pdf_job_id": JOB_ID}),
+                    f"latexy:job:{JOB_ID}:pdf": base64.b64encode(b"%PDF-1.7 candidate"),
+                }
+                redis = SimpleNamespace(get=AsyncMock(side_effect=lambda key: values.get(key)),
+                                        exists=AsyncMock(return_value=True))
+                with (
+                    patch.object(public_api_routes, "_assert_job_owner", new=AsyncMock()),
+                    patch.object(public_api_routes, "get_redis_client", new=AsyncMock(return_value=redis)),
+                    patch.object(public_api_routes, "get_job_files", side_effect=AssertionError("local fallback reached")),
+                ):
+                    status = await public_api_routes.get_job_v1(JOB_ID, self.api_key, session)
+                    self.assertIsNone(status.pdf_url)
+                    redis.exists.assert_not_awaited()
+                    with self.assertRaises(public_api_routes.HTTPException) as caught:
+                        await public_api_routes.download_job_pdf_v1(JOB_ID, self.api_key, session)
+                self.assertEqual(caught.exception.status_code, 404)
+                self.assertEqual(redis.get.await_count, 2)  # status/result only, never PDF bytes
+
+    async def test_expired_unaccepted_durable_authority_blocks_live_redis_pdf(self):
+        session = _RecoverySession(
+            _finalization(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)),
+            _compilation(artifact_branch="candidate", artifact_accepted=False),
+        )
+        redis = SimpleNamespace(get=AsyncMock(return_value=base64.b64encode(b"%PDF-1.7 candidate")))
+        with (
+            patch.object(public_api_routes, "_assert_job_owner", new=AsyncMock()),
+            patch.object(public_api_routes, "get_redis_client", new=AsyncMock(return_value=redis)),
+        ):
+            with self.assertRaises(public_api_routes.HTTPException) as caught:
+                await public_api_routes.download_job_pdf_v1(JOB_ID, self.api_key, session)
+        self.assertEqual(caught.exception.status_code, 404)
+        redis.get.assert_not_awaited()
+
+    async def test_owner_and_export_scope_still_precede_pdf_transport(self):
+        session = _RecoverySession(_finalization(state="pending"), None)
+        without_export = SimpleNamespace(user_id=USER_ID, scopes=[])
+        with self.assertRaises(public_api_routes.HTTPException) as no_scope:
+            await public_api_routes.download_job_pdf_v1(JOB_ID, without_export, session)
+        self.assertEqual(no_scope.exception.status_code, 403)
+        self.assertEqual(session.statements, [])
+
+        with patch.object(public_api_routes, "_assert_job_owner", new=AsyncMock(
+            side_effect=public_api_routes.HTTPException(status_code=404, detail="Job not found")
+        )):
+            with self.assertRaises(public_api_routes.HTTPException) as no_owner:
+                await public_api_routes.download_job_pdf_v1(JOB_ID, self.api_key, session)
+        self.assertEqual(no_owner.exception.status_code, 404)
+        self.assertEqual(session.statements, [])
+
+    async def test_authority_lookup_failure_never_falls_back_to_redis(self):
+        broken_db = SimpleNamespace(scalar=AsyncMock(side_effect=RuntimeError("db unavailable")))
+        redis = SimpleNamespace(get=AsyncMock(return_value=base64.b64encode(b"%PDF-1.7 stale")))
+        with (
+            patch.object(public_api_routes, "_assert_job_owner", new=AsyncMock()),
+            patch.object(public_api_routes, "get_redis_client", new=AsyncMock(return_value=redis)),
+            patch.object(job_result_recovery, "recover_terminal_job", new=AsyncMock(return_value=None)),
+        ):
+            with self.assertRaises(public_api_routes.HTTPException) as caught:
+                await public_api_routes.download_job_pdf_v1(JOB_ID, self.api_key, broken_db)
+        self.assertEqual(caught.exception.status_code, 503)
+        redis.get.assert_not_awaited()
 
 
 if __name__ == "__main__":
