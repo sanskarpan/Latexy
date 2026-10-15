@@ -178,8 +178,9 @@ jobs:
             exit 1
           fi
           rollback_routes="$(git show "$MODAL_FORWARD_ROLLBACK_SHA:backend/app/api/resume_routes.py")"
+          rollback_billing="$(git show "$MODAL_FORWARD_ROLLBACK_SHA:backend/app/services/payment_service.py")"
           if [[ "$(grep -Fc 'Compilation.artifact_accepted.is_(True)' <<< "$rollback_routes")" -lt 2 ]] ||
-             git show "$MODAL_FORWARD_ROLLBACK_SHA:backend/app/services/payment_service.py" | grep -Eiq 'razorpay_(payment|subscription)_id'; then
+             grep -Eiq 'razorpay_(payment|subscription)_id' <<< "$rollback_billing"; then
             echo "Rollback source lacks required artifact or Dodo-only compatibility" >&2
             exit 1
           fi
