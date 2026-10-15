@@ -290,6 +290,12 @@ test('skip navigation and reduced-motion preferences are honored', async ({ page
 test('representative public surface produces non-empty visual evidence', async ({
     page,
 }, testInfo) => {
+    const hydrationErrors: string[] = []
+    page.on('console', message => {
+        if (message.type() === 'error' && /hydration|hydrated|server rendered HTML|Minified React error/i.test(message.text())) {
+            hydrationErrors.push(message.text())
+        }
+    })
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
     if (!testInfo.project.metadata.mobile) await page.setViewportSize({ width: 1440, height: 1000 })
     const { backendOrigin } = qualityOrigins()
@@ -301,6 +307,7 @@ test('representative public surface produces non-empty visual evidence', async (
     )
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
 
     const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
     await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
@@ -511,6 +518,7 @@ test('representative public surface produces non-empty visual evidence', async (
     }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect.poll(() => motionTarget.evaluate(element => element.getAnimations().length)).toBe(0)
+    expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
 })
 
 test('landing appearance keeps contrast inside the keyboard accessible menu', async ({ page }) => {

@@ -504,8 +504,10 @@ function AnalysisDemo() {
         missing: ['System design', 'CI/CD', 'Stakeholder communication'],
     }
     const point = (index: number, radius: number): [number, number] => [
-        140 + Math.sin((index * Math.PI * 2) / 5) * radius,
-        118 - Math.cos((index * Math.PI * 2) / 5) * radius,
+        // Node and browser trig implementations may differ in the last binary
+        // digit. Stable SVG attributes prevent a server/client hydration warning.
+        Number((140 + Math.sin((index * Math.PI * 2) / 5) * radius).toFixed(3)),
+        Number((118 - Math.cos((index * Math.PI * 2) / 5) * radius).toFixed(3)),
     ]
     return (
         <div className="lp-analysis-demo" data-mobile-view={mobileView}>
