@@ -45,8 +45,8 @@ def isolated_schema():
         admin.dispose()
 
 
-def _billing_migration():
-    path = Path(__file__).parents[1] / "alembic" / "versions" / "0065_provider_neutral_billing.py"
+def _migration(filename: str):
+    path = Path(__file__).parents[1] / "alembic" / "versions" / filename
     spec = importlib.util.spec_from_file_location("schema_compat_0065", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -64,7 +64,7 @@ def test_0065_backfill_does_not_classify_later_legacy_writes(isolated_schema):
         ), {"id": str(uuid4())})
         connection.execute(text("INSERT INTO payments (id, razorpay_payment_id) VALUES (:id, 'pay_before')"),
                            {"id": str(uuid4())})
-        migration = _billing_migration()
+        migration = _migration("0065_provider_neutral_billing.py")
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
 
@@ -94,15 +94,22 @@ def test_old_completed_reader_selects_unaccepted_candidate(isolated_schema):
     with isolated_schema.begin() as connection:
         connection.execute(text(
             "CREATE TABLE compilations (id uuid PRIMARY KEY, resume_id uuid NOT NULL, "
-            "status varchar(32) NOT NULL, artifact_accepted boolean NOT NULL, created_at timestamptz NOT NULL)"
+            "status varchar(32) NOT NULL, created_at timestamptz NOT NULL)"
         ))
         resume, accepted, candidate = (str(uuid4()) for _ in range(3))
         connection.execute(text(
-            "INSERT INTO compilations VALUES (:id, :resume, 'completed', :accepted, :created)"
-        ), [
-            {"id": accepted, "resume": resume, "accepted": True, "created": "2026-01-01T00:00:00Z"},
-            {"id": candidate, "resume": resume, "accepted": False, "created": "2026-01-02T00:00:00Z"},
-        ])
+            "INSERT INTO compilations (id, resume_id, status, created_at) "
+            "VALUES (:id, :resume, 'completed', '2026-01-01T00:00:00Z')"
+        ), {"id": accepted, "resume": resume})
+        migration = _migration("0062_compilation_artifact_acceptance.py")
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+        assert connection.scalar(text("SELECT artifact_accepted FROM compilations WHERE id=:id"),
+                                 {"id": accepted}) is True
+        connection.execute(text(
+            "INSERT INTO compilations (id, resume_id, status, created_at, artifact_branch, artifact_accepted) "
+            "VALUES (:id, :resume, 'completed', '2026-01-02T00:00:00Z', 'candidate', false)"
+        ), {"id": candidate, "resume": resume})
         query = "SELECT id FROM compilations WHERE resume_id=:resume AND status='completed'"
         order = " ORDER BY created_at DESC LIMIT 1"
         old_choice = connection.scalar(text(query + order), {"resume": resume})
