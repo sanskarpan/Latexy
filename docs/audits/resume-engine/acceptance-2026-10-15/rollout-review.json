@@ -1,0 +1,11 @@
+{
+  "checked_at_utc": "2026-10-15T16:26:34+00:00",
+  "local_remote_source_fingerprint_match": true,
+  "local_source_files_sha256": "7a1c9ca011f51a046a9ec369aaf2096cdb3940e0fcb10f523d0b8e564207580c",
+  "migrations_or_serving_deployment_performed": false,
+  "preflight_process_exit_code": 0,
+  "public_envelope_file": "rollout-preflight.json",
+  "public_envelope_file_sha256": "5e840f760f366ebcd84546f50f8df3351d5ac99ef5c93fc1119782a2bfa04f1b",
+  "reported_remote_source_files_sha256": "7a1c9ca011f51a046a9ec369aaf2096cdb3940e0fcb10f523d0b8e564207580c",
+  "source_revision": "f77de0bdc6b9e9ebe28403964d632e5752f134d4"
+}

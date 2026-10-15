@@ -1,0 +1,19 @@
+{
+  "execution_context": {
+    "application": "latexy-backend",
+    "expected_environment": "main",
+    "expected_repository_head": "0075_durable_quota_ledger",
+    "image_id": "im-cBIp0kr7wXFYMXCROESOdl",
+    "image_role": "candidate_migration_preflight",
+    "purpose": "rollout",
+    "selected_environment": "main",
+    "source_files_sha256": "7a1c9ca011f51a046a9ec369aaf2096cdb3940e0fcb10f523d0b8e564207580c",
+    "source_revision_reported": "f77de0bdc6b9e9ebe28403964d632e5752f134d4"
+  },
+  "rollout_safety": {
+    "live_sales_acceptance": "unverified",
+    "reasons": [],
+    "safe_to_rollout": true,
+    "sales_state": "safe_disabled"
+  }
+}
