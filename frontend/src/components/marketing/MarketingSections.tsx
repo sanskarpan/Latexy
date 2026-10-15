@@ -11,17 +11,18 @@ export function MarketingCTA({
 }) {
     return (
         <CapabilityGate feature="a09">
-        <CapabilityGate feature="b01">
-        <CapabilityGate feature="c01">
-        <Link
-            href={href}
-            className="inline-flex min-h-12 items-center justify-center gap-3 rounded-[var(--radius-md)] bg-accent px-6 py-3 font-semibold text-accent-fg shadow-[var(--shadow-1)] transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
-        >
-            {label}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-        </Link>
-        </CapabilityGate>
-        </CapabilityGate>
+            <CapabilityGate feature="b01">
+                <CapabilityGate feature="c01">
+                    <Link
+                        href={href}
+                        data-marketing-action="primary"
+                        className="inline-flex min-h-12 items-center justify-center gap-3 rounded-[var(--radius-md)] bg-accent px-6 py-3 font-semibold text-accent-fg shadow-[var(--shadow-1)] transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+                    >
+                        {label}
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </Link>
+                </CapabilityGate>
+            </CapabilityGate>
         </CapabilityGate>
     )
 }
