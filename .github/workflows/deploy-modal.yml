@@ -156,6 +156,41 @@ jobs:
         working-directory: backend
         run: modal run --env main modal_app.py::renderer_preflight
 
+      # The migration runs before a rolling deploy. An older serving process can
+      # still write legacy billing columns, and an older PDF reader can expose a
+      # completed but unaccepted candidate. Require a fresh, commit-scoped
+      # operator cutover decision before changing the schema or serving image.
+      - name: Require schema cutover and recovery approval
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODAL_SCHEMA_CUTOVER_APPROVED_SHA: ${{ vars.MODAL_SCHEMA_CUTOVER_APPROVED_SHA }}
+          MODAL_FORWARD_ROLLBACK_SHA: ${{ vars.MODAL_FORWARD_ROLLBACK_SHA }}
+        run: |
+          set -euo pipefail
+          if [[ "$MODAL_SCHEMA_CUTOVER_APPROVED_SHA" != "$DEPLOY_SHA" ]]; then
+            echo "Schema cutover is not approved for this exact deployment SHA" >&2
+            exit 1
+          fi
+          if [[ ! "$MODAL_FORWARD_ROLLBACK_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+             ! git merge-base --is-ancestor "$MODAL_FORWARD_ROLLBACK_SHA" "$DEPLOY_SHA"; then
+            echo "A main-ancestry forward-compatible rollback SHA is required" >&2
+            exit 1
+          fi
+          rollback_routes="$(git show "$MODAL_FORWARD_ROLLBACK_SHA:backend/app/api/resume_routes.py")"
+          if [[ "$(grep -Fc 'Compilation.artifact_accepted.is_(True)' <<< "$rollback_routes")" -lt 2 ]] ||
+             git show "$MODAL_FORWARD_ROLLBACK_SHA:backend/app/services/payment_service.py" | grep -Eiq 'razorpay_(payment|subscription)_id'; then
+            echo "Rollback source lacks required artifact or Dodo-only compatibility" >&2
+            exit 1
+          fi
+          rollback_ci="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${MODAL_FORWARD_ROLLBACK_SHA}&branch=main&status=completed&per_page=100")"
+          if ! jq -e --arg sha "$MODAL_FORWARD_ROLLBACK_SHA" \
+            'any(.workflow_runs[]?; .head_sha == $sha and .head_branch == "main" and .conclusion == "success")' \
+            <<< "$rollback_ci" >/dev/null; then
+            echo "Rollback SHA has no successful canonical main CI run" >&2
+            exit 1
+          fi
+
       # modal_app.py deliberately keeps migrations separate from API startup.
       # Apply them first so incompatible application code is never made live.
       - name: Apply production database migrations
