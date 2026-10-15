@@ -1,0 +1,91 @@
+{
+  "sourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
+  "frontendTree": "de1c3ded008dd226dfb446322068e4563166e575",
+  "sourceEvidence": "final-review-evidence",
+  "files": {
+    "desktop-dark.png": {
+      "sha256": "1564dc5595778f0b36518d12bc140842a670ce6fbce8420a382febc98cac2d1c",
+      "pixels": [
+        1440,
+        3469
+      ]
+    },
+    "desktop-light.png": {
+      "sha256": "1d44ebf9dbde59dab46409577a873958b899d1542071611b23c595d08b7cb422",
+      "pixels": [
+        1440,
+        3469
+      ]
+    },
+    "hero-dark.png": {
+      "sha256": "8054bdba48c07016278280b82582f9da1d090dbe29612745d7ed445fb74766c2",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "hero-light.png": {
+      "sha256": "2e4249673c8d81d036600bf1986bfaecba14ea0c652b983d06c47948cfc7c4b6",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "mobile-320-dark.png": {
+      "sha256": "b0f830f5217aa4602a4f65c8013023f3261c2a8759ec701407e00a41f25d503e",
+      "pixels": [
+        840,
+        2216
+      ]
+    },
+    "mobile-320-light.png": {
+      "sha256": "f2269cf0c75f2ed24e5b628f1d130733a0a726f86acf8810e96bca5db2872fd4",
+      "pixels": [
+        840,
+        2216
+      ]
+    },
+    "mobile-390-dark.png": {
+      "sha256": "52ea8412ebd96a35febc4e2a25a585f02140931957eb60893b17f5577e184c07",
+      "pixels": [
+        1024,
+        2216
+      ]
+    },
+    "mobile-390-light.png": {
+      "sha256": "d794d5e4f30d6c221694990b189e25e3724adfebd3927503b5973e4a330ec06d",
+      "pixels": [
+        1024,
+        2216
+      ]
+    },
+    "mobile-430-dark.png": {
+      "sha256": "71e19e1871231c7d51a6675e03f28760f345035d5b28f036731d28cf250dc5aa",
+      "pixels": [
+        1129,
+        2216
+      ]
+    },
+    "mobile-430-light.png": {
+      "sha256": "7b6e4eda70a258410f6aa5b1b0a98d930468dbea84a6cbf6cb5bced9a87693cc",
+      "pixels": [
+        1129,
+        2216
+      ]
+    },
+    "mobile-full-dark.png": {
+      "sha256": "ff735439741f34508ddd66034477c139f514d5c09afe762de51e7883ebdeb4e3",
+      "pixels": [
+        1082,
+        13561
+      ]
+    },
+    "mobile-full-light.png": {
+      "sha256": "cd90c4502d05a5e126d77de02ccabfd42c1e2a55ef91d8c4bf9567efab75caf5",
+      "pixels": [
+        1082,
+        13561
+      ]
+    }
+  }
+}
