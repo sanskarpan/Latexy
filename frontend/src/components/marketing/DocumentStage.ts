@@ -121,15 +121,15 @@ export function mountDocumentStage(
             const narrow = width <= 1000
             mesh.visible = !narrow || side === 0
             mesh.position.set(
-                ((side * width) / 80) * (width <= 1100 ? 0.3 : 0.27),
+                ((side * width) / 80) * (width <= 1200 ? 0.3 : 0.27),
                 -height / 160 + 0.48,
                 0
             )
             const paperWidth = narrow
                 ? Math.min(360, width - 32)
                 : side === 0
-                  ? 360
-                  : width <= 1100
+                  ? width <= 1200 ? 320 : 360
+                  : width <= 1200
                     ? 270
                     : 320
             mesh.scale.set((paperWidth + 16) / 80, side === 0 ? 0.22 : 0.14, 1.5)
