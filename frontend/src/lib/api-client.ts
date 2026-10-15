@@ -338,6 +338,7 @@ export interface ResumeBase {
 export interface ResumeResponse extends ResumeBase {
   id: string
   user_id: string
+  content_revision?: number
   access_role?: import('@/lib/resume-access').ResumeAccessRole
   parent_resume_id?: string | null
   variant_visibility?: VariantVisibility | null
@@ -1758,6 +1759,14 @@ class ApiClient {
 
   async getResume(resumeId: string): Promise<ResumeResponse> {
     return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}`)
+  }
+
+  async getLatestAcceptedArtifact(resumeId: string, accountContext: AccountPreferenceRequestContext) {
+    return this.request<{
+      artifact: (import('@/lib/event-types').RenderArtifact & { job_id: string }) | null
+      source_sha256: string
+      content_revision: number
+    }>(`/resumes/${encodeURIComponent(resumeId)}/latest-accepted-artifact`, { cache: 'no-store' }, accountContext)
   }
 
   async createResume(resume: ResumeCreate): Promise<ResumeResponse> {

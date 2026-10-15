@@ -91,6 +91,8 @@ import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
 import { useArtifactPreview, useSourceHash, sha256Bytes } from '@/hooks/useArtifactPreview'
 import { isCurrentArtifactRetry, resolveCurrentArtifactRetry, type ArtifactRetryIdentity } from '@/lib/artifact-retry-guard'
+import { isMatchingAcceptedArtifact, isCurrentAcceptedPreviewRecovery, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview,
+  type AcceptedPreviewRecoveryIdentity } from '@/lib/accepted-artifact-recovery'
 import type { ArtifactReadyEvent } from '@/lib/event-types'
 import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
 import { previewErrorMessage } from '@/lib/preview-errors'
@@ -862,6 +864,13 @@ export default function ResumeEditPage() {
   // de-duplication marker.
   const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
   const [displayedArtifact, setDisplayedArtifact] = useState<ArtifactReadyEvent | null>(null)
+  const [recoveredAcceptedArtifact, setRecoveredAcceptedArtifact] = useState<{
+    artifact: ArtifactReadyEvent; ownerId: string; resumeId: string; generation: number
+    source: string; contentRevision: number
+  } | null>(null)
+  const [resumeContentRevision, setResumeContentRevision] = useState<number | null>(null)
+  const resumeContentRevisionRef = useRef<number | null>(null)
+  resumeContentRevisionRef.current = resumeContentRevision
   const [isOfflinePdf, setIsOfflinePdf] = useState(false)
   const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<string>('resume')
@@ -1265,6 +1274,8 @@ export default function ResumeEditPage() {
       setPdfUrl(null)
       setRenderedPdfJobId(null)
       setDisplayedArtifact(null)
+      setRecoveredAcceptedArtifact(null)
+      setResumeContentRevision(null)
       setIsOfflinePdf(false)
       setOfflinePdfLoaded(false)
     }
@@ -1620,8 +1631,18 @@ export default function ResumeEditPage() {
   const ownedAiJobId = ownsRenderedJobState ? aiJobId : null
   const { state: compileStream } = useJobStream(ownedCompileJobId)
   const { state: aiStream } = useJobStream(ownedAiJobId)
-  const retryArtifact = lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact
-  const activeRetryJobId = lastStartedJobKind === 'ai' ? ownedAiJobId : ownedCompileJobId
+  const streamArtifact = lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact
+  const recoveredArtifactIsCurrent = Boolean(recoveredAcceptedArtifact
+    && recoveredAcceptedArtifact.ownerId === sessionUserId
+    && recoveredAcceptedArtifact.resumeId === resumeId
+    && recoveredAcceptedArtifact.generation === offlinePdfIdentityRef.current.generation
+    && recoveredAcceptedArtifact.source === latexContent
+    && recoveredAcceptedArtifact.contentRevision === resumeContentRevision
+    && !ownedCompileJobId && !ownedAiJobId)
+  const retryArtifact = streamArtifact ?? (recoveredArtifactIsCurrent ? recoveredAcceptedArtifact?.artifact ?? null : null)
+  const activeRetryJobId = streamArtifact
+    ? lastStartedJobKind === 'ai' ? ownedAiJobId : ownedCompileJobId
+    : retryArtifact?.job_id ?? null
   const artifactRetryIdentityRef = useRef<ArtifactRetryIdentity | null>(null)
   artifactRetryIdentityRef.current = retryArtifact ? {
     ownerId: sessionUserId,
@@ -1895,6 +1916,10 @@ export default function ResumeEditPage() {
         const pendingDraft = localDraft?.syncStatus === 'pending' ? localDraft : null
         const effectiveTitle = pendingDraft?.title ?? data.title
         const effectiveLatex = pendingDraft?.latexContent ?? data.latex_content
+        const loadedContentRevision = Number.isInteger(data.content_revision) ? data.content_revision! : null
+        resumeContentRevisionRef.current = loadedContentRevision
+        setResumeContentRevision(loadedContentRevision)
+        let acceptedPreviewRecovery: 'found' | 'none' | 'unavailable' = 'none'
         setTitle(effectiveTitle)
         setLatexContent(effectiveLatex)
         // Keep the server copy as the CAS baseline even while showing a
@@ -1906,6 +1931,66 @@ export default function ResumeEditPage() {
         if (pendingDraft) {
           setOfflineDraftLoaded(true)
           setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
+        }
+        if (!pendingDraft && data.user_id === sessionUserId && Number.isInteger(data.content_revision)) {
+          acceptedPreviewRecovery = 'unavailable'
+          const authToken = apiClient.getAuthToken()
+          if (authToken) {
+            try {
+              const expectedRecoveryIdentity: AcceptedPreviewRecoveryIdentity = {
+                ownerId: sessionUserId, resumeId, generation: generationAtStart,
+                source: effectiveLatex, contentRevision: data.content_revision!,
+              }
+              const recovery = await resolveCurrentAcceptedPreviewRecovery(
+                expectedRecoveryIdentity,
+                () => {
+                  const current = offlinePdfIdentityRef.current
+                  const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
+                  const currentRevision = resumeContentRevisionRef.current
+                  return current.ownerId && current.resumeId && currentRevision !== null
+                    ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
+                        source: currentSource, contentRevision: currentRevision }
+                    : null
+                },
+                apiClient.getLatestAcceptedArtifact(resumeId, {
+                  authToken,
+                  isCurrent: () => isActive() && apiClient.getAuthToken() === authToken,
+                }),
+              )
+              if (!recovery) return
+              const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(data.latex_content))
+              const artifact = recovery.artifact
+              if (!isActive() || !isCurrentAcceptedPreviewRecovery(expectedRecoveryIdentity, {
+                ownerId: offlinePdfIdentityRef.current.ownerId ?? '',
+                resumeId: offlinePdfIdentityRef.current.resumeId,
+                generation: offlinePdfIdentityRef.current.generation,
+                source: editorRef.current?.getValue() ?? sourceAtRenderRef.current,
+                contentRevision: resumeContentRevisionRef.current ?? -1,
+              })) return
+              if (recovery.source_sha256 !== expectedSourceHash
+                  || recovery.content_revision !== data.content_revision) return
+              if (!artifact) {
+                acceptedPreviewRecovery = 'none'
+              } else if (isMatchingAcceptedArtifact(recovery, expectedRecoveryIdentity, expectedSourceHash)) {
+                const recoveredEvent: ArtifactReadyEvent = {
+                  ...artifact,
+                  type: 'artifact.ready',
+                  event_id: `recovered-${artifact.artifact_id}`,
+                  timestamp: Date.now() / 1000,
+                  sequence: 0,
+                }
+                setRecoveredAcceptedArtifact({
+                  artifact: recoveredEvent, ownerId: sessionUserId, resumeId,
+                  generation: generationAtStart, source: effectiveLatex,
+                  contentRevision: data.content_revision!,
+                })
+                acceptedPreviewRecovery = 'found'
+              }
+            } catch {
+              // Unknown recovery state suppresses automatic admission. A
+              // manual compile remains available if the read cannot complete.
+            }
+          }
         }
         // Load compiler preference from resume metadata
         const savedCompiler = data.metadata?.compiler as LatexCompiler | undefined
@@ -1969,7 +2054,8 @@ export default function ResumeEditPage() {
         // Loading source and resolving grants are independent. Preserve one
         // bootstrap demand until availability settles instead of sampling a
         // fail-closed c05 before its response has arrived.
-        if (initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
+        if (shouldSubmitInitialPreview(acceptedPreviewRecovery)
+          && initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
           && effectiveLatex && effectiveLatex.length >= 100) {
           setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
             source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })

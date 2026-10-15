@@ -8,6 +8,7 @@ type PreviewClient = {
   compileLatex: (body: { latex_content: string; resume_id: string }, context?: AccountPreferenceRequestContext) => Promise<JobSubmitResponse>
   submitJob: (body: JobSubmitRequest, context?: AccountPreferenceRequestContext) => Promise<JobSubmitResponse>
   downloadArtifactPdf: (jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal) => Promise<Blob>
+  getLatestAcceptedArtifact: (resumeId: string, context: AccountPreferenceRequestContext) => Promise<unknown>
 }
 
 async function harness() {
@@ -112,4 +113,21 @@ it('does not retry an artifact GET beyond the bounded rate-limit attempts', asyn
   await vi.runAllTimersAsync()
   await rejected
   expect(h.fetch).toHaveBeenCalledTimes(3)
+})
+
+it('recovers accepted preview metadata with an owner-scoped GET and never submits a job', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  h.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ artifact: null, source_sha256: 'a'.repeat(64), content_revision: 2 }), {
+    headers: { 'Content-Type': 'application/json' },
+  }))
+
+  await h.client.getLatestAcceptedArtifact('resume-A', { authToken: 'owner-A-token', isCurrent: () => true })
+
+  expect(h.fetch).toHaveBeenCalledOnce()
+  const [url, init] = h.fetch.mock.calls[0] as [string, RequestInit]
+  expect(url).toContain('/resumes/resume-A/latest-accepted-artifact')
+  expect(init.method ?? 'GET').toBe('GET')
+  expect(init.body).toBeUndefined()
+  expect((init.headers as Record<string, string>).Authorization).toBe('Bearer owner-A-token')
 })
