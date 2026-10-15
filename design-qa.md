@@ -63,4 +63,6 @@ Seven steps above are healthy within the inspected scope. Remaining evidence lim
 
 Twenty-two actual PNGs are copied unchanged to [the capture directory](docs/design/landing-mobile/README.md). [Capture metadata](docs/design/landing-mobile/capture.json) records source, archive digest, original attachment names, dimensions and image hashes. The publication commit retains source frontend tree `f003165b661e39f7170cb8b4b39679452c8d3f9d`; only documentation and captures are added after visual acceptance.
 
+Before final verification, main advanced to `482a9b17` with the multilingual renderer VM memory reservation and its backend contract test. That update was integrated without conflicts. The captured frontend tree remains identical; the combined revision runs the required CI before merge.
+
 final result: passed — mobile composition and interactions accepted in both themes, with source CI green and evidence saved.
