@@ -110,12 +110,12 @@
 }
 .lp-page .lp-opening .lp-document-scene {
     width: 100%;
-    height: 450px;
+    height: 472px;
     margin-top: 14px;
     background: linear-gradient(145deg, #15375c 0%, #244c74 55%, #19385a 100%);
 }
 .lp-opening .lp-document-scene::after {
-    content: 'A FORM FOR YOUR STORY / 01';
+    content: 'A FORM FOR YOUR STORY';
     position: absolute;
     bottom: 12px;
     left: 16px;
@@ -133,7 +133,7 @@
 .lp-page .lp-opening .lp-document-card[data-slot='left'] { left: 24%; }
 .lp-page .lp-opening .lp-document-card[data-slot='right'] { left: 76%; }
 .lp-page .lp-opening .lp-document-card[data-slot='center'] {
-    top: 0;
+    top: 10px;
     width: min(328px, 64%);
 }
 .lp-page .lp-opening .lp-document-card[data-slot='center'] .lp-hero-paper {

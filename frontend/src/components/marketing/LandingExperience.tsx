@@ -1091,9 +1091,9 @@ export default function LandingExperience() {
     return (
         <div className="lp-experience" id="product">
             <div className="lp-chapter-intro">
-                <p>ONE PLACE, FROM FIRST DRAFT TO FINAL PDF</p>
-                <h2>A quieter way to do the work.</h2>
-                <span>Five tools that stay with the same story: yours.</span>
+                <p>FROM FIRST DRAFT TO EVERY APPLICATION</p>
+                <h2>A résumé is only the start.</h2>
+                <span>Build it, check it, tailor it, and keep track of where it goes.</span>
             </div>
             <nav className="lp-chapter-nav" aria-label="Explore Latexy features">
                 {[
