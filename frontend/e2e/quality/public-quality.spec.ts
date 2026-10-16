@@ -821,6 +821,25 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
     expect(errors).toEqual([])
 })
 
+test('landing workbench updates a real résumé sample and resets on a new visit', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const gallery = page.locator('.lp-gallery')
+    await gallery.getByRole('textbox', { name: 'Sample name' }).fill('Jordan Lee')
+    await gallery.getByRole('textbox', { name: 'Sample role' }).fill('Product Designer')
+    const selected = gallery.locator('.lp-document-card[data-slot="center"]')
+    await expect(selected.getByRole('heading', { name: 'Jordan Lee' })).toBeVisible()
+    await expect(selected).toContainText('Product Designer')
+    await gallery.getByRole('group', { name: 'Sample résumé layouts' })
+        .getByRole('button', { name: /Modern/ }).click()
+    await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
+    await expect(gallery.locator('.lp-document-card[data-slot="center"]'))
+        .toContainText('Jordan Lee')
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(gallery.getByRole('textbox', { name: 'Sample name' })).toHaveValue('Alex Morgan')
+    await expect(gallery.getByRole('textbox', { name: 'Sample role' }))
+        .toHaveValue('Senior Software Engineer')
+})
+
 test('mobile landing presents focused demos in both themes and preserves edits', async ({
     page,
 }, testInfo) => {

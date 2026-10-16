@@ -11,6 +11,7 @@ import './landing.css'
 import './landing-type.css'
 import './landing-mobile.css'
 import './landing-glass.css'
+import './landing-editorial.css'
 
 const description =
     'Build a professional resume without code. Review ATS feedback, tailor your resume to each job, track applications, and compile LaTeX documents with Latexy.'
@@ -88,19 +89,20 @@ export default function LandingPage() {
                     __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c'),
                 }}
             />
-            <section className="lp-hero lp-container" aria-labelledby="landing-title">
+            <div className="lp-opening lp-container">
+            <section className="lp-hero" aria-labelledby="landing-title">
                 <div className="lp-hero-heading">
-                    <p className="lp-hero-eyebrow">Resume builder &amp; LaTeX studio</p>
+                    <p className="lp-hero-eyebrow"><span>Latexy / 01</span> Your work, well presented</p>
                     <h1 id="landing-title">
-                        Turn your experience
+                        A résumé in
                         <br />
-                        <span>into a résumé.</span>
+                        <span>your own words.</span>
                     </h1>
                 </div>
                 <div className="lp-hero-copy">
                     <p>
-                        Use the guided builder or LaTeX editor. Review feedback, tailor your
-                        résumé to a job, and export a PDF.
+                        Start with guided fields or LaTeX. Review the structure, tailor a version
+                        for each role, and export a PDF you can stand behind.
                     </p>
                     <div className="lp-hero-actions">
                         <MarketingCTA />
@@ -123,6 +125,7 @@ export default function LandingPage() {
                 </div>
             </section>
             <DocumentGallery />
+            </div>
             <LandingExperience />
             <section className="lp-faq lp-container" aria-labelledby="landing-faq">
                 <h2 id="landing-faq">Before you start</h2>
