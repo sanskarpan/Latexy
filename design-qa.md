@@ -1,59 +1,62 @@
-# Landing page visual QA — mobile typography and copy
+# Landing page visual QA — glass, motion and sound
 
 ## Target and scope
 
-Baseline: the previous PR #1899 production captures from source `5bbf7fa80dd4f924c392fc0c75768f81e07a6715`, CI run 38783439606. The latest request approves the desktop composition but explicitly replaces the typography, vague copy and mobile presentation. The baseline is a composition reference, not a requirement to retain its rejected text or fonts.
+Baseline source `46e0b5c94f55643d677a04eb8b0ac55abf75fbe8`, CI run 38855173196. Source visual truth: `C:/Users/Sansk/.codex/visualizations/2026/10/16/mobile-copy/mobile-production/`.
 
-Source visual truth: `C:/Users/Sansk/.codex/visualizations/2026/10/15/hero-art-direction/hero-production/`.
+The requested revision intentionally adds a glass control layer, motion and optional sound to this composition. The reference examples and implementation decisions are documented in `docs/design/landing-glass-and-motion.md`. This is a refinement of the existing homepage, not a clone of the unrelated reference sites.
 
-Implementation: source `46e0b5c94f55643d677a04eb8b0ac55abf75fbe8`, production captures from CI run `38855173196`, extracted into `C:/Users/Sansk/.codex/visualizations/2026/10/16/mobile-copy/mobile-production/`. Public copies and image hashes are in `docs/design/landing-art-direction/provenance.json` on this evidence branch.
+Implementation source: `136eb5a95bac7558ae4d3ab78432f415781c1f0b`. Production captures: CI run `38895240269`, extracted into `C:/Users/Sansk/.codex/visualizations/2026/10/16/liquid-glass/glass-final/`. Published copies and hashes: `docs/design/landing-art-direction/provenance.json` on this evidence branch. Its frontend tree is identical to the PR source tree.
 
 ## Capture states and normalization
 
-- Desktop: 1440 × 1000 CSS pixels, DPR 1, light and dark, Classic selected. Full page and each section captured separately.
-- Phone: first-screen captures at 320, 390 and 430 × 844 CSS pixels, DPR 2.625, light and dark, default compact sample. Source and current 390px captures are both 1024 × 2216 pixels, so no density correction is needed for that pair. Focused section comparisons normalize both sides to a 390px image width; desktop pairs remain at 1x. Original capture dimensions are recorded in provenance.
-- Full phone pages and section crops use the device project's original 412 × 839 CSS viewport and DPR 2.625; they are not labeled as the separate 390px first-screen captures.
-- Reduced-motion baseline; separate checks exercise normal motion, then verify animations stop when reduced motion is enabled.
-- Public, allowed feature fixture; no account data. Browser review also covered the real unresolved-capability state and public fallback links.
+- Desktop: 1440 × 1000 CSS pixels, DPR 1, light/dark, Classic selected. Full page and individual sections.
+- Phone first screens: 320/390/430 × 844 CSS pixels, DPR 2.625, light/dark. The baseline and implementation 390px captures both measure 1024 × 2216 pixels. Pair these originals without unequal density scaling.
+- Full phone pages and section captures: 412 × 839 CSS pixels, DPR 2.625. Focused paired section images normalize both sources to 390px image width for reading.
+- Preferences screenshots use the browser projects' 1280 × 720 desktop and 412 × 839 phone viewports. Their menu is open with sound explicitly enabled.
+- Screenshot fixtures use reduced motion, allowed public product capabilities, no private document content and default sample data. Other functional checks exercise normal motion, no-WebGL, keyboard/touch controls and feature-unavailable states.
+- Local review also covered a 320px light phone, 390px dark phone, 1440px desktop, scrolled sticky navigation and an 844 × 390 landscape menu. The local unresolved-capability banner is expected without the backend and is not present in the allowed production screenshot fixture.
 
 ## Comparison evidence
 
-Local iteration comparisons are in `C:/Users/Sansk/.codex/visualizations/2026/10/16/mobile-copy/review-final/`. Final production comparisons are in the adjacent `mobile-production/` directory.
+Baseline and implementation are placed together in every comparison input. Local iteration comparisons: `C:/Users/Sansk/.codex/visualizations/2026/10/16/liquid-glass/review-final/`. Final production comparisons: adjacent `glass-final/`.
 
-- `comparison-desktop-light.png`, `comparison-desktop-dark.png`: baseline and implementation together at identical CSS size; check the retained document composition and updated headline proportions.
-- `comparison-mobile-light.png`, `comparison-mobile-dark.png`: matched 390px first screens together, with device density normalized equally.
-- `comparison-lp-builder-section-light.png`, `comparison-lp-analysis-section-dark.png`, `comparison-lp-tailoring-section-light.png`, `comparison-lp-applications-section-dark.png`, `comparison-lp-latex-section-light.png`, `comparison-lp-faq-light.png`, `comparison-lp-footer-light.png`: readable focused comparisons, not only long downscaled page strips.
+- `comparison-desktop-light.png` and `comparison-desktop-dark.png`: matched top-of-page composition, native documents and navigation.
+- `comparison-mobile-light.png` and `comparison-mobile-dark.png`: matched 390px first screens.
+- Focused pairs for `lp-builder-section`, `lp-analysis-section`, `lp-tailoring-section`, `lp-applications-section`, `lp-latex-section`, `lp-faq` and `lp-footer` in both themes.
+- Original phone captures at 320/390/430px, gallery and preferences screenshots provide readable control detail. Section element screenshots can include the sticky header over the scrolled content; the full-page screenshot is used to assess unobscured section composition.
 
 ## Iteration history
 
-1. **P2 — vague headline and inconsistent type hierarchy.** The baseline combines a compressed display face, italic serif slogan and small explanatory text. Replace the slogan with a concrete résumé-building headline, scope Geist to homepage headings, and increase explanatory and FAQ text to 16px. Rechecked both themes and all phone widths.
-2. **P2 — mobile hero places interaction after the document.** Move the layout selector before the sample, expose adjacent native paper layouts, retain the expandable selected document, and keep the gallery compact. Existing containment, no-WebGL and touch-target checks pass.
-3. **P2 — words join when desktop line breaks are hidden on phones.** The first revised capture showed “résumé.See” and “gapsbefore”. Add explicit text spaces around those line breaks. The final focused builder/analysis/LaTeX comparisons show correct spacing and wrapping.
-4. **P2 — footer becomes only text on phones.** Restore the existing paper illustration in the mobile composition, with a constrained width and its existing reduced-motion behavior. Require a loaded, visible image in the visual contract; do not relax application behavior tests.
-5. **P3 — narrow hero description ends with a single-word line.** Shorten the description to name the guided builder and LaTeX editor directly, and enable improved paragraph wrapping. Recheck 320px in both themes; the PDF phrase remains together in the reviewed captures.
+1. **P2 — contrast mode retains the blur.** Initial integration checks showed the emitted CSS had lost the backdrop-filter reset even though the source declaration existed. Reverse the prefixed/standard reset order. The final browser contract requires the actual computed filter to be `none`, after the root contrast state changes. Both local desktop and phone checks pass; existing tests were not weakened.
+2. **P2 — sticky menu in a short viewport.** Constrain its maximum height to the viewport and allow internal scrolling. At 844 × 390 the measured menu remains inside the viewport while all preferences and links remain scrollable. Add anchor scroll margins so the sticky header does not cover target headings.
+3. **P2 — sound preference stacks into a tall block.** The first production menu capture exposed the missing flex row. Give both preference controls the same row alignment/radius and remove the redundant waveform. Keep the dropdown reading surface opaque with its material rim. The initial dark capture also caught an opening animation; final captures now wait for opacity 1 and height auto before visual assessment. Recheck enabled sound in both themes on desktop and phone, with a maximum 52px row-height regression guard.
+4. **P2 — enabled sound needs a visible keyboard focus ring.** The active control uses the accent fill, so its inset accent outline did not remain visible. Move the outline 2px outside the button. The final source commit contains this correction; the tested menu captures show its ordinary enabled state.
+5. The paired visual review confirms the intended changes: floating header, shallow document rim, coherent sliding selector and tactile secondary CTA. Existing section composition, brand, text and document content are retained.
 
 ## Required fidelity surfaces
 
-- **Typography:** self-hosted Geist Sans is used for homepage headings and readable body copy; document templates retain their own typography. The mixed italic slogan treatment is intentionally removed. Heading wraps and labels remain legible at 320px. The approved logo is unchanged.
-- **Spacing and layout:** desktop hero/document arrangement is retained. Mobile selects a layout before the layered sample, keeps CTAs adjacent, and uses distinct feature labels and consistent section spacing. Demos retain focused phone views instead of stacking entire desktop workspaces.
-- **Colors and tokens:** existing light navy/off-white and dark charcoal/brass tokens remain. The mobile paper stage uses the existing soft surface so the documents remain the visual focus. No extra contrast switch is added to the header.
-- **Image quality:** hero content is selectable HTML, not a pasted image. Optional Three.js supplies depth; layout controls and content work without WebGL. Footer artwork is the existing high-resolution decorative asset. The generated social preview was opened and inspected for text fit.
-- **Copy and content:** headline, feature explanations, footer, social metadata and social preview are consistent. Claims describe existing capabilities. ATS feedback is guidance; suggested experience must remain accurate. Guest limits and account requirements are visible. FAQ schema is generated from the same visible answers. Research rationale and sources are in `docs/design/landing-copy-and-type.md`.
+- **Typography:** existing self-hosted Geist hierarchy is retained. Native résumé templates keep their typography. Headline, explanatory text and selector labels are readable in the narrow phone captures. No typeface download was added.
+- **Spacing and layout:** the floating header adds a small intentional vertical offset. Phone CTAs remain beside each other, Classic remains first/default, demos stay in focused phone views, and the footer keeps its visible paper illustration. Menu controls remain available in short windows.
+- **Colors and tokens:** navy/off-white light and brass/charcoal dark palettes remain. Glass has a restrained rim/highlight; reading surfaces remain opaque. High contrast and reduced transparency remove navigation blur. Only one theme control is visible; contrast and sound are inside Preferences.
+- **Image quality:** hero documents remain real selectable HTML, with optional existing Three.js depth. No raster hero, stock background or generated full-page image was introduced. Logo and existing decorative footer artwork remain sharp and unchanged.
+- **Copy and content:** the existing product-specific copy and metadata are retained. No fabricated features, testimonials, conversion claims or phrases from the reference sites were added. The only new product text is the explicit sound preference and Preferences label.
 
-## Interaction and verification
+## Interaction and performance verification
 
-- Classic is first/default; layout controls work with pointer and keyboard.
-- Compact/full sample toggles; selected document stays within its scene at narrow widths.
-- Builder edits persist across edit, preview and authoring modes.
-- ATS categories, tailoring edits/acceptance, board menus and compiler/PDF tabs retain their behavior.
-- One visible theme control; contrast remains inside the keyboard-accessible menu.
-- No horizontal page overflow or undersized primary controls in the existing phone checks.
-- No landing hydration errors in the screenshot contract.
-- Local TypeScript and scoped ESLint pass. Initial landing run: 9 passed, 3 device-inapplicable skips. Final screenshot/mobile run: 3 passed, 1 skip.
-- Final CI results: {"total": 200, "expected": 190, "unexpected": 0, "flaky": 0, "skipped": 10, "ok": true}.
+- Six local sound unit tests pass. Local TypeScript and scoped ESLint pass.
+- The earlier implementation commit passed the full frontend unit suite: 2,891 tests across 293 files. The final source commit's quality job ran its applicable browser suites, including the sound contract.
+- Local landing browser checks: 13 passed, 3 device-specific skips, no failures/flaky tests.
+- Browser sound contract: no AudioContext from load or scroll, opt-in creates one, selecting a layout reuses it, mute closes it, no media requests, high contrast computes no blur.
+- Existing builder edits, authoring modes, ATS controls, tailoring actions, application menus, compiler/PDF tabs, public feature gates, keyboard menu dismissal and theme controls remain covered.
+- Reduced motion, no-WebGL and narrow-screen containment retain their existing checks. No landing hydration errors in the visual contract.
+- No dependency or audio file added. Native CSS scroll timelines provide progressive enhancement without a new JavaScript scroll loop. Blur is limited to navigation surfaces; there is still a small compositing cost.
+- Production CI quality results: {"total": 205, "expected": 195, "unexpected": 0, "flaky": 0, "skipped": 10, "ok": true}.
 
 ## Findings and limits
 
-No remaining actionable P0/P1/P2 findings in the reviewed states. This is a technical visual QA result for the requested direction; aesthetic approval of the new typography and copy remains with the user. It does not claim a search ranking or conversion improvement. No merge was performed.
+The final production captures were reviewed at 320, 390 and 430 CSS pixels and at desktop size in both themes. The open Preferences menu remains readable and compact in both themes on phone and desktop. No remaining P0, P1 or P2 issue was found in those captures or the applicable browser checks. The final source still needs the user's aesthetic review before this draft PR is merged.
 
-**Final result: passed**
+The Vercel deployment check passed, but its preview URL required login in the available browser. Visual acceptance is based on the actual local page and production-bundle CI renders rather than a claim of inspecting that protected deployment.
+
+**Final result: passed for the tested source and production captures; draft visual review remains open.**
