@@ -1,231 +1,447 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createRequire } from 'node:module'
+import {
+    act,
+    createElement,
+    Fragment,
+    StrictMode,
+    startTransition,
+    Suspense,
+    useState,
+} from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import ProjectSearchModal from '@/components/ProjectSearchModal'
 
-type ModalProps = { open: boolean; ownerId: string | null; onClose: () => void }
-type HookSlot = { value?: unknown; deps?: unknown[]; cleanup?: () => void }
-type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void }
+const search = vi.hoisted(() => vi.fn())
+const router = vi.hoisted(() => ({ push: vi.fn() }))
+vi.mock('@/lib/api-client', () => ({ apiClient: { searchResumes: search } }))
+vi.mock('next/navigation', () => ({ useRouter: () => router }))
+vi.mock('lucide-react', () => ({
+    Search: () => null,
+    X: () => null,
+    FileText: () => null,
+    Clock: () => null,
+}))
+
+type HostNode = {
+    type: string
+    props: Record<string, unknown>
+    children: HostNode[]
+    text?: string
+    focus: () => void
+}
+type HostRenderer = {
+    createContainer: (...args: unknown[]) => unknown
+    updateContainer: (...args: unknown[]) => void
+    flushSync: (work: () => void) => void
+}
+type Deferred<T> = {
+    promise: Promise<T>
+    resolve: (value: T) => void
+    reject: (reason: unknown) => void
+}
 
 function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (reason: unknown) => void
-  const promise = new Promise<T>((accept, fail) => { resolve = accept; reject = fail })
-  return { promise, resolve, reject }
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((accept, fail) => {
+        resolve = accept
+        reject = fail
+    })
+    return { promise, resolve, reject }
 }
 
-function textContent(node: unknown): string {
-  if (node == null || typeof node === 'boolean') return ''
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(textContent).join('')
-  if (typeof node === 'object' && 'props' in node) {
-    const element = node as { type?: unknown; props?: Record<string, unknown> }
-    if (typeof element.type === 'function') {
-      return textContent((element.type as (props: Record<string, unknown>) => unknown)(element.props ?? {}))
+function textContent(node: HostNode): string {
+    return node.text ?? node.children.map(textContent).join('')
+}
+
+function descendants(node: HostNode): HostNode[] {
+    return [node, ...node.children.flatMap(descendants)]
+}
+
+const require = createRequire(import.meta.url)
+const fiberRequire = createRequire(require.resolve('@react-three/fiber'))
+const reconcile = fiberRequire('react-reconciler') as (
+    host: Record<string, unknown>
+) => HostRenderer
+const { ConcurrentRoot, DefaultEventPriority } = fiberRequire('react-reconciler/constants') as {
+    ConcurrentRoot: number
+    DefaultEventPriority: number
+}
+
+function concurrentRoot() {
+    const snapshots: string[] = []
+    const container: HostNode = { type: 'root', props: {}, children: [], focus: () => {} }
+    const remove = (parent: HostNode, child: HostNode) => {
+        parent.children = parent.children.filter(item => item !== child)
     }
-    return textContent(element.props?.children)
-  }
-  return ''
-}
-
-function findInput(node: unknown): { props: Record<string, unknown> } | null {
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const match = findInput(child)
-      if (match) return match
+    const append = (parent: HostNode, child: HostNode) => {
+        remove(parent, child)
+        parent.children.push(child)
     }
-    return null
-  }
-  if (node == null || typeof node !== 'object' || !('type' in node)) return null
-  const element = node as { type: unknown; props: Record<string, unknown> }
-  if (element.type === 'input') return element
-  return findInput(element.props.children)
+    const renderer = reconcile({
+        now: Date.now,
+        supportsMutation: true,
+        isPrimaryRenderer: true,
+        getRootHostContext: () => ({}),
+        getChildHostContext: () => ({}),
+        getPublicInstance: (instance: HostNode) => instance,
+        prepareForCommit: () => null,
+        // This runs after host mutations and before layout effects, so the captured
+        // tree proves what React actually committed before reset effects ran.
+        resetAfterCommit: () => snapshots.push(textContent(container)),
+        shouldSetTextContent: () => false,
+        createInstance: (type: string, props: Record<string, unknown>) => ({
+            type,
+            props,
+            children: [],
+            focus: () => {},
+        }),
+        createTextInstance: (text: string) => ({
+            type: 'text',
+            props: {},
+            children: [],
+            text,
+            focus: () => {},
+        }),
+        appendInitialChild: append,
+        appendChild: append,
+        appendChildToContainer: append,
+        insertBefore: (parent: HostNode, child: HostNode, before: HostNode) => {
+            remove(parent, child)
+            parent.children.splice(parent.children.indexOf(before), 0, child)
+        },
+        insertInContainerBefore: (parent: HostNode, child: HostNode, before: HostNode) => {
+            remove(parent, child)
+            parent.children.splice(parent.children.indexOf(before), 0, child)
+        },
+        removeChild: remove,
+        removeChildFromContainer: remove,
+        clearContainer: (parent: HostNode) => {
+            parent.children = []
+        },
+        finalizeInitialChildren: () => false,
+        prepareUpdate: () => true,
+        commitUpdate: (
+            instance: HostNode,
+            _payload: unknown,
+            _type: unknown,
+            _previous: unknown,
+            props: Record<string, unknown>
+        ) => {
+            instance.props = props
+        },
+        commitTextUpdate: (instance: HostNode, _previous: string, next: string) => {
+            instance.text = next
+        },
+        resetTextContent: () => {},
+        hideInstance: () => {},
+        unhideInstance: () => {},
+        hideTextInstance: () => {},
+        unhideTextInstance: () => {},
+        scheduleTimeout: setTimeout,
+        cancelTimeout: clearTimeout,
+        noTimeout: -1,
+        getCurrentEventPriority: () => DefaultEventPriority,
+        detachDeletedInstance: () => {},
+    })
+    const root = renderer.createContainer(
+        container,
+        ConcurrentRoot,
+        null,
+        false,
+        null,
+        '',
+        (error: unknown) => {
+            throw error
+        },
+        null
+    )
+    return { container, root, renderer, snapshots }
 }
 
-async function mountModal(initialOwnerId: string) {
-  vi.resetModules()
-  const slots: HookSlot[] = []
-  let hookIndex = 0
-  let scheduledEffects: Array<{ index: number; effect: () => void | (() => void) }> = []
-  let mounted = true
-  const searchResumes = vi.fn<(...args: unknown[]) => Promise<unknown>>()
-
-  vi.doMock('react', () => ({
-    useRef: (initial: unknown) => {
-      const index = hookIndex++
-      slots[index] ??= { value: { current: initial } }
-      return slots[index].value
-    },
-    useState: (initial: unknown) => {
-      const index = hookIndex++
-      slots[index] ??= { value: typeof initial === 'function' ? (initial as () => unknown)() : initial }
-      return [slots[index].value, (next: unknown) => {
-        const previous = slots[index].value
-        slots[index].value = typeof next === 'function' ? (next as (value: unknown) => unknown)(previous) : next
-      }]
-    },
-    useCallback: (callback: unknown) => callback,
-    useEffect: (effect: () => void | (() => void), deps?: unknown[]) => {
-      const index = hookIndex++
-      const previous = slots[index]
-      const changed = !previous || !deps || !previous.deps || deps.length !== previous.deps.length || deps.some((value, at) => !Object.is(value, previous.deps?.[at]))
-      if (changed) {
-        if (previous?.cleanup) scheduledEffects.push({ index, effect: () => { previous.cleanup?.(); return effect() } })
-        else scheduledEffects.push({ index, effect })
-        slots[index] = { ...previous, deps }
-      }
-    },
-  }))
-  vi.doMock('react/jsx-runtime', () => ({
-    Fragment: 'Fragment',
-    jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
-    jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
-  }))
-  vi.doMock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
-  vi.doMock('lucide-react', () => ({ Search: 'Search', X: 'X', FileText: 'FileText', Clock: 'Clock' }))
-  vi.doMock('@/lib/api-client', () => ({ apiClient: { searchResumes } }))
-
-  const { default: ProjectSearchModal } = await import('@/components/ProjectSearchModal')
-  let props: ModalProps = { open: true, ownerId: initialOwnerId, onClose: vi.fn() }
-  const render = (nextProps: ModalProps = props) => {
-    if (!mounted) throw new Error('Cannot render an unmounted modal')
-    props = nextProps
-    hookIndex = 0
-    scheduledEffects = []
-    const tree = ProjectSearchModal(nextProps as never)
-    const effects = scheduledEffects
-    scheduledEffects = []
-    for (const scheduled of effects) {
-      const cleanup = scheduled.effect()
-      slots[scheduled.index].cleanup = typeof cleanup === 'function' ? cleanup : undefined
+function result(resumeId: string, title: string, content: string, line = 7) {
+    return {
+        resume_id: resumeId,
+        resume_title: title,
+        updated_at: '2026-10-16T12:00:00Z',
+        matches: [
+            {
+                line_number: line,
+                line_content: content,
+                context_before: [],
+                context_after: [],
+                highlight_start: 0,
+                highlight_end: content.length,
+            },
+        ],
     }
-    return tree
-  }
-  const enterQuery = (query: string) => {
-    const input = findInput(render())
-    if (!input) throw new Error('Search input was not rendered')
-    const onChange = input.props.onChange as ((event: { target: { value: string } }) => void) | undefined
-    if (!onChange) throw new Error('Search input has no change handler')
-    onChange({ target: { value: query } })
-    vi.advanceTimersByTime(300)
-  }
-  const unmount = () => {
-    if (!mounted) return
-    mounted = false
-    for (const slot of slots) slot.cleanup?.()
-  }
-
-  return { render, enterQuery, unmount, searchResumes }
 }
 
-const privateResult = (resumeId: string, title: string, content: string) => ({
-  resume_id: resumeId,
-  resume_title: title,
-  updated_at: '2026-10-16T12:00:00Z',
-  matches: [{
-    line_number: 7,
-    line_content: content,
-    context_before: [],
-    context_after: [],
-    highlight_start: 0,
-    highlight_end: content.length,
-  }],
+function harness(strict = false) {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const host = concurrentRoot()
+    const onClose = vi.fn()
+    const renderTree = async (tree: React.ReactNode) => {
+        await act(async () => {
+            host.renderer.updateContainer(tree, host.root, null, null)
+        })
+    }
+    const render = async (ownerId: string | null, open = true) => {
+        const modal = createElement(ProjectSearchModal, { ownerId, open, onClose })
+        const tree = strict ? createElement(StrictMode, null, modal) : modal
+        await renderTree(tree)
+    }
+    const input = () => descendants(host.container).find(node => node.type === 'input')
+    const typeQuery = async (query: string) => {
+        const field = input()
+        if (!field) throw new Error('Search input was not rendered')
+        await act(async () => {
+            const onChange = field.props.onChange as
+                ((event: { target: { value: string } }) => void) | undefined
+            if (!onChange) throw new Error('Search input has no change handler')
+            onChange({ target: { value: query } })
+            vi.advanceTimersByTime(300)
+        })
+    }
+    const settle = async (promise: Promise<unknown>) => {
+        await act(async () => {
+            await promise
+        })
+    }
+    const unmount = async () => {
+        await act(async () => {
+            host.renderer.updateContainer(null, host.root, null, null)
+        })
+    }
+    return { ...host, onClose, render, renderTree, input, typeQuery, settle, unmount }
+}
+
+function loadingVisible(container: HostNode) {
+    return descendants(container).some(node =>
+        String(node.props.className ?? '').includes('animate-spin')
+    )
+}
+
+function resultRow(container: HostNode, title: string) {
+    return descendants(container).find(
+        node =>
+            typeof node.props.onClick === 'function' &&
+            String(node.props.className ?? '').includes('border-b') &&
+            textContent(node).includes(title)
+    )
+}
+
+function rowIsSelected(row: HostNode | undefined) {
+    return String(row?.props.className ?? '')
+        .split(/\s+/)
+        .includes('bg-surface-2')
+}
+
+beforeEach(() => {
+    vi.useFakeTimers()
+    search.mockReset()
+    router.push.mockReset()
 })
 
 afterEach(() => {
-  vi.useRealTimers()
-  for (const name of ['react', 'react/jsx-runtime', 'next/navigation', 'lucide-react', '@/lib/api-client']) vi.doUnmock(name)
-  vi.resetModules()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
 })
 
-describe('workspace search owner isolation', () => {
-  it('hides old results immediately and ignores a late successful response after an account switch', async () => {
-    vi.useFakeTimers()
-    const h = await mountModal('account-a')
-    const pending = deferred<{ results: ReturnType<typeof privateResult>[] }>()
-    h.searchResumes.mockReturnValueOnce(pending.promise)
-    h.render()
-    h.enterQuery('shared phrase')
-    expect(h.searchResumes).toHaveBeenCalledWith('shared phrase')
+describe('workspace search owner isolation with React', () => {
+    it('masks search data across a same-mounted A → logged out → A transition, including stale completion', async () => {
+        const h = harness(true)
+        const oldSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        const freshSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        search.mockReturnValueOnce(oldSearch.promise).mockReturnValueOnce(freshSearch.promise)
+        try {
+            await h.render('account-a')
+            await h.typeQuery('same phrase')
+            expect(search).toHaveBeenCalledTimes(1)
 
-    const switched = h.render({ open: true, ownerId: 'account-b', onClose: vi.fn() })
-    expect(findInput(switched)?.props.value).toBe('')
-    expect(textContent(switched)).not.toContain('Account A Private Resume')
+            await h.render(null)
+            expect(h.input()?.props.value).toBe('')
+            expect(h.snapshots[h.snapshots.length - 1]).not.toContain('Account A Private Resume')
+            await h.render('account-a')
+            expect(h.input()?.props.value).toBe('')
+            expect(h.snapshots[h.snapshots.length - 1]).not.toContain('Account A Private Resume')
 
-    pending.resolve({ results: [privateResult('resume-a', 'Account A Private Resume', 'A secret phrase')] })
-    await pending.promise
-    const afterLateResponse = h.render()
-    expect(textContent(afterLateResponse)).not.toContain('Account A Private Resume')
-    expect(textContent(afterLateResponse)).not.toContain('A secret phrase')
-  })
+            await h.typeQuery('same phrase')
+            expect(search).toHaveBeenCalledTimes(2)
+            oldSearch.resolve({
+                results: [result('resume-old', 'Account A Private Resume', 'old private phrase')],
+            })
+            await h.settle(oldSearch.promise)
+            expect(loadingVisible(h.container)).toBe(true)
+            expect(textContent(h.container)).not.toContain('Account A Private Resume')
+            expect(textContent(h.container)).not.toContain('old private phrase')
 
-  it('ignores an old account’s late search error after switching accounts', async () => {
-    vi.useFakeTimers()
-    const h = await mountModal('account-a')
-    const pending = deferred<never>()
-    h.searchResumes.mockReturnValueOnce(pending.promise)
-    h.render()
-    h.enterQuery('shared phrase')
+            freshSearch.resolve({
+                results: [result('resume-fresh', 'Account A Fresh Resume', 'fresh phrase')],
+            })
+            await h.settle(freshSearch.promise)
+            expect(textContent(h.container)).toContain('Account A Fresh Resume')
+            expect(textContent(h.container)).not.toContain('Account A Private Resume')
+        } finally {
+            await h.unmount()
+        }
+    })
 
-    h.render({ open: true, ownerId: 'account-b', onClose: vi.fn() })
-    pending.reject(new Error('Account A search failed privately'))
-    await pending.promise.catch(() => undefined)
+    it('keeps account B loading/results isolated from late A success and error for the same query', async () => {
+        const h = harness()
+        const accountASuccess = deferred<{ results: ReturnType<typeof result>[] }>()
+        const accountBSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        const accountAError = deferred<never>()
+        const accountBSearchAfterError = deferred<{ results: ReturnType<typeof result>[] }>()
+        search
+            .mockReturnValueOnce(accountASuccess.promise)
+            .mockReturnValueOnce(accountBSearch.promise)
+            .mockReturnValueOnce(accountAError.promise)
+            .mockReturnValueOnce(accountBSearchAfterError.promise)
+        try {
+            await h.render('account-a')
+            await h.typeQuery('shared query')
+            await h.render('account-b')
+            await h.typeQuery('shared query')
+            expect(loadingVisible(h.container)).toBe(true)
 
-    const afterLateError = h.render()
-    expect(textContent(afterLateError)).not.toContain('Account A search failed privately')
-    expect(textContent(afterLateError)).not.toContain('Account A Private Resume')
-  })
+            accountASuccess.resolve({
+                results: [result('resume-a', 'Account A Private Resume', 'A secret phrase')],
+            })
+            await h.settle(accountASuccess.promise)
+            expect(loadingVisible(h.container)).toBe(true)
+            expect(textContent(h.container)).not.toContain('Account A Private Resume')
 
-  it('runs the same query against the new account after removing the previous account’s result', async () => {
-    vi.useFakeTimers()
-    const h = await mountModal('account-a')
-    const accountASearch = deferred<{ results: ReturnType<typeof privateResult>[] }>()
-    const accountBSearch = deferred<{ results: ReturnType<typeof privateResult>[] }>()
-    h.searchResumes.mockReturnValueOnce(accountASearch.promise).mockReturnValueOnce(accountBSearch.promise)
-    h.render()
-    h.enterQuery('same query')
-    accountASearch.resolve({ results: [privateResult('resume-a', 'Account A Private Resume', 'A secret phrase')] })
-    await accountASearch.promise
-    expect(textContent(h.render())).toContain('Account A Private Resume')
+            // Start a newer A request from a separate lifecycle and leave it in flight
+            // while B's current request is still loading.
+            await h.render('account-a')
+            await h.typeQuery('shared query')
+            await h.render('account-b')
+            await h.typeQuery('shared query')
+            accountAError.reject(new Error('Account A private failure'))
+            await h.settle(accountAError.promise.catch(() => undefined))
+            expect(loadingVisible(h.container)).toBe(true)
+            expect(textContent(h.container)).not.toContain('Account A private failure')
 
-    const switched = h.render({ open: true, ownerId: 'account-b', onClose: vi.fn() })
-    expect(findInput(switched)?.props.value).toBe('')
-    expect(textContent(switched)).not.toContain('Account A Private Resume')
+            accountBSearchAfterError.resolve({
+                results: [result('resume-b', 'Account B Resume', 'B visible phrase')],
+            })
+            await h.settle(accountBSearchAfterError.promise)
+            expect(textContent(h.container)).toContain('Account B Resume')
+            expect(textContent(h.container)).not.toContain('Account A Private Resume')
+        } finally {
+            await h.unmount()
+        }
+    })
 
-    h.enterQuery('same query')
-    expect(h.searchResumes).toHaveBeenLastCalledWith('same query')
-    accountBSearch.resolve({ results: [privateResult('resume-b', 'Account B Resume', 'B visible phrase')] })
-    await accountBSearch.promise
+    it('keeps the committed owner usable when a concurrent account-switch render suspends and is abandoned', async () => {
+        const h = harness()
+        const accountASearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        const suspendedTransition = deferred<void>()
+        search.mockReturnValueOnce(accountASearch.promise)
+        let setOwner: ((ownerId: string) => void) | undefined
+        let suspendAccountB = true
+        function SuspendAccountB({ ownerId }: { ownerId: string }) {
+            if (suspendAccountB && ownerId === 'account-b') throw suspendedTransition.promise
+            return null
+        }
+        function App() {
+            const [ownerId, updateOwner] = useState('account-a')
+            setOwner = updateOwner
+            return createElement(
+                Suspense,
+                { fallback: createElement('fallback') },
+                createElement(
+                    Fragment,
+                    null,
+                    createElement(ProjectSearchModal, { open: true, ownerId, onClose: h.onClose }),
+                    createElement(SuspendAccountB, { ownerId })
+                )
+            )
+        }
+        try {
+            await h.renderTree(createElement(App))
+            await h.typeQuery('pending owner A')
+            await act(async () => startTransition(() => setOwner?.('account-b')))
+            expect(h.input()?.props.value).toBe('pending owner A')
+            expect(textContent(h.container)).not.toContain('fallback')
 
-    const afterSwitch = h.render()
-    expect(textContent(afterSwitch)).toContain('Account B Resume')
-    expect(textContent(afterSwitch)).toContain('B visible phrase')
-    expect(textContent(afterSwitch)).not.toContain('Account A Private Resume')
-    expect(textContent(afterSwitch)).not.toContain('A secret phrase')
-  })
+            accountASearch.resolve({
+                results: [result('resume-a', 'Still Current A', 'committed A result')],
+            })
+            await h.settle(accountASearch.promise)
+            expect(textContent(h.container)).toContain('Still Current A')
 
-  it('allows a fresh identical query after logout and relogin without restoring the previous account’s result', async () => {
-    vi.useFakeTimers()
-    const accountA = await mountModal('account-a')
-    const oldSearch = deferred<{ results: ReturnType<typeof privateResult>[] }>()
-    accountA.searchResumes.mockReturnValueOnce(oldSearch.promise)
-    accountA.render()
-    accountA.enterQuery('same query')
-    accountA.unmount()
+            suspendAccountB = false
+            await act(async () => {
+                suspendedTransition.resolve()
+                await suspendedTransition.promise
+            })
+            expect(h.input()?.props.value).toBe('')
+            expect(textContent(h.container)).not.toContain('Still Current A')
+        } finally {
+            suspendedTransition.resolve()
+            await h.unmount()
+        }
+    })
 
-    oldSearch.resolve({ results: [privateResult('resume-a', 'Account A Private Resume', 'A secret phrase')] })
-    await oldSearch.promise
+    it('hides old results in the committed tree before layout effects on close/reopen', async () => {
+        const h = harness()
+        const previousSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        search.mockReturnValueOnce(previousSearch.promise)
+        try {
+            await h.render('account-a')
+            await h.typeQuery('reopen phrase')
+            previousSearch.resolve({
+                results: [result('resume-a', 'Private Resume A', 'private reopen phrase')],
+            })
+            await h.settle(previousSearch.promise)
+            expect(textContent(h.container)).toContain('Private Resume A')
 
-    const accountB = await mountModal('account-b')
-    const newSearch = deferred<{ results: ReturnType<typeof privateResult>[] }>()
-    accountB.searchResumes.mockReturnValueOnce(newSearch.promise)
-    accountB.render()
-    accountB.enterQuery('same query')
-    expect(accountB.searchResumes).toHaveBeenCalledWith('same query')
-    newSearch.resolve({ results: [privateResult('resume-b', 'Account B Resume', 'B visible phrase')] })
-    await newSearch.promise
+            await h.render('account-a', false)
+            await h.render('account-a', true)
+            expect(h.input()?.props.value).toBe('')
+            expect(h.snapshots[h.snapshots.length - 1]).not.toContain('Private Resume A')
+            expect(textContent(h.container)).not.toContain('private reopen phrase')
+        } finally {
+            await h.unmount()
+        }
+    })
 
-    const afterRelogin = accountB.render()
-    expect(textContent(afterRelogin)).toContain('Account B Resume')
-    expect(textContent(afterRelogin)).toContain('B visible phrase')
-    expect(textContent(afterRelogin)).not.toContain('Account A Private Resume')
-    expect(textContent(afterRelogin)).not.toContain('A secret phrase')
-  })
+    it('retains keyboard selection behavior after an isolated search', async () => {
+        const h = harness()
+        const matchingSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        search.mockReturnValueOnce(matchingSearch.promise)
+        try {
+            await h.render('account-a')
+            await h.typeQuery('match')
+            matchingSearch.resolve({
+                results: [
+                    result('resume-a', 'First Resume', 'first match', 3),
+                    result('resume-b', 'Second Resume', 'second match', 19),
+                ],
+            })
+            await h.settle(matchingSearch.promise)
+            expect(rowIsSelected(resultRow(h.container, 'First Resume'))).toBe(true)
+            expect(rowIsSelected(resultRow(h.container, 'Second Resume'))).toBe(false)
+
+            await act(async () => {
+                const onKeyDown = h.input()?.props.onKeyDown as
+                    ((event: { key: string; preventDefault: () => void }) => void) | undefined
+                onKeyDown?.({ key: 'ArrowDown', preventDefault: vi.fn() })
+            })
+            expect(rowIsSelected(resultRow(h.container, 'First Resume'))).toBe(false)
+            expect(rowIsSelected(resultRow(h.container, 'Second Resume'))).toBe(true)
+
+            await act(async () => {
+                const onKeyDown = h.input()?.props.onKeyDown as
+                    ((event: { key: string; preventDefault: () => void }) => void) | undefined
+                onKeyDown?.({ key: 'Enter', preventDefault: vi.fn() })
+            })
+            expect(router.push).toHaveBeenCalledWith('/workspace/resume-b/edit?line=19')
+            expect(h.onClose).toHaveBeenCalledOnce()
+        } finally {
+            await h.unmount()
+        }
+    })
 })

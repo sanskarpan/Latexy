@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, X, FileText, Clock } from 'lucide-react'
 import { apiClient, type ResumeSearchResult, type SearchMatch } from '@/lib/api-client'
@@ -11,13 +11,14 @@ interface ProjectSearchModalProps {
   ownerId: string | null
 }
 
-interface SearchOwnerIdentity {
+interface SearchLifecycle {
   ownerId: string | null
+  open: boolean
   generation: number
 }
 
 interface SearchState {
-  identity: SearchOwnerIdentity
+  identity: SearchLifecycle
   query: string
   results: ResumeSearchResult[]
   loading: boolean
@@ -25,11 +26,11 @@ interface SearchState {
   selectedIndex: number
 }
 
-function sameSearchOwner(left: SearchOwnerIdentity, right: SearchOwnerIdentity) {
-  return left.ownerId === right.ownerId && left.generation === right.generation
+function sameSearchLifecycle(left: SearchLifecycle, right: SearchLifecycle) {
+  return left.ownerId === right.ownerId && left.open === right.open && left.generation === right.generation
 }
 
-function emptySearchState(identity: SearchOwnerIdentity): SearchState {
+function emptySearchState(identity: SearchLifecycle): SearchState {
   return { identity, query: '', results: [], loading: false, searchError: null, selectedIndex: 0 }
 }
 
@@ -110,63 +111,74 @@ function ResultItem({
 export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSearchModalProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const ownerIdentityRef = useRef<SearchOwnerIdentity>({ ownerId, generation: 0 })
-  if (ownerIdentityRef.current.ownerId !== ownerId) {
-    ownerIdentityRef.current = { ownerId, generation: ownerIdentityRef.current.generation + 1 }
+  const committedLifecycleRef = useRef<SearchLifecycle>({ ownerId, open, generation: 0 })
+  const committedLifecycle = committedLifecycleRef.current
+  // Compute an identity for this render without mutating shared refs. If React
+  // abandons a concurrent render, the committed account/session stays current.
+  const renderLifecycle: SearchLifecycle = {
+    ownerId,
+    open,
+    generation: committedLifecycle.generation +
+      (committedLifecycle.ownerId === ownerId && committedLifecycle.open === open ? 0 : 1),
   }
-  const ownerIdentity = ownerIdentityRef.current
-  const openIdentityRef = useRef({ open, generation: 0 })
-  if (openIdentityRef.current.open !== open) {
-    openIdentityRef.current = { open, generation: openIdentityRef.current.generation + 1 }
-  }
-  const [searchState, setSearchState] = useState<SearchState>(() => emptySearchState(ownerIdentity))
-  // Hide prior-owner state during render, before the identity-change effect runs.
-  const visibleSearchState = sameSearchOwner(searchState.identity, ownerIdentity)
+  const [searchState, setSearchState] = useState<SearchState>(() => emptySearchState(renderLifecycle))
+  // Mask previous-account and previous-open-session state before layout effects.
+  const visibleSearchState = sameSearchLifecycle(searchState.identity, renderLifecycle)
     ? searchState
-    : emptySearchState(ownerIdentity)
+    : emptySearchState(renderLifecycle)
   const { query, results, loading, searchError, selectedIndex } = visibleSearchState
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
 
-  const updateSearchState = useCallback((identity: SearchOwnerIdentity, patch: Partial<Omit<SearchState, 'identity'>>) => {
-    if (!sameSearchOwner(identity, ownerIdentityRef.current)) return
+  const updateSearchState = useCallback((identity: SearchLifecycle, patch: Partial<Omit<SearchState, 'identity'>>) => {
+    if (!sameSearchLifecycle(identity, committedLifecycleRef.current)) return
     setSearchState((previous) => {
-      if (!sameSearchOwner(identity, ownerIdentityRef.current)) return previous
-      const base = sameSearchOwner(previous.identity, identity) ? previous : emptySearchState(identity)
+      if (!sameSearchLifecycle(identity, committedLifecycleRef.current)) return previous
+      const base = sameSearchLifecycle(previous.identity, identity) ? previous : emptySearchState(identity)
       return { ...base, ...patch, identity }
     })
   }, [])
 
-  // Owner changes and close/reopen cycles both invalidate work before a stale
-  // response can write into a later account's search state.
-  useEffect(() => {
+  // Update the committed identity and invalidate in-flight work only after
+  // React commits these props. A speculative render cannot retire valid work.
+  useLayoutEffect(() => {
+    const previous = committedLifecycleRef.current
+    const identity: SearchLifecycle = {
+      ownerId,
+      open,
+      generation: previous.generation +
+        (previous.ownerId === ownerId && previous.open === open ? 0 : 1),
+    }
+    committedLifecycleRef.current = identity
     searchRequestRef.current += 1
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
       debounceRef.current = null
     }
-    const currentOwnerIdentity = ownerIdentityRef.current
     if (open) {
-      updateSearchState(currentOwnerIdentity, {
+      updateSearchState(identity, {
         query: '', results: [], loading: false, searchError: null, selectedIndex: 0,
       })
-      const focusTimeout = setTimeout(() => inputRef.current?.focus(), 50)
-      return () => clearTimeout(focusTimeout)
+    } else {
+      updateSearchState(identity, { loading: false })
     }
-    updateSearchState(currentOwnerIdentity, { loading: false })
-  }, [open, ownerIdentity.generation, updateSearchState])
+  }, [open, ownerId, updateSearchState])
 
-  useEffect(() => () => {
+  useEffect(() => {
+    if (!open) return
+    const focusTimeout = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(focusTimeout)
+  }, [open, ownerId])
+
+  useLayoutEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
   }, [])
 
-  const doSearch = useCallback(async (q: string, requestedIdentity = ownerIdentityRef.current) => {
-    if (!openIdentityRef.current.open || !sameSearchOwner(requestedIdentity, ownerIdentityRef.current)) return
-    const openGenerationAtStart = openIdentityRef.current.generation
-    const isCurrent = (requestId: number) => openIdentityRef.current.open &&
-      openIdentityRef.current.generation === openGenerationAtStart &&
-      sameSearchOwner(requestedIdentity, ownerIdentityRef.current) &&
+  const doSearch = useCallback(async (q: string, requestedIdentity = committedLifecycleRef.current) => {
+    if (!requestedIdentity.open || !sameSearchLifecycle(requestedIdentity, committedLifecycleRef.current)) return
+    const isCurrent = (requestId: number) => committedLifecycleRef.current.open &&
+      sameSearchLifecycle(requestedIdentity, committedLifecycleRef.current) &&
       searchRequestRef.current === requestId
 
     if (q.trim().length < 2) {
@@ -194,7 +206,7 @@ export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSe
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
-    const identityAtChange = ownerIdentityRef.current
+    const identityAtChange = committedLifecycleRef.current
     // Invalidate the previous response as soon as the visible query changes,
     // rather than leaving a debounce-sized window for stale results to land.
     searchRequestRef.current += 1
@@ -206,7 +218,7 @@ export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSe
   const clearSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
-    updateSearchState(ownerIdentityRef.current, {
+    updateSearchState(committedLifecycleRef.current, {
       query: '', results: [], searchError: null, loading: false, selectedIndex: 0,
     })
   }
@@ -221,12 +233,12 @@ export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSe
     if (e.key === 'Escape') { onClose(); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      updateSearchState(ownerIdentityRef.current, {
+      updateSearchState(committedLifecycleRef.current, {
         selectedIndex: Math.min(selectedIndex + 1, results.length - 1),
       })
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      updateSearchState(ownerIdentityRef.current, { selectedIndex: Math.max(selectedIndex - 1, 0) })
+      updateSearchState(committedLifecycleRef.current, { selectedIndex: Math.max(selectedIndex - 1, 0) })
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       const r = results[selectedIndex]
       navigate(r.resume_id, r.matches[0]?.line_number)
