@@ -502,11 +502,18 @@ test('representative public surface produces non-empty visual evidence', async (
             })
         }
         await page.setViewportSize({ width: 320, height: 900 })
-        const actionBoxes = await Promise.all(
-            (await page.locator('.lp-hero-actions > a:visible').all()).map(action => action.boundingBox())
+        await page.locator('.lp-hero-actions').scrollIntoViewIfNeeded()
+        await settle()
+        // Compare visible controls in one settled layout frame, rather than
+        // separate protocol measurements of offscreen elements after resizing.
+        const actionBoxes = await page.locator('.lp-hero-actions > a:visible').evaluateAll(
+            actions => actions.map(action => {
+                const { y, width, height } = action.getBoundingClientRect()
+                return { y, width, height }
+            })
         )
         expect(actionBoxes).toHaveLength(2)
-        expect(actionBoxes.every(Boolean)).toBe(true)
+        expect(actionBoxes.every(box => box.width > 0 && box.height > 0)).toBe(true)
         expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
         await testInfo.attach('landing-narrow-mobile', {
