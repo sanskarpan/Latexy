@@ -1076,12 +1076,14 @@ export default function LandingExperience() {
                 aria-labelledby="lp-builder-title"
             >
                 <div className="lp-section-copy">
+                    <p className="lp-section-label">01 / Resume builder</p>
                     <h2 id="lp-builder-title">
-                        A builder for people.
-                        <br />A studio for precision.
+                        Write your résumé. <br />
+                        See it take shape.
                     </h2>
                     <p>
-                        Write, refine, and export with a tool designed for clarity, not complexity.
+                        Add your experience in familiar fields and watch the preview update. Switch
+                        to visual editing or LaTeX when you need more control.
                     </p>
                 </div>
                 <BuilderDemo />
@@ -1091,13 +1093,14 @@ export default function LandingExperience() {
                 aria-labelledby="lp-analysis-title"
             >
                 <div className="lp-section-copy">
+                    <p className="lp-section-label">02 / ATS feedback</p>
                     <h2 id="lp-analysis-title">
-                        Understand what
-                        <br />
-                        your résumé is saying.
+                        Find the gaps <br />
+                        before you apply.
                     </h2>
                     <p>
-                        Get clear, actionable feedback on your content, from structure to keywords.
+                        Review your résumé’s structure, bullet points, and keywords. Use the
+                        feedback to decide what needs attention before sending it.
                     </p>
                 </div>
                 <AnalysisDemo />
@@ -1107,10 +1110,11 @@ export default function LandingExperience() {
                 aria-labelledby="lp-tailoring-title"
             >
                 <div className="lp-section-copy">
-                    <h2 id="lp-tailoring-title">Tailor to the role. Keep your voice.</h2>
+                    <p className="lp-section-label">03 / Job tailoring</p>
+                    <h2 id="lp-tailoring-title">Show the experience that fits the role.</h2>
                     <p>
-                        See how your experience matches a job description, and get suggestions to
-                        make it stronger.
+                        Compare your résumé with a job description. Review suggested rewrites, keep
+                        what is accurate, and leave out anything you cannot stand behind.
                     </p>
                 </div>
                 <TailoringDemo />
@@ -1120,20 +1124,25 @@ export default function LandingExperience() {
                 aria-labelledby="lp-applications-title"
             >
                 <div className="lp-section-copy">
-                    <h2 id="lp-applications-title">The application does not end at the PDF.</h2>
+                    <p className="lp-section-label">04 / Application tracker</p>
+                    <h2 id="lp-applications-title">Remember what you sent. Know what’s next.</h2>
                     <p>
-                        Keep everything in one place — saved variants, cover letters, interview
-                        prep, and a simple tracker.
+                        Keep the résumé version and cover letter with each application. Move jobs
+                        from saved to applied to interview as your search progresses.
                     </p>
                 </div>
                 <ApplicationDemo />
             </section>
             <section className="lp-feature-row lp-latex-section" aria-labelledby="lp-latex-title">
                 <div className="lp-section-copy">
-                    <h2 id="lp-latex-title">More than résumés. Real LaTeX.</h2>
+                    <p className="lp-section-label">05 / LaTeX studio</p>
+                    <h2 id="lp-latex-title">
+                        Papers, reports, <br />
+                        and résumés.
+                    </h2>
                     <p>
-                        Use the same LaTeX toolchain for academic papers, technical reports, and
-                        more.
+                        Write LaTeX, choose your compiler, and preview the PDF. The studio supports
+                        pdfLaTeX, XeLaTeX, and LuaLaTeX for documents beyond your résumé.
                     </p>
                 </div>
                 <LatexDemo />

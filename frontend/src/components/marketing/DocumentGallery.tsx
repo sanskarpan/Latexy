@@ -168,7 +168,10 @@ export default function DocumentGallery() {
                 })}
             </div>
             <div className="lp-gallery-controls">
-                <span>Choose a layout</span>
+                <span>
+                    <span className="lp-gallery-label-desktop">Choose a layout</span>
+                    <span className="lp-gallery-label-mobile">Try a different layout</span>
+                </span>
                 <div role="group" aria-label="Sample résumé layouts">
                     {layouts.map((name, index) => (
                         <button

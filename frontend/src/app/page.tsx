@@ -8,6 +8,7 @@ import LandingMotion from '@/components/marketing/LandingMotion'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { siteUrl } from '@/lib/site-url'
 import './landing.css'
+import './landing-type.css'
 import './landing-mobile.css'
 
 const description =
@@ -17,20 +18,24 @@ export const metadata: Metadata = {
     description,
     alternates: { canonical: '/' },
     openGraph: {
-        title: 'Your next chapter, well written. | Latexy',
+        title: 'Latexy | Resume Builder, ATS Feedback & LaTeX Studio',
         description,
         url: '/',
         type: 'website',
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Your next chapter, well written. | Latexy',
+        title: 'Latexy | Resume Builder, ATS Feedback & LaTeX Studio',
         description,
     },
     // Existing public Search Console ownership proof.
     verification: { google: '-JuXguMIM_kaznXdcKY8ygd7x6Iuhndu1xvV3_arsHs' },
 }
 const faq = [
+    {
+        question: 'Can I use Latexy for documents other than résumés?',
+        answer: 'Yes. The LaTeX studio also supports papers, reports, and other LaTeX documents. Edit the source, choose pdfLaTeX, XeLaTeX, or LuaLaTeX, and compile a PDF.',
+    },
     {
         question: 'Do I need to know LaTeX to use Latexy?',
         answer: 'No. Use familiar fields in the guided builder, or edit visually in the studio. The LaTeX source editor is available when you want detailed control.',
@@ -83,18 +88,18 @@ export default function LandingPage() {
                 }}
             />
             <section className="lp-hero lp-container" aria-labelledby="landing-title">
-                <h1 id="landing-title">
-                    Your next{' '}
-                    <br />
-                    <span className="lp-hero-second-line">
-                        <span className="lp-hero-chapter">chapter,</span>
-                        <em>well written.</em>
-                    </span>
-                </h1>
+                <div className="lp-hero-heading">
+                    <p className="lp-hero-eyebrow">Resume builder &amp; LaTeX studio</p>
+                    <h1 id="landing-title">
+                        Turn your experience
+                        <br />
+                        <span>into a résumé.</span>
+                    </h1>
+                </div>
                 <div className="lp-hero-copy">
                     <p>
-                        Build a résumé without code. Refine it with useful feedback. Keep your
-                        applications moving.
+                        Write with familiar fields or edit the LaTeX source. Get feedback, tailor
+                        your résumé to a job, and export a PDF.
                     </p>
                     <div className="lp-hero-actions">
                         <MarketingCTA />
@@ -112,7 +117,7 @@ export default function LandingPage() {
                         </Link>
                     </div>
                     <p className="lp-trial-note">
-                        Try the studio without an account · No card needed · Limited guest usage
+                        Try the guest studio. No account or card needed. Usage limits apply.
                     </p>
                 </div>
             </section>
