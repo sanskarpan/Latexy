@@ -263,7 +263,7 @@ test.describe('Project Search — workspace page', () => {
     await expect(modal().getByText('Software Engineer Resume', { exact: true })).toHaveCount(0)
 
     await input.fill('PRIVATE_ERROR_QUERY')
-    await expect(modal().getByRole('alert')).toHaveText('private search error')
+    await expect(modal().getByRole('alert')).toHaveText('HTTP 503: private search error')
     await input.press('Escape')
     await expect(page.locator('div.fixed.inset-0')).toHaveCount(0)
     await openSearchModal(page)
