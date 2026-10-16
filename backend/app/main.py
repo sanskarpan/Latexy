@@ -11,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from .api.routes import _check_cors_origins_on_startup, router
 from .core.config import settings
+from .core.deployment_hold import deployment_traffic_held
 from .core.errors import register_exception_handlers
 from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
@@ -18,6 +19,7 @@ from .core.redis import get_redis_client, redis_manager
 from .core.tracing import instrument_fastapi, setup_telemetry
 from .database.connection import close_db, init_db
 from .middleware.csrf import SessionCookieCSRFMiddleware
+from .middleware.deployment_hold import DeploymentTrafficHoldMiddleware
 from .middleware.limits import BodySizeLimitMiddleware, TimeoutMiddleware
 from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
 from .middleware.request_context import RequestContextMiddleware
@@ -35,6 +37,10 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
+    # Validate and capture the process-local traffic hold before any backing
+    # service is initialized or any request can be served.
+    app.state.deployment_traffic_held = deployment_traffic_held()
+
     # Startup
     logger.info("Latexy Backend starting up...")
 
@@ -147,6 +153,10 @@ app = FastAPI(
     redoc_url="/redoc" if _docs_enabled else None,
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
+# ASGITransport-based tests and some local tooling do not run lifespan hooks.
+# Parse and capture the immutable process setting now as well as at startup so
+# every request path sees a validated state even without a lifespan runner.
+app.state.deployment_traffic_held = deployment_traffic_held()
 # Keep Uvicorn's transport allocation bound above the 256 KiB collaboration
 # frame contract. Individual protocols apply stricter limits in ws_routes.py
 # and collab_manager.py; this is the outer-process ceiling.
@@ -199,6 +209,11 @@ app.add_middleware(RequestContextMiddleware)
 # outermost middleware and exposes this 403 to browser clients.
 app.add_middleware(SessionCookieCSRFMiddleware)
 
+# Short-circuit held traffic before request-context, rate-limit, and route
+# dependency middleware. CORS is registered below and remains outside this
+# middleware so browser clients can read 503s.
+app.add_middleware(DeploymentTrafficHoldMiddleware)
+
 # Configure CORS. Registered LAST so it is the OUTERMOST middleware and every
 # short-circuited response above (rate limit 429, body size 413, timeout 504)
 # gets access-control-* headers.
@@ -218,7 +233,7 @@ app.add_middleware(
     # header-carrying fix above pointless. X-Request-ID (set by
     # RequestContextMiddleware on every response) is exposed so clients can quote
     # it in bug reports.
-    expose_headers=["Retry-After", "X-Request-ID"],
+    expose_headers=["Retry-After", "X-Request-ID", "X-Latexy-Deployment-Hold"],
 )
 # Dynamic custom domains cannot be safely expressed as a static CORS list.
 # This outer layer admits only domains that passed tenant DNS verification.

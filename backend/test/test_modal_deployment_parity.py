@@ -796,16 +796,10 @@ def test_local_engine_gate_across_real_topologies(monkeypatch, topology, env, cg
     monkeypatch.setattr(latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False)
     # Running this test in Docker must not override the modeled bare-host case.
     original_exists = Path.exists
-    monkeypatch.setattr(Path, "exists", lambda path: False if str(path) in {
+    monkeypatch.setattr(Path, "exists", lambda path: False if path.as_posix() in {
         "/.dockerenv", "/run/.containerenv",
     } else original_exists(path))
     monkeypatch.setattr(Path, "read_text", lambda self, **kw: cgroup, raising=False)
-    # Model the selected topology even when pytest itself runs inside Docker.
-    original_exists = Path.exists
-    monkeypatch.setattr(
-        Path, "exists",
-        lambda self: False if str(self) in {"/.dockerenv", "/run/.containerenv"} else original_exists(self),
-    )
 
     assert latex_service.local_engine_allowed() is expected, (
         f"topology {topology!r}: expected local_engine_allowed() == {expected}. "
@@ -1027,7 +1021,12 @@ def test_modal_scheduled_function_budget_and_cadences_are_explicit():
         assert isinstance(keywords["timeout"], ast.Constant)
         assert keywords["timeout"].value == contract["timeout"], name
         expected_schedule = ast.parse(contract["schedule"], mode="eval").body
-        assert ast.dump(keywords["schedule"]) == ast.dump(expected_schedule), name
+        actual_schedule = keywords["schedule"]
+        assert isinstance(actual_schedule, ast.IfExp), name
+        assert isinstance(actual_schedule.test, ast.Name), name
+        assert actual_schedule.test.id == "_DEPLOYMENT_TRAFFIC_HELD", name
+        assert isinstance(actual_schedule.body, ast.Constant) and actual_schedule.body.value is None, name
+        assert ast.dump(actual_schedule.orelse) == ast.dump(expected_schedule), name
 
 
 def test_health_runner_is_unscheduled_and_all_maintenance_runners_are_registered():

@@ -95,6 +95,59 @@ the complete backend tree differs and production rollout was not certified.
    Release ingress gradually with billing sales still disabled unless separately
    accepted.
 
+## Hold the replacement before releasing product traffic
+
+Stopping the old Modal App drains that App. A replacement deployment immediately
+exposes its public endpoint after cold start; stopping the old App does not hold
+the replacement. FastAPI startup also tolerates some Redis failures, so startup
+completion cannot substitute for the workflow's readiness checks.
+
+Use the deployment workflow's two explicit phases:
+
+1. Stop and verify the old App as above, then create and validate the fresh
+   post-freeze recovery point. Retain the existing restore-rehearsal evidence.
+   Bind the reviewed renderer inputs, exact candidate cutover attestations and
+   distinct recovery SHA. Keep new sales disabled and live acceptance unset.
+2. Dispatch the exact candidate with `traffic_mode=held` (the default). Automatic
+   deployments also use held mode. The image-bound
+   `MODAL_DEPLOYMENT_TRAFFIC_HOLD=true` makes the API reject product HTTP
+   requests with 503 and WebSockets with 1013. Only the documented read-only
+   health and public template probes remain available. Worker entry points
+   reject new work before business initialization, and scheduled fan-out is
+   disabled. Runtime worker guards also protect against retained schedule
+   metadata. Operator migrations, preflights and catalog synchronization remain
+   explicit operations during this phase.
+3. Let the held workflow finish migration, the repeated financial preflight,
+   deployment identity verification, catalog work and health checks. Verify the
+   actual schema head and safe-disabled purchase state separately. Check the
+   `X-Latexy-Deployment-Hold: true` marker on fresh health responses and 503
+   denials on product paths. This is an application admission hold; the public
+   network endpoint still exists. It neither proves a fleet drain nor cancels
+   previously admitted work, which must already have been drained.
+   The existing outer CORS/verified-tenant layer can resolve domains and
+   populate infrastructure caches before the hold; startup, health probes and
+   explicit operator catalog work also access backing services. This hold
+   prevents product handler admission and worker execution, not every possible
+   infrastructure write. CORS preflight success does not permit a held product
+   request to execute.
+4. Only after that evidence passes, set Production variable
+   `MODAL_TRAFFIC_RELEASE_APPROVED_SHA` to the same exact candidate and manually
+   dispatch `traffic_mode=release`. Release requires the candidate's existing
+   held deployment identity and fresh held/healthy probe responses before
+   migration or deployment. It repeats the existing rollout guards and deploys
+   the same source with the hold disabled. Verify the false marker and perform
+   bounded normal product checks after release.
+5. Retain the release-approval SHA after success. An automatic CI rerun for that
+   approved SHA skips another held deployment, so it cannot silently re-hold
+   the released application. A different source SHA still needs fresh cutover
+   and recovery attestations. A manual held deployment remains available for an
+   explicitly reviewed containment action.
+
+If release fails, contain the exact identified App and preserve the advanced
+schema. Do not reactivate a legacy writer or unfiltered artifact reader. Keep
+sales disabled throughout this procedure; traffic release does not authorize
+live billing acceptance or payment transactions.
+
 If failure occurs before migration, restore traffic only to the verified old
 fleet after its prior conditions are checked. If failure occurs after migration,
 retain the advanced schema and switch to the verified forward-compatible

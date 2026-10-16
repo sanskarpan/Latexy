@@ -11,6 +11,14 @@ on:
         description: Git ref or commit SHA to deploy
         required: true
         default: main
+      traffic_mode:
+        description: Keep public requests and background work held, or release a previously held candidate
+        type: choice
+        required: true
+        default: held
+        options:
+          - held
+          - release
 
 permissions:
   contents: read
@@ -41,6 +49,10 @@ jobs:
       MODAL_ENGINE_VM_ASSETS_FINGERPRINT: ${{ vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT }}
       # Optional name of a dedicated Modal secret containing Dodo settings.
       MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}
+      # Automatic runs and ordinary manual runs always deploy in held mode.
+      # Only an explicit manual release input can open API and worker traffic.
+      MODAL_DEPLOYMENT_TRAFFIC_HOLD: ${{ github.event_name != 'workflow_dispatch' || inputs.traffic_mode != 'release' }}
+      MODAL_TRAFFIC_RELEASE_APPROVED_SHA: ${{ vars.MODAL_TRAFFIC_RELEASE_APPROVED_SHA }}
 
     steps:
       - name: Check out the CI-validated revision
@@ -95,6 +107,11 @@ jobs:
             echo "current=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [[ "${MODAL_TRAFFIC_RELEASE_APPROVED_SHA:-}" == "$DEPLOY_SHA" ]]; then
+            echo "Automatic held deployment skipped because this exact SHA is approved for an explicit manual release."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           latest_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
           if [[ "$latest_sha" != "$DEPLOY_SHA" ]]; then
             echo "Automatic CI run is stale ($DEPLOY_SHA); current main is $latest_sha. Skipping deployment."
@@ -133,6 +150,43 @@ jobs:
       - name: Install pinned Modal CLI
         if: steps.freshness.outputs.current == 'true'
         run: python -m pip install "modal==1.5.4"
+
+      # A release is a second, explicit deployment of a candidate already
+      # serving in held mode. Require the exact target version and fresh health
+      # responses carrying the hold header before any migration or deploy step.
+      - name: Require approved SHA and healthy held candidate before release
+        if: steps.freshness.outputs.current == 'true' && inputs.traffic_mode == 'release'
+        env:
+          BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+        run: |
+          set -euo pipefail
+          if [[ "${MODAL_TRAFFIC_RELEASE_APPROVED_SHA:-}" != "$DEPLOY_SHA" ]]; then
+            echo "Refusing release: MODAL_TRAFFIC_RELEASE_APPROVED_SHA must equal $DEPLOY_SHA" >&2
+            exit 1
+          fi
+          timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"
+          check_health() {
+            local path="$1"
+            local expected_status="$2"
+            local headers body
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            if ! curl --fail --silent --show-error --max-time 20 --dump-header "$headers" --output "$body" "$BACKEND_URL$path"; then
+              rm -f "$headers" "$body"
+              echo "Held candidate health request failed: $path" >&2
+              return 1
+            fi
+            if ! grep -Eiq '^x-latexy-deployment-hold:[[:space:]]*true[[:space:]]*$' "$headers" \
+              || ! jq -e --arg expected "$expected_status" '.status == $expected' "$body" >/dev/null; then
+              rm -f "$headers" "$body"
+              echo "Held candidate did not return expected health and hold state: $path" >&2
+              return 1
+            fi
+            rm -f "$headers" "$body"
+          }
+          check_health /health healthy
+          check_health /readyz ready
+          check_health /jobs/health healthy
 
       - name: Validate read-only billing rollout safety
         if: steps.freshness.outputs.current == 'true'
@@ -221,13 +275,29 @@ jobs:
         env:
           BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
         run: |
+          set -euo pipefail
           for attempt in {1..18}; do
-            if curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/health" \
-                | grep -q '"status":"healthy"' \
-              && curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/readyz" \
-                | grep -q '"status":"ready"' \
-              && curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/jobs/health" \
-                | grep -q '"status":"healthy"'; then
+            check_health() {
+              local path="$1"
+              local expected_status="$2"
+              local expected_hold="$MODAL_DEPLOYMENT_TRAFFIC_HOLD"
+              local headers body
+              headers="$(mktemp)"
+              body="$(mktemp)"
+              if ! curl --fail --silent --show-error --max-time 20 --dump-header "$headers" --output "$body" "$BACKEND_URL$path"; then
+                rm -f "$headers" "$body"
+                return 1
+              fi
+              if ! grep -Eiq "^x-latexy-deployment-hold:[[:space:]]*$expected_hold[[:space:]]*$" "$headers" \
+                || ! jq -e --arg expected "$expected_status" '.status == $expected' "$body" >/dev/null; then
+                rm -f "$headers" "$body"
+                return 1
+              fi
+              rm -f "$headers" "$body"
+            }
+            if check_health /health healthy \
+                && check_health /readyz ready \
+                && check_health /jobs/health healthy; then
               exit 0
             fi
             echo "Health check attempt ${attempt}/18 failed; retrying in 10s"

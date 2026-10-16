@@ -14,10 +14,12 @@ import base64
 import hashlib
 import os
 import re
+from functools import wraps
 from pathlib import Path
 
 import modal
 
+from app.core.deployment_hold import deployment_traffic_held
 from app.core.engine_capacity import capacity_options
 
 # ---------------------------------------------------------------------------
@@ -53,6 +55,23 @@ app = modal.App(_APP_NAME)
 # Operator-only tasks run under a separate Modal App so ephemeral preflight and
 # migration invocations cannot warm fastapi_app's min_containers=1 API service.
 operations_app = modal.App(f"{_APP_NAME}-operations")
+
+# Resolve the one canonical hold value while the deployment source is imported.
+# The same value is baked into every image so child processes and remote imports
+# observe the selected workflow mode, even when their local environment differs.
+_DEPLOYMENT_TRAFFIC_HELD = deployment_traffic_held(os.environ)
+_DEPLOYMENT_TRAFFIC_HOLD_VALUE = "true" if _DEPLOYMENT_TRAFFIC_HELD else "false"
+
+
+def _require_worker_dispatch(fn):
+    """Reject worker and scheduler inputs before they can perform side effects."""
+    @wraps(fn)
+    def guarded(*args, **kwargs):
+        if _DEPLOYMENT_TRAFFIC_HELD:
+            raise RuntimeError("Modal deployment traffic is held; worker execution is paused")
+        return fn(*args, **kwargs)
+
+    return guarded
 
 # Directories to exclude from the code snapshot (security + size)
 _IGNORE = [
@@ -278,7 +297,8 @@ api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
-          **_billing_secret_binding_env})
+          **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
 # LaTeX worker image — same Python deps + full texlive for compilation
@@ -286,7 +306,8 @@ latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
-          **_billing_secret_binding_env})
+          **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
 # Worker image — Python deps only (LLM, ATS, email, cleanup tasks)
@@ -295,7 +316,8 @@ worker_image = (
     .apt_install(*_APT_BASE)
     .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
 # ---------------------------------------------------------------------------
@@ -361,6 +383,7 @@ def _init_worker_redis() -> None:
     # extra burst containers around briefly so bursts stay warm too.
     **capacity_options("LATEX"),
 )
+@_require_worker_dispatch
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
     # throw=False: prevents Celery's self.retry() Retry exception from propagating
@@ -387,6 +410,7 @@ def run_latex_task(payload: dict) -> None:
     # containers around for back-to-back runs.
     **capacity_options("ORCHESTRATOR"),
 )
+@_require_worker_dispatch
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
     from app.core.tracing import worker_trace
@@ -403,6 +427,7 @@ def run_orchestrator_task(payload: dict) -> None:
     timeout=300,
     **capacity_options("LLM"),
 )
+@_require_worker_dispatch
 def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
     from app.core.tracing import worker_trace
@@ -419,6 +444,7 @@ def run_llm_task(payload: dict) -> None:
     timeout=120,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_ats_task(payload: dict) -> None:
     """ATS resume scoring."""
     _init_worker_redis()
@@ -433,6 +459,7 @@ def run_ats_task(payload: dict) -> None:
     timeout=60,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_jd_analysis_task(payload: dict) -> None:
     """Job-description keyword analysis."""
     _init_worker_redis()
@@ -447,6 +474,7 @@ def run_jd_analysis_task(payload: dict) -> None:
     timeout=120,
     scaledown_window=300,
 )
+@_require_worker_dispatch
 def run_deep_analyze_task(payload: dict) -> None:
     """Deep LLM-powered ATS analysis."""
     _init_worker_redis()
@@ -461,6 +489,7 @@ def run_deep_analyze_task(payload: dict) -> None:
     timeout=60,
     scaledown_window=600,
 )
+@_require_worker_dispatch
 def run_embed_resume_task(payload: dict) -> None:
     """Compute and store resume embedding (low-priority background task)."""
     from app.workers.ats_worker import embed_resume_task
@@ -474,6 +503,7 @@ def run_embed_resume_task(payload: dict) -> None:
     timeout=120,
     scaledown_window=600,
 )
+@_require_worker_dispatch
 def run_cleanup_task(payload: dict) -> None:
     """Temp-file and expired-job cleanup (fire-and-forget maintenance tasks)."""
     task_type = payload.pop("task_type", "temp_files")
@@ -493,6 +523,7 @@ def run_cleanup_task(payload: dict) -> None:
     timeout=300,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_cover_letter_task(payload: dict) -> None:
     """LLM cover-letter generation."""
     _init_worker_redis()
@@ -509,6 +540,7 @@ def run_cover_letter_task(payload: dict) -> None:
     timeout=300,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_interview_prep_task(payload: dict) -> None:
     """LLM interview-prep generation."""
     _init_worker_redis()
@@ -525,6 +557,7 @@ def run_interview_prep_task(payload: dict) -> None:
     timeout=300,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_github_import_task(payload: dict) -> None:
     """Import + summarize a user's top public GitHub projects."""
     _init_worker_redis()
@@ -539,6 +572,7 @@ def run_github_import_task(payload: dict) -> None:
     timeout=300,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_document_conversion_task(payload: dict) -> None:
     """LLM document conversion (imported resume -> LaTeX)."""
     _init_worker_redis()
@@ -553,6 +587,7 @@ def run_document_conversion_task(payload: dict) -> None:
     timeout=120,
     scaledown_window=300,
 )
+@_require_worker_dispatch
 def run_auto_save_task(payload: dict) -> None:
     """Auto-save checkpoint recorded after a successful compile."""
     from app.workers.auto_save_worker import record_auto_save_checkpoint
@@ -566,6 +601,7 @@ def run_auto_save_task(payload: dict) -> None:
     timeout=120,
     scaledown_window=300,
 )
+@_require_worker_dispatch
 def run_email_task(payload: dict) -> None:
     """Transactional job-completion email."""
     from app.workers.email_worker import send_job_completion_email
@@ -579,6 +615,7 @@ def run_email_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_comment_mention_task(payload: dict) -> None:
     """Transactional collaborator mention email."""
     from app.workers.email_worker import send_comment_mention_email
@@ -592,6 +629,7 @@ def run_comment_mention_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_document_email_delivery_task(payload: dict) -> None:
     """Deliver one durable compiled-document email in Modal production."""
     from app.workers.email_worker import send_document_email_delivery
@@ -605,6 +643,7 @@ def run_document_email_delivery_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_job_failure_email_task(payload: dict) -> None:
     """Transactional terminal job-failure email."""
     from app.workers.email_worker import send_job_failure_email
@@ -618,6 +657,7 @@ def run_job_failure_email_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_share_viewed_email_task(payload: dict) -> None:
     """Transactional notification for a debounced public resume view."""
     from app.workers.email_worker import send_share_viewed_email
@@ -631,6 +671,7 @@ def run_share_viewed_email_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+@_require_worker_dispatch
 def run_weekly_digest_task(payload: dict) -> None:
     """Send one user's weekly digest from the Modal scheduler fan-out."""
     from app.workers.email_worker import send_weekly_digest
@@ -653,8 +694,9 @@ def run_weekly_digest_task(payload: dict) -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=600,
-    schedule=modal.Period(hours=1),
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(hours=1),
 )
+@_require_worker_dispatch
 def scheduled_cleanup_expired_jobs() -> None:
     """Reap expired job state from Redis (beat: every 3600s).
 
@@ -676,8 +718,9 @@ def scheduled_cleanup_expired_jobs() -> None:
     image=latex_image,
     secrets=_secrets,
     timeout=600,
-    schedule=modal.Period(minutes=30),
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=30),
 )
+@_require_worker_dispatch
 def scheduled_cleanup_temp_files() -> None:
     """Clear stale workspaces from /tmp (beat: every 1800s).
 
@@ -706,6 +749,7 @@ def scheduled_cleanup_temp_files() -> None:
 # name as a scheduled function; replacing it in place can leave server-side
 # schedule metadata associated with that name during rollout. The retention
 # behavior is deployment-dependent, so never restore the old function name.
+@_require_worker_dispatch
 def run_scheduled_health_check() -> None:
     """Worker health check runner (beat: every 300s).
 
@@ -722,8 +766,9 @@ def run_scheduled_health_check() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=300,
-    schedule=modal.Cron("0 9 * * 1"),
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Cron("0 9 * * 1"),
 )
+@_require_worker_dispatch
 def scheduled_weekly_digest() -> None:
     """Monday 09:00 weekly digest fan-out (inert while EMAIL_ENABLED is false)."""
     _init_worker_redis()
@@ -737,6 +782,7 @@ def scheduled_weekly_digest() -> None:
     secrets=_secrets,
     timeout=300,
 )
+@_require_worker_dispatch
 def scheduled_tracker_notifications() -> None:
     """Deliver due application reminders and saved-search review nudges.
 
@@ -754,6 +800,7 @@ def scheduled_tracker_notifications() -> None:
     secrets=_secrets,
     timeout=300,
 )
+@_require_worker_dispatch
 def scheduled_comment_mention_recovery() -> None:
     """Recover mention rows whose post-commit enqueue missed the queue.
 
@@ -771,6 +818,7 @@ def scheduled_comment_mention_recovery() -> None:
     secrets=_secrets,
     timeout=300,
 )
+@_require_worker_dispatch
 def scheduled_document_email_recovery() -> None:
     """Recover compiled-document email rows missed by a broker/process crash.
 
@@ -787,8 +835,9 @@ def scheduled_document_email_recovery() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=120,
-    schedule=modal.Period(minutes=5),
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=5),
 )
+@_require_worker_dispatch
 def scheduled_five_minute_maintenance() -> None:
     """Fan out the two five-minute maintenance runners independently."""
     _init_worker_redis()
@@ -817,8 +866,9 @@ def scheduled_five_minute_maintenance() -> None:
     image=worker_image,
     secrets=_secrets,
     timeout=120,
-    schedule=modal.Period(minutes=1),
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=1),
 )
+@_require_worker_dispatch
 def scheduled_minute_recovery() -> None:
     """Fan out the two one-minute recovery runners independently."""
     _init_worker_redis()
@@ -900,7 +950,8 @@ migrate_image = (
         copy=True,
         ignore=[p for p in _IGNORE if "alembic" not in p],
     )
-    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env})
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
 
