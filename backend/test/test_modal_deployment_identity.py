@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import json
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace as Record
+from unittest import mock
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "verify_modal_deployment_identity.py"
 spec = importlib.util.spec_from_file_location("verify_modal_deployment_identity", SCRIPT)
@@ -62,6 +67,32 @@ class ModalDeploymentIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(identity.ProvenanceBlocked, "production_version_mismatch"):
             self.check(*records(lifecycle_version=1))
 
+    def test_absent_duplicate_or_incomplete_history_blocks(self) -> None:
+        lookup, history = records()
+        history.app_deployment_histories = []
+        with self.assertRaisesRegex(identity.ProvenanceBlocked, "production_history_missing_or_ambiguous"):
+            self.check(lookup, history)
+        lookup, history = records()
+        history.app_deployment_histories.append(history.app_deployment_histories[0])
+        with self.assertRaisesRegex(identity.ProvenanceBlocked, "production_history_missing_or_ambiguous"):
+            self.check(lookup, history)
+        lookup, history = records()
+        history.app_deployment_histories[0].commit_info = Record(dirty=False)
+        with self.assertRaisesRegex(identity.ProvenanceBlocked, "source_identity_mismatch"):
+            self.check(lookup, history)
+
+    def test_stalled_metadata_fails_with_sanitized_timeout(self) -> None:
+        async def timed_out(*_args: object) -> object:
+            raise TimeoutError("credential-bearing diagnostics must not escape")
+
+        output = io.StringIO()
+        with (mock.patch.object(identity, "fetch_with_timeout", new=timed_out),
+              mock.patch.object(sys, "argv", [str(SCRIPT), "--expected-sha", SHA]),
+              contextlib.redirect_stdout(output)):
+            self.assertEqual(identity.main(), 1)
+        self.assertEqual(json.loads(output.getvalue()),
+                         {"status": "blocked", "reason": "modal_metadata_timeout"})
+
     def test_wrong_app_or_environment_blocks(self) -> None:
         with self.assertRaisesRegex(identity.ProvenanceBlocked, "app_not_deployed"):
             self.check(*records(state=0))
@@ -75,7 +106,8 @@ class ModalDeploymentIdentityTests(unittest.TestCase):
         templates = workflow.index("- name: Synchronize source-owned production templates")
         self.assertLess(deploy, verify)
         self.assertLess(verify, templates)
-        self.assertIn('verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"',
+        self.assertIn('timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py '
+                      '--environment main --expected-sha "$DEPLOY_SHA"',
                       workflow[verify:templates])
 
 

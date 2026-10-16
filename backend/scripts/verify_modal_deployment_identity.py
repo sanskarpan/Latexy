@@ -11,6 +11,9 @@ import asyncio
 import json
 import re
 
+RPC_TIMEOUT_SECONDS = 10
+OVERALL_TIMEOUT_SECONDS = 30
+
 
 class ProvenanceBlocked(Exception):
     """A fixed, safe-to-log reason for refusing a deployment identity."""
@@ -53,16 +56,23 @@ async def fetch_metadata(app_name: str, environment: str) -> tuple[object, objec
     from modal.client import _Client
     from modal_proto import api_pb2
 
-    client = await _Client.from_env()
-    lookup = await client.stub.AppGetByDeploymentName(
-        api_pb2.AppGetByDeploymentNameRequest(name=app_name, environment_name=environment)
+    client = await asyncio.wait_for(_Client.from_env(), timeout=RPC_TIMEOUT_SECONDS)
+    lookup = await asyncio.wait_for(
+        client.stub.AppGetByDeploymentName(
+            api_pb2.AppGetByDeploymentNameRequest(name=app_name, environment_name=environment)
+        ), timeout=RPC_TIMEOUT_SECONDS,
     )
     if not lookup.app_id:
         raise ProvenanceBlocked("app_not_deployed")
-    history = await client.stub.AppDeploymentHistory(
-        api_pb2.AppDeploymentHistoryRequest(app_id=lookup.app_id)
+    history = await asyncio.wait_for(
+        client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=lookup.app_id)),
+        timeout=RPC_TIMEOUT_SECONDS,
     )
     return lookup, history, api_pb2.APP_STATE_DEPLOYED
+
+
+async def fetch_with_timeout(app_name: str, environment: str) -> tuple[object, object, int]:
+    return await asyncio.wait_for(fetch_metadata(app_name, environment), timeout=OVERALL_TIMEOUT_SECONDS)
 
 
 def main() -> int:
@@ -75,9 +85,12 @@ def main() -> int:
         print(json.dumps({"status": "blocked", "reason": "invalid_expected_sha"}))
         return 1
     try:
-        lookup, history, deployed_state = asyncio.run(fetch_metadata(args.app, args.environment))
+        lookup, history, deployed_state = asyncio.run(fetch_with_timeout(args.app, args.environment))
         report = assess(lookup, history, environment=args.environment,
                         expected_sha=args.expected_sha, deployed_state=deployed_state)
+    except TimeoutError:
+        print(json.dumps({"status": "blocked", "reason": "modal_metadata_timeout"}))
+        return 1
     except ProvenanceBlocked as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))
         return 1
