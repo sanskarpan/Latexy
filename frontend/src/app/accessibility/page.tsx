@@ -3,6 +3,13 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Accessibility — Latexy',
   description: 'Latexy accessibility status, known limitations, and support contact.',
+  alternates: { canonical: '/accessibility' },
+  openGraph: {
+    title: 'Accessibility - Latexy',
+    description: 'Latexy accessibility status, known limitations, and support contact.',
+    url: '/accessibility',
+    type: 'website',
+  },
 }
 
 const reviewedOn = 'September 8, 2026'

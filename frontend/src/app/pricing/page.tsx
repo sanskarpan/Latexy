@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { Check } from 'lucide-react'
 import CapabilityGate from '@/components/CapabilityGate'
+import { marketingSocialImage } from '@/lib/marketing-social-image'
 
 /**
  * Public pricing page — Typeset marketing (redesign, PRD 2026-08-03).
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
   title: 'Pricing | Latexy',
   description: 'Start free, then pick the plan that fits — or bring your own key.',
   alternates: { canonical: '/pricing' },
-  openGraph: { title: 'Find the résumé plan that fits | Latexy', description: 'Start with the guest editor and explore plans for your job search.', url: '/pricing', type: 'website' },
+  openGraph: { title: 'Find the résumé plan that fits | Latexy', description: 'Start with the guest editor and explore plans for your job search.', url: '/pricing', type: 'website', images: [marketingSocialImage] },
+  twitter: { card: 'summary_large_image', title: 'Find the résumé plan that fits | Latexy', description: 'Start with the guest editor and explore plans for your job search.', images: [marketingSocialImage.url] },
 }
 
 function TierActionGate({ free, children }: { free: boolean; children: ReactNode }) {

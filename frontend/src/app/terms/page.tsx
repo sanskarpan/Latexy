@@ -4,6 +4,13 @@ import LegalDoc from '@/components/marketing/LegalDoc'
 export const metadata: Metadata = {
   title: 'Terms of Service — Latexy',
   description: 'The terms that govern your use of Latexy.',
+  alternates: { canonical: '/terms' },
+  openGraph: {
+    title: 'Terms of Service - Latexy',
+    description: 'The terms that govern your use of Latexy.',
+    url: '/terms',
+    type: 'website',
+  },
 }
 
 export default function TermsPage() {

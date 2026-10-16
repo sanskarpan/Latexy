@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
+import { marketingSocialImage } from '@/lib/marketing-social-image'
 
 export const metadata: Metadata = {
     title: 'Resume Builder Questions, Answered | Latexy FAQ',
@@ -13,6 +14,13 @@ export const metadata: Metadata = {
             'Clear answers about visual editing, the guest trial, AI suggestions, resume checks, and saving your work.',
         url: '/faq',
         type: 'website',
+        images: [marketingSocialImage],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'A few answers before your first edit | Latexy',
+        description: 'Clear answers about visual editing, the guest trial, AI suggestions, resume checks, and saving your work.',
+        images: [marketingSocialImage.url],
     },
 }
 

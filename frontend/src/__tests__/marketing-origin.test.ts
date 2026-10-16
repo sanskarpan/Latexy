@@ -6,6 +6,11 @@ import { metadata as platformMetadata } from '@/app/platform/page'
 import { metadata as resourcesMetadata } from '@/app/resources/page'
 import { metadata as faqMetadata } from '@/app/faq/page'
 import { metadata as pricingMetadata } from '@/app/pricing/page'
+import { metadata as templatesMetadata } from '@/app/templates/layout'
+import { metadata as updatesMetadata } from '@/app/updates/page'
+import { metadata as privacyMetadata } from '@/app/privacy/page'
+import { metadata as termsMetadata } from '@/app/terms/page'
+import { metadata as accessibilityMetadata } from '@/app/accessibility/page'
 import sitemap from '@/app/sitemap'
 import robots from '@/app/robots'
 import { GET as llms } from '@/app/llms.txt/route'
@@ -23,6 +28,11 @@ describe('marketing origin consistency', () => {
             [resourcesMetadata, '/resources'],
             [faqMetadata, '/faq'],
             [pricingMetadata, '/pricing'],
+            [templatesMetadata, '/templates'],
+            [updatesMetadata, '/updates'],
+            [privacyMetadata, '/privacy'],
+            [termsMetadata, '/terms'],
+            [accessibilityMetadata, '/accessibility'],
         ] as const
         for (const [metadata, path] of pages) {
             expect(new URL(String(metadata.alternates?.canonical), siteUrl()).href).toBe(
@@ -42,5 +52,27 @@ describe('marketing origin consistency', () => {
         const text = await llms().text()
         expect(text).toContain(`${origin}/try?mode=visual`)
         expect(text).not.toContain('https://latexy.xyz')
+    })
+
+    it('gives public marketing routes distinct metadata and the existing social image', () => {
+        const origin = 'https://resume.example.org'
+        vi.stubEnv('NEXT_PUBLIC_APP_URL', origin)
+
+        for (const metadata of [templatesMetadata, updatesMetadata]) {
+            expect(metadata.title).not.toBe(homeMetadata.title)
+            expect(metadata.description).not.toBe(homeMetadata.description)
+        }
+
+        for (const metadata of [platformMetadata, resourcesMetadata, pricingMetadata, faqMetadata, templatesMetadata, updatesMetadata]) {
+            const ogImages = metadata.openGraph?.images
+            const twitterImages = metadata.twitter?.images
+            expect(Array.isArray(ogImages)).toBe(true)
+            expect(Array.isArray(twitterImages)).toBe(true)
+            const ogImage = (ogImages as { url: string; width: number; height: number; alt: string }[])[0]
+            const twitterImage = (twitterImages as string[])[0]
+            expect(new URL(ogImage.url, siteUrl()).href).toBe(`${origin}/opengraph-image`)
+            expect(ogImage).toMatchObject({ width: 1200, height: 630, alt: expect.any(String) })
+            expect(new URL(twitterImage, siteUrl()).href).toBe(`${origin}/opengraph-image`)
+        }
     })
 })
