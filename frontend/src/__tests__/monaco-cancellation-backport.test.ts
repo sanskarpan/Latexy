@@ -30,10 +30,10 @@ for (const [relative, integrity] of Object.entries(MONACO_BACKPORT.files) as Arr
 const esmPath = 'esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js'
 const amdPath = 'min/vs/editor.api-CalNCsUg.js'
 if (sha256(readFileSync(path.join(patchedRoot, esmPath))) === MONACO_BACKPORT.files[esmPath].patched) {
-  execFileSync('git', ['apply', '--reverse', patchPath], { cwd: patchedRoot })
+  execFileSync('git', ['-c', 'core.autocrlf=false', 'apply', '--reverse', patchPath], { cwd: patchedRoot })
 }
 for (const relative of Object.keys(MONACO_BACKPORT.files)) originals.set(relative, readFileSync(path.join(patchedRoot, relative), 'utf8'))
-execFileSync('git', ['apply', patchPath], { cwd: patchedRoot })
+execFileSync('git', ['-c', 'core.autocrlf=false', 'apply', patchPath], { cwd: patchedRoot })
 for (const relative of Object.keys(MONACO_BACKPORT.files)) patched.set(relative, readFileSync(path.join(patchedRoot, relative), 'utf8'))
 copyFileSync(path.join(vendorRoot, 'package.json'), path.join(patchedRoot, 'package.json'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))

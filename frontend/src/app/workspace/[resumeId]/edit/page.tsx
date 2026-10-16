@@ -868,12 +868,22 @@ export default function ResumeEditPage() {
     artifact: ArtifactReadyEvent; ownerId: string; resumeId: string; generation: number
     source: string; contentRevision: number
   } | null>(null)
+  const [acceptedArtifactRecoveryPendingIdentity, setAcceptedArtifactRecoveryPendingIdentity] = useState<AcceptedPreviewRecoveryIdentity | null>(null)
   const [acceptedArtifactRecoveryRetryIdentity, setAcceptedArtifactRecoveryRetryIdentity] = useState<AcceptedPreviewRecoveryIdentity | null>(null)
+  const acceptedArtifactRecoveryControllerRef = useRef<AbortController | null>(null)
   const [resumeContentRevision, setResumeContentRevision] = useState<number | null>(null)
   const resumeContentRevisionRef = useRef<number | null>(null)
   resumeContentRevisionRef.current = resumeContentRevision
   const [isOfflinePdf, setIsOfflinePdf] = useState(false)
   const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
+  const blocksAcceptedArtifactRecoveryAdmission = useCallback((source: string) => {
+    const current = offlinePdfIdentityRef.current
+    return [acceptedArtifactRecoveryPendingIdentity, acceptedArtifactRecoveryRetryIdentity].some(identity => Boolean(identity
+      && identity.source === source
+      && identity.ownerId === current.ownerId && identity.resumeId === current.resumeId
+      && identity.generation === current.generation
+      && identity.contentRevision === resumeContentRevisionRef.current))
+  }, [acceptedArtifactRecoveryPendingIdentity, acceptedArtifactRecoveryRetryIdentity])
   const [documentType, setDocumentType] = useState<string>('resume')
   const [showImportModal, setShowImportModal] = useState(false)
   const [qrInserterOpen, setQrInserterOpen] = useState(false)
@@ -1129,6 +1139,10 @@ export default function ResumeEditPage() {
   const isOnline = useOnlineStatus()
   const [rememberedOfflineOwner, setRememberedOfflineOwner] = useState<string | null>(() => getRememberedOfflinePdfOwner())
   const offlinePdfOwnerId = confirmedSessionEnded ? null : sessionUserId ?? rememberedOfflineOwner
+  useEffect(() => () => {
+    acceptedArtifactRecoveryControllerRef.current?.abort()
+    acceptedArtifactRecoveryControllerRef.current = null
+  }, [offlinePdfOwnerId, resumeId])
   // Pin private content to its exact owner/document incarnation before load
   // effects run. An anonymous remembered-offline-owner change is also a boundary.
   const loadedDocumentScopeRef = useRef({ ownerId: offlinePdfOwnerId, resumeId })
@@ -1276,6 +1290,7 @@ export default function ResumeEditPage() {
       setRenderedPdfJobId(null)
       setDisplayedArtifact(null)
       setRecoveredAcceptedArtifact(null)
+      setAcceptedArtifactRecoveryPendingIdentity(null)
       setAcceptedArtifactRecoveryRetryIdentity(null)
       setResumeContentRevision(null)
       setIsOfflinePdf(false)
@@ -1481,6 +1496,7 @@ export default function ResumeEditPage() {
         if (!releaseReservation) continue
         try {
           if (!canRef.current('c05')) continue
+          if (blocksAcceptedArtifactRecoveryAdmission(job.latexContent)) continue
           const r = await apiClient.compileLatex({
             latex_content: job.latexContent,
             resume_id: job.resumeId,
@@ -1498,7 +1514,7 @@ export default function ResumeEditPage() {
       }
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [isCurrentOfflinePdfIdentity, isOnline, isLoading, offlinePdfOwnerId, resumeId, sessionUserId])
+  }, [blocksAcceptedArtifactRecoveryAdmission, isCurrentOfflinePdfIdentity, isOnline, isLoading, offlinePdfOwnerId, resumeId, sessionUserId])
 
   // A compiled PDF is deliberately not in the service-worker cache. When the
   // editor goes offline, restore only this authenticated owner/resume pair
@@ -1773,6 +1789,7 @@ export default function ResumeEditPage() {
     }
     const recoveryIdentity = acceptedArtifactRecoveryRetryIdentity
     if (recoveryIdentity) {
+      const initialPreviewIdentityAtStart = initialPreviewIdentityRef.current
       const jobIdentityAtStart = currentPreviewJobIdentityRef.current
       const currentRecoveryIdentity = (): AcceptedPreviewRecoveryIdentity | null => {
         const current = offlinePdfIdentityRef.current
@@ -1797,6 +1814,10 @@ export default function ResumeEditPage() {
         && sourceAtRenderRef.current === recoveryIdentity.source)
       if (!authToken || !isActive() || !isRecoveryCurrent()) return
       setOfflinePdfError(null)
+      setAcceptedArtifactRecoveryPendingIdentity(recoveryIdentity)
+      const recoveryController = new AbortController()
+      acceptedArtifactRecoveryControllerRef.current?.abort()
+      acceptedArtifactRecoveryControllerRef.current = recoveryController
       try {
         const recovery = await resolveCurrentAcceptedPreviewRecovery(
           recoveryIdentity,
@@ -1804,17 +1825,40 @@ export default function ResumeEditPage() {
           apiClient.getLatestAcceptedArtifact(recoveryIdentity.resumeId, {
             authToken,
             isCurrent: isRecoveryCurrent,
-          }),
+          }, recoveryController.signal),
         )
-        if (!recovery || !isActive() || !isRecoveryCurrent()) return
+        if (acceptedArtifactRecoveryControllerRef.current !== recoveryController || !isActive()) return
+        if (!recovery || !isRecoveryCurrent()) {
+          setAcceptedArtifactRecoveryPendingIdentity(null)
+          if (isActive() && acceptedArtifactRecoveryControllerRef.current === recoveryController) {
+            setAcceptedArtifactRecoveryRetryIdentity(recoveryIdentity)
+            if (isRecoveryCurrent()) setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+          }
+          return
+        }
         const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(recoveryIdentity.source))
-        if (!isActive() || !isRecoveryCurrent()) return
+        if (!isActive() || acceptedArtifactRecoveryControllerRef.current !== recoveryController) return
+        if (!isRecoveryCurrent()) {
+          setAcceptedArtifactRecoveryPendingIdentity(null)
+          setAcceptedArtifactRecoveryRetryIdentity(recoveryIdentity)
+          return
+        }
         if (recovery.source_sha256 !== expectedSourceHash
             || recovery.content_revision !== recoveryIdentity.contentRevision) {
           throw new Error('Accepted PDF identity changed')
         }
         if (!recovery.artifact) {
-          setOfflinePdfError('No previously accepted PDF was found. Retry to check again.')
+          setAcceptedArtifactRecoveryPendingIdentity(null)
+          setAcceptedArtifactRecoveryRetryIdentity(null)
+          setOfflinePdfError(null)
+          const initialIdentity = initialPreviewIdentityAtStart
+          if (initialIdentity === initialPreviewIdentityRef.current && !initialIdentity.consumed
+              && initialIdentity.ownerId === recoveryIdentity.ownerId
+              && initialIdentity.resumeId === recoveryIdentity.resumeId
+              && sourceAtRenderRef.current === recoveryIdentity.source) {
+            setInitialPreviewRequest({ identity: initialIdentity, generation: recoveryIdentity.generation,
+              source: recoveryIdentity.source, compiler })
+          }
           return
         }
         if (!isMatchingAcceptedArtifact(recovery, recoveryIdentity, expectedSourceHash)) {
@@ -1836,14 +1880,23 @@ export default function ResumeEditPage() {
           contentRevision: recoveryIdentity.contentRevision,
         })
         setAcceptedArtifactRecoveryRetryIdentity(null)
+        setAcceptedArtifactRecoveryPendingIdentity(null)
         setOfflinePdfError(null)
         setRightTab('preview')
         return
       } catch {
-        if (isActive() && isRecoveryCurrent()) {
-          setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+        if (acceptedArtifactRecoveryControllerRef.current === recoveryController && isActive()) {
+          setAcceptedArtifactRecoveryPendingIdentity(null)
+          setAcceptedArtifactRecoveryRetryIdentity(recoveryIdentity)
+          if (isRecoveryCurrent()) {
+            setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+          }
         }
         return
+      } finally {
+        if (acceptedArtifactRecoveryControllerRef.current === recoveryController) {
+          acceptedArtifactRecoveryControllerRef.current = null
+        }
       }
     }
     const retryJobId = resolveRetryableCompletedPdfJobId(
@@ -1878,7 +1931,7 @@ export default function ResumeEditPage() {
       setOfflinePdfError('Failed to load the PDF preview. Retry to load the latest compiled PDF.')
     }
   }, [
-    aiStream, acceptedArtifactRecoveryRetryIdentity, clearArtifactPreviewError, compileStream, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId, retryArtifact,
+    aiStream, acceptedArtifactRecoveryRetryIdentity, clearArtifactPreviewError, compileStream, compiler, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId, retryArtifact,
     ownsRenderedJobState, resumeId, saveCachedPdf, sessionUserId, setPreviewBlob, setRightTab,
   ])
 
@@ -1933,6 +1986,9 @@ export default function ResumeEditPage() {
     if (!ownsSourceLoad(sourceLoad)) return
     const suggestionLoad = beginSuggestionDocumentLoad()
     let cancelled = false
+    const acceptedArtifactRecoveryController = new AbortController()
+    acceptedArtifactRecoveryControllerRef.current?.abort()
+    acceptedArtifactRecoveryControllerRef.current = acceptedArtifactRecoveryController
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const initialPreviewIdentity = initialPreviewIdentityRef.current
@@ -2024,7 +2080,8 @@ export default function ResumeEditPage() {
         const loadedContentRevision = Number.isInteger(data.content_revision) ? data.content_revision! : null
         resumeContentRevisionRef.current = loadedContentRevision
         setResumeContentRevision(loadedContentRevision)
-        let acceptedPreviewRecovery: 'found' | 'none' | 'unavailable' = 'none'
+        let acceptedPreviewRecoveryRequired = false
+        let startAcceptedArtifactRecovery: (() => void) | null = null
         setTitle(effectiveTitle)
         setLatexContent(effectiveLatex)
         // Keep the server copy as the CAS baseline even while showing a
@@ -2038,7 +2095,7 @@ export default function ResumeEditPage() {
           setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
         }
         if (!pendingDraft && data.user_id === sessionUserId && Number.isInteger(data.content_revision)) {
-          acceptedPreviewRecovery = 'unavailable'
+          acceptedPreviewRecoveryRequired = true
           const authToken = apiClient.getAuthToken()
           const expectedRecoveryIdentity: AcceptedPreviewRecoveryIdentity = {
             ownerId: sessionUserId, resumeId, generation: generationAtStart,
@@ -2061,73 +2118,93 @@ export default function ResumeEditPage() {
             }
           }
           if (authToken) {
-            try {
-              const recovery = await resolveCurrentAcceptedPreviewRecovery(
-                expectedRecoveryIdentity,
-                () => {
-                  const current = offlinePdfIdentityRef.current
-                  const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
-                  const currentRevision = resumeContentRevisionRef.current
-                  return current.ownerId && current.resumeId && currentRevision !== null
-                    ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
-                        source: currentSource, contentRevision: currentRevision }
-                    : null
-                },
-                apiClient.getLatestAcceptedArtifact(resumeId, {
-                  authToken,
-                  isCurrent: () => isActive() && apiClient.getAuthToken() === authToken,
-                }),
-              )
-              if (!recovery) return
-              if (apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) return
-              const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(data.latex_content))
-              const artifact = recovery.artifact
-              if (apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) return
-              if (!isActive()) {
-                if (apiClient.getAuthToken() === authToken) {
-                  setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
-                  setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+            setAcceptedArtifactRecoveryPendingIdentity(expectedRecoveryIdentity)
+            setAcceptedArtifactRecoveryRetryIdentity(null)
+            startAcceptedArtifactRecovery = () => {
+              void (async () => {
+                try {
+                  const recovery = await resolveCurrentAcceptedPreviewRecovery(
+                    expectedRecoveryIdentity,
+                    () => {
+                      const current = offlinePdfIdentityRef.current
+                      const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
+                      const currentRevision = resumeContentRevisionRef.current
+                      return current.ownerId && current.resumeId && currentRevision !== null
+                        ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
+                            source: currentSource, contentRevision: currentRevision }
+                        : null
+                    },
+                    apiClient.getLatestAcceptedArtifact(resumeId, {
+                      authToken,
+                      isCurrent: () => isActive() && apiClient.getAuthToken() === authToken,
+                    }, acceptedArtifactRecoveryController.signal),
+                  )
+                  if (!isActive() || acceptedArtifactRecoveryControllerRef.current !== acceptedArtifactRecoveryController) return
+                  if (!recovery || apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                    if (isRecoveryIdentityCurrent()) {
+                      setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                    }
+                    return
+                  }
+                  const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(data.latex_content))
+                  if (!isActive() || acceptedArtifactRecoveryControllerRef.current !== acceptedArtifactRecoveryController) return
+                  if (apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                    if (isRecoveryIdentityCurrent()) {
+                      setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                    }
+                    return
+                  }
+                  if (recovery.source_sha256 !== expectedSourceHash
+                      || recovery.content_revision !== data.content_revision) {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                    setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                  } else if (!recovery.artifact) {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(null)
+                    setOfflinePdfError(null)
+                    if (shouldSubmitInitialPreview('none')
+                        && initialPreviewIdentityRef.current === initialPreviewIdentity
+                        && !initialPreviewIdentity.consumed
+                        && effectiveLatex && effectiveLatex.length >= 100) {
+                      setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
+                        source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })
+                    }
+                  } else if (isMatchingAcceptedArtifact(recovery, expectedRecoveryIdentity, expectedSourceHash)) {
+                    const recoveredEvent: ArtifactReadyEvent = {
+                      ...recovery.artifact,
+                      type: 'artifact.ready',
+                      event_id: `recovered-${recovery.artifact.artifact_id}`,
+                      timestamp: Date.now() / 1000,
+                      sequence: 0,
+                    }
+                    setRecoveredAcceptedArtifact({
+                      artifact: recoveredEvent, ownerId: sessionUserId, resumeId,
+                      generation: generationAtStart, source: effectiveLatex,
+                      contentRevision: data.content_revision!,
+                    })
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(null)
+                    setOfflinePdfError(null)
+                  } else {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                    setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                  }
+                } catch {
+                  if (isActive() && acceptedArtifactRecoveryControllerRef.current === acceptedArtifactRecoveryController) {
+                    setAcceptedArtifactRecoveryPendingIdentity(null)
+                    setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                    if (isRecoveryIdentityCurrent() && apiClient.getAuthToken() === authToken) {
+                      setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                    }
+                  }
                 }
-                return
-              }
-              if (recovery.source_sha256 !== expectedSourceHash
-                  || recovery.content_revision !== data.content_revision) {
-                if (isRecoveryIdentityCurrent()) {
-                  setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
-                  setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
-                }
-              } else if (!artifact) {
-                setAcceptedArtifactRecoveryRetryIdentity(null)
-                setOfflinePdfError(null)
-                acceptedPreviewRecovery = 'none'
-              } else if (isMatchingAcceptedArtifact(recovery, expectedRecoveryIdentity, expectedSourceHash)) {
-                const recoveredEvent: ArtifactReadyEvent = {
-                  ...artifact,
-                  type: 'artifact.ready',
-                  event_id: `recovered-${artifact.artifact_id}`,
-                  timestamp: Date.now() / 1000,
-                  sequence: 0,
-                }
-                setRecoveredAcceptedArtifact({
-                  artifact: recoveredEvent, ownerId: sessionUserId, resumeId,
-                  generation: generationAtStart, source: effectiveLatex,
-                  contentRevision: data.content_revision!,
-                })
-                setAcceptedArtifactRecoveryRetryIdentity(null)
-                setOfflinePdfError(null)
-                acceptedPreviewRecovery = 'found'
-              } else if (isRecoveryIdentityCurrent()) {
-                setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
-                setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
-              }
-            } catch {
-              // Unknown recovery state suppresses automatic admission. A
-              // manual GET retry remains available if the read cannot complete.
-              if (isRecoveryIdentityCurrent() && apiClient.getAuthToken() === authToken) {
-                setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
-                setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
-              }
-              if (!isActive()) return
+              })()
             }
           }
         }
@@ -2193,12 +2270,14 @@ export default function ResumeEditPage() {
         // Loading source and resolving grants are independent. Preserve one
         // bootstrap demand until availability settles instead of sampling a
         // fail-closed c05 before its response has arrived.
-        if (shouldSubmitInitialPreview(acceptedPreviewRecovery)
+        if (!acceptedPreviewRecoveryRequired
+          && shouldSubmitInitialPreview('none')
           && initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
           && effectiveLatex && effectiveLatex.length >= 100) {
           setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
             source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })
         }
+        startAcceptedArtifactRecovery?.()
       } catch (error) {
         if (isActive()) {
           finishSourceLoad(sourceLoad, 'error')
@@ -2209,7 +2288,13 @@ export default function ResumeEditPage() {
       }
     }
     void fetchResume()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      acceptedArtifactRecoveryController.abort()
+      if (acceptedArtifactRecoveryControllerRef.current === acceptedArtifactRecoveryController) {
+        acceptedArtifactRecoveryControllerRef.current = null
+      }
+    }
   }, [beginSourceLoad, finishSourceLoad, ownsSourceLoad, beginSuggestionDocumentLoad, finishSuggestionDocumentLoad, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, resumeId, sessionData, sessionLoading, sessionRefetching, sessionError, sessionUserId, setPreviewBlob, setRightTab])
 
   // A completed rewrite remains staged until the user explicitly applies it.
@@ -2638,6 +2723,10 @@ export default function ResumeEditPage() {
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
     const content = checkpointRecoverySourceForRead(currentCheckpointRecoveryPreview, checkpointRecoveryIdentity, editorRef.current?.getValue() || latexContent)
+    if (blocksAcceptedArtifactRecoveryAdmission(content)) {
+      setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+      return
+    }
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     // Offline: queue the compile for later (Feature 79D)
     if (!navigator.onLine) {
@@ -3301,7 +3390,7 @@ export default function ResumeEditPage() {
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
-    if (isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return null
+    if (blocksAcceptedArtifactRecoveryAdmission(content) || isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return null
     setIsSubmitting(true)
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
@@ -3325,10 +3414,10 @@ export default function ResumeEditPage() {
     } finally {
       if (isActive()) setIsSubmitting(false)
     }
-  }, [autoCompileIdentityReady, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId, editorMode])
+  }, [autoCompileIdentityReady, blocksAcceptedArtifactRecoveryAdmission, canEditDocument, compiler, isAnyRunning, isCurrentOfflinePdfIdentity, isLoading, isOnline, isSubmitting, offlinePdfOwnerId, resumeId, editorMode])
 
   const queuePreview = usePreviewScheduler({ identity: `${sessionUserId ?? 'signed-out'}:${resumeId}:${compiler}`,
-    enabled: can('c05') && can('c06') && (autoCompile || (engineSupported && editorMode === 'pdf')) && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady, blocked: isAnyRunning || isSubmitting || isAiSubmitting,
+    enabled: can('c05') && can('c06') && (autoCompile || (engineSupported && editorMode === 'pdf')) && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady && !blocksAcceptedArtifactRecoveryAdmission(latexContent), blocked: isAnyRunning || isSubmitting || isAiSubmitting,
     jobId: compileJobId, status: compileStream.status, submit: async (source) => await handleAutoCompile(source) ?? null,
   })
 
@@ -3336,7 +3425,8 @@ export default function ResumeEditPage() {
     const request = initialPreviewRequest
     if (!request || request.identity !== initialPreviewIdentityRef.current || request.identity.consumed
       || !sessionUserId || isLoading || sessionLoading || entitlementsLoading
-      || !isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)) return
+      || !isCurrentOfflinePdfIdentity(request.identity.ownerId, resumeId, request.generation)
+      || blocksAcceptedArtifactRecoveryAdmission(request.source)) return
     // A settled denial/failure, newer work, or any attempted admission consumes
     // this demand. Regrants, background polls and an ambiguous ACK cannot replay it.
     request.identity.consumed = true
@@ -3368,7 +3458,7 @@ export default function ResumeEditPage() {
       }
     })
   }, [initialPreviewRequest, sessionUserId, resumeId, isLoading, sessionLoading, entitlementsLoading, entitlementsLoaded,
-    can, isCurrentOfflinePdfIdentity, editorMode, latexContent, compiler, currentCheckpointRecoveryPreview,
+    blocksAcceptedArtifactRecoveryAdmission, can, isCurrentOfflinePdfIdentity, editorMode, latexContent, compiler, currentCheckpointRecoveryPreview,
     compileJobId, aiJobId, isAnyRunning, isSubmitting, isAiSubmitting, isOnline, queuePreview])
 
   // Visual edits share the same durable admission fence and latest-revision queue

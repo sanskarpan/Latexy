@@ -131,3 +131,45 @@ it('recovers accepted preview metadata with an owner-scoped GET and never submit
   expect(init.body).toBeUndefined()
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer owner-A-token')
 })
+
+it('retries accepted-artifact metadata once on 503 Retry-After without changing request scope', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  const payload = { artifact: null, source_sha256: 'a'.repeat(64), content_revision: 2 }
+  h.fetch
+    .mockResolvedValueOnce(new Response('', { status: 503, headers: { 'Retry-After': '2' } }))
+    .mockResolvedValueOnce(new Response(JSON.stringify(payload), { headers: { 'Content-Type': 'application/json' } }))
+
+  const pending = h.client.getLatestAcceptedArtifact('resume-A', { authToken: 'owner-A-token', isCurrent: () => true })
+  await vi.advanceTimersByTimeAsync(2_000)
+  await expect(pending).resolves.toEqual(payload)
+  expect(h.fetch).toHaveBeenCalledTimes(2)
+  const calls = h.fetch.mock.calls as [string, RequestInit][]
+  expect(calls.map(([url]) => url)).toEqual([
+    expect.stringContaining('/resumes/resume-A/latest-accepted-artifact'),
+    expect.stringContaining('/resumes/resume-A/latest-accepted-artifact'),
+  ])
+  expect(calls.every(([, init]) => init.method === undefined && init.body === undefined
+    && (init.headers as Record<string, string>).Authorization === 'Bearer owner-A-token')).toBe(true)
+})
+
+it('does not downgrade exhausted accepted-artifact 503 to an authoritative no-artifact response', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  h.fetch.mockResolvedValue(new Response('', { status: 503, headers: { 'Retry-After': '2' } }))
+
+  const pending = h.client.getLatestAcceptedArtifact('resume-A', { authToken: 'owner-A-token', isCurrent: () => true })
+  const rejected = expect(pending).rejects.toThrow('HTTP 503')
+  await vi.advanceTimersByTimeAsync(2_000)
+  await rejected
+  expect(h.fetch).toHaveBeenCalledTimes(2)
+})
+
+it('bounds accepted-artifact recovery across the auth-ready wait and does not dispatch after timeout', async () => {
+  const h = await harness()
+  const pending = h.client.getLatestAcceptedArtifact('resume-A', { authToken: 'owner-A-token', isCurrent: () => true })
+  const rejected = expect(pending).rejects.toThrow('timed out')
+  await vi.advanceTimersByTimeAsync(8_000)
+  await rejected
+  expect(h.fetch).not.toHaveBeenCalled()
+})

@@ -205,7 +205,7 @@ describe('workspace optional-action regressions', () => {
       apiClient: { createResume },
     })()
     expect(createResume).not.toHaveBeenCalled()
-    expect(newResumePage.getFullText()).toContain("can('b01') &&\n    can('c01')")
+    expect(newResumePage.getFullText()).toMatch(/can\('b01'\) &&\s+can\('c01'\)/)
     expect(templateCard.getFullText()).toContain('{allowUse && onSelect && <button')
   })
 

@@ -459,6 +459,19 @@ jobs:
           --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
+      - name: Extract landing screenshots for review
+        if: ${{ !cancelled() && hashFiles('frontend/playwright-quality-report/index.html') != '' }}
+        env:
+          LANDING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/extract-landing-evidence.py playwright-quality-report landing-visual-evidence
+      - name: Upload landing screenshots
+        if: ${{ !cancelled() && hashFiles('frontend/landing-visual-evidence/capture.json') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: landing-visual-evidence
+          path: frontend/landing-visual-evidence
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify guided builder, compile cadence and source-PDF synchronization
         id: editor-owner-regressions
         env:

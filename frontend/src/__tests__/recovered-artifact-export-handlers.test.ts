@@ -62,6 +62,7 @@ async function baseContext() {
   }
   const identityRef = { current: { ownerId: 'owner-a', resumeId: 'resume-a', generation: 2 } }
   const revisionRef = { current: 7 }
+  const initialPreviewIdentity = { ownerId: 'owner-a', resumeId: 'resume-a', consumed: false }
   const editor = { getValue: () => sourceText }
   const apiClient = {
     getAuthToken: () => 'owner-token',
@@ -74,13 +75,18 @@ async function baseContext() {
     resumeContentRevisionRef: revisionRef, editorRef: { current: editor },
     sourceAtRenderRef: { current: sourceText },
     acceptedArtifactRecoveryRetryIdentity: recoveryIdentity,
-    currentPreviewJobIdentityRef: { current: { compileJobId: null, aiJobId: null, busy: false } },
+    acceptedArtifactRecoveryPendingIdentity: null,
+    acceptedArtifactRecoveryControllerRef: { current: null },
+    initialPreviewIdentityRef: { current: initialPreviewIdentity },
+    generationAtStart: 2,
+    currentPreviewJobIdentityRef: { current: { compileJobId: null, aiJobId: null, busy: false, attempt: 0 } },
     artifactRetryIdentityRef: { current: null }, retryArtifact: null,
     isCurrentOfflinePdfIdentity: (owner: string, resume: string, generation: number) =>
       owner === identityRef.current.ownerId && resume === identityRef.current.resumeId && generation === identityRef.current.generation,
     isCurrentAcceptedPreviewRecovery, resolveCurrentAcceptedPreviewRecovery,
-    isMatchingAcceptedArtifact, sha256Bytes, TextEncoder, Date,
-    setAcceptedArtifactRecoveryRetryIdentity: vi.fn(), setRecoveredAcceptedArtifact: vi.fn(),
+    isMatchingAcceptedArtifact, sha256Bytes, TextEncoder, Date, AbortController,
+    setAcceptedArtifactRecoveryRetryIdentity: vi.fn(), setAcceptedArtifactRecoveryPendingIdentity: vi.fn(),
+    setRecoveredAcceptedArtifact: vi.fn(), setInitialPreviewRequest: vi.fn(),
     setOfflinePdfError: vi.fn(), setRightTab: vi.fn(),
   }
   return { context, apiClient, identityRef, revisionRef }
