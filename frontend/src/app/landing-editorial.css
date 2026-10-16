@@ -114,9 +114,6 @@
     height: auto;
     padding: 10px 0 30px;
     margin-top: 14px;
-    /* The reading surface is a 2D stack; depth belongs to the canvas behind it. */
-    perspective: none;
-    isolation: isolate;
     background: linear-gradient(145deg, #15375c 0%, #244c74 55%, #19385a 100%);
 }
 .lp-opening .lp-document-scene::after {
@@ -129,7 +126,6 @@
     letter-spacing: 0.12em;
 }
 .lp-opening .lp-document-stage {
-    z-index: 0;
     opacity: 0.28;
 }
 .lp-page .lp-opening .lp-document-card {
