@@ -1,0 +1,73 @@
+/* Homepage typography. Document samples retain their own template typography. */
+.lp-page .lp-hero h1,
+.lp-page .lp-section-copy h2,
+.lp-page .lp-faq h2,
+.lp-footer .lp-footer-message h2 {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-weight: 550;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+}
+.lp-page .lp-hero h1 {
+    font-size: clamp(52px, 4.6vw, 68px);
+    line-height: 1.06;
+    margin: 0;
+}
+.lp-hero-heading {
+    min-width: 0;
+}
+.lp-page .lp-hero-eyebrow {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    font-weight: 550;
+    letter-spacing: 0.01em;
+    margin: 0 0 16px;
+    color: var(--lp-accent);
+}
+.lp-page .lp-hero h1 > span {
+    color: var(--lp-accent);
+}
+.lp-page .lp-hero-copy > p:first-child {
+    font-size: 16px;
+    line-height: 1.65;
+    font-weight: 400;
+    max-width: 38ch;
+    text-wrap: pretty;
+}
+.lp-page .lp-section-copy h2 {
+    line-height: 1.12;
+}
+.lp-page .lp-section-copy p:not(.lp-section-label) {
+    font-size: 16px;
+    line-height: 1.65;
+    text-wrap: pretty;
+}
+.lp-page .lp-faq summary,
+.lp-page .lp-faq details > p,
+.lp-footer .lp-footer-message > p:not(.lp-footer-eyebrow) {
+    font-size: 16px;
+    line-height: 1.65;
+}
+.lp-page .lp-section-copy .lp-section-label {
+    margin: 0 0 14px;
+    color: var(--lp-accent);
+    font-size: 12px;
+    line-height: 1.5;
+    font-weight: 550;
+    letter-spacing: 0.025em;
+}
+.lp-footer .lp-footer-message h2 {
+    font-size: clamp(32px, 3.8vw, 54px);
+    line-height: 1.12;
+}
+.lp-footer .lp-footer-message h2 em {
+    font-family: inherit;
+    font-size: inherit;
+    font-style: normal;
+    font-weight: inherit;
+    letter-spacing: inherit;
+}
+.lp-gallery-label-mobile {
+    display: none;
+}

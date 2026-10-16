@@ -61,31 +61,24 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         min-height: 44px;
     }
     .lp-page .lp-hero {
-        padding-block: 30px 22px;
-        gap: 20px;
+        padding-block: 28px 26px;
+        gap: 18px;
     }
     .lp-page .lp-hero h1 {
-        font-size: clamp(36px, 10.4vw, 54px);
+        font-size: clamp(38px, 11.6vw, 50px);
         letter-spacing: -0.045em;
-        line-height: 1.08;
+        line-height: 1.04;
         max-width: none;
     }
-    .lp-hero h1 > br {
-        display: none;
-    }
-    .lp-page .lp-hero-second-line {
-        display: contents;
-    }
-    .lp-page .lp-hero-second-line em {
+    .lp-page .lp-hero h1 > span {
         display: block;
-        margin: 4px 0 0;
-        font-size: 1.22em;
-        line-height: 1;
-        letter-spacing: -0.045em;
-        transform: none;
+    }
+    .lp-page .lp-hero-eyebrow {
+        font-size: 12px;
+        margin-bottom: 14px;
     }
     .lp-hero-copy > p:first-child {
-        font-size: 15px;
+        font-size: 16px;
         line-height: 1.6;
         max-width: 38ch;
     }
@@ -106,7 +99,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         margin-top: 12px;
         max-width: 38ch;
     }
-    /* The same folded architecture, composed around one readable phone sample. */
+    /* Phone layout: choose first, then compare a readable sample with adjacent papers. */
     .lp-page .lp-gallery {
         display: flex;
         flex-direction: column;
@@ -118,11 +111,22 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         border-radius: 0;
     }
     .lp-gallery .lp-gallery-controls {
-        padding: 12px 20px 0;
+        order: -1;
+        padding: 0 20px 14px;
         display: block;
     }
     .lp-gallery-controls > span {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--lp-muted);
+        font-size: 12px;
+        line-height: 1.5;
+    }
+    .lp-gallery-label-desktop {
         display: none;
+    }
+    .lp-gallery-label-mobile {
+        display: inline;
     }
     .lp-gallery-controls > div {
         display: grid;
@@ -138,7 +142,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         gap: 6px;
         padding: 8px 4px;
         border: 1px solid var(--lp-line);
-        border-radius: 3px;
+        border-radius: 6px;
         font-size: 12px;
     }
     .lp-gallery-controls button[aria-pressed='true'] {
@@ -151,9 +155,29 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     }
     .lp-page .lp-gallery .lp-document-scene {
         height: auto;
-        padding: 12px 40px 36px;
+        padding: 20px 40px 24px;
         overflow: clip;
-        background: none;
+        background: var(--lp-soft);
+    }
+    .lp-document-stage {
+        opacity: 0.25;
+    }
+    .lp-page .lp-document-card:not([data-slot='center']) {
+        display: block;
+        top: 42px;
+        width: 58%;
+        height: calc(100% - 86px);
+        overflow: clip;
+        pointer-events: none;
+        transform-origin: center;
+    }
+    .lp-page .lp-document-card[data-slot='left'] {
+        left: 34%;
+        transform: translateX(-50%) rotate(-4deg);
+    }
+    .lp-page .lp-document-card[data-slot='right'] {
+        left: 66%;
+        transform: translateX(-50%) rotate(4deg);
     }
     .lp-page .lp-document-card[data-slot='center'] {
         position: relative;
@@ -168,12 +192,12 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         display: none;
     }
     .lp-page .lp-document-card[data-slot='center'] .lp-document-mat {
-        padding: 10px;
+        padding: 6px;
         border-radius: 0;
     }
     .lp-page .lp-document-card[data-slot='center'] .lp-hero-paper {
         min-height: 0;
-        padding: 20px 16px;
+        padding: 16px 14px;
         font-size: 11px;
         line-height: 1.4;
     }
@@ -212,26 +236,34 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     .lp-page .lp-analysis-section .lp-section-copy h2,
     .lp-page .lp-full-section .lp-section-copy h2,
     .lp-page .lp-latex-section .lp-section-copy h2 {
-        font-size: clamp(29px, 8vw, 36px);
-        line-height: 1.1;
+        font-size: clamp(28px, 7.7vw, 34px);
+        line-height: 1.15;
         letter-spacing: -0.035em;
         color: var(--lp-fg);
     }
     .lp-page .lp-section-copy p,
     .lp-page .lp-full-section .lp-section-copy p {
         margin-top: 12px;
-        font-size: 14px;
+        font-size: 16px;
         line-height: 1.65;
     }
     .lp-page .lp-feature-row,
     .lp-page .lp-full-section {
-        padding: 28px 0 32px;
+        padding: 36px 0 40px;
         margin: 0;
         gap: 20px;
     }
     .lp-page .lp-builder-section {
         padding-top: 0;
         border-top: 0;
+    }
+    .lp-page .lp-section-copy h2 br {
+        display: none;
+    }
+    .lp-page .lp-section-copy .lp-section-label {
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.5;
     }
     .lp-page .lp-demo {
         border-radius: 9px;
@@ -488,7 +520,7 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
     .lp-faq summary {
         min-height: 56px;
         padding-block: 16px;
-        font-size: 13px;
+        font-size: 16px;
         line-height: 1.5;
     }
     .lp-footer .lp-footer-lead {
@@ -502,7 +534,9 @@ a[data-marketing-action='primary'] + .lp-primary-fallback,
         margin-bottom: 14px;
     }
     .lp-footer-art {
-        display: none;
+        display: block;
+        width: 78%;
+        max-width: 280px;
     }
     .lp-footer .lp-footer-message > a {
         min-height: 48px;

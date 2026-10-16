@@ -294,13 +294,18 @@ class TestMeteredCompileSurfaces:
     async def test_developer_compile_attaches_ticket(self):
         ticket = _ticket()
         api_key = SimpleNamespace(user_id="user-123", id="key-1")
+        db = MagicMock()
+        db.flush = AsyncMock()
+        db.delete = AsyncMock()
         with (
             patch("app.api.public_api_routes._authorize", AsyncMock(return_value=("free", ticket))),
             patch("app.api.public_api_routes._write_initial_redis_state", AsyncMock()),
+            patch("app.api.public_api_routes._mark_dispatch_started", AsyncMock()),
+            patch("app.api.public_api_routes._mark_dispatch_accepted", AsyncMock(return_value=True)),
             patch("app.api.public_api_routes.submit_latex_compilation") as submit,
         ):
             response = await compile_v1(
-                V1CompileRequest(latex_content=VALID_LATEX), api_key=api_key, db=MagicMock()
+                V1CompileRequest(latex_content=VALID_LATEX), api_key=api_key, db=db
             )
         assert response.status == "queued"
         assert submit.call_args.kwargs["quota_refund"] == ticket.refund_payload()

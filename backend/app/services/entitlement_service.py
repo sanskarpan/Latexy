@@ -949,11 +949,14 @@ class EntitlementService:
         # transaction or reuse an event-loop-bound async engine.
         connection = psycopg2.connect(
             url.render_as_string(hide_password=False), connect_timeout=2,
-            options="-c statement_timeout=2000 -c default_transaction_read_only=on",
         )
         try:
             connection.set_session(isolation_level="REPEATABLE READ", readonly=True)
             with connection.cursor() as cursor:
+                # Keep all limits transaction-local so pooled PostgreSQL
+                # endpoints do not need to accept libpq startup options.
+                cursor.execute("SET LOCAL statement_timeout = '2s'")
+                cursor.execute("SET LOCAL lock_timeout = '1s'")
                 identity = None
                 if user_id is not None:
                     cursor.execute("SELECT role, subscription_plan FROM users WHERE id = %s", (user_id,))

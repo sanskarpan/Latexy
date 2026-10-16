@@ -487,8 +487,8 @@ test('representative public surface produces non-empty visual evidence', async (
             contentType: 'image/png',
         })
     }
-    // Restore the device size after tablet/narrow inspection. Phones reveal
-    // the brand signature; the decorative paper motion stays on desktop.
+    // Restore the device size after tablet/narrow inspection. Both compositions
+    // show the paper illustration; phones also reveal the brand signature.
     await page.setViewportSize(viewport!)
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     const footer = page.locator('.lp-footer')
@@ -503,8 +503,11 @@ test('representative public surface produces non-empty visual evidence', async (
     // The static footer is already in view; only the phone signature needs focus.
     if (testInfo.project.metadata.mobile) await motionTarget.scrollIntoViewIfNeeded()
     await expect(motionTarget).toBeVisible()
+    await expect(artwork).toBeVisible()
+    await expect.poll(() => artwork.evaluate(element =>
+        (element as HTMLImageElement).naturalWidth
+    )).toBeGreaterThan(0)
     if (testInfo.project.metadata.mobile) {
-        await expect(artwork).toBeHidden()
         await expect.poll(() => motionTarget.evaluate(element =>
             getComputedStyle(element).animationName
         )).toBe('lp-section-enter')
@@ -518,6 +521,7 @@ test('representative public surface produces non-empty visual evidence', async (
     }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect.poll(() => motionTarget.evaluate(element => element.getAnimations().length)).toBe(0)
+    await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
     expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
 })
 
