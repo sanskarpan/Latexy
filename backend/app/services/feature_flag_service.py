@@ -1,10 +1,12 @@
 """Feature flag service — runtime control of platform restrictions.
 
 Product capabilities delegate to entitlement_service and bypass all caches.
-The following legacy access modes apply only to the six operational flags:
-- Async get_flag(key, db): DB-backed with 60s in-memory TTL cache. Used by FastAPI routes.
+The following legacy access modes apply only to the operational flags:
+- Async get_flag(key, db): DB-backed with a 60s in-memory TTL cache. Used by FastAPI routes.
+  The billing sales flag always reads the database and fails closed on read errors.
 - Sync sync_get_flag(key): reads Redis key latexy:feature_flags:{key} ("1"/"0").
-  Used by Celery workers. Falls back to True if Redis unavailable or key absent.
+  Current Celery callers use task_priority and compile_timeouts and retain the
+  legacy True fallback if Redis is unavailable or a key is absent.
 
 On update: write DB → set Redis key → clear in-memory cache.
 """
@@ -37,7 +39,7 @@ class FeatureFlagService:
     # ---------------------------------------------------------------- #
 
     async def get_flag(self, key: str, db: AsyncSession) -> bool:
-        """Return whether the flag is enabled. Uses in-memory TTL cache."""
+        """Return whether the flag is enabled; billing sales admission is uncached."""
         feature = get_feature(key)
         if feature is not None:
             if not feature.gateable:
@@ -50,18 +52,27 @@ class FeatureFlagService:
                 return False
         if key not in OPERATIONAL_FLAGS:
             return False
-        now = time.monotonic()
-        cached = _cache.get(key)
-        if cached and cached[1] > now:
-            return cached[0]
+        billing_gate = key == "billing"
+        if billing_gate:
+            # Billing controls whether new paid purchases may start. Do not let
+            # another API worker's cached "on" value outlive a committed pause.
+            _cache.pop(key, None)
+        else:
+            now = time.monotonic()
+            cached = _cache.get(key)
+            if cached and cached[1] > now:
+                return cached[0]
 
         try:
             result = await db.execute(
                 select(FeatureFlag.enabled).where(FeatureFlag.key == key)
             )
             row = result.scalar_one_or_none()
-            enabled = row if row is not None else True  # default safe
-            _cache[key] = (enabled, now + _CACHE_TTL)
+            # Preserve the legacy default for other operational flags. Without
+            # an authoritative billing row, new paid sales remain closed.
+            enabled = row if row is not None else not billing_gate
+            if not billing_gate:
+                _cache[key] = (enabled, now + _CACHE_TTL)
             return enabled
         except Exception as exc:
             logger.warning("feature_flag_service.get_flag DB error", extra={"error_type": type(exc).__name__})
@@ -69,7 +80,9 @@ class FeatureFlagService:
                 await db.rollback()
             except Exception:
                 pass
-            return True  # fail open
+            # Keep legacy operational-flag behavior, but never admit a sale
+            # when the authoritative billing read failed.
+            return False if billing_gate else True
 
     async def get_all_flags(self, db: AsyncSession):
         """Return all FeatureFlag rows."""
