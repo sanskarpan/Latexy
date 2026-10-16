@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import ModeToggle from '@/components/theme/ModeToggle'
-import ContrastToggle from '@/components/theme/ContrastToggle'
 import { MarketingCTA } from './MarketingSections'
 import CapabilityGate from '@/components/CapabilityGate'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
@@ -41,7 +40,6 @@ export default function LandingHeader({
                 {billing && <Link href="/pricing">Pricing</Link>}
             </nav>
             <div className="lp-header-actions">
-                <ContrastToggle className="lp-header-control" />
                 <ModeToggle className="lp-header-control" />
                 <Link
                     className="lp-account-link lp-header-control"
@@ -56,6 +54,7 @@ export default function LandingHeader({
                     className="lp-menu-trigger lp-header-control"
                     aria-label={menuLabel}
                     aria-expanded={menuOpen}
+                    aria-controls="landing-navigation"
                     onClick={onMenuToggle}
                 >
                     {menuText}

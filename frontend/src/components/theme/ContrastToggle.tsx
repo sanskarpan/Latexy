@@ -3,7 +3,7 @@
 import { Contrast } from 'lucide-react'
 import { useTheme } from './ThemeProvider'
 
-export default function ContrastToggle({ className = '' }: { className?: string }) {
+export default function ContrastToggle({ className = '', showLabel = false }: { className?: string; showLabel?: boolean }) {
   const { ready, contrast, toggleContrast } = useTheme()
   const active = contrast === 'high'
 
@@ -18,6 +18,7 @@ export default function ContrastToggle({ className = '' }: { className?: string 
       className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-line transition disabled:cursor-wait disabled:opacity-60 ${active ? 'bg-accent text-accent-fg hover:border-accent hover:text-accent-fg' : 'text-fg-2 hover:border-accent hover:text-accent-strong'} ${className}`}
     >
       <Contrast size={15} aria-hidden="true" />
+      {showLabel && <span>High contrast <span aria-hidden="true">{active ? 'On' : 'Off'}</span></span>}
     </button>
   )
 }
