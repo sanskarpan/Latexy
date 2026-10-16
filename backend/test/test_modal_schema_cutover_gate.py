@@ -9,6 +9,9 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "check_modal_schema_cutover.py"
+BACKEND = SCRIPT.parents[1]
+RECOVERY_SOURCE = (BACKEND / "app" / "services" / "job_result_recovery.py").read_text(encoding="utf-8")
+PUBLIC_API_SOURCE = (BACKEND / "app" / "api" / "public_api_routes.py").read_text(encoding="utf-8")
 spec = importlib.util.spec_from_file_location("check_modal_schema_cutover", SCRIPT)
 assert spec and spec.loader
 gate = importlib.util.module_from_spec(spec)
@@ -41,13 +44,9 @@ class FakeRunner:
             elif args[2].endswith("payment_service.py"):
                 kind, output = "billing", "Dodo-only service"
             elif args[2].endswith("job_result_recovery.py"):
-                kind, output = "recovery", (
-                    gate.ACCEPTED_FILTER + '\n"pdf_path": None'
-                )
+                kind, output = "recovery", RECOVERY_SOURCE
             else:
-                kind, output = "public_api", (
-                    gate.PUBLIC_REDIS_FALLBACK_GUARD + "\n" + gate.PUBLIC_PDF_ACCEPTANCE_GUARD
-                )
+                kind, output = "public_api", PUBLIC_API_SOURCE
         else:
             kind = "ci"
             output = json.dumps({"workflow_runs": [{"head_sha": RECOVERY, "head_branch": "main",
@@ -129,6 +128,36 @@ class SchemaCutoverGateTests(unittest.TestCase):
                              ("public_api", "unfenced Redis fallback")):
             with self.subTest(kind=kind):
                 runner = FakeRunner(**{kind: response(output=source)})
+                with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+                    gate.validate(ENV, runner)
+                self.assertEqual(len(runner.calls), 5)
+
+    def test_pre_1903_public_readers_are_rejected_before_ci_lookup(self):
+        # #1901 has the terminal acceptance guard but falls back to live Redis
+        # for pending/committing or expired durable rows. Keep that shape red.
+        pre_1903 = (PUBLIC_API_SOURCE
+                    .replace(gate.PUBLIC_STATUS_DURABLE_GUARD, "")
+                    .replace(gate.PUBLIC_PDF_DURABLE_GUARD, "if False:"))
+        self.assertNotEqual(pre_1903, PUBLIC_API_SOURCE)
+        runner = FakeRunner(public_api=response(output=pre_1903))
+        with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+            gate.validate(ENV, runner)
+        self.assertEqual(len(runner.calls), 5)
+
+    def test_each_durable_authority_guard_is_required(self):
+        variants = (
+            ("recovery", RECOVERY_SOURCE, gate.PUBLIC_DURABLE_ROW_QUERY,
+             'select(JobFinalization.id).where(JobFinalization.job_id == job_id, JobFinalization.state == "completed").limit(1)'),
+            ("public_api", PUBLIC_API_SOURCE, gate.PUBLIC_DURABLE_HELPER_GUARD, "return True"),
+            ("public_api", PUBLIC_API_SOURCE, gate.PUBLIC_STATUS_DURABLE_GUARD, ""),
+            ("public_api", PUBLIC_API_SOURCE, gate.PUBLIC_PDF_DURABLE_GUARD, "if False:"),
+            ("public_api", PUBLIC_API_SOURCE, 'raise HTTPException(status_code=503',
+             'raise HTTPException(status_code=500'),
+        )
+        for kind, source, guard, replacement in variants:
+            with self.subTest(kind=kind, guard=guard):
+                self.assertIn(guard, source)
+                runner = FakeRunner(**{kind: response(output=source.replace(guard, replacement))})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
                     gate.validate(ENV, runner)
                 self.assertEqual(len(runner.calls), 5)

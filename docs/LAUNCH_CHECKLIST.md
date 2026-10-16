@@ -114,6 +114,18 @@ Source snapshots and limitations are explicit. L01/L02/L03 and broad L09
 acceptance remain open; live sales, Student checkout and production rollout
 are not signed off by those isolated results.
 
+The [October 16 scoped owner/browser update](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6206854567)
+records 31 painted previews and 31 normal PDF downloads after [#1904](https://github.com/sanskarpan/Latexy/pull/1904)
+and [#1905](https://github.com/sanskarpan/Latexy/pull/1905), with owner/job/source,
+accepted artifact, durable storage, quota and cross-owner checks. Temporary QA
+services were stopped. One semantic geometry contract remains unsupported and
+read-only; these 31 cases do not certify the whole product or a production
+backend rollout. The checked main revision `d35b00fe` passed
+[CI](https://github.com/sanskarpan/Latexy/actions/runs/38841762846) and
+[exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38844218686),
+while the [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
+stopped before migration/deploy at missing renderer inputs.
+
 
 - Baseline main [CI 38185842538](https://github.com/sanskarpan/Latexy/actions/runs/38185842538)
   passed all 15 selected jobs, including backend tests/lint, frontend units/build,
@@ -311,8 +323,12 @@ This checklist contains outcomes, not credentials or exploit instructions.
   on disposable databases; preserve financial history, ownership and grants.
 - [ ] Test downgrade refusal where data loss is unsafe. Rollback need not mean a
   destructive schema downgrade; retain compatible code/image rollback plan.
-- [ ] Freeze exact tested source, then input validation → billing preflight → renderer
-  preflight → migrations → backend deploy → health/catalog verification in order.
+- [ ] Freeze exact tested source, then renderer input validation → billing
+  preflight → renderer preflight → commit-scoped schema cutover and distinct
+  forward-recovery approval → migrations → backend deploy → health/catalog
+  verification in order. Before approval, establish the serving fleet and DB
+  revision, drain legacy writers/readers, and verify the recovery image separately;
+  source checks and a green frontend deployment do not supply those facts.
 - [ ] Check automatic frontend delivery independently. With backend held, optional
   UI must give clear unavailable states, preserve recovery, and not assume a
   successful matching backend deploy because Vercel is green.
