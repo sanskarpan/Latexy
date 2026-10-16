@@ -1,0 +1,251 @@
+{
+  "sourceCommit": "bd989cdf2ee653aa748e2617e685dab24fecadaa",
+  "frontendTree": "f9cc96f30f5f01162619fc2cb5c325daaa627a73",
+  "testedMergeCommit": "3225c939bf5d3fde53c1fdef168e3d323aefedfd",
+  "workflowRun": "38955373292",
+  "artifactId": 12072050312,
+  "artifactDigestReportedByGitHub": "sha256:122e2397dc5854ccd8397eb97ac9a10700bd251ac988814620ac8548a6bb36ad",
+  "mode": "production bundle with anonymous session and controlled feature fixtures",
+  "stats": {
+    "total": 210,
+    "expected": 200,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 10,
+    "ok": true
+  },
+  "files": {
+    "desktop-light.png": {
+      "sourceAttachment": "desktop-chromium-landing-page.png",
+      "sha256": "d87f370ced96e0dae5b62e129509471f8c586b7f61175acb69b3cfd37a657629",
+      "pixels": [
+        1440,
+        4052
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "hero-light.png": {
+      "sourceAttachment": "desktop-chromium-landing-page.png",
+      "sha256": "60f0bc90c6eecab8e536c442d4b0b3229292723acc1460d4dd522f71be332f33",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "kind": "exact viewport crop",
+      "crop": [
+        0,
+        0,
+        1440,
+        1000
+      ]
+    },
+    "mobile-full-light.png": {
+      "sourceAttachment": "mobile-chromium-landing-page.png",
+      "sha256": "0b5832c1d12095fbb651ce05cc9a4236329c4fefa62567dfc822a1184af4419c",
+      "pixels": [
+        1082,
+        16682
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-320-light.png": {
+      "sourceAttachment": "mobile-chromium-mobile-320-light-first-screen.png",
+      "sha256": "665a478261492a7ec45892e8be44d7b55399cda5509ceaffda1bd65c0f3ee90c",
+      "pixels": [
+        840,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-390-light.png": {
+      "sourceAttachment": "mobile-chromium-mobile-390-light-first-screen.png",
+      "sha256": "c3961921685a01830673dc2eb514b300c2b1daf1b1d00332b9c82d9e3d5b50e2",
+      "pixels": [
+        1024,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-430-light.png": {
+      "sourceAttachment": "mobile-chromium-mobile-430-light-first-screen.png",
+      "sha256": "44204c3e43ec30d8e4deca27901cdae763ac31b3f913bfefb5b7586984719a6b",
+      "pixels": [
+        1129,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "desktop-gallery-light.png": {
+      "sourceAttachment": "desktop-chromium-landing-light-lp-gallery.png",
+      "sha256": "831b08dedd21dbe98892316eba9f26760e2a762ef08be2c3159e3607ba4d8a4a",
+      "pixels": [
+        721,
+        792
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "desktop-footer-light.png": {
+      "sourceAttachment": "desktop-chromium-landing-light-lp-footer.png",
+      "sha256": "eaaab48cf37428368cf3bd675208ae8c8e6f1069fbe42567bf837dafde598b88",
+      "pixels": [
+        1440,
+        934
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-gallery-light.png": {
+      "sourceAttachment": "mobile-chromium-landing-light-lp-gallery.png",
+      "sha256": "df4c8f0fb25078a9ae70060e333c87b7f2cc48f15091b9f191be92d62d6016fe",
+      "pixels": [
+        998,
+        1357
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-footer-light.png": {
+      "sourceAttachment": "mobile-chromium-landing-light-lp-footer.png",
+      "sha256": "d59746de8277b1bd1bc4811896a572e6e5ea0b1c6d1c3abe81708a07f5ad01b6",
+      "pixels": [
+        1082,
+        2630
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "desktop-dark.png": {
+      "sourceAttachment": "desktop-chromium-landing-page-dark.png",
+      "sha256": "246dfd52440ace5eae6cba6985841de939680f92aa996eed7c656e360e42a8fc",
+      "pixels": [
+        1440,
+        4052
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "hero-dark.png": {
+      "sourceAttachment": "desktop-chromium-landing-page-dark.png",
+      "sha256": "83af8e53870ef3c01fa8f8aacce4ec7024f507431feb45c316ba5268da01c461",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "kind": "exact viewport crop",
+      "crop": [
+        0,
+        0,
+        1440,
+        1000
+      ]
+    },
+    "mobile-full-dark.png": {
+      "sourceAttachment": "mobile-chromium-landing-page-dark.png",
+      "sha256": "19a5ab2692e5b40077a55d309d19092f344f9bce53c2f80879dd1f1f4995a1e4",
+      "pixels": [
+        1082,
+        16682
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-320-dark.png": {
+      "sourceAttachment": "mobile-chromium-mobile-320-dark-first-screen.png",
+      "sha256": "3ed67f6308d75c196e510240c127106bff0cedca21e41340cf33cc37c89cbabe",
+      "pixels": [
+        840,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-390-dark.png": {
+      "sourceAttachment": "mobile-chromium-mobile-390-dark-first-screen.png",
+      "sha256": "0835dd52ab9995212b149b9afcd3122978cd24e6a3c9082040496b2b6743f15b",
+      "pixels": [
+        1024,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-430-dark.png": {
+      "sourceAttachment": "mobile-chromium-mobile-430-dark-first-screen.png",
+      "sha256": "ba00504c84d2defad5af51c627f7a637e71ecb21a140b26b2db6b823cdd4a035",
+      "pixels": [
+        1129,
+        2216
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "desktop-gallery-dark.png": {
+      "sourceAttachment": "desktop-chromium-landing-dark-lp-gallery.png",
+      "sha256": "874439ed229fd20e4a5236e1f261f5ff6d1fb699811617dedb0d318d5f020677",
+      "pixels": [
+        721,
+        792
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "desktop-footer-dark.png": {
+      "sourceAttachment": "desktop-chromium-landing-dark-lp-footer.png",
+      "sha256": "c37fb20902c0fe77b17f3d6ca4de4e0d3f2e94d0e36ba6efd30ad19b233462c3",
+      "pixels": [
+        1440,
+        934
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-gallery-dark.png": {
+      "sourceAttachment": "mobile-chromium-landing-dark-lp-gallery.png",
+      "sha256": "9aa3880521835871fb9228449a437b2135fdbeee134d354daeb682b3b017b23e",
+      "pixels": [
+        998,
+        1357
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "mobile-footer-dark.png": {
+      "sourceAttachment": "mobile-chromium-landing-dark-lp-footer.png",
+      "sha256": "3c1a57365d35845cc1e1acec32488b9392e721292d6922ad849a40e8d29714af",
+      "pixels": [
+        1082,
+        2630
+      ],
+      "kind": "original PNG screenshot",
+      "crop": null
+    },
+    "comparison-desktop-light.png": {
+      "kind": "derived side-by-side comparison; page pixels unchanged",
+      "baselineSourceCommit": "136eb5a95bac7558ae4d3ab78432f415781c1f0b",
+      "baselineAttachment": "desktop-chromium-landing-page.png",
+      "baselineSha256": "45e1363b6a7194001dd61c20344efcafa4969dfa4141b5c6bf30333ff03755e2",
+      "sha256": "3345ff5544285f304e65e53d5a8c4f37bacc3fdf2380b241a83270d89367bf79",
+      "pixels": [
+        2880,
+        1044
+      ]
+    },
+    "comparison-mobile-light.png": {
+      "kind": "derived side-by-side comparison; page pixels unchanged",
+      "baselineSourceCommit": "136eb5a95bac7558ae4d3ab78432f415781c1f0b",
+      "baselineAttachment": "mobile-chromium-mobile-390-light-first-screen.png",
+      "baselineSha256": "2fdea65e396fc70a47fba40c40e95d20804673512dd45594434dd6475212ec4b",
+      "sha256": "7d8727c7f605d5530d192ee270f148ab6d1224f5c38449033ea25aaf3647d4e2",
+      "pixels": [
+        2048,
+        2260
+      ]
+    }
+  }
+}
