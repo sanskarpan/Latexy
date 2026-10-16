@@ -1,14 +1,25 @@
 import type { Metadata } from 'next'
+import { marketingSocialImage } from '@/lib/marketing-social-image'
+
+const title = 'Accessibility — Latexy'
+const description = 'Latexy accessibility status, known limitations, and support contact.'
 
 export const metadata: Metadata = {
-  title: 'Accessibility — Latexy',
-  description: 'Latexy accessibility status, known limitations, and support contact.',
+  title,
+  description,
   alternates: { canonical: '/accessibility' },
   openGraph: {
-    title: 'Accessibility - Latexy',
-    description: 'Latexy accessibility status, known limitations, and support contact.',
+    title,
+    description,
     url: '/accessibility',
     type: 'website',
+    images: [marketingSocialImage],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title,
+    description,
+    images: [marketingSocialImage.url],
   },
 }
 

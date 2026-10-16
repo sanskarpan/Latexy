@@ -58,12 +58,17 @@ describe('marketing origin consistency', () => {
         const origin = 'https://resume.example.org'
         vi.stubEnv('NEXT_PUBLIC_APP_URL', origin)
 
-        for (const metadata of [templatesMetadata, updatesMetadata]) {
+        for (const metadata of [templatesMetadata, updatesMetadata, privacyMetadata, termsMetadata, accessibilityMetadata]) {
+            expect(typeof metadata.title).toBe('string')
+            expect(typeof metadata.description).toBe('string')
+            expect((metadata.title as string).trim()).not.toBe('')
+            expect((metadata.description as string).trim()).not.toBe('')
             expect(metadata.title).not.toBe(homeMetadata.title)
             expect(metadata.description).not.toBe(homeMetadata.description)
         }
 
-        for (const metadata of [platformMetadata, resourcesMetadata, pricingMetadata, faqMetadata, templatesMetadata, updatesMetadata]) {
+        for (const metadata of [platformMetadata, resourcesMetadata, pricingMetadata, faqMetadata, templatesMetadata, updatesMetadata,
+            privacyMetadata, termsMetadata, accessibilityMetadata]) {
             const ogImages = metadata.openGraph?.images
             const twitterImages = metadata.twitter?.images
             expect(Array.isArray(ogImages)).toBe(true)
@@ -73,6 +78,11 @@ describe('marketing origin consistency', () => {
             expect(new URL(ogImage.url, siteUrl()).href).toBe(`${origin}/opengraph-image`)
             expect(ogImage).toMatchObject({ width: 1200, height: 630, alt: expect.any(String) })
             expect(new URL(twitterImage, siteUrl()).href).toBe(`${origin}/opengraph-image`)
+        }
+
+        for (const metadata of [privacyMetadata, termsMetadata, accessibilityMetadata]) {
+            expect(metadata.twitter?.title).toBe(metadata.title)
+            expect(metadata.twitter?.description).toBe(metadata.description)
         }
     })
 })
