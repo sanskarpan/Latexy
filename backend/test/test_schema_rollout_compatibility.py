@@ -114,6 +114,43 @@ def test_read_only_cutover_count_detects_later_legacy_writes(isolated_schema):
         assert connection.scalar(text("SELECT COUNT(*) FROM payments")) == 2
 
 
+def test_cutover_count_distinguishes_valid_and_mismatched_id_pairs(isolated_schema):
+    with isolated_schema.begin() as connection:
+        connection.execute(text("CREATE TABLE subscriptions (id uuid PRIMARY KEY, razorpay_subscription_id varchar(255))"))
+        connection.execute(text("CREATE TABLE payments (id uuid PRIMARY KEY, razorpay_payment_id varchar(255))"))
+        for table in ("subscriptions", "payments"):
+            connection.execute(text(f"INSERT INTO {table} (id) VALUES (:id)"), {"id": str(uuid4())})
+
+        migration = _migration("0065_provider_neutral_billing.py")
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+        schema = connection.scalar(text("SELECT current_schema()"))
+        # Both-null historical rows are preserved by the real backfill.
+        assert billing_identity_mismatch_count(connection, schema=schema) == 0
+
+        def insert_pair(table: str, legacy_column: str, generic_column: str,
+                        provider: str, legacy: str | None, generic: str | None) -> None:
+            connection.execute(text(
+                f"INSERT INTO {table} (id, provider, {legacy_column}, {generic_column}) "
+                "VALUES (:id, :provider, :legacy, :generic)"
+            ), {"id": str(uuid4()), "provider": provider, "legacy": legacy, "generic": generic})
+
+        identities = (
+            ("subscriptions", "razorpay_subscription_id", "provider_subscription_id"),
+            ("payments", "razorpay_payment_id", "provider_payment_id"),
+        )
+        for identity in identities:
+            insert_pair(*identity, "dodo", None, "dodo_valid")
+            insert_pair(*identity, "razorpay", "legacy_valid", "legacy_valid")
+        assert billing_identity_mismatch_count(connection, schema=schema) == 0
+
+        for identity in identities:
+            insert_pair(*identity, "razorpay", "legacy_one_null", None)
+            insert_pair(*identity, "razorpay", None, "generic_one_null")
+            insert_pair(*identity, "razorpay", "legacy_mismatch", "generic_mismatch")
+        assert billing_identity_mismatch_count(connection, schema=schema) == 6
+
+
 def test_0065_refuses_downgrade_after_new_dodo_payment(isolated_schema):
     with isolated_schema.begin() as connection:
         connection.execute(text("CREATE TABLE subscriptions (id uuid PRIMARY KEY, razorpay_subscription_id varchar(255))"))

@@ -2,7 +2,9 @@
 
 This runbook concerns the Modal backend schema and builds. It grants no approval
 to deploy, change credentials, enable sales, or run a production migration.
-The current production database revision and serving backend SHA remain unknown.
+Prior read-only database and deployment-pointer observations exist, but they
+do not establish compatibility across the full serving fleet. Reverify the
+cutover evidence for the exact release before approving migration or recovery.
 
 ## Source evidence and failure modes
 
@@ -44,8 +46,8 @@ For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/3
 and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38867427620)
 passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38867427592)
 stopped at renderer input validation; billing preflight, cutover approval,
-migration and deploy were skipped. None of those results identifies the
-currently serving Modal revision or database head. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
+migration and deploy were skipped. Those workflow results alone do not establish
+the full serving fleet or cutover-time schema state. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
 binds an immutable image and asset marker to an earlier source revision. Its
 11 recorded source-file hashes match the current Windows checkout bytes, but
 the complete backend tree differs and production rollout was not certified.
@@ -73,8 +75,8 @@ the complete backend tree differs and production rollout was not certified.
    and `11890a1d` (#1901), whose public PDF reader can fall back to live Redis
    for pending, committing or expired durable jobs. Source checks accept the
    #1903 fix at `359806d2` and #1904 at `4182705d`, but this does not
-   establish a distinct deployable recovery image, drained fleet or production
-   database revision. Do not nominate a recovery SHA from source checks alone.
+   establish a distinct deployable recovery image, drained fleet or cutover-time
+   database compatibility. Do not nominate a recovery SHA from source checks alone.
 4. Review the exact candidate SHA and recovery SHA, then set Production
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
    `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and
@@ -113,9 +115,9 @@ TEST_POSTGRES_ALLOW_SCHEMA_CREATE=1 SKIP_INFRA_CHECK=1 \
 pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 ```
 
-Four tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
-upgrade on minimal tables, check legacy/new billing writes, the redacted
-identity-mismatch count and downgrade refusal, and compare old versus
+Five tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
+upgrade on minimal tables, check legacy/new billing writes, null and mismatched
+identifier pairs, the redacted identity-mismatch count and downgrade refusal, and compare old versus
 accepted-only compilation selection. They drop
 their schemas even on assertion failure. The gate tests run with mocked GitHub
 and Git commands and need no external service. CI has a dedicated verbose step
