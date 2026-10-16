@@ -1814,8 +1814,7 @@ export default function ResumeEditPage() {
           throw new Error('Accepted PDF identity changed')
         }
         if (!recovery.artifact) {
-          setAcceptedArtifactRecoveryRetryIdentity(null)
-          setOfflinePdfError('No previously accepted PDF is available for this resume.')
+          setOfflinePdfError('No previously accepted PDF was found. Retry to check again.')
           return
         }
         if (!isMatchingAcceptedArtifact(recovery, recoveryIdentity, expectedSourceHash)) {

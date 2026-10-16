@@ -118,6 +118,23 @@ describe('recovered accepted PDF actions through the actual page handlers', () =
     expect(h.apiClient.compileLatex).not.toHaveBeenCalled()
   })
 
+  it('does not publish a late accepted artifact after a newer compile attempt starts', async () => {
+    const h = await baseContext()
+    let finish!: (value: AcceptedPreviewRecoveryResponse) => void
+    h.apiClient.getLatestAcceptedArtifact.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const retry = evaluateHandler('retryOfflinePdf', h.context)
+    const pending = retry()
+    await Promise.resolve()
+    ;(h.context.currentPreviewJobIdentityRef as { current: { compileJobId: string | null; aiJobId: string | null; busy: boolean; attempt: number } }).current = {
+      compileJobId: 'new-compile', aiJobId: null, busy: true, attempt: 1,
+    }
+    finish(response)
+    await pending
+
+    expect(h.context.setRecoveredAcceptedArtifact).not.toHaveBeenCalled()
+    expect(h.apiClient.compileLatex).not.toHaveBeenCalled()
+  })
+
   it('uses the same recovered-artifact export gate for download and share', async () => {
     for (const name of ['handleDownload', 'shareOrDownloadPdf']) {
       const downloadBlob = vi.fn()

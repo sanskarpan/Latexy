@@ -4,7 +4,7 @@ import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PreviewScheduler } from '@/lib/preview-scheduler'
 import type { AccountPreferenceRequestContext } from '@/lib/api-client'
-import { isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview } from '@/lib/accepted-artifact-recovery'
+import { isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview, type AcceptedPreviewRecoveryResponse } from '@/lib/accepted-artifact-recovery'
 import { sha256Bytes } from '@/hooks/useArtifactPreview'
 
 const source = ts.createSourceFile('editor/page.tsx', readFileSync(
@@ -84,6 +84,7 @@ function harness() {
     offlinePdfIdentityRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A', generation: 1 } },
     recoveredAcceptedArtifact: null,
     sessionUserId: 'owner-A', resumeId: 'resume-A', isLoading: false, sessionLoading: false, initialPreviewRequest: null,
+    loadContextRef: { current: null },
     entitlementsLoading: true, entitlementsLoaded: false,
     sourceLoadStatus: 'unresolved', sourceLoadKind: null, sourceLoadReady: false, finishSourceLoad,
     ownsSourceLoad: (ticket: SourceLoadTicket) => ticket === currentSourceLoad && ticket.ownerId === context.sessionUserId
@@ -157,6 +158,7 @@ function harness() {
       context.initialPreviewIdentity = identityRef!.current
       context.generationAtStart = generation
       const loadContext: Record<string, unknown> = { ...context, cancelled: false, ownerAtStart: context.sessionUserId }
+      ;(context.loadContextRef as { current: Record<string, unknown> | null }).current = loadContext
       loadContext.isActive = evaluate(`(${loadActive.getText(source)})`, loadContext)
       await evaluate(`(${fetchResume.getText(source)})()`, loadContext)
     },
@@ -244,6 +246,28 @@ describe('saved accepted artifact recovery through the actual extracted loader',
       source: initialSource, contentRevision: 7,
     }))
     expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
+    expect(h.submit).not.toHaveBeenCalled()
+    h.dispose()
+  })
+
+  it('keeps an identity-bound GET retry after the initial recovery request is aborted by cleanup', async () => {
+    const h = harness()
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    const recovery = deferred<AcceptedPreviewRecoveryResponse>()
+    h.getLatestAcceptedArtifact.mockReturnValueOnce(recovery.promise as never)
+    const loading = h.load()
+    for (let i = 0; i < 8 && !h.getLatestAcceptedArtifact.mock.calls.length; i++) await Promise.resolve()
+    expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+    ;((h.context.loadContextRef as { current: Record<string, unknown> }).current).cancelled = true
+    recovery.reject(new DOMException('Aborted', 'AbortError'))
+    await loading
+
+    expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1, source: initialSource, contentRevision: 7,
+    }))
+    expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
+    expect(h.context.initialPreviewRequest).toBeNull()
     expect(h.submit).not.toHaveBeenCalled()
     h.dispose()
   })
