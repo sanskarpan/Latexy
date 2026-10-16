@@ -59,7 +59,7 @@ describe('editor save reliability', () => {
     expect(EDITOR).toContain('if (isLoading || !sessionUserId) return')
     expect(EDITOR).toContain('const count = await pendingDraftCount(sessionUserId)')
     expect(EDITOR).toContain('if (isActive()) setOfflinePendingCount(count)')
-    expect(EDITOR).toContain('[isCurrentOfflinePdfIdentity, isOnline, isLoading, offlinePdfOwnerId, resumeId, sessionUserId]')
+    expect(EDITOR).toContain('[blocksAcceptedArtifactRecoveryAdmission, isCurrentOfflinePdfIdentity, isOnline, isLoading, offlinePdfOwnerId, resumeId, sessionUserId]')
   })
 
   it('documents the browser-profile boundary for cold offline recovery', () => {

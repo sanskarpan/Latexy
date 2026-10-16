@@ -8,6 +8,7 @@ import { createTraceHeaders, trackBusinessEvent } from './telemetry'
 import type { ATSDeepAnalysis, RenderArtifact } from './event-types'
 import { readEngineCapability } from './engine-capability'
 import type { AdminPlanCatalogResponse, CatalogPlanUpdate, CatalogQuotaUpdate } from './plan-catalog'
+import { fetchAcceptedArtifact } from './accepted-artifact-recovery'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -1560,6 +1561,7 @@ class ApiClient {
     ) {
       throw new Error('Account request context changed before dispatch')
     }
+    if (init.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const headers: Record<string, string> = {
       ...(this.headers({}, this.shouldSendJsonContentType(init)) as Record<string, string>),
       ...((init.headers as Record<string, string> | undefined) ?? {}),
@@ -1761,12 +1763,26 @@ class ApiClient {
     return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}`)
   }
 
-  async getLatestAcceptedArtifact(resumeId: string, accountContext: AccountPreferenceRequestContext) {
-    return this.request<{
-      artifact: (import('@/lib/event-types').RenderArtifact & { job_id: string }) | null
-      source_sha256: string
-      content_revision: number
-    }>(`/resumes/${encodeURIComponent(resumeId)}/latest-accepted-artifact`, { cache: 'no-store' }, accountContext)
+  async getLatestAcceptedArtifact(resumeId: string, accountContext: AccountPreferenceRequestContext, signal?: AbortSignal) {
+    return fetchAcceptedArtifact(
+      (requestSignal) => this.authedFetch(
+        `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/latest-accepted-artifact`,
+        { cache: 'no-store', signal: requestSignal },
+        accountContext,
+      ),
+      async (response) => {
+        if (!response.ok) {
+          const bodyText = await response.text().catch(() => '')
+          throw new Error(`HTTP ${response.status}: ${parseApiErrorMessage(bodyText, response.statusText)}`)
+        }
+        return response.json() as Promise<{
+          artifact: (import('@/lib/event-types').RenderArtifact & { job_id: string }) | null
+          source_sha256: string
+          content_revision: number
+        }>
+      },
+      signal,
+    )
   }
 
   async createResume(resume: ResumeCreate): Promise<ResumeResponse> {

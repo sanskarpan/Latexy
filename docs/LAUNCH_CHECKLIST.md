@@ -126,6 +126,14 @@ backend rollout. The checked main revision `d35b00fe` passed
 while the [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
 stopped before migration/deploy at missing renderer inputs.
 
+The [October 16 application acceptance record](audits/resume-engine/acceptance-2026-10-16/README.md)
+adds the remaining 45 normal owner/browser cases, completing the defined
+76-PDF matrix, plus a separate Guided Builder create/form/save/preview/download
+journey. It records a successful isolated 61-table restore rehearsal, distinct
+recovery-code startup and live Dodo catalog reads/previews. These observations
+do not close the production deployment, real payment/lifecycle, broader product
+journey or service-level gates. The temporary QA services were stopped.
+
 
 - Baseline main [CI 38185842538](https://github.com/sanskarpan/Latexy/actions/runs/38185842538)
   passed all 15 selected jobs, including backend tests/lint, frontend units/build,

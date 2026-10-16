@@ -53,6 +53,7 @@ function harness() {
   const getDraft = vi.fn().mockResolvedValue(null), getOfflineCompiledPdf = vi.fn().mockResolvedValue(null)
   const editor = { setValue: vi.fn() }
   const context: Record<string, any> = {
+    AbortController, acceptedArtifactRecoveryControllerRef: { current: null },
     shouldSubmitInitialPreview, resumeContentRevisionRef: { current: null },
     sessionData: session('owner-a'), sessionUserId: 'owner-a', sessionLoading: false, sessionRefetching: false, sessionError: null,
     resumeId: 'document-a', rememberedOfflineOwner: 'owner-a', isLoading: false, resumeLoadError: null,

@@ -62,6 +62,9 @@ function harness(page: keyof typeof pages) {
     apiClient: { compileLatex: submit, optimizeAndCompile: submit },
     recordPreviewAction, toast, editorMode: 'pdf', previewErrorMessage: (error: Error) => error.message,
     canEditDocument: true, isLoading: false, isOnline: true, autoCompileIdentityReady: true,
+    // This harness exercises ordinary previews without an accepted-artifact
+    // recovery lookup in flight for the captured source identity.
+    blocksAcceptedArtifactRecoveryAdmission: () => false,
     resumeId: 'document', compiler: 'lualatex', userInitiatedJobRef: { current: false },
     setLastStartedJobKind: vi.fn(), setRightTab: vi.fn(),
   })
