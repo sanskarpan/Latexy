@@ -81,6 +81,11 @@ async function mockAuth(page: Page) {
 
 async function mockWorkspaceApi(page: Page) {
   await page.route('**/ws/**', (route) => route.abort())
+  await page.route((url) => url.pathname === '/config/entitlements', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ features: { b03: true } }),
+  }))
 
   await page.route(
     (url) =>
