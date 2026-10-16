@@ -347,10 +347,19 @@ _secrets = [
 # containers; renderer_preflight uses this same full API configuration by design.
 _api_secrets = [*_secrets]
 if _billing_secret_name:
-    # Append last so its Dodo variables override any legacy values in the opaque
-    # backend secret while preserving every unrelated key in that secret. This
+    # Append after named base secrets so Dodo variables override legacy values
+    # while preserving every unrelated key in the opaque backend secret. This
     # list is only attached to API and billing-configuration preflight functions.
     _api_secrets.append(modal.Secret.from_name(_billing_secret_name))
+
+# Named Secrets can shadow image environment variables. Bind the deployment
+# choice after every opaque secret and before registering any function so API,
+# worker, scheduler, and operator functions receive the same hold mode.
+_deployment_hold_secret = modal.Secret.from_dict(
+    {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE}
+)
+_secrets.append(_deployment_hold_secret)
+_api_secrets.append(_deployment_hold_secret)
 
 
 # ---------------------------------------------------------------------------

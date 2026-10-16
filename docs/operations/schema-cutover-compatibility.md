@@ -120,6 +120,10 @@ Use the deployment workflow's two explicit phases:
    disabled. Runtime worker guards also protect against retained schedule
    metadata. Operator migrations, preflights and catalog synchronization remain
    explicit operations during this phase.
+   The selected value is also appended as the final inline secret to both
+   function secret lists before registration. It overrides stale hold values
+   in base, storage, Redis or billing secrets; API and worker functions cannot
+   choose different modes through those bundles.
 3. Let the held workflow finish migration, the repeated financial preflight,
    deployment identity verification, catalog work and health checks. Verify the
    actual schema head and safe-disabled purchase state separately. Public

@@ -105,6 +105,49 @@ safely disabled. Production was not migrated or deployed during these checks.
 A read-only fleet observation confirmed the existing deployment metadata; it
 did not claim a drain, whole-fleet image mapping or serving-source attestation.
 
+## Current admission and cache check
+
+A separate isolated normal-API run at exact source
+`ec07c17ea05bc2a94ce79d66e575ff9b993e106a` passed three submissions: a cold
+compile, an identical cache hit, and a cache miss after editing the same saved
+document from revision 1 to revision 2. Two fresh synthetic owners exercised
+normal authentication and owner-only access. Purchases and outgoing email were
+disabled; this run used the previously certified immutable renderer image and
+assets, without another security probe.
+
+The cold and hit results had different job/artifact identities and identical
+PDF bytes, plain SyncTeX, canonical geometry and actual durable renderer
+fingerprints. Each admission charged one quota unit. Other-owner PDF, preview,
+geometry, SyncTeX, job-state and job-result requests were denied. Read-only
+database, Redis and object checks verified the accepted results and stored
+bytes. Editing invalidated the current-artifact lookup before the final
+compile; its accepted result belonged to revision 2 and changed the PDF.
+
+An independent read-only database snapshot confirmed exactly one document,
+three finalizations, three compilations and three accepted artifacts for the
+two owners, with no extra work. The first count-check helper was rejected by
+Neon's pooler before SQL because it passed unsupported startup options. A
+separate corrected helper applied transaction-local timeouts and passed; it
+replayed no API requests. The original attempt remains recorded.
+
+Private evidence SHA-256 values:
+
+- Three-step report: `75bd0b783a8c8933034ef7ac7637ad775e284e15db444998942b25e37c3a5de4`.
+- Checkpoint: `3cb922199a7b5ca8a5f270fea30cbd24f1926245c16bd9c5f7dec682696510f9`.
+- Independent count report: `51bab62951592412bc2262f00e920703f2085f79ba5dc87c4ec521c36fe1642b`.
+
+Both temporary QA applications were subsequently confirmed stopped with zero
+tasks, and local QA ports 8030/5180 were closed. This was API acceptance, not a
+new browser-paint or performance certification. It predates the following
+Modal secret-precedence repair, which changes deployment binding rather than
+the renderer or admission implementation and requires its own current-head CI.
+
+The historical recovery revision `4182705d` above predates the traffic hold.
+Its restore/schema evidence remains valid within that scope, but it cannot be
+nominated for the held rollout. Production requires a distinct hold-capable
+recovery revision with canonical CI, actual image availability and separate
+readiness/recovery validation before migration.
+
 ## Dodo live catalog
 
 The merchant UI showed live verification approved. The production lifecycle
