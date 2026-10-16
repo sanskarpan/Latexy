@@ -19,6 +19,7 @@ These references informed the homepage refinement. The implementation is origina
 ## Applied treatment
 
 - The opening is now a two-part editorial composition: a direct résumé message beside a sharp HTML document workbench. The sample heading can be edited locally, and the same content survives switching among Classic, Modern and Minimal. The interface says clearly that these trial edits are not saved.
+- The selected document stays in normal layout flow, so its frame grows with long names or roles. Text wraps inside the paper rather than clipping against a fixed scene height.
 - On phones, the workbench shows a compact name, role, experience and skills sample; its existing disclosure reveals the full example. This keeps the control and document within the established 550px mobile composition contract at 320px, 390px and 430px.
 - A five-chapter navigation ties the existing builder, ATS, tailoring, application tracking and LaTeX examples together. Its active state follows the section in view through IntersectionObserver. The links remain plain anchors if observation is unavailable.
 - The page follows the actual product sequence and varies its section treatment, rather than repeating the same feature card layout or adding decorative animation that competes with the demos.
@@ -54,3 +55,5 @@ The first browser pass exposed a CSS prefix normalization issue that removed the
 Final production screenshots, cross-browser results and source hashes are recorded in the PR and its accompanying `design-qa.md` evidence report.
 
 The second local design pass checked the actual desktop and phone page in light and dark themes. A first draft made the mobile workbench too tall; the existing quality test caught it. The compact sample was shortened without relaxing the test, and the mobile composition then passed at 320px, 390px and 430px in both themes. The new workbench browser test verifies that edited HTML changes immediately, persists across layout selection, and resets on a fresh visit.
+
+The final review adds unbroken long-name/role coverage and inspects actual heading pixels in the phone screenshot after a theme change. Screenshot capture waits for scrolling and two paint frames to settle. CI publishes a separate small `landing-visual-evidence` artifact containing unchanged report PNGs and per-file hashes for PR review.

@@ -30,7 +30,10 @@ try {
             await page.locator('.lp-footer').scrollIntoViewIfNeeded()
             await page.locator('.lp-footer-art img').evaluate(image => image.decode())
             await page.evaluate(() => document.fonts.ready)
-            await page.evaluate(() => scrollTo(0, 0))
+            await page.evaluate(() => {
+                scrollTo({ top: 0, left: 0, behavior: 'instant' })
+                return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+            })
             await page.waitForTimeout(400)
             await page.screenshot({ path: resolve(outputDir, `${label}-${theme}.png`), fullPage: true, animations: 'disabled' })
             await page.screenshot({ path: resolve(outputDir, `${label}-${theme}-first-screen.png`), animations: 'disabled' })

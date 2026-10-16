@@ -22,6 +22,33 @@ const PUBLIC_ENGINE_FEATURES = { ...QUALITY_FEATURES, b10: true }
 
 const diagnosticsByPage = new Map<Page, string[]>()
 
+async function expectPaintedSampleHeading(page: Page, screenshot: Buffer) {
+    const heading = await page.locator('.lp-document-card[data-slot="center"] .lp-hero-paper h2').boundingBox()
+    expect(heading).not.toBeNull()
+    const viewport = page.viewportSize()!
+    expect(heading!.y + heading!.height).toBeLessThanOrEqual(viewport.height)
+    // DOM visibility alone missed a blank-paper compositor regression after
+    // switching theme. Inspect the heading's actual pixels in the page capture.
+    const inkPixels = await page.evaluate(async ({ encoded, box, width }) => {
+        const image = new Image()
+        image.src = `data:image/png;base64,${encoded}`
+        await image.decode()
+        const scale = image.width / width
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(box.width * scale)
+        canvas.height = Math.ceil(box.height * scale)
+        const context = canvas.getContext('2d')!
+        context.drawImage(image, box.x * scale, box.y * scale, box.width * scale, box.height * scale, 0, 0, canvas.width, canvas.height)
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+        let ink = 0
+        for (let index = 0; index < pixels.length; index += 4) {
+            if (pixels[index] < 150 && pixels[index + 1] < 150 && pixels[index + 2] < 150 && pixels[index + 3] > 200) ink += 1
+        }
+        return ink
+    }, { encoded: screenshot.toString('base64'), box: heading!, width: viewport.width })
+    expect(inkPixels, 'The selected sample heading must be painted in the first screen').toBeGreaterThan(20)
+}
+
 async function installPublicPageMocks(page: Page) {
     const { appOrigin, backendOrigin } = qualityOrigins()
     const unmocked: string[] = []
@@ -834,6 +861,16 @@ test('landing workbench updates a real résumé sample and resets on a new visit
     await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
     await expect(gallery.locator('.lp-document-card[data-slot="center"]'))
         .toContainText('Jordan Lee')
+    await gallery.getByRole('textbox', { name: 'Sample name' }).fill('W'.repeat(38))
+    await gallery.getByRole('textbox', { name: 'Sample role' }).fill('W'.repeat(48))
+    const paper = gallery.locator('.lp-document-card[data-slot="center"] .lp-hero-paper')
+    await expect.poll(() => paper.evaluate(element => {
+        const bounds = element.getBoundingClientRect()
+        const scene = element.closest('.lp-document-scene')!.getBoundingClientRect()
+        return Math.max(scene.left - bounds.left, bounds.right - scene.right, bounds.bottom - scene.bottom)
+    })).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(page.viewportSize()!.width + 1)
     await page.reload({ waitUntil: 'networkidle' })
     await expect(gallery.getByRole('textbox', { name: 'Sample name' })).toHaveValue('Alex Morgan')
     await expect(gallery.getByRole('textbox', { name: 'Sample role' }))
@@ -877,9 +914,14 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             expect(
                 await page.evaluate(() => document.documentElement.scrollWidth)
             ).toBeLessThanOrEqual(width + 1)
-            await page.evaluate(() => scrollTo(0, 0))
+            await page.evaluate(() => {
+                scrollTo({ top: 0, left: 0, behavior: 'instant' })
+                return new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+            })
+            const firstScreen = await page.screenshot({ animations: 'disabled' })
+            if (width === 390) await expectPaintedSampleHeading(page, firstScreen)
             await testInfo.attach(`mobile-${width}-${theme}-first-screen`, {
-                body: await page.screenshot({ animations: 'disabled' }),
+                body: firstScreen,
                 contentType: 'image/png',
             })
         }
