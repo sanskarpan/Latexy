@@ -56,7 +56,7 @@ def diagnostic_payload(*, production=True, status="ready", blockers=None, change
         "schema_classification": "current_dodo_head", "counts": {
             "paid_pointer_users": 0, "historical_paid_pointer_users": 0, "historical_team_owners": 0,
             "active_seats_inheriting_historical_owners": 0, "historical_live_mandate_users": 0,
-            "existing_dodo_live_intent_users": 0,
+            "existing_dodo_live_intent_users": 0, "suspect_legacy_billing_rows": 0,
         },
     })
     if change:

@@ -13,10 +13,12 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from scripts.dodo_billing_preflight import billing_identity_mismatch_count
 
 
 def _test_postgres_url() -> str:
@@ -87,6 +89,29 @@ def test_0065_backfill_does_not_classify_later_legacy_writes(isolated_schema):
         assert payment_rows == [("pay_after", "dodo", None), ("pay_before", "razorpay", "pay_before")]
         with pytest.raises(RuntimeError, match="cannot downgrade billing revision 0065"):
             migration.downgrade()
+
+
+def test_read_only_cutover_count_detects_later_legacy_writes(isolated_schema):
+    """Run the diagnostic against real 0065 columns in a disposable schema."""
+    with isolated_schema.begin() as connection:
+        connection.execute(text("CREATE TABLE subscriptions (id uuid PRIMARY KEY, razorpay_subscription_id varchar(255))"))
+        connection.execute(text("CREATE TABLE payments (id uuid PRIMARY KEY, razorpay_payment_id varchar(255))"))
+        connection.execute(text("INSERT INTO subscriptions VALUES (:id, 'sub_before')"), {"id": str(uuid4())})
+        connection.execute(text("INSERT INTO payments VALUES (:id, 'pay_before')"), {"id": str(uuid4())})
+        migration = _migration("0065_provider_neutral_billing.py")
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+        schema = connection.scalar(text("SELECT current_schema()"))
+        assert billing_identity_mismatch_count(connection, schema=schema) == 0
+
+        # Reproduce the legacy writer's columns without invoking a provider.
+        connection.execute(text("INSERT INTO subscriptions (id, razorpay_subscription_id) "
+                                "VALUES (:id, 'sub_after')"), {"id": str(uuid4())})
+        connection.execute(text("INSERT INTO payments (id, razorpay_payment_id) "
+                                "VALUES (:id, 'pay_after')"), {"id": str(uuid4())})
+        assert billing_identity_mismatch_count(connection, schema=schema) == 2
+        assert connection.scalar(text("SELECT COUNT(*) FROM subscriptions")) == 2
+        assert connection.scalar(text("SELECT COUNT(*) FROM payments")) == 2
 
 
 def test_0065_refuses_downgrade_after_new_dodo_payment(isolated_schema):

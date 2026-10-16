@@ -67,10 +67,10 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
-    "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "provider_subscription_id",
+    "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
                       "provider_checkout_session_id", "provider_customer_id", "provider_product_id", "provider_event_at",
                       "quoted_amount", "discount_percent", "quoted_tax_inclusive", "current_period_start", "current_period_end"},
-    "payments": {"id", "user_id", "subscription_id", "provider", "provider_payment_id", "provider_event_at",
+    "payments": {"id", "user_id", "subscription_id", "provider", "razorpay_payment_id", "provider_payment_id", "provider_event_at",
                  "amount", "currency", "status"},
     "billing_webhook_events": {"id", "provider", "event_id", "event_type", "payload_sha256", "event_at", "status",
                                "attempts", "last_error", "received_at", "processed_at", "event_resource_id"},
@@ -397,7 +397,31 @@ def aggregate_counts(connection, columns: dict[str, set[str]]) -> dict[str, int]
                               "checkout_pending", "checkout_unknown"]}))
     else:
         counts["existing_dodo_live_intent_users"] = 0
+    payment_columns = columns.get("payments", set())
+    subscription_identity = {"provider", "razorpay_subscription_id", "provider_subscription_id"}
+    payment_identity = {"provider", "razorpay_payment_id", "provider_payment_id"}
+    if subscription_identity <= subscription_columns and payment_identity <= payment_columns:
+        counts["suspect_legacy_billing_rows"] = billing_identity_mismatch_count(connection)
+    elif "provider" in subscription_columns or "provider" in payment_columns:
+        raise ValueError("unsupported_schema")
+    else:
+        counts["suspect_legacy_billing_rows"] = 0
     return counts
+
+
+def billing_identity_mismatch_count(connection, *, schema: str = "public") -> int:
+    """Count mixed-version writes without returning financial identifiers."""
+    if re.fullmatch(r"[a-z][a-z0-9_]*", schema) is None:
+        raise ValueError("invalid_schema")
+    return int(connection.scalar(text(f"""
+        SELECT
+          (SELECT COUNT(*) FROM {schema}.subscriptions
+           WHERE (provider = 'dodo' AND razorpay_subscription_id IS NOT NULL)
+              OR (provider = 'razorpay' AND provider_subscription_id IS DISTINCT FROM razorpay_subscription_id))
+        + (SELECT COUNT(*) FROM {schema}.payments
+           WHERE (provider = 'dodo' AND razorpay_payment_id IS NOT NULL)
+              OR (provider = 'razorpay' AND provider_payment_id IS DISTINCT FROM razorpay_payment_id))
+    """)))
 
 
 def database_report(database_url: str, *, backend_root: Path = BACKEND_ROOT, engine_factory=create_engine) -> dict:
@@ -471,6 +495,8 @@ def collect_report(environ: Mapping[str, str] | None = None, *, backend_root: Pa
             blockers.append("historical_paid_accounts_require_cutover_review")
         if database["counts"]["historical_live_mandate_users"]:
             blockers.append("historical_live_mandates_require_cutover_review")
+        if database["counts"]["suspect_legacy_billing_rows"]:
+            blockers.append("suspect_legacy_billing_rows_require_review")
         report.update(status="blocked" if blockers else "ready", blockers=blockers)
         return report, 1 if blockers else 0
     except DatabaseDiagnosticFailure as failure:
@@ -506,11 +532,13 @@ PUBLIC_REASON_CODES = (
     "billing_disabled", "production_requires_live_mode", "active_credentials_incomplete", "invalid_local_catalog",
     "invalid_configured_sku_expectations", "no_paid_sku_configured", "database_migration_or_review_required",
     "historical_paid_accounts_require_cutover_review", "historical_live_mandates_require_cutover_review",
+    "suspect_legacy_billing_rows_require_review",
     "diagnostics_incomplete", "main_environment_not_production_like", "invalid_local_currency_expectation",
 )
 PUBLIC_COUNT_FIELDS = (
     "paid_pointer_users", "historical_paid_pointer_users", "historical_team_owners",
     "active_seats_inheriting_historical_owners", "historical_live_mandate_users", "existing_dodo_live_intent_users",
+    "suspect_legacy_billing_rows",
 )
 PUBLIC_SCHEMA_STATES = (
     "unknown_requires_review", "legacy_dodo_0061_requires_bridge_validation", "known_mainline_pre_dodo",
@@ -674,6 +702,8 @@ def rollout_assessment(report: Mapping[str, Any], *, allow_configured_live: bool
             reasons.append("rollout_historical_paid_accounts_present")
         if counts["historical_live_mandate_users"]:
             reasons.append("rollout_historical_live_mandates_present")
+        if counts["suspect_legacy_billing_rows"]:
+            reasons.append("rollout_suspect_legacy_billing_rows_present")
         if counts["historical_team_owners"] or counts["active_seats_inheriting_historical_owners"]:
             reasons.append("rollout_historical_team_access_present")
         sales_mode = _public_enum(report["billing_mode"], PUBLIC_ENUM_FIELDS["billing_mode"])

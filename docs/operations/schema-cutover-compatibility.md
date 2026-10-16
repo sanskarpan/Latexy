@@ -6,7 +6,7 @@ The current production database revision and serving backend SHA remain unknown.
 
 ## Source evidence and failure modes
 
-At the checked main revision `d35b00fe6c4630fd842e2fb87f9e3fbfd39139e2` there is one Alembic head,
+At the checked main revision `e9d6f1c2b71722e30efe861703e648ed744c3327` there is one Alembic head,
 `0075_durable_quota_ledger`. The mainline path is `0061` → `0062` → `0063` →
 `0064` → `0065` → `0066` → `0067` → `0068` → `0069_capability_catalog` →
 `0070_plan_catalog` → `0071_plan_quotas` → `0072_capability_roles` →
@@ -29,9 +29,17 @@ an ambiguous revision.
   Downgrading `0062` drops the acceptance state. Treat both as forward recovery
   boundaries, not routine schema rollback targets.
 
-For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38841762846)
-and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38844218686)
-passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
+The read-only billing preflight now counts rows whose retained Razorpay ID
+conflicts with the provider label or generic ID. A nonzero aggregate blocks
+rollout and omits the identifiers from its report. It can detect a completed
+mixed-version write, but its snapshot cannot prove that old writers have
+stopped; the traffic drain and commit-scoped recovery attestation remain required.
+Investigate suspect rows against independent provider evidence. Do not change
+their provider label automatically.
+
+For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38864530611)
+and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38867427620)
+passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38867427592)
 stopped at renderer input validation; billing preflight, cutover approval,
 migration and deploy were skipped. None of those results identifies the
 currently serving Modal revision or database head. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
@@ -102,9 +110,10 @@ TEST_POSTGRES_ALLOW_SCHEMA_CREATE=1 SKIP_INFRA_CHECK=1 \
 pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 ```
 
-Three tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
-upgrade on minimal tables, check legacy/new billing writes and downgrade
-refusal, and compare old versus accepted-only compilation selection. They drop
+Four tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
+upgrade on minimal tables, check legacy/new billing writes, the redacted
+identity-mismatch count and downgrade refusal, and compare old versus
+accepted-only compilation selection. They drop
 their schemas even on assertion failure. The gate tests run with mocked GitHub
 and Git commands and need no external service. CI has a dedicated verbose step
 so each database test reports PASS or SKIP by name. Keep database URLs on a
