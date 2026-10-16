@@ -98,8 +98,8 @@ export default function LandingPage() {
                 </div>
                 <div className="lp-hero-copy">
                     <p>
-                        Write with familiar fields or edit the LaTeX source. Get feedback, tailor
-                        your résumé to a job, and export a PDF.
+                        Use the guided builder or LaTeX editor. Review feedback, tailor your
+                        résumé to a job, and export a PDF.
                     </p>
                     <div className="lp-hero-actions">
                         <MarketingCTA />

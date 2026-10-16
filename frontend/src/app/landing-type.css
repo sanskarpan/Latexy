@@ -33,6 +33,7 @@
     line-height: 1.65;
     font-weight: 400;
     max-width: 38ch;
+    text-wrap: pretty;
 }
 .lp-page .lp-section-copy h2 {
     line-height: 1.12;
