@@ -377,7 +377,7 @@
     .lp-page .lp-opening .lp-document-card:not([data-slot='center']) { display: none; }
     .lp-opening .lp-document-scene::after { display: none; }
     .lp-gallery-personalise { order: 2; gap: 6px; padding: 8px 0 0; }
-    .lp-gallery-personalise input { min-height: 44px; }
+    .lp-gallery-personalise input { min-height: 44px; font-size: 16px; }
     .lp-gallery-personalise p { display: none; }
     .lp-page .lp-mobile-sample-toggle { order: 3; margin: 0; }
     .lp-chapter-intro { display: block; padding: 27px 0 24px; }

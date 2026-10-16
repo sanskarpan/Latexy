@@ -899,6 +899,10 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             const gallery = page.locator('.lp-gallery')
             await expect(gallery.locator('[data-slot="center"] figcaption')).toBeHidden()
             expect((await gallery.boundingBox())!.height).toBeLessThan(550)
+            for (const input of await gallery.getByRole('textbox').all()) {
+                expect(await input.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize)))
+                    .toBeGreaterThanOrEqual(16)
+            }
             const actions = page.locator('.lp-hero-actions > a:visible')
             await expect(actions).toHaveCount(2)
             for (const action of await actions.all()) {
