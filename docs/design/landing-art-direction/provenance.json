@@ -1,95 +1,253 @@
 {
-  "sourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
-  "frontendTree": "de1c3ded008dd226dfb446322068e4563166e575",
-  "sourceEvidence": "hero-production",
+  "sourceCommit": "46e0b5c94f55643d677a04eb8b0ac55abf75fbe8",
+  "frontendTree": "b7ffc0b9a9ab4571f956792f9da8e507aa4715f5",
   "mode": "production",
-  "workflowRun": 38783439606,
-  "artifactId": 11998571304,
-  "artifactSha256": "1ae9b190e4296aae195440c2a8a212c63b4703bd943c56b7e3bcddaed3b75327",
+  "workflowRun": 38855173196,
+  "artifactId": 12027398281,
+  "artifactSha256": "sha256:450cd1c8efac0efdf5377a882460a03345b4471d913e4b6700a2700af53f1a0b",
   "files": {
-    "desktop-dark.png": {
-      "sha256": "46ae79234252f06947a681574fa7da8e888299424bf09166fc8d264942fc0c06",
-      "pixels": [
-        1440,
-        3469
-      ]
-    },
     "desktop-light.png": {
-      "sha256": "f5380b46e83a9b6ad371d1fbf2c6ff4b6e170898dc2f25b543f10ab7941a5d95",
+      "sha256": "b82afea21ef4ce6357bdf6539afa23dcd0e6ae2bb96d350b3ba3fa50e33b51ba",
       "pixels": [
         1440,
-        3469
-      ]
-    },
-    "hero-dark.png": {
-      "sha256": "58c18f517f99f36baa305f6a597d0b3aeb16c7aa7d0dbb71f8c39fe8c08afac3",
-      "pixels": [
-        1440,
-        1000
-      ]
-    },
-    "hero-light.png": {
-      "sha256": "f000a1e975630b9bc4477748f05e1982b56a5e859db64044f76846e9f2a2fdb7",
-      "pixels": [
-        1440,
-        1000
-      ]
-    },
-    "mobile-320-dark.png": {
-      "sha256": "baab7a66d956c730a670608c39b9f43316ba03dd3b61466d16e5d0b0097af4a5",
-      "pixels": [
-        840,
-        2216
-      ]
-    },
-    "mobile-320-light.png": {
-      "sha256": "28d276fbc0a945c52d3fdb224db407505c8bfbacf1f8ab3c3b0737fc70a91608",
-      "pixels": [
-        840,
-        2216
-      ]
-    },
-    "mobile-390-dark.png": {
-      "sha256": "801b7cad498c6b86927481140646d0795dfca4d399ca48804292da88ff5e2a46",
-      "pixels": [
-        1024,
-        2216
-      ]
-    },
-    "mobile-390-light.png": {
-      "sha256": "1d8696a3c2de68a350b15f8d29df0e1e641df83f55845236ba7eef861a616c91",
-      "pixels": [
-        1024,
-        2216
-      ]
-    },
-    "mobile-430-dark.png": {
-      "sha256": "a70b01a36d58bc72ad76c27f06358ce01e544817c6eeabf2a5d2a7bc3c9fe72c",
-      "pixels": [
-        1129,
-        2216
-      ]
-    },
-    "mobile-430-light.png": {
-      "sha256": "695522c19a1a4651ef403a8ae7fd68aac6c0df88df40885cd57e519fa249a8f9",
-      "pixels": [
-        1129,
-        2216
-      ]
-    },
-    "mobile-full-dark.png": {
-      "sha256": "cffe9bb9159dfe8207e9e42253ccfb6e7f14350f410f7d8c6f0b9b4f6b233cce",
-      "pixels": [
-        1082,
-        13537
-      ]
+        3654
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "desktop-chromium-landing-page.png"
     },
     "mobile-full-light.png": {
-      "sha256": "c99d524ec6394910fbdfd139780c3f0c48376e2d9195b1236616420ae9011bbb",
+      "sha256": "86eeb4825faacab3d0158f30a19cfcd9e76a9e63bfead76d1905e4afc534e19c",
       "pixels": [
         1082,
-        13537
-      ]
+        15889
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-page.png"
+    },
+    "hero-light.png": {
+      "sha256": "c6cdcd0ac26a6f1aa4bdefdee4ec306938e6bb0794f8087c3c6ea8a43092554a",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "crop": [
+        0,
+        0,
+        1440,
+        1000
+      ],
+      "kind": "cropped screenshot",
+      "sourceAttachment": "desktop-chromium-landing-page.png"
+    },
+    "mobile-320-light.png": {
+      "sha256": "a9f0f91251c67920b15927d5e3d553e4b5bc5d9289d5f720edf87f6bb3108411",
+      "pixels": [
+        840,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-320-light-first-screen.png"
+    },
+    "mobile-390-light.png": {
+      "sha256": "6c8d1e85ab1feb4e13a7496256058fd730ed36aeb74c13832c103f455a595f10",
+      "pixels": [
+        1024,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-390-light-first-screen.png"
+    },
+    "mobile-430-light.png": {
+      "sha256": "9b3aeb01795ea238dddc328919b24130cac55a84909e3a4b7d85c539e149d4e5",
+      "pixels": [
+        1129,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-430-light-first-screen.png"
+    },
+    "mobile-footer-light.png": {
+      "sha256": "032532d70312537827a7b4e7f70024685bf7cdeb0db1dbf6c1399bfbdf724ea9",
+      "pixels": [
+        1082,
+        2630
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-light-lp-footer.png"
+    },
+    "mobile-gallery-light.png": {
+      "sha256": "2784825af69f3c69e94829595b8e9b300289ddf3042067f6afb0d7cfae91186c",
+      "pixels": [
+        1082,
+        1323
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-light-lp-gallery.png"
+    },
+    "comparison-desktop-light.png": {
+      "sha256": "0fbfbff6745df71244a951470c015f14cb1cb902a5ea1b4497b0add6f9fb05a5",
+      "pixels": [
+        2880,
+        1040
+      ],
+      "crop": null,
+      "kind": "derived comparison",
+      "baselineSourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
+      "baselineWorkflowRun": 38783439606,
+      "method": "Baseline and current capture placed side by side with a caption strip; no page content retouched."
+    },
+    "comparison-mobile-light.png": {
+      "sha256": "a3da753ee57a791b02e8ad313d64ef6c664e7d0116da0a31aa22d72114b48af1",
+      "pixels": [
+        2048,
+        2252
+      ],
+      "crop": null,
+      "kind": "derived comparison",
+      "baselineSourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
+      "baselineWorkflowRun": 38783439606,
+      "method": "Baseline and current capture placed side by side with a caption strip; no page content retouched."
+    },
+    "desktop-dark.png": {
+      "sha256": "5195abca652572863bb375eed22940ce569d34fc1d2b2c96e561293eba7d47be",
+      "pixels": [
+        1440,
+        3654
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "desktop-chromium-landing-page-dark.png"
+    },
+    "mobile-full-dark.png": {
+      "sha256": "3479ac87b1af0366a82fb45f022f2eb40c3666bd203ea7ea82a8d7708e33473b",
+      "pixels": [
+        1082,
+        15889
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-page-dark.png"
+    },
+    "hero-dark.png": {
+      "sha256": "b0161ce9c1f71e0ee22bedc62977ef49797789b9d64d5d7ac67fe182dc095062",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "crop": [
+        0,
+        0,
+        1440,
+        1000
+      ],
+      "kind": "cropped screenshot",
+      "sourceAttachment": "desktop-chromium-landing-page-dark.png"
+    },
+    "mobile-320-dark.png": {
+      "sha256": "4b929941f53c59cf8332c9e8441f578708a4a85680c3bac67186a97deb4c12e6",
+      "pixels": [
+        840,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-320-dark-first-screen.png"
+    },
+    "mobile-390-dark.png": {
+      "sha256": "12c15b4ca337722e8fef30892fd73d89f74e129e61ddf5a57034debf4576804e",
+      "pixels": [
+        1024,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-390-dark-first-screen.png"
+    },
+    "mobile-430-dark.png": {
+      "sha256": "b68f21cf75f4de880a07efdace2cd12b74adc04e0d157bdc14bcc3d509e141f3",
+      "pixels": [
+        1129,
+        2216
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-mobile-430-dark-first-screen.png"
+    },
+    "mobile-footer-dark.png": {
+      "sha256": "03b5d5bc596090ca17b8ad8b2094125451b4aa2b086de81f66e4709379fe0f72",
+      "pixels": [
+        1082,
+        2630
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-dark-lp-footer.png"
+    },
+    "mobile-gallery-dark.png": {
+      "sha256": "28e321bc3c8eee219a7f23af246f9a9854c976a17fb8360d3f72b3e902af71a8",
+      "pixels": [
+        1082,
+        1323
+      ],
+      "crop": null,
+      "kind": "original screenshot",
+      "sourceAttachment": "mobile-chromium-landing-dark-lp-gallery.png"
+    },
+    "comparison-desktop-dark.png": {
+      "sha256": "911070698f5e16b8beaed874892e066923a7f033930111a62370903f69b3d71c",
+      "pixels": [
+        2880,
+        1040
+      ],
+      "crop": null,
+      "kind": "derived comparison",
+      "baselineSourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
+      "baselineWorkflowRun": 38783439606,
+      "method": "Baseline and current capture placed side by side with a caption strip; no page content retouched."
+    },
+    "comparison-mobile-dark.png": {
+      "sha256": "a343c2bab7cabf3a1f6408e5dfaa873fc357c3be8b3dc16fc5e053d7de06fed2",
+      "pixels": [
+        2048,
+        2252
+      ],
+      "crop": null,
+      "kind": "derived comparison",
+      "baselineSourceCommit": "5bbf7fa80dd4f924c392fc0c75768f81e07a6715",
+      "baselineWorkflowRun": 38783439606,
+      "method": "Baseline and current capture placed side by side with a caption strip; no page content retouched."
+    }
+  },
+  "captureSettings": {
+    "desktop": {
+      "viewportCSS": [
+        1440,
+        1000
+      ],
+      "deviceScaleFactor": 1
+    },
+    "phoneFirstScreens": {
+      "viewportWidthsCSS": [
+        320,
+        390,
+        430
+      ],
+      "viewportHeightCSS": 844,
+      "deviceScaleFactor": 2.625
+    },
+    "phoneFullPage": {
+      "viewportCSS": [
+        412,
+        839
+      ],
+      "deviceScaleFactor": 2.625
     }
   }
 }
