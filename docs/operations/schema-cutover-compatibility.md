@@ -6,7 +6,7 @@ The current production database revision and serving backend SHA remain unknown.
 
 ## Source evidence and failure modes
 
-At `dec5ca62b6f92dd85dd879aad04f9ff38852c023` there is one Alembic head,
+At the checked main revision `d35b00fe6c4630fd842e2fb87f9e3fbfd39139e2` there is one Alembic head,
 `0075_durable_quota_ledger`. The mainline path is `0061` → `0062` → `0063` →
 `0064` → `0065` → `0066` → `0067` → `0068` → `0069_capability_catalog` →
 `0070_plan_catalog` → `0071_plan_quotas` → `0072_capability_roles` →
@@ -29,14 +29,15 @@ an ambiguous revision.
   Downgrading `0062` drops the acceptance state. Treat both as forward recovery
   boundaries, not routine schema rollback targets.
 
-The [latest checked Modal workflow run](https://github.com/sanskarpan/Latexy/actions/runs/38787403505)
-for `dec5ca62` failed renderer input validation; its migration and deploy steps
-were skipped. [Canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38784170535)
-and [Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38787403545)
-succeeded for that SHA. None of those results identifies the currently serving
-Modal revision or database head. The [retained renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
-also records that production renderer variables were not enabled and asks for
-this compatibility plan before automatic migration or deployment.
+For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38841762846)
+and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38844218686)
+passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
+stopped at renderer input validation; billing preflight, cutover approval,
+migration and deploy were skipped. None of those results identifies the
+currently serving Modal revision or database head. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
+binds an immutable image and asset marker to an earlier source revision. Its
+11 recorded source-file hashes match the current Windows checkout bytes, but
+the complete backend tree differs and production rollout was not certified.
 
 ## Before approving an exact SHA
 
@@ -54,10 +55,15 @@ this compatibility plan before automatic migration or deployment.
    on main, distinct from the candidate SHA. Verify successful canonical CI,
    Dodo-only billing code, and accepted artifact filters on **every** public
    share/export path. Verify its image and Modal deployment availability
-   separately. The automated source checks cover only two known reader queries
-   and legacy billing ID references; they do not prove full reader coverage or
-   image availability. `dec5ca62` passes those minimum source and CI checks,
-   but image availability and production provenance are unverified.
+   separately. The automated source checks cover two known share/export queries,
+   the public API PDF fallback and legacy billing ID references; they do not
+   prove full reader coverage or image availability. The current minimum source
+   checks reject `dec5ca62`
+   and `11890a1d` (#1901), whose public PDF reader can fall back to live Redis
+   for pending, committing or expired durable jobs. Source checks accept the
+   #1903 fix at `359806d2` and #1904 at `4182705d`, but this does not
+   establish a distinct deployable recovery image, drained fleet or production
+   database revision. Do not nominate a recovery SHA from source checks alone.
 4. Review the exact candidate SHA and recovery SHA, then set Production
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
    `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and

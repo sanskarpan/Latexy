@@ -7,6 +7,7 @@ Those facts require a separate, commit-scoped operator attestation.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -20,6 +21,10 @@ LEGACY_BILLING_ID = re.compile(r"razorpay_(?:payment|subscription)_id", re.IGNOR
 ACCEPTED_FILTER = "Compilation.artifact_accepted.is_(True)"
 PUBLIC_REDIS_FALLBACK_GUARD = "if recovery is None and not pdf_available and result and result.get(\"success\")"
 PUBLIC_PDF_ACCEPTANCE_GUARD = 'if recovery["state"] != "completed" or not recovery.get("pdf_path"):'
+PUBLIC_DURABLE_ROW_QUERY = "select(JobFinalization.id).where(JobFinalization.job_id == job_id).limit(1)"
+PUBLIC_DURABLE_HELPER_GUARD = "return not await has_durable_job_record(db, job_id=job_id)"
+PUBLIC_STATUS_DURABLE_GUARD = "and await _legacy_pdf_transport_allowed(job_id, db)"
+PUBLIC_PDF_DURABLE_GUARD = "if not await _legacy_pdf_transport_allowed(job_id, db):"
 
 
 class CutoverBlocked(ValueError):
@@ -35,6 +40,43 @@ def _result(runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]],
     if result.returncode != 0:
         raise CutoverBlocked(failure)
     return result.stdout
+
+
+def _function_source(source: str, name: str) -> str:
+    """Inspect only the named top-level reader, not unrelated source text."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ""
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return ast.get_source_segment(source, node) or ""
+    return ""
+
+
+def _public_pdf_transport_is_fenced(recovery: str, public_api: str) -> bool:
+    durable = _function_source(recovery, "has_durable_job_record")
+    helper = _function_source(public_api, "_legacy_pdf_transport_allowed")
+    status = _function_source(public_api, "get_job_v1")
+    download = _function_source(public_api, "download_job_pdf_v1")
+    # These are minimum source guards. A separate operator attestation must
+    # still verify every reader and the actual deployable recovery image.
+    return (
+        PUBLIC_DURABLE_ROW_QUERY in durable
+        and all(f"JobFinalization.{field}" not in durable for field in ("state", "expires_at", "user_id"))
+        and PUBLIC_DURABLE_HELPER_GUARD in helper
+        and 'raise HTTPException(status_code=503' in helper
+        and PUBLIC_REDIS_FALLBACK_GUARD in status
+        and PUBLIC_STATUS_DURABLE_GUARD in status
+        and "await r.exists(" in status
+        and status.index(PUBLIC_STATUS_DURABLE_GUARD) < status.index("await r.exists(")
+        and PUBLIC_PDF_ACCEPTANCE_GUARD in download
+        and PUBLIC_PDF_DURABLE_GUARD in download
+        and "await get_redis_client(" in download
+        and "get_job_files(" in download
+        and download.index(PUBLIC_PDF_DURABLE_GUARD) < download.index("await get_redis_client(")
+        and download.index(PUBLIC_PDF_DURABLE_GUARD) < download.index("get_job_files(")
+    )
 
 
 def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]]) -> None:
@@ -65,8 +107,7 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
     if (routes.count(ACCEPTED_FILTER) < 2
             or ACCEPTED_FILTER not in recovery
             or '"pdf_path": None' not in recovery
-            or PUBLIC_REDIS_FALLBACK_GUARD not in public_api
-            or PUBLIC_PDF_ACCEPTANCE_GUARD not in public_api
+            or not _public_pdf_transport_is_fenced(recovery, public_api)
             or LEGACY_BILLING_ID.search(billing)):
         raise CutoverBlocked("Recovery source minimum compatibility checks failed")
 
