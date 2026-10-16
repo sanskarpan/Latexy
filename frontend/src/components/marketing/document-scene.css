@@ -4,11 +4,11 @@
     --scene-y: 0deg;
     position: relative;
     width: min(1248px, 100%);
-    height: 636px;
+    height: 610px;
     margin-inline: auto;
     overflow: clip;
     perspective: 1400px;
-    background: radial-gradient(ellipse at 50% 86%, var(--lp-tint), transparent 65%);
+    background: radial-gradient(ellipse at 50% 91%, #19375d1c, transparent 62%);
 }
 .lp-document-stage {
     position: absolute;
@@ -18,11 +18,28 @@
 .lp-document-stage canvas {
     pointer-events: none;
 }
+.lp-document-stage:not([data-renderer='three'])::before,
+.lp-document-stage:not([data-renderer='three'])::after {
+    content: '';
+    position: absolute;
+    top: 10%;
+    bottom: 4%;
+    width: 38%;
+    background: var(--lp-stage-wing, #193e62);
+}
+.lp-document-stage::before {
+    left: 2%;
+    clip-path: polygon(0 0, 100% 7%, 100% 100%, 0 93%);
+}
+.lp-document-stage::after {
+    right: 2%;
+    clip-path: polygon(0 7%, 100% 0, 100% 93%, 0 100%);
+}
 .lp-document-card {
     position: absolute;
-    width: 320px;
+    width: 310px;
     margin: 0;
-    top: 40px;
+    top: 58px;
     left: 50%;
     z-index: 1;
     transform-origin: 50% 100%;
@@ -33,16 +50,16 @@
     transform: translateX(-50%) rotateY(var(--scene-x)) rotateX(var(--scene-y));
 }
 .lp-document-card[data-slot='left'] {
-    left: 23%;
-    transform: translateX(-50%) rotate(-5deg) rotateY(var(--scene-x)) rotateX(var(--scene-y));
+    left: 24%;
+    transform: translateX(-50%) rotate(-3deg) rotateY(calc(9deg + var(--scene-x))) rotateX(var(--scene-y));
 }
 .lp-document-card[data-slot='right'] {
-    left: 77%;
-    transform: translateX(-50%) rotate(5deg) rotateY(var(--scene-x)) rotateX(var(--scene-y));
+    left: 76%;
+    transform: translateX(-50%) rotate(3deg) rotateY(calc(-9deg + var(--scene-x))) rotateX(var(--scene-y));
 }
 .lp-document-card[data-slot='center'] {
-    top: 26px;
-    width: 360px;
+    top: 12px;
+    width: 350px;
     z-index: 2;
     /* Keep the reading surface flat; depth and pointer response surround it. */
     transform: translateX(-50%);
@@ -52,9 +69,18 @@
     gap: 8px;
     align-items: baseline;
     padding: 0 6px 12px;
-    color: var(--lp-accent);
+    color: #fff;
     font-size: 13px;
     font-weight: 600;
+}
+.lp-document-card:not([data-slot='center']) figcaption {
+    width: fit-content;
+    background: var(--lp-stage-wing, #193e62);
+    padding: 6px 12px;
+    margin: 0 0 8px 12px;
+}
+.lp-document-card:not([data-slot='center']) .lp-document-caption-note {
+    display: none;
 }
 .lp-document-card figcaption > span:first-child {
     font-size: 10px;
@@ -63,26 +89,24 @@
 }
 .lp-document-caption-note {
     margin-left: auto;
-    color: var(--lp-muted);
+    color: #ffffffb3;
     font-size: 10px;
     font-weight: 400;
 }
 .lp-document-mat {
-    padding: 14px;
-    background: #dce5ee;
-    border: 1px solid #becbd9;
-    border-radius: 4px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     box-shadow:
-        0 18px 32px -20px #19375d55,
-        0 4px 10px #19375d0d;
+        0 22px 30px -16px #09182d88;
     transition:
         background-color 400ms,
         box-shadow 400ms;
 }
 .lp-document-card[data-slot='center'] .lp-document-mat {
-    padding: 18px;
-    background: #234b74;
-    border-color: #1a3755;
+    padding: 20px 18px 0;
+    background: #a6c4dc;
     box-shadow:
         0 24px 44px -25px #19375d77,
         0 4px 12px #19375d1f;
@@ -92,26 +116,26 @@
     background: #fffefa;
     color: #243447;
     padding: 24px 22px;
-    min-height: 410px;
+    min-height: 436px;
     overflow: visible;
     border: 1px solid #e8e8e3;
     box-shadow: 0 2px 5px #102a4212;
     font-family: var(--lp-serif);
-    font-size: 11px;
-    line-height: 1.35;
+    font-size: 10.5px;
+    line-height: 1.3;
 }
 .lp-document-card[data-slot='center'] .lp-hero-paper {
-    min-height: 462px;
-    font-size: 11.5px;
+    min-height: 500px;
+    font-size: 11px;
 }
 .lp-hero-paper header {
     border-bottom: 1px solid #b8c6d4;
-    padding-bottom: 10px;
-    margin-bottom: 12px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
 }
 .lp-hero-paper h2 {
     font-family: var(--lp-serif);
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
     line-height: 1;
     letter-spacing: -0.04em;
@@ -119,7 +143,7 @@
     color: #19375d;
 }
 .lp-hero-paper header p {
-    font-size: 12px;
+    font-size: 11px;
     margin: 0 0 4px;
 }
 .lp-hero-paper small {
@@ -128,7 +152,7 @@
     color: #596775;
 }
 .lp-hero-paper section {
-    margin-top: 10px;
+    margin-top: 8px;
 }
 .lp-hero-paper h3 {
     font-family: var(--sans);
@@ -209,12 +233,32 @@
     gap: 10px;
 }
 :root[data-mode='dark'] .lp-document-mat {
-    background: #282d34;
-    border-color: #44484d;
+    background: transparent;
 }
 :root[data-mode='dark'] .lp-document-card[data-slot='center'] .lp-document-mat {
-    background: #584630;
-    border-color: #806443;
+    background: #2a3034;
+}
+:root[data-mode='dark'] .lp-document-scene {
+    --lp-stage-wing: #484035;
+    background: radial-gradient(ellipse at 50% 91%, #b9924524, transparent 62%);
+}
+.lp-document-card[data-slot='center'] figcaption {
+    background: #a6c4dc;
+    padding: 12px 18px 0;
+    color: #1c3b58;
+}
+.lp-document-card[data-slot='center'] .lp-document-caption-note {
+    color: #37546b;
+}
+:root[data-mode='dark'] .lp-document-card figcaption {
+    color: #fff3d7;
+}
+:root[data-mode='dark'] .lp-document-card[data-slot='center'] figcaption {
+    background: #2a3034;
+    color: #e5d3b1;
+}
+:root[data-mode='dark'] .lp-document-card[data-slot='center'] .lp-document-caption-note {
+    color: #c4b699;
 }
 :root[data-contrast='high'] .lp-document-mat {
     border: 2px solid var(--lp-fg);
@@ -284,8 +328,9 @@
         padding: 20px 14px;
     }
     .lp-hero-paper-role {
-        flex-wrap: wrap;
-        gap: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
     }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -295,5 +340,11 @@
     }
     .lp-document-card {
         transform: translateX(-50%) !important;
+    }
+    .lp-document-card[data-slot='left'] {
+        transform: translateX(-50%) rotate(-3deg) rotateY(9deg) !important;
+    }
+    .lp-document-card[data-slot='right'] {
+        transform: translateX(-50%) rotate(3deg) rotateY(-9deg) !important;
     }
 }
