@@ -185,7 +185,12 @@ class PlanCatalogService:
             raise HTTPException(status_code=409, detail="This plan is no longer available for new purchases. Your existing subscription is unchanged.")
 
     async def require_new_purchase(self, db: AsyncSession, sku: str, *, user_id: str | None = None) -> None:
-        """New sale only; target SKU and current purchaser account role intersect."""
+        """Admit a new sale only when global billing and target-SKU policy allow it."""
+        if sku != "free":
+            from .feature_flag_service import feature_flag_service
+
+            if not await feature_flag_service.get_flag("billing", db):
+                raise HTTPException(status_code=503, detail="Billing is currently disabled")
         await self.require_sale_available(db, sku)
         if sku != "free" and not await entitlement_service.has_feature_for_plan("i01", user=user_id, plan=sku):
             raise HTTPException(status_code=403, detail=error_body(
