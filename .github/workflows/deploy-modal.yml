@@ -184,6 +184,12 @@ jobs:
         working-directory: backend
         run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py::app
 
+      # Modal can exit successfully with "Deployment skipped: no changes detected"
+      # while the production pointer still names an older source revision.
+      - name: Verify Modal production deployment identity
+        if: steps.freshness.outputs.current == 'true'
+        run: python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"
+
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
