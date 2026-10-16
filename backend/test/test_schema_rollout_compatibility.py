@@ -13,11 +13,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from scripts.dodo_billing_preflight import billing_identity_mismatch_count
 
 
