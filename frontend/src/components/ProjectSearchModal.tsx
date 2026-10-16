@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, X, FileText, Clock } from 'lucide-react'
 import { apiClient, type ResumeSearchResult, type SearchMatch } from '@/lib/api-client'
@@ -8,6 +8,30 @@ import { apiClient, type ResumeSearchResult, type SearchMatch } from '@/lib/api-
 interface ProjectSearchModalProps {
   open: boolean
   onClose: () => void
+  ownerId: string | null
+}
+
+interface SearchLifecycle {
+  ownerId: string | null
+  open: boolean
+  generation: number
+}
+
+interface SearchState {
+  identity: SearchLifecycle
+  query: string
+  results: ResumeSearchResult[]
+  loading: boolean
+  searchError: string | null
+  selectedIndex: number
+}
+
+function sameSearchLifecycle(left: SearchLifecycle, right: SearchLifecycle) {
+  return left.ownerId === right.ownerId && left.open === right.open && left.generation === right.generation
+}
+
+function emptySearchState(identity: SearchLifecycle): SearchState {
+  return { identity, query: '', results: [], loading: false, searchError: null, selectedIndex: 0 }
 }
 
 function highlightLine(text: string, start: number, end: number): React.ReactNode {
@@ -84,76 +108,119 @@ function ResultItem({
   )
 }
 
-export default function ProjectSearchModal({ open, onClose }: ProjectSearchModalProps) {
+export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSearchModalProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<ResumeSearchResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const committedLifecycleRef = useRef<SearchLifecycle>({ ownerId, open, generation: 0 })
+  const committedLifecycle = committedLifecycleRef.current
+  // Compute an identity for this render without mutating shared refs. If React
+  // abandons a concurrent render, the committed account/session stays current.
+  const renderLifecycle: SearchLifecycle = {
+    ownerId,
+    open,
+    generation: committedLifecycle.generation +
+      (committedLifecycle.ownerId === ownerId && committedLifecycle.open === open ? 0 : 1),
+  }
+  const [searchState, setSearchState] = useState<SearchState>(() => emptySearchState(renderLifecycle))
+  // Mask previous-account and previous-open-session state before layout effects.
+  const visibleSearchState = sameSearchLifecycle(searchState.identity, renderLifecycle)
+    ? searchState
+    : emptySearchState(renderLifecycle)
+  const { query, results, loading, searchError, selectedIndex } = visibleSearchState
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
 
-  // Focus input when opened
-  useEffect(() => {
-    if (open) {
-      setQuery('')
-      setResults([])
-      setSelectedIndex(0)
-      setSearchError(null)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
-  }, [open])
+  const updateSearchState = useCallback((identity: SearchLifecycle, patch: Partial<Omit<SearchState, 'identity'>>) => {
+    if (!sameSearchLifecycle(identity, committedLifecycleRef.current)) return
+    setSearchState((previous) => {
+      if (!sameSearchLifecycle(identity, committedLifecycleRef.current)) return previous
+      const base = sameSearchLifecycle(previous.identity, identity) ? previous : emptySearchState(identity)
+      return { ...base, ...patch, identity }
+    })
+  }, [])
 
-  useEffect(() => () => {
+  // Update the committed identity and invalidate in-flight work only after
+  // React commits these props. A speculative render cannot retire valid work.
+  useLayoutEffect(() => {
+    const previous = committedLifecycleRef.current
+    const identity: SearchLifecycle = {
+      ownerId,
+      open,
+      generation: previous.generation +
+        (previous.ownerId === ownerId && previous.open === open ? 0 : 1),
+    }
+    committedLifecycleRef.current = identity
+    searchRequestRef.current += 1
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    if (open) {
+      updateSearchState(identity, {
+        query: '', results: [], loading: false, searchError: null, selectedIndex: 0,
+      })
+    } else {
+      updateSearchState(identity, { loading: false })
+    }
+  }, [open, ownerId, updateSearchState])
+
+  useEffect(() => {
+    if (!open) return
+    const focusTimeout = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(focusTimeout)
+  }, [open, ownerId])
+
+  useLayoutEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
   }, [])
 
-  const doSearch = useCallback(async (q: string) => {
+  const doSearch = useCallback(async (q: string, requestedIdentity = committedLifecycleRef.current) => {
+    if (!requestedIdentity.open || !sameSearchLifecycle(requestedIdentity, committedLifecycleRef.current)) return
+    const isCurrent = (requestId: number) => committedLifecycleRef.current.open &&
+      sameSearchLifecycle(requestedIdentity, committedLifecycleRef.current) &&
+      searchRequestRef.current === requestId
+
     if (q.trim().length < 2) {
-      searchRequestRef.current += 1
-      setResults([])
-      setSearchError(null)
-      setLoading(false)
+      const requestId = ++searchRequestRef.current
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, { results: [], searchError: null, loading: false, selectedIndex: 0 })
       return
     }
     const requestId = ++searchRequestRef.current
-    setLoading(true)
-    setSearchError(null)
+    updateSearchState(requestedIdentity, { loading: true, searchError: null })
     try {
       const res = await apiClient.searchResumes(q.trim())
-      if (requestId !== searchRequestRef.current) return
-      setResults(res.results)
-      setSelectedIndex(0)
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, { results: res.results, selectedIndex: 0 })
     } catch (error) {
-      if (requestId !== searchRequestRef.current) return
-      setResults([])
-      setSearchError(error instanceof Error ? error.message : 'Search failed. Please try again.')
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, {
+        results: [],
+        searchError: error instanceof Error ? error.message : 'Search failed. Please try again.',
+      })
     } finally {
-      if (requestId === searchRequestRef.current) setLoading(false)
+      if (isCurrent(requestId)) updateSearchState(requestedIdentity, { loading: false })
     }
-  }, [])
+  }, [updateSearchState])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
+    const identityAtChange = committedLifecycleRef.current
     // Invalidate the previous response as soon as the visible query changes,
     // rather than leaving a debounce-sized window for stale results to land.
     searchRequestRef.current += 1
-    setQuery(val)
-    setSearchError(null)
+    updateSearchState(identityAtChange, { query: val, searchError: null })
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => doSearch(val), 300)
+    debounceRef.current = setTimeout(() => void doSearch(val, identityAtChange), 300)
   }
 
   const clearSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
-    setQuery('')
-    setResults([])
-    setSearchError(null)
-    setLoading(false)
+    updateSearchState(committedLifecycleRef.current, {
+      query: '', results: [], searchError: null, loading: false, selectedIndex: 0,
+    })
   }
 
   const navigate = useCallback((resumeId: string, lineNumber?: number) => {
@@ -166,10 +233,12 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
     if (e.key === 'Escape') { onClose(); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex(i => Math.min(i + 1, results.length - 1))
+      updateSearchState(committedLifecycleRef.current, {
+        selectedIndex: Math.min(selectedIndex + 1, results.length - 1),
+      })
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex(i => Math.max(i - 1, 0))
+      updateSearchState(committedLifecycleRef.current, { selectedIndex: Math.max(selectedIndex - 1, 0) })
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       const r = results[selectedIndex]
       navigate(r.resume_id, r.matches[0]?.line_number)

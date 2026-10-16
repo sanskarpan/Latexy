@@ -1714,6 +1714,7 @@ export default function WorkspacePage() {
       <CapabilityGate feature="b03"><ProjectSearchModal
         open={projectSearchOpen}
         onClose={() => setProjectSearchOpen(false)}
+        ownerId={workspaceOwnerId}
       /></CapabilityGate>
 
       {shareModalResumeId && shareModalResume && (

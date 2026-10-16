@@ -448,6 +448,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Verify workspace search close/reopen in Chromium
+        env:
+          PLAYWRIGHT_PORT: "5185"
+          PLAYWRIGHT_SERVER_MODE: production
+        run: >-
+          pnpm exec playwright test e2e/project-search.spec.ts
+          --grep 'close and reopen clears prior search results, query, and error in the browser DOM'
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
+          --output=test-results/workspace-search
       - name: Verify admin capabilities and plan catalog
         env:
           PLAYWRIGHT_PORT: "5184"
@@ -538,6 +547,7 @@ jobs:
           path: |
             frontend/playwright-quality-report
             frontend/test-results/quality
+            frontend/test-results/workspace-search
             frontend/test-results/admin-capabilities
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store

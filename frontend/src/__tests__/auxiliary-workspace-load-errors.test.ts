@@ -18,7 +18,9 @@ describe('auxiliary workspace request recovery', () => {
   it('separates failed search from no results and rejects stale responses', () => {
     const search = source('../components/ProjectSearchModal.tsx')
 
-    expect(search).toContain('requestId !== searchRequestRef.current')
+    expect(search).toContain('sameSearchLifecycle(requestedIdentity, committedLifecycleRef.current)')
+    expect(search).toContain('sameSearchLifecycle(searchState.identity, renderLifecycle)')
+    expect(search).toContain('if (!isCurrent(requestId)) return')
     expect(search).toContain('const clearSearch = () => {')
     expect(search).toContain('onClick={clearSearch}')
     expect(search).toContain('!loading && searchError')
