@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Circle, Line, Polygon } from '@visx/shape'
 import katex from 'katex'
@@ -1069,9 +1069,51 @@ function LatexDemo() {
 }
 
 export default function LandingExperience() {
+    const [activeChapter, setActiveChapter] = useState('builder')
+    useEffect(() => {
+        const chapters = ['builder', 'analysis', 'tailoring', 'applications', 'latex']
+        const sections = chapters
+            .map(chapter => document.getElementById(`lp-${chapter}`))
+            .filter((section): section is HTMLElement => section instanceof HTMLElement)
+        if (!('IntersectionObserver' in window)) return
+        const observer = new IntersectionObserver(
+            entries => {
+                const visible = entries
+                    .filter(entry => entry.isIntersecting)
+                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+                if (visible[0]) setActiveChapter(visible[0].target.id.replace('lp-', ''))
+            },
+            { rootMargin: '-15% 0px -65% 0px', threshold: 0 },
+        )
+        sections.forEach(section => observer.observe(section))
+        return () => observer.disconnect()
+    }, [])
     return (
         <div className="lp-experience" id="product">
+            <div className="lp-chapter-intro">
+                <p>FROM FIRST DRAFT TO EVERY APPLICATION</p>
+                <h2>A résumé is only the start.</h2>
+                <span>Build it, check it, tailor it, and keep track of where it goes.</span>
+            </div>
+            <nav className="lp-chapter-nav" aria-label="Explore Latexy features">
+                {[
+                    ['builder', 'Build'],
+                    ['analysis', 'Review'],
+                    ['tailoring', 'Tailor'],
+                    ['applications', 'Track'],
+                    ['latex', 'Typeset'],
+                ].map(([chapter, label], index) => (
+                    <a
+                        key={chapter}
+                        href={`#lp-${chapter}`}
+                        aria-current={activeChapter === chapter ? 'location' : undefined}
+                    >
+                        <small>0{index + 1}</small><span>{label}</span>
+                    </a>
+                ))}
+            </nav>
             <section
+                id="lp-builder"
                 className="lp-feature-row lp-builder-section"
                 aria-labelledby="lp-builder-title"
             >
@@ -1089,6 +1131,7 @@ export default function LandingExperience() {
                 <BuilderDemo />
             </section>
             <section
+                id="lp-analysis"
                 className="lp-feature-row lp-analysis-section"
                 aria-labelledby="lp-analysis-title"
             >
@@ -1106,6 +1149,7 @@ export default function LandingExperience() {
                 <AnalysisDemo />
             </section>
             <section
+                id="lp-tailoring"
                 className="lp-full-section lp-tailoring-section"
                 aria-labelledby="lp-tailoring-title"
             >
@@ -1120,6 +1164,7 @@ export default function LandingExperience() {
                 <TailoringDemo />
             </section>
             <section
+                id="lp-applications"
                 className="lp-full-section lp-applications-section"
                 aria-labelledby="lp-applications-title"
             >
@@ -1133,7 +1178,7 @@ export default function LandingExperience() {
                 </div>
                 <ApplicationDemo />
             </section>
-            <section className="lp-feature-row lp-latex-section" aria-labelledby="lp-latex-title">
+            <section id="lp-latex" className="lp-feature-row lp-latex-section" aria-labelledby="lp-latex-title">
                 <div className="lp-section-copy">
                     <p className="lp-section-label">05 / LaTeX studio</p>
                     <h2 id="lp-latex-title">

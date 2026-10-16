@@ -70,3 +70,16 @@ def test_rollout_guard_keeps_production_and_main_boundaries_and_precedes_migrati
     assert "continue-on-error" not in source[guard:deploy]
     assert "always()" not in source[guard:deploy]
     assert "secrets." not in source[guard:migrate]
+
+
+def test_billing_identity_preflight_repeats_after_migration_before_deploy():
+    source = WORKFLOW.read_text()
+    migrate = source.index("- name: Apply production database migrations")
+    recheck = source.index("- name: Recheck billing identities after migration")
+    deploy = source.index("- name: Deploy backend with a rolling update")
+    assert migrate < recheck < deploy
+    step = source[recheck:deploy]
+    assert "modal run --env main modal_app.py::billing_preflight" in step
+    assert '--source-revision "$DEPLOY_SHA"' in step
+    assert "--purpose rollout" in step
+    assert "continue-on-error" not in step
