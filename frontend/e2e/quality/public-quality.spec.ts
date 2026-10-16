@@ -22,14 +22,15 @@ const PUBLIC_ENGINE_FEATURES = { ...QUALITY_FEATURES, b10: true }
 
 const diagnosticsByPage = new Map<Page, string[]>()
 
-async function expectPaintedSampleHeading(page: Page, screenshot: Buffer) {
-    const heading = await page.locator('.lp-document-card[data-slot="center"] .lp-hero-paper h2').boundingBox()
-    expect(heading).not.toBeNull()
+type HeadingCapture = { x: number; y: number; width: number; height: number; color: number[] }
+
+async function expectPaintedSampleHeading(page: Page, screenshot: Buffer, heading: HeadingCapture) {
     const viewport = page.viewportSize()!
-    expect(heading!.y + heading!.height).toBeLessThanOrEqual(viewport.height)
+    expect(heading.y).toBeGreaterThanOrEqual(0)
+    expect(heading.y + heading.height).toBeLessThanOrEqual(viewport.height)
     // DOM visibility alone missed a blank-paper compositor regression after
     // switching theme. Inspect the heading's actual pixels in the page capture.
-    const inkPixels = await page.evaluate(async ({ encoded, box, width }) => {
+    const paint = await page.evaluate(async ({ encoded, box, width }) => {
         const image = new Image()
         image.src = `data:image/png;base64,${encoded}`
         await image.decode()
@@ -41,12 +42,17 @@ async function expectPaintedSampleHeading(page: Page, screenshot: Buffer) {
         context.drawImage(image, box.x * scale, box.y * scale, box.width * scale, box.height * scale, 0, 0, canvas.width, canvas.height)
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
         let ink = 0
+        let paper = 0
         for (let index = 0; index < pixels.length; index += 4) {
-            if (pixels[index] < 150 && pixels[index + 1] < 150 && pixels[index + 2] < 150 && pixels[index + 3] > 200) ink += 1
+            if (pixels[index + 3] < 200) continue
+            if (box.color.every((channel, offset) => Math.abs(pixels[index + offset] - channel) < 35)) ink += 1
+            if (pixels[index] > 225 && pixels[index + 1] > 225 && pixels[index + 2] > 210) paper += 1
         }
-        return ink
-    }, { encoded: screenshot.toString('base64'), box: heading!, width: viewport.width })
-    expect(inkPixels, 'The selected sample heading must be painted in the first screen').toBeGreaterThan(20)
+        return { ink, paperFraction: paper / (pixels.length / 4) }
+    }, { encoded: screenshot.toString('base64'), box: heading, width: viewport.width })
+    expect(paint.paperFraction, 'The inspected heading region must be on the light paper').toBeGreaterThan(0.55)
+    expect(paint.ink, 'The selected sample heading must paint its actual text color').toBeGreaterThan(100)
+    return paint
 }
 
 async function installPublicPageMocks(page: Page) {
@@ -502,11 +508,18 @@ test('representative public surface produces non-empty visual evidence', async (
             })
         }
         await page.setViewportSize({ width: 320, height: 900 })
-        const actionBoxes = await Promise.all(
-            (await page.locator('.lp-hero-actions > a:visible').all()).map(action => action.boundingBox())
+        await page.locator('.lp-hero-actions').scrollIntoViewIfNeeded()
+        await settle()
+        // Compare visible controls in one settled layout frame, rather than
+        // separate protocol measurements of offscreen elements after resizing.
+        const actionBoxes = await page.locator('.lp-hero-actions > a:visible').evaluateAll(
+            actions => actions.map(action => {
+                const { y, width, height } = action.getBoundingClientRect()
+                return { y, width, height }
+            })
         )
         expect(actionBoxes).toHaveLength(2)
-        expect(actionBoxes.every(Boolean)).toBe(true)
+        expect(actionBoxes.every(box => box.width > 0 && box.height > 0)).toBe(true)
         expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
         await testInfo.attach('landing-narrow-mobile', {
@@ -922,8 +935,23 @@ test('mobile landing presents focused demos in both themes and preserves edits',
                 scrollTo({ top: 0, left: 0, behavior: 'instant' })
                 return new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
             })
+            // Record the text region before capture; a later protocol query can
+            // observe different geometry after screenshot scroll restoration.
+            const heading = width === 390 ? await page.locator('.lp-document-card[data-slot="center"] .lp-hero-paper h2').evaluate(element => {
+                const range = document.createRange()
+                range.selectNodeContents(element)
+                const { x, y, width, height } = range.getBoundingClientRect()
+                const color = getComputedStyle(element).color.match(/\d+/g)!.slice(0, 3).map(Number)
+                return { x, y, width, height, color }
+            }) : null
             const firstScreen = await page.screenshot({ animations: 'disabled' })
-            if (width === 390) await expectPaintedSampleHeading(page, firstScreen)
+            if (heading) {
+                const paint = await expectPaintedSampleHeading(page, firstScreen, heading)
+                await testInfo.attach(`mobile-${width}-${theme}-heading-paint`, {
+                    body: Buffer.from(JSON.stringify({ heading, paint })),
+                    contentType: 'application/json',
+                })
+            }
             await testInfo.attach(`mobile-${width}-${theme}-first-screen`, {
                 body: firstScreen,
                 contentType: 'image/png',
