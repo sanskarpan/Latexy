@@ -177,15 +177,21 @@ class PlanCatalogService:
 
     async def require_sale_available(self, db: AsyncSession, sku: str) -> None:
         """Merchandising-only check before resolving a one-time token owner."""
-        if sku not in settings.SUBSCRIPTION_PLANS:
-            raise HTTPException(status_code=400, detail="Invalid plan selected")
+        self._validate_sku(sku)
         result = await db.execute(select(PlanCatalog).where(PlanCatalog.sku == sku))
         row = result.scalar_one_or_none()
         if row is not None and not row.purchase_enabled:
             raise HTTPException(status_code=409, detail="This plan is no longer available for new purchases. Your existing subscription is unchanged.")
 
+    @staticmethod
+    def _validate_sku(sku: str) -> None:
+        """Reject unknown offers without consulting database-backed policy."""
+        if sku not in settings.SUBSCRIPTION_PLANS:
+            raise HTTPException(status_code=400, detail="Invalid plan selected")
+
     async def require_new_purchase(self, db: AsyncSession, sku: str, *, user_id: str | None = None) -> None:
         """Admit a new sale only when global billing and target-SKU policy allow it."""
+        self._validate_sku(sku)
         if sku != "free":
             from .feature_flag_service import feature_flag_service
 
