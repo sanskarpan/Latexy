@@ -22,6 +22,39 @@ const PUBLIC_ENGINE_FEATURES = { ...QUALITY_FEATURES, b10: true }
 
 const diagnosticsByPage = new Map<Page, string[]>()
 
+type HeadingCapture = { x: number; y: number; width: number; height: number; color: number[] }
+
+async function expectPaintedSampleHeading(page: Page, screenshot: Buffer, heading: HeadingCapture) {
+    const viewport = page.viewportSize()!
+    expect(heading.y).toBeGreaterThanOrEqual(0)
+    expect(heading.y + heading.height).toBeLessThanOrEqual(viewport.height)
+    // DOM visibility alone missed a blank-paper compositor regression after
+    // switching theme. Inspect the heading's actual pixels in the page capture.
+    const paint = await page.evaluate(async ({ encoded, box, width }) => {
+        const image = new Image()
+        image.src = `data:image/png;base64,${encoded}`
+        await image.decode()
+        const scale = image.width / width
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(box.width * scale)
+        canvas.height = Math.ceil(box.height * scale)
+        const context = canvas.getContext('2d')!
+        context.drawImage(image, box.x * scale, box.y * scale, box.width * scale, box.height * scale, 0, 0, canvas.width, canvas.height)
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+        let ink = 0
+        let paper = 0
+        for (let index = 0; index < pixels.length; index += 4) {
+            if (pixels[index + 3] < 200) continue
+            if (box.color.every((channel, offset) => Math.abs(pixels[index + offset] - channel) < 35)) ink += 1
+            if (pixels[index] > 225 && pixels[index + 1] > 225 && pixels[index + 2] > 210) paper += 1
+        }
+        return { ink, paperFraction: paper / (pixels.length / 4) }
+    }, { encoded: screenshot.toString('base64'), box: heading, width: viewport.width })
+    expect(paint.paperFraction, 'The inspected heading region must be on the light paper').toBeGreaterThan(0.55)
+    expect(paint.ink, 'The selected sample heading must paint its actual text color').toBeGreaterThan(100)
+    return paint
+}
+
 async function installPublicPageMocks(page: Page) {
     const { appOrigin, backendOrigin } = qualityOrigins()
     const unmocked: string[] = []
@@ -290,6 +323,12 @@ test('skip navigation and reduced-motion preferences are honored', async ({ page
 test('representative public surface produces non-empty visual evidence', async ({
     page,
 }, testInfo) => {
+    const hydrationErrors: string[] = []
+    page.on('console', message => {
+        if (message.type() === 'error' && /hydration|hydrated|server rendered HTML|Minified React error/i.test(message.text())) {
+            hydrationErrors.push(message.text())
+        }
+    })
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
     if (!testInfo.project.metadata.mobile) await page.setViewportSize({ width: 1440, height: 1000 })
     const { backendOrigin } = qualityOrigins()
@@ -301,6 +340,7 @@ test('representative public surface produces non-empty visual evidence', async (
     )
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
 
     const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
     await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
@@ -468,11 +508,18 @@ test('representative public surface produces non-empty visual evidence', async (
             })
         }
         await page.setViewportSize({ width: 320, height: 900 })
-        const actionBoxes = await Promise.all(
-            (await page.locator('.lp-hero-actions > a:visible').all()).map(action => action.boundingBox())
+        await page.locator('.lp-hero-actions').scrollIntoViewIfNeeded()
+        await settle()
+        // Compare visible controls in one settled layout frame, rather than
+        // separate protocol measurements of offscreen elements after resizing.
+        const actionBoxes = await page.locator('.lp-hero-actions > a:visible').evaluateAll(
+            actions => actions.map(action => {
+                const { y, width, height } = action.getBoundingClientRect()
+                return { y, width, height }
+            })
         )
         expect(actionBoxes).toHaveLength(2)
-        expect(actionBoxes.every(Boolean)).toBe(true)
+        expect(actionBoxes.every(box => box.width > 0 && box.height > 0)).toBe(true)
         expect(Math.abs(actionBoxes[0]!.y - actionBoxes[1]!.y)).toBeLessThan(1)
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321)
         await testInfo.attach('landing-narrow-mobile', {
@@ -480,8 +527,8 @@ test('representative public surface produces non-empty visual evidence', async (
             contentType: 'image/png',
         })
     }
-    // Restore the device size after tablet/narrow inspection. Phones reveal
-    // the brand signature; the decorative paper motion stays on desktop.
+    // Restore the device size after tablet/narrow inspection. Both compositions
+    // show the paper illustration; phones also reveal the brand signature.
     await page.setViewportSize(viewport!)
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     const footer = page.locator('.lp-footer')
@@ -496,8 +543,11 @@ test('representative public surface produces non-empty visual evidence', async (
     // The static footer is already in view; only the phone signature needs focus.
     if (testInfo.project.metadata.mobile) await motionTarget.scrollIntoViewIfNeeded()
     await expect(motionTarget).toBeVisible()
+    await expect(artwork).toBeVisible()
+    await expect.poll(() => artwork.evaluate(element =>
+        (element as HTMLImageElement).naturalWidth
+    )).toBeGreaterThan(0)
     if (testInfo.project.metadata.mobile) {
-        await expect(artwork).toBeHidden()
         await expect.poll(() => motionTarget.evaluate(element =>
             getComputedStyle(element).animationName
         )).toBe('lp-section-enter')
@@ -511,6 +561,92 @@ test('representative public surface produces non-empty visual evidence', async (
     }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect.poll(() => motionTarget.evaluate(element => element.getAnimations().length)).toBe(0)
+    await expect.poll(() => artwork.evaluate(element => element.getAnimations().length)).toBe(0)
+    expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
+})
+
+test('landing appearance keeps contrast inside the keyboard accessible menu', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expect(page.getByRole('button', { name: 'Toggle light or dark mode' })).toHaveCount(1)
+        await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
+        const trigger = page.getByRole('button', { name: 'Open navigation menu' })
+        await trigger.click()
+        const contrast = page.getByRole('button', { name: 'Turn on high contrast mode' })
+        await expect(contrast).toBeVisible()
+        await contrast.click()
+        await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high')
+        await page.keyboard.press('Escape')
+        await expect(trigger).toBeFocused()
+        await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
+        await trigger.click()
+        await page.getByRole('button', { name: 'Turn off high contrast mode' }).click()
+        await expect(page.locator('html')).toHaveAttribute('data-contrast', 'normal')
+        await page.keyboard.press('Escape')
+    }
+})
+
+test('landing glass controls keep sound opt-in and preserve layout selection', async ({ page }, testInfo) => {
+    const mediaRequests: string[] = []
+    page.on('request', request => { if (request.resourceType() === 'media') mediaRequests.push(request.url()) })
+    await page.addInitScript(() => {
+        const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
+        scope.landingAudioCreates = 0
+        scope.landingAudioCloses = 0
+        const NativeAudioContext = window.AudioContext
+        if (NativeAudioContext) {
+            window.AudioContext = class extends NativeAudioContext {
+                constructor(options?: AudioContextOptions) {
+                    super(options)
+                    scope.landingAudioCreates++
+                }
+                close() { scope.landingAudioCloses++; return super.close() }
+            }
+        }
+    })
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const audioCounts = () => page.evaluate(() => {
+        const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
+        return { created: scope.landingAudioCreates, closed: scope.landingAudioCloses }
+    })
+    await page.locator('.lp-analysis-section').scrollIntoViewIfNeeded()
+    expect((await audioCounts()).created).toBe(0)
+    await expect(page.getByRole('button', { name: 'Interface sounds', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    const sound = page.getByRole('button', { name: 'Interface sounds', exact: true })
+    await expect(sound).toHaveAttribute('aria-pressed', 'false')
+    await sound.click()
+    await expect(sound).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(async () => (await audioCounts()).created).toBe(1)
+    const menu = page.locator('#landing-navigation')
+    await expect(menu).toHaveCSS('opacity', '1')
+    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
+    await testInfo.attach('landing-glass-menu', { body: await page.screenshot(), contentType: 'image/png' })
+    const soundBox = await sound.boundingBox()
+    expect(soundBox?.height).toBeLessThanOrEqual(52)
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Toggle light or dark mode', exact: true }).click()
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await expect(sound).toHaveAttribute('aria-pressed', 'true')
+    await expect(menu).toHaveCSS('opacity', '1')
+    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
+    await testInfo.attach('landing-glass-menu-dark', { body: await page.screenshot(), contentType: 'image/png' })
+    await page.keyboard.press('Escape')
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
+    await layouts.getByRole('button', { name: /Modern/ }).click()
+    await expect(layouts.getByRole('button', { name: /Modern/ })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-document-card[data-slot="center"]')).toHaveAttribute('data-template', 'Modern')
+    expect((await audioCounts()).created).toBe(1)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await sound.click()
+    await expect(sound).toHaveAttribute('aria-pressed', 'false')
+    await expect.poll(async () => (await audioCounts()).closed).toBe(1)
+    await page.getByRole('button', { name: 'Turn on high contrast mode' }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high')
+    await expect.poll(() => page.locator('.lp-header').evaluate(element => getComputedStyle(element).backdropFilter)).toBe('none')
+    expect(mediaRequests).toEqual([])
+    await page.keyboard.press('Escape')
 })
 
 test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
@@ -725,6 +861,35 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
     expect(errors).toEqual([])
 })
 
+test('landing workbench updates a real résumé sample and resets on a new visit', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const gallery = page.locator('.lp-gallery')
+    await gallery.getByRole('textbox', { name: 'Sample name' }).fill('Jordan Lee')
+    await gallery.getByRole('textbox', { name: 'Sample role' }).fill('Product Designer')
+    const selected = gallery.locator('.lp-document-card[data-slot="center"]')
+    await expect(selected.getByRole('heading', { name: 'Jordan Lee' })).toBeVisible()
+    await expect(selected).toContainText('Product Designer')
+    await gallery.getByRole('group', { name: 'Sample résumé layouts' })
+        .getByRole('button', { name: /Modern/ }).click()
+    await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
+    await expect(gallery.locator('.lp-document-card[data-slot="center"]'))
+        .toContainText('Jordan Lee')
+    await gallery.getByRole('textbox', { name: 'Sample name' }).fill('W'.repeat(38))
+    await gallery.getByRole('textbox', { name: 'Sample role' }).fill('W'.repeat(48))
+    const paper = gallery.locator('.lp-document-card[data-slot="center"] .lp-hero-paper')
+    await expect.poll(() => paper.evaluate(element => {
+        const bounds = element.getBoundingClientRect()
+        const scene = element.closest('.lp-document-scene')!.getBoundingClientRect()
+        return Math.max(scene.left - bounds.left, bounds.right - scene.right, bounds.bottom - scene.bottom)
+    })).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(page.viewportSize()!.width + 1)
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(gallery.getByRole('textbox', { name: 'Sample name' })).toHaveValue('Alex Morgan')
+    await expect(gallery.getByRole('textbox', { name: 'Sample role' }))
+        .toHaveValue('Senior Software Engineer')
+})
+
 test('mobile landing presents focused demos in both themes and preserves edits', async ({
     page,
 }, testInfo) => {
@@ -747,6 +912,10 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             const gallery = page.locator('.lp-gallery')
             await expect(gallery.locator('[data-slot="center"] figcaption')).toBeHidden()
             expect((await gallery.boundingBox())!.height).toBeLessThan(550)
+            for (const input of await gallery.getByRole('textbox').all()) {
+                expect(await input.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize)))
+                    .toBeGreaterThanOrEqual(16)
+            }
             const actions = page.locator('.lp-hero-actions > a:visible')
             await expect(actions).toHaveCount(2)
             for (const action of await actions.all()) {
@@ -762,9 +931,29 @@ test('mobile landing presents focused demos in both themes and preserves edits',
             expect(
                 await page.evaluate(() => document.documentElement.scrollWidth)
             ).toBeLessThanOrEqual(width + 1)
-            await page.evaluate(() => scrollTo(0, 0))
+            await page.evaluate(() => {
+                scrollTo({ top: 0, left: 0, behavior: 'instant' })
+                return new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+            })
+            // Record the text region before capture; a later protocol query can
+            // observe different geometry after screenshot scroll restoration.
+            const heading = width === 390 ? await page.locator('.lp-document-card[data-slot="center"] .lp-hero-paper h2').evaluate(element => {
+                const range = document.createRange()
+                range.selectNodeContents(element)
+                const { x, y, width, height } = range.getBoundingClientRect()
+                const color = getComputedStyle(element).color.match(/\d+/g)!.slice(0, 3).map(Number)
+                return { x, y, width, height, color }
+            }) : null
+            const firstScreen = await page.screenshot({ animations: 'disabled' })
+            if (heading) {
+                const paint = await expectPaintedSampleHeading(page, firstScreen, heading)
+                await testInfo.attach(`mobile-${width}-${theme}-heading-paint`, {
+                    body: Buffer.from(JSON.stringify({ heading, paint })),
+                    contentType: 'application/json',
+                })
+            }
             await testInfo.attach(`mobile-${width}-${theme}-first-screen`, {
-                body: await page.screenshot({ animations: 'disabled' }),
+                body: firstScreen,
                 contentType: 'image/png',
             })
         }
