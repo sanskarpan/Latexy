@@ -10,6 +10,7 @@ import { siteUrl } from '@/lib/site-url'
 import './landing.css'
 import './landing-type.css'
 import './landing-mobile.css'
+import './landing-glass.css'
 
 const description =
     'Build a professional resume without code. Review ATS feedback, tailor your resume to each job, track applications, and compile LaTeX documents with Latexy.'
