@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Check, FileText, MessageSquare, Layers, Briefcase, Code2 } from 'lucide-react'
 import { MarketingCTA, MarketingSectionHeading } from '@/components/marketing/MarketingSections'
+import { marketingSocialImage } from '@/lib/marketing-social-image'
 
 export const metadata: Metadata = {
     title: 'How Latexy Works | Resumes, Cover Letters & Interview Practice',
@@ -13,6 +14,13 @@ export const metadata: Metadata = {
         description: 'From your first draft to interview practice. Explore what Latexy can do.',
         url: '/platform',
         type: 'website',
+        images: [marketingSocialImage],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'A calmer way to prepare your next application | Latexy',
+        description: 'From your first draft to interview practice. Explore what Latexy can do.',
+        images: [marketingSocialImage.url],
     },
 }
 const capabilities = [
