@@ -239,6 +239,11 @@ describe('saved accepted artifact recovery through the actual extracted loader',
     await h.load(); h.effect(); h.grant(); h.effect()
     expect(h.context.recoveredAcceptedArtifact).toBeNull()
     expect(h.context.initialPreviewRequest).toBeNull()
+    expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1,
+      source: initialSource, contentRevision: 7,
+    }))
+    expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
     expect(h.submit).not.toHaveBeenCalled()
     h.dispose()
   })
