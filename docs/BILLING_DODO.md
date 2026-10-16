@@ -259,10 +259,13 @@ schema review. It requires the selected database name explicitly, accepts only
 development/test with `DODO_MODE=test`, verifies the complete legacy billing
 schema and financial identifiers, applies OAuth and engine migrations
 `0059`–`0064` in one transaction, preserves financial and user-entitlement
-fingerprints, and advances to the verified checkpoint `0067`. The current repository has one
-head at `0068`; after the bridge transaction completes, run the ordinary
-`alembic upgrade head` on that same verified database to add webhook identity.
-The bridge refuses other repository heads until separately reviewed. It refuses partial/unknown
+fingerprints, and advances to the verified checkpoint `0067`. The bridge is pinned
+to a repository whose sole head is `0068`; there, an ordinary
+`alembic upgrade head` after bridging adds webhook identity. The current mainline
+head is `0075_durable_quota_ledger`, so this legacy bridge refuses it until
+separately reviewed. A confirmed mainline `0059` database follows ordinary
+upgrades to `0075` under the [schema cutover procedure](operations/schema-cutover-compatibility.md)
+and does not need this bridge. The bridge refuses partial/unknown
 schemas and repeat runs. Example for a disposable clone:
 
 ```powershell

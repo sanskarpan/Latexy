@@ -20,6 +20,7 @@ function find(predicate: (node: ts.Node) => boolean) {
 }
 const fetchResume = (find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === 'fetchResume')[0] as ts.VariableDeclaration).initializer!
 const runCompile = (find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === 'runCompile')[0] as ts.VariableDeclaration).initializer!
+const autoCompileHandler = (find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === 'handleAutoCompile')[0] as ts.VariableDeclaration).initializer!
 const bootstrapEffect = (find((node) => ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect'
   && node.arguments[0]?.getText(source).includes('const request = initialPreviewRequest'))[0] as ts.CallExpression).arguments[0]
 const loadEffect = find((node) => ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect'
@@ -40,6 +41,10 @@ function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: Error) => void
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
+}
+async function flushRecovery() {
+  for (let i = 0; i < 24; i += 1) await Promise.resolve()
+  await vi.advanceTimersByTimeAsync(0)
 }
 
 type Identity = { ownerId: string | null; resumeId: string; consumed: boolean }
@@ -78,20 +83,28 @@ function harness() {
     return true
   })
   const context: Record<string, unknown> = {
-    Error, performance, TextEncoder, navigator: { onLine: true }, shouldSubmitInitialPreview,
+    Error, AbortController, performance, TextEncoder, navigator: { onLine: true }, shouldSubmitInitialPreview,
+    useCallback: (callback: (...args: never[]) => unknown) => callback,
     isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, sha256Bytes,
     resumeContentRevisionRef: { current: null },
     offlinePdfIdentityRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A', generation: 1 } },
     recoveredAcceptedArtifact: null,
-    sessionUserId: 'owner-A', resumeId: 'resume-A', isLoading: false, sessionLoading: false, initialPreviewRequest: null,
+    acceptedArtifactRecoveryPendingIdentity: null,
+    acceptedArtifactRecoveryRetryIdentity: null,
+    acceptedArtifactRecoveryController: new AbortController(),
+    acceptedArtifactRecoveryControllerRef: { current: null },
+    sessionUserId: 'owner-A', offlinePdfOwnerId: 'owner-A', resumeId: 'resume-A', isLoading: false, sessionLoading: false, initialPreviewRequest: null,
     loadContextRef: { current: null },
     entitlementsLoading: true, entitlementsLoaded: false,
+    canEditDocument: true, autoCompileIdentityReady: true, isOnline: true,
     sourceLoadStatus: 'unresolved', sourceLoadKind: null, sourceLoadReady: false, finishSourceLoad,
     ownsSourceLoad: (ticket: SourceLoadTicket) => ticket === currentSourceLoad && ticket.ownerId === context.sessionUserId
       && ticket.resumeId === context.resumeId && ticket.generation === generation,
     can: (key: string) => grants.has(key), canRef: { current: (key: string) => grants.has(key) },
+    checkpointRecoverySourceForRead: (_preview: unknown, _identity: unknown, source: string) => source,
+    checkpointRecoveryIdentity: null,
     editorMode: 'pdf', latexContent: initialSource, sourceAtRenderRef: { current: initialSource },
-    editorRef: { current: editor }, compiler: 'pdflatex', initialPreviewCompilerRef: { current: 'pdflatex' }, isOnline: true,
+    editorRef: { current: editor }, compiler: 'pdflatex', initialPreviewCompilerRef: { current: 'pdflatex' },
     currentCheckpointRecoveryPreview: null, compileJobId: null, aiJobId: null,
     isAnyRunning: false, isSubmitting: false, isAiSubmitting: false,
     isCurrentOfflinePdfIdentity: (owner: string | null, resume: string, expectedGeneration: number) => owner === context.sessionUserId
@@ -121,6 +134,12 @@ function harness() {
   context.setCompiler = (value: string) => { context.compiler = value }
   context.setInitialPreviewRequest = (request: unknown) => { context.initialPreviewRequest = request }
   context.setRecoveredAcceptedArtifact = (artifact: unknown) => { context.recoveredAcceptedArtifact = artifact }
+  context.setAcceptedArtifactRecoveryPendingIdentity = vi.fn((identity: unknown) => { context.acceptedArtifactRecoveryPendingIdentity = identity })
+  context.setAcceptedArtifactRecoveryRetryIdentity = vi.fn((identity: unknown) => { context.acceptedArtifactRecoveryRetryIdentity = identity })
+  context.blocksAcceptedArtifactRecoveryAdmission = (source: string) => {
+    const identity = context.acceptedArtifactRecoveryPendingIdentity ?? context.acceptedArtifactRecoveryRetryIdentity as Record<string, unknown> | null
+    return Boolean(identity && (identity as Record<string, unknown>).source === source)
+  }
   function renderIdentity(owner = context.sessionUserId as string, resume = context.resumeId as string) {
     context.sessionUserId = owner; context.resumeId = resume
     identityRef = evaluate(`(() => { ${identityCode}; return initialPreviewIdentityRef })()`, {
@@ -158,6 +177,8 @@ function harness() {
       context.initialPreviewIdentity = identityRef!.current
       context.generationAtStart = generation
       const loadContext: Record<string, unknown> = { ...context, cancelled: false, ownerAtStart: context.sessionUserId }
+      ;(loadContext.acceptedArtifactRecoveryControllerRef as { current: AbortController | null }).current =
+        loadContext.acceptedArtifactRecoveryController as AbortController
       ;(context.loadContextRef as { current: Record<string, unknown> | null }).current = loadContext
       loadContext.isActive = evaluate(`(${loadActive.getText(source)})`, loadContext)
       await evaluate(`(${fetchResume.getText(source)})()`, loadContext)
@@ -172,6 +193,7 @@ function harness() {
     },
     renderIdentity,
     manual: () => evaluate(`(${runCompile.getText(source)})()`, context),
+    auto: (content: string) => (evaluate(`(${autoCompileHandler.getText(source)})`, context) as (content: string) => Promise<unknown>)(content),
     switchCompiler(compiler: string) {
       context.compiler = compiler; (context.initialPreviewCompilerRef as { current: string }).current = compiler
       scheduler.dispose(); scheduler = new PreviewScheduler(automatic, () => Date.now()); scheduler.update(false, false); exposeQueue()
@@ -208,6 +230,8 @@ describe('saved accepted artifact recovery through the actual extracted loader',
       metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
     h.getLatestAcceptedArtifact.mockResolvedValueOnce({ artifact: acceptedArtifact(hash), source_sha256: hash, content_revision: 7 })
     await h.load()
+    await flushRecovery()
+    await vi.waitFor(() => expect(h.context.recoveredAcceptedArtifact).not.toBeNull())
     expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
     expect(h.context.recoveredAcceptedArtifact).toMatchObject({
       ownerId: 'owner-A', resumeId: 'resume-A', generation: 1, source: initialSource, contentRevision: 7,
@@ -221,7 +245,9 @@ describe('saved accepted artifact recovery through the actual extracted loader',
 
   it('allows one normal bootstrap after an authoritative no-artifact response', async () => {
     const h = harness(); enableVersionedOwnedResume(h)
-    await h.load(); h.effect()
+    await h.load(); await flushRecovery()
+    await vi.waitFor(() => expect(h.context.initialPreviewRequest).not.toBeNull())
+    h.effect()
     expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
     expect(h.context.recoveredAcceptedArtifact).toBeNull()
     expect(h.context.initialPreviewRequest).not.toBeNull()
@@ -233,12 +259,43 @@ describe('saved accepted artifact recovery through the actual extracted loader',
     h.dispose()
   })
 
+  it('keeps source ready but blocks preview admission until accepted-artifact recovery is conclusive', async () => {
+    const h = harness(), hash = await sourceHash()
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    const recovery = deferred<AcceptedPreviewRecoveryResponse>()
+    h.getLatestAcceptedArtifact.mockReturnValueOnce(recovery.promise as never)
+
+    await h.load()
+    expect(h.context.sourceLoadReady).toBe(true)
+    expect(h.context.isLoading).toBe(false)
+    expect((h.context.blocksAcceptedArtifactRecoveryAdmission as (source: string) => boolean)(initialSource)).toBe(true)
+    expect(h.context.initialPreviewRequest).toBeNull()
+    h.grant()
+    h.grants.add('c06'); h.grants.add('c01')
+    h.effect()
+    await h.manual()
+    await h.auto(initialSource)
+    expect(h.submit).not.toHaveBeenCalled()
+
+    recovery.resolve({ artifact: null, source_sha256: hash, content_revision: 7 })
+    await flushRecovery()
+    await vi.waitFor(() => expect(h.context.initialPreviewRequest).not.toBeNull())
+    expect(h.context.initialPreviewRequest).not.toBeNull()
+    h.effect()
+    expect(h.submit).toHaveBeenCalledOnce()
+    await h.settle()
+    h.dispose()
+  })
+
   it('suppresses bootstrap when the recovery read is unavailable', async () => {
     const h = harness()
     h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
       metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
     h.getLatestAcceptedArtifact.mockRejectedValueOnce(new Error('503'))
-    await h.load(); h.effect(); h.grant(); h.effect()
+    await h.load(); await flushRecovery()
+    await vi.waitFor(() => expect(h.context.acceptedArtifactRecoveryRetryIdentity).not.toBeNull())
+    h.effect(); h.grant(); h.effect()
     expect(h.context.recoveredAcceptedArtifact).toBeNull()
     expect(h.context.initialPreviewRequest).toBeNull()
     expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
@@ -259,14 +316,14 @@ describe('saved accepted artifact recovery through the actual extracted loader',
     const loading = h.load()
     for (let i = 0; i < 8 && !h.getLatestAcceptedArtifact.mock.calls.length; i++) await Promise.resolve()
     expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+    await loading
+    expect(h.context.sourceLoadReady).toBe(true)
+    expect(h.context.isLoading).toBe(false)
     ;((h.context.loadContextRef as { current: Record<string, unknown> }).current).cancelled = true
     recovery.reject(new DOMException('Aborted', 'AbortError'))
-    await loading
+    await flushRecovery()
 
-    expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
-      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1, source: initialSource, contentRevision: 7,
-    }))
-    expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
+    expect(h.context.acceptedArtifactRecoveryRetryIdentity).toBeNull()
     expect(h.context.initialPreviewRequest).toBeNull()
     expect(h.submit).not.toHaveBeenCalled()
     h.dispose()
@@ -284,7 +341,9 @@ describe('saved accepted artifact recovery through the actual extracted loader',
         source_sha256: mismatch === 'response-source' ? 'e'.repeat(64) : hash,
         content_revision: mismatch === 'response-revision' ? 8 : 7,
       })
-      await h.load(); h.effect(); h.grant(); h.effect()
+      await h.load(); await flushRecovery()
+      await vi.waitFor(() => expect(h.context.acceptedArtifactRecoveryRetryIdentity).not.toBeNull())
+      h.effect(); h.grant(); h.effect()
       expect(h.context.recoveredAcceptedArtifact).toBeNull()
       expect(h.context.initialPreviewRequest).toBeNull()
       expect(h.submit).not.toHaveBeenCalled()
@@ -302,6 +361,7 @@ describe('saved accepted artifact recovery through the actual extracted loader',
       const pending = h.load()
       for (let i = 0; i < 8 && !h.getLatestAcceptedArtifact.mock.calls.length; i++) await Promise.resolve()
       expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+      await pending
       const context = h.context
       if (change === 'owner') {
         (context.offlinePdfIdentityRef as { current: { ownerId: string | null } }).current.ownerId = 'owner-B'
@@ -311,7 +371,7 @@ describe('saved accepted artifact recovery through the actual extracted loader',
         h.edit('new source after recovery began')
       }
       late.resolve({ artifact: acceptedArtifact(hash), source_sha256: hash, content_revision: 7 })
-      await pending; h.grant(); h.effect()
+      await flushRecovery(); h.grant(); h.effect()
       expect(h.context.recoveredAcceptedArtifact).toBeNull()
       expect(h.context.initialPreviewRequest).toBeNull()
       expect(h.submit).not.toHaveBeenCalled()

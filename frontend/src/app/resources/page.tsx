@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
+import { marketingSocialImage } from '@/lib/marketing-social-image'
 
 export const metadata: Metadata = {
     title: 'Resume Writing Guide & Practical Resources | Latexy',
@@ -13,6 +14,13 @@ export const metadata: Metadata = {
         description: 'Practical resume writing advice and clear links to the tools that help.',
         url: '/resources',
         type: 'website',
+        images: [marketingSocialImage],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Make your next resume draft easier | Latexy',
+        description: 'Practical resume writing advice and clear links to the tools that help.',
+        images: [marketingSocialImage.url],
     },
 }
 const guides = [

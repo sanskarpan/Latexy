@@ -1,12 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ACCEPTED_ARTIFACT_RECOVERY_TIMEOUT_MS,
+  fetchAcceptedArtifact,
   isCurrentAcceptedPreviewRecovery,
   isMatchingAcceptedArtifact,
+  retryAfterMilliseconds,
   resolveCurrentAcceptedPreviewRecovery,
   shouldSubmitInitialPreview,
   type AcceptedPreviewRecoveryIdentity,
   type AcceptedPreviewRecoveryResponse,
 } from '@/lib/accepted-artifact-recovery'
+
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
 
 const identity: AcceptedPreviewRecoveryIdentity = {
   ownerId: 'owner-a', resumeId: 'resume-a', generation: 3, source: 'current source', contentRevision: 9,
@@ -60,5 +66,107 @@ describe('accepted artifact recovery', () => {
 
   it('keeps the same authenticated document generation current', () => {
     expect(isCurrentAcceptedPreviewRecovery(identity, { ...identity })).toBe(true)
+  })
+
+  it('retries a 503 once after a bounded Retry-After and returns the second read', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503, headers: { 'Retry-After': '2' } }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const pending = fetchAcceptedArtifact(request, async response => response)
+    await vi.advanceTimersByTimeAsync(2_000)
+    const response = await pending
+    expect(response.status).toBe(200)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request.mock.calls.every(([signal]) => signal instanceof AbortSignal)).toBe(true)
+  })
+
+  it.each([null, 'not-a-date', '3'])('does not retry 503 with an absent or over-budget Retry-After: %s', async (header) => {
+    const request = vi.fn().mockResolvedValue(new Response('', {
+      status: 503, headers: header === null ? undefined : { 'Retry-After': header },
+    }))
+    const response = await fetchAcceptedArtifact(request, async response => response)
+    expect(response.status).toBe(503)
+    expect(request).toHaveBeenCalledOnce()
+  })
+
+  it('parses bounded Retry-After seconds and HTTP dates', () => {
+    expect(retryAfterMilliseconds('2', 1_000)).toBe(2_000)
+    expect(retryAfterMilliseconds(new Date(3_000).toUTCString(), 1_000)).toBeGreaterThan(0)
+    expect(retryAfterMilliseconds('-1', 1_000)).toBeNull()
+    expect(retryAfterMilliseconds('invalid', 1_000)).toBeNull()
+  })
+
+  it('aborts a hung accepted-artifact request at the overall deadline', async () => {
+    const request = vi.fn((signal: AbortSignal) => new Promise<Response>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const pending = fetchAcceptedArtifact(request, async response => response)
+    const rejected = expect(pending).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(ACCEPTED_ARTIFACT_RECOVERY_TIMEOUT_MS)
+    await rejected
+    expect(request).toHaveBeenCalledOnce()
+  })
+
+  it('settles at the deadline even when authentication or transport ignores abort forever', async () => {
+    const request = vi.fn(() => new Promise<Response>(() => {}))
+    const parse = vi.fn(async (response: Response) => response)
+    const pending = fetchAcceptedArtifact(request, parse)
+    const rejected = expect(pending).rejects.toThrow('timed out')
+    await vi.advanceTimersByTimeAsync(ACCEPTED_ARTIFACT_RECOVERY_TIMEOUT_MS)
+    await rejected
+    expect(request).toHaveBeenCalledOnce()
+    expect(parse).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('includes an unresponsive response-body parser in the same overall deadline', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503, headers: { 'Retry-After': '2' } }))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const parse = vi.fn(() => new Promise<never>(() => {}))
+    const pending = fetchAcceptedArtifact(request, parse)
+    const rejected = expect(pending).rejects.toThrow('timed out')
+    await vi.advanceTimersByTimeAsync(ACCEPTED_ARTIFACT_RECOVERY_TIMEOUT_MS)
+    await rejected
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(parse).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([200, 503])('rejects a late %i response after timeout even when the transport ignores abort', async status => {
+    let finish!: (response: Response) => void
+    const request = vi.fn(() => new Promise<Response>(resolve => { finish = resolve }))
+    const parse = vi.fn(async (response: Response) => response)
+    const pending = fetchAcceptedArtifact(request, parse)
+    const rejected = expect(pending).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(ACCEPTED_ARTIFACT_RECOVERY_TIMEOUT_MS)
+    finish(new Response('', { status, headers: status === 503 ? { 'Retry-After': '0' } : undefined }))
+    await rejected
+    expect(request).toHaveBeenCalledOnce()
+    expect(parse).not.toHaveBeenCalled()
+  })
+
+  it('cancels the Retry-After wait when the caller abandons this identity', async () => {
+    const controller = new AbortController()
+    const request = vi.fn().mockResolvedValue(new Response('', { status: 503, headers: { 'Retry-After': '2' } }))
+    const pending = fetchAcceptedArtifact(request, async response => response, controller.signal)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(2)
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    expect(request).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not start an operation abandoned before its dispatch microtask', async () => {
+    const controller = new AbortController()
+    const request = vi.fn().mockResolvedValue(new Response('', { status: 200 }))
+    const parse = vi.fn(async (response: Response) => response)
+    const pending = fetchAcceptedArtifact(request, parse, controller.signal)
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    expect(request).not.toHaveBeenCalled()
+    expect(parse).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
