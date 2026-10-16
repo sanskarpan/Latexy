@@ -115,6 +115,10 @@ async def test_hidden_offer_is_not_public_but_admin_can_review_it(monkeypatch):
 @pytest.mark.asyncio
 async def test_disabled_offer_remains_readable_and_existing_subscriptions_untouched(monkeypatch):
     service = PlanCatalogService()
+    monkeypatch.setattr(
+        "app.services.feature_flag_service.feature_flag_service.get_flag",
+        AsyncMock(return_value=True),
+    )
     row = catalog_row(service, purchase_enabled=False)
     monkeypatch.setattr(service, "_rows", AsyncMock(return_value={"pro": row}))
     original = deepcopy(settings.SUBSCRIPTION_PLANS)
@@ -271,6 +275,10 @@ async def test_catalog_outage_preserves_current_subscription_recovery(monkeypatc
 async def test_commercial_capability_uses_target_sku(sku, monkeypatch):
     db = db_with_row(None)
     gate = AsyncMock(side_effect=[True, False])
+    monkeypatch.setattr(
+        "app.services.feature_flag_service.feature_flag_service.get_flag",
+        AsyncMock(return_value=True),
+    )
     monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature_for_plan", gate)
     with pytest.raises(HTTPException) as exc:
         await PlanCatalogService().require_new_purchase(db, sku)
@@ -303,6 +311,10 @@ async def test_dodo_annual_catalog_is_configured_from_active_product_mapping(mon
 async def test_new_purchase_switch_blocks_paid_offer(monkeypatch):
     db = db_with_row(None)
     gate = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "app.services.feature_flag_service.feature_flag_service.get_flag",
+        AsyncMock(return_value=True),
+    )
     monkeypatch.setattr("app.services.plan_catalog_service.entitlement_service.has_feature_for_plan", gate)
     with pytest.raises(HTTPException) as exc:
         await PlanCatalogService().require_new_purchase(db, "pro", user_id="owner-1")
