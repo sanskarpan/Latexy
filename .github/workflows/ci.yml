@@ -468,7 +468,7 @@ jobs:
           --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
-      - name: Verify guided builder, compile cadence and owner regressions
+      - name: Verify guided builder, compile cadence and source-PDF synchronization
         id: editor-owner-regressions
         env:
           PLAYWRIGHT_PORT: "5183"
