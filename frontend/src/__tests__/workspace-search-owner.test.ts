@@ -58,8 +58,20 @@ function descendants(node: HostNode): HostNode[] {
     return [node, ...node.children.flatMap(descendants)]
 }
 
+function committedSnapshot(node: HostNode): string {
+    const fields = descendants(node).flatMap(child => {
+        if (child.type === 'input') return [`input[value=${String(child.props.value ?? '')}]`]
+        if (child.props.role === 'alert') return [`alert[text=${textContent(child)}]`]
+        return []
+    })
+    return `${textContent(node)}\n${fields.join('\n')}`
+}
+
 const require = createRequire(import.meta.url)
 const fiberRequire = createRequire(require.resolve('@react-three/fiber'))
+// This is a real React ConcurrentRoot host test, but @react-three/fiber supplies
+// react-reconciler 0.27 while the app's ReactDOM 18.3.1 uses reconciler 0.29.2.
+// The Playwright acceptance test covers the actual DOM renderer behavior.
 const reconcile = fiberRequire('react-reconciler') as (
     host: Record<string, unknown>
 ) => HostRenderer
@@ -88,7 +100,7 @@ function concurrentRoot() {
         prepareForCommit: () => null,
         // This runs after host mutations and before layout effects, so the captured
         // tree proves what React actually committed before reset effects ran.
-        resetAfterCommit: () => snapshots.push(textContent(container)),
+        resetAfterCommit: () => snapshots.push(committedSnapshot(container)),
         shouldSetTextContent: () => false,
         createInstance: (type: string, props: Record<string, unknown>) => ({
             type,
@@ -388,7 +400,8 @@ describe('workspace search owner isolation with React', () => {
     it('hides old results in the committed tree before layout effects on close/reopen', async () => {
         const h = harness()
         const previousSearch = deferred<{ results: ReturnType<typeof result>[] }>()
-        search.mockReturnValueOnce(previousSearch.promise)
+        const failedSearch = deferred<{ results: ReturnType<typeof result>[] }>()
+        search.mockReturnValueOnce(previousSearch.promise).mockReturnValueOnce(failedSearch.promise)
         try {
             await h.render('account-a')
             await h.typeQuery('reopen phrase')
@@ -399,11 +412,36 @@ describe('workspace search owner isolation with React', () => {
             expect(textContent(h.container)).toContain('Private Resume A')
 
             await h.render('account-a', false)
+            const resultReopenStart = h.snapshots.length
             await h.render('account-a', true)
             expect(h.input()?.props.value).toBe('')
-            expect(h.snapshots[h.snapshots.length - 1]).not.toContain('Private Resume A')
+            const resultReopenCommits = h.snapshots.slice(resultReopenStart)
+            expect(resultReopenCommits.length).toBeGreaterThan(0)
+            expect(resultReopenCommits.every(snapshot =>
+                !snapshot.includes('Private Resume A') &&
+                !snapshot.includes('private reopen phrase') &&
+                !snapshot.includes('input[value=reopen phrase]')
+            )).toBe(true)
             expect(textContent(h.container)).not.toContain('private reopen phrase')
+
+            await h.typeQuery('private error query')
+            expect(search).toHaveBeenCalledTimes(2)
+            failedSearch.reject(new Error('private account search error'))
+            await h.settle(failedSearch.promise.catch(() => undefined))
+            expect(textContent(h.container)).toContain('private account search error')
+
+            await h.render('account-a', false)
+            const errorReopenStart = h.snapshots.length
+            await h.render('account-a', true)
+            const errorReopenCommits = h.snapshots.slice(errorReopenStart)
+            expect(errorReopenCommits.length).toBeGreaterThan(0)
+            expect(errorReopenCommits.every(snapshot =>
+                !snapshot.includes('private account search error') &&
+                !snapshot.includes('input[value=private error query]') &&
+                !snapshot.includes('Private Resume A')
+            )).toBe(true)
         } finally {
+            failedSearch.resolve({ results: [] })
             await h.unmount()
         }
     })

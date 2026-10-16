@@ -237,6 +237,42 @@ test.describe('Project Search — workspace page', () => {
     await expect(page.getByText('Software Engineer Resume')).toBeVisible({ timeout: 3000 })
   })
 
+  test('close and reopen clears prior search results, query, and error in the browser DOM', async ({ page }) => {
+    await page.route('**/resumes/search**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('q') !== 'PRIVATE_ERROR_QUERY') return route.fallback()
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'private search error' }),
+      })
+    })
+
+    await gotoWorkspace(page)
+    await openSearchModal(page)
+    const modal = () => page.locator('div.fixed.inset-0').last()
+    let input = page.locator('input[placeholder*="Search across all resumes"]')
+    await input.fill('SRCH_UNIQ_42')
+    await expect(modal().getByText('Software Engineer Resume', { exact: true })).toBeVisible()
+
+    await input.press('Escape')
+    await expect(page.locator('div.fixed.inset-0')).toHaveCount(0)
+    await openSearchModal(page)
+    input = page.locator('input[placeholder*="Search across all resumes"]')
+    await expect(input).toHaveValue('')
+    await expect(modal().getByText('Software Engineer Resume', { exact: true })).toHaveCount(0)
+
+    await input.fill('PRIVATE_ERROR_QUERY')
+    await expect(modal().getByRole('alert')).toHaveText('private search error')
+    await input.press('Escape')
+    await expect(page.locator('div.fixed.inset-0')).toHaveCount(0)
+    await openSearchModal(page)
+    input = page.locator('input[placeholder*="Search across all resumes"]')
+    await expect(input).toHaveValue('')
+    await expect(modal().getByRole('alert')).toHaveCount(0)
+    await expect(modal().getByText('Software Engineer Resume', { exact: true })).toHaveCount(0)
+  })
+
   test('clearing a query prevents an older response from restoring stale results', async ({ page }) => {
     await page.route('**/resumes/search**', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 600))
