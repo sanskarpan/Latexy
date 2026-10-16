@@ -179,6 +179,22 @@ jobs:
         working-directory: backend
         run: modal run --env main modal_app.py::migrate
 
+      # The first preflight cannot see provider columns on a pre-0065 schema.
+      # Recheck after migration, while ingress remains held, so a legacy write
+      # during the cutover window blocks serving the candidate build.
+      - name: Recheck billing identities after migration
+        if: steps.freshness.outputs.current == 'true'
+        working-directory: backend
+        env:
+          DODO_LIVE_BILLING_ACCEPTED: ${{ vars.DODO_LIVE_BILLING_ACCEPTED }}
+        run: |
+          set -euo pipefail
+          args=(--source-revision "$DEPLOY_SHA" --expected-environment main --purpose rollout)
+          if [[ "${DODO_LIVE_BILLING_ACCEPTED:-}" == "true" ]]; then
+            args+=(--allow-configured-live)
+          fi
+          modal run --env main modal_app.py::billing_preflight "${args[@]}"
+
       - name: Deploy backend with a rolling update
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend

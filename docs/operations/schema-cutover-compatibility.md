@@ -2,11 +2,13 @@
 
 This runbook concerns the Modal backend schema and builds. It grants no approval
 to deploy, change credentials, enable sales, or run a production migration.
-The current production database revision and serving backend SHA remain unknown.
+Prior read-only database and deployment-pointer observations exist, but they
+do not establish compatibility across the full serving fleet. Reverify the
+cutover evidence for the exact release before approving migration or recovery.
 
 ## Source evidence and failure modes
 
-At the checked main revision `d35b00fe6c4630fd842e2fb87f9e3fbfd39139e2` there is one Alembic head,
+At the checked main revision `e9d6f1c2b71722e30efe861703e648ed744c3327` there is one Alembic head,
 `0075_durable_quota_ledger`. The mainline path is `0061` → `0062` → `0063` →
 `0064` → `0065` → `0066` → `0067` → `0068` → `0069_capability_catalog` →
 `0070_plan_catalog` → `0071_plan_quotas` → `0072_capability_roles` →
@@ -29,12 +31,23 @@ an ambiguous revision.
   Downgrading `0062` drops the acceptance state. Treat both as forward recovery
   boundaries, not routine schema rollback targets.
 
-For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38841762846)
-and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38844218686)
-passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
+The read-only billing preflight now counts rows whose retained Razorpay ID
+conflicts with the provider label or generic ID. A nonzero aggregate blocks
+rollout and omits the identifiers from its report. It can detect a completed
+mixed-version write, but its snapshot cannot prove that old writers have
+stopped; the traffic drain and commit-scoped recovery attestation remain required.
+The Modal workflow repeats this read-only preflight after migration and before
+the rolling deploy, while ingress must remain held. A failed recheck leaves the
+schema advanced and blocks the deploy; follow the forward-recovery procedure.
+Investigate suspect rows against independent provider evidence. Do not change
+their provider label automatically.
+
+For that SHA, [canonical CI](https://github.com/sanskarpan/Latexy/actions/runs/38864530611)
+and [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38867427620)
+passed. The [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38867427592)
 stopped at renderer input validation; billing preflight, cutover approval,
-migration and deploy were skipped. None of those results identifies the
-currently serving Modal revision or database head. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
+migration and deploy were skipped. Those workflow results alone do not establish
+the full serving fleet or cutover-time schema state. The [bounded renderer boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555)
 binds an immutable image and asset marker to an earlier source revision. Its
 11 recorded source-file hashes match the current Windows checkout bytes, but
 the complete backend tree differs and production rollout was not certified.
@@ -62,8 +75,8 @@ the complete backend tree differs and production rollout was not certified.
    and `11890a1d` (#1901), whose public PDF reader can fall back to live Redis
    for pending, committing or expired durable jobs. Source checks accept the
    #1903 fix at `359806d2` and #1904 at `4182705d`, but this does not
-   establish a distinct deployable recovery image, drained fleet or production
-   database revision. Do not nominate a recovery SHA from source checks alone.
+   establish a distinct deployable recovery image, drained fleet or cutover-time
+   database compatibility. Do not nominate a recovery SHA from source checks alone.
 4. Review the exact candidate SHA and recovery SHA, then set Production
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
    `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and
@@ -102,9 +115,10 @@ TEST_POSTGRES_ALLOW_SCHEMA_CREATE=1 SKIP_INFRA_CHECK=1 \
 pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 ```
 
-Three tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
-upgrade on minimal tables, check legacy/new billing writes and downgrade
-refusal, and compare old versus accepted-only compilation selection. They drop
+Five tests create UUID-named PostgreSQL schemas, run the real `0065` or `0062`
+upgrade on minimal tables, check legacy/new billing writes, null and mismatched
+identifier pairs, the redacted identity-mismatch count and downgrade refusal, and compare old versus
+accepted-only compilation selection. They drop
 their schemas even on assertion failure. The gate tests run with mocked GitHub
 and Git commands and need no external service. CI has a dedicated verbose step
 so each database test reports PASS or SKIP by name. Keep database URLs on a

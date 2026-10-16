@@ -420,7 +420,8 @@ def test_disposable_pre_dodo_database_reports_history_without_changing_it():
         assert report["alembic_revisions"] == ["0064"]
         assert report["counts"] == {"paid_pointer_users": 3, "historical_paid_pointer_users": 3,
                                     "historical_team_owners": 1, "active_seats_inheriting_historical_owners": 1,
-                                    "historical_live_mandate_users": 2, "existing_dodo_live_intent_users": 0}
+                                    "historical_live_mandate_users": 2, "existing_dodo_live_intent_users": 0,
+                                    "suspect_legacy_billing_rows": 0}
         with fixture.connect() as connection:
             after = {table: connection.exec_driver_sql(f"SELECT * FROM {table}").all()
                      for table in before}
@@ -474,6 +475,22 @@ def test_unpointed_historical_mandates_block_readiness(monkeypatch):
     assert report["database"]["counts"]["historical_paid_pointer_users"] == 0
     assert report["database"]["counts"]["historical_live_mandate_users"] == 1
     assert "historical_live_mandates_require_cutover_review" in report["blockers"]
+
+
+def test_suspect_legacy_billing_rows_block_rollout_without_exposing_ids(monkeypatch):
+    monkeypatch.setattr(preflight, "read_environment", lambda *_: live_environment())
+    engine, connection, _, _ = fake_engine()
+    connection.scalar.side_effect = lambda statement, *_args: (
+        "on" if "transaction_read_only" in str(statement)
+        else 2 if "IS DISTINCT FROM razorpay_subscription_id" in str(statement)
+        else 0
+    )
+    report, code = preflight.collect_report(engine_factory=lambda *_a, **_k: engine)
+    assert code == 1
+    assert report["database"]["counts"]["suspect_legacy_billing_rows"] == 2
+    assert "suspect_legacy_billing_rows_require_review" in report["blockers"]
+    assert "rollout_suspect_legacy_billing_rows_present" in preflight.rollout_assessment(report)["reasons"]
+    assert "razorpay_subscription_id" not in json.dumps(preflight.public_report(report))
 
 
 @pytest.mark.parametrize("key", ["WEEKLY_AMOUNT_MINOR", "LIFETIME_AMOUNT_MINOR"])
@@ -693,7 +710,7 @@ def test_rollout_rejects_missing_multihead_and_unrecognized_revision(revisions):
 
 @pytest.mark.parametrize("field", [
     "historical_paid_pointer_users", "historical_live_mandate_users", "historical_team_owners",
-    "active_seats_inheriting_historical_owners",
+    "active_seats_inheriting_historical_owners", "suspect_legacy_billing_rows",
 ])
 def test_rollout_blocks_each_historical_access_risk_even_with_operator_acceptance(field):
     report = rollout_report(sales_mode="required", mode="live", api=True, webhook=True)
