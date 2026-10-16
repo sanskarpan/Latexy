@@ -34,6 +34,9 @@ conflicts with the provider label or generic ID. A nonzero aggregate blocks
 rollout and omits the identifiers from its report. It can detect a completed
 mixed-version write, but its snapshot cannot prove that old writers have
 stopped; the traffic drain and commit-scoped recovery attestation remain required.
+The Modal workflow repeats this read-only preflight after migration and before
+the rolling deploy, while ingress must remain held. A failed recheck leaves the
+schema advanced and blocks the deploy; follow the forward-recovery procedure.
 Investigate suspect rows against independent provider evidence. Do not change
 their provider label automatically.
 
