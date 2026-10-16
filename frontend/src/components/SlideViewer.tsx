@@ -1,86 +1,86 @@
 'use client'
 
-/**
- * SlideViewer — Feature 86
- * A lightweight slide viewer for compiled Beamer presentations.
- * Uses <iframe> just like PDFPreview but adds prev/next slide navigation
- * and a slide-count badge. We avoid react-pdf to keep bundle size small
- * and to stay consistent with the existing PDFPreview pattern.
- */
+/** Canvas based viewer for compiled Beamer presentations. */
 
-import { useState, useEffect, useCallback, type KeyboardEvent } from 'react'
-import { ChevronLeft, ChevronRight, Maximize2, Loader2, Presentation } from 'lucide-react'
+import { useCallback, useEffect, useReducer, useRef, useState, type KeyboardEvent } from 'react'
+import dynamic from 'next/dynamic'
+import { ChevronLeft, ChevronRight, Maximize2, Loader2, Presentation, RotateCw } from 'lucide-react'
+import 'react-pdf/dist/Page/TextLayer.css'
+import { loadPdfRenderer } from '@/lib/pdf-renderer-loader'
+import {
+  createSlidePreviewState,
+  getSlidePageCount,
+  slidePreviewReducer,
+} from '@/lib/slide-preview-state'
+
+const Document = dynamic(
+  () => loadPdfRenderer().then((module) => module.PdfDocument),
+  { ssr: false },
+)
+const Page = dynamic(
+  () => loadPdfRenderer().then((module) => module.PdfPage),
+  { ssr: false },
+)
 
 interface Props {
   pdfUrl: string | null
   isLoading?: boolean
-  /** Total slide count returned by the backend (page_count for Beamer). */
+  /** Slide count supplied by the compile response; PDF.js is authoritative after load. */
   slideCount?: number | null
 }
 
-export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
-  const [currentSlide, setCurrentSlide] = useState(1)
-  const total = slideCount ?? null
+function SlideDocument({ pdfUrl, slideCount }: { pdfUrl: string; slideCount?: number | null }) {
+  const [state, dispatch] = useReducer(slidePreviewReducer, pdfUrl, createSlidePreviewState)
+  const [containerWidth, setContainerWidth] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const pageCount = getSlidePageCount(state.pageCount, slideCount)
+  const requestId = state.requestId
 
-  // Reset to slide 1 whenever the PDF changes (new compilation)
   useEffect(() => {
-    setCurrentSlide(1)
-  }, [pdfUrl])
+    const container = containerRef.current
+    if (!container) return
 
-  const prevSlide = useCallback(() => {
-    setCurrentSlide(s => Math.max(1, s - 1))
+    const measure = () => setContainerWidth(Math.floor(container.getBoundingClientRect().width))
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(container)
+    return () => observer.disconnect()
   }, [])
 
-  const nextSlide = useCallback(() => {
-    setCurrentSlide(s => (total ? Math.min(total, s + 1) : s + 1))
-  }, [total])
+  const navigate = useCallback((page: number) => {
+    if (state.phase !== 'ready') return
+    dispatch({ type: 'navigate', identity: pdfUrl, requestId, page })
+  }, [pdfUrl, requestId, state.phase])
 
+  const previous = useCallback(() => navigate(state.currentPage - 1), [navigate, state.currentPage])
+  const next = useCallback(() => navigate(state.currentPage + 1), [navigate, state.currentPage])
+  const retry = useCallback(() => {
+    dispatch({ type: 'retry', identity: pdfUrl, requestId })
+  }, [pdfUrl, requestId])
   const openFullscreen = useCallback(() => {
-    if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer')
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer')
   }, [pdfUrl])
-
-  // Build the PDF URL with a page anchor so the browser jumps to that slide
-  const pagedUrl = pdfUrl ? `${pdfUrl}#page=${currentSlide}` : null
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
       event.preventDefault()
-      prevSlide()
+      previous()
     } else if (event.key === 'ArrowRight' || event.key === 'PageDown') {
       event.preventDefault()
-      nextSlide()
+      next()
     } else if (event.key === 'Home') {
       event.preventDefault()
-      setCurrentSlide(1)
-    } else if (event.key === 'End' && total) {
+      navigate(1)
+    } else if (event.key === 'End' && pageCount) {
       event.preventDefault()
-      setCurrentSlide(total)
+      navigate(pageCount)
     }
-  }, [nextSlide, prevSlide, total])
-
-  // ── Empty / loading states ────────────────────────────────────────────────
-
-  if (isLoading) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3">
-        <Loader2 size={28} className="animate-spin" />
-        <p className="text-xs">Compiling presentation…</p>
-      </div>
-    )
-  }
-
-  if (!pdfUrl) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3">
-        <Presentation size={32} />
-        <p className="text-xs text-center leading-5">
-          Click <span className="text-accent-strong">Compile</span> to preview your slides.
-        </p>
-      </div>
-    )
-  }
-
-  // ── Main viewer ───────────────────────────────────────────────────────────
+  }, [navigate, next, pageCount, previous])
 
   return (
     <div
@@ -90,58 +90,78 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
-      {/* Slide iframe */}
-      <div className="relative min-h-0 flex-1">
-        <iframe
-          key={pagedUrl}
-          src={pagedUrl ?? ''}
-          className="h-full w-full border-0 bg-bg"
-          title={`Slide ${currentSlide}`}
-        />
+      <div ref={containerRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-bg p-4">
+        <Document
+          key={`${pdfUrl}:${requestId}`}
+          file={pdfUrl}
+          loading={null}
+          onLoadSuccess={({ numPages }) => dispatch({
+            type: 'loaded', identity: pdfUrl, requestId, pageCount: numPages,
+          })}
+          onLoadError={() => dispatch({ type: 'failed', identity: pdfUrl, requestId })}
+          onSourceError={() => dispatch({ type: 'failed', identity: pdfUrl, requestId })}
+        >
+          {state.phase === 'ready' && containerWidth > 32 && (
+            <Page
+              key={`${requestId}:${state.currentPage}`}
+              pageNumber={state.currentPage}
+              width={Math.max(1, containerWidth - 32)}
+              renderTextLayer
+              renderAnnotationLayer={false}
+              onLoadError={() => dispatch({
+                type: 'failed', identity: pdfUrl, requestId, page: state.currentPage,
+              })}
+              onRenderError={() => dispatch({
+                type: 'failed', identity: pdfUrl, requestId, page: state.currentPage,
+              })}
+            />
+          )}
+        </Document>
+
+        {state.phase === 'loading' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-fg-3" role="status">
+            <Loader2 size={28} className="animate-spin" />
+            <p className="text-xs">Loading presentation…</p>
+          </div>
+        )}
+        {state.phase === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg text-fg-3" role="alert">
+            <Presentation size={28} />
+            <p className="text-xs">The presentation preview could not be rendered.</p>
+            <button
+              onClick={retry}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
+            >
+              <RotateCw size={12} /> Retry preview
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Navigation bar */}
       <div className="flex shrink-0 items-center justify-between border-t border-line bg-bg px-3 py-1.5">
-        {/* Prev */}
         <button
-          onClick={prevSlide}
-          disabled={currentSlide <= 1}
+          onClick={previous}
+          disabled={state.currentPage <= 1 || state.phase !== 'ready'}
           className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous slide"
         >
           <ChevronLeft size={14} />
         </button>
 
-        {/* Slide counter */}
         <span aria-live="polite" className="tabular-nums text-[11px] text-fg-3">
-          {total ? (
-            <>
-              <span className="text-fg-2">{currentSlide}</span>
-              <span className="mx-1 text-fg-3">/</span>
-              <span>{total}</span>
-            </>
-          ) : (
-            <span className="text-fg-2">{currentSlide}</span>
-          )}
-          {total && (
-            <span className="ml-2 text-fg-3">
-              {total === 1 ? 'slide' : 'slides'}
-            </span>
-          )}
+          {pageCount ? <><span className="text-fg-2">{state.currentPage}</span><span className="mx-1">/</span>{pageCount}</> : state.currentPage}
+          {pageCount && <span className="ml-2">{pageCount === 1 ? 'slide' : 'slides'}</span>}
         </span>
 
         <div className="flex items-center gap-1">
-          {/* Next */}
           <button
-            onClick={nextSlide}
-            disabled={!!total && currentSlide >= total}
+            onClick={next}
+            disabled={!pageCount || state.currentPage >= pageCount || state.phase !== 'ready'}
             className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Next slide"
           >
             <ChevronRight size={14} />
           </button>
-
-          {/* Open in new tab */}
           <button
             onClick={openFullscreen}
             className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
@@ -154,4 +174,16 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
       </div>
     </div>
   )
+}
+
+export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
+  if (isLoading) {
+    return <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3"><Loader2 size={28} className="animate-spin" /><p className="text-xs">Compiling presentation…</p></div>
+  }
+
+  if (!pdfUrl) {
+    return <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3"><Presentation size={32} /><p className="text-xs text-center leading-5">Click <span className="text-accent-strong">Compile</span> to preview your slides.</p></div>
+  }
+
+  return <SlideDocument key={pdfUrl} pdfUrl={pdfUrl} slideCount={slideCount} />
 }

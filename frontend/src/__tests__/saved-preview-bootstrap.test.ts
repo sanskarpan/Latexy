@@ -4,6 +4,8 @@ import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PreviewScheduler } from '@/lib/preview-scheduler'
 import type { AccountPreferenceRequestContext } from '@/lib/api-client'
+import { isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview, type AcceptedPreviewRecoveryResponse } from '@/lib/accepted-artifact-recovery'
+import { sha256Bytes } from '@/hooks/useArtifactPreview'
 
 const source = ts.createSourceFile('editor/page.tsx', readFileSync(
   new URL('../app/workspace/[resumeId]/edit/page.tsx', import.meta.url), 'utf8',
@@ -64,6 +66,8 @@ function harness() {
   scheduler.update(false, false) // Bootstrap keeps the original c05-only policy.
   const admissions: Promise<string | null>[] = []
   const editor = { setValue: vi.fn(), getValue: vi.fn<() => string | undefined>(() => undefined), markAutoCompileCompiled: vi.fn() }
+  const getResume = vi.fn(() => Promise.resolve({ title: 'Owned resume', latex_content: initialSource, metadata: {}, user_id: 'owner-A' }))
+  const getLatestAcceptedArtifact = vi.fn()
   const setCompileJobId = vi.fn(), setLastStartedJobKind = vi.fn()
   const finishSourceLoad = vi.fn((ticket: SourceLoadTicket, status: string, kind: string | null = null) => {
     if (ticket !== currentSourceLoad || ticket.ownerId !== context.sessionUserId
@@ -74,8 +78,13 @@ function harness() {
     return true
   })
   const context: Record<string, unknown> = {
-    Error, performance, navigator: { onLine: true },
+    Error, performance, TextEncoder, navigator: { onLine: true }, shouldSubmitInitialPreview,
+    isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, sha256Bytes,
+    resumeContentRevisionRef: { current: null },
+    offlinePdfIdentityRef: { current: { ownerId: 'owner-A', resumeId: 'resume-A', generation: 1 } },
+    recoveredAcceptedArtifact: null,
     sessionUserId: 'owner-A', resumeId: 'resume-A', isLoading: false, sessionLoading: false, initialPreviewRequest: null,
+    loadContextRef: { current: null },
     entitlementsLoading: true, entitlementsLoaded: false,
     sourceLoadStatus: 'unresolved', sourceLoadKind: null, sourceLoadReady: false, finishSourceLoad,
     ownsSourceLoad: (ticket: SourceLoadTicket) => ticket === currentSourceLoad && ticket.ownerId === context.sessionUserId
@@ -92,7 +101,8 @@ function harness() {
     apiClient: {
       getAuthToken: () => 'owner-token', compileLatex: submit,
       getAcademicCVReport: () => Promise.resolve({}),
-      getResume: () => Promise.resolve({ title: 'Owned resume', latex_content: initialSource, metadata: {}, user_id: 'owner-A' }),
+      getResume,
+      getLatestAcceptedArtifact,
     },
     getDraft: () => Promise.resolve(null),
     isActive: () => true,
@@ -110,6 +120,7 @@ function harness() {
   context.setLatexContent = (value: string) => { context.latexContent = value; (context.sourceAtRenderRef as { current: string }).current = value }
   context.setCompiler = (value: string) => { context.compiler = value }
   context.setInitialPreviewRequest = (request: unknown) => { context.initialPreviewRequest = request }
+  context.setRecoveredAcceptedArtifact = (artifact: unknown) => { context.recoveredAcceptedArtifact = artifact }
   function renderIdentity(owner = context.sessionUserId as string, resume = context.resumeId as string) {
     context.sessionUserId = owner; context.resumeId = resume
     identityRef = evaluate(`(() => { ${identityCode}; return initialPreviewIdentityRef })()`, {
@@ -136,6 +147,7 @@ function harness() {
   exposeQueue()
   return {
     context, grants, auth, response, submit, dispatch, automatic, editor, setCompileJobId, setLastStartedJobKind, finishSourceLoad,
+    getResume, getLatestAcceptedArtifact,
     get scheduler() { return scheduler }, get identity() { return identityRef!.current },
     effect: () => evaluate(`(${bootstrapEffect.getText(source)})()`, context),
     async load() {
@@ -146,6 +158,7 @@ function harness() {
       context.initialPreviewIdentity = identityRef!.current
       context.generationAtStart = generation
       const loadContext: Record<string, unknown> = { ...context, cancelled: false, ownerAtStart: context.sessionUserId }
+      ;(context.loadContextRef as { current: Record<string, unknown> | null }).current = loadContext
       loadContext.isActive = evaluate(`(${loadActive.getText(source)})`, loadContext)
       await evaluate(`(${fetchResume.getText(source)})()`, loadContext)
     },
@@ -172,6 +185,140 @@ function harness() {
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
+
+describe('saved accepted artifact recovery through the actual extracted loader', () => {
+  const sourceHash = async () => sha256Bytes(new TextEncoder().encode(initialSource))
+  const acceptedArtifact = (hash: string) => ({
+    job_id: 'accepted-job', artifact_id: 'b'.repeat(64), document_id: 'resume-A', content_revision: 7,
+    source_sha256: hash, branch: 'draft' as const, owner_epoch: 2, compiler: 'pdflatex',
+    settings_sha256: 'c'.repeat(64), pdf_sha256: 'd'.repeat(64), pdf_size: 1234, page_count: 1,
+    preview_url: '/download/accepted-job/preview/fixture',
+  })
+  function enableVersionedOwnedResume(h: ReturnType<typeof harness>) {
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    h.getLatestAcceptedArtifact.mockImplementationOnce(async () => ({
+      artifact: null, source_sha256: await sourceHash(), content_revision: 7,
+    }))
+  }
+
+  it('restores a matching accepted artifact and does not bootstrap another compile', async () => {
+    const h = harness(), hash = await sourceHash()
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    h.getLatestAcceptedArtifact.mockResolvedValueOnce({ artifact: acceptedArtifact(hash), source_sha256: hash, content_revision: 7 })
+    await h.load()
+    expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+    expect(h.context.recoveredAcceptedArtifact).toMatchObject({
+      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1, source: initialSource, contentRevision: 7,
+      artifact: { job_id: 'accepted-job', type: 'artifact.ready', source_sha256: hash },
+    })
+    h.grant(); h.effect()
+    expect(h.submit).not.toHaveBeenCalled()
+    expect(h.context.initialPreviewRequest).toBeNull()
+    h.dispose()
+  })
+
+  it('allows one normal bootstrap after an authoritative no-artifact response', async () => {
+    const h = harness(); enableVersionedOwnedResume(h)
+    await h.load(); h.effect()
+    expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+    expect(h.context.recoveredAcceptedArtifact).toBeNull()
+    expect(h.context.initialPreviewRequest).not.toBeNull()
+    h.grant(); h.effect()
+    expect(h.submit).toHaveBeenCalledOnce()
+    await h.settle()
+    h.effect(); await vi.advanceTimersByTimeAsync(40_000)
+    expect(h.submit).toHaveBeenCalledOnce()
+    h.dispose()
+  })
+
+  it('suppresses bootstrap when the recovery read is unavailable', async () => {
+    const h = harness()
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    h.getLatestAcceptedArtifact.mockRejectedValueOnce(new Error('503'))
+    await h.load(); h.effect(); h.grant(); h.effect()
+    expect(h.context.recoveredAcceptedArtifact).toBeNull()
+    expect(h.context.initialPreviewRequest).toBeNull()
+    expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1,
+      source: initialSource, contentRevision: 7,
+    }))
+    expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
+    expect(h.submit).not.toHaveBeenCalled()
+    h.dispose()
+  })
+
+  it('keeps an identity-bound GET retry after the initial recovery request is aborted by cleanup', async () => {
+    const h = harness()
+    h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+      metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+    const recovery = deferred<AcceptedPreviewRecoveryResponse>()
+    h.getLatestAcceptedArtifact.mockReturnValueOnce(recovery.promise as never)
+    const loading = h.load()
+    for (let i = 0; i < 8 && !h.getLatestAcceptedArtifact.mock.calls.length; i++) await Promise.resolve()
+    expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+    ;((h.context.loadContextRef as { current: Record<string, unknown> }).current).cancelled = true
+    recovery.reject(new DOMException('Aborted', 'AbortError'))
+    await loading
+
+    expect(h.context.setAcceptedArtifactRecoveryRetryIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'owner-A', resumeId: 'resume-A', generation: 1, source: initialSource, contentRevision: 7,
+    }))
+    expect(h.context.setOfflinePdfError).toHaveBeenCalledWith('Could not check the accepted PDF. Retry to check it again.')
+    expect(h.context.initialPreviewRequest).toBeNull()
+    expect(h.submit).not.toHaveBeenCalled()
+    h.dispose()
+  })
+
+  it.each(['response-source', 'response-revision', 'artifact-identity'] as const)(
+    'does not publish or bootstrap a mismatched %s response', async mismatch => {
+      const h = harness(), hash = await sourceHash()
+      h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+        metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+      const badArtifact = acceptedArtifact(hash)
+      if (mismatch === 'artifact-identity') badArtifact.document_id = 'resume-B'
+      h.getLatestAcceptedArtifact.mockResolvedValueOnce({
+        artifact: badArtifact,
+        source_sha256: mismatch === 'response-source' ? 'e'.repeat(64) : hash,
+        content_revision: mismatch === 'response-revision' ? 8 : 7,
+      })
+      await h.load(); h.effect(); h.grant(); h.effect()
+      expect(h.context.recoveredAcceptedArtifact).toBeNull()
+      expect(h.context.initialPreviewRequest).toBeNull()
+      expect(h.submit).not.toHaveBeenCalled()
+      h.dispose()
+    },
+  )
+
+  it.each(['owner', 'revision', 'source'] as const)(
+    'drops a late recovery after live %s changes', async change => {
+      const h = harness(), hash = await sourceHash()
+      h.getResume.mockResolvedValueOnce({ title: 'Owned resume', latex_content: initialSource,
+        metadata: {}, user_id: 'owner-A', content_revision: 7 } as never)
+      const late = deferred<{ artifact: ReturnType<typeof acceptedArtifact>; source_sha256: string; content_revision: number }>()
+      h.getLatestAcceptedArtifact.mockReturnValueOnce(late.promise as never)
+      const pending = h.load()
+      for (let i = 0; i < 8 && !h.getLatestAcceptedArtifact.mock.calls.length; i++) await Promise.resolve()
+      expect(h.getLatestAcceptedArtifact).toHaveBeenCalledOnce()
+      const context = h.context
+      if (change === 'owner') {
+        (context.offlinePdfIdentityRef as { current: { ownerId: string | null } }).current.ownerId = 'owner-B'
+      } else if (change === 'revision') {
+        (context.resumeContentRevisionRef as { current: number | null }).current = 8
+      } else {
+        h.edit('new source after recovery began')
+      }
+      late.resolve({ artifact: acceptedArtifact(hash), source_sha256: hash, content_revision: 7 })
+      await pending; h.grant(); h.effect()
+      expect(h.context.recoveredAcceptedArtifact).toBeNull()
+      expect(h.context.initialPreviewRequest).toBeNull()
+      expect(h.submit).not.toHaveBeenCalled()
+      h.dispose()
+    },
+  )
+})
 
 describe('saved initial preview entitlement readiness and admission', () => {
   it('waits for the loaded header title rather than an unrelated structured-mode badge', () => {

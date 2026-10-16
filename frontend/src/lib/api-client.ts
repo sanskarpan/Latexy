@@ -338,6 +338,7 @@ export interface ResumeBase {
 export interface ResumeResponse extends ResumeBase {
   id: string
   user_id: string
+  content_revision?: number
   access_role?: import('@/lib/resume-access').ResumeAccessRole
   parent_resume_id?: string | null
   variant_visibility?: VariantVisibility | null
@@ -1760,6 +1761,14 @@ class ApiClient {
     return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}`)
   }
 
+  async getLatestAcceptedArtifact(resumeId: string, accountContext: AccountPreferenceRequestContext) {
+    return this.request<{
+      artifact: (import('@/lib/event-types').RenderArtifact & { job_id: string }) | null
+      source_sha256: string
+      content_revision: number
+    }>(`/resumes/${encodeURIComponent(resumeId)}/latest-accepted-artifact`, { cache: 'no-store' }, accountContext)
+  }
+
   async createResume(resume: ResumeCreate): Promise<ResumeResponse> {
     return this.request<ResumeResponse>('/resumes/', {
       method: 'POST',
@@ -1958,12 +1967,48 @@ class ApiClient {
     return res.blob()
   }
 
-  async downloadArtifactPdf(jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal): Promise<Blob> {
-    const res = await this.authedFetch(`${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}`, {
-      signal, headers: fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined,
-    })
-    if (!res.ok) throw new Error(`PDF preview failed: HTTP ${res.status}`)
-    return res.blob()
+  async downloadArtifactPdf(
+    jobId: string,
+    artifactId: string,
+    fingerprint?: string,
+    signal?: AbortSignal,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<Blob> {
+    const url = `${API_BASE}/download/${encodeURIComponent(jobId)}/preview/${encodeURIComponent(artifactId)}`
+    const headers = fingerprint ? { 'X-Device-Fingerprint': fingerprint } : undefined
+    for (let attempt = 0; ; attempt += 1) {
+      const res = await this.authedFetch(url, { signal, headers }, accountContext)
+      if (res.ok) return res.blob()
+      if (res.status !== 429 || attempt >= 2) throw new Error(`PDF preview failed: HTTP ${res.status}`)
+
+      // A rate-limited artifact read is safe to retry: it is a GET for the same
+      // immutable, owner-scoped artifact. Bound the wait so a stale preview
+      // cannot hold the editor indefinitely, and stop immediately on identity
+      // change/unmount via the caller's abort signal.
+      const retryAfter = res.headers.get('Retry-After')
+      const numericRetryAfter = retryAfter == null ? NaN : Number(retryAfter)
+      const requestedDelay = Number.isFinite(numericRetryAfter)
+        ? numericRetryAfter * 1000
+        : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN
+      const delay = Number.isFinite(requestedDelay) && requestedDelay >= 0
+        ? requestedDelay
+        : 250 * (attempt + 1)
+      if (delay > 3000) throw new Error('PDF preview failed: HTTP 429')
+      await new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return }
+        let timer: ReturnType<typeof setTimeout>
+        const onAbort = () => {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
+          reject(new DOMException('Aborted', 'AbortError'))
+        }
+        timer = setTimeout(() => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, delay)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
+    }
   }
 
   async getArtifactManifest(jobId: string, fingerprint?: string, signal?: AbortSignal) {

@@ -89,11 +89,14 @@ import { useSuggestionRecovery } from '@/hooks/useSuggestionRecovery'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { usePreviewScheduler, recordPreviewFirstPaint, recordPreviewAction } from '@/hooks/usePreviewScheduler'
-import { useArtifactPreview, useSourceHash } from '@/hooks/useArtifactPreview'
+import { useArtifactPreview, useSourceHash, sha256Bytes } from '@/hooks/useArtifactPreview'
+import { isCurrentArtifactRetry, resolveCurrentArtifactRetry, type ArtifactRetryIdentity } from '@/lib/artifact-retry-guard'
+import { isMatchingAcceptedArtifact, isCurrentAcceptedPreviewRecovery, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview,
+  type AcceptedPreviewRecoveryIdentity } from '@/lib/accepted-artifact-recovery'
 import type { ArtifactReadyEvent } from '@/lib/event-types'
 import type { ResumeEngineDocument, ResumeEngineNode, ArtifactGeometry } from '@/lib/resume-engine-types'
 import { previewErrorMessage } from '@/lib/preview-errors'
-import { canExportArtifact } from '@/lib/artifact-policy'
+import { canExportArtifact, type RecoveredAcceptedArtifactExportContext } from '@/lib/artifact-policy'
 import { editableGeometry } from '@/lib/artifact-geometry'
 import ImportedOptimizationPanel from '@/components/ImportedOptimizationPanel'
 import SemanticOptimizationPanel from '@/components/SemanticOptimizationPanel'
@@ -861,6 +864,14 @@ export default function ResumeEditPage() {
   // de-duplication marker.
   const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
   const [displayedArtifact, setDisplayedArtifact] = useState<ArtifactReadyEvent | null>(null)
+  const [recoveredAcceptedArtifact, setRecoveredAcceptedArtifact] = useState<{
+    artifact: ArtifactReadyEvent; ownerId: string; resumeId: string; generation: number
+    source: string; contentRevision: number
+  } | null>(null)
+  const [acceptedArtifactRecoveryRetryIdentity, setAcceptedArtifactRecoveryRetryIdentity] = useState<AcceptedPreviewRecoveryIdentity | null>(null)
+  const [resumeContentRevision, setResumeContentRevision] = useState<number | null>(null)
+  const resumeContentRevisionRef = useRef<number | null>(null)
+  resumeContentRevisionRef.current = resumeContentRevision
   const [isOfflinePdf, setIsOfflinePdf] = useState(false)
   const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<string>('resume')
@@ -1264,6 +1275,9 @@ export default function ResumeEditPage() {
       setPdfUrl(null)
       setRenderedPdfJobId(null)
       setDisplayedArtifact(null)
+      setRecoveredAcceptedArtifact(null)
+      setAcceptedArtifactRecoveryRetryIdentity(null)
+      setResumeContentRevision(null)
       setIsOfflinePdf(false)
       setOfflinePdfLoaded(false)
     }
@@ -1620,8 +1634,58 @@ export default function ResumeEditPage() {
   const { state: compileStream } = useJobStream(ownedCompileJobId)
   const { state: aiStream } = useJobStream(ownedAiJobId)
   const sourceHash = useSourceHash(latexContent)
+  const streamArtifact = lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact
+  const recoveredArtifactIsCurrent = Boolean(recoveredAcceptedArtifact
+    && recoveredAcceptedArtifact.ownerId === sessionUserId
+    && recoveredAcceptedArtifact.resumeId === resumeId
+    && recoveredAcceptedArtifact.generation === offlinePdfIdentityRef.current.generation
+    && recoveredAcceptedArtifact.source === latexContent
+    && recoveredAcceptedArtifact.contentRevision === resumeContentRevision
+    && !isSubmitting && !isAiSubmitting
+    && !ownedCompileJobId && !ownedAiJobId)
+  const recoveredArtifactExportContext: RecoveredAcceptedArtifactExportContext | null = useMemo(() => recoveredArtifactIsCurrent && recoveredAcceptedArtifact
+    ? {
+      artifact: recoveredAcceptedArtifact.artifact,
+      ownerId: recoveredAcceptedArtifact.ownerId,
+      currentOwnerId: sessionUserId,
+      resumeId: recoveredAcceptedArtifact.resumeId,
+      currentResumeId: resumeId,
+      generation: recoveredAcceptedArtifact.generation,
+      currentGeneration: offlinePdfIdentityRef.current.generation,
+      source: recoveredAcceptedArtifact.source,
+      currentSource: latexContent,
+      contentRevision: recoveredAcceptedArtifact.contentRevision,
+      currentContentRevision: resumeContentRevision,
+      compileJobId: ownedCompileJobId,
+      aiJobId: ownedAiJobId,
+      renderedJobId: renderedPdfJobId,
+    }
+    : null, [recoveredArtifactIsCurrent, recoveredAcceptedArtifact, sessionUserId, resumeId,
+    latexContent, resumeContentRevision, ownedCompileJobId, ownedAiJobId, renderedPdfJobId])
+  const canExportDisplayedArtifact = useCallback((artifact: typeof displayedArtifact) => !artifact || canExportArtifact(
+    artifact,
+    sourceHash,
+    lastStartedJobKind === 'ai' ? aiJobId : compileJobId,
+    lastStartedJobKind === 'ai' ? aiStream.status : compileStream.status,
+    artifact.job_id,
+    recoveredArtifactExportContext,
+  ), [sourceHash, lastStartedJobKind, aiJobId, compileJobId, aiStream.status, compileStream.status, recoveredArtifactExportContext])
+  const retryArtifact = streamArtifact ?? (recoveredArtifactIsCurrent ? recoveredAcceptedArtifact?.artifact ?? null : null)
+  const activeRetryJobId = streamArtifact
+    ? lastStartedJobKind === 'ai' ? ownedAiJobId : ownedCompileJobId
+    : retryArtifact?.job_id ?? null
+  const artifactRetryIdentityRef = useRef<ArtifactRetryIdentity | null>(null)
+  artifactRetryIdentityRef.current = retryArtifact ? {
+    ownerId: sessionUserId,
+    resumeId,
+    generation: offlinePdfIdentityRef.current.generation,
+    source: latexContent,
+    activeJobId: activeRetryJobId,
+    jobId: retryArtifact.job_id,
+    artifactId: retryArtifact.artifact_id,
+  } : null
   const artifactPreview = useArtifactPreview({
-    artifact: lastStartedJobKind === 'ai' ? aiStream.artifact : compileStream.artifact,
+    artifact: retryArtifact,
     identity: `${sessionUserId ?? 'signed-out'}:${resumeId}`, onReady: (blob, artifact) => {
       activePdfJobId.current = artifact.job_id
       setPreviewBlob(blob)
@@ -1629,6 +1693,7 @@ export default function ResumeEditPage() {
       setDisplayedArtifact(artifact)
     },
   })
+  const clearArtifactPreviewError = artifactPreview.clearError
   useEffect(() => {
     if (artifactPreview.error) toast.error(editorMode === 'source' ? artifactPreview.error : 'The PDF preview could not be loaded. Try updating the PDF again.')
   }, [artifactPreview.error, editorMode])
@@ -1664,6 +1729,123 @@ export default function ResumeEditPage() {
       ownsRenderedJobState &&
       isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart),
     )
+    const artifactIdentityAtStart = artifactRetryIdentityRef.current
+    const artifactAtStart = retryArtifact
+    const isSameArtifact = () => isCurrentArtifactRetry(artifactIdentityAtStart!, artifactRetryIdentityRef.current)
+    const authToken = apiClient.getAuthToken()
+    if (artifactAtStart) {
+      if (!artifactIdentityAtStart || !authToken || !isActive() || !isSameArtifact()) return
+      setOfflinePdfError(null)
+      try {
+        // Retry the exact immutable, owner-scoped artifact. Do not submit a
+        // compile or fall back to the mutable latest-PDF endpoint here.
+        const blob = await resolveCurrentArtifactRetry(
+          artifactIdentityAtStart,
+          () => artifactRetryIdentityRef.current,
+          apiClient.downloadArtifactPdf(
+            artifactAtStart.job_id,
+            artifactAtStart.artifact_id,
+            undefined,
+            undefined,
+            {
+              authToken,
+              isCurrent: () => isActive() && isSameArtifact() && sourceAtRenderRef.current === artifactIdentityAtStart.source,
+            },
+          ),
+        )
+        if (!blob || !isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        if (blob.size !== artifactAtStart.pdf_size
+            || await sha256Bytes(await blob.arrayBuffer()) !== artifactAtStart.pdf_sha256) {
+          throw new Error('PDF artifact integrity check failed')
+        }
+        if (!isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        setPreviewBlob(blob, false, artifactAtStart.job_id)
+        setDisplayedArtifact(artifactAtStart)
+        setRenderedPdfJobId(artifactAtStart.job_id)
+        clearArtifactPreviewError()
+        setRightTab('preview')
+        return
+      } catch {
+        if (!isActive() || !isSameArtifact() || sourceAtRenderRef.current !== artifactIdentityAtStart.source) return
+        setOfflinePdfError('Failed to load this PDF artifact. Retry to load the same compiled version.')
+        return
+      }
+    }
+    const recoveryIdentity = acceptedArtifactRecoveryRetryIdentity
+    if (recoveryIdentity) {
+      const jobIdentityAtStart = currentPreviewJobIdentityRef.current
+      const currentRecoveryIdentity = (): AcceptedPreviewRecoveryIdentity | null => {
+        const current = offlinePdfIdentityRef.current
+        const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
+        const currentRevision = resumeContentRevisionRef.current
+        return current.ownerId && current.resumeId && currentRevision !== null
+          ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
+              source: currentSource, contentRevision: currentRevision }
+          : null
+      }
+      const authToken = apiClient.getAuthToken()
+      const isRecoveryCurrent = () => Boolean(authToken
+        && apiClient.getAuthToken() === authToken
+        && !currentPreviewJobIdentityRef.current.busy
+        && currentPreviewJobIdentityRef.current.compileJobId === jobIdentityAtStart.compileJobId
+        && currentPreviewJobIdentityRef.current.aiJobId === jobIdentityAtStart.aiJobId
+        && currentPreviewJobIdentityRef.current.attempt === jobIdentityAtStart.attempt
+        && isCurrentAcceptedPreviewRecovery(recoveryIdentity, currentRecoveryIdentity())
+        && ownerAtStart === recoveryIdentity.ownerId
+        && resumeId === recoveryIdentity.resumeId
+        && generationAtStart === recoveryIdentity.generation
+        && sourceAtRenderRef.current === recoveryIdentity.source)
+      if (!authToken || !isActive() || !isRecoveryCurrent()) return
+      setOfflinePdfError(null)
+      try {
+        const recovery = await resolveCurrentAcceptedPreviewRecovery(
+          recoveryIdentity,
+          currentRecoveryIdentity,
+          apiClient.getLatestAcceptedArtifact(recoveryIdentity.resumeId, {
+            authToken,
+            isCurrent: isRecoveryCurrent,
+          }),
+        )
+        if (!recovery || !isActive() || !isRecoveryCurrent()) return
+        const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(recoveryIdentity.source))
+        if (!isActive() || !isRecoveryCurrent()) return
+        if (recovery.source_sha256 !== expectedSourceHash
+            || recovery.content_revision !== recoveryIdentity.contentRevision) {
+          throw new Error('Accepted PDF identity changed')
+        }
+        if (!recovery.artifact) {
+          setOfflinePdfError('No previously accepted PDF was found. Retry to check again.')
+          return
+        }
+        if (!isMatchingAcceptedArtifact(recovery, recoveryIdentity, expectedSourceHash)) {
+          throw new Error('Accepted PDF identity changed')
+        }
+        const recoveredEvent: ArtifactReadyEvent = {
+          ...recovery.artifact,
+          type: 'artifact.ready',
+          event_id: `recovered-${recovery.artifact.artifact_id}`,
+          timestamp: Date.now() / 1000,
+          sequence: 0,
+        }
+        setRecoveredAcceptedArtifact({
+          artifact: recoveredEvent,
+          ownerId: recoveryIdentity.ownerId,
+          resumeId: recoveryIdentity.resumeId,
+          generation: recoveryIdentity.generation,
+          source: recoveryIdentity.source,
+          contentRevision: recoveryIdentity.contentRevision,
+        })
+        setAcceptedArtifactRecoveryRetryIdentity(null)
+        setOfflinePdfError(null)
+        setRightTab('preview')
+        return
+      } catch {
+        if (isActive() && isRecoveryCurrent()) {
+          setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+        }
+        return
+      }
+    }
     const retryJobId = resolveRetryableCompletedPdfJobId(
       activePdfJobId.current,
       ownsRenderedJobState,
@@ -1696,13 +1878,13 @@ export default function ResumeEditPage() {
       setOfflinePdfError('Failed to load the PDF preview. Retry to load the latest compiled PDF.')
     }
   }, [
-    aiStream, compileStream, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId,
+    aiStream, acceptedArtifactRecoveryRetryIdentity, clearArtifactPreviewError, compileStream, isCurrentOfflinePdfIdentity, loadOfflinePdf, offlinePdfOwnerId, retryArtifact,
     ownsRenderedJobState, resumeId, saveCachedPdf, sessionUserId, setPreviewBlob, setRightTab,
   ])
 
   const shareOrDownloadPdf = useCallback(async () => {
     const sourceAtStart = sourceAtRenderRef.current
-    if (displayedArtifact && !canExportArtifact(displayedArtifact, sourceHash, lastStartedJobKind === 'ai' ? aiJobId : compileJobId, lastStartedJobKind === 'ai' ? aiStream.status : compileStream.status, displayedArtifact.job_id)) { setOfflinePdfError('Compile your accepted current resume before sharing this PDF.'); return }
+    if (displayedArtifact && !canExportDisplayedArtifact(displayedArtifact)) { setOfflinePdfError('Compile your accepted current resume before sharing this PDF.'); return }
     const ownerAtStart = offlinePdfOwnerId
     const generationAtStart = offlinePdfIdentityRef.current.generation
     const isActive = () => isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart)
@@ -1733,7 +1915,7 @@ export default function ResumeEditPage() {
     } catch {
       if (isActive()) setOfflinePdfError('Sharing or downloading the PDF failed. Retry when storage or network access is available.')
     }
-  }, [aiStream.pdfJobId, compileStream.pdfJobId, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, ownedAiJobId, ownedCompileJobId, ownsRenderedJobState, resumeId, title, displayedArtifact, sourceHash, lastStartedJobKind, aiJobId, compileJobId, aiStream.status, compileStream.status])
+  }, [aiStream.pdfJobId, compileStream.pdfJobId, isCurrentOfflinePdfIdentity, offlinePdfOwnerId, ownedAiJobId, ownedCompileJobId, ownsRenderedJobState, resumeId, title, displayedArtifact, canExportDisplayedArtifact])
   // A session/resume switch is rendered before the identity effect below can
   // clear the previous job id. Do not let useJobStream re-subscribe to that
   // old id during the transition render.
@@ -1839,6 +2021,10 @@ export default function ResumeEditPage() {
         const pendingDraft = localDraft?.syncStatus === 'pending' ? localDraft : null
         const effectiveTitle = pendingDraft?.title ?? data.title
         const effectiveLatex = pendingDraft?.latexContent ?? data.latex_content
+        const loadedContentRevision = Number.isInteger(data.content_revision) ? data.content_revision! : null
+        resumeContentRevisionRef.current = loadedContentRevision
+        setResumeContentRevision(loadedContentRevision)
+        let acceptedPreviewRecovery: 'found' | 'none' | 'unavailable' = 'none'
         setTitle(effectiveTitle)
         setLatexContent(effectiveLatex)
         // Keep the server copy as the CAS baseline even while showing a
@@ -1850,6 +2036,100 @@ export default function ResumeEditPage() {
         if (pendingDraft) {
           setOfflineDraftLoaded(true)
           setLastSavedAt(new Date(pendingDraft.savedAt).getTime())
+        }
+        if (!pendingDraft && data.user_id === sessionUserId && Number.isInteger(data.content_revision)) {
+          acceptedPreviewRecovery = 'unavailable'
+          const authToken = apiClient.getAuthToken()
+          const expectedRecoveryIdentity: AcceptedPreviewRecoveryIdentity = {
+            ownerId: sessionUserId, resumeId, generation: generationAtStart,
+            source: effectiveLatex, contentRevision: data.content_revision!,
+          }
+          const isRecoveryIdentityCurrent = () => {
+            const current = offlinePdfIdentityRef.current
+            const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
+            const currentRevision = resumeContentRevisionRef.current
+            return isCurrentAcceptedPreviewRecovery(expectedRecoveryIdentity,
+              current.ownerId && current.resumeId && currentRevision !== null
+                ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
+                    source: currentSource, contentRevision: currentRevision }
+                : null)
+          }
+          if (!authToken) {
+            if (isRecoveryIdentityCurrent()) {
+              setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+              setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+            }
+          }
+          if (authToken) {
+            try {
+              const recovery = await resolveCurrentAcceptedPreviewRecovery(
+                expectedRecoveryIdentity,
+                () => {
+                  const current = offlinePdfIdentityRef.current
+                  const currentSource = editorRef.current?.getValue() ?? sourceAtRenderRef.current
+                  const currentRevision = resumeContentRevisionRef.current
+                  return current.ownerId && current.resumeId && currentRevision !== null
+                    ? { ownerId: current.ownerId, resumeId: current.resumeId, generation: current.generation,
+                        source: currentSource, contentRevision: currentRevision }
+                    : null
+                },
+                apiClient.getLatestAcceptedArtifact(resumeId, {
+                  authToken,
+                  isCurrent: () => isActive() && apiClient.getAuthToken() === authToken,
+                }),
+              )
+              if (!recovery) return
+              if (apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) return
+              const expectedSourceHash = await sha256Bytes(new TextEncoder().encode(data.latex_content))
+              const artifact = recovery.artifact
+              if (apiClient.getAuthToken() !== authToken || !isRecoveryIdentityCurrent()) return
+              if (!isActive()) {
+                if (apiClient.getAuthToken() === authToken) {
+                  setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                  setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                }
+                return
+              }
+              if (recovery.source_sha256 !== expectedSourceHash
+                  || recovery.content_revision !== data.content_revision) {
+                if (isRecoveryIdentityCurrent()) {
+                  setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                  setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+                }
+              } else if (!artifact) {
+                setAcceptedArtifactRecoveryRetryIdentity(null)
+                setOfflinePdfError(null)
+                acceptedPreviewRecovery = 'none'
+              } else if (isMatchingAcceptedArtifact(recovery, expectedRecoveryIdentity, expectedSourceHash)) {
+                const recoveredEvent: ArtifactReadyEvent = {
+                  ...artifact,
+                  type: 'artifact.ready',
+                  event_id: `recovered-${artifact.artifact_id}`,
+                  timestamp: Date.now() / 1000,
+                  sequence: 0,
+                }
+                setRecoveredAcceptedArtifact({
+                  artifact: recoveredEvent, ownerId: sessionUserId, resumeId,
+                  generation: generationAtStart, source: effectiveLatex,
+                  contentRevision: data.content_revision!,
+                })
+                setAcceptedArtifactRecoveryRetryIdentity(null)
+                setOfflinePdfError(null)
+                acceptedPreviewRecovery = 'found'
+              } else if (isRecoveryIdentityCurrent()) {
+                setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+              }
+            } catch {
+              // Unknown recovery state suppresses automatic admission. A
+              // manual GET retry remains available if the read cannot complete.
+              if (isRecoveryIdentityCurrent() && apiClient.getAuthToken() === authToken) {
+                setAcceptedArtifactRecoveryRetryIdentity(expectedRecoveryIdentity)
+                setOfflinePdfError('Could not check the accepted PDF. Retry to check it again.')
+              }
+              if (!isActive()) return
+            }
+          }
         }
         // Load compiler preference from resume metadata
         const savedCompiler = data.metadata?.compiler as LatexCompiler | undefined
@@ -1913,7 +2193,8 @@ export default function ResumeEditPage() {
         // Loading source and resolving grants are independent. Preserve one
         // bootstrap demand until availability settles instead of sampling a
         // fail-closed c05 before its response has arrived.
-        if (initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
+        if (shouldSubmitInitialPreview(acceptedPreviewRecovery)
+          && initialPreviewIdentityRef.current === initialPreviewIdentity && !initialPreviewIdentity.consumed
           && effectiveLatex && effectiveLatex.length >= 100) {
           setInitialPreviewRequest({ identity: initialPreviewIdentity, generation: generationAtStart,
             source: effectiveLatex, compiler: savedCompiler ?? 'pdflatex' })
@@ -2596,7 +2877,7 @@ export default function ResumeEditPage() {
   const handleDownload = async () => {
     const sourceAtStart = sourceAtRenderRef.current
     if (isAnyRunning) { toast.error("Wait for the updated PDF to finish"); return }
-    if (displayedArtifact && !canExportArtifact(displayedArtifact, sourceHash, lastStartedJobKind === 'ai' ? aiJobId : compileJobId, lastStartedJobKind === 'ai' ? aiStream.status : compileStream.status, displayedArtifact.job_id)) {
+    if (displayedArtifact && !canExportDisplayedArtifact(displayedArtifact)) {
       toast.error('Compile your current resume before downloading. Review AI suggestions before accepting them.')
       return
     }
@@ -2908,6 +3189,19 @@ export default function ResumeEditPage() {
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
+  const currentPreviewJobIdentityRef = useRef({ compileJobId: ownedCompileJobId, aiJobId: ownedAiJobId, busy: false, attempt: 0 })
+  const previewJobBusy = isAnyRunning || isSubmitting || isAiSubmitting
+  const priorPreviewJobIdentity = currentPreviewJobIdentityRef.current
+  currentPreviewJobIdentityRef.current = {
+    compileJobId: ownedCompileJobId,
+    aiJobId: ownedAiJobId,
+    busy: previewJobBusy,
+    attempt: priorPreviewJobIdentity.attempt + Number(
+      (previewJobBusy && !priorPreviewJobIdentity.busy)
+      || priorPreviewJobIdentity.compileJobId !== ownedCompileJobId
+      || priorPreviewJobIdentity.aiJobId !== ownedAiJobId,
+    ),
+  }
 
   // ── Unsaved-changes guard (Finding: silent data loss on navigation) ──────
   const isDirty = title !== savedSnapshot.title || latexContent !== savedSnapshot.latex
@@ -4332,7 +4626,7 @@ export default function ResumeEditPage() {
                 onDownload={handleDownload}
                 onShare={shareOrDownloadPdf}
                 isOfflinePreview={isOfflinePdf}
-                offlineError={offlinePdfError}
+                offlineError={offlinePdfError ?? artifactPreview.error}
                 onRetryOffline={retryOfflinePdf}
                 jobId={renderedPdfJobId}
                 onSyncToSource={editorMode === 'source' && (!displayedArtifact || displayedArtifact.source_sha256 === sourceHash) ? handleSyncToSource : undefined}

@@ -1,6 +1,7 @@
 """Account-role capability intersections; these are policy tests, not UI/provider QA."""
+import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -100,6 +101,50 @@ def test_sync_admission_uses_current_identity_not_callers_stale_plan():
     assert not service.sync_has_feature("d19", "pro", user_id="test-owner")
     del blob["identity"]
     assert not service.sync_has_feature("d19", "pro", user_id="missing-owner")
+
+
+def test_sync_blob_uses_pool_compatible_transaction_local_timeouts(monkeypatch):
+    from app.core.config import settings
+
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = ("user", "free")
+    cursor.fetchall.return_value = [("kill", "c22", "", True)]
+    connect = Mock(return_value=connection)
+    monkeypatch.setitem(sys.modules, "psycopg2", SimpleNamespace(connect=connect))
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://db.example.test/app?sslmode=require")
+
+    blob = EntitlementService()._sync_get_blob(user_id="owner-id")
+
+    connect.assert_called_once()
+    assert connect.call_args.kwargs == {"connect_timeout": 2}
+    assert "options" not in connect.call_args.kwargs
+    connection.set_session.assert_called_once_with(isolation_level="REPEATABLE READ", readonly=True)
+    statements = [call.args[0] for call in cursor.execute.call_args_list]
+    assert statements[:2] == [
+        "SET LOCAL statement_timeout = '2s'",
+        "SET LOCAL lock_timeout = '1s'",
+    ]
+    assert "SELECT role, subscription_plan FROM users" in statements[2]
+    assert "FROM feature_flags" in statements[3]
+    assert blob["identity"] == ("user", "free")
+    connection.close.assert_called_once_with()
+
+
+def test_sync_blob_closes_connection_when_local_timeout_setup_fails(monkeypatch):
+    from app.core.config import settings
+
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = RuntimeError("timeout setup failed")
+    connect = Mock(return_value=connection)
+    monkeypatch.setitem(sys.modules, "psycopg2", SimpleNamespace(connect=connect))
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://db.example.test/app")
+
+    with pytest.raises(RuntimeError, match="timeout setup failed"):
+        EntitlementService()._sync_get_blob()
+
+    connection.close.assert_called_once_with()
 
 
 async def test_stale_orm_role_and_plan_never_override_current_database_identity():

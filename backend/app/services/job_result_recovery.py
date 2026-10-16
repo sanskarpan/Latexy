@@ -20,6 +20,18 @@ _TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "fenced"})
 _OUTPUT_UNAVAILABLE_ERROR = "Completed job output unavailable"
 
 
+async def has_durable_job_record(session: AsyncSession, *, job_id: str) -> bool:
+    """Fence legacy PDF transport whenever this job has a durable authority row.
+
+    Do not filter by state or expiry: pending/committing and expired decisions
+    are still authority while the row exists. Callers enforce job ownership
+    before this lookup; a conflicting owner row must also block fallback.
+    """
+    return await session.scalar(
+        select(JobFinalization.id).where(JobFinalization.job_id == job_id).limit(1)
+    ) is not None
+
+
 async def recover_terminal_job(
     session: AsyncSession,
     *,
@@ -100,24 +112,34 @@ async def recover_terminal_job(
         ),
         "error_code": "output_unavailable" if output_unavailable else None,
         "output_unavailable": output_unavailable,
-        # Only a successful terminal authority may expose an artifact. Old
-        # failed/cancelled rows can retain stale pointers from earlier writes.
-        "pdf_path": row.pdf_path if row.state == "completed" else None,
-        "pdf_size": row.pdf_size if row.state == "completed" else None,
+        # A completed finalization row is not by itself authority to publish a
+        # candidate PDF.  The arbiter records candidate completions too, so the
+        # associated compilation acceptance bit is the public artifact fence.
+        "pdf_path": None,
+        "pdf_size": None,
     }
 
     # A completed arbiter row may have been written before Redis publication.
-    # The immutable PDF pointer is allowed only through the same user-owned
-    # compilation relationship; never search by job ID alone for another user.
-    if row.state == "completed" and not result["pdf_path"]:
-        compilation = await session.scalar(
-            select(Compilation).where(
-                Compilation.job_id == job_id,
-                Compilation.user_id == user_id,
-                Compilation.status == "completed",
-            )
+    # Expose its immutable PDF pointer only if the exact user-owned compilation
+    # is completed and accepted.  This also covers rows written before the
+    # finalization row acquired a direct compilation_id.
+    if row.state == "completed":
+        compilation_query = select(Compilation).where(
+            Compilation.job_id == job_id,
+            Compilation.user_id == user_id,
+            Compilation.status == "completed",
+            Compilation.artifact_accepted.is_(True),
         )
-        if compilation is not None:
+        if row.compilation_id:
+            compilation_query = compilation_query.where(Compilation.id == row.compilation_id)
+        compilation = await session.scalar(
+            compilation_query
+        )
+        if compilation is not None and compilation.pdf_path:
+            # When both writers supplied a pointer, require them to agree.
+            # A mismatch is ambiguous and must not become a public download.
+            if row.pdf_path and row.pdf_path != compilation.pdf_path:
+                return result
             result["pdf_path"] = compilation.pdf_path
             result["pdf_size"] = compilation.pdf_size
     return result

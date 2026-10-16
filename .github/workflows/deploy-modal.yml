@@ -156,6 +156,22 @@ jobs:
         working-directory: backend
         run: modal run --env main modal_app.py::renderer_preflight
 
+      # The migration runs before a rolling deploy. An older serving process can
+      # still write legacy billing columns, and an older PDF reader can expose a
+      # completed but unaccepted candidate. Require a fresh, commit-scoped
+      # operator cutover decision before changing the schema or serving image.
+      - name: Require schema cutover and recovery approval
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODAL_SCHEMA_CUTOVER_APPROVED_SHA: ${{ vars.MODAL_SCHEMA_CUTOVER_APPROVED_SHA }}
+          MODAL_FORWARD_ROLLBACK_SHA: ${{ vars.MODAL_FORWARD_ROLLBACK_SHA }}
+          # Operator attests deployable recovery image availability and all
+          # public artifact readers for this exact candidate, beyond source
+          # heuristics and CI. An old value fails the equality check.
+          MODAL_RECOVERY_VERIFIED_FOR_SHA: ${{ vars.MODAL_RECOVERY_VERIFIED_FOR_SHA }}
+        run: python backend/scripts/check_modal_schema_cutover.py
+
       # modal_app.py deliberately keeps migrations separate from API startup.
       # Apply them first so incompatible application code is never made live.
       - name: Apply production database migrations
