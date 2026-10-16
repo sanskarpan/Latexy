@@ -172,7 +172,12 @@ export default function DocumentGallery() {
                     <span className="lp-gallery-label-desktop">Choose a layout</span>
                     <span className="lp-gallery-label-mobile">Try a different layout</span>
                 </span>
-                <div role="group" aria-label="Sample résumé layouts">
+                <div
+                    role="group"
+                    aria-label="Sample résumé layouts"
+                    style={{ '--layout-index': layouts.indexOf(layout) } as CSSProperties}
+                >
+                    <span className="lp-layout-indicator" aria-hidden="true" />
                     {layouts.map((name, index) => (
                         <button
                             type="button"

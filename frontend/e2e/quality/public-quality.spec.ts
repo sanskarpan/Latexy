@@ -547,6 +547,56 @@ test('landing appearance keeps contrast inside the keyboard accessible menu', as
     }
 })
 
+test('landing glass controls keep sound opt-in and preserve layout selection', async ({ page }, testInfo) => {
+    const mediaRequests: string[] = []
+    page.on('request', request => { if (request.resourceType() === 'media') mediaRequests.push(request.url()) })
+    await page.addInitScript(() => {
+        const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
+        scope.landingAudioCreates = 0
+        scope.landingAudioCloses = 0
+        const NativeAudioContext = window.AudioContext
+        if (NativeAudioContext) {
+            window.AudioContext = class extends NativeAudioContext {
+                constructor(options?: AudioContextOptions) {
+                    super(options)
+                    scope.landingAudioCreates++
+                }
+                close() { scope.landingAudioCloses++; return super.close() }
+            }
+        }
+    })
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const audioCounts = () => page.evaluate(() => {
+        const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
+        return { created: scope.landingAudioCreates, closed: scope.landingAudioCloses }
+    })
+    await page.locator('.lp-analysis-section').scrollIntoViewIfNeeded()
+    expect((await audioCounts()).created).toBe(0)
+    await expect(page.getByRole('button', { name: 'Interface sounds', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    const sound = page.getByRole('button', { name: 'Interface sounds', exact: true })
+    await expect(sound).toHaveAttribute('aria-pressed', 'false')
+    await sound.click()
+    await expect(sound).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(async () => (await audioCounts()).created).toBe(1)
+    await testInfo.attach('landing-glass-menu', { body: await page.screenshot(), contentType: 'image/png' })
+    await page.keyboard.press('Escape')
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
+    await layouts.getByRole('button', { name: /Modern/ }).click()
+    await expect(layouts.getByRole('button', { name: /Modern/ })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.lp-document-card[data-slot="center"]')).toHaveAttribute('data-template', 'Modern')
+    expect((await audioCounts()).created).toBe(1)
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await sound.click()
+    await expect(sound).toHaveAttribute('aria-pressed', 'false')
+    await expect.poll(async () => (await audioCounts()).closed).toBe(1)
+    await page.getByRole('button', { name: 'Turn on high contrast mode' }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high')
+    await expect.poll(() => page.locator('.lp-header').evaluate(element => getComputedStyle(element).backdropFilter)).toBe('none')
+    expect(mediaRequests).toEqual([])
+    await page.keyboard.press('Escape')
+})
+
 test('landing pricing navigation follows the billing feature flag', async ({ page }, testInfo) => {
     const { backendOrigin } = qualityOrigins()
     const featureFlags = (billing: boolean) =>
