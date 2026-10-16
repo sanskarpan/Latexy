@@ -55,12 +55,14 @@
     overflow-y: auto;
     border-radius: 20px;
     border-color: var(--lp-glass-rim);
-    background: var(--lp-glass);
+    /* Nested backdrops cannot reliably sample through the filtered header. */
+    background:
+        linear-gradient(145deg, var(--lp-glass-highlight), transparent 55%), var(--lp-surface);
     box-shadow:
         inset 0 1px 0 var(--lp-glass-highlight),
         0 18px 40px var(--lp-glass-shadow);
-    -webkit-backdrop-filter: blur(14px) saturate(1.2);
-    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 .lp-navigation a {
     position: relative;
@@ -204,24 +206,10 @@
 .lp-page .lp-faq details[open] > p {
     animation: lp-answer-enter 220ms ease-out;
 }
-.lp-sound-toggle .lp-sound-bars {
-    display: inline-flex;
-    gap: 2px;
+.lp-menu-appearance > button {
+    display: flex;
     align-items: center;
-    height: 16px;
-    margin-left: auto;
-}
-.lp-sound-bars i {
-    width: 2px;
-    height: 4px;
-    background: currentColor;
-    border-radius: 2px;
-}
-.lp-sound-toggle[aria-pressed='true'] .lp-sound-bars i:nth-child(2n) {
-    height: 12px;
-}
-.lp-sound-toggle[aria-pressed='true'] .lp-sound-bars i:nth-child(2n + 1) {
-    height: 7px;
+    border-radius: 10px;
 }
 .lp-sound-toggle:focus-visible {
     outline: 2px solid var(--lp-accent);

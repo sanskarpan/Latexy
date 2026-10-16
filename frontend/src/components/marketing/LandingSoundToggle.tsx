@@ -26,12 +26,6 @@ export default function LandingSoundToggle() {
             <span>
                 Interface sounds <span aria-hidden="true">{enabled ? 'On' : 'Off'}</span>
             </span>
-            <span className="lp-sound-bars" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-                <i />
-            </span>
         </button>
     )
 }

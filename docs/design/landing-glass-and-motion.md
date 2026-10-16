@@ -16,7 +16,7 @@ These references informed the homepage refinement. The implementation is origina
 
 ## Applied treatment
 
-- A floating, sticky navigation surface uses a subtle highlight, translucent fill and a small backdrop blur. Its menu has a viewport-bounded scrolling area, including in short landscape windows.
+- A floating, sticky navigation surface uses a subtle highlight, translucent fill and a small backdrop blur. Its menu uses an opaque reading surface with the same rim and highlight: nested backdrop filters cannot reliably blur page content through a filtered parent. The menu has a viewport-bounded scrolling area, including in short landscape windows.
 - The Classic / Modern / Minimal selector has a sliding glass pill. Classic remains first and selected by default; keyboard and touch selection retain their existing behavior.
 - The selected résumé has a shallow material rim. Its content is real, selectable HTML; the existing optional Three.js enhancement is retained.
 - Buttons respond to hover, focus and press. FAQ answers enter gently. Feature labels and header progress use native CSS scroll timelines where supported.
@@ -37,7 +37,7 @@ Interface sounds are **off by default**, available in the homepage menu under Pr
 - Reduced motion disables decorative CSS transitions, section reveals and scroll-timeline effects. Existing static HTML and no-WebGL behavior remain available.
 - High contrast and reduced transparency use opaque navigation with no backdrop blur. Browsers without backdrop-filter also receive an opaque fallback.
 - No dependencies, audio media requests, new JavaScript scroll listeners, animation-frame loops, video backgrounds or full-screen animated filters were added. The sound settings UI is loaded on demand.
-- Blur is limited to the small header and open menu. This still has a compositing cost; it is not a claim of zero GPU work. Most feedback animates transform or opacity.
+- Blur is limited to the small header. This still has a compositing cost; it is not a claim of zero GPU work. Most feedback animates transform or opacity.
 
 ## Verification
 
