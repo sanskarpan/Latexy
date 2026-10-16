@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import { forgetOfflinePdfOwner, getRememberedOfflinePdfOwner, OFFLINE_PDF_OWNER_KEY } from '@/lib/offline-pdfs'
 import { editorRecoveryLoadBoundary } from '@/hooks/useLatexGeneratorRecovery'
+import { shouldSubmitInitialPreview } from '@/lib/accepted-artifact-recovery'
 
 let identityCode: string, loadCode: string, pdfCode: string, renderCode: string
 beforeAll(() => {
@@ -52,6 +53,7 @@ function harness() {
   const getDraft = vi.fn().mockResolvedValue(null), getOfflineCompiledPdf = vi.fn().mockResolvedValue(null)
   const editor = { setValue: vi.fn() }
   const context: Record<string, any> = {
+    shouldSubmitInitialPreview, resumeContentRevisionRef: { current: null },
     sessionData: session('owner-a'), sessionUserId: 'owner-a', sessionLoading: false, sessionRefetching: false, sessionError: null,
     resumeId: 'document-a', rememberedOfflineOwner: 'owner-a', isLoading: false, resumeLoadError: null,
     title: 'Title A', latexContent: A_SOURCE, savedSnapshot: { title: 'Title A', latex: A_SOURCE },

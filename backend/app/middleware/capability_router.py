@@ -251,7 +251,7 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
         "get_import", "original_pdf", "discard_import", "resume_import",
     }),
     "render_artifact_routes": frozenset({
-        "preview_pdf", "preview_geometry", "preview_synctex",
+        "preview_pdf", "preview_geometry", "preview_synctex", "latest_accepted_artifact",
     }),
     "admin_routes": frozenset({
         "get_public_feature_flags", "get_admin_feature_flags", "update_feature_flag",

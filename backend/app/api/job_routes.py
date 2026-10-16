@@ -732,6 +732,7 @@ async def submit_job(
             _require_renderer_capability(compiler)
 
         saved_render_document = None
+        versioned_render_resume = None
         if (request.job_type == "latex_compilation" and owned_resume is not None
                 and owned_resume.latex_content == request.latex_content):
             from ..services.resume_engine.imported_identity_db import ensure_imported_projection
@@ -742,6 +743,19 @@ async def submit_job(
                 saved_render_document = await ensure_imported_projection(db, owned_resume, template.category if template else None)
             except DocumentConflict as exc:
                 raise HTTPException(409, str(exc)) from exc
+        elif request.job_type == "latex_compilation" and user_id:
+            # Bind ordinary editor previews to a server-owned document revision
+            # only when the submitted bytes are exactly the persisted source.
+            # Unsaved/foreign source remains compilable but cannot be recovered
+            # later as the current resume's accepted artifact.
+            candidate_resume_id = _uuid_or_none(safe_meta.get("resume_id"))
+            if candidate_resume_id:
+                versioned_render_resume = (await db.execute(select(Resume).where(
+                    Resume.id == candidate_resume_id, Resume.user_id == user_id,
+                ).execution_options(populate_existing=True))).scalar_one_or_none()
+                if (versioned_render_resume is not None
+                        and versioned_render_resume.latex_content != request.latex_content):
+                    versioned_render_resume = None
 
         # Server-side trial enforcement for anonymous resource-consuming jobs is
         # the final gate before dispatch. Authenticated users use plan quotas.
@@ -810,6 +824,9 @@ async def submit_job(
             if saved_render_document is not None:
                 render_request = {"source_document": saved_render_document, "document_id": saved_render_document["document_id"],
                                   "content_revision": saved_render_document["content_revision"]}
+            elif versioned_render_resume is not None:
+                render_request = {"document_id": versioned_render_resume.id,
+                                  "content_revision": versioned_render_resume.content_revision}
             elif not user_id:
                 source_document = project_document(SimpleNamespace(
                     id="guest", user_id="guest", latex_content=request.latex_content, content_revision=1,

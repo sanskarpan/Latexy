@@ -7,6 +7,8 @@ type PreviewClient = {
   getResume: (id: string) => Promise<unknown>
   compileLatex: (body: { latex_content: string; resume_id: string }, context?: AccountPreferenceRequestContext) => Promise<JobSubmitResponse>
   submitJob: (body: JobSubmitRequest, context?: AccountPreferenceRequestContext) => Promise<JobSubmitResponse>
+  downloadArtifactPdf: (jobId: string, artifactId: string, fingerprint?: string, signal?: AbortSignal) => Promise<Blob>
+  getLatestAcceptedArtifact: (resumeId: string, context: AccountPreferenceRequestContext) => Promise<unknown>
 }
 
 async function harness() {
@@ -79,5 +81,53 @@ it('cannot complete the authenticated source read before AuthSync publishes its 
   expect(h.fetch).toHaveBeenCalledOnce()
   expect(h.client.getAuthToken()).toBe('owner-A-token')
   const [, init] = h.fetch.mock.calls[0] as [string, RequestInit]
+  expect((init.headers as Record<string, string>).Authorization).toBe('Bearer owner-A-token')
+})
+
+it('retries a rate-limited immutable artifact GET without dispatching a new job', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  h.fetch
+    .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'Retry-After': '0' } }))
+    .mockResolvedValueOnce(new Response(new Blob(['verified artifact bytes']), { status: 200 }))
+
+  const pending = h.client.downloadArtifactPdf('job-owned', 'a'.repeat(64), undefined)
+  await vi.runAllTimersAsync()
+  const blob = await pending
+
+  expect(await blob.text()).toBe('verified artifact bytes')
+  expect(h.fetch).toHaveBeenCalledTimes(2)
+  const calls = h.fetch.mock.calls as [string, RequestInit][]
+  expect(calls[0][0]).toBe(calls[1][0])
+  expect(calls[0][0]).toContain('/download/job-owned/preview/' + 'a'.repeat(64))
+  expect(calls.every(([, init]) => init.method === undefined || init.method === 'GET')).toBe(true)
+})
+
+it('does not retry an artifact GET beyond the bounded rate-limit attempts', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  h.fetch.mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '0' } }))
+
+  const pending = h.client.downloadArtifactPdf('job-owned', 'b'.repeat(64))
+  const rejected = expect(pending).rejects.toThrow('PDF preview failed: HTTP 429')
+  await vi.runAllTimersAsync()
+  await rejected
+  expect(h.fetch).toHaveBeenCalledTimes(3)
+})
+
+it('recovers accepted preview metadata with an owner-scoped GET and never submits a job', async () => {
+  const h = await harness()
+  h.client.setAuthToken('owner-A-token')
+  h.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ artifact: null, source_sha256: 'a'.repeat(64), content_revision: 2 }), {
+    headers: { 'Content-Type': 'application/json' },
+  }))
+
+  await h.client.getLatestAcceptedArtifact('resume-A', { authToken: 'owner-A-token', isCurrent: () => true })
+
+  expect(h.fetch).toHaveBeenCalledOnce()
+  const [url, init] = h.fetch.mock.calls[0] as [string, RequestInit]
+  expect(url).toContain('/resumes/resume-A/latest-accepted-artifact')
+  expect(init.method ?? 'GET').toBe('GET')
+  expect(init.body).toBeUndefined()
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer owner-A-token')
 })

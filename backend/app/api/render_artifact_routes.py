@@ -6,16 +6,18 @@ import gzip
 import io
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import Compilation, JobFinalization
-from ..middleware.auth_middleware import get_current_user_optional
+from ..database.models import Compilation, JobFinalization, Resume
+from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services import storage_service
 from ..services.render_engine.artifacts import (
@@ -33,6 +35,12 @@ from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, MAX_SYNCTEX_COMPRESSED_BY
 
 router = APIRouter()
 PDF_JOB_TYPES = {"latex_compilation", "auto_fit", "combined"}
+
+
+class LatestAcceptedArtifactResponse(BaseModel):
+    artifact: dict[str, Any] | None
+    source_sha256: str = Field(pattern=HASH_PATTERN)
+    content_revision: int = Field(ge=1)
 
 # A single Redis read verifies the current capability, cancellation, lease and
 # manifest pointer together. Completed DB records can survive cache expiry.
@@ -199,6 +207,108 @@ async def serve_artifact(db: AsyncSession, job_id: str, user_id: str | None,
         disposition = "attachment" if export else "inline"
         headers["Content-Disposition"] = f'{disposition}; filename="resume_{job_id[:8]}.pdf"'
     return Response(content=data, media_type=media, headers=headers)
+
+
+def _accepted_artifact_matches_resume(finalization: JobFinalization, compilation: Compilation,
+                                      resume: Resume, user_id: str, source_hash: str) -> str | None:
+    """Return an artifact ID only for an exact owner/document/source revision match."""
+    if (finalization.user_id != user_id or finalization.job_type != "latex_compilation"
+            or finalization.state != "completed" or finalization.terminal_result != "completed"
+            or finalization.cancel_requested is not False
+            or (finalization.expires_at.replace(tzinfo=timezone.utc)
+                if finalization.expires_at.tzinfo is None else finalization.expires_at) <= datetime.now(timezone.utc)
+            or finalization.job_id != compilation.job_id or finalization.compilation_id != compilation.id
+            or finalization.resume_id != resume.id
+            or compilation.user_id != user_id or compilation.resume_id != resume.id
+            or compilation.status != "completed" or compilation.artifact_accepted is not True
+            or compilation.artifact_branch != "draft"):
+        return None
+    artifact = (finalization.result_payload or {}).get("artifact")
+    if (not isinstance(artifact, dict) or artifact.get("job_id") != compilation.job_id
+            or artifact.get("document_id") != resume.id
+            or type(artifact.get("content_revision")) is not int
+            or artifact.get("content_revision") != resume.content_revision
+            or artifact.get("source_sha256") != source_hash
+            or artifact.get("branch") != "draft"):
+        return None
+    artifact_id = artifact.get("artifact_id")
+    return artifact_id if isinstance(artifact_id, str) and re.fullmatch(HASH_PATTERN, artifact_id) else None
+
+
+@router.get("/resumes/{resume_id}/latest-accepted-artifact", response_model=LatestAcceptedArtifactResponse)
+async def latest_accepted_artifact(
+    resume_id: str,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recover an accepted immutable preview for the owner's current resume revision."""
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", resume_id):
+        raise _not_found()
+    resume = (await db.execute(select(Resume).where(
+        Resume.id == resume_id, Resume.user_id == user_id,
+    ).execution_options(populate_existing=True))).scalar_one_or_none()
+    if resume is None:
+        raise _not_found()
+    source_hash = sha256(resume.latex_content)
+    rows = await db.execute(
+        select(JobFinalization, Compilation)
+        .join(Compilation, Compilation.id == JobFinalization.compilation_id)
+        .where(
+            JobFinalization.user_id == user_id,
+            JobFinalization.job_type == "latex_compilation",
+            JobFinalization.resume_id == resume.id,
+            JobFinalization.state == "completed",
+            JobFinalization.terminal_result == "completed",
+            JobFinalization.cancel_requested.is_(False),
+            JobFinalization.expires_at > func.clock_timestamp(),
+            Compilation.user_id == user_id,
+            Compilation.resume_id == resume.id,
+            Compilation.status == "completed",
+            Compilation.artifact_accepted.is_(True),
+            Compilation.artifact_branch == "draft",
+        )
+        .order_by(Compilation.created_at.desc())
+        .limit(20)
+        .execution_options(populate_existing=True)
+    )
+    matching_rows = [
+        (finalization, compilation, artifact_id)
+        for finalization, compilation in rows.all()
+        if (artifact_id := _accepted_artifact_matches_resume(
+            finalization, compilation, resume, user_id, source_hash,
+        )) is not None
+    ]
+    if not matching_rows:
+        return LatestAcceptedArtifactResponse(artifact=None, source_sha256=source_hash,
+                                              content_revision=resume.content_revision)
+    redis = await get_redis_client()
+    eligible_artifact_unavailable = False
+    for finalization, compilation, artifact_id in matching_rows:
+        try:
+            manifest = await load_manifest(db, redis, compilation.job_id, user_id, None, artifact_id)
+            await _durable_fence(db, redis, manifest, user_id, export=True)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                eligible_artifact_unavailable = True
+                continue
+            raise
+        if (manifest.job_id != compilation.job_id or manifest.artifact_id != artifact_id
+                or manifest.document_id != resume.id or manifest.content_revision != resume.content_revision
+                or manifest.source_sha256 != source_hash or manifest.branch != "draft"):
+            eligible_artifact_unavailable = True
+            continue
+        return LatestAcceptedArtifactResponse(
+            artifact=manifest.public(), source_sha256=source_hash,
+            content_revision=resume.content_revision,
+        )
+    if eligible_artifact_unavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="Accepted preview is temporarily unavailable",
+            headers={"Retry-After": "2"},
+        )
+    return LatestAcceptedArtifactResponse(artifact=None, source_sha256=source_hash,
+                                          content_revision=resume.content_revision)
 
 
 @router.get("/download/{job_id}/preview/{artifact_id}")
