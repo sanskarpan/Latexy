@@ -8,6 +8,29 @@ import { apiClient, type ResumeSearchResult, type SearchMatch } from '@/lib/api-
 interface ProjectSearchModalProps {
   open: boolean
   onClose: () => void
+  ownerId: string | null
+}
+
+interface SearchOwnerIdentity {
+  ownerId: string | null
+  generation: number
+}
+
+interface SearchState {
+  identity: SearchOwnerIdentity
+  query: string
+  results: ResumeSearchResult[]
+  loading: boolean
+  searchError: string | null
+  selectedIndex: number
+}
+
+function sameSearchOwner(left: SearchOwnerIdentity, right: SearchOwnerIdentity) {
+  return left.ownerId === right.ownerId && left.generation === right.generation
+}
+
+function emptySearchState(identity: SearchOwnerIdentity): SearchState {
+  return { identity, query: '', results: [], loading: false, searchError: null, selectedIndex: 0 }
 }
 
 function highlightLine(text: string, start: number, end: number): React.ReactNode {
@@ -84,76 +107,108 @@ function ResultItem({
   )
 }
 
-export default function ProjectSearchModal({ open, onClose }: ProjectSearchModalProps) {
+export default function ProjectSearchModal({ open, onClose, ownerId }: ProjectSearchModalProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<ResumeSearchResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const ownerIdentityRef = useRef<SearchOwnerIdentity>({ ownerId, generation: 0 })
+  if (ownerIdentityRef.current.ownerId !== ownerId) {
+    ownerIdentityRef.current = { ownerId, generation: ownerIdentityRef.current.generation + 1 }
+  }
+  const ownerIdentity = ownerIdentityRef.current
+  const openIdentityRef = useRef({ open, generation: 0 })
+  if (openIdentityRef.current.open !== open) {
+    openIdentityRef.current = { open, generation: openIdentityRef.current.generation + 1 }
+  }
+  const [searchState, setSearchState] = useState<SearchState>(() => emptySearchState(ownerIdentity))
+  // Hide prior-owner state during render, before the identity-change effect runs.
+  const visibleSearchState = sameSearchOwner(searchState.identity, ownerIdentity)
+    ? searchState
+    : emptySearchState(ownerIdentity)
+  const { query, results, loading, searchError, selectedIndex } = visibleSearchState
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
 
-  // Focus input when opened
+  const updateSearchState = useCallback((identity: SearchOwnerIdentity, patch: Partial<Omit<SearchState, 'identity'>>) => {
+    if (!sameSearchOwner(identity, ownerIdentityRef.current)) return
+    setSearchState((previous) => {
+      if (!sameSearchOwner(identity, ownerIdentityRef.current)) return previous
+      const base = sameSearchOwner(previous.identity, identity) ? previous : emptySearchState(identity)
+      return { ...base, ...patch, identity }
+    })
+  }, [])
+
+  // Owner changes and close/reopen cycles both invalidate work before a stale
+  // response can write into a later account's search state.
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setResults([])
-      setSelectedIndex(0)
-      setSearchError(null)
-      setTimeout(() => inputRef.current?.focus(), 50)
+    searchRequestRef.current += 1
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
     }
-  }, [open])
+    const currentOwnerIdentity = ownerIdentityRef.current
+    if (open) {
+      updateSearchState(currentOwnerIdentity, {
+        query: '', results: [], loading: false, searchError: null, selectedIndex: 0,
+      })
+      const focusTimeout = setTimeout(() => inputRef.current?.focus(), 50)
+      return () => clearTimeout(focusTimeout)
+    }
+    updateSearchState(currentOwnerIdentity, { loading: false })
+  }, [open, ownerIdentity.generation, updateSearchState])
 
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
   }, [])
 
-  const doSearch = useCallback(async (q: string) => {
+  const doSearch = useCallback(async (q: string, requestedIdentity = ownerIdentityRef.current) => {
+    if (!openIdentityRef.current.open || !sameSearchOwner(requestedIdentity, ownerIdentityRef.current)) return
+    const openGenerationAtStart = openIdentityRef.current.generation
+    const isCurrent = (requestId: number) => openIdentityRef.current.open &&
+      openIdentityRef.current.generation === openGenerationAtStart &&
+      sameSearchOwner(requestedIdentity, ownerIdentityRef.current) &&
+      searchRequestRef.current === requestId
+
     if (q.trim().length < 2) {
-      searchRequestRef.current += 1
-      setResults([])
-      setSearchError(null)
-      setLoading(false)
+      const requestId = ++searchRequestRef.current
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, { results: [], searchError: null, loading: false, selectedIndex: 0 })
       return
     }
     const requestId = ++searchRequestRef.current
-    setLoading(true)
-    setSearchError(null)
+    updateSearchState(requestedIdentity, { loading: true, searchError: null })
     try {
       const res = await apiClient.searchResumes(q.trim())
-      if (requestId !== searchRequestRef.current) return
-      setResults(res.results)
-      setSelectedIndex(0)
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, { results: res.results, selectedIndex: 0 })
     } catch (error) {
-      if (requestId !== searchRequestRef.current) return
-      setResults([])
-      setSearchError(error instanceof Error ? error.message : 'Search failed. Please try again.')
+      if (!isCurrent(requestId)) return
+      updateSearchState(requestedIdentity, {
+        results: [],
+        searchError: error instanceof Error ? error.message : 'Search failed. Please try again.',
+      })
     } finally {
-      if (requestId === searchRequestRef.current) setLoading(false)
+      if (isCurrent(requestId)) updateSearchState(requestedIdentity, { loading: false })
     }
-  }, [])
+  }, [updateSearchState])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
+    const identityAtChange = ownerIdentityRef.current
     // Invalidate the previous response as soon as the visible query changes,
     // rather than leaving a debounce-sized window for stale results to land.
     searchRequestRef.current += 1
-    setQuery(val)
-    setSearchError(null)
+    updateSearchState(identityAtChange, { query: val, searchError: null })
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => doSearch(val), 300)
+    debounceRef.current = setTimeout(() => void doSearch(val, identityAtChange), 300)
   }
 
   const clearSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     searchRequestRef.current += 1
-    setQuery('')
-    setResults([])
-    setSearchError(null)
-    setLoading(false)
+    updateSearchState(ownerIdentityRef.current, {
+      query: '', results: [], searchError: null, loading: false, selectedIndex: 0,
+    })
   }
 
   const navigate = useCallback((resumeId: string, lineNumber?: number) => {
@@ -166,10 +221,12 @@ export default function ProjectSearchModal({ open, onClose }: ProjectSearchModal
     if (e.key === 'Escape') { onClose(); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex(i => Math.min(i + 1, results.length - 1))
+      updateSearchState(ownerIdentityRef.current, {
+        selectedIndex: Math.min(selectedIndex + 1, results.length - 1),
+      })
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex(i => Math.max(i - 1, 0))
+      updateSearchState(ownerIdentityRef.current, { selectedIndex: Math.max(selectedIndex - 1, 0) })
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       const r = results[selectedIndex]
       navigate(r.resume_id, r.matches[0]?.line_number)
