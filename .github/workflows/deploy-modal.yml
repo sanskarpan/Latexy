@@ -311,14 +311,30 @@ jobs:
         env:
           BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
         run: |
-          expected=$(find backend/app/data/templates/presentation -type f -name '*.tex' | wc -l | tr -d ' ')
-          payload=$(curl --fail --silent --show-error --max-time 20 \
-            "$BACKEND_URL/templates/?category=presentation")
-          actual=$(jq 'length' <<<"$payload")
-          if [ "$actual" -ne "$expected" ]; then
-            echo "Expected $expected presentation templates, production returned $actual" >&2
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          curl --fail --silent --show-error --max-time 20 \
+            "$BACKEND_URL/config/entitlements?include_quotas=false" > "$tmpdir/feature-map.json"
+          curl --fail --silent --show-error --max-time 20 \
+            "$BACKEND_URL/templates/?category=presentation" > "$tmpdir/presentation-catalog.json"
+          decision="$(python backend/scripts/verify_public_template_catalog.py \
+            --feature-map "$tmpdir/feature-map.json" \
+            --catalog "$tmpdir/presentation-catalog.json" \
+            --expected-origin "$BACKEND_URL")"
+          catalog_state="$(jq -er '.catalog_state' <<<"$decision")"
+          if [[ "$catalog_state" == "feature_hidden" ]]; then
+            echo "Public B05 feature is disabled; verified the presentation catalog is empty and skipped public asset checks."
+            exit 0
+          fi
+          if [[ "$catalog_state" != "feature_enabled" ]]; then
+            echo "Public presentation catalog verification returned an unknown state" >&2
             exit 1
           fi
-          jq -r '.[] | .thumbnail_url, .pdf_url' <<<"$payload" | while read -r asset; do
-            curl --fail --silent --show-error --location --max-time 30 --output /dev/null "$asset"
+          echo "Verified all source-owned presentation templates; custom presentation entries are permitted."
+          jq -er '.source_template_ids[]' <<<"$decision" | while IFS= read -r template_id; do
+            curl --fail --silent --show-error --location --max-time 30 --output /dev/null \
+              "$BACKEND_URL/templates/$template_id/thumbnail"
+            curl --fail --silent --show-error --location --max-time 30 --output /dev/null \
+              "$BACKEND_URL/templates/$template_id/pdf"
           done

@@ -112,14 +112,23 @@ Use the deployment workflow's two explicit phases:
    deployments also use held mode. The image-bound
    `MODAL_DEPLOYMENT_TRAFFIC_HOLD=true` makes the API reject product HTTP
    requests with 503 and WebSockets with 1013. Only the documented read-only
-   health and public template probes remain available. Worker entry points
+   health and public template probes remain available. A narrowly anonymous
+   `GET /config/entitlements?include_quotas=false` probe is also allowed, with
+   that exact query and no Authorization, Cookie or X-API-Key headers. Other
+   entitlement requests remain held. Worker entry points
    reject new work before business initialization, and scheduled fan-out is
    disabled. Runtime worker guards also protect against retained schedule
    metadata. Operator migrations, preflights and catalog synchronization remain
    explicit operations during this phase.
 3. Let the held workflow finish migration, the repeated financial preflight,
    deployment identity verification, catalog work and health checks. Verify the
-   actual schema head and safe-disabled purchase state separately. Check the
+   actual schema head and safe-disabled purchase state separately. Public
+   presentation verification honors B05: OFF requires an empty catalog and
+   skips public asset verification; ON requires every source-owned template
+   exactly once and verifies its assets, while allowing custom entries. It
+   never enables the feature to pass deployment. Hidden public assets are not
+   certified by that check; explicit operator synchronization still runs.
+   Check the
    `X-Latexy-Deployment-Hold: true` marker on fresh health responses and 503
    denials on product paths. This is an application admission hold; the public
    network endpoint still exists. It neither proves a fleet drain nor cancels

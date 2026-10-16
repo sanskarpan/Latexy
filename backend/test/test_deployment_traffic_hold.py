@@ -32,7 +32,14 @@ class FakeASGIApp:
             await send({"type": "lifespan.startup.complete"})
 
 
-def invoke_http(middleware, method: str, path: str, app_state=None) -> list[dict]:
+def invoke_http(
+    middleware,
+    method: str,
+    path: str,
+    app_state=None,
+    query_string: bytes = b"",
+    headers: list[tuple[bytes, bytes]] | None = None,
+) -> list[dict]:
     messages: list[dict] = []
 
     async def receive():
@@ -41,7 +48,13 @@ def invoke_http(middleware, method: str, path: str, app_state=None) -> list[dict
     async def send(message):
         messages.append(message)
 
-    scope = {"type": "http", "method": method, "path": path, "headers": []}
+    scope = {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "query_string": query_string,
+        "headers": headers or [],
+    }
     if app_state is not None:
         scope["app"] = SimpleNamespace(state=app_state)
     asyncio.run(middleware(scope, receive, send))
@@ -142,6 +155,44 @@ class DeploymentTrafficHoldTests(unittest.TestCase):
                 downstream = FakeASGIApp()
                 messages = invoke_http(DeploymentTrafficHoldMiddleware(downstream, enabled=True), method, path)
                 self.assertEqual(messages[0]["status"], 503)
+                self.assertEqual(downstream.calls, [])
+
+    def test_anonymous_entitlements_probe_requires_exact_query_and_no_auth_material(self) -> None:
+        downstream = FakeASGIApp()
+        messages = invoke_http(
+            DeploymentTrafficHoldMiddleware(downstream, enabled=True),
+            "GET",
+            "/config/entitlements",
+            query_string=b"include_quotas=false",
+        )
+        self.assertEqual(messages[0]["status"], 200)
+        self.assertEqual(dict(messages[0]["headers"])[b"x-latexy-deployment-hold"], b"true")
+        self.assertEqual(len(downstream.calls), 1)
+
+        denied_cases = [
+            ("GET", b"", []),
+            ("GET", b"include_quotas=true", []),
+            ("GET", b"include_quotas=false&extra=1", []),
+            ("GET", b"extra=1&include_quotas=false", []),
+            ("GET", b"include_quotas=false&include_quotas=false", []),
+            ("HEAD", b"include_quotas=false", []),
+            ("POST", b"include_quotas=false", []),
+            ("GET", b"include_quotas=false", [(b"Authorization", b"Bearer synthetic")]),
+            ("GET", b"include_quotas=false", [(b"cOoKiE", b"session=synthetic")]),
+            ("GET", b"include_quotas=false", [(b"X-API-Key", b"synthetic")]),
+        ]
+        for method, query, request_headers in denied_cases:
+            with self.subTest(method=method, query=query, headers=request_headers):
+                downstream = FakeASGIApp()
+                messages = invoke_http(
+                    DeploymentTrafficHoldMiddleware(downstream, enabled=True),
+                    method,
+                    "/config/entitlements",
+                    query_string=query,
+                    headers=request_headers,
+                )
+                self.assertEqual(messages[0]["status"], 503)
+                self.assertEqual(dict(messages[0]["headers"])[b"x-latexy-deployment-hold"], b"true")
                 self.assertEqual(downstream.calls, [])
 
     def test_disabled_http_flow_is_unchanged_and_carries_false_header(self) -> None:

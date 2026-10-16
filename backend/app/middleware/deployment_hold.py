@@ -23,13 +23,25 @@ _HOLD_HEADER = (b"x-latexy-deployment-hold",)
 _HOLD_BODY = json.dumps({"code": "deployment_traffic_held"}, separators=(",", ":")).encode()
 
 
-def _is_allowlisted(method: str, path: str) -> bool:
-    method = method.upper()
+def _is_allowlisted(scope: Scope) -> bool:
+    method = scope.get("method", "GET").upper()
+    path = scope.get("path", "")
     if path in _PROBE_PATHS:
         return method in {"GET", "HEAD"}
     if method == "GET" and path in _TEMPLATE_CATALOG_PATHS:
         return True
-    return method == "GET" and _TEMPLATE_ASSET_PATH.fullmatch(path) is not None
+    if method == "GET" and _TEMPLATE_ASSET_PATH.fullmatch(path) is not None:
+        return True
+    if method == "GET" and path == "/config/entitlements":
+        has_auth_material = any(
+            name.lower() in {b"authorization", b"cookie", b"x-api-key"}
+            for name, _value in scope.get("headers", [])
+        )
+        return (
+            scope.get("query_string", b"") == b"include_quotas=false"
+            and not has_auth_material
+        )
+    return False
 
 
 class DeploymentTrafficHoldMiddleware:
@@ -78,7 +90,7 @@ class DeploymentTrafficHoldMiddleware:
                 message = {**message, "headers": headers}
             await send(message)
 
-        if enabled and not _is_allowlisted(scope.get("method", "GET"), scope.get("path", "")):
+        if enabled and not _is_allowlisted(scope):
             await send_with_hold_header({
                 "type": "http.response.start",
                 "status": 503,
