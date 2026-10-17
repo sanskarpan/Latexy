@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from app.services.render_engine import functional_acceptance_policy
 from app.services.render_engine.backend import (
     FUNCTIONAL_TEST_VM_POLICY,
     VM_POLICY,
@@ -10,7 +11,6 @@ from app.services.render_engine.backend import (
     resolve_backend,
     start_engine_process,
 )
-from app.services.render_engine import functional_acceptance_policy
 from app.services.render_engine.modal_sandbox import ModalEngineUnavailable
 
 
