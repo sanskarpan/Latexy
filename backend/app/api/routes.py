@@ -20,6 +20,7 @@ from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
+from ..core.serve_identity import deployment_target, serving_revision
 from ..core.telemetry_metadata import validate_metadata
 from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, JobFinalization, Resume, User
@@ -502,6 +503,8 @@ async def health_check():
         redis_cache=redis_cache_status,
         redis_capacity=capacity.public_dict(),
         storage=storage_status,
+        commit_sha=serving_revision(),
+        deployment_target=deployment_target(),
     )
 
 
