@@ -25,20 +25,26 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ..core.config import settings
+
+# The egress guard is shared with the scraper and the fixed-origin provider
+# clients rather than re-implemented here — one hardened boundary to audit.
+from ..core.egress_guard import (
+    SSRFError,
+    SSRFGuardTransport,
+)
+from ..core.egress_guard import (
+    assert_public_url as _assert_public_url,
+)
 from ..core.logging import get_logger
 
 # Reuse the GitHub import's tolerant LLM-JSON parsing helpers so both import
 # paths share the exact same normalization semantics.
 from .github_projects_service import _extract_json_object, _normalize_str_list
 
-# Reuse the job scraper's SSRF guard + clean-text helpers rather than
-# re-implementing them — one hardened implementation, one place to audit.
+# Reuse the job scraper's clean-text helpers rather than re-implementing them.
 from .job_scraper_service import (
-    SSRFError,
-    _assert_public_url,
     _html_to_clean_text,
     _safe_url_for_log,
-    _SSRFGuardTransport,
 )
 
 logger = get_logger(__name__)
@@ -138,7 +144,7 @@ async def fetch_url_text(url: str, *, client: Optional[httpx.AsyncClient] = None
         headers=_BROWSER_HEADERS,
         follow_redirects=True,
         timeout=_TIMEOUT,
-        transport=_SSRFGuardTransport(),
+        transport=SSRFGuardTransport(),
     )
     try:
         async with client.stream("GET", url, headers=_BROWSER_HEADERS) as resp:
