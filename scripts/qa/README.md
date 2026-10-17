@@ -16,11 +16,15 @@ Secrets, a Volume, or a public tunnel. PostgreSQL 15, password-protected Redis,
 and Moto S3 run in one disposable I6PN service Function. The service, caller,
 and worker report only Modal provider/region labels and Redis/S3 reachability.
 The caller and worker both check Redis DB 0 and DB 1 plus S3 `HeadBucket` before
-the API submission; the actual spawned worker repeats that check immediately
-before entering the compile task. Provider/region mismatch or missing runtime
-identity halts the test before the API submission. Provider is read from the
-runtime `MODAL_CLOUD_PROVIDER` value when present; if Modal omits it, the test
-stops instead of assuming same-cloud placement.
+the API submission. The actual spawned worker repeats that check, then compares
+its own provider and region to the caller's preflight placement immediately
+before entering the compile task. A mismatch is recorded only in disposable
+test Redis and stops before compilation. Provider is read from the runtime
+`MODAL_CLOUD_PROVIDER` value when present; if Modal omits it, the test stops
+instead of assuming same-cloud placement. Modal supplies its
+`MODAL_ENVIRONMENT` runtime variable; the harness does not pass an override in
+the function `env` mapping. It selects the test namespace at deployment and
+uses explicit `environment_name` for the preflight Function lookup.
 
 The only report containing runtime identities is written to the required
 `--private-report` path outside this checkout. Standard output contains only a
@@ -55,4 +59,8 @@ default egress, and the renderer boundary probe. Existing `billing-acceptance-*`
 Secret labels are not reused.
 The API/LaTeX image must independently be shown to contain the intended clean
 source revision; this harness accepts an immutable image ID but does not
-attest its source provenance. Teardown status is included in the private report.
+attest its source provenance. Private services are signaled and joined while
+their queues and app run scope remain active. Teardown failure changes a
+would-be pass into a failed final report and exit status. Dispatch app stop is
+attempted even if deployment raises after partially creating the unique app;
+cleanup failures are bounded and do not suppress report writing.

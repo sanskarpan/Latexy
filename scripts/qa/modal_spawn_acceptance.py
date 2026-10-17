@@ -21,6 +21,7 @@ import subprocess
 import sys
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -129,6 +130,37 @@ def require_compatible_placement(
         raise HarnessFailure("placement_preflight", "runtime_provider_mismatch")
     if regions != {expected_region}:
         raise HarnessFailure("placement_preflight", "runtime_region_mismatch")
+
+
+def require_worker_placement(
+    identity: Mapping[str, str], expected: Mapping[str, str] | None,
+) -> None:
+    """Enforce the API's preflight placement on the actual compile worker."""
+    if not isinstance(expected, Mapping):
+        raise HarnessFailure("worker_placement", "expected_placement_missing")
+    provider = _safe_label(expected.get("provider"))
+    region = _safe_label(expected.get("region"))
+    if provider == "unknown" or region == "unknown":
+        raise HarnessFailure("worker_placement", "expected_placement_missing")
+    if identity.get("provider") != provider:
+        raise HarnessFailure("worker_placement", "worker_provider_mismatch")
+    if identity.get("region") != region:
+        raise HarnessFailure("worker_placement", "worker_region_mismatch")
+
+
+def function_runtime_environment(
+    address: str, renderer_image_id: str, renderer_assets_fingerprint: str,
+) -> dict[str, str]:
+    """Build app settings without overriding Modal-owned runtime variables."""
+    return {
+        "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal",
+        "BILLING_MODE": "disabled", "DODO_MODE": "test",
+        "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
+        "PYTHONPATH": "/backend:/pkg", "NO_PROXY": address + ",localhost,127.0.0.1",
+        "MODAL_ENGINE_VM_CERTIFIED": "true",
+        "MODAL_ENGINE_VM_IMAGE_ID": renderer_image_id,
+        "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": renderer_assets_fingerprint,
+    }
 
 
 def _probe_redis(redis_url: str) -> bool:
@@ -266,15 +298,204 @@ def _store_worker_identity(identity: Mapping[str, str]) -> None:
         client.close()
 
 
+def _placement_key(run_id: str) -> str:
+    return "latexy-harness:expected:" + run_id
+
+
+def _worker_failure_key(run_id: str) -> str:
+    return "latexy-harness:failure:" + run_id
+
+
+def _store_expected_placement(run_id: str, identity: Mapping[str, str]) -> None:
+    """Store only the checked provider/region in disposable test Redis."""
+    import os
+    import redis
+
+    provider = _safe_label(identity.get("provider"))
+    region = _safe_label(identity.get("region"))
+    if provider == "unknown" or region == "unknown":
+        raise HarnessFailure("placement_preflight", "runtime_identity_missing")
+    client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
+    try:
+        stored = client.set(_placement_key(run_id), json.dumps({
+            "provider": provider, "region": region,
+        }), ex=1800)
+        if not stored:
+            raise HarnessFailure("placement_preflight", "expected_placement_store_failed")
+    except HarnessFailure:
+        raise
+    except Exception:
+        raise HarnessFailure("placement_preflight", "expected_placement_store_failed") from None
+    finally:
+        client.close()
+
+
+def _read_expected_placement(run_id: str) -> dict[str, str] | None:
+    import os
+    import redis
+
+    client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
+    try:
+        value = client.get(_placement_key(run_id))
+    except Exception:
+        raise HarnessFailure("worker_placement", "expected_placement_unavailable") from None
+    finally:
+        client.close()
+    if value is None:
+        return None
+    try:
+        candidate = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(candidate, dict):
+        return None
+    return {
+        "provider": _safe_label(candidate.get("provider")),
+        "region": _safe_label(candidate.get("region")),
+    }
+
+
+def _record_worker_failure(run_id: str, stage: str, failure_code: str) -> None:
+    import os
+    import redis
+
+    client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
+    try:
+        client.set(_worker_failure_key(run_id), json.dumps({
+            "stage": _safe_label(stage), "failure_code": _safe_label(failure_code),
+        }), ex=1800)
+    finally:
+        client.close()
+
+
+def _read_worker_failure(run_id: str) -> dict[str, str] | None:
+    import os
+    import redis
+
+    client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
+    try:
+        value = client.get(_worker_failure_key(run_id))
+    except Exception:
+        raise HarnessFailure("worker_failure", "worker_failure_unavailable") from None
+    finally:
+        client.close()
+    if value is None:
+        return None
+    try:
+        candidate = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(candidate, dict):
+        return None
+    stage = _safe_label(candidate.get("stage"))
+    failure_code = _safe_label(candidate.get("failure_code"))
+    if stage == "unknown" or failure_code == "unknown":
+        return None
+    return {"stage": stage, "failure_code": failure_code}
+
+
+def _cleanup_private_service(stop_queue: Any, service_call: Any, report: dict[str, object]) -> None:
+    """Signal and join disposable services before their Modal scope exits."""
+    if service_call is None:
+        return
+    try:
+        stop_queue.put("stop")
+        report["service_stop_signal_sent"] = True
+    except Exception:
+        report["service_stop_signal_sent"] = False
+    try:
+        service_call.get(timeout=45)
+        report["private_services_stopped"] = True
+    except Exception:
+        report["private_services_stopped"] = False
+
+
+@contextmanager
+def _private_service_lifetime(stop_queue: Any, service_call: Any, report: dict[str, object]):
+    """Guarantee service cleanup while the queue and app run contexts are open."""
+    try:
+        yield
+    finally:
+        _cleanup_private_service(stop_queue, service_call, report)
+
+
+def _deploy_dispatch_app(app: Any, environment: str, state: dict[str, bool]) -> None:
+    """Record an attempt before deploy, so partial deployments are stoppable."""
+    state["attempted"] = True
+    app.deploy(environment_name=environment)
+
+
+def _stop_dispatch_app(
+    app_name: str, environment: str, *, attempted: bool,
+    modal_cli: str | None = None, runner: Callable[..., Any] = subprocess.run,
+) -> bool | None:
+    """Best-effort bounded stop; return None when deployment was never attempted."""
+    if not attempted:
+        return None
+    try:
+        executable = modal_cli if modal_cli is not None else shutil.which("modal")
+        if not executable:
+            return False
+        result = runner(
+            [executable, "app", "stop", app_name, "--env", environment, "--yes"],
+            capture_output=True, text=True, timeout=35,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _finalize_cleanup_status(report: dict[str, object]) -> None:
+    """A passing job stays passing only if every teardown step succeeded."""
+    if report.get("status") != "passed":
+        return
+    for key, failure_code in (
+        ("service_stop_signal_sent", "service_stop_signal_failed"),
+        ("private_services_stopped", "private_services_stop_failed"),
+        ("dispatch_app_stopped", "dispatch_app_stop_failed"),
+    ):
+        if report.get(key) is not True:
+            report.update({"status": "failed", "stage": "cleanup", "failure_code": failure_code})
+            return
+
+
+def _public_summary(report: Mapping[str, object]) -> dict[str, object]:
+    status = _safe_label(report.get("status"))
+    failure_code = report.get("failure_code")
+    return {
+        "status": status,
+        **({"failure_code": _safe_label(failure_code)} if failure_code else {}),
+    }
+
+
+def _acceptance_exit_code(report: Mapping[str, object]) -> int:
+    return 0 if report.get("status") == "passed" else 1
+
+
 def run_latex_task(payload: dict[str, Any]) -> Any:
     """Preflight the exact worker invocation before entering the compile task."""
+    import os
+
     report = _runtime_preflight("worker")
     if payload.get("__harness_preflight_only") is True:
         return report
     checks = report.get("checks")
+    run_id = os.environ.get("HARNESS_RUN_ID")
     if isinstance(checks, Mapping) and checks.get("redis") == "reachable":
         _store_worker_identity(report["identity"])
-    require_preflight(report)
+    try:
+        require_preflight(report)
+        if not run_id:
+            raise HarnessFailure("worker_placement", "expected_placement_missing")
+        expected = _read_expected_placement(run_id)
+        require_worker_placement(report["identity"], expected)
+    except HarnessFailure as failure:
+        if run_id and isinstance(checks, Mapping) and checks.get("redis") == "reachable":
+            try:
+                _record_worker_failure(run_id, failure.stage, failure.failure_code)
+            except Exception:
+                pass
+        raise
 
     from app.core.tracing import worker_trace
     from modal_app import _init_worker_redis
@@ -314,7 +535,7 @@ def _read_actual_worker_identity(run_id: str) -> dict[str, str] | None:
 
 
 def api_probe(app_name: str, service_preflight: dict[str, object],
-              expected_region: str, run_id: str) -> dict[str, object]:
+              expected_region: str, run_id: str, environment_name: str) -> dict[str, object]:
     """Preflight caller, then test one synthetic API submission and acceptance."""
     import asyncio
     import io
@@ -394,13 +615,17 @@ def api_probe(app_name: str, service_preflight: dict[str, object],
         import modal
 
         worker_preflight = modal.Function.from_name(
-            app_name, "run_latex_task", environment_name=os.environ["MODAL_ENVIRONMENT"]
+            app_name, "run_latex_task", environment_name=environment_name
         ).remote({"__harness_preflight_only": True})
         report["runtimes"]["worker_preflight"] = worker_preflight.get("identity")
         report["connectivity"]["worker_preflight"] = worker_preflight.get("checks")
         reports = [service_preflight, caller_preflight, worker_preflight]
         require_preflight(worker_preflight)
         require_compatible_placement(reports, expected_region=expected_region)
+        worker_identity = worker_preflight.get("identity")
+        if not isinstance(worker_identity, Mapping):
+            raise HarnessFailure("placement_preflight", "runtime_identity_missing")
+        _store_expected_placement(run_id, worker_identity)
 
         async def request_flow() -> None:
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api_app),
@@ -426,6 +651,9 @@ def api_probe(app_name: str, service_preflight: dict[str, object],
                         ), {"job": job_id}).first()
                     if final is not None and final.state in {"completed", "failed", "cancelled"}:
                         break
+                    worker_failure = _read_worker_failure(run_id)
+                    if worker_failure is not None:
+                        raise HarnessFailure(worker_failure["stage"], worker_failure["failure_code"])
                     await asyncio.sleep(2)
                 report["worker_actual"] = _read_actual_worker_identity(run_id)
                 if row is None or final is None or final.state not in {"completed", "failed", "cancelled"}:
@@ -578,101 +806,75 @@ def main(argv: Sequence[str] | None = None) -> int:
         timeout=550, memory=(2048, 2048), max_containers=1, single_use_containers=True,
     )(run_services)
     report: dict[str, object] = terminal_failure_report("initialize", "acceptance_not_started")
-    deployed = False
+    dispatch_deploy_state = {"attempted": False}
     service_call = None
-    service_scope = None
-    stop_queue = None
-    ready_queue = None
     try:
         with modal.Queue.ephemeral() as ready_queue, modal.Queue.ephemeral() as stop_queue:
-            service_scope = service_app.run(environment_name=environment)
-            with service_scope:
+            with service_app.run(environment_name=environment):
                 service_call = service_function.spawn(
                     ready_queue, stop_queue, db_password, redis_password,
                     s3_access_key, s3_secret_key, bucket,
                 )
-                service_preflight = ready_queue.get(timeout=100)
-                if service_preflight.get("status") != "passed":
-                    raise HarnessFailure(
-                        "service_preflight",
-                        _safe_label(service_preflight.get("failure_code") or "service_preflight_failed"),
+                with _private_service_lifetime(stop_queue, service_call, report):
+                    service_preflight = ready_queue.get(timeout=100)
+                    if service_preflight.get("status") != "passed":
+                        raise HarnessFailure(
+                            "service_preflight",
+                            _safe_label(service_preflight.get("failure_code") or "service_preflight_failed"),
+                        )
+                    address = service_preflight["address"]
+                    host = "[" + address + "]"
+                    runtime_secrets.update({
+                        "DATABASE_URL": "postgresql+asyncpg://root:" + db_password + "@" + host + ":5432/latexy_test",
+                        "REDIS_URL": "redis://:" + redis_password + "@" + host + ":6380/0",
+                        "REDIS_CACHE_URL": "redis://:" + redis_password + "@" + host + ":6380/1",
+                        "REDIS_PASSWORD": redis_password,
+                        "CELERY_BROKER_URL": "redis://:" + redis_password + "@" + host + ":6380/0",
+                        "CELERY_RESULT_BACKEND": "redis://:" + redis_password + "@" + host + ":6380/0",
+                        "MINIO_ENDPOINT": "http://" + host + ":9000",
+                        "MINIO_BUCKET": bucket,
+                        "HARNESS_RUN_ID": run_id,
+                    })
+                    runtime_env = function_runtime_environment(
+                        address, args.renderer_image_id, args.renderer_assets_fingerprint,
                     )
-                address = service_preflight["address"]
-                host = "[" + address + "]"
-                runtime_secrets.update({
-                    "DATABASE_URL": "postgresql+asyncpg://root:" + db_password + "@" + host + ":5432/latexy_test",
-                    "REDIS_URL": "redis://:" + redis_password + "@" + host + ":6380/0",
-                    "REDIS_CACHE_URL": "redis://:" + redis_password + "@" + host + ":6380/1",
-                    "REDIS_PASSWORD": redis_password,
-                    "CELERY_BROKER_URL": "redis://:" + redis_password + "@" + host + ":6380/0",
-                    "CELERY_RESULT_BACKEND": "redis://:" + redis_password + "@" + host + ":6380/0",
-                    "MINIO_ENDPOINT": "http://" + host + ":9000",
-                    "MINIO_BUCKET": bucket,
-                    "HARNESS_RUN_ID": run_id,
-                })
-                runtime_env = {
-                    "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal", "MODAL_ENVIRONMENT": environment,
-                    "BILLING_MODE": "disabled", "DODO_MODE": "test",
-                    "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
-                    "PYTHONPATH": "/backend:/pkg", "NO_PROXY": address + ",localhost,127.0.0.1",
-                    "MODAL_ENGINE_VM_CERTIFIED": "true",
-                    "MODAL_ENGINE_VM_IMAGE_ID": args.renderer_image_id,
-                    "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": args.renderer_assets_fingerprint,
-                }
-                dispatch_app = modal.App(dispatch_app_name)
-                secret = modal.Secret.from_dict(runtime_secrets)
-                worker_function = dispatch_app.function(
-                    image=image, env=runtime_env, secrets=[secret], volumes={},
-                    i6pn=True, region=args.region, timeout=330, max_containers=1,
-                    single_use_containers=True,
-                )(run_latex_task)
-                api_function = dispatch_app.function(
-                    image=image, env=runtime_env, secrets=[secret], volumes={},
-                    i6pn=True, region=args.region, timeout=480, max_containers=1,
-                    single_use_containers=True,
-                )(api_probe)
-                dispatch_app.deploy(environment_name=environment)
-                deployed = True
+                    dispatch_app = modal.App(dispatch_app_name)
+                    secret = modal.Secret.from_dict(runtime_secrets)
+                    worker_function = dispatch_app.function(
+                        image=image, env=runtime_env, secrets=[secret], volumes={},
+                        i6pn=True, region=args.region, timeout=330, max_containers=1,
+                        single_use_containers=True,
+                    )(run_latex_task)
+                    api_function = dispatch_app.function(
+                        image=image, env=runtime_env, secrets=[secret], volumes={},
+                        i6pn=True, region=args.region, timeout=480, max_containers=1,
+                        single_use_containers=True,
+                    )(api_probe)
+                    _deploy_dispatch_app(dispatch_app, environment, dispatch_deploy_state)
 
-                report = api_function.remote(
-                    dispatch_app_name,
-                    {key: service_preflight[key] for key in ("status", "identity", "checks", "failure_code")},
-                    args.region,
-                    run_id,
-                )
+                    report.update(api_function.remote(
+                        dispatch_app_name,
+                        {key: service_preflight[key] for key in ("status", "identity", "checks", "failure_code")},
+                        args.region,
+                        run_id,
+                        environment,
+                    ))
     except HarnessFailure as failure:
-        report = terminal_failure_report(failure.stage, failure.failure_code)
+        report.update(terminal_failure_report(failure.stage, failure.failure_code))
     except Exception:
-        report = terminal_failure_report("modal_acceptance", "modal_or_harness_failure")
+        report.update(terminal_failure_report("modal_acceptance", "modal_or_harness_failure"))
     finally:
-        if deployed:
-            modal_cli = shutil.which("modal")
-            if modal_cli:
-                stopped = subprocess.run(
-                    [modal_cli, "app", "stop", dispatch_app_name, "--env", environment, "--yes"],
-                    capture_output=True, text=True, timeout=35,
-                )
-                report["dispatch_app_stopped"] = stopped.returncode == 0
-            else:
-                report["dispatch_app_stopped"] = False
-        if stop_queue is not None:
-            try:
-                stop_queue.put("stop")
-            except Exception:
-                pass
-        if service_call is not None:
-            try:
-                service_call.get(timeout=45)
-                report["private_services_stopped"] = True
-            except Exception:
-                report["private_services_stopped"] = False
+        stopped = _stop_dispatch_app(
+            dispatch_app_name, environment, attempted=dispatch_deploy_state["attempted"],
+        )
+        if stopped is not None:
+            report["dispatch_app_stopped"] = stopped
+        _finalize_cleanup_status(report)
 
     private_report.parent.mkdir(parents=True, exist_ok=True)
     private_report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    status = report.get("status", "failed")
-    failure_code = report.get("failure_code")
-    print(json.dumps({"status": status, **({"failure_code": failure_code} if failure_code else {})}, sort_keys=True))
-    return 0 if status == "passed" and report.get("dispatch_app_stopped") is True and report.get("private_services_stopped") is True else 1
+    print(json.dumps(_public_summary(report), sort_keys=True))
+    return _acceptance_exit_code(report)
 
 
 if __name__ == "__main__":
