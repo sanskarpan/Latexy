@@ -153,9 +153,10 @@ test('live anonymous landing gates reflect each capability and recover after fet
         }
 
         const page = await guestContext.newPage()
-        const studio = page.getByRole('link', { name: 'Try the studio', exact: true })
-        const templates = page.getByRole('link', { name: 'Explore templates', exact: true })
-        const publicFallback = page.getByRole('link', { name: 'Explore Latexy', exact: true })
+        const hero = page.locator('.lp-hero-actions')
+        const studio = hero.getByRole('link', { name: 'Try the studio', exact: true })
+        const templates = hero.getByRole('link', { name: 'Explore templates', exact: true })
+        const publicFallback = hero.getByRole('link', { name: 'Explore Latexy', exact: true })
         const initialEntitlements = page.waitForResponse(
             response => isEntitlementResponse(response) && response.status() === 200
         )
