@@ -482,7 +482,13 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
             keys.append("f03")
         if _payload_bool(body.get("anonymous")) is True or _payload_bool(body.get("regenerate_anonymous")) is True:
             keys.append("c05")
-    if (module, name) == ("resume_routes", "update_builder_resume") and _payload_bool(body.get("force_reattach")) is True:
+    if (
+        module == "resume_routes"
+        and name in {"update_builder_resume", "update_builder_resume_v1"}
+        and _payload_bool(body.get("force_reattach")) is True
+    ):
+        # Both legacy and versioned builder writes reach the same reattachment
+        # mutation, so the leaf grant must be checked on either route.
         keys.append("b09")
     if module == "export_routes" and name in {"export_resume", "export_content"}:
         fmt = params.get("fmt")

@@ -17,7 +17,7 @@ from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routes import router
-from app.core.feature_registry import get_feature
+from app.core.feature_registry import CAPABILITY_ROLES, PLAN_MATRIX_KEYS, gateable_keys, get_feature
 from app.database.connection import get_db
 from app.middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from app.middleware.capability_router import (
@@ -27,7 +27,7 @@ from app.middleware.capability_router import (
     _route_gate,
     payload_capabilities,
 )
-from app.services.entitlement_service import entitlement_service
+from app.services.entitlement_service import EntitlementService, entitlement_service
 
 USER_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -386,6 +386,66 @@ async def test_enabled_gate_calls_handler_and_retains_request_validation(monkeyp
         (("b08",), {"user": USER_ID}),
         (("c01",), {"user": USER_ID}),
     ]
+
+
+@pytest.mark.parametrize(
+    ("role", "plan", "restriction"),
+    [
+        ("user", "pro", "global"),
+        ("support", "pro", "role"),
+        ("admin", "pro", "role"),
+        ("user", "pro_annual", "family"),
+        ("user", "pro_annual", "sku"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("handler", "suffix"),
+    [("update_builder_resume", "builder"), ("update_builder_resume_v1", "builder/v1")],
+)
+async def test_force_reattach_capability_blocks_legacy_and_v1_routes_before_database(
+    handler, suffix, role, plan, restriction, policy_app, monkeypatch,
+):
+    app, db = policy_app
+    keys = gateable_keys()
+    blob = {
+        "kill": dict.fromkeys(keys, True),
+        "matrix": {axis: dict.fromkeys(keys, True) for axis in PLAN_MATRIX_KEYS},
+        "roles": {axis: dict.fromkeys(keys, True) for axis in CAPABILITY_ROLES},
+    }
+    if restriction == "global":
+        blob["kill"]["b09"] = False
+    elif restriction == "role":
+        blob["roles"][role]["b09"] = False
+    elif restriction == "family":
+        blob["matrix"]["pro"]["b09"] = False
+    elif restriction == "sku":
+        blob["matrix"]["pro_annual"]["b09"] = False
+
+    policy = EntitlementService()
+    checker = AsyncMock(
+        side_effect=lambda key, **kwargs: policy._decide(blob, key, plan, role),
+    )
+    monkeypatch.setattr(entitlement_service, "has_feature", checker)
+    route = _routes()[("resume_routes", handler)]
+    path = route.path
+    for parameter in route.param_convertors:
+        path = path.replace("{" + parameter + "}", USER_ID)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch(
+            path,
+            json={
+                "force_reattach": True,
+                "expected_structured_version": 1,
+                "expected_latex_content": "current source",
+            },
+        )
+
+    assert response.status_code == 403, (handler, role, plan, restriction, response.text)
+    assert "b09" in response.text
+    assert [call.args[0] for call in checker.await_args_list] == ["b08", "c01", "b09"]
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 def test_safe_downgrade_routes_do_not_gain_product_dependencies():
