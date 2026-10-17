@@ -320,6 +320,65 @@ test('skip navigation and reduced-motion preferences are honored', async ({ page
     expect(motionAudit.runningAnimations).toBe(0)
 })
 
+test('updates copy stays visible without JavaScript for reduced-motion users at desktop and mobile widths', async ({ browser, baseURL }, testInfo) => {
+    const context = await browser.newContext({
+        baseURL,
+        viewport: { width: 1280, height: 900 },
+        reducedMotion: 'reduce',
+        javaScriptEnabled: false,
+        serviceWorkers: 'block',
+    })
+
+    try {
+        const page = await context.newPage()
+        await page.goto('/updates', { waitUntil: 'domcontentloaded' })
+
+        const heading = page.getByRole('heading', { name: /Shipping log and platform progress/ })
+        const article = page.locator('main article').first()
+        await expect(heading).toBeVisible()
+        await expect(article).toBeVisible()
+
+        for (const { name, width, height } of [
+            { name: 'desktop-1280x900', width: 1280, height: 900 },
+            { name: 'mobile-390x844', width: 390, height: 844 },
+        ]) {
+            await page.setViewportSize({ width, height })
+            const motionStyles = await page.evaluate(() => {
+                const main = document.querySelector('main')
+                const title = main?.querySelector('h1')
+                const firstArticle = main?.querySelector('article')
+                const item = firstArticle?.parentElement
+                const style = (element: Element | null | undefined) => {
+                    if (!element) return null
+                    const computed = getComputedStyle(element)
+                    return { opacity: computed.opacity, transform: computed.transform }
+                }
+
+                return {
+                    reveal: style(title?.parentElement),
+                    stagger: style(item?.parentElement),
+                    item: style(item),
+                    viewportWidth: document.documentElement.scrollWidth,
+                }
+            })
+
+            expect(motionStyles.reveal, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.stagger, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.item, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.viewportWidth, name).toBeLessThanOrEqual(width + 1)
+
+            const screenshotPath = testInfo.outputPath(`updates-reduced-motion-${name}.png`)
+            await page.screenshot({ path: screenshotPath, fullPage: true })
+            await testInfo.attach(`updates-reduced-motion-${name}`, {
+                path: screenshotPath,
+                contentType: 'image/png',
+            })
+        }
+    } finally {
+        await context.close()
+    }
+})
+
 test('representative public surface produces non-empty visual evidence', async ({
     page,
 }, testInfo) => {
