@@ -23,6 +23,8 @@ export default function ReviewDesk() {
     const [stage, setStage] = useState<ReviewStage>('Review')
     const [bullet, setBullet] = useState(original)
     const [draft, setDraft] = useState(original)
+    const [draftDirty, setDraftDirty] = useState(false)
+    const [beforeSuggestion, setBeforeSuggestion] = useState(original)
     const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
     const [role, setRole] = useState('Product Designer')
     const [accepted, setAccepted] = useState(false)
@@ -159,7 +161,10 @@ export default function ReviewDesk() {
                         <textarea
                             id="hero-sample-bullet"
                             value={draft}
-                            onChange={event => setDraft(event.target.value)}
+                            onChange={event => {
+                                setDraft(event.target.value)
+                                setDraftDirty(true)
+                            }}
                             maxLength={240}
                             rows={3}
                         />
@@ -167,7 +172,10 @@ export default function ReviewDesk() {
                             type="button"
                             className="rd-small-primary"
                             onClick={() => {
-                                setBullet(draft.trim() || original)
+                                const next = draft.trim() || original
+                                setBullet(next)
+                                setDraft(next)
+                                setDraftDirty(false)
                                 setAccepted(false)
                                 setMessage('Your wording is now in the sample résumé.')
                             }}
@@ -192,11 +200,13 @@ export default function ReviewDesk() {
                                 className="rd-small-primary"
                                 onClick={() => {
                                     if (accepted) {
-                                        setBullet(draft)
+                                        setBullet(beforeSuggestion)
+                                        if (!draftDirty) setDraft(beforeSuggestion)
                                         setAccepted(false)
                                         setMessage('Your previous wording has been restored.')
                                     } else {
-                                        setDraft(bullet)
+                                        setBeforeSuggestion(bullet)
+                                        if (!draftDirty) setDraft(suggested)
                                         setBullet(suggested)
                                         setAccepted(true)
                                         setMessage(
@@ -217,7 +227,10 @@ export default function ReviewDesk() {
                                 type="button"
                                 className="rd-small-secondary"
                                 onClick={() => {
-                                    if (accepted) setBullet(draft)
+                                    if (accepted) {
+                                        setBullet(beforeSuggestion)
+                                        if (!draftDirty) setDraft(beforeSuggestion)
+                                    }
                                     setAccepted(false)
                                     setMessage(
                                         'Original wording kept. You decide what goes on the page.'
