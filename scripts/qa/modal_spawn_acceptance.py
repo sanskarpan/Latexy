@@ -5,9 +5,13 @@ selected, pre-existing nonproduction Environment and disposable
 PostgreSQL, Redis, and Moto S3 services. It never looks up named production
 Secrets, uses Volumes or public tunnels, or writes its runtime report inside
 the repository. It does not set report file permissions or ACLs. Running
-it provisions paid infrastructure and requires
-explicit confirmations for resource use, default function egress, the
-nonproduction renderer binding, and the renderer boundary probe.
+it provisions paid infrastructure and requires explicit confirmations for
+resource use, default function egress, the nonproduction renderer binding, and
+(in boundary mode) the renderer boundary probe. Functional-only mode performs
+the same API/worker/PDF acceptance flow without executing the renderer boundary
+probe and never asserts certification. Before any functional run, the harness
+also verifies a source-approved Environment ID and fresh read-only inventory of
+named Secrets, Volumes, and active Apps without reading or printing Secret values.
 """
 
 from __future__ import annotations
@@ -24,16 +28,31 @@ import sys
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
+_BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+from app.services.render_engine.functional_acceptance_policy import (
+    FunctionalAcceptanceEnvironmentApproval,
+    functional_environment_inventory_sha256,
+    get_functional_acceptance_environment_approval,
+    is_trusted_functional_acceptance_environment,
+)
+
 _LABEL = re.compile(r"[A-Za-z0-9_.:-]{1,80}\Z")
 _IMAGE_ID = re.compile(r"im-[A-Za-z0-9]{6,128}\Z")
 _ROLES = frozenset({"service", "caller", "worker"})
 _PRODUCTION_ENVIRONMENT_NAMES = frozenset({"main", "prod", "production"})
+_PRODUCTION_ENVIRONMENT_ALIAS = re.compile(
+    r"(?:^|[-_.:])(?:main|prod(?:uction)?|live)(?:$|[-_.:])", re.IGNORECASE,
+)
 
 
 def _safe_label(value: object) -> str:
@@ -46,14 +65,183 @@ def validate_nonproduction_environment_name(name: str) -> str:
         not isinstance(name, str)
         or not _LABEL.fullmatch(name)
         or name.lower() in _PRODUCTION_ENVIRONMENT_NAMES
+        or _PRODUCTION_ENVIRONMENT_ALIAS.search(name)
     ):
         raise HarnessFailure("arguments", "nonproduction_environment_required")
     return name
 
 
-def validate_existing_nonproduction_environment(modal_sdk: Any, name: str) -> str:
-    """Read-only existence check; never create an Environment implicitly."""
-    name = validate_nonproduction_environment_name(name)
+def validate_functional_acceptance_environment_name(name: str) -> str:
+    """Require an exact, complete source-reviewed identity approval."""
+    validate_nonproduction_environment_name(name)
+    if get_functional_acceptance_environment_approval(name) is None:
+        raise HarnessFailure("arguments", "functional_environment_not_allowlisted")
+    return name
+
+
+@dataclass(frozen=True)
+class FunctionalEnvironmentInventory:
+    environment_object_id: str
+    binding_manifest_sha256: str
+    secret_count: int
+    volume_count: int
+    active_app_count: int
+
+
+def _read_named_object_identities(items: Sequence[Any]) -> tuple[tuple[str, str], ...]:
+    identities = []
+    for item in items:
+        if isinstance(item, Mapping):
+            name = item.get("name")
+            object_id = item.get("object_id")
+        else:
+            name = getattr(item, "name", None)
+            object_id = getattr(item, "object_id", None)
+        if (not isinstance(name, str) or not name or any(ord(char) < 32 for char in name)
+                or not isinstance(object_id, str) or not object_id or len(object_id) > 128
+                or any(ord(char) < 32 for char in object_id)):
+            raise HarnessFailure("environment_validation", "functional_inventory_identity_unavailable")
+        identities.append((name, object_id))
+    return tuple(sorted(identities))
+
+
+def _read_cli_active_app_identities(items: Any) -> tuple[tuple[str, str], ...]:
+    """Read live App metadata from the documented Modal CLI JSON listing."""
+    if not isinstance(items, list):
+        raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+    active_items = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+        state = item.get("state")
+        if not isinstance(state, str) or not state:
+            raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+        # The CLI includes recently stopped records. Count anything not explicitly
+        # stopped or disabled so an unknown state fails closed as an active binding.
+        if state.casefold() in {"stopped", "disabled"}:
+            continue
+        active_items.append({"name": item.get("description"), "object_id": item.get("app_id")})
+    return _read_named_object_identities(active_items)
+
+
+def _modal_cli_error_class(stderr: str) -> str:
+    """Classify CLI failures without returning provider text or resource metadata."""
+    message = stderr.casefold()
+    if any(term in message for term in ("permission denied", "permissiondenied", "forbidden", "not authorized")):
+        return "PermissionDeniedError"
+    if any(term in message for term in ("unauthenticated", "not authenticated", "unauthorized", "no modal token")):
+        return "UnauthenticatedError"
+    return "ModalCliCommandError"
+
+
+def _read_active_app_identities(environment: Any, name: str) -> tuple[tuple[str, str], ...]:
+    """Use Environment.apps when present; use the supported 1.5.x CLI otherwise."""
+    apps_manager = getattr(environment, "apps", None)
+    apps_list = getattr(apps_manager, "list", None)
+    if callable(apps_list):
+        return _read_named_object_identities(list(apps_list()))
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "modal", "app", "list", "--env", name, "--json"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+    except Exception as error:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
+    if result.returncode != 0:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed",
+            error_class=_modal_cli_error_class(result.stderr),
+        )
+    try:
+        items = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
+    return _read_cli_active_app_identities(items)
+
+
+def read_functional_environment_inventory(
+    modal_sdk: Any, name: str,
+) -> FunctionalEnvironmentInventory:
+    """Read only environment identity plus Secret/Volume/live-App object metadata.
+
+    Secret values are never requested or inspected. Any unsupported or incomplete
+    listing fails closed so the approval cannot silently degrade to a name check.
+    """
+    stage = "environment_list"
+    try:
+        environments = list(modal_sdk.Environment.objects.list())
+        matches = [environment for environment in environments
+                   if getattr(environment, "name", None) == name]
+        if len(matches) != 1:
+            raise HarnessFailure("environment_validation", "environment_not_found")
+        environment = matches[0]
+        environment_object_id = getattr(environment, "object_id", None)
+        if (not isinstance(environment_object_id, str) or not environment_object_id
+                or len(environment_object_id) > 128
+                or any(ord(char) < 32 for char in environment_object_id)):
+            raise HarnessFailure("environment_validation", "functional_environment_identity_unavailable")
+
+        # These list APIs return named object handles; no Secret contents are read.
+        stage = "secret_list"
+        secrets = list(modal_sdk.Secret.objects.list(environment_name=name))
+        stage = "volume_list"
+        volumes = list(modal_sdk.Volume.objects.list(environment_name=name))
+        stage = "active_app_list"
+        app_identities = _read_active_app_identities(environment, name)
+        secret_identities = _read_named_object_identities(secrets)
+        volume_identities = _read_named_object_identities(volumes)
+    except HarnessFailure:
+        raise
+    except Exception as error:
+        raise HarnessFailure(
+            stage, "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
+
+    fingerprint = functional_environment_inventory_sha256(
+        name, environment_object_id,
+        secret_identities=secret_identities,
+        volume_identities=volume_identities,
+        active_app_identities=app_identities,
+    )
+    return FunctionalEnvironmentInventory(
+        environment_object_id=environment_object_id,
+        binding_manifest_sha256=fingerprint,
+        secret_count=len(secret_identities),
+        volume_count=len(volume_identities),
+        active_app_count=len(app_identities),
+    )
+
+
+def validate_existing_nonproduction_environment(
+    modal_sdk: Any, name: str, *, functional_only: bool = False,
+) -> str | FunctionalAcceptanceEnvironmentApproval:
+    """Read-only environment check; functional mode requires exact identity and empty inventory."""
+    name = (
+        validate_functional_acceptance_environment_name(name)
+        if functional_only else validate_nonproduction_environment_name(name)
+    )
+    if functional_only:
+        approval = get_functional_acceptance_environment_approval(name)
+        if approval is None:
+            raise HarnessFailure("environment_validation", "functional_environment_not_allowlisted")
+        inventory = read_functional_environment_inventory(modal_sdk, name)
+        if inventory.environment_object_id != approval.environment_object_id:
+            raise HarnessFailure("environment_validation", "functional_environment_identity_mismatch")
+        if inventory.secret_count or inventory.volume_count or inventory.active_app_count:
+            raise HarnessFailure("environment_validation", "functional_environment_not_empty")
+        if not is_trusted_functional_acceptance_environment(
+            name, inventory.environment_object_id, inventory.binding_manifest_sha256,
+        ):
+            raise HarnessFailure("environment_validation", "functional_environment_manifest_mismatch")
+        return approval
     try:
         environments = modal_sdk.Environment.objects.list()
     except Exception:
@@ -105,9 +293,10 @@ def connectivity_report(
 class HarnessFailure(RuntimeError):
     """A fixed-code exception which cannot retain client exception contents."""
 
-    def __init__(self, stage: str, failure_code: str):
+    def __init__(self, stage: str, failure_code: str, *, error_class: str | None = None):
         self.stage = _safe_label(stage)
         self.failure_code = _safe_label(failure_code)
+        self.error_class = _safe_label(error_class) if error_class else None
         super().__init__(self.failure_code)
 
 
@@ -176,17 +365,47 @@ def require_worker_placement(
 
 def function_runtime_environment(
     address: str, renderer_image_id: str, renderer_assets_fingerprint: str,
+    *, renderer_mode: str = "boundary",
+    functional_environment_approval: FunctionalAcceptanceEnvironmentApproval | None = None,
 ) -> dict[str, str]:
     """Build app settings without overriding Modal-owned runtime variables."""
-    return {
+    if renderer_mode not in {"boundary", "functional-only"}:
+        raise ValueError("unsupported renderer acceptance mode")
+    approval = functional_environment_approval
+    if not isinstance(approval, FunctionalAcceptanceEnvironmentApproval):
+        raise HarnessFailure("arguments", "functional_environment_approval_required")
+    try:
+        validate_nonproduction_environment_name(approval.name)
+    except HarnessFailure:
+        raise HarnessFailure("arguments", "functional_environment_approval_required") from None
+    if not is_trusted_functional_acceptance_environment(
+        approval.name, approval.environment_object_id, approval.binding_manifest_sha256,
+    ):
+        raise HarnessFailure("arguments", "functional_environment_approval_required")
+    environment = {
         "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal",
+        # The hold is lifted only after exact source-reviewed Environment identity
+        # and binding-manifest approval, for temporary test Functions in either mode.
+        "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false",
         "BILLING_MODE": "disabled", "DODO_MODE": "test",
         "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
         "PYTHONPATH": "/backend:/pkg", "NO_PROXY": address + ",localhost,127.0.0.1",
-        "MODAL_ENGINE_VM_CERTIFIED": "true",
         "MODAL_ENGINE_VM_IMAGE_ID": renderer_image_id,
         "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": renderer_assets_fingerprint,
     }
+    if renderer_mode == "boundary":
+        environment["MODAL_ENGINE_VM_CERTIFIED"] = "true"
+    else:
+        # This opt-in is recognized only by the test-only backend gate. It is
+        # intentionally distinct from the operator's production certification.
+        # Empty also overrides a stale assertion baked into the test image.
+        environment["MODAL_ENGINE_VM_CERTIFIED"] = ""
+        environment["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"] = "true"
+        environment["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID"] = approval.environment_object_id
+        environment["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256"] = (
+            approval.binding_manifest_sha256
+        )
+    return environment
 
 
 def _probe_redis(redis_url: str) -> bool:
@@ -337,6 +556,7 @@ def _stop_disposable_services(
 def _store_worker_identity(identity: Mapping[str, str]) -> None:
     """Retain the actual spawned worker identity only in disposable test Redis."""
     import os
+
     import redis
 
     run_id = os.environ.get("HARNESS_RUN_ID")
@@ -360,6 +580,7 @@ def _worker_failure_key(run_id: str) -> str:
 def _store_expected_placement(run_id: str, identity: Mapping[str, str]) -> None:
     """Store only the checked provider/region in disposable test Redis."""
     import os
+
     import redis
 
     provider = _safe_label(identity.get("provider"))
@@ -383,6 +604,7 @@ def _store_expected_placement(run_id: str, identity: Mapping[str, str]) -> None:
 
 def _read_expected_placement(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -408,6 +630,7 @@ def _read_expected_placement(run_id: str) -> dict[str, str] | None:
 
 def _record_worker_failure(run_id: str, stage: str, failure_code: str) -> None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -421,6 +644,7 @@ def _record_worker_failure(run_id: str, stage: str, failure_code: str) -> None:
 
 def _read_worker_failure(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -569,6 +793,7 @@ def run_latex_task(payload: dict[str, Any]) -> Any:
 
 def _read_actual_worker_identity(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -593,7 +818,6 @@ def _read_actual_worker_identity(run_id: str) -> dict[str, str] | None:
 def api_probe(app_name: str, service_preflight: dict[str, object],
               expected_region: str, run_id: str, environment_name: str) -> dict[str, object]:
     """Preflight caller, then test one synthetic API submission and acceptance."""
-    import asyncio
     import io
     import os
     import subprocess as probe_subprocess
@@ -787,6 +1011,20 @@ def _private_report_path(path_value: str) -> Path:
     raise HarnessFailure("arguments", "private_report_must_be_outside_repository")
 
 
+def _set_renderer_report_scope(report: dict[str, object], renderer_mode: str) -> None:
+    if renderer_mode not in {"boundary", "functional-only"}:
+        raise HarnessFailure("arguments", "invalid_renderer_mode")
+    report["renderer_mode"] = renderer_mode
+    report["renderer_boundary_probe"] = "not_run" if renderer_mode == "functional-only" else "enabled"
+    report["production_certification_claimed"] = False
+
+
+def _acceptance_report(renderer_mode: str) -> dict[str, object]:
+    report = terminal_failure_report("initialize", "acceptance_not_started")
+    _set_renderer_report_scope(report, renderer_mode)
+    return report
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-id", required=True, help="Approved nonproduction API/LaTeX test image ID")
@@ -795,10 +1033,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--renderer-image-id", required=True, help="Operator-reviewed bare renderer image ID")
     parser.add_argument("--renderer-assets-fingerprint", required=True,
                         help="Operator-reviewed renderer asset fingerprint")
+    parser.add_argument(
+        "--renderer-mode", choices=("boundary", "functional-only"), default="boundary",
+        help="boundary runs the security probe; functional-only runs API/worker/PDF checks only",
+    )
     parser.add_argument("--region", default="us-east", help="Modal container region (default: us-east)")
     parser.add_argument(
         "--environment-name", required=True,
-        help="Existing nonproduction Modal Environment to use; the harness never creates Environments",
+        help=("Existing nonproduction Modal Environment; functional-only currently requires a reviewed "
+              "name/object-ID/empty-binding-manifest approval (none is configured)"),
     )
     parser.add_argument(
         "--private-report", required=True,
@@ -814,6 +1057,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Acknowledge API/worker/service Functions use Modal's default outbound egress")
     parser.add_argument("--confirm-renderer-boundary-probe", action="store_true",
                         help="Acknowledge the renderer adapter probes /proc/1 and outbound network denial")
+    parser.add_argument("--confirm-functional-renderer-binding", action="store_true",
+                        help="Bind this renderer tuple for nonproduction functional testing only; does not certify it")
     args = parser.parse_args(argv)
     try:
         private_report = _private_report_path(args.private_report)
@@ -827,17 +1072,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise HarnessFailure("arguments", "invalid_renderer_assets_fingerprint")
         if not _LABEL.fullmatch(args.region) or args.region == "unknown":
             raise HarnessFailure("arguments", "invalid_region")
-        validate_nonproduction_environment_name(args.environment_name)
+        if args.renderer_mode == "functional-only":
+            validate_functional_acceptance_environment_name(args.environment_name)
+        else:
+            validate_nonproduction_environment_name(args.environment_name)
         if not args.confirm_isolated_modal_run:
             raise HarnessFailure("arguments", "isolated_modal_run_confirmation_required")
         if not args.confirm_nonproduction_environment:
             raise HarnessFailure("arguments", "nonproduction_environment_confirmation_required")
-        if not args.confirm_nonproduction_renderer_binding:
-            raise HarnessFailure("arguments", "nonproduction_renderer_binding_confirmation_required")
-        if not args.confirm_default_egress:
-            raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
-        if not args.confirm_renderer_boundary_probe:
-            raise HarnessFailure("arguments", "renderer_boundary_probe_confirmation_required")
+        if args.renderer_mode == "functional-only":
+            if args.confirm_renderer_boundary_probe:
+                raise HarnessFailure("arguments", "boundary_probe_confirmation_not_allowed_in_functional_mode")
+            if not args.confirm_default_egress:
+                raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
+            if not args.confirm_functional_renderer_binding:
+                raise HarnessFailure("arguments", "functional_renderer_binding_confirmation_required")
+        else:
+            if not args.confirm_nonproduction_renderer_binding:
+                raise HarnessFailure("arguments", "nonproduction_renderer_binding_confirmation_required")
+            if not args.confirm_default_egress:
+                raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
+            if args.confirm_functional_renderer_binding:
+                raise HarnessFailure("arguments", "functional_renderer_binding_not_allowed_in_boundary_mode")
+            if not args.confirm_renderer_boundary_probe:
+                raise HarnessFailure("arguments", "renderer_boundary_probe_confirmation_required")
     except HarnessFailure as failure:
         print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
         return 2
@@ -849,10 +1107,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        environment = validate_existing_nonproduction_environment(modal, args.environment_name)
+        environment = validate_existing_nonproduction_environment(
+            modal, args.environment_name, functional_only=True,
+        )
     except HarnessFailure as failure:
         print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
         return 2
+
+    environment_approval = (
+        environment if isinstance(environment, FunctionalAcceptanceEnvironmentApproval) else None
+    )
+    environment_name = environment_approval.name if environment_approval else environment
 
     run_id = uuid4().hex
     suffix = run_id[:10]
@@ -878,14 +1143,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         image=services_image, i6pn=True, region=args.region, secrets=[], volumes={},
         timeout=550, memory=(2048, 2048), max_containers=1, single_use_containers=True,
     )(run_services)
-    report: dict[str, object] = terminal_failure_report("initialize", "acceptance_not_started")
+    report = _acceptance_report(args.renderer_mode)
     dispatch_deploy_state = {"attempted": False}
     service_call = None
     try:
-        with _ephemeral_queue(modal, environment) as ready_queue, _ephemeral_queue(
-            modal, environment,
+        with _ephemeral_queue(modal, environment_name) as ready_queue, _ephemeral_queue(
+            modal, environment_name,
         ) as stop_queue:
-            with service_app.run(environment_name=environment):
+            with service_app.run(environment_name=environment_name):
                 service_call = service_function.spawn(
                     ready_queue, stop_queue, db_password, redis_password,
                     s3_access_key, s3_secret_key, bucket,
@@ -912,10 +1177,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     })
                     runtime_env = function_runtime_environment(
                         address, args.renderer_image_id, args.renderer_assets_fingerprint,
+                        renderer_mode=args.renderer_mode,
+                        functional_environment_approval=environment_approval,
                     )
                     dispatch_app = modal.App(dispatch_app_name)
                     secret = modal.Secret.from_dict(runtime_secrets)
-                    worker_function = dispatch_app.function(
+                    _worker_function = dispatch_app.function(
                         image=image, env=runtime_env, secrets=[secret], volumes={},
                         i6pn=True, region=args.region, timeout=330, max_containers=1,
                         single_use_containers=True,
@@ -925,14 +1192,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                         i6pn=True, region=args.region, timeout=480, max_containers=1,
                         single_use_containers=True,
                     )(api_probe)
-                    _deploy_dispatch_app(dispatch_app, environment, dispatch_deploy_state)
+                    _deploy_dispatch_app(dispatch_app, environment_name, dispatch_deploy_state)
 
                     report.update(api_function.remote(
                         dispatch_app_name,
                         {key: service_preflight[key] for key in ("status", "identity", "checks", "failure_code")},
                         args.region,
                         run_id,
-                        environment,
+                        environment_name,
                     ))
     except HarnessFailure as failure:
         report.update(terminal_failure_report(failure.stage, failure.failure_code))
@@ -940,12 +1207,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         report.update(terminal_failure_report("modal_acceptance", "modal_or_harness_failure"))
     finally:
         stopped = _stop_dispatch_app(
-            dispatch_app_name, environment, attempted=dispatch_deploy_state["attempted"],
+            dispatch_app_name, environment_name, attempted=dispatch_deploy_state["attempted"],
         )
         if stopped is not None:
             report["dispatch_app_stopped"] = stopped
         _finalize_cleanup_status(report)
 
+    _set_renderer_report_scope(report, args.renderer_mode)
     private_report.parent.mkdir(parents=True, exist_ok=True)
     private_report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(_public_summary(report), sort_keys=True))

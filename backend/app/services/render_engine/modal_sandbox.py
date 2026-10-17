@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ...utils.bounded_io import MAX_COMPILE_LOG_BYTES, MAX_COMPILED_PDF_BYTES, read_file_bounded
+from .functional_acceptance_policy import is_trusted_functional_acceptance_environment
 
 _REMOTE = "/workspace"
 _BOOTSTRAP = "/tmp/latexy-sandbox-bootstrap"
@@ -329,9 +330,11 @@ class ModalEngineProcess:
 class ModalEngineSession:
     """One credential-free VM and one absolute deadline for all document passes."""
 
-    def __init__(self, sandbox, timer, deadline, workspace, policy, image_id, assets):
+    def __init__(self, sandbox, timer, deadline, workspace, policy, image_id, assets,
+                 boundary_preflight=True):
         self.sandbox, self.timer, self.deadline = sandbox, timer, deadline
         self.workspace, self.policy, self.image_id, self.assets = workspace, policy, image_id, assets
+        self.boundary_preflight = boundary_preflight
         self.closed = False
 
     def close(self):
@@ -355,6 +358,7 @@ def create_modal_engine(
     policy: str = "kernel",
     expected_assets: str | None = None,
     session: ModalEngineSession | None = None,
+    boundary_preflight: bool = True,
 ) -> ModalEngineProcess:
     """Explicitly gated SDK adapter; never inherits worker secrets or mounts."""
     enabled = enabled if enabled is not None else os.getenv("MODAL_ENGINE_VM_SANDBOX_ENABLED") == "true"
@@ -365,6 +369,25 @@ def create_modal_engine(
         raise ModalEngineUnavailable("Invalid isolated engine request")
     if policy not in {"kernel", "credential_free_vm"}:
         raise ModalEngineUnavailable("Invalid isolated engine policy")
+    if type(boundary_preflight) is not bool:
+        raise ModalEngineUnavailable("Invalid renderer boundary preflight setting")
+    functional_only = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE") == "true"
+    if functional_only:
+        runtime_environment = os.getenv("MODAL_ENVIRONMENT", "")
+        environment_object_id = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "")
+        binding_manifest = os.getenv(
+            "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "",
+        )
+        if (boundary_preflight or policy != "credential_free_vm"
+                or os.getenv("MODAL_ENGINE_VM_CERTIFIED") == "true"
+                or os.getenv("DEPLOY_TARGET") != "modal" or os.getenv("ENVIRONMENT") != "test"
+                or not runtime_environment
+                or not is_trusted_functional_acceptance_environment(
+                    runtime_environment, environment_object_id, binding_manifest,
+                )):
+            raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
+    elif not boundary_preflight:
+        raise ModalEngineUnavailable("Skipping the renderer boundary preflight requires functional-only mode")
     root = Path(workspace).resolve(strict=True)
     inputs, total = [], 0
     for path in root.iterdir():
@@ -392,6 +415,7 @@ def create_modal_engine(
     if session is not None:
         if (session.closed or session.workspace != root or session.policy != policy
                 or session.image_id != image_id or session.assets != expected_assets
+                or session.boundary_preflight != boundary_preflight
                 or time.monotonic() >= session.deadline):
             raise ModalEngineUnavailable("Renderer session identity or deadline changed")
         def remaining_budget():
@@ -498,7 +522,7 @@ def create_modal_engine(
                 "credential_env_present", "application_source_present", "dotenv_present")}
             safe["landlock_abi"] = observed.get("landlock_abi") if isinstance(observed.get("landlock_abi"), int) else None
             raise ModalEngineUnavailable("Sandbox image preflight rejected: " + json.dumps(safe, sort_keys=True))
-        if policy == "credential_free_vm":
+        if policy == "credential_free_vm" and boundary_preflight:
             check_deadline()
             boundary = sandbox.exec("python3", "-c", _VM_BOUNDARY_PREFLIGHT, timeout=10, text=False, secrets=[])
             output = boundary.stdout.read()
@@ -535,7 +559,9 @@ def create_modal_engine(
         check_deadline()
         result = ModalEngineProcess(sandbox, process, root, basename)
         result._deadline_timer = timer
-        result.renderer_session = ModalEngineSession(sandbox, timer, deadline, root, policy, image_id, expected_assets)
+        result.renderer_session = ModalEngineSession(
+            sandbox, timer, deadline, root, policy, image_id, expected_assets, boundary_preflight,
+        )
         result.policy_identity = "lua-credential-free-vm-v1" if policy == "credential_free_vm" else "lua-landlock-seccomp-v2"
         return result
     except BaseException:
