@@ -204,7 +204,8 @@ def test_held_cutover_then_release_uses_distinct_ordered_workflow_sequences() ->
 
     release_script = _step(steps, release_guard)["run"]
     assert 'verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"' in release_script
-    assert all(f"check_health {path} healthy" in release_script for path in ("/health", "/readyz", "/jobs/health"))
+    expected_health = {"/health": "healthy", "/readyz": "ready", "/jobs/health": "healthy"}
+    assert all(f"check_health {path} {status}" in release_script for path, status in expected_health.items())
     assert release_script.index("check_health /jobs/health healthy") < release_script.index(
         "modal_deployment_phase.py authorize-release"
     )
@@ -257,7 +258,7 @@ def test_operator_pointer_and_phase_documentation_states_the_actual_limits() -> 
         assert "change freeze" in normalized
     assert "separate Modal stop and" not in schema_doc
     assert "release phase skips the old-App pointer/state gate and Alembic migration" in handoff
-    assert "does not repeat the old-App drain gate or database migration" in schema_doc
+    assert "does not repeat the old-App drain gate or database migration" in " ".join(schema_doc.split())
 
 
 def test_postdeploy_health_checks_verify_the_selected_hold_header() -> None:
