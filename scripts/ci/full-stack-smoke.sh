@@ -149,6 +149,7 @@ if ! (
     e2e/capability-fullstack.spec.ts \
     e2e/core-capabilities-fullstack.spec.ts \
     e2e/e03-interview-simulation-fullstack.spec.ts \
+    e2e/sharing-controls-fullstack.spec.ts \
     --project=chromium --workers=1 --retries=0 --trace=on --reporter=line \
     --output=test-results/full-stack
 ); then
