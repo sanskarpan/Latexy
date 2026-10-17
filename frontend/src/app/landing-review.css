@@ -156,6 +156,8 @@
     letter-spacing: 0.08em;
 }
 .lp-menu-appearance > button {
+    display: flex;
+    align-items: center;
     width: 100%;
     justify-content: flex-start;
     gap: 12px;

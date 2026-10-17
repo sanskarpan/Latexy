@@ -37,5 +37,15 @@
       1170,
       16434
     ]
+  },
+  "menuFollowup": {
+    "notes": "Only preference-row alignment changed after main captures; closed-menu page layout is unchanged.",
+    "browser": "Codex in-app browser",
+    "productCommit": "375d0604be1775511b195c66eeed6fc0d90ac97a",
+    "cssViewport": [
+      390,
+      1000
+    ],
+    "state": "Open menu, live local capability fallback, light/dark"
   }
 }

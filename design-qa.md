@@ -42,6 +42,8 @@ Focused actual section crops were inspected because a whole-page thumbnail canno
    Separated the undo snapshot from the unsaved draft and tracked dirty edits. Regression coverage verifies Undo and Keep original preserve unfinished input and restore the correct paper text on desktop Chromium and mobile WebKit.
 6. **[P2, resolved] Menu could accept an early tap before its parent was hydrated.**
    Keep it disabled until the parent handler is ready. Appearance/menu keyboard contracts remain enabled.
+7. **[P2, resolved] The sound preference icon stacked above its label in the phone menu.**
+   Manual dark-phone review exposed that the shared row rule specified alignment but not flex display. Added explicit flex/center alignment to preference buttons and recaptured the open menu. Both preference rows now align consistently with 44px targets.
 
 ## Required fidelity surfaces
 
