@@ -1,6 +1,7 @@
 """Explicitly opt-in, isolated Modal API -> worker -> renderer acceptance run.
 
-This script creates a unique nonproduction Modal app/environment and disposable
+This script creates uniquely named nonproduction Modal apps in an explicitly
+selected, pre-existing nonproduction Environment and disposable
 PostgreSQL, Redis, and Moto S3 services. It never looks up named production
 Secrets, uses Volumes or public tunnels, or writes its runtime report inside
 the repository. It does not set report file permissions or ACLs. Running
@@ -32,10 +33,34 @@ from uuid import uuid4
 _LABEL = re.compile(r"[A-Za-z0-9_.:-]{1,80}\Z")
 _IMAGE_ID = re.compile(r"im-[A-Za-z0-9]{6,128}\Z")
 _ROLES = frozenset({"service", "caller", "worker"})
+_PRODUCTION_ENVIRONMENT_NAMES = frozenset({"main", "prod", "production"})
 
 
 def _safe_label(value: object) -> str:
     return value if isinstance(value, str) and _LABEL.fullmatch(value) else "unknown"
+
+
+def validate_nonproduction_environment_name(name: str) -> str:
+    """Require an explicit environment name and reject known production names."""
+    if (
+        not isinstance(name, str)
+        or not _LABEL.fullmatch(name)
+        or name.lower() in _PRODUCTION_ENVIRONMENT_NAMES
+    ):
+        raise HarnessFailure("arguments", "nonproduction_environment_required")
+    return name
+
+
+def validate_existing_nonproduction_environment(modal_sdk: Any, name: str) -> str:
+    """Read-only existence check; never create an Environment implicitly."""
+    name = validate_nonproduction_environment_name(name)
+    try:
+        environments = modal_sdk.Environment.objects.list()
+    except Exception:
+        raise HarnessFailure("environment_validation", "environment_lookup_failed") from None
+    if not any(getattr(environment, "name", None) == name for environment in environments):
+        raise HarnessFailure("environment_validation", "environment_not_found")
+    return name
 
 
 def runtime_identity(role: str, environ: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -445,6 +470,11 @@ def _private_service_lifetime(stop_queue: Any, service_call: Any, report: dict[s
         _cleanup_private_service(stop_queue, service_call, report)
 
 
+def _ephemeral_queue(modal_sdk: Any, environment_name: str) -> Any:
+    """Always scope ephemeral control queues to the selected test Environment."""
+    return modal_sdk.Queue.ephemeral(environment_name=environment_name)
+
+
 def _deploy_dispatch_app(app: Any, environment: str, state: dict[str, bool]) -> None:
     """Record an attempt before deploy, so partial deployments are stoppable."""
     state["attempted"] = True
@@ -767,11 +797,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Operator-reviewed renderer asset fingerprint")
     parser.add_argument("--region", default="us-east", help="Modal container region (default: us-east)")
     parser.add_argument(
+        "--environment-name", required=True,
+        help="Existing nonproduction Modal Environment to use; the harness never creates Environments",
+    )
+    parser.add_argument(
         "--private-report", required=True,
         help="Report path outside this checkout; access permissions are managed by the operator",
     )
     parser.add_argument("--confirm-isolated-modal-run", action="store_true",
                         help="Acknowledge that this provisions paid, disposable Modal resources")
+    parser.add_argument("--confirm-nonproduction-environment", action="store_true",
+                        help="Confirm the named existing Modal Environment is nonproduction")
     parser.add_argument("--confirm-nonproduction-renderer-binding", action="store_true",
                         help="Acknowledge the renderer assertion is confined to this test app/environment")
     parser.add_argument("--confirm-default-egress", action="store_true",
@@ -791,8 +827,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise HarnessFailure("arguments", "invalid_renderer_assets_fingerprint")
         if not _LABEL.fullmatch(args.region) or args.region == "unknown":
             raise HarnessFailure("arguments", "invalid_region")
+        validate_nonproduction_environment_name(args.environment_name)
         if not args.confirm_isolated_modal_run:
             raise HarnessFailure("arguments", "isolated_modal_run_confirmation_required")
+        if not args.confirm_nonproduction_environment:
+            raise HarnessFailure("arguments", "nonproduction_environment_confirmation_required")
         if not args.confirm_nonproduction_renderer_binding:
             raise HarnessFailure("arguments", "nonproduction_renderer_binding_confirmation_required")
         if not args.confirm_default_egress:
@@ -809,9 +848,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps({"status": "blocked", "failure_code": "modal_sdk_unavailable"}, sort_keys=True))
         return 2
 
+    try:
+        environment = validate_existing_nonproduction_environment(modal, args.environment_name)
+    except HarnessFailure as failure:
+        print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
+        return 2
+
     run_id = uuid4().hex
     suffix = run_id[:10]
-    environment = "latexy-harness-" + suffix
     service_app_name = "latexy-harness-services-" + suffix
     dispatch_app_name = "latexy-harness-dispatch-" + suffix
     bucket = "latexy-harness-" + suffix
@@ -838,7 +882,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     dispatch_deploy_state = {"attempted": False}
     service_call = None
     try:
-        with modal.Queue.ephemeral() as ready_queue, modal.Queue.ephemeral() as stop_queue:
+        with _ephemeral_queue(modal, environment) as ready_queue, _ephemeral_queue(
+            modal, environment,
+        ) as stop_queue:
             with service_app.run(environment_name=environment):
                 service_call = service_function.spawn(
                     ready_queue, stop_queue, db_password, redis_password,

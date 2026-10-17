@@ -18,6 +18,7 @@ from modal_spawn_acceptance import (
     _acceptance_exit_code,
     _cleanup_private_service,
     _deploy_dispatch_app,
+    _ephemeral_queue,
     _finalize_cleanup_status,
     _private_service_lifetime,
     _public_summary,
@@ -32,6 +33,8 @@ from modal_spawn_acceptance import (
     run_latex_task,
     runtime_identity,
     terminal_failure_report,
+    validate_existing_nonproduction_environment,
+    validate_nonproduction_environment_name,
 )
 
 
@@ -109,6 +112,108 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
 
 
+class ModalEnvironmentValidationTests(unittest.TestCase):
+    def test_existing_nonproduction_environment_is_found_by_read_only_list(self):
+        class EnvironmentManager:
+            list_calls = 0
+
+            def list(self):
+                self.list_calls += 1
+                return [type("Environment", (), {"name": "test-sandbox"})()]
+
+        manager = EnvironmentManager()
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {"objects": manager}),
+        })
+        self.assertEqual(validate_existing_nonproduction_environment(sdk, "test-sandbox"), "test-sandbox")
+        self.assertEqual(manager.list_calls, 1)
+        self.assertFalse(hasattr(manager, "create"))
+
+    def test_ephemeral_queues_are_scoped_to_the_selected_environment(self):
+        class QueueAPI:
+            calls = []
+
+            @classmethod
+            def ephemeral(cls, **kwargs):
+                cls.calls.append(kwargs)
+                return _ActiveScope()
+
+        modal_sdk = type("ModalSDK", (), {"Queue": QueueAPI})
+        for _ in range(2):
+            with _ephemeral_queue(modal_sdk, "test-sandbox"):
+                pass
+        self.assertEqual(QueueAPI.calls, [
+            {"environment_name": "test-sandbox"},
+            {"environment_name": "test-sandbox"},
+        ])
+
+    def test_missing_existing_environment_fails_without_creation(self):
+        class EnvironmentManager:
+            def list(self):
+                return [type("Environment", (), {"name": "dev"})()]
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {"objects": EnvironmentManager()}),
+        })
+        with self.assertRaises(HarnessFailure) as raised:
+            validate_existing_nonproduction_environment(sdk, "test-sandbox")
+        self.assertEqual(raised.exception.failure_code, "environment_not_found")
+
+    def test_default_and_obvious_production_environment_names_are_rejected(self):
+        for name in ("main", "MAIN", "prod", "production", ""):
+            with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
+                validate_nonproduction_environment_name(name)
+            self.assertEqual(raised.exception.failure_code, "nonproduction_environment_required")
+
+    def test_environment_lookup_failure_is_sanitized(self):
+        class EnvironmentManager:
+            def list(self):
+                raise TimeoutError("private workspace detail")
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {"objects": EnvironmentManager()}),
+        })
+        with self.assertRaises(HarnessFailure) as raised:
+            validate_existing_nonproduction_environment(sdk, "test-sandbox")
+        self.assertEqual(raised.exception.failure_code, "environment_lookup_failed")
+        self.assertNotIn("private workspace detail", str(raised.exception))
+
+    def test_main_validates_environment_before_constructing_modal_resources(self):
+        class EnvironmentManager:
+            def list(self):
+                return []
+
+        def unexpected_resource_creation(*args, **kwargs):
+            raise AssertionError("resource construction happened before environment validation")
+
+        environment_api = type("EnvironmentAPI", (), {"objects": EnvironmentManager()})
+        sdk = type("ModalSDK", (), {
+            "Environment": environment_api,
+            "Image": type("ImageAPI", (), {"from_id": unexpected_resource_creation}),
+            "App": unexpected_resource_creation,
+            "Queue": type("QueueAPI", (), {"ephemeral": unexpected_resource_creation}),
+        })
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
+                "--private-report", private_report,
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+                "--confirm-nonproduction-renderer-binding",
+                "--confirm-default-egress",
+                "--confirm-renderer-boundary-probe",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("environment_not_found", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+
 class ConnectivityReportTests(unittest.TestCase):
     def test_runner_requires_both_explicit_approvals_before_modal_import(self):
         private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
@@ -119,7 +224,9 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
                 "--private-report", private_report,
+                "--confirm-nonproduction-environment",
             ])
         self.assertEqual(result, 2)
         self.assertIn("isolated_modal_run_confirmation_required", output.getvalue())
@@ -134,11 +241,30 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
+                "--private-report", private_report,
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("nonproduction_renderer_binding_confirmation_required", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+    def test_existing_nonproduction_environment_confirmation_is_separate(self):
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
                 "--private-report", private_report,
                 "--confirm-isolated-modal-run",
             ])
         self.assertEqual(result, 2)
-        self.assertIn("nonproduction_renderer_binding_confirmation_required", output.getvalue())
+        self.assertIn("nonproduction_environment_confirmation_required", output.getvalue())
         self.assertFalse(Path(private_report).exists())
 
     def test_default_egress_confirmation_is_separate(self):
@@ -150,8 +276,10 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
                 "--private-report", private_report,
                 "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
                 "--confirm-nonproduction-renderer-binding",
             ])
         self.assertEqual(result, 2)
@@ -167,8 +295,10 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
                 "--private-report", private_report,
                 "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
                 "--confirm-nonproduction-renderer-binding",
                 "--confirm-default-egress",
             ])
