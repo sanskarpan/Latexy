@@ -91,7 +91,9 @@ async function fixture(page: Page, options: { holdFirstAReads?: boolean; failARe
   }))
   await page.route('**/api/auth/passkey/list-user-passkeys', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
   await page.route((url) => url.pathname === '/config/feature-flags', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-  await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"features":{}}' }))
+  await page.route((url) => url.pathname === '/config/entitlements', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: '{"features":{"c16":true}}',
+  }))
   await page.route((url) => url.pathname === '/tenants/resolve-host', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"tenant":null}' }))
   await page.route('**/api/referral', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
     available: false, scope: 'test', message: 'Unavailable in fixture', share_code: null, your_attribution: null,

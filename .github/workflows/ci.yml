@@ -481,6 +481,9 @@ jobs:
           path: frontend/landing-visual-evidence
           if-no-files-found: error
           retention-days: 14
+      # Fail closed if a required production-bundle owner suite drops out of the selection.
+      - name: Validate the Chromium owner-regression suite manifest
+        run: node ../scripts/ci/verify-owner-regression-manifest.mjs
       - name: Verify guided builder, compile cadence and source-PDF synchronization
         id: editor-owner-regressions
         env:
@@ -498,6 +501,9 @@ jobs:
           e2e/onboarding-owner-isolation.spec.ts
           e2e/settings-preferences-owner-race.spec.ts
           e2e/settings-legacy-callback-owner-isolation.spec.ts
+          e2e/personal-dictionary-owner-isolation.spec.ts
+          e2e/settings-passkey-owner-isolation.spec.ts
+          e2e/linked-variant-owner-race.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
       - name: Diagnose the failed Settings hydration callback
