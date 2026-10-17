@@ -331,10 +331,14 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
 
     try {
         const page = await context.newPage()
-        await page.goto('/updates', { waitUntil: 'domcontentloaded' })
+        await installPublicPageMocks(page)
+        const response = await page.goto('/updates', { waitUntil: 'domcontentloaded' })
+        expect(response?.status()).toBe(200)
+        expect(await response?.text()).toContain('Shipping log and')
 
-        const heading = page.getByRole('heading', { name: /Shipping log and platform progress/ })
+        const heading = page.locator('main h1')
         const article = page.locator('main article').first()
+        await expect(heading).toContainText(/Shipping log and.*platform progress/)
         await expect(heading).toBeVisible()
         await expect(article).toBeVisible()
 
@@ -424,6 +428,11 @@ test('updates motion hydrates cleanly and stays visible across preference change
         await expect(page.getByRole('heading', { name: /Shipping log and platform progress/ })).toBeVisible()
         await expect(page.locator('main article').first()).toBeVisible()
         await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        if (reducedMotion) {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBe(0)
+        } else {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBeGreaterThan(0)
+        }
         await expect.poll(async () => Number((await readMotionState()).heading?.opacity ?? 0)).toBeGreaterThan(0.99)
         await expect.poll(async () => Number((await readMotionState()).article?.opacity ?? 0)).toBeGreaterThan(0.99)
 
@@ -434,7 +443,6 @@ test('updates motion hydrates cleanly and stays visible across preference change
         expect(state.article?.height).toBeGreaterThan(0)
         expect(state.viewportWidth).toBeLessThanOrEqual(width + 1)
         if (reducedMotion) {
-            expect(state.motionWrapperCount).toBe(0)
             expect(state.heading?.transform).toBe('none')
             expect(state.article?.transform).toBe('none')
         } else {
