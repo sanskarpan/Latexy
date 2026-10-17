@@ -600,10 +600,9 @@ async def test_json_export_composes_interchange_and_export_grants_before_data_ac
 ):
     if role == "anonymous" and method != "POST":
         pytest.skip("Saved and builder exports require authenticated ownership")
-    from test.test_capability_resolution import allowed_blob
-
     from app.api import export_routes
     from app.services.entitlement_service import EntitlementService
+    from test.test_capability_resolution import allowed_blob
 
     app, db = policy_app
     if role == "anonymous":
