@@ -4,7 +4,9 @@ import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
-import LandingFooter from './LandingFooter'
+import dynamic from 'next/dynamic'
+
+const LandingFooter = dynamic(() => import('./LandingFooter'))
 
 export default function MarketingFooter() {
   const pathname = usePathname()
