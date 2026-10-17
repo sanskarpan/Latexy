@@ -22,6 +22,7 @@ from modal_spawn_acceptance import (
     _private_service_lifetime,
     _public_summary,
     _stop_dispatch_app,
+    _stop_disposable_services,
     connectivity_report,
     function_runtime_environment,
     main,
@@ -454,6 +455,94 @@ class CleanupTests(unittest.TestCase):
         self.assertEqual(report["failure_code"], expected_code)
         public = _public_summary(report)
         self.assertEqual(public, {"status": "failed", "failure_code": expected_code})
+        self.assertEqual(_acceptance_exit_code(report), 1)
+
+
+class ServiceShutdownTests(unittest.TestCase):
+    def test_successful_shutdown_checks_both_command_results(self):
+        class Moto:
+            stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        moto = Moto()
+        commands = []
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            return type("Completed", (), {"returncode": 0})()
+
+        _stop_disposable_services(moto, "synthetic-password", runner=runner)
+        self.assertTrue(moto.stopped)
+        self.assertEqual([command[0] for command in commands], ["redis-cli", "pg_ctlcluster"])
+
+    def test_redis_nonzero_result_fails_after_postgres_stop_is_attempted(self):
+        commands = []
+        results = iter((1, 0))
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            return type("Completed", (), {"returncode": next(results)})()
+
+        with self.assertRaises(HarnessFailure) as raised:
+            _stop_disposable_services(None, "synthetic-password", runner=runner)
+        self.assertEqual(raised.exception.stage, "service_shutdown")
+        self.assertEqual(raised.exception.failure_code, "redis_shutdown_failed")
+        self.assertEqual([command[0] for command in commands], ["redis-cli", "pg_ctlcluster"])
+
+    def test_postgres_nonzero_result_fails_after_redis_shutdown(self):
+        commands = []
+        results = iter((0, 1))
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            return type("Completed", (), {"returncode": next(results)})()
+
+        with self.assertRaises(HarnessFailure) as raised:
+            _stop_disposable_services(None, "synthetic-password", runner=runner)
+        self.assertEqual(raised.exception.failure_code, "postgres_stop_failed")
+        self.assertEqual([command[0] for command in commands], ["redis-cli", "pg_ctlcluster"])
+
+    def test_moto_and_command_exceptions_do_not_skip_later_cleanup(self):
+        class Moto:
+            def stop(self):
+                raise RuntimeError("private moto stop detail")
+
+        commands = []
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            if command[0] == "redis-cli":
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return type("Completed", (), {"returncode": 1})()
+
+        with self.assertRaises(HarnessFailure) as raised:
+            _stop_disposable_services(Moto(), "synthetic-password", runner=runner)
+        self.assertEqual(raised.exception.failure_code, "moto_stop_failed")
+        self.assertEqual([command[0] for command in commands], ["redis-cli", "pg_ctlcluster"])
+        self.assertNotIn("private moto stop detail", str(raised.exception))
+
+    def test_service_shutdown_failure_reaches_nonpassing_final_report(self):
+        queue = _FakeStopQueue()
+        service_scope = _ActiveScope()
+
+        class FailedServiceShutdown:
+            def get(self, *, timeout):
+                _stop_disposable_services(
+                    None, "synthetic-password",
+                    runner=lambda command, **kwargs: type("Completed", (), {"returncode": 1})(),
+                )
+
+        report = {"status": "passed", "dispatch_app_stopped": True}
+        with queue:
+            with service_scope:
+                _cleanup_private_service(queue, FailedServiceShutdown(), report)
+        _finalize_cleanup_status(report)
+        self.assertFalse(report["private_services_stopped"])
+        self.assertEqual(_public_summary(report), {
+            "status": "failed", "failure_code": "private_services_stop_failed",
+        })
         self.assertEqual(_acceptance_exit_code(report), 1)
 
 

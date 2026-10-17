@@ -2,8 +2,9 @@
 
 This script creates a unique nonproduction Modal app/environment and disposable
 PostgreSQL, Redis, and Moto S3 services. It never looks up named production
-Secrets, uses Volumes or public tunnels, or writes its private runtime report
-inside the repository. Running it provisions paid infrastructure and requires
+Secrets, uses Volumes or public tunnels, or writes its runtime report inside
+the repository. It does not set report file permissions or ACLs. Running
+it provisions paid infrastructure and requires
 explicit confirmations for resource use, default function egress, the
 nonproduction renderer binding, and the renderer boundary probe.
 """
@@ -274,13 +275,38 @@ def run_services(
         ready_queue.put(terminal_failure_report("service_startup", "disposable_service_start_failed",
                                                 identity=runtime_identity("service")))
     finally:
-        if moto is not None:
+        _stop_disposable_services(moto, redis_password, runner=service_subprocess.run)
+
+
+def _stop_disposable_services(
+    moto: Any, redis_password: str, *, runner: Callable[..., Any],
+) -> None:
+    """Attempt every service teardown and fail the Function if any stop fails."""
+    failures = []
+    if moto is not None:
+        try:
             moto.stop()
-        service_subprocess.run(
+        except Exception:
+            failures.append("moto_stop_failed")
+
+    commands = (
+        (
             ["redis-cli", "-p", "6380", "-a", redis_password, "shutdown", "nosave"],
-            capture_output=True, timeout=10,
-        )
-        service_subprocess.run(["pg_ctlcluster", "15", "main", "stop"], capture_output=True, timeout=25)
+            10,
+            "redis_shutdown_failed",
+        ),
+        (["pg_ctlcluster", "15", "main", "stop"], 25, "postgres_stop_failed"),
+    )
+    for args, timeout, failure_code in commands:
+        try:
+            result = runner(args, capture_output=True, timeout=timeout)
+            if result.returncode != 0:
+                failures.append(failure_code)
+        except Exception:
+            failures.append(failure_code)
+
+    if failures:
+        raise HarnessFailure("service_shutdown", failures[0])
 
 
 def _store_worker_identity(identity: Mapping[str, str]) -> None:
@@ -740,7 +766,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--renderer-assets-fingerprint", required=True,
                         help="Operator-reviewed renderer asset fingerprint")
     parser.add_argument("--region", default="us-east", help="Modal container region (default: us-east)")
-    parser.add_argument("--private-report", required=True, help="Local report path outside this checkout")
+    parser.add_argument(
+        "--private-report", required=True,
+        help="Report path outside this checkout; access permissions are managed by the operator",
+    )
     parser.add_argument("--confirm-isolated-modal-run", action="store_true",
                         help="Acknowledge that this provisions paid, disposable Modal resources")
     parser.add_argument("--confirm-nonproduction-renderer-binding", action="store_true",

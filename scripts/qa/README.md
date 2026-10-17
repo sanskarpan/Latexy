@@ -26,8 +26,10 @@ instead of assuming same-cloud placement. Modal supplies its
 the function `env` mapping. It selects the test namespace at deployment and
 uses explicit `environment_name` for the preflight Function lookup.
 
-The only report containing runtime identities is written to the required
-`--private-report` path outside this checkout. Standard output contains only a
+The detailed report containing runtime identities is written to the required
+`--private-report` path outside this checkout. The harness rejects report paths
+inside the checkout but does not set filesystem permissions or ACLs; choose a
+location with appropriate access controls. Standard output contains only a
 status and fixed failure code. No raw endpoint, provider exception, job/user
 identifier, or credential is included. The test uses a synthetic user and LaTeX
 document, checks finalization and accepted-PDF visibility, then attempts
@@ -63,11 +65,12 @@ attest its source provenance. Private services are signaled and joined while
 their queues and app run scope remain active. Teardown failure changes a
 would-be pass into a failed final report and exit status. Dispatch app stop is
 attempted even if deployment raises after partially creating the unique app;
+Moto, Redis, and PostgreSQL stop results are checked independently, and
 cleanup failures are bounded and do not suppress report writing.
 
 ## Synthetic tests
 
 Run the dependency-free harness regressions with
 `python scripts/qa/run_modal_spawn_diagnostics.py`. The runner discovers the
-dedicated test module and fails if fewer than 26 tests are selected. CI runs
+dedicated test module and fails if fewer than 31 tests are selected. CI runs
 this source-only suite without Modal credentials, SDK access, or infrastructure.
