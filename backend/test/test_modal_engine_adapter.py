@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.services.render_engine import functional_acceptance_policy
 from app.services.render_engine.modal_sandbox import (
     _BATCH_EXPORT,
     _BATCH_EXPORT_HEADER,
@@ -27,6 +28,27 @@ from app.services.render_engine.modal_sandbox import (
     _read_remote_bounded,
     create_modal_engine,
 )
+
+
+def _install_reviewed_functional_environment(monkeypatch):
+    name = "reviewed-functional-test-environment"
+    environment_object_id = "en-functional-test-fixture"
+    manifest = functional_acceptance_policy.functional_environment_inventory_sha256(
+        name, environment_object_id,
+    )
+    approval = functional_acceptance_policy.FunctionalAcceptanceEnvironmentApproval(
+        name=name,
+        environment_object_id=environment_object_id,
+        binding_manifest_sha256=manifest,
+        evidence_ref="tests/functional-environment-fixture#sha256=" + "a" * 64,
+    )
+    monkeypatch.setattr(
+        functional_acceptance_policy, "TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS", (approval,),
+    )
+    monkeypatch.setenv("MODAL_ENVIRONMENT", name)
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", environment_object_id)
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", manifest)
+    return approval
 
 
 class FakeSandbox:
@@ -108,10 +130,10 @@ def test_credential_free_vm_keeps_boundary_probe_by_default(tmp_path, monkeypatc
 
 
 def test_functional_only_vm_skips_only_boundary_probe_and_keeps_image_preflight(tmp_path, monkeypatch):
+    _install_reviewed_functional_environment(monkeypatch)
     monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
     monkeypatch.setenv("DEPLOY_TARGET", "modal")
     monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("MODAL_ENVIRONMENT", "billing-acceptance-20261014")
     monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
     sandbox = FakeSandbox()
     sdk, calls = fake_sdk(sandbox)
@@ -130,12 +152,12 @@ def test_functional_only_vm_skips_only_boundary_probe_and_keeps_image_preflight(
 
 
 def test_functional_only_flag_cannot_run_boundary_or_be_used_outside_test_environment(tmp_path, monkeypatch):
+    _install_reviewed_functional_environment(monkeypatch)
     sandbox = FakeSandbox()
     sdk, calls = fake_sdk(sandbox)
     monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
     monkeypatch.setenv("DEPLOY_TARGET", "modal")
     monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("MODAL_ENVIRONMENT", "billing-acceptance-20261014")
     with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
         request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=True)
     assert not calls and not sandbox.calls
@@ -150,6 +172,7 @@ def test_functional_only_flag_cannot_run_boundary_or_be_used_outside_test_enviro
 ])
 def test_functional_only_adapter_rejects_unallowlisted_environment_before_sdk(tmp_path, monkeypatch,
                                                                                 modal_environment):
+    approval = _install_reviewed_functional_environment(monkeypatch)
     sandbox = FakeSandbox()
     sdk, calls = fake_sdk(sandbox)
     monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
@@ -157,6 +180,27 @@ def test_functional_only_adapter_rejects_unallowlisted_environment_before_sdk(tm
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("MODAL_ENVIRONMENT", modal_environment)
     monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
+
+    with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
+        request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False)
+    assert not calls and not sandbox.calls
+
+
+@pytest.mark.parametrize("variable,value", [
+    ("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "en-wrong-object"),
+    ("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "b" * 64),
+])
+def test_functional_only_adapter_rejects_mismatched_reviewed_identity_before_sdk(
+    tmp_path, monkeypatch, variable, value,
+):
+    _install_reviewed_functional_environment(monkeypatch)
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
+    monkeypatch.setenv("DEPLOY_TARGET", "modal")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv(variable, value)
+    monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
 
     with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
         request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False)

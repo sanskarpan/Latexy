@@ -22,26 +22,39 @@ but sets a distinct test-only renderer binding. It requires
 `--confirm-functional-renderer-binding` along with the isolated-run,
 nonproduction-environment, and default-egress confirmations. It rejects
 `--confirm-renderer-boundary-probe` so this mode cannot be mistaken for a
-boundary-probe run. The only source-allowlisted Modal Environment is
-`billing-acceptance-20261014`, recorded by the October 14 bridge acceptance.
-This is an exact-name allowlist shared by the harness, backend, and adapter;
-names such as `prod-west`, `production-blue`, `live`, and unknown aliases are
-rejected before Modal is imported. CLI acknowledgements and self-set test flags
-cannot add an environment to the allowlist. A different environment requires a
-reviewed source change to the allowlist and its regression tests. The runtime
-backend accepts this binding only when
-`ENVIRONMENT=test`, `DEPLOY_TARGET=modal`, and Modal supplies an explicit
-nonproduction `MODAL_ENVIRONMENT`; the renderer image ID and fingerprint must
-still be well formed. It uses a distinct noncacheable backend identity and
-explicitly blanks `MODAL_ENGINE_VM_CERTIFIED` (including any image-layer
-assertion), then reports `renderer_boundary_probe: not_run` and
+boundary-probe run. No functional-acceptance Environment is currently
+approved in source, so functional-only mode fails closed for every name before
+it imports the Modal SDK. The historical billing Environment is quarantined
+because its existing resource bindings were not verified; the named synthetic
+Environment also remains unverified. Neither an environment name, a CLI
+acknowledgement, nor a caller-set test flag establishes isolation.
+
+To prepare a candidate, run the read-only inventory command shown below only
+after access to that account is authorized. It reports the Modal Environment
+object ID, counts of named Secrets, Volumes, and active Apps, and a fingerprint
+over their names and object IDs. It never outputs Secret names or values. An
+empty result is only evidence for review. To enable a future run, a reviewed
+source change must add the exact Environment name, Modal object ID, inventory
+fingerprint, and a reviewable evidence reference to
+`functional_acceptance_policy.py`; regression tests must bind all four fields.
+If Modal SDK inventory is unavailable or incomplete, the check fails closed.
+
+The runtime backend and adapter also require the approved object ID and
+fingerprint alongside `ENVIRONMENT=test`, `DEPLOY_TARGET=modal`, and the exact
+`MODAL_ENVIRONMENT`. The renderer image ID and asset fingerprint remain
+well-formed, and the functional backend identity is noncacheable and distinct
+from the certified policy. `MODAL_ENGINE_VM_CERTIFIED` is explicitly blanked
+(including any image-layer assertion). A functional report says
+`renderer_boundary_probe: not_run` and
 `production_certification_claimed: false`.
 
 Functional-only mode skips only `_VM_BOUNDARY_PREFLIGHT`. It retains the
-renderer image/asset preflight, `block_network=True`, no Modal Secrets, no
-Volumes, and the actual renderer compile. The test-only setting cannot be
-combined with `MODAL_ENGINE_VM_CERTIFIED=true`, and the adapter refuses to
-skip the boundary probe outside its explicit nonproduction test configuration.
+renderer image/asset preflight, `block_network=True`, and the actual renderer
+compile. The API and worker receive only generated synthetic credentials in an
+inline Secret; the renderer Sandbox receives no Secrets or Volumes. The
+test-only setting cannot be combined with `MODAL_ENGINE_VM_CERTIFIED=true`, and
+the adapter refuses to skip the boundary probe outside its exact reviewed
+nonproduction configuration.
 
 ## Resource scope and environment
 
@@ -65,11 +78,26 @@ its provider/region to the caller before compilation. Unknown or mismatched
 placement stops before compile. The service, caller, and worker use Modal's
 default outbound egress; I6PN does not block internet egress.
 
-## Functional-only invocation
+## Functional-only preparation and invocation
 
-Use fresh API/services test images built from the exact source revision under
-acceptance, plus the already accepted bare renderer tuple below. Replace the
-environment and report path with reviewed nonproduction values:
+Use Modal's read-only CLI inventory first, then the SDK inventory required to
+bind the stable object ID and safe resource manifest:
+
+```powershell
+modal environment list --json
+python scripts/qa/modal_functional_environment_inventory.py `
+  --environment-name <candidate-environment>
+```
+
+The first command is Modal's documented Environment listing command. The
+second performs read-only `Environment.objects.list()`,
+`Secret.objects.list(environment_name=...)`, `Volume.objects.list(...)`, and
+`Environment.apps.list()` calls. It does not inspect Secret contents. Do not
+run it in this bounded source-preparation phase. An empty candidate inventory
+is ready for source review, but does not authorize a run. After its exact
+identity and fingerprint have been approved in source, fresh API/services test
+images must be built from that source revision, plus the already accepted bare
+renderer tuple below. Replace placeholders only with reviewed values:
 
 ```powershell
 python scripts/qa/modal_spawn_acceptance.py `
@@ -79,7 +107,7 @@ python scripts/qa/modal_spawn_acceptance.py `
   --renderer-assets-fingerprint db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9 `
   --renderer-mode functional-only `
   --region us-east `
-  --environment-name billing-acceptance-20261014 `
+  --environment-name <reviewed-environment> `
   --private-report <private-path-outside-checkout> `
   --confirm-isolated-modal-run `
   --confirm-nonproduction-environment `
@@ -96,15 +124,15 @@ Modal documents this independent image-build-script flow in its
 [Named Images guide](https://modal.com/docs/guide/named-images).
 
 Before a later run, the operator must approve the two exact test image IDs and
-their source provenance, the existing nonproduction Environment and its
-purpose, the test-only binding of the accepted renderer tuple, generated test
-credentials sent to Modal, isolated app/environment and private networking,
-bounded paid compute, outer Modal control-plane access, Functions' default
-egress, and a private report destination. Functional-only mode does not require
-approval to run the renderer boundary probes. It does not repeat or invalidate
-the historical 61-template acceptance evidence. That evidence and the accepted
-renderer tuple do not certify the backend/adapter changes in this branch; the
-functional-only run checks this branch's current API/worker/PDF path. The
+their source provenance, the exact Environment name/object ID and fresh
+resource inventory, the test-only binding of the accepted renderer tuple,
+generated test credentials sent to Modal, isolated app/environment and private
+networking, bounded paid compute, outer Modal control-plane access, Functions'
+default egress, and a private report destination. Functional-only mode does
+not run renderer boundary probes. It does not repeat or invalidate the
+historical 61-template acceptance evidence. That evidence and the accepted
+renderer tuple do not validate backend/adapter source changed in this branch;
+the functional-only run checks this branch's current API/worker/PDF path. The
 API/services images must include the exact source revision carrying this
 harness and backend path.
 

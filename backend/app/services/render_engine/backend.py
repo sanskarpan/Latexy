@@ -46,8 +46,14 @@ def resolve_backend(compiler: str) -> RendererBackend:
             raise ModalEngineUnavailable("Modal credential-free renderer capability is unavailable")
         if functional_only:
             environment = os.getenv("MODAL_ENVIRONMENT", "")
+            environment_object_id = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "")
+            binding_manifest = os.getenv(
+                "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "",
+            )
             if (certified or os.getenv("ENVIRONMENT") != "test" or not environment
-                    or not is_trusted_functional_acceptance_environment(environment)):
+                    or not is_trusted_functional_acceptance_environment(
+                        environment, environment_object_id, binding_manifest,
+                    )):
                 raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
             policy = FUNCTIONAL_TEST_VM_POLICY
             material = json.dumps({"image_id": image_id, "assets": assets, "policy": policy}, sort_keys=True)

@@ -374,11 +374,17 @@ def create_modal_engine(
     functional_only = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE") == "true"
     if functional_only:
         runtime_environment = os.getenv("MODAL_ENVIRONMENT", "")
+        environment_object_id = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "")
+        binding_manifest = os.getenv(
+            "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "",
+        )
         if (boundary_preflight or policy != "credential_free_vm"
                 or os.getenv("MODAL_ENGINE_VM_CERTIFIED") == "true"
                 or os.getenv("DEPLOY_TARGET") != "modal" or os.getenv("ENVIRONMENT") != "test"
                 or not runtime_environment
-                or not is_trusted_functional_acceptance_environment(runtime_environment)):
+                or not is_trusted_functional_acceptance_environment(
+                    runtime_environment, environment_object_id, binding_manifest,
+                )):
             raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
     elif not boundary_preflight:
         raise ModalEngineUnavailable("Skipping the renderer boundary preflight requires functional-only mode")
