@@ -118,6 +118,9 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
     original_plan = await db_session.scalar(
         text("SELECT subscription_plan FROM users WHERE id = :id"), {"id": owner},
     )
+    original_subscription_status = await db_session.scalar(
+        text("SELECT subscription_status FROM users WHERE id = :id"), {"id": owner},
+    )
     original_owner_role = await db_session.scalar(
         text("SELECT role FROM users WHERE id = :id"), {"id": owner},
     )
@@ -134,7 +137,7 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
     }
     original_roles = {key: original_policy["role_matrix"]["user"][key] for key in controlled_keys}
     await db_session.execute(
-        text("UPDATE users SET role = 'user', subscription_plan = 'pro_annual' WHERE id = :id"),
+        text("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active' WHERE id = :id"),
         {"id": owner},
     )
     await db_session.execute(
@@ -157,6 +160,9 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         )
         assert created.status_code == 200, created.text
         share_token = created.json()["share_token"]
+        effective = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
+        assert effective.status_code == 200
+        assert effective.json()["features"]["f01"] is True
 
         # These are ordinary independent accounts. Product permission does not
         # become document ownership or a collaborator ACL.
@@ -225,8 +231,8 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         for key, enabled in original_roles.items():
             await entitlement_service.set_role_cell("user", key, enabled, db_session)
         await db_session.execute(
-            text("UPDATE users SET role = :role, subscription_plan = :plan WHERE id = :id"),
-            {"role": original_owner_role, "plan": original_plan, "id": owner},
+            text("UPDATE users SET role = :role, subscription_plan = :plan, subscription_status = :status WHERE id = :id"),
+            {"role": original_owner_role, "plan": original_plan, "status": original_subscription_status, "id": owner},
         )
         await db_session.execute(
             text("UPDATE users SET role = :role WHERE id = :id"),

@@ -98,7 +98,7 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     const owner = await signup(ownerContext, frontend); createdUsers.push(owner.id)
     const unrelated = await signup(unrelatedContext, frontend); createdUsers.push(unrelated.id)
     await database.query("UPDATE users SET role = 'admin', email_verified = TRUE WHERE id = $1", [admin.id])
-    await database.query("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', email_verified = TRUE WHERE id = $1", [owner.id])
+    await database.query("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active', email_verified = TRUE WHERE id = $1", [owner.id])
     await database.query("UPDATE users SET role = 'user', email_verified = TRUE WHERE id = $1", [unrelated.id])
 
     const source = '\\documentclass{article}\\begin{document}Private owner source.\\end{document}'
@@ -114,6 +114,15 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     })
     expect(initialShare.status(), await initialShare.text()).toBe(200)
     const shareToken = (await initialShare.json()).share_token as string
+    const assignedPlan = await database.query(
+      'SELECT subscription_plan, subscription_status FROM users WHERE id = $1', [owner.id],
+    )
+    expect(assignedPlan.rows[0]).toMatchObject({ subscription_plan: 'pro_annual', subscription_status: 'active' })
+    const initiallyEnabled = await ownerContext.request.get(
+      `${backend}/config/entitlements?include_quotas=false`, { headers: owner.headers },
+    )
+    expect(initiallyEnabled.status()).toBe(200)
+    expect((await initiallyEnabled.json()).features.f01).toBe(true)
 
     const adminPage = await adminContext.newPage()
     await adminPage.goto('/admin')

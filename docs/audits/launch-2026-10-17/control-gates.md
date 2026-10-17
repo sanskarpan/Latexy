@@ -48,13 +48,20 @@ and revocation must remain available to the owner.
   **Classify Changed Components passed** and selected Full-Stack Smoke, and
   **Full-Stack Smoke failed** with 3 other browser cases passing. The new F01
   browser case passed the role-off denial, then received 200 after the Admin UI
-  disabled the `pro` family. The run did not reach the browser SKU, parent,
-  public-token, cross-owner, or recovery assertions. A later existing core
-  browser case also got a real signup 429 because the F01 test had just created
-  three synthetic accounts from the same loopback IP. The F01 case now asserts
-  the persisted family/SKU matrix and effective owner entitlement before the
-  share request, and runs last to remove that suite-order interference. These
-  changes need a fresh full-stack run before F01 browser acceptance can pass.
+  disabled the `pro` family. Source inspection traced this to invalid test
+  setup: the synthetic account had `subscription_plan='pro_annual'` but retained
+  the auth default `subscription_status='inactive'`, so the correct billing
+  resolver downgraded it to `free` before checking the family cell. The backend
+  fixture had the same omission, so its plan assertions did not prove the paid
+  family path either. That run did not reach browser SKU, parent, public-token,
+  cross-owner, or recovery assertions. A later existing core browser case also
+  got a real signup 429 because the F01 test had just created three synthetic
+  accounts from the same loopback IP. Both synthetic plan fixtures now use an
+  active test-only status, the backend fixture restores its prior status, and
+  the browser case asserts the persisted `pro_annual` active state plus its
+  effective F01 grant before changing controls. The browser case runs last to
+  remove suite-order interference. Fresh CI is required before browser
+  acceptance can pass.
 - The Vercel preview check was rejected by its provider's daily deployment
   limit (`api-deployments-free-per-day`). No deployment or production action was
   run.
