@@ -287,8 +287,8 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     const sourceStillOwned = await ownerContext.request.get(`${backend}/resumes/${resume.id}`, { headers: owner.headers })
     expect(sourceStillOwned.status()).toBe(200)
     expect((await sourceStillOwned.json()).latex_content).toBe(source)
-    expect((await unrelatedContext.request.get(`${backend}/resumes/${resume.id}`, { headers: unrelated.headers })).status()).toBe(403)
-    expect((await unrelatedContext.request.post(`${backend}/resumes/${resume.id}/share`, { headers: unrelated.headers })).status()).toBe(403)
+    expect((await unrelatedContext.request.get(`${backend}/resumes/${resume.id}`, { headers: unrelated.headers })).status()).toBe(404)
+    expect((await unrelatedContext.request.post(`${backend}/resumes/${resume.id}/share`, { headers: unrelated.headers })).status()).toBe(404)
 
     await ownerPage.getByRole('button', { name: 'Revoke link', exact: true }).click()
     const revoked = ownerPage.waitForResponse((response) =>
