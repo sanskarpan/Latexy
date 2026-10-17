@@ -332,7 +332,7 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
     try {
         const page = await context.newPage()
         await installPublicPageMocks(page)
-        const response = await page.goto('/updates', { waitUntil: 'domcontentloaded' })
+        const response = await page.goto('/updates', { waitUntil: 'networkidle' })
         expect(response?.status()).toBe(200)
         expect(await response?.text()).toContain('Shipping log and')
 
@@ -454,14 +454,30 @@ test('updates motion hydrates cleanly and stays visible across preference change
         await testInfo.attach(`updates-hydrated-${name}`, { path: screenshotPath, contentType: 'image/png' })
     }
 
+    const changePreferenceAndAssert = async (name: string, reducedMotion: boolean) => {
+        // Some mobile browser emulators update matchMedia.matches without
+        // dispatching MediaQueryList's change event. Exercise the live
+        // subscription where the browser emits it; otherwise, reload under
+        // the new preference to exercise the hook's fresh client snapshot.
+        await page.evaluate(() => {
+            const root = document.documentElement
+            root.dataset.motionPreferenceEvents = '0'
+            window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
+                root.dataset.motionPreferenceEvents = String(Number(root.dataset.motionPreferenceEvents ?? 0) + 1)
+            }, { once: true })
+        })
+        await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        const changeEventObserved = await page.evaluate(() => Number(document.documentElement.dataset.motionPreferenceEvents ?? 0) > 0)
+        if (!changeEventObserved) await page.goto('/updates', { waitUntil: 'networkidle' })
+        await assertVisible(name, reducedMotion, page.viewportSize()!.width, page.viewportSize()!.height)
+    }
+
     await page.goto('/updates', { waitUntil: 'networkidle' })
     await assertVisible('desktop-reduced-initial', true, 1280, 900)
 
-    await page.emulateMedia({ reducedMotion: 'no-preference' })
-    await assertVisible('desktop-motion-enabled', false, 1280, 900)
-
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await assertVisible('desktop-reduced-after-toggle', true, 1280, 900)
+    await changePreferenceAndAssert('desktop-motion-enabled', false)
+    await changePreferenceAndAssert('desktop-reduced-after-toggle', true)
 
     await page.setViewportSize({ width: 390, height: 844 })
     await assertVisible('mobile-reduced', true, 390, 844)
