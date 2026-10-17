@@ -168,6 +168,11 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     await ownerPage.goto(`/workspace/${resume.id}/edit`)
     const exportButton = ownerPage.getByRole('button', { name: /^Export/ })
     await expect(exportButton).toBeVisible({ timeout: 45_000 })
+    // The editor opens in PDF preview, whose export menu intentionally shows
+    // only visual formats. Use Source mode to test the full interchange menu.
+    const sourceMode = ownerPage.getByRole('button', { name: 'Source', exact: true })
+    await sourceMode.click()
+    await expect(sourceMode).toHaveAttribute('aria-pressed', 'true')
     await exportButton.click()
     await expect(exportJsonOption(ownerPage)).toBeVisible()
 
@@ -276,3 +281,4 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     }
   }
 })
+
