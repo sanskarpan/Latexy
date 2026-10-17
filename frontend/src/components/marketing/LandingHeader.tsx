@@ -47,7 +47,7 @@ export default function LandingHeader({
                 >
                     {signedIn ? 'Dashboard' : 'Sign in'}
                 </Link>
-                <MarketingCTA />
+                <MarketingCTA label="Try the studio" />
                 <button
                     ref={menuTriggerRef}
                     type="button"

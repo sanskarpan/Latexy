@@ -25,7 +25,7 @@ export default function LandingFooter({ year }: { year: number }) {
                             Choose a layout, add your experience, and make a résumé you are ready to
                             send.
                         </p>
-                        <MarketingCTA />
+                        <MarketingCTA label="Try the studio" />
                         <Link className="lp-primary-fallback" href="/platform">
                             Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
