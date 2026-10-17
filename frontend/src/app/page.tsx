@@ -12,7 +12,7 @@ import { siteUrl } from '@/lib/site-url'
 import './landing-review.css'
 
 // Public copy and samples are identical for every visitor. Prerender the
-// homepage so its content is readable before hydration and without JavaScript;
+// homepage to deliver its copy and samples in the server's HTML response;
 // account state and effective feature access still resolve in client gates.
 export const dynamic = 'force-static'
 

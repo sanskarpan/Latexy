@@ -301,6 +301,7 @@ test('landing review desk produces desktop and phone evidence in both themes', a
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/', { waitUntil: 'networkidle' })
     await page.evaluate(() => document.fonts.ready)
+    await expect(page.locator('.lp-hero-actions [data-marketing-action="primary"]')).toBeVisible()
     for (const width of [1440, 1101, 1024, 768, 430, 390, 360, 320]) {
         await page.setViewportSize({ width, height: 1000 })
         for (const theme of ['light', 'dark']) {
