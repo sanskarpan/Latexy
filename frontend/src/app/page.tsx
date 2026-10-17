@@ -124,7 +124,7 @@ export default function LandingPage() {
                 <div>
                     <p className="rd-eyebrow">Beyond the first draft</p>
                     <h2 id="landing-next-steps">
-                        Keep the next
+                        Keep the next{' '}
                         <br />
                         steps in view.
                     </h2>

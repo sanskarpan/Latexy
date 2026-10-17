@@ -309,6 +309,7 @@ test('landing review desk produces desktop and phone evidence in both themes', a
                 await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
             }
             await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+            await expect(page.getByRole('heading', { name: 'Keep the next steps in view.', exact: true })).toBeVisible()
             await page.evaluate(() => scrollTo(0, 0))
             const bounds = await page.locator('.lp-hero-actions > a:visible').evaluateAll(items => items.map(item => {
                 const { x, y, width, height } = item.getBoundingClientRect()
