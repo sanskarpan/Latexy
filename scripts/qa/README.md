@@ -64,3 +64,10 @@ their queues and app run scope remain active. Teardown failure changes a
 would-be pass into a failed final report and exit status. Dispatch app stop is
 attempted even if deployment raises after partially creating the unique app;
 cleanup failures are bounded and do not suppress report writing.
+
+## Synthetic tests
+
+Run the dependency-free harness regressions with
+`python scripts/qa/run_modal_spawn_diagnostics.py`. The runner discovers the
+dedicated test module and fails if fewer than 26 tests are selected. CI runs
+this source-only suite without Modal credentials, SDK access, or infrastructure.
