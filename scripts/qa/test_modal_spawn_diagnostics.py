@@ -123,12 +123,53 @@ class RuntimeIdentityTests(unittest.TestCase):
 
 class ModalRuntimeEnvironmentTests(unittest.TestCase):
     def test_modal_environment_is_not_overridden_in_function_env(self):
-        runtime_env = function_runtime_environment(
-            "fd00::1", "im-TestRenderer123", "a" * 64,
-        )
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            runtime_env = function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                functional_environment_approval=approval,
+            )
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
         self.assertNotIn("MODAL_ENVIRONMENT", runtime_env)
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
         self.assertEqual(runtime_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"], "false")
+
+    def test_boundary_traffic_hold_override_requires_reviewed_nonproduction_identity(self):
+        with self.assertRaises(HarnessFailure) as raised:
+            function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                renderer_mode="boundary",
+            )
+        self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+
+        approval = _reviewed_test_environment()
+        with self.assertRaises(HarnessFailure) as raised:
+            function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                renderer_mode="boundary", functional_environment_approval=approval,
+            )
+        self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+
+    def test_boundary_traffic_hold_override_rejects_allowlisted_production_aliases(self):
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            for name in (
+                "main", "prod", "production", "prod-west", "production-blue", "live",
+                "latexy-acceptance-prod",
+            ):
+                approval = _reviewed_test_environment(name=name)
+                functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+                with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
+                    function_runtime_environment(
+                        "fd00::1", "im-TestRenderer123", "a" * 64,
+                        renderer_mode="boundary", functional_environment_approval=approval,
+                    )
+                self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
 
     def test_functional_only_runtime_binding_requires_and_passes_reviewed_identity(self):
         approval = _reviewed_test_environment()
@@ -171,9 +212,15 @@ class ModalEnvironmentValidationTests(unittest.TestCase):
     def test_functional_acceptance_is_fail_closed_for_known_and_unverified_names(self):
         self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 53)
         self.assertEqual(functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS, ())
+        for alias in (
+            "prod-west", "production-blue", "main", "prod", "production", "live",
+            "billing-acceptance-20261014-prod",
+        ):
+            with self.subTest(name=alias), self.assertRaises(HarnessFailure) as raised:
+                validate_nonproduction_environment_name(alias)
+            self.assertEqual(raised.exception.failure_code, "nonproduction_environment_required")
         for name in (
-            "prod-west", "production-blue", "live", "unknownenv",
-            "billing-acceptance-20261014-prod", "Billing-acceptance-20261014",
+            "unknownenv", "Billing-acceptance-20261014",
             "billing-acceptance-20261014", "latexy-synthetic-20261016-4182705d",
         ):
             with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
@@ -507,7 +554,12 @@ class ModalEnvironmentValidationTests(unittest.TestCase):
         })
         private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
         output = io.StringIO()
-        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+        approval = _reviewed_test_environment(name="test-sandbox")
+        with (
+            patch.object(functional_acceptance_policy, "TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS", (approval,)),
+            patch.dict("sys.modules", {"modal": sdk}),
+            redirect_stdout(output),
+        ):
             result = main([
                 "--image-id", "im-TestImage123",
                 "--services-image-id", "im-TestServices123",
@@ -688,7 +740,7 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--confirm-functional-renderer-binding",
             ])
         self.assertEqual(result, 2)
-        self.assertIn("functional_environment_not_allowlisted", output.getvalue())
+        self.assertIn("nonproduction_environment_required", output.getvalue())
         self.assertFalse(Path(private_report).exists())
 
     def test_same_provider_and_region_is_accepted_before_compile(self):

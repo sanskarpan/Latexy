@@ -50,6 +50,9 @@ _LABEL = re.compile(r"[A-Za-z0-9_.:-]{1,80}\Z")
 _IMAGE_ID = re.compile(r"im-[A-Za-z0-9]{6,128}\Z")
 _ROLES = frozenset({"service", "caller", "worker"})
 _PRODUCTION_ENVIRONMENT_NAMES = frozenset({"main", "prod", "production"})
+_PRODUCTION_ENVIRONMENT_ALIAS = re.compile(
+    r"(?:^|[-_.:])(?:main|prod(?:uction)?|live)(?:$|[-_.:])", re.IGNORECASE,
+)
 
 
 def _safe_label(value: object) -> str:
@@ -62,6 +65,7 @@ def validate_nonproduction_environment_name(name: str) -> str:
         not isinstance(name, str)
         or not _LABEL.fullmatch(name)
         or name.lower() in _PRODUCTION_ENVIRONMENT_NAMES
+        or _PRODUCTION_ENVIRONMENT_ALIAS.search(name)
     ):
         raise HarnessFailure("arguments", "nonproduction_environment_required")
     return name
@@ -367,10 +371,21 @@ def function_runtime_environment(
     """Build app settings without overriding Modal-owned runtime variables."""
     if renderer_mode not in {"boundary", "functional-only"}:
         raise ValueError("unsupported renderer acceptance mode")
+    approval = functional_environment_approval
+    if not isinstance(approval, FunctionalAcceptanceEnvironmentApproval):
+        raise HarnessFailure("arguments", "functional_environment_approval_required")
+    try:
+        validate_nonproduction_environment_name(approval.name)
+    except HarnessFailure:
+        raise HarnessFailure("arguments", "functional_environment_approval_required") from None
+    if not is_trusted_functional_acceptance_environment(
+        approval.name, approval.environment_object_id, approval.binding_manifest_sha256,
+    ):
+        raise HarnessFailure("arguments", "functional_environment_approval_required")
     environment = {
         "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal",
-        # Test Functions are direct temporary Apps rather than workflow source
-        # imports, so explicitly lift the API's production-default request hold.
+        # The hold is lifted only after exact source-reviewed Environment identity
+        # and binding-manifest approval, for temporary test Functions in either mode.
         "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false",
         "BILLING_MODE": "disabled", "DODO_MODE": "test",
         "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
@@ -381,12 +396,6 @@ def function_runtime_environment(
     if renderer_mode == "boundary":
         environment["MODAL_ENGINE_VM_CERTIFIED"] = "true"
     else:
-        approval = functional_environment_approval
-        if (not isinstance(approval, FunctionalAcceptanceEnvironmentApproval)
-                or not is_trusted_functional_acceptance_environment(
-                    approval.name, approval.environment_object_id, approval.binding_manifest_sha256,
-                )):
-            raise HarnessFailure("arguments", "functional_environment_approval_required")
         # This opt-in is recognized only by the test-only backend gate. It is
         # intentionally distinct from the operator's production certification.
         # Empty also overrides a stale assertion baked into the test image.
@@ -1099,7 +1108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         environment = validate_existing_nonproduction_environment(
-            modal, args.environment_name, functional_only=args.renderer_mode == "functional-only",
+            modal, args.environment_name, functional_only=True,
         )
     except HarnessFailure as failure:
         print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
