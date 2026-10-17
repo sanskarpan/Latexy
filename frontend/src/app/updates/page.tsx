@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import { marketingSocialImage } from '@/lib/marketing-social-image'
 import UpdatesContent from './UpdatesContent'
 
-// This route is entirely local, public content. Avoid streaming it behind the
-// root loading boundary so browsers without JavaScript receive the page itself.
-export const dynamic = 'force-static'
+// Keep this route request-rendered so the root layout can use the locale
+// negotiated by middleware. The route-level loading boundary renders the full
+// changelog for browsers that cannot run JavaScript while the page resolves.
 
 const description = 'Read Latexy product and engineering updates, with release dates and notes on what changed.'
 
@@ -30,3 +30,4 @@ export const metadata: Metadata = {
 export default function UpdatesPage() {
   return <UpdatesContent />
 }
+
