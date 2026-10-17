@@ -171,7 +171,6 @@ test('live anonymous landing gates reflect each capability and recover after fet
         await expect(studio).toBeVisible()
         await expect(studio).toHaveAttribute('href', '/try?mode=visual')
         await expect(templates).toBeVisible()
-        await expect(publicFallback).toBeVisible()
 
         await page.evaluate(() => document.fonts.ready)
         const desktopPath = testInfo.outputPath('landing-desktop-enabled.png')
@@ -238,6 +237,7 @@ test('live anonymous landing gates reflect each capability and recover after fet
             }
             await expect(studio, `${key} individually hides the studio CTA`).toHaveCount(0)
             await expect(publicFallback).toBeVisible()
+            await expect(publicFallback).toHaveAttribute('href', '/platform')
 
             await setRoleFeature(adminContext, backend, admin.headers, key, true)
             const restoredResponse = page.waitForResponse(
