@@ -226,40 +226,26 @@ jobs:
           MODAL_RECOVERY_VERIFIED_FOR_SHA: ${{ vars.MODAL_RECOVERY_VERIFIED_FOR_SHA }}
         run: python backend/scripts/check_modal_schema_cutover.py
 
-      # The schema and recovery approvals above are source/release barriers,
-      # not evidence that the old runtime has stopped. Stop the production App
-      # now, then record only a fresh Modal API readback reporting STOPPED.
-      # This step is shared by automatic workflow_run and manual hold/release.
-      - name: Stop previous production App and verify stopped state
+      # Modal App STOPPED state follows container termination; it does not
+      # prove that queued or in-flight business work was gracefully settled.
+      # A separately authorized external drain/recovery procedure must finish
+      # first. This gate only checks its fresh, candidate-scoped record and
+      # performs read-only Modal App name/ID/state queries. It never stops Apps.
+      # The identity/state query is the command immediately before Alembic.
+      - name: Verify external drain prerequisite and apply production migrations
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         env:
-          MODAL_DRAIN_EVIDENCE: ${{ runner.temp }}/modal-old-app-drain-${{ github.run_id }}-${{ github.run_attempt }}.json
+          MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
+          MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
+          MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
+          MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}
         run: |
           set -euo pipefail
-          python scripts/drain_modal_app.py stop-and-record \
+          python scripts/verify_modal_drain.py \
             --app-name latexy-backend \
             --environment main \
-            --deploy-sha "$DEPLOY_SHA" \
-            --evidence "$MODAL_DRAIN_EVIDENCE" \
-            --timeout-seconds 300 \
-            --poll-interval-seconds 5
-
-      # modal_app.py deliberately keeps migrations separate from API startup.
-      # Require the same-run runtime readback immediately before migration so a
-      # skipped, missing, mismatched, or stale drain cannot reach Alembic.
-      - name: Apply production database migrations
-        if: steps.freshness.outputs.current == 'true'
-        working-directory: backend
-        env:
-          MODAL_DRAIN_EVIDENCE: ${{ runner.temp }}/modal-old-app-drain-${{ github.run_id }}-${{ github.run_attempt }}.json
-        run: |
-          set -euo pipefail
-          python scripts/drain_modal_app.py require \
-            --app-name latexy-backend \
-            --environment main \
-            --deploy-sha "$DEPLOY_SHA" \
-            --evidence "$MODAL_DRAIN_EVIDENCE" \
+            --expected-deploy-sha "$DEPLOY_SHA" \
             --max-age-seconds 300
           modal run --env main modal_app.py::migrate
 

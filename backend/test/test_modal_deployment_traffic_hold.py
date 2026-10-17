@@ -142,7 +142,7 @@ def test_workflow_defaults_to_held_and_only_manual_release_can_open_traffic() ->
 def test_release_requires_same_sha_and_healthy_held_deployment_before_migration() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
-    migration = source.index("Apply production database migrations")
+    migration = source.index("Verify external drain prerequisite and apply production migrations")
     deploy = source.index("modal deploy --env main --strategy rolling --tag")
     assert release_guard < migration < deploy
     guard = source[release_guard:migration]
@@ -166,48 +166,46 @@ def test_postdeploy_health_checks_verify_the_selected_hold_header() -> None:
     assert "check_health /jobs/health healthy" in health
 
 
-def test_every_automatic_and_manual_path_stops_and_verifies_the_old_app_before_migration() -> None:
+def test_automatic_and_manual_migrations_require_external_drain_and_current_app_readback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     automatic = source.index("  workflow_run:")
     manual = source.index("  workflow_dispatch:")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
     cutover_gate = source.index("Require schema cutover and recovery approval")
-    drain = source.index("Stop previous production App and verify stopped state")
-    migration = source.index("Apply production database migrations")
+    migration = source.index("Verify external drain prerequisite and apply production migrations")
     deploy = source.index("Deploy backend with a rolling update")
 
-    assert automatic < manual < release_guard < cutover_gate < drain < migration < deploy
-    drain_block = source[drain:migration]
-    assert "if: steps.freshness.outputs.current == 'true'" in drain_block
-    assert "stop-and-record" in drain_block
-    assert "modal app stop" not in drain_block  # stop is executed by the tested helper
-    assert "--app-name latexy-backend" in drain_block
-    assert "--environment main" in drain_block
-    assert "--deploy-sha \"$DEPLOY_SHA\"" in drain_block
-    assert "automatic workflow_run and manual hold/release" in source[cutover_gate:drain]
+    assert automatic < manual < release_guard < cutover_gate < migration < deploy
+    migration_block_end = source.index("\n      - name:", migration + 1)
+    migration_block = source[migration:migration_block_end]
+    assert "if: steps.freshness.outputs.current == 'true'" in migration_block
+    assert "MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}" in migration_block
+    assert "MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}" in migration_block
+    assert "MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}" in migration_block
+    assert "MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}" in migration_block
+    verifier = migration_block.index("python scripts/verify_modal_drain.py")
+    alembic = migration_block.index("modal run --env main modal_app.py::migrate")
+    assert verifier < alembic
+    assert migration_block.index("--expected-deploy-sha \"$DEPLOY_SHA\"") < alembic
+    assert "--max-age-seconds 300" in migration_block
+    assert "Modal App name/ID/state queries" in source[cutover_gate:migration]
+    assert "stop-and-record" not in source
+    assert "modal app stop" not in source
+    assert "runner.temp" not in migration_block
+    assert "github.event_name == 'workflow_run'" in source[:migration]
+    assert 'python -m pip install "modal==1.5.4"' in source[:migration]
+    assert "continue-on-error" not in source[cutover_gate:deploy]
+    assert "always()" not in source[cutover_gate:deploy]
 
-    migration_end = source.index("\n      - name:", migration + 1)
-    migration_step = source[migration:migration_end]
-    require = migration_step.index("drain_modal_app.py require")
-    alembic = migration_step.index("modal run --env main modal_app.py::migrate")
-    assert require < alembic
-    assert "--max-age-seconds 300" in migration_step
-    assert "github.run_id" in source[drain:migration_end]
-    assert "github.run_attempt" in source[drain:migration_end]
-    assert migration_step.count("if: steps.freshness.outputs.current == 'true'") == 1
-    assert "continue-on-error" not in source[drain:deploy]
-    assert "always()" not in source[drain:deploy]
 
-
-def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_drain() -> None:
+def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_readonly_gate() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
     billing = source.index("Validate read-only billing rollout safety")
     cutover = source.index("Require schema cutover and recovery approval")
-    drain = source.index("Stop previous production App and verify stopped state")
-    migration = source.index("Apply production database migrations")
+    drain_gate = source.index("Verify external drain prerequisite and apply production migrations")
     deploy = source.index("Deploy backend with a rolling update")
-    assert release_guard < billing < cutover < drain < migration < deploy
+    assert release_guard < billing < cutover < drain_gate < deploy
     assert "inputs.traffic_mode == 'release'" in source[release_guard:billing]
     assert 'MODAL_TRAFFIC_RELEASE_APPROVED_SHA' in source[release_guard:billing]
-    assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in source[cutover:drain]
+    assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in source[cutover:drain_gate]

@@ -57,9 +57,12 @@ the complete backend tree differs and production rollout was not certified.
 1. Keep traffic, checkout, callbacks, asynchronous billing work, render writes,
    share creation, and bulk PDF export on hold while crossing the schema
    boundary. Identify **every** currently serving API and worker image using
-   deployment version and traffic evidence; record its immutable SHA. Stop or
-   drain all legacy writers and readers. Preserve and replay pending webhooks
-   through the approved Dodo-only service; do not drop events.
+   deployment version and traffic evidence; record its immutable SHA. Complete
+   the separately authorized drain/recovery procedure for all legacy writers
+   and readers. That procedure must establish how queued and in-flight business
+   work is settled or preserved and how pending webhooks are replayed through
+   the approved Dodo-only service; do not drop events. The deployment workflow
+   does not measure or infer settled work from a Modal App state or task count.
 2. Use read-only, redacted diagnostics to identify the actual `alembic_version`,
    including any legacy Dodo `0061` collision, current financial pointers,
    pending intents, and unaccepted compilations. A backup and restore rehearsal
@@ -84,41 +87,78 @@ the complete backend tree differs and production rollout was not certified.
    only after reviewing the migration decision; set the second only after
    verifying the recovery image and every public artifact reader. The workflow
    checks exact SHA matches, ancestry, minimum source filters, and rollback CI.
-   Those source and operator checks do not establish a runtime drain. Every
-   migration path must also stop the exact production Modal App and read back
-   its `STOPPED` state in the same workflow run immediately before migration.
-   Missing, mismatched, stale, or unavailable runtime evidence blocks Alembic.
-   Refresh the candidate-scoped attestations for each release; the recovery
-   variables remain operator assertions and do not prove image availability.
+   Those source and operator checks do not establish a runtime drain or settled
+   business work. After the separately authorized procedure has completed,
+   update these Production environment variables:
+
+   - `MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA`: exact candidate SHA covered by
+     the external procedure.
+   - `MODAL_DRAIN_PROCEDURE_APP_ID`: the old App ID recorded by that procedure.
+   - `MODAL_DRAIN_PROCEDURE_COMPLETED_AT`: its UTC completion timestamp.
+   - `MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE`: a reference to the external
+     procedure record.
+
+   These values are a pointer and authorization marker, not a measurement.
+   The workflow does not fetch or authenticate the referenced record and does
+   not claim to verify queued or in-flight work. Immediately before Alembic it
+   resolves the App name through Modal's non-creating SDK lookup, reads the
+   current App list state, and resolves the name again. The current App ID must
+   still equal the externally recorded ID and its state must be `stopped`.
+   Missing, mismatched, stale, live, recreated, ambiguous, or unavailable
+   state blocks migration. Modal 1.5.4's App-list JSON has an `app_id` and a
+   human-readable `description`, but no stable App-name field; the check binds
+   by App ID and never treats `description` as identity.
+
+   The automatic `workflow_run` path uses the same gate and therefore fails
+   closed if the external record is absent or stale. After completing the
+   procedure, use manual dispatch if the automatic run already failed. The
+   workflow's concurrency group serializes only GitHub deployment runs; it
+   cannot lock out a Modal deploy or other operator. There is a small
+   check-to-migration race because Modal state and the database migration are
+   not one atomic operation. Keep an externally enforced production change
+   freeze in place until migration and deployment finish. Without that freeze,
+   do not migrate. Refresh all candidate-scoped markers for each release; the
+   recovery variables remain operator assertions and do not prove image
+   availability.
 5. Complete renderer input certification and read-only billing preflight. Apply
    ordinary Alembic upgrades only from the identified, compatible revision.
-   Keep ingress held across migration and the rolling deploy until old instances
-   and queued work are gone, new version health passes, and read-only checks
-   show no newly mislabeled provider rows or unaccepted artifact exposure.
+   Keep ingress held across migration and the rolling deploy until the external
+   procedure's work-settlement criteria are met, new version health passes, and
+   read-only checks show no newly mislabeled provider rows or unaccepted
+   artifact exposure.
    Release ingress gradually with billing sales still disabled unless separately
    accepted.
 
 ## Hold the replacement before releasing product traffic
 
-The deployment workflow stops the previous `latexy-backend` App immediately
-before migration and records a fresh Modal API readback of its `STOPPED` state.
-This is a runtime check; a runbook instruction or source-only attestation does
-not prove it happened. Missing, ambiguous, changing, or non-stopped App state
-blocks migration. Modal's stopped state proves the old App is no longer deployed
-or running at that observation; it does not certify completion of every business
-operation that was in flight when containers were terminated. A replacement
-deployment exposes its endpoint after startup, so it must remain held until the
-release gates pass. FastAPI startup also tolerates some Redis failures, and
-startup completion cannot substitute for readiness checks.
+The deployment workflow never stops the previous App. It requires an external
+procedure record and performs read-only App identity/state queries immediately
+before migration. Modal's `stopped` state means the App is stopped at the
+observation time; it is not evidence of graceful completion of requests,
+queued workers, or in-flight business jobs. The external procedure must own
+those checks and preserve/replay work as needed. The workflow's record fields
+do not independently verify the external procedure's contents.
+
+The two Modal lookups and App-list query detect a name-to-ID change during the
+check, but cannot make the state check and database migration atomic. An
+out-of-band redeployment can race after the final lookup. Keep a production
+change freeze active from external drain through migration and deployment;
+the GitHub concurrency group does not control other Modal clients. Missing
+external evidence, an App that is live or recreated, or an unavailable API
+query blocks migration. A replacement deployment exposes its endpoint after
+startup, so it must remain held until the release gates pass. FastAPI startup
+also tolerates some Redis failures, and startup completion cannot substitute
+for readiness checks.
 
 Use the deployment workflow's two explicit phases:
 
 1. Create and validate the fresh post-freeze recovery point. Retain the existing
-   restore-rehearsal evidence. The deployment workflow performs and verifies the
-   old-App stop for every automatic and manual path; a prior manual stop is not
-   accepted as migration evidence.
-   Bind the reviewed renderer inputs, exact candidate cutover attestations and
-   distinct recovery SHA. Keep new sales disabled and live acceptance unset.
+   restore-rehearsal evidence. Complete the separately authorized external
+   drain/recovery procedure, retain its evidence, and update the four
+   `MODAL_DRAIN_PROCEDURE_*` variables. The workflow does not run the procedure
+   or claim its work-settlement facts. Bind the reviewed renderer inputs, exact
+   candidate cutover attestations and distinct recovery SHA. Keep new sales
+   disabled and live acceptance unset.
 2. Dispatch the exact candidate with `traffic_mode=held` (the default). Automatic
    deployments also use held mode. The image-bound
    `MODAL_DEPLOYMENT_TRAFFIC_HOLD=true` makes the API reject product HTTP

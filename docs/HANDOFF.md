@@ -27,6 +27,15 @@ default to held traffic, and an unheld production import requires the exact
 workflow-approved SHA. Local `modal serve` remains available with an explicit
 `MODAL_ENVIRONMENT=dev` and `MODAL_DEPLOYMENT_TRAFFIC_HOLD=false`.
 
+Production migration also requires a separately authorized external
+drain/recovery procedure. The deploy workflow reads its candidate SHA, prior
+App ID, completion time and evidence reference, then performs read-only Modal
+identity/state checks immediately before migration. It never stops the App or
+claims that Modal's stopped state proves queued or in-flight work has settled.
+An automatic post-CI run fails closed when the external record is absent or
+stale; use manual dispatch after the procedure and its production change freeze
+are in place.
+
 ## Development and verification
 
 Use [local-dev.md](local-dev.md) for prerequisites and multi-worktree details.

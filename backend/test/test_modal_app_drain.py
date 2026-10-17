@@ -1,211 +1,296 @@
+"""Read-only check for an external drain procedure and current Modal App state."""
+
 from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
-from scripts.drain_modal_app import (
-    DrainEvidenceError,
+from scripts.verify_modal_drain import (
+    DrainPrerequisiteError,
+    ModalAppSnapshot,
+    _lookup_modal_app_id,
+    _parse_modal_app_list,
     main,
-    stop_and_record,
-    validate_evidence,
+    verify_prerequisite,
 )
 
 DEPLOY_SHA = "a" * 40
+APP_ID = "ap-" + "a" * 22
+RECREATED_APP_ID = "ap-" + "b" * 22
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
 
 
-def app_snapshot(state: str) -> str:
-    return json.dumps({"apps": [{
-        "app_id": "ap-production-123",
-        "app_name": "latexy-backend",
+def app_list(state: str, app_id: str = APP_ID) -> str:
+    # Modal 1.5.4 rows use these stable keys. Description is deliberately not
+    # used as a name because it is a human-readable label, not deployment ID.
+    return json.dumps([{
+        "app_id": app_id,
+        "description": "workspace-generated description",
         "state": state,
-    }]})
+        "tasks": "0",
+        "created_at": "2026-10-17T11:00:00+00:00",
+        "stopped_at": "2026-10-17T11:59:30+00:00",
+    }])
 
 
-def test_stop_and_record_stops_exact_app_then_records_fresh_stopped_readback(tmp_path: Path) -> None:
-    snapshots = iter([app_snapshot("DEPLOYED"), app_snapshot("STOPPING"), app_snapshot("STOPPED")])
-    commands: list[list[str]] = []
-    clock = [0.0]
-
-    def runner(command, **_kwargs):
-        commands.append(command)
-        if command[1:3] == ["app", "list"]:
-            return subprocess.CompletedProcess(command, 0, next(snapshots), "")
-        if command[1:3] == ["app", "stop"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        raise AssertionError(f"unexpected Modal command: {command}")
-
-    evidence_path = tmp_path / "drain.json"
-    evidence = stop_and_record(
-        app_name="latexy-backend",
-        environment="main",
-        deploy_sha=DEPLOY_SHA,
-        evidence_path=evidence_path,
-        timeout_seconds=10,
-        poll_interval_seconds=5,
-        runner=runner,
-        monotonic=lambda: clock[0],
-        sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
-        now=lambda: NOW,
-    )
-
-    assert commands == [
-        ["modal", "app", "list", "--env", "main", "--json", "--limit", "0"],
-        ["modal", "app", "stop", "--env", "main", "--yes", "ap-production-123"],
-        ["modal", "app", "list", "--env", "main", "--json", "--limit", "0"],
-        ["modal", "app", "list", "--env", "main", "--json", "--limit", "0"],
-    ]
-    assert json.loads(evidence_path.read_text(encoding="utf-8")) == evidence
-    validate_evidence(
-        evidence,
-        app_name="latexy-backend",
-        environment="main",
-        deploy_sha=DEPLOY_SHA,
-        now=NOW,
-    )
-
-
-def test_already_stopped_app_still_requires_and_records_a_fresh_readback(tmp_path: Path) -> None:
-    calls: list[list[str]] = []
-
-    def runner(command, **_kwargs):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, app_snapshot("STOPPED"), "")
-
-    evidence = stop_and_record(
-        app_name="latexy-backend",
-        environment="main",
-        deploy_sha=DEPLOY_SHA,
-        evidence_path=tmp_path / "drain.json",
-        runner=runner,
-        now=lambda: NOW,
-    )
-    assert len(calls) == 2
-    assert all(command[1:3] == ["app", "list"] for command in calls)
-    assert evidence["state"] == "STOPPED"
-    assert evidence["observed_at"] == "2026-10-17T12:00:00Z"
-
-
-def test_missing_or_ambiguous_app_fails_without_stopping_anything(tmp_path: Path) -> None:
-    for snapshot in (
-        json.dumps({"apps": []}),
-        json.dumps({"apps": [
-            {"app_id": "ap-1", "app_name": "latexy-backend", "state": "DEPLOYED"},
-            {"app_id": "ap-2", "app_name": "latexy-backend", "state": "DEPLOYED"},
-        ]}),
-    ):
-        commands: list[list[str]] = []
-
-        def runner(command, **_kwargs):
-            commands.append(command)
-            return subprocess.CompletedProcess(command, 0, snapshot, "")
-
-        with pytest.raises(DrainEvidenceError):
-            stop_and_record(
-                app_name="latexy-backend",
-                environment="main",
-                deploy_sha=DEPLOY_SHA,
-                evidence_path=tmp_path / "drain.json",
-                runner=runner,
-            )
-        assert len(commands) == 1
-        assert commands[0][1:3] == ["app", "list"]
-        assert not (tmp_path / "drain.json").exists()
-
-
-def test_invalid_state_command_failure_and_timeout_fail_without_evidence(tmp_path: Path) -> None:
-    bad_outputs = ("not-json", json.dumps({"unexpected": []}), json.dumps({"apps": [{
-        "app_id": "ap-production-123",
-        "app_name": "latexy-backend",
-    }]}))
-    for output in bad_outputs:
-        with pytest.raises(DrainEvidenceError):
-            stop_and_record(
-                app_name="latexy-backend",
-                environment="main",
-                deploy_sha=DEPLOY_SHA,
-                evidence_path=tmp_path / "drain.json",
-                runner=lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, output, ""),
-            )
-
-    def failed_stop(command, **_kwargs):
-        if command[1:3] == ["app", "list"]:
-            return subprocess.CompletedProcess(command, 0, app_snapshot("DEPLOYED"), "")
-        return subprocess.CompletedProcess(command, 1, "", "stop failed")
-
-    with pytest.raises(DrainEvidenceError, match="exit code 1"):
-        stop_and_record(
-            app_name="latexy-backend",
-            environment="main",
-            deploy_sha=DEPLOY_SHA,
-            evidence_path=tmp_path / "drain.json",
-            runner=failed_stop,
-        )
-
-    clock = [0.0]
-
-    def never_stops(command, **_kwargs):
-        state = "DEPLOYED" if command[1:3] == ["app", "list"] else ""
-        return subprocess.CompletedProcess(command, 0, app_snapshot(state) if state else "", "")
-
-    with pytest.raises(DrainEvidenceError, match="did not reach STOPPED"):
-        stop_and_record(
-            app_name="latexy-backend",
-            environment="main",
-            deploy_sha=DEPLOY_SHA,
-            evidence_path=tmp_path / "drain.json",
-            timeout_seconds=10,
-            poll_interval_seconds=5,
-            runner=never_stops,
-            monotonic=lambda: clock[0],
-            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
-        )
-    assert not (tmp_path / "drain.json").exists()
-
-
-def valid_evidence() -> dict[str, object]:
+def valid_record() -> dict[str, str]:
     return {
-        "evidence_version": 1,
-        "source": "modal app list --json",
-        "app_name": "latexy-backend",
-        "app_id": "ap-production-123",
-        "environment": "main",
-        "state": "STOPPED",
-        "deploy_sha": DEPLOY_SHA,
-        "observed_at": "2026-10-17T11:59:00Z",
+        "external_record_sha": DEPLOY_SHA,
+        "external_record_app_id": APP_ID,
+        "external_record_completed_at": "2026-10-17T11:59:00Z",
+        "external_record_reference": "change-record:drain-2026-10-17-01",
     }
 
 
-def test_missing_stale_future_and_mismatched_evidence_fail_closed(tmp_path: Path) -> None:
-    assert main([
-            "require", "--app-name", "latexy-backend", "--environment", "main",
-            "--deploy-sha", DEPLOY_SHA, "--evidence", str(tmp_path / "missing.json"),
-        ]) == 1
+def run_verifier(
+    *,
+    state: str = "stopped",
+    output: str | None = None,
+    lookup_ids: list[str] | None = None,
+    **overrides: Any,
+) -> tuple[ModalAppSnapshot, list[list[str]], list[tuple[str, str]]]:
+    commands: list[list[str]] = []
+    lookups: list[tuple[str, str]] = []
+    records = valid_record() | overrides
+    app_lookup_ids = iter(lookup_ids or [APP_ID, APP_ID])
 
-    with pytest.raises(DrainEvidenceError, match="stale"):
-        validate_evidence(
-            valid_evidence(), app_name="latexy-backend", environment="main",
-            deploy_sha=DEPLOY_SHA, now=NOW, max_age_seconds=30,
+    def runner(command, **kwargs):
+        commands.append(command)
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        assert kwargs["timeout"] == 30
+        return subprocess.CompletedProcess(command, 0, output or app_list(state), "")
+
+    def lookup(name: str, environment: str) -> str:
+        lookups.append((name, environment))
+        return next(app_lookup_ids)
+
+    result = verify_prerequisite(
+        app_name="latexy-backend",
+        environment="main",
+        expected_deploy_sha=DEPLOY_SHA,
+        now=NOW,
+        runner=runner,
+        app_lookup=lookup,
+        **records,
+    )
+    return result, commands, lookups
+
+
+def test_matches_external_record_to_live_named_app_and_stopped_state_read_only() -> None:
+    result, commands, lookups = run_verifier(output=app_list("stopped"))
+
+    assert result == ModalAppSnapshot(app_id=APP_ID, state="stopped")
+    assert lookups == [("latexy-backend", "main"), ("latexy-backend", "main")]
+    assert commands == [["modal", "app", "list", "--env", "main", "--json"]]
+    assert all("stop" not in command for command in commands)
+
+
+def test_current_state_query_is_bracketed_by_name_identity_lookups() -> None:
+    events: list[str] = []
+
+    def runner(command, **_kwargs):
+        events.append("current-app-state")
+        return subprocess.CompletedProcess(command, 0, app_list("stopped"), "")
+
+    def lookup(_name: str, _environment: str) -> str:
+        events.append("current-app-name-resolution")
+        return APP_ID
+
+    verify_prerequisite(
+        app_name="latexy-backend",
+        environment="main",
+        expected_deploy_sha=DEPLOY_SHA,
+        now=NOW,
+        runner=runner,
+        app_lookup=lookup,
+        **valid_record(),
+    )
+    assert events == [
+        "current-app-name-resolution",
+        "current-app-state",
+        "current-app-name-resolution",
+    ]
+
+
+def test_public_name_lookup_is_noncreating_and_passes_explicit_environment(monkeypatch) -> None:
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    class FakeApp:
+        @staticmethod
+        def lookup(*args, **kwargs):
+            calls.append((args, kwargs))
+            return SimpleNamespace(app_id=APP_ID)
+
+    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(App=FakeApp))
+    assert _lookup_modal_app_id("latexy-backend", "main") == APP_ID
+    assert calls == [(
+        ("latexy-backend",),
+        {"environment_name": "main", "create_if_missing": False},
+    )]
+
+
+def test_modal_154_list_schema_ignores_description_as_identity() -> None:
+    rows = json.loads(app_list("stopped"))
+    assert _parse_modal_app_list(rows) == [ModalAppSnapshot(APP_ID, "stopped")]
+
+    name_only = [{
+        "description": "latexy-backend",
+        "state": "stopped",
+        "tasks": "0",
+        "created_at": None,
+        "stopped_at": None,
+    }]
+    with pytest.raises(DrainPrerequisiteError, match="app_id"):
+        _parse_modal_app_list(name_only)
+
+
+def test_live_app_fails_closed_even_when_external_record_matches() -> None:
+    commands: list[list[str]] = []
+
+    def runner(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, app_list("deployed"), "")
+
+    with pytest.raises(DrainPrerequisiteError, match="not 'stopped'"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=runner,
+            app_lookup=lambda _name, _env: APP_ID,
+            **valid_record(),
         )
-    with pytest.raises(DrainEvidenceError, match="future"):
-        future = valid_evidence()
-        future["observed_at"] = (NOW + timedelta(seconds=1)).isoformat()
-        validate_evidence(
-            future, app_name="latexy-backend", environment="main", deploy_sha=DEPLOY_SHA, now=NOW,
+    assert commands == [["modal", "app", "list", "--env", "main", "--json"]]
+
+
+def test_recreated_app_id_fails_even_if_old_id_remains_listed_as_stopped() -> None:
+    with pytest.raises(DrainPrerequisiteError, match="identity changed"):
+        run_verifier(
+            output=app_list("stopped", APP_ID),
+            lookup_ids=[APP_ID, RECREATED_APP_ID],
         )
 
-    for invalid in (
-        {**valid_evidence(), "deploy_sha": "b" * 40},
-        {**valid_evidence(), "environment": "dev"},
-        {**valid_evidence(), "state": "DEPLOYED"},
-        {**valid_evidence(), "source": "source-only-attestation"},
-        {**valid_evidence(), "app_id": ""},
-    ):
-        with pytest.raises(DrainEvidenceError):
-            validate_evidence(
-                invalid, app_name="latexy-backend", environment="main", deploy_sha=DEPLOY_SHA, now=NOW,
-            )
+
+def test_current_name_mapping_to_a_recreated_app_id_is_rejected() -> None:
+    with pytest.raises(DrainPrerequisiteError, match="differs from the external drain record"):
+        run_verifier(lookup_ids=[RECREATED_APP_ID, RECREATED_APP_ID])
+
+
+def test_stale_external_record_fails_before_any_modal_query() -> None:
+    commands: list[list[str]] = []
+    lookups: list[tuple[str, str]] = []
+    records = valid_record()
+    records["external_record_completed_at"] = "2026-10-17T11:50:00Z"
+
+    with pytest.raises(DrainPrerequisiteError, match="stale"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=lambda command, **_kwargs: commands.append(command),
+            app_lookup=lambda name, env: lookups.append((name, env)),
+            **records,
+        )
+    assert commands == []
+    assert lookups == []
+
+
+def test_candidate_sha_mismatch_fails_before_any_modal_query() -> None:
+    commands: list[list[str]] = []
+    lookups: list[tuple[str, str]] = []
+    with pytest.raises(DrainPrerequisiteError, match="does not match"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=lambda command, **_kwargs: commands.append(command),
+            app_lookup=lambda name, env: lookups.append((name, env)),
+            **(valid_record() | {"external_record_sha": "b" * 40}),
+        )
+    assert commands == []
+    assert lookups == []
+
+
+@pytest.mark.parametrize("missing_field", [
+    "external_record_sha",
+    "external_record_app_id",
+    "external_record_completed_at",
+    "external_record_reference",
+])
+def test_missing_external_record_field_fails_closed(missing_field: str) -> None:
+    record = valid_record()
+    record[missing_field] = ""
+    commands: list[list[str]] = []
+    lookups: list[tuple[str, str]] = []
+    with pytest.raises(DrainPrerequisiteError):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=lambda command, **_kwargs: commands.append(command),
+            app_lookup=lambda name, env: lookups.append((name, env)),
+            **record,
+        )
+    assert commands == []
+    assert lookups == []
+
+
+def test_automatic_workflow_run_refuses_when_external_record_is_missing(capsys) -> None:
+    lookups: list[tuple[str, str]] = []
+    commands: list[list[str]] = []
+    env = {
+        "MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA": "",
+        "MODAL_DRAIN_PROCEDURE_APP_ID": "",
+        "MODAL_DRAIN_PROCEDURE_COMPLETED_AT": "",
+        "MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE": "",
+    }
+    result = main(
+        ["--app-name", "latexy-backend", "--environment", "main",
+         "--expected-deploy-sha", DEPLOY_SHA],
+        environ=env,
+        runner=lambda command, **_kwargs: commands.append(command),
+        app_lookup=lambda name, environment: lookups.append((name, environment)),
+        now=NOW,
+    )
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "external drain record" in captured.err
+    assert captured.out == ""
+    assert commands == []
+    assert lookups == []
+
+
+def test_success_output_does_not_claim_requested_sha_was_observed_from_modal(capsys) -> None:
+    env = {
+        "MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA": DEPLOY_SHA,
+        "MODAL_DRAIN_PROCEDURE_APP_ID": APP_ID,
+        "MODAL_DRAIN_PROCEDURE_COMPLETED_AT": "2026-10-17T11:59:00Z",
+        "MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE": "change-record:drain-2026-10-17-01",
+    }
+    assert main(
+        ["--app-name", "latexy-backend", "--expected-deploy-sha", DEPLOY_SHA],
+        environ=env,
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, app_list("stopped"), ""),
+        app_lookup=lambda _name, _environment: APP_ID,
+        now=NOW,
+    ) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["external_procedure_reference_supplied"] is True
+    assert report["external_record_sha_matches_requested_sha"] is True
+    assert report["external_record_contents_authenticated_by_this_check"] is False
+    assert report["current_modal_app_id"] == APP_ID
+    assert report["current_modal_app_state"] == "stopped"
+    assert report["settled_queued_or_inflight_work_verified_by_this_check"] is False
+    assert "observed_modal_deploy_sha" not in report
+    assert DEPLOY_SHA not in json.dumps(report)
