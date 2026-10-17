@@ -138,6 +138,7 @@ async function installSettingsFixture(page: Page, options: FixtureOptions = {}):
       contentType: 'application/json',
       headers: { 'x-test-owner': current },
       body: JSON.stringify({
+        method: 'totp',
         totpURI: `otpauth://totp/Latexy:${current}@example.invalid?secret=${current.toUpperCase()}TESTSECRET`,
         backupCodes: [`${current}-backup-code-1`, `${current}-backup-code-2`],
       }),
