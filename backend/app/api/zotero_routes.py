@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.egress_guard import assert_within_origin, guarded_async_client
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
 from ..database.connection import get_db
@@ -177,7 +178,7 @@ async def zotero_connect(
     # Also include callback in the body
     body = {"oauth_callback": callback_url}
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with guarded_async_client(timeout=15) as client:
         try:
             resp = await client.post(
                 _ZOTERO_REQUEST_TOKEN_URL,
@@ -298,7 +299,7 @@ async def zotero_complete(
         extra_params=extra,
     )
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with guarded_async_client(timeout=15) as client:
         try:
             resp = await client.post(
                 _ZOTERO_ACCESS_TOKEN_URL,
@@ -400,7 +401,7 @@ async def zotero_collections(
     collections: list[dict] = []
     start = 0
     limit = 100
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with guarded_async_client(timeout=15) as client:
         while True:
             url = f"{_ZOTERO_API_BASE}/users/{zotero_user_id}/collections?limit={limit}&start={start}"
             try:
@@ -468,9 +469,15 @@ async def zotero_import(
     limit = 100
     pages_fetched = 0
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with guarded_async_client(timeout=30) as client:
         while True:
             url = f"{_ZOTERO_API_BASE}{base_path}?format=bibtex&limit={limit}&start={start}"
+            # The user id and collection key reach base_path from user input and
+            # the authenticated account. Both are percent-encoded, and this
+            # assertion additionally pins the request to the Zotero origin so a
+            # value that somehow introduced an authority would raise instead of
+            # being sent to an attacker-controlled host.
+            assert_within_origin(url, _ZOTERO_API_BASE)
             try:
                 async with client.stream("GET", url, headers={"Zotero-API-Key": token}) as resp:
                     if resp.status_code == 403:
