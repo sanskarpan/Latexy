@@ -343,8 +343,23 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
         "full-stack-smoke": "Full-Stack Smoke",
         "real-compile-preview": "Isolated Real Compile and Preview",
         "observability-smoke": "Observability Smoke",
+        "modal-harness-synthetic": "Modal Harness Synthetic Tests",
     }
     assert {name: jobs[name]["name"] for name in jobs} == expected_job_names
+
+    # The private harness suite is source-only and unconditional: it must stay
+    # a required CI context even when the component classifier skips work.
+    synthetic_harness = jobs["modal-harness-synthetic"]
+    assert "needs" not in synthetic_harness
+    assert "if" not in synthetic_harness
+    assert synthetic_harness["runs-on"] == "ubuntu-latest"
+    assert synthetic_harness["timeout-minutes"] == "5"
+    assert synthetic_harness["steps"][0]["with"]["persist-credentials"] == "false"
+    assert any(
+        step.get("run") == "python scripts/qa/run_modal_spawn_diagnostics.py"
+        for step in synthetic_harness["steps"]
+    )
+    assert all(step.get("continue-on-error", "false") == "false" for step in synthetic_harness["steps"])
 
     # Keep the required check names and their scope ownership coupled. This
     # prevents a future edit from silently swapping, for example, TUI and
