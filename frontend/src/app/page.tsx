@@ -131,10 +131,10 @@ export default function LandingPage() {
                 </div>
                 <a href="#resume-feedback">
                     <IconFileText size={24} stroke={1.5} aria-hidden="true" />
-                    <h3>Tailor for each role</h3>
-                    <p>See where your experience fits, then decide what deserves a closer look.</p>
+                    <h3>Review your résumé</h3>
+                    <p>Check its structure and role match, then decide what to improve.</p>
                     <span>
-                        Review your résumé <ArrowRight size={15} aria-hidden="true" />
+                        Explore feedback <ArrowRight size={15} aria-hidden="true" />
                     </span>
                 </a>
                 <a href="#applications">

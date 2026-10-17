@@ -27,6 +27,8 @@ export default function ReviewDesk() {
     const [beforeSuggestion, setBeforeSuggestion] = useState(original)
     const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
     const [role, setRole] = useState('Product Designer')
+    const [roleDraft, setRoleDraft] = useState('Product Designer')
+    const [writeErrors, setWriteErrors] = useState({ role: false, contribution: false })
     const [accepted, setAccepted] = useState(false)
     const [message, setMessage] = useState('')
     const [target, setTarget] = useState('Product design')
@@ -34,6 +36,7 @@ export default function ReviewDesk() {
     const paperRef = useRef<HTMLElement>(null)
     const highlightRef = useRef<HTMLLIElement>(null)
     const annotationRef = useRef<HTMLDivElement>(null)
+    const canUseExample = bullet === original
 
     // Keep the annotation tied to the selected sentence as text and fonts
     // reflow. Only geometry changes; the document itself is never transformed.
@@ -153,10 +156,20 @@ export default function ReviewDesk() {
                         <label htmlFor="hero-sample-role">Your role</label>
                         <input
                             id="hero-sample-role"
-                            value={role}
-                            onChange={event => setRole(event.target.value)}
+                            value={roleDraft}
+                            onChange={event => {
+                                setRoleDraft(event.target.value)
+                                setWriteErrors(current => ({ ...current, role: false }))
+                            }}
+                            aria-invalid={writeErrors.role}
+                            aria-describedby={writeErrors.role ? 'hero-sample-role-error' : undefined}
                             maxLength={60}
                         />
+                        {writeErrors.role && (
+                            <p id="hero-sample-role-error" className="rd-field-error" role="alert">
+                                Enter a role before updating the sample.
+                            </p>
+                        )}
                         <label htmlFor="hero-sample-bullet">One contribution</label>
                         <textarea
                             id="hero-sample-bullet"
@@ -164,17 +177,37 @@ export default function ReviewDesk() {
                             onChange={event => {
                                 setDraft(event.target.value)
                                 setDraftDirty(true)
+                                setWriteErrors(current => ({ ...current, contribution: false }))
                             }}
+                            aria-invalid={writeErrors.contribution}
+                            aria-describedby={writeErrors.contribution ? 'hero-sample-bullet-error' : undefined}
                             maxLength={240}
                             rows={3}
                         />
+                        {writeErrors.contribution && (
+                            <p id="hero-sample-bullet-error" className="rd-field-error" role="alert">
+                                Enter a contribution before updating the sample.
+                            </p>
+                        )}
                         <button
                             type="button"
                             className="rd-small-primary"
                             onClick={() => {
-                                const next = draft.trim() || original
-                                setBullet(next)
-                                setDraft(next)
+                                const nextRole = roleDraft.trim()
+                                const nextContribution = draft.trim()
+                                const errors = {
+                                    role: !nextRole,
+                                    contribution: !nextContribution,
+                                }
+                                setWriteErrors(errors)
+                                if (errors.role || errors.contribution) {
+                                    setMessage('')
+                                    return
+                                }
+                                setRole(nextRole)
+                                setRoleDraft(nextRole)
+                                setBullet(nextContribution)
+                                setDraft(nextContribution)
                                 setDraftDirty(false)
                                 setAccepted(false)
                                 setMessage('Your wording is now in the sample résumé.')
@@ -194,10 +227,16 @@ export default function ReviewDesk() {
                             when possible.
                         </p>
                         <blockquote>{suggested}</blockquote>
+                        <p className="rd-example-note">
+                            {canUseExample || accepted
+                                ? 'Illustrative suggestion for the starter checkout sentence.'
+                                : 'This example only applies to the starter checkout sentence. Your contribution stays unchanged.'}
+                        </p>
                         <div className="rd-note-actions">
                             <button
                                 type="button"
                                 className="rd-small-primary"
+                                disabled={!accepted && !canUseExample}
                                 onClick={() => {
                                     if (accepted) {
                                         setBullet(beforeSuggestion)

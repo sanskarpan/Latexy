@@ -22,6 +22,13 @@ vi.mock('@/components/marketing/review-fonts', () => ({ reviewFonts: 'review-fon
 afterEach(() => vi.unstubAllEnvs())
 
 describe('marketing origin consistency', () => {
+    it('describes the ATS feedback section in its overview link', () => {
+        const html = renderToStaticMarkup(createElement(LandingPage))
+        expect(html).toMatch(/href="#resume-feedback"[^>]*>[\s\S]*?Review your résumé[\s\S]*?Explore feedback[\s\S]*?<\/a>/)
+        expect(html).toContain('id="resume-feedback"')
+        expect(html).toContain('ATS feedback, with context')
+    })
+
     it('keeps page canonicals, application schema, and discovery on the configured origin', async () => {
         const origin = 'https://resume.example.org'
         vi.stubEnv('NEXT_PUBLIC_APP_URL', `${origin}/`)
