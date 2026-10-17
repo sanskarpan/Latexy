@@ -900,6 +900,7 @@ test('landing sample controls change their visible state by keyboard and pointer
     await expect(board.locator('.lp-board-column').nth(1)).toContainText('Acme')
     await expect(manage).toBeFocused()
 })
+
 test('landing sample tabs align selection and focus for repeated keyboard navigation', async ({ page }, testInfo) => {
     test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
     await page.goto('/', { waitUntil: 'networkidle' })
