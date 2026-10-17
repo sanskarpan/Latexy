@@ -62,7 +62,23 @@ and revocation must remain available to the owner.
   effective F01 grant before changing controls. The browser case runs last to
   remove suite-order interference. Fresh CI is required before browser
   acceptance can pass.
-- The Vercel preview check was rejected by its provider's daily deployment
+- Follow-up exact-head run `39031321162` at `160725c047410fe92e368138f0c7804803de6ccf`:
+  **Backend Tests passed** with active synthetic `pro_annual` accounts, and
+  **Full-Stack Smoke ran five non-skipped browser tests: 4 passed, 1 failed**.
+  The F01 scenario passed role, family, SKU, parent, public-token denial,
+  owner-source read and review-disable assertions; it failed at the later
+  cross-owner share POST, which expected 404 after the parent had been disabled
+  and correctly received 403 from the earlier capability gate. The owner revoke
+  browser assertions were not reached. The browser test now checks the ordinary
+  cross-owner POST while the feature is enabled (with both ordinary synthetic
+  users on active test-only `pro_annual`, so the resource ACL can return 404),
+  and checks 403 for a new share under the disabled parent. This avoids treating
+  the capability denial as an ownership result.
+- In that run, the four other full-stack cases passed; in particular, the
+  existing core browser case passed after moving F01 last, so the prior signup
+  429 did not recur. The latest run's Cross-Browser Quality and Isolated Real
+  Compile/Preview jobs were still in progress when this evidence was updated.
+- The Vercel preview check has been rejected by its provider's daily deployment
   limit (`api-deployments-free-per-day`). No deployment or production action was
   run.
 

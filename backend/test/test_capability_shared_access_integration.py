@@ -127,6 +127,12 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
     original_unrelated_role = await db_session.scalar(
         text("SELECT role FROM users WHERE id = :id"), {"id": unrelated_user},
     )
+    original_unrelated_plan = await db_session.scalar(
+        text("SELECT subscription_plan FROM users WHERE id = :id"), {"id": unrelated_user},
+    )
+    original_unrelated_status = await db_session.scalar(
+        text("SELECT subscription_status FROM users WHERE id = :id"), {"id": unrelated_user},
+    )
     original_policy = await entitlement_service.get_state()
     controlled_keys = ("collaboration", "f01", "f03", "resume_builder", "b01", "c01")
     original_globals = {key: original_policy["kill_switches"][key] for key in controlled_keys}
@@ -141,7 +147,8 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         {"id": owner},
     )
     await db_session.execute(
-        text("UPDATE users SET role = 'user' WHERE id = :id"), {"id": unrelated_user},
+        text("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active' WHERE id = :id"),
+        {"id": unrelated_user},
     )
     await db_session.commit()
 
@@ -163,6 +170,15 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         effective = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
         assert effective.status_code == 200
         assert effective.json()["features"]["f01"] is True
+        unrelated_effective = await client.get(
+            "/config/entitlements?include_quotas=false", headers=auth_headers2,
+        )
+        assert unrelated_effective.status_code == 200
+        assert unrelated_effective.json()["features"]["f01"] is True
+        wrong_owner_share = await client.post(
+            f"/resumes/{resume_id}/share", headers=auth_headers2,
+        )
+        assert wrong_owner_share.status_code == 404
 
         # These are ordinary independent accounts. Product permission does not
         # become document ownership or a collaborator ACL.
@@ -201,6 +217,10 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         assert effective.status_code == 200
         assert effective.json()["features"]["f01"] is False
         assert (await share_again()).status_code == 403
+        parent_blocked_share = await client.post(
+            f"/resumes/{resume_id}/share", headers=auth_headers2,
+        )
+        assert parent_blocked_share.status_code == 403
         assert (await client.get(f"/share/{share_token}")).status_code == 404
 
         # Disabling review and revoking the existing link are owned recovery
@@ -235,7 +255,12 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
             {"role": original_owner_role, "plan": original_plan, "status": original_subscription_status, "id": owner},
         )
         await db_session.execute(
-            text("UPDATE users SET role = :role WHERE id = :id"),
-            {"role": original_unrelated_role, "id": unrelated_user},
+            text("UPDATE users SET role = :role, subscription_plan = :plan, subscription_status = :status WHERE id = :id"),
+            {
+                "role": original_unrelated_role,
+                "plan": original_unrelated_plan,
+                "status": original_unrelated_status,
+                "id": unrelated_user,
+            },
         )
         await db_session.commit()

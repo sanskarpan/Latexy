@@ -99,7 +99,7 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     const unrelated = await signup(unrelatedContext, frontend); createdUsers.push(unrelated.id)
     await database.query("UPDATE users SET role = 'admin', email_verified = TRUE WHERE id = $1", [admin.id])
     await database.query("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active', email_verified = TRUE WHERE id = $1", [owner.id])
-    await database.query("UPDATE users SET role = 'user', email_verified = TRUE WHERE id = $1", [unrelated.id])
+    await database.query("UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active', email_verified = TRUE WHERE id = $1", [unrelated.id])
 
     const source = '\\documentclass{article}\\begin{document}Private owner source.\\end{document}'
     const created = await ownerContext.request.post(`${backend}/resumes/`, {
@@ -162,6 +162,13 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     expect(denied.status(), await denied.text()).toBe(403)
     await setAdminCapability(adminPage, 'f01', 'Public share links', 'sku', true)
 
+    // With F01 enabled for this ordinary paid synthetic account, a different
+    // owner reaches the resource ACL and receives the privacy-preserving 404.
+    const unrelatedShare = await unrelatedContext.request.post(`${backend}/resumes/${resume.id}/share`, {
+      headers: unrelated.headers,
+    })
+    expect(unrelatedShare.status(), await unrelatedShare.text()).toBe(404)
+
     // Explicit F01 remains true while its collaboration parent is switched
     // off. The already-open browser refreshes on focus, shows recovery, and the
     // same public token can no longer mint a storage URL.
@@ -191,7 +198,11 @@ test('real sharing child gates honor role, family, SKU and parent while ordinary
     expect(sourceStillOwned.status()).toBe(200)
     expect((await sourceStillOwned.json()).latex_content).toBe(source)
     expect((await unrelatedContext.request.get(`${backend}/resumes/${resume.id}`, { headers: unrelated.headers })).status()).toBe(404)
-    expect((await unrelatedContext.request.post(`${backend}/resumes/${resume.id}/share`, { headers: unrelated.headers })).status()).toBe(404)
+    const parentBlockedShare = await unrelatedContext.request.post(`${backend}/resumes/${resume.id}/share`, {
+      headers: unrelated.headers,
+    })
+    expect(parentBlockedShare.status(), await parentBlockedShare.text()).toBe(403)
+    expect(await parentBlockedShare.text()).toContain('feature_disabled')
 
     await ownerPage.getByRole('button', { name: 'Revoke link', exact: true }).click()
     const revoked = ownerPage.waitForResponse((response) =>
