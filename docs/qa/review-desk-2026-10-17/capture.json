@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-17",
+  "productCommit": "32fdea72078c5a3824570fdba89bed582c47f044",
+  "desktop": {
+    "browser": "Chromium",
+    "cssViewport": [
+      1440,
+      1000
+    ],
+    "deviceScaleFactor": 1
+  },
+  "mobile": {
+    "browser": "WebKit iPhone profile",
+    "cssViewport": [
+      390,
+      1000
+    ],
+    "nativeImageWidth": 1170
+  },
+  "server": "local Next development preview",
+  "fixture": "existing quality API mocks with public guest features enabled",
+  "notes": "Captured after source commits. Full images are untouched screenshots; hero images are top crops at native density; comparison boards normalise widths without stretching. Production browser verification runs in PR CI. The small circular N is Next development chrome and is not product UI. No screenshot masking was used. Section images are native-density crops. The selected reference board contains only the hero and overview; lower sections are original extensions, not a claimed pixel clone.",
+  "fullPagePixels": {
+    "desktop-light-full.png": [
+      1440,
+      4454
+    ],
+    "desktop-dark-full.png": [
+      1440,
+      4454
+    ],
+    "mobile-light-full.png": [
+      1170,
+      16434
+    ],
+    "mobile-dark-full.png": [
+      1170,
+      16434
+    ]
+  }
+}
