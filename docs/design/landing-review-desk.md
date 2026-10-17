@@ -14,9 +14,9 @@ User selected the second visual concept on 17 October 2026, with a change of typ
 
 ## Typography
 
-The homepage now pairs Hubot Sans headlines with Mona Sans reading text. Variable weight and width give the headlines character without relying on italic slogans or excessive letter spacing. The serif inside the résumé and document is Tinos, used to demonstrate document typography, not as the marketing voice.
+The homepage now pairs Hubot Sans headlines with Mona Sans reading text. The display face uses a carefully chosen width and a strong, consistent weight without relying on italic slogans or excessive letter spacing. The serif inside the résumé and document is Tinos, used to demonstrate document typography, not as the marketing voice.
 
-Fonts are self hosted and limited to this homepage/header/footer. Both new fonts are licensed under SIL OFL 1.1; their notices accompany the WOFF2 files. The UI subset covers Latin/extended Latin and common punctuation. Hubot's unused italic axis is pinned; width/weight remain variable. The two font files total approximately 242 KB. They introduce no runtime font service request.
+Fonts are self hosted and limited to this homepage/header/footer. Both new fonts are licensed under SIL OFL 1.1; their notices accompany the WOFF2 files. The UI subset covers Latin/extended Latin and common punctuation. Visual QA found that Windows WebKit rendered the variable fonts too thin despite the correct computed CSS weight. The shipped files are static instances: Hubot 600 at width 95, and Mona 400/500/600 at optical size 20. The four files total 130,288 bytes. They introduce no runtime font service request.
 
 Sources:
 - https://github.com/github/hubot-sans — geometric details and variable width for display typography.
