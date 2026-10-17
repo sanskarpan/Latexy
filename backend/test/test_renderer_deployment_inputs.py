@@ -111,6 +111,7 @@ def test_invoking_tuple_reaches_both_api_and_compile_worker_images(monkeypatch, 
     for key, value in VALID.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("MODAL_BILLING_SECRET_NAME", "synthetic-billing-secret")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "dev")
     monkeypatch.setenv("MODAL_DEPLOYMENT_TRAFFIC_HOLD", traffic_hold)
     tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
     names = {

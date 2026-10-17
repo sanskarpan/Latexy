@@ -1,9 +1,11 @@
 """
-Latexy backend — Modal deployment.
+Latexy backend — Modal deployment definition.
 
-Run from the backend/ directory:
-  modal deploy modal_app.py::app     # deploy the serving and worker App to production
-  modal serve  modal_app.py::app     # live-reload dev mode
+Production deployment and migration are supported only through
+.github/workflows/deploy-modal.yml. Do not use direct `modal deploy` or
+`modal run ...::migrate` commands against production. Local Modal development
+must set MODAL_ENVIRONMENT=dev and MODAL_DEPLOYMENT_TRAFFIC_HOLD=false before
+using `modal serve modal_app.py::app`.
 
 Environment variables are loaded from the Modal secrets "latexy-backend-secrets"
 (app config) and "latexy-storage" (object storage).
@@ -59,7 +61,7 @@ operations_app = modal.App(f"{_APP_NAME}-operations")
 # Resolve the one canonical hold value while the deployment source is imported.
 # The same value is baked into every image so child processes and remote imports
 # observe the selected workflow mode, even when their local environment differs.
-_DEPLOYMENT_TRAFFIC_HELD = deployment_traffic_held(os.environ)
+_DEPLOYMENT_TRAFFIC_HELD = deployment_traffic_held(os.environ, source_deployment=True)
 _DEPLOYMENT_TRAFFIC_HOLD_VALUE = "true" if _DEPLOYMENT_TRAFFIC_HELD else "false"
 
 
@@ -941,14 +943,11 @@ def renderer_preflight() -> dict:
     return report
 
 
-# Locally, migrations run on backend startup. In production nothing applied them:
-# alembic/ was excluded from every image and no deploy step ran it. Run this
-# BEFORE `modal deploy` whenever a migration has landed:
-#
-#     modal run modal_app.py::migrate
-#
-# Deliberately a separate manual step rather than a lifespan hook, so a schema
-# change is never applied by whichever API container happens to boot first.
+# Locally, migrations run on backend startup. Production migrations are invoked
+# only by deploy-modal.yml after it stops the previous App, verifies a fresh
+# stopped-state readback, and checks that evidence immediately before this
+# operation. Keep this separate from API startup so no container can migrate as
+# an incidental side effect.
 migrate_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install(*_APT_BASE)

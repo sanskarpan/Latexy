@@ -22,7 +22,10 @@ Frontend and backend delivery are automatic after a merge to `main`:
 
 The Modal workflow also supports a manual `workflow_dispatch` with an explicit
 ref for recovery. Routine releases must use the automatic post-CI path; a local
-`modal deploy` is not the normal production procedure.
+`modal deploy` is unsupported for production. Direct Modal source imports
+default to held traffic, and an unheld production import requires the exact
+workflow-approved SHA. Local `modal serve` remains available with an explicit
+`MODAL_ENVIRONMENT=dev` and `MODAL_DEPLOYMENT_TRAFFIC_HOLD=false`.
 
 ## Development and verification
 

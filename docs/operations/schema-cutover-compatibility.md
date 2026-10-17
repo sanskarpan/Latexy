@@ -81,12 +81,15 @@ the complete backend tree differs and production rollout was not certified.
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
    `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and
    `MODAL_FORWARD_ROLLBACK_SHA` to the distinct recovery SHA. Set the first
-   only after identifying and draining the fleet; set the second only after
+   only after reviewing the migration decision; set the second only after
    verifying the recovery image and every public artifact reader. The workflow
-   checks exact SHA matches, ancestry, minimum source filters, and rollback CI
-   before migration. Refresh both candidate-scoped attestations for each
-   release. The variables record operator assertions; the workflow cannot
-   independently prove traffic drain or image availability.
+   checks exact SHA matches, ancestry, minimum source filters, and rollback CI.
+   Those source and operator checks do not establish a runtime drain. Every
+   migration path must also stop the exact production Modal App and read back
+   its `STOPPED` state in the same workflow run immediately before migration.
+   Missing, mismatched, stale, or unavailable runtime evidence blocks Alembic.
+   Refresh the candidate-scoped attestations for each release; the recovery
+   variables remain operator assertions and do not prove image availability.
 5. Complete renderer input certification and read-only billing preflight. Apply
    ordinary Alembic upgrades only from the identified, compatible revision.
    Keep ingress held across migration and the rolling deploy until old instances
@@ -97,21 +100,30 @@ the complete backend tree differs and production rollout was not certified.
 
 ## Hold the replacement before releasing product traffic
 
-Stopping the old Modal App drains that App. A replacement deployment immediately
-exposes its public endpoint after cold start; stopping the old App does not hold
-the replacement. FastAPI startup also tolerates some Redis failures, so startup
-completion cannot substitute for the workflow's readiness checks.
+The deployment workflow stops the previous `latexy-backend` App immediately
+before migration and records a fresh Modal API readback of its `STOPPED` state.
+This is a runtime check; a runbook instruction or source-only attestation does
+not prove it happened. Missing, ambiguous, changing, or non-stopped App state
+blocks migration. Modal's stopped state proves the old App is no longer deployed
+or running at that observation; it does not certify completion of every business
+operation that was in flight when containers were terminated. A replacement
+deployment exposes its endpoint after startup, so it must remain held until the
+release gates pass. FastAPI startup also tolerates some Redis failures, and
+startup completion cannot substitute for readiness checks.
 
 Use the deployment workflow's two explicit phases:
 
-1. Stop and verify the old App as above, then create and validate the fresh
-   post-freeze recovery point. Retain the existing restore-rehearsal evidence.
+1. Create and validate the fresh post-freeze recovery point. Retain the existing
+   restore-rehearsal evidence. The deployment workflow performs and verifies the
+   old-App stop for every automatic and manual path; a prior manual stop is not
+   accepted as migration evidence.
    Bind the reviewed renderer inputs, exact candidate cutover attestations and
    distinct recovery SHA. Keep new sales disabled and live acceptance unset.
 2. Dispatch the exact candidate with `traffic_mode=held` (the default). Automatic
    deployments also use held mode. The image-bound
    `MODAL_DEPLOYMENT_TRAFFIC_HOLD=true` makes the API reject product HTTP
-   requests with 503 and WebSockets with 1013. Only the documented read-only
+   requests with 503 and accepts then immediately closes WebSocket handshakes
+   with application close code 1013. Only the documented read-only
    health and public template probes remain available. A narrowly anonymous
    `GET /config/entitlements?include_quotas=false` probe is also allowed, with
    that exact query and no Authorization, Cookie or X-API-Key headers. Other
@@ -135,8 +147,9 @@ Use the deployment workflow's two explicit phases:
    Check the
    `X-Latexy-Deployment-Hold: true` marker on fresh health responses and 503
    denials on product paths. This is an application admission hold; the public
-   network endpoint still exists. It neither proves a fleet drain nor cancels
-   previously admitted work, which must already have been drained.
+   network endpoint still exists. The marker is not drain evidence and does
+   not cancel previously admitted work. The workflow's separate Modal stop and
+   readback gate runs immediately before migration.
    The existing outer CORS/verified-tenant layer can resolve domains and
    populate infrastructure caches before the hold; startup, health probes and
    explicit operator catalog work also access backing services. This hold

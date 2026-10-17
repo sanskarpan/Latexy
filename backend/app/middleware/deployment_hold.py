@@ -70,6 +70,10 @@ class DeploymentTrafficHoldMiddleware:
         enabled = self._enabled_for_scope(scope)
         if scope_type == "websocket":
             if enabled:
+                # A close before accept is an HTTP handshake denial (typically
+                # 403), not a WebSocket close frame. Complete the handshake and
+                # then send 1013 so clients receive the intended retry signal.
+                await send({"type": "websocket.accept"})
                 await send({"type": "websocket.close", "code": 1013})
                 return
             await self.app(scope, receive, send)

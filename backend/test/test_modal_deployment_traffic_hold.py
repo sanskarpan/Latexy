@@ -45,6 +45,13 @@ def test_traffic_hold_is_baked_into_all_four_modal_images() -> None:
     assert all(keys.count("MODAL_DEPLOYMENT_TRAFFIC_HOLD") == 1 for keys in image_envs)
 
 
+def test_modal_source_import_defaults_held_and_gates_unheld_production_release() -> None:
+    source = MODAL_APP.read_text(encoding="utf-8")
+    assert "deployment_traffic_held(os.environ, source_deployment=True)" in source
+    assert "Production deployment and migration are supported only through" in source
+    assert "Do not use direct `modal deploy`" in source
+
+
 def test_every_modal_worker_and_scheduler_entrypoint_has_the_outer_guard() -> None:
     _, tree = _source_tree()
     app_functions = []
@@ -157,3 +164,50 @@ def test_postdeploy_health_checks_verify_the_selected_hold_header() -> None:
     assert "check_health /health healthy" in health
     assert "check_health /readyz ready" in health
     assert "check_health /jobs/health healthy" in health
+
+
+def test_every_automatic_and_manual_path_stops_and_verifies_the_old_app_before_migration() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    automatic = source.index("  workflow_run:")
+    manual = source.index("  workflow_dispatch:")
+    release_guard = source.index("Require approved SHA and healthy held candidate before release")
+    cutover_gate = source.index("Require schema cutover and recovery approval")
+    drain = source.index("Stop previous production App and verify stopped state")
+    migration = source.index("Apply production database migrations")
+    deploy = source.index("Deploy backend with a rolling update")
+
+    assert automatic < manual < release_guard < cutover_gate < drain < migration < deploy
+    drain_block = source[drain:migration]
+    assert "if: steps.freshness.outputs.current == 'true'" in drain_block
+    assert "stop-and-record" in drain_block
+    assert "modal app stop" not in drain_block  # stop is executed by the tested helper
+    assert "--app-name latexy-backend" in drain_block
+    assert "--environment main" in drain_block
+    assert "--deploy-sha \"$DEPLOY_SHA\"" in drain_block
+    assert "automatic workflow_run and manual hold/release" in source[cutover_gate:drain]
+
+    migration_end = source.index("\n      - name:", migration + 1)
+    migration_step = source[migration:migration_end]
+    require = migration_step.index("drain_modal_app.py require")
+    alembic = migration_step.index("modal run --env main modal_app.py::migrate")
+    assert require < alembic
+    assert "--max-age-seconds 300" in migration_step
+    assert "github.run_id" in source[drain:migration_end]
+    assert "github.run_attempt" in source[drain:migration_end]
+    assert migration_step.count("if: steps.freshness.outputs.current == 'true'") == 1
+    assert "continue-on-error" not in source[drain:deploy]
+    assert "always()" not in source[drain:deploy]
+
+
+def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_drain() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    release_guard = source.index("Require approved SHA and healthy held candidate before release")
+    billing = source.index("Validate read-only billing rollout safety")
+    cutover = source.index("Require schema cutover and recovery approval")
+    drain = source.index("Stop previous production App and verify stopped state")
+    migration = source.index("Apply production database migrations")
+    deploy = source.index("Deploy backend with a rolling update")
+    assert release_guard < billing < cutover < drain < migration < deploy
+    assert "inputs.traffic_mode == 'release'" in source[release_guard:billing]
+    assert 'MODAL_TRAFFIC_RELEASE_APPROVED_SHA' in source[release_guard:billing]
+    assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in source[cutover:drain]

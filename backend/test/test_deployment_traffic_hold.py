@@ -77,6 +77,9 @@ def invoke_websocket(middleware) -> list[dict]:
 class DeploymentTrafficHoldTests(unittest.TestCase):
     def test_flag_parser_accepts_only_true_false_and_empty(self) -> None:
         self.assertFalse(deployment_traffic_held({}))
+        self.assertTrue(deployment_traffic_held({"DEPLOY_TARGET": "modal"}))
+        self.assertTrue(deployment_traffic_held({"MODAL_ENVIRONMENT": "main"}))
+        self.assertTrue(deployment_traffic_held({}, source_deployment=True))
         for value in ("", "  ", "false", " FALSE "):
             with self.subTest(value=value):
                 self.assertFalse(deployment_traffic_held({DEPLOYMENT_TRAFFIC_HOLD_ENV: value}))
@@ -86,6 +89,34 @@ class DeploymentTrafficHoldTests(unittest.TestCase):
         for value in ("yes", "0", "enabled", "true-ish"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 deployment_traffic_held({DEPLOYMENT_TRAFFIC_HOLD_ENV: value})
+
+    def test_source_deployments_distinguish_local_development_from_approved_production_release(self) -> None:
+        self.assertFalse(deployment_traffic_held({
+            DEPLOYMENT_TRAFFIC_HOLD_ENV: "false",
+            "MODAL_ENVIRONMENT": "dev",
+        }, source_deployment=True))
+        with self.assertRaisesRegex(ValueError, "MODAL_ENVIRONMENT=dev"):
+            deployment_traffic_held({DEPLOYMENT_TRAFFIC_HOLD_ENV: "false"}, source_deployment=True)
+        with self.assertRaisesRegex(ValueError, "exact approved DEPLOY_SHA"):
+            deployment_traffic_held({
+                DEPLOYMENT_TRAFFIC_HOLD_ENV: "false",
+                "MODAL_ENVIRONMENT": "main",
+                "DEPLOY_SHA": "a" * 40,
+                "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "b" * 40,
+            }, source_deployment=True)
+        with self.assertRaisesRegex(ValueError, "exact approved DEPLOY_SHA"):
+            deployment_traffic_held({
+                DEPLOYMENT_TRAFFIC_HOLD_ENV: "false",
+                "MODAL_ENVIRONMENT": "main",
+                "DEPLOY_SHA": "not-a-sha",
+                "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "not-a-sha",
+            }, source_deployment=True)
+        self.assertFalse(deployment_traffic_held({
+            DEPLOYMENT_TRAFFIC_HOLD_ENV: "false",
+            "MODAL_ENVIRONMENT": "main",
+            "DEPLOY_SHA": "a" * 40,
+            "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "a" * 40,
+        }, source_deployment=True))
 
     def test_held_requests_return_503_for_every_method_with_retry_and_no_store(self) -> None:
         for method in ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"):
@@ -391,12 +422,39 @@ class DeploymentTrafficHoldTests(unittest.TestCase):
         self.assertEqual(headers[b"x-latexy-deployment-hold"], b"true")
         self.assertEqual(headers[b"cache-control"], b"no-store")
 
-    def test_held_websocket_closes_without_calling_application_and_disabled_passes(self) -> None:
+    def test_held_websocket_accepts_then_closes_without_calling_application(self) -> None:
         downstream = FakeASGIApp()
         messages = invoke_websocket(DeploymentTrafficHoldMiddleware(downstream, enabled=True))
-        self.assertEqual(messages, [{"type": "websocket.close", "code": 1013}])
+        self.assertEqual(messages, [
+            {"type": "websocket.accept"},
+            {"type": "websocket.close", "code": 1013},
+        ])
         self.assertEqual(downstream.calls, [])
 
+    def test_held_websocket_client_completes_handshake_then_observes_1013_close(self) -> None:
+        from fastapi import FastAPI, WebSocket
+        from starlette.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+
+        app = FastAPI()
+        app.state.deployment_traffic_held = True
+        business_calls: list[str] = []
+
+        @app.websocket("/ws/jobs")
+        async def websocket_route(websocket: WebSocket) -> None:
+            business_calls.append("entered")
+            await websocket.accept()
+
+        app.add_middleware(DeploymentTrafficHoldMiddleware)
+        with TestClient(app) as client:
+            with self.assertRaises(WebSocketDisconnect) as disconnect:
+                with client.websocket_connect("/ws/jobs") as websocket:
+                    websocket.receive_text()
+
+        self.assertEqual(disconnect.exception.code, 1013)
+        self.assertEqual(business_calls, [])
+
+    def test_released_websocket_is_forwarded_to_the_application(self) -> None:
         downstream = FakeASGIApp()
         messages = invoke_websocket(DeploymentTrafficHoldMiddleware(downstream, enabled=False))
         self.assertEqual(messages, [{"type": "websocket.accept"}])

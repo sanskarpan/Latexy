@@ -226,12 +226,42 @@ jobs:
           MODAL_RECOVERY_VERIFIED_FOR_SHA: ${{ vars.MODAL_RECOVERY_VERIFIED_FOR_SHA }}
         run: python backend/scripts/check_modal_schema_cutover.py
 
+      # The schema and recovery approvals above are source/release barriers,
+      # not evidence that the old runtime has stopped. Stop the production App
+      # now, then record only a fresh Modal API readback reporting STOPPED.
+      # This step is shared by automatic workflow_run and manual hold/release.
+      - name: Stop previous production App and verify stopped state
+        if: steps.freshness.outputs.current == 'true'
+        working-directory: backend
+        env:
+          MODAL_DRAIN_EVIDENCE: ${{ runner.temp }}/modal-old-app-drain-${{ github.run_id }}-${{ github.run_attempt }}.json
+        run: |
+          set -euo pipefail
+          python scripts/drain_modal_app.py stop-and-record \
+            --app-name latexy-backend \
+            --environment main \
+            --deploy-sha "$DEPLOY_SHA" \
+            --evidence "$MODAL_DRAIN_EVIDENCE" \
+            --timeout-seconds 300 \
+            --poll-interval-seconds 5
+
       # modal_app.py deliberately keeps migrations separate from API startup.
-      # Apply them first so incompatible application code is never made live.
+      # Require the same-run runtime readback immediately before migration so a
+      # skipped, missing, mismatched, or stale drain cannot reach Alembic.
       - name: Apply production database migrations
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
-        run: modal run --env main modal_app.py::migrate
+        env:
+          MODAL_DRAIN_EVIDENCE: ${{ runner.temp }}/modal-old-app-drain-${{ github.run_id }}-${{ github.run_attempt }}.json
+        run: |
+          set -euo pipefail
+          python scripts/drain_modal_app.py require \
+            --app-name latexy-backend \
+            --environment main \
+            --deploy-sha "$DEPLOY_SHA" \
+            --evidence "$MODAL_DRAIN_EVIDENCE" \
+            --max-age-seconds 300
+          modal run --env main modal_app.py::migrate
 
       # The first preflight cannot see provider columns on a pre-0065 schema.
       # Recheck after migration, while ingress remains held, so a legacy write
