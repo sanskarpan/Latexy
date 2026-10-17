@@ -166,7 +166,7 @@ test('E03 global OFF/ON and E02 sibling OFF preserve saved prep, enforce owner s
     const unavailable = await evaluation
     expect(unavailable.status()).toBe(503)
     expect(await unavailable.text()).toContain('temporarily unavailable')
-    await expect(actorPage.getByRole('alert')).toContainText('temporarily unavailable')
+    await expect(simulationPanel.getByRole('alert')).toContainText('temporarily unavailable')
     await expect(actorPage.getByRole('textbox', { name: 'Answer to question 1' })).toHaveValue(payload.answers[0].answer)
 
     // E02 generation OFF does not block the existing E03 operation. It becomes
