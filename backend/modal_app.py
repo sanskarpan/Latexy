@@ -299,4 +299,827 @@ api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
-ç½=¶‰žËkºwµçu”…Ì„Í¡•‘Õ±•™Õ¹Ñ¥½¸ìÉ•Á±…¥¹œ¥Ð¥¸Á±…”…¸±•…Ù”Í•ÉÙ•ÈµÍ¥‘”4(ŒÍ¡•‘Õ±”µ•Ñ…‘…Ñ„…ÍÍ½¥…Ñ•Ý¥Ñ Ñ¡…Ð¹…µ”‘ÕÉ¥¹œÉ½±±½ÕÐ¸Q¡”É•Ñ•¹Ñ¥½¸4(Œ‰•¡…Ù¥½È¥Ì‘•Á±½åµ•¹Ðµ‘•Á•¹‘•¹Ð°Í¼¹•Ù•ÈÉ•ÍÑ½É”Ñ¡”½±™Õ¹Ñ¥½¸¹…µ”¸4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜ÉÕ¹}Í¡•‘Õ±•‘}¡•…±Ñ¡}¡•¬ ¤€´ø9½¹”è4(€€€€ˆˆ‰]½É­•È¡•…±Ñ ¡•¬ÉÕ¹¹•È€¡‰•…Ðè•Ù•Éä€ÌÀÁÌ¤¸4(4(€€€Q¡”…‘•¹”¥Ì½Ý¹•‰äÍ¡•‘Õ±•‘}™¥Ù•}µ¥¹ÕÑ•}µ…¥¹Ñ•¹…¹•€Í¼Ñ¡¥Ì4(€€€ÉÕ¹¹•ÈÉ•µ…¥¹Ì¥¹‘•Á•¹‘•¹Ñ±ä…±±…‰±”…¹É••¥Ù•Ì¥ÑÌ½Ý¸Ñ¥µ•½ÕÐ¸4(€€€€ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€™É½´…ÁÀ¹Ý½É­•ÉÌ¹±•…¹ÕÁ}Ý½É­•È¥µÁ½ÉÐ¡•…±Ñ¡}¡•­}Ñ…Í¬4(4(€€€¡•…±Ñ¡}¡•­}Ñ…Í¬¹…ÁÁ±ä¡Ñ¡É½Üõ…±Í”¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÌÀÀ°4(€€€Í¡•‘Õ±”õ9½¹”¥˜}A1=e59Q}QI%}!1•±Í”µ½‘…°¹É½¸ ˆÀ€ä€¨€¨€Äˆ¤°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}Ý••­±å}‘¥•ÍÐ ¤€´ø9½¹”è4(€€€€ˆˆ‰5½¹‘…ä€ÀäèÀÀÝ••­±ä‘¥•ÍÐ™…¸µ½ÕÐ€¡¥¹•ÉÐÝ¡¥±”5%1}9	1¥Ì™…±Í”¤¸ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€™É½´…ÁÀ¹Ý½É­•ÉÌ¹•µ…¥±}Ý½É­•È¥µÁ½ÉÐÍ•¹‘}Ý••­±å}‘¥•ÍÑ}Ñ½}…±°4(4(€€€Í•¹‘}Ý••­±å}‘¥•ÍÑ}Ñ½}…±°¹…ÁÁ±ä¡Ñ¡É½Üõ…±Í”¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÌÀÀ°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹Ì ¤€´ø9½¹”è4(€€€€ˆˆ‰•±¥Ù•È‘Õ”…ÁÁ±¥…Ñ¥½¸É•µ¥¹‘•ÉÌ…¹Í…Ù•µÍ•…É É•Ù¥•Ü¹Õ‘•Ì¸4(4(€€€Q¡”…‘•¹”¥Ì½Ý¹•‰äÍ¡•‘Õ±•‘}™¥Ù•}µ¥¹ÕÑ•}µ…¥¹Ñ•¹…¹•€Í¼Ñ¡¥Ì4(€€€ÉÕ¹¹•ÈÉ•µ…¥¹Ì¥¹‘•Á•¹‘•¹Ñ±ä…±±…‰±”…¹É••¥Ù•Ì¥ÑÌ½Ý¸Ñ¥µ•½ÕÐ¸4(€€€€ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€™É½´…ÁÀ¹Ý½É­•ÉÌ¹ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹}Ý½É­•È¥µÁ½ÉÐÍ•¹‘}ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹Ì4(4(€€€Í•¹‘}ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹Ì¹…ÁÁ±ä¡Ñ¡É½Üõ…±Í”¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÌÀÀ°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}½µµ•¹Ñ}µ•¹Ñ¥½¹}É•½Ù•Éä ¤€´ø9½¹”è4(€€€€ˆˆ‰I•½Ù•Èµ•¹Ñ¥½¸É½ÝÌÝ¡½Í”Á½ÍÐµ½µµ¥Ð•¹ÅÕ•Õ”µ¥ÍÍ•Ñ¡”ÅÕ•Õ”¸4(4(€€€Q¡”…‘•¹”¥Ì½Ý¹•‰äÍ¡•‘Õ±•‘}µ¥¹ÕÑ•}É•½Ù•Éå€Í¼Ñ¡¥ÌÉÕ¹¹•È4(€€€É•µ…¥¹Ì¥¹‘•Á•¹‘•¹Ñ±ä…±±…‰±”…¹É••¥Ù•Ì¥ÑÌ½Ý¸Ñ¥µ•½ÕÐ¸4(€€€€ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€™É½´…ÁÀ¹Ý½É­•ÉÌ¹•µ…¥±}Ý½É­•È¥µÁ½ÉÐÍ•¹‘}Á•¹‘¥¹}½µµ•¹Ñ}µ•¹Ñ¥½¹}•µ…¥±Ì4(4(€€€Í•¹‘}Á•¹‘¥¹}½µµ•¹Ñ}µ•¹Ñ¥½¹}•µ…¥±Ì¹…ÁÁ±ä¡Ñ¡É½Üõ…±Í”¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÌÀÀ°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}‘½Õµ•¹Ñ}•µ…¥±}É•½Ù•Éä ¤€´ø9½¹”è4(€€€€ˆˆ‰I•½Ù•È½µÁ¥±•µ‘½Õµ•¹Ð•µ…¥°É½ÝÌµ¥ÍÍ•‰ä„‰É½­•È½ÁÉ½•ÍÌÉ…Í ¸4(4(€€€Q¡”…‘•¹”¥Ì½Ý¹•‰äÍ¡•‘Õ±•‘}µ¥¹ÕÑ•}É•½Ù•Éå€Í¼Ñ¡¥ÌÉÕ¹¹•È4(€€€É•µ…¥¹Ì¥¹‘•Á•¹‘•¹Ñ±ä…±±…‰±”…¹É••¥Ù•Ì¥ÑÌ½Ý¸Ñ¥µ•½ÕÐ¸4(€€€€ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€™É½´…ÁÀ¹Ý½É­•ÉÌ¹•µ…¥±}Ý½É­•È¥µÁ½ÉÐÍ•¹‘}Á•¹‘¥¹}‘½Õµ•¹Ñ}•µ…¥±}‘•±¥Ù•É¥•Ì4(4(€€€Í•¹‘}Á•¹‘¥¹}‘½Õµ•¹Ñ}•µ…¥±}‘•±¥Ù•É¥•Ì¹…ÁÁ±ä¡Ñ¡É½Üõ…±Í”¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÄÈÀ°4(€€€Í¡•‘Õ±”õ9½¹”¥˜}A1=e59Q}QI%}!1•±Í”µ½‘…°¹A•É¥½¡µ¥¹ÕÑ•ÌôÔ¤°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}™¥Ù•}µ¥¹ÕÑ•}µ…¥¹Ñ•¹…¹” ¤€´ø9½¹”è4(€€€€ˆˆ‰…¸½ÕÐÑ¡”ÑÝ¼™¥Ù”µµ¥¹ÕÑ”µ…¥¹Ñ•¹…¹”ÉÕ¹¹•ÉÌ¥¹‘•Á•¹‘•¹Ñ±ä¸ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì€ômt4(4(€€€ÑÉäè4(€€€€€€€ÉÕ¹}Í¡•‘Õ±•‘}¡•…±Ñ¡}¡•¬¹ÍÁ…Ý¸ ¤4(€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€ÁÉ¥¹Ð¡˜‰Í¡•‘Õ±•¡•…±Ñ µ¡•¬ÍÁ…Ý¸™…¥±•èíÑåÁ”¡•áŒ¤¹}}¹…µ•}}ôˆ¤4(€€€€€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì¹…ÁÁ•¹ ‰ÉÕ¹}Í¡•‘Õ±•‘}¡•…±Ñ¡}¡•¬ˆ¤4(4(€€€ÑÉäè4(€€€€€€€Í¡•‘Õ±•‘}ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹Ì¹ÍÁ…Ý¸ ¤4(€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€ÁÉ¥¹Ð¡˜‰Í¡•‘Õ±•ÑÉ…­•Èµ¹½Ñ¥™¥…Ñ¥½¸ÍÁ…Ý¸™…¥±•èíÑåÁ”¡•áŒ¤¹}}¹…µ•}}ôˆ¤4(€€€€€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì¹…ÁÁ•¹ ‰Í¡•‘Õ±•‘}ÑÉ…­•É}¹½Ñ¥™¥…Ñ¥½¹Ìˆ¤4(4(€€€¥˜ÍÁ…Ý¹}™…¥±ÕÉ•Ìè4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È 4(€€€€€€€€€€€€‰Í¡•‘Õ±•™¥Ù”µµ¥¹ÕÑ”µ…¥¹Ñ•¹…¹”™…¸µ½ÕÐ™…¥±•è€ˆ4(€€€€€€€€€€€€¬€ˆ°ˆ¹©½¥¸¡ÍÁ…Ý¹}™…¥±ÕÉ•Ì¤4(€€€€€€€€¤4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õÝ½É­•É}¥µ…”°4(€€€Í•É•ÑÌõ}Í•É•ÑÌ°4(€€€Ñ¥µ•½ÕÐôÄÈÀ°4(€€€Í¡•‘Õ±”õ9½¹”¥˜}A1=e59Q}QI%}!1•±Í”µ½‘…°¹A•É¥½¡µ¥¹ÕÑ•ÌôÄ¤°4(¤4)}É•ÅÕ¥É•}Ý½É­•É}‘¥ÍÁ…Ñ 4)‘•˜Í¡•‘Õ±•‘}µ¥¹ÕÑ•}É•½Ù•Éä ¤€´ø9½¹”è4(€€€€ˆˆ‰…¸½ÕÐÑ¡”ÑÝ¼½¹”µµ¥¹ÕÑ”É•½Ù•ÉäÉÕ¹¹•ÉÌ¥¹‘•Á•¹‘•¹Ñ±ä¸ˆˆˆ4(€€€}¥¹¥Ñ}Ý½É­•É}É•‘¥Ì ¤4(€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì€ômt4(4(€€€ÑÉäè4(€€€€€€€Í¡•‘Õ±•‘}½µµ•¹Ñ}µ•¹Ñ¥½¹}É•½Ù•Éä¹ÍÁ…Ý¸ ¤4(€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€ÁÉ¥¹Ð¡˜‰Í¡•‘Õ±•½µµ•¹Ðµµ•¹Ñ¥½¸É•½Ù•ÉäÍÁ…Ý¸™…¥±•èíÑåÁ”¡•áŒ¤¹}}¹…µ•}}ôˆ¤4(€€€€€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì¹…ÁÁ•¹ ‰Í¡•‘Õ±•‘}½µµ•¹Ñ}µ•¹Ñ¥½¹}É•½Ù•Éäˆ¤4(4(€€€ÑÉäè4(€€€€€€€Í¡•‘Õ±•‘}‘½Õµ•¹Ñ}•µ…¥±}É•½Ù•Éä¹ÍÁ…Ý¸ ¤4(€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€ÁÉ¥¹Ð¡˜‰Í¡•‘Õ±•‘½Õµ•¹Ðµ•µ…¥°É•½Ù•ÉäÍÁ…Ý¸™…¥±•èíÑåÁ”¡•áŒ¤¹}}¹…µ•}}ôˆ¤4(€€€€€€€ÍÁ…Ý¹}™…¥±ÕÉ•Ì¹…ÁÁ•¹ ‰Í¡•‘Õ±•‘}‘½Õµ•¹Ñ}•µ…¥±}É•½Ù•Éäˆ¤4(4(€€€¥˜ÍÁ…Ý¹}™…¥±ÕÉ•Ìè4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È 4(€€€€€€€€€€€€‰Í¡•‘Õ±•½¹”µµ¥¹ÕÑ”É•½Ù•Éä™…¸µ½ÕÐ™…¥±•è€ˆ4(€€€€€€€€€€€€¬€ˆ°ˆ¹©½¥¸¡ÍÁ…Ý¹}™…¥±ÕÉ•Ì¤4(€€€€€€€€¤4(4(4(Œ€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´4(Œ•Á±½åµ•¹ÐÁÉ•™±¥¡Ð…¹µ¥É…Ñ¥½¹Ì4(Œ€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´4)½Á•É…Ñ¥½¹Í}…ÁÀ¹™Õ¹Ñ¥½¸¡¥µ…”õ…Á¥}¥µ…”°Í•É•ÑÌõ}…Á¥}Í•É•ÑÌ°Ñ¥µ•½ÕÐôØÀ¤4)‘•˜É•¹‘•É•É}ÁÉ•™±¥¡Ð ¤€´ø‘¥Ðè4(€€€€ˆˆ‰Y…±¥‘…Ñ”…ÑÕ…°A$½¹™¥ÕÉ…Ñ¥½¸½¹±äì¹•Ù•È•ÉÑ¥™ä½ÈÍÑ…ÉÐ„Y4¸ˆˆˆ4(€€€¥µÁ½ÉÐ½¹Ñ•áÑ±¥ˆ4(€€€¥µÁ½ÉÐ©Í½¸4(€€€¥µÁ½ÉÐ±½¥¹œ4(€€€¥µÁ½ÉÐ½Ì4(€€€¥µÁ½ÉÐÍåÌ4(4(€€€ÁÉ•Ù¥½ÕÍ}±½¥¹}‘¥Í…‰±”€ô±½¥¹œ¹É½½Ð¹µ…¹…•È¹‘¥Í…‰±”4(€€€¡•­}™…¥±•€ô…±Í”4(€€€ÑÉäè4(€€€€€€€€ŒQ¡¥Ì¥Í½±…Ñ•™Õ¹Ñ¥½¸¡…Ì¹¼½¹ÕÉÉ•¹Ð¥¹ÁÕÑÌ¸MÕÁÁÉ•ÍÌÍÑ…ÉÑÕÀ4(€€€€€€€€Œ‘¥…¹½ÍÑ¥ÌÝ¡¥±”¥µÁ½ÉÑ¥¹œÍ•ÑÑ¥¹Ìè•á¥ÍÑ¥¹œ¡…¹‘±•ÉÌµ…äÉ•Ñ…¥¸4(€€€€€€€€ŒÑ¡”½É¥¥¹…°ÍÑ‘•ÉÈ°Í¼É•‘¥É•Ñ¥¹œÑ¡”ÍÑÉ•…µÌ…±½¹”¥Ì¥¹ÍÕ™™¥¥•¹Ð¸4(€€€€€€€±½¥¹œ¹‘¥Í…‰±”¡ÍåÌ¹µ…áÍ¥é”¤4(€€€€€€€Ý¥Ñ ½Á•¸¡½Ì¹‘•Ù¹Õ±°°€‰Üˆ¤…Ì‘¥Í…É‘•‘}½ÕÑÁÕÐ°½¹Ñ•áÑ±¥ˆ¹É•‘¥É•Ñ}ÍÑ‘½ÕÐ¡‘¥Í…É‘•‘}½ÕÑÁÕÐ¤°½¹Ñ•áÑ±¥ˆ¹É•‘¥É•Ñ}ÍÑ‘•ÉÈ¡‘¥Í…É‘•‘}½ÕÑÁÕÐ¤è4(€€€€€€€€€€€™É½´…ÁÀ¹Í•ÉÙ¥•Ì¹É•¹‘•É}•¹¥¹”¹‘•Á±½åµ•¹Ñ}ÁÉ•™±¥¡Ð¥µÁ½ÉÐÉ•¹‘•É•É}½¹™¥ÕÉ…Ñ¥½¹}É•Á½ÉÐ4(4(€€€€€€€€€€€É•Á½ÉÐ€ôÉ•¹‘•É•É}½¹™¥ÕÉ…Ñ¥½¹}É•Á½ÉÐ ¤4(€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€€Œ½¹™¥ÕÉ…Ñ¥½¸Ù…±¥‘…Ñ¥½¸™…¥±ÕÉ•Ì…¸½¹Ñ…¥¸Í•É•Ð¥¹ÁÕÐÙ…±Õ•Ì¸4(€€€€€€€€Œ-••ÀÑ¡”ÁÕ‰±¥Œ‘¥…¹½ÍÑ¥Œ™¥á•°¥¹±Õ‘¥¹œ¥µÁ½ÉÐµÑ¥µ”™…¥±ÕÉ•Ì¸4(€€€€€€€¡•­}™…¥±•€ôQÉÕ”4(€€€€€€€É•Á½ÉÐ€ôì‰½¹™¥ÕÉ…Ñ¥½¹}É•…‘äˆè…±Í”°€‰•ÉÑ¥™¥…Ñ¥½¹}Ù•É¥™¥•ˆè…±Í”°4(€€€€€€€€€€€€€€€€€€‰É•…Í½¹Ìˆèl‰½¹™¥ÕÉ…Ñ¥½¹}¡•­}™…¥±•‰uô4(€€€™¥¹…±±äè4(€€€€€€€±½¥¹œ¹‘¥Í…‰±”¡ÁÉ•Ù¥½ÕÍ}±½¥¹}‘¥Í…‰±”¤4(€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡É•Á½ÉÐ°Í½ÉÑ}­•åÌõQÉÕ”¤¤4(€€€¥˜¡•­}™…¥±•è4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰I•¹‘•É•È½¹™¥ÕÉ…Ñ¥½¸ÁÉ•™±¥¡Ð™…¥±•ˆ¤™É½´9½¹”4(€€€¥˜¹½ÐÉ•Á½ÉÑl‰½¹™¥ÕÉ…Ñ¥½¹}É•…‘ä‰tè4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰I•¹‘•É•È½¹™¥ÕÉ…Ñ¥½¸ÁÉ•™±¥¡Ð‰±½­•‘•Á±½åµ•¹Ðˆ¤4(€€€É•ÑÕÉ¸É•Á½ÉÐ4(4(4(Œ1½…±±ä°µ¥É…Ñ¥½¹ÌÉÕ¸½¸‰…­•¹ÍÑ…ÉÑÕÀ¸AÉ½‘ÕÑ¥½¸µ¥É…Ñ¥½¹Ì…É”¥¹Ù½­•4(Œ½¹±ä‰ä‘•Á±½äµµ½‘…°¹åµ°…™Ñ•È…¸•áÑ•É¹…°‘É…¥¸½É•½Ù•ÉäÁÉ½•‘ÕÉ”…¹„4(ŒÉ•…µ½¹±äÕÉÉ•¹ÐÁÀ¥‘•¹Ñ¥Ñä½ÍÑ…Ñ”¡•¬¸Q¡”Ý½É­™±½Ü‘½•Ì¹½ÐÍÑ½ÀÑ¡”ÁÀ4(Œ½ÈÙ•É¥™äÅÕ•Õ•½¥¸µ™±¥¡ÐÝ½É¬¸-••Àµ¥É…Ñ¥½¸Í•Á…É…Ñ”™É½´A$ÍÑ…ÉÑÕÀÍ¼4(Œ¹¼½¹Ñ…¥¹•È…¸µ¥É…Ñ”…Ì…¸¥¹¥‘•¹Ñ…°Í¥‘”•™™•Ð¸4)µ¥É…Ñ•}¥µ…”€ô€ 4(€€€µ½‘…°¹%µ…”¹‘•‰¥…¹}Í±¥´¡ÁåÑ¡½¹}Ù•ÉÍ¥½¸ôˆÌ¸ÄÈˆ¤4(€€€€¹…ÁÑ}¥¹ÍÑ…±° ©}AQ}	M¤4(€€€€¹Á¥Á}¥¹ÍÑ…±±}™É½µ}É•ÅÕ¥É•µ•¹ÑÌ ‰É•ÅÕ¥É•µ•¹ÑÌ¹±½¬ˆ°•áÑÉ…}½ÁÑ¥½¹Ìôˆ´µÉ•ÅÕ¥É”µ¡…Í¡•Ìˆ¤4(€€€€¹…‘‘}±½…±}‘¥È 4(€€€€€€€ÍÑÈ¡}	-9}%H¤°4(€€€€€€€É•µ½Ñ•}Á…Ñ ôˆ½‰…­•¹ˆ°4(€€€€€€€½ÁäõQÉÕ”°4(€€€€€€€¥¹½É”õmÀ™½ÈÀ¥¸}%9=I¥˜€‰…±•µ‰¥Œˆ¹½Ð¥¸Át°4(€€€€¤4(€€€€¹•¹Ø¡ì‰AeQ!=9AQ ˆè€ˆ½‰…­•¹ˆ°€‰A1=e}QIPˆè€‰µ½‘…°ˆ°€¨©}‰¥±±¥¹}Í•É•Ñ}‰¥¹‘¥¹}•¹Ø°4(€€€€€€€€€€‰5=1}A1=e59Q}QI%}!=1ˆè}A1=e59Q}QI%}!=1}Y1Uô¤4(¤4(4(4)½Á•É…Ñ¥½¹Í}…ÁÀ¹™Õ¹Ñ¥½¸¡¥µ…”õµ¥É…Ñ•}¥µ…”°Í•É•ÑÌõ}Í•É•ÑÌ°Ñ¥µ•½ÕÐôäÀÀ¤4)‘•˜µ¥É…Ñ” ¤€´ø9½¹”è4(€€€€ˆˆ‰ÁÁ±ä±•µ‰¥Œµ¥É…Ñ¥½¹ÌÑ¼Ñ¡”ÁÉ½‘ÕÑ¥½¸‘…Ñ…‰…Í”¸ˆˆˆ4(€€€¥µÁ½ÉÐÍÕ‰ÁÉ½•ÍÌ4(4(€€€É•ÍÕ±Ð€ôÍÕ‰ÁÉ½•ÍÌ¹ÉÕ¸ 4(€€€€€€€l‰…±•µ‰¥Œˆ°€‰ÕÁÉ…‘”ˆ°€‰¡•…‰t°4(€€€€€€€Ýôˆ½‰…­•¹ˆ°4(€€€€€€€…ÁÑÕÉ•}½ÕÑÁÕÐõQÉÕ”°4(€€€€€€€Ñ•áÐõQÉÕ”°4(€€€€¤4(€€€ÁÉ¥¹Ð¡É•ÍÕ±Ð¹ÍÑ‘½ÕÐ¤4(€€€¥˜É•ÍÕ±Ð¹É•ÑÕÉ¹½‘”€„ô€Àè4(€€€€€€€ÁÉ¥¹Ð¡É•ÍÕ±Ð¹ÍÑ‘•ÉÈ¤4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È¡˜‰…±•µ‰¥ŒÕÁÉ…‘”™…¥±•Ý¥Ñ ½‘”íÉ•ÍÕ±Ð¹É•ÑÕÉ¹½‘•ôˆ¤4(4(4)½Á•É…Ñ¥½¹Í}…ÁÀ¹™Õ¹Ñ¥½¸¡¥µ…”õµ¥É…Ñ•}¥µ…”°Í•É•ÑÌõ}…Á¥}Í•É•ÑÌ°Ñ¥µ•½ÕÐôÄÈÀ¤4)‘•˜‰¥±±¥¹}ÁÉ•™±¥¡Ð 4(€€€Í½ÕÉ•}É•Ù¥Í¥½¸èÍÑÈ°•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹ÐèÍÑÈ€ô€‰µ…¥¸ˆ°ÁÕÉÁ½Í”èÍÑÈ€ô€‰É•Á½ÉÐˆ°4(€€€…±±½Ý}½¹™¥ÕÉ•‘}±¥Ù”è‰½½°€ô…±Í”°4(¤€´ø9½¹”è4(€€€€ˆˆ‰AÉ¥¹Ð„É•‘…Ñ•°É•…µ½¹±ä‰¥±±¥¹œÉ•Á½ÉÐÕÍ¥¹œÑ¡”‘•Á±½åµ•¹ÐÍ•É•Ð‰¥¹‘¥¹Ì¸4(4(€€€Q¡¥ÌÉÕ¹Ì…¹‘¥‘…Ñ”Í½ÕÉ”¥¸…¸•Á¡•µ•É…°‘¥…¹½ÍÑ¥Œ½¹Ñ…¥¹•È¸%Ð‘½•Ì¹½Ð4(€€€±…¥´Ñ¡…Ð…¹‘¥‘…Ñ”Í½ÕÉ”¥Ì…±É•…‘ä‘•Á±½å•°µ¥É…Ñ”Ñ¡”‘…Ñ…‰…Í”°½È4(€€€½¹Ñ…Ð„Á…åµ•¹ÐÁÉ½Ù¥‘•È¸Q¡”…±±•ÈÍÕÁÁ±¥•Ì¥ÑÌ±•…¸¡•­½ÕÐÉ•Ù¥Í¥½¸¸4(€€€€ˆˆˆ4(€€€¥µÁ½ÉÐ¡…Í¡±¥ˆ4(€€€¥µÁ½ÉÐ©Í½¸4(€€€¥µÁ½ÉÐ½Ì4(€€€¥µÁ½ÉÐÉ”4(€€€¥µÁ½ÉÐÍÕ‰ÁÉ½•ÍÌ4(4(€€€™É½´ÍÉ¥ÁÑÌ¹‘½‘½}‰¥±±¥¹}ÁÉ•™±¥¡Ð¥µÁ½ÉÐaAQ}!°ÁÕ‰±¥}É•Á½ÉÐ°É½±±½ÕÑ}…ÍÍ•ÍÍµ•¹Ð4(4(€€€‘•˜Í…™•}¥‘•¹Ñ¥™¥•È¡Ù…±Õ”èÍÑÈ¤€´øÍÑÈè4(€€€€€€€É•ÑÕÉ¸Ù…±Õ”¥˜É”¹™Õ±±µ…Ñ ¡È‰mµi„µèÀ´å|¸µuìÄ°ÄÀÁôˆ°Ù…±Õ”¤•±Í”€‰Õ¹…Ù…¥±…‰±”ˆ4(4(€€€½¹Ñ•áÐ€ôì4(€€€€€€€€‰…ÁÁ±¥…Ñ¥½¸ˆè}AA}95°4(€€€€€€€€‰Í•±•Ñ•‘}•¹Ù¥É½¹µ•¹ÐˆèÍ…™•}¥‘•¹Ñ¥™¥•È¡½Ì¹•¹Ù¥É½¸¹•Ð ‰5=1}9Y%I=959Pˆ°€ˆˆ¤¤°4(€€€€€€€€‰•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹ÐˆèÍ…™•}¥‘•¹Ñ¥™¥•È¡•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹Ð¤°4(€€€€€€€€‰¥µ…•}¥ˆèÍ…™•}¥‘•¹Ñ¥™¥•È¡½Ì¹•¹Ù¥É½¸¹•Ð ‰5=1}%5}%ˆ°€ˆˆ¤¤°4(€€€€€€€€‰¥µ…•}É½±”ˆè€‰…¹‘¥‘…Ñ•}µ¥É…Ñ¥½¹}ÁÉ•™±¥¡Ðˆ°4(€€€€€€€€‰Í½ÕÉ•}É•Ù¥Í¥½¹}É•Á½ÉÑ•ˆèÍ½ÕÉ•}É•Ù¥Í¥½¸¥˜É”¹™Õ±±µ…Ñ ¡È‰lÀ´å„µ™uìÐÁôˆ°Í½ÕÉ•}É•Ù¥Í¥½¸¤•±Í”€‰¥¹Ù…±¥ˆ°4(€€€€€€€€‰•áÁ•Ñ•‘}É•Á½Í¥Ñ½Éå}¡•…ˆèaAQ}!°4(€€€€€€€€‰ÁÕÉÁ½Í”ˆè€‰É½±±½ÕÐˆ¥˜ÁÕÉÁ½Í”€ôô€‰É½±±½ÕÐˆ•±Í”€‰É•Á½ÉÐˆ¥˜ÁÕÉÁ½Í”€ôô€‰É•Á½ÉÐˆ•±Í”€‰¥¹Ù…±¥ˆ°4(€€€ô4(€€€¥˜€ 4(€€€€€€€½¹Ñ•áÑl‰Í½ÕÉ•}É•Ù¥Í¥½¹}É•Á½ÉÑ•‰t€ôô€‰¥¹Ù…±¥ˆ4(€€€€€€€½È½¹Ñ•áÑl‰ÁÕÉÁ½Í”‰t€ôô€‰¥¹Ù…±¥ˆ4(€€€€€€€½È½¹Ñ•áÑl‰•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹Ð‰t€ôô€‰Õ¹…Ù…¥±…‰±”ˆ4(€€€€€€€½È½¹Ñ•áÑl‰Í•±•Ñ•‘}•¹Ù¥É½¹µ•¹Ð‰t€„ô½¹Ñ•áÑl‰•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹Ð‰t4(€€€€¤è4(€€€€€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡ì‰•á•ÕÑ¥½¹}½¹Ñ•áÐˆè½¹Ñ•áÐ°€‰ÍÑ…ÑÕÌˆè€‰‰±½­•ˆ°€‰•ÉÉ½Èˆè€‰•á•ÕÑ¥½¹}½¹Ñ•áÑ}µ¥Íµ…Ñ ‰ô¤¤4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰	¥±±¥¹œÁÉ•™±¥¡ÐÉ•™ÕÍ•µ¥Íµ…Ñ¡••á•ÕÑ¥½¸½¹Ñ•áÐˆ¤4(4(€€€ÑÉäè4(€€€€€€€™¥¹•ÉÁÉ¥¹Ð€ô¡…Í¡±¥ˆ¹Í¡„ÈÔØ ¤4(€€€€€€€™¥±•Ì€ômA…Ñ  ˆ½‰…­•¹½…ÁÀ½½É”½½¹™¥œ¹Áäˆ¤°A…Ñ  ˆ½‰…­•¹½ÍÉ¥ÁÑÌ½‘½‘½}‰¥±±¥¹}ÁÉ•™±¥¡Ð¹Áäˆ¥t4(€€€€€€€™¥±•Ì¹•áÑ•¹¡Í½ÉÑ•¡A…Ñ  ˆ½‰…­•¹½…±•µ‰¥Œ½Ù•ÉÍ¥½¹Ìˆ¤¹±½ˆ ˆ¨¹Áäˆ¤¤¤4(€€€€€€€™½ÈÁ…Ñ ¥¸™¥±•Ìè4(€€€€€€€€€€€™¥¹•ÉÁÉ¥¹Ð¹ÕÁ‘…Ñ”¡ÍÑÈ¡Á…Ñ ¹É•±…Ñ¥Ù•}Ñ¼ ˆ½‰…­•¹ˆ¤¤¹•¹½‘” ¤¤4(€€€€€€€€€€€™¥¹•ÉÁÉ¥¹Ð¹ÕÁ‘…Ñ”¡ˆ‰pÀˆ¤4(€€€€€€€€€€€™¥¹•ÉÁÉ¥¹Ð¹ÕÁ‘…Ñ”¡Á…Ñ ¹É•…‘}‰åÑ•Ì ¤¤4(€€€€€€€€€€€™¥¹•ÉÁÉ¥¹Ð¹ÕÁ‘…Ñ”¡ˆ‰pÀˆ¤4(€€€€€€€½¹Ñ•áÑl‰Í½ÕÉ•}™¥±•Í}Í¡„ÈÔØ‰t€ô™¥¹•ÉÁÉ¥¹Ð¹¡•á‘¥•ÍÐ ¤4(€€€€€€€É•ÍÕ±Ð€ôÍÕ‰ÁÉ½•ÍÌ¹ÉÕ¸ 4(€€€€€€€€€€€l‰ÁåÑ¡½¸ˆ°€ˆ½‰…­•¹½ÍÉ¥ÁÑÌ½‘½‘½}‰¥±±¥¹}ÁÉ•™±¥¡Ð¹Áä‰t°4(€€€€€€€€€€€Ýôˆ½‰…­•¹ˆ°…ÁÑÕÉ•}½ÕÑÁÕÐõQÉÕ”°Ñ•áÐõQÉÕ”°Ñ¥µ•½ÕÐôäÀ°4(€€€€€€€€¤4(€€€€€€€€ŒQ¡”ÍÉ¥ÁÐ¡…Ì„‘•±¥‰•É…Ñ•±äÉ•‘…Ñ•)M=8½¹ÑÉ…Ð¸9•Ù•ÈÁÉ¥¹ÐÉ…Ü4(€€€€€€€€ŒÍÑ‘•ÉÈ°„ÑÉ…•‰…¬°½È…¸•á•ÁÑ¥½¸Ñ¡…Ð½Õ±½¹Ñ…¥¸„‘…Ñ…‰…Í”UI0¸4(€€€€€€€É•Á½ÉÐ€ôÁÕ‰±¥}É•Á½ÉÐ¡©Í½¸¹±½…‘Ì¡É•ÍÕ±Ð¹ÍÑ‘½ÕÐ¤¤4(€€€€€€€¥˜¹½Ð¥Í¥¹ÍÑ…¹”¡É•Á½ÉÐ°‘¥Ð¤½ÈÉ•ÍÕ±Ð¹É•ÑÕÉ¹½‘”¹½Ð¥¸ìÀ°€Ä°€Éôè4(€€€€€€€€€€€É…¥Í”Y…±Õ•ÉÉ½È ‰U¹•áÁ•Ñ•‘¥…¹½ÍÑ¥ŒÉ•ÍÕ±Ðˆ¤4(€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡ì‰•á•ÕÑ¥½¹}½¹Ñ•áÐˆè½¹Ñ•áÐ°€‰ÍÑ…ÑÕÌˆè€‰•ÉÉ½Èˆ°€‰•ÉÉ½Èˆè€‰ÁÉ•™±¥¡Ñ}•á•ÕÑ¥½¹}™…¥±•‰ô¤¤4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰	¥±±¥¹œÁÉ•™±¥¡Ð™…¥±•ì¹¼‘¥…¹½ÍÑ¥Œ‘•Ñ…¥±ÌÝ•É”±½•ˆ¤™É½´9½¹”4(€€€¥˜•áÁ•Ñ•‘}•¹Ù¥É½¹µ•¹Ð€ôô€‰µ…¥¸ˆ…¹É•Á½ÉÐ¹•Ð ‰ÁÉ½‘ÕÑ¥½¹}±¥­”ˆ¤¥Ì¹½ÐQÉÕ”è4(€€€€€€€€Œ	¥±±¥¹œµ½‘”Õ…É‘Ì‘•Á•¹½¸Ñ¡”…ÁÁ±¥…Ñ¥½¸Ì9Y%I=959PÍ•ÑÑ¥¹œ¸4(€€€€€€€€Œ‘¥…¹½ÍÑ¥Œ……¥¹ÍÐµ…¥¸µÕÍÐ¹½Ð‰±•ÍÌ„‘•Ù•±½Áµ•¹Ð±…ÍÍ¥™¥…Ñ¥½¸¸4(€€€€€€€€ŒÙ…±¥¥¹½µÁ±•Ñ”‘¥…¹½ÍÑ¥Œµ…ä¹½Ð¥¹±Õ‘”•¹Ù¥É½¹µ•¹Ð™¥•±‘Ì¸4(€€€€€€€€Œ-••À¥ÑÌ™…¥±ÕÉ”ÍÑ…Ñ”Í¼É½±±½ÕÐ…¹¹½Ðµ¥ÍÑ…­”…‰Í•¹Ðµ•Ñ…‘…Ñ„4(€€€€€€€€Œ™½È„µ…±™½Éµ•É•Á½ÉÐì½µÁ±•Ñ”¹½¸µÁÉ½‘ÕÑ¥½¸É•Á½ÉÑÌÍÑ¥±°‰±½¬¸4(€€€€€€€¥˜É•Á½ÉÐ¹•Ð ‰ÍÑ…ÑÕÌˆ¤€„ô€‰‘¥…¹½ÍÑ¥}•ÉÉ½Èˆè4(€€€€€€€€€€€É•Á½ÉÑl‰ÍÑ…ÑÕÌ‰t€ô€‰‰±½­•ˆ4(€€€€€€€É•Á½ÉÑl‰‰±½­•ÉÌ‰t€ô±¥ÍÐ¡‘¥Ð¹™É½µ­•åÌ¡l4(€€€€€€€€€€€€©É•Á½ÉÐ¹•Ð ‰‰±½­•ÉÌˆ°mt¤°€‰µ…¥¹}•¹Ù¥É½¹µ•¹Ñ}¹½Ñ}ÁÉ½‘ÕÑ¥½¹}±¥­”ˆ°4(€€€€€€€t¤¤4(€€€É½±±½ÕÑ}Í…™”€ô…±Í”4(€€€¥˜ÁÕÉÁ½Í”€ôô€‰É½±±½ÕÐˆè4(€€€€€€€ÑÉäè4(€€€€€€€€€€€…ÍÍ•ÍÍµ•¹Ð€ôÉ½±±½ÕÑ}…ÍÍ•ÍÍµ•¹Ð¡É•Á½ÉÐ°…±±½Ý}½¹™¥ÕÉ•‘}±¥Ù”õ…±±½Ý}½¹™¥ÕÉ•‘}±¥Ù”¤4(€€€€€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€€€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡ì‰•á•ÕÑ¥½¹}½¹Ñ•áÐˆè½¹Ñ•áÐ°€‰ÍÑ…ÑÕÌˆè€‰•ÉÉ½Èˆ°€‰•ÉÉ½Èˆè€‰ÁÉ•™±¥¡Ñ}•á•ÕÑ¥½¹}™…¥±•‰ô¤¤4(€€€€€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰	¥±±¥¹œÁÉ•™±¥¡Ð™…¥±•ì¹¼‘¥…¹½ÍÑ¥Œ‘•Ñ…¥±ÌÝ•É”±½•ˆ¤™É½´9½¹”4(€€€€€€€¥˜É•ÍÕ±Ð¹É•ÑÕÉ¹½‘”€ôô€Èè4(€€€€€€€€€€€…ÍÍ•ÍÍµ•¹Ñl‰Í…™•}Ñ½}É½±±½ÕÐ‰t€ô…±Í”4(€€€€€€€€€€€…ÍÍ•ÍÍµ•¹Ñl‰É•…Í½¹Ì‰t€ô±¥ÍÐ¡‘¥Ð¹™É½µ­•åÌ¡l4(€€€€€€€€€€€€€€€€©…ÍÍ•ÍÍµ•¹Ñl‰É•…Í½¹Ì‰t°€‰É½±±½ÕÑ}‘¥…¹½ÍÑ¥Í}¥¹½µÁ±•Ñ”ˆ°4(€€€€€€€€€€€t¤¤4(€€€€€€€É•Á½ÉÑl‰É½±±½ÕÑ}Í…™•Ñä‰t€ô…ÍÍ•ÍÍµ•¹Ð4(€€€€€€€É½±±½ÕÑ}Í…™”€ô…ÍÍ•ÍÍµ•¹Ñl‰Í…™•}Ñ½}É½±±½ÕÐ‰t¥ÌQÉÕ”4(€€€É•Á½ÉÑl‰•á•ÕÑ¥½¹}½¹Ñ•áÐ‰t€ô½¹Ñ•áÐ4(€€€¥˜ÁÕÉÁ½Í”€ôô€‰É½±±½ÕÐˆè4(€€€€€€€€ŒAÕ‰±¥ŒÝ½É­™±½Ü±½Ì¹••½¹±äÑ¡”‘•¥Í¥½¸°¹½Ð½Á•É…Ñ¥½¹…°…½Õ¹Ð4(€€€€€€€€Œ½Õ¹ÑÌ°…Ñ…±½œ½¹™¥ÕÉ…Ñ¥½¸°½ÈÉ•‘•¹Ñ¥…°µÁÉ•Í•¹”µ•Ñ…‘…Ñ„¸4(€€€€€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡ì‰•á•ÕÑ¥½¹}½¹Ñ•áÐˆè½¹Ñ•áÐ°€‰É½±±½ÕÑ}Í…™•Ñäˆè…ÍÍ•ÍÍµ•¹Ñô°Í½ÉÑ}­•åÌõQÉÕ”¤¤4(€€€•±Í”è4(€€€€€€€ÁÉ¥¹Ð¡©Í½¸¹‘ÕµÁÌ¡É•Á½ÉÐ°Í½ÉÑ}­•åÌõQÉÕ”¤¤4(€€€¥˜ÁÕÉÁ½Í”€ôô€‰É½±±½ÕÐˆ…¹É½±±½ÕÑ}Í…™”è4(€€€€€€€É•ÑÕÉ¸4(€€€¥˜ÁÕÉÁ½Í”€ôô€‰É½±±½ÕÐˆ½ÈÉ•ÍÕ±Ð¹É•ÑÕÉ¹½‘”½ÈÉ•Á½ÉÐ¹•Ð ‰ÍÑ…ÑÕÌˆ¤€„ô€‰É•…‘äˆè4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰	¥±±¥¹œÁÉ•™±¥¡ÐÉ•ÅÕ¥É•ÌÉ•Ù¥•ÜìÍ•”Ñ¡”É•‘…Ñ•)M=8É•Á½ÉÐˆ¤4(4(4)½Á•É…Ñ¥½¹Í}…ÁÀ¹™Õ¹Ñ¥½¸¡¥µ…”õµ¥É…Ñ•}¥µ…”°Í•É•ÑÌõ}Í•É•ÑÌ°Ñ¥µ•½ÕÐôäÀÀ¤4)‘•˜Íå¹}Ñ•µÁ±…Ñ•Ì ¤€´ø9½¹”è4(€€€€ˆˆ‰I•½¹¥±”Ñ¡”ÁÉ½‘ÕÑ¥½¸Ñ•µÁ±…Ñ”…Ñ…±½œÝ¥Ñ Ñ¡”Í½ÕÉ”µ½Ý¹•Í••™¥±•Ì¸ˆˆˆ4(€€€¥µÁ½ÉÐÍÕ‰ÁÉ½•ÍÌ4(4(€€€É•ÍÕ±Ð€ôÍÕ‰ÁÉ½•ÍÌ¹ÉÕ¸ 4(€€€€€€€l‰ÁåÑ¡½¸ˆ°€ˆµ´ˆ°€‰…ÁÀ¹ÍÉ¥ÁÑÌ¹Í••‘}Ñ•µÁ±…Ñ•Ì‰t°4(€€€€€€€Ýôˆ½‰…­•¹ˆ°4(€€€€€€€…ÁÑÕÉ•}½ÕÑÁÕÐõQÉÕ”°4(€€€€€€€Ñ•áÐõQÉÕ”°4(€€€€¤4(€€€ÁÉ¥¹Ð¡É•ÍÕ±Ð¹ÍÑ‘½ÕÐ¤4(€€€¥˜É•ÍÕ±Ð¹É•ÑÕÉ¹½‘”€„ô€Àè4(€€€€€€€ÁÉ¥¹Ð¡É•ÍÕ±Ð¹ÍÑ‘•ÉÈ¤4(€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È¡˜‰Ñ•µÁ±…Ñ”Íå¹¡É½¹¥é…Ñ¥½¸™…¥±•Ý¥Ñ ½‘”íÉ•ÍÕ±Ð¹É•ÑÕÉ¹½‘•ôˆ¤4(4(4(Œ€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´4(Œ…ÍÑA$M$•¹‘Á½¥¹Ð4(Œ€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´4(4(4)…ÁÀ¹™Õ¹Ñ¥½¸ 4(€€€¥µ…”õ…Á¥}¥µ…”°4(€€€Í•É•ÑÌõ}…Á¥}Í•É•ÑÌ°4(€€€µ¥¹}½¹Ñ…¥¹•ÉÌôÄ°4(€€€Ñ¥µ•½ÕÐôÌØÀÀ°4(€€€Í…±•‘½Ý¹}Ý¥¹‘½ÜôÌÀÀ°4(¤4)µ½‘…°¹½¹ÕÉÉ•¹Ð¡µ…á}¥¹ÁÕÑÌôÄÀÀ¤4)µ½‘…°¹…Í¥}…ÁÀ ¤4)‘•˜™…ÍÑ…Á¥}…ÁÀ ¤è4(€€€€Œ5½‘…°Í•ÉÙ•ÌÑ¡¥ÌM$…ÁÀÑ¡É½Õ ¥ÑÌµ…¹…•¥¹É•ÍÌÉ…Ñ¡•ÈÑ¡…¸4(€€€€ŒUÙ¥½É¸°Í¼UÙ¥½É¸Ì€´µÝÌµµ…àµÍ¥é•€½ÁÑ¥½¸¥Ì¹½Ð…ÁÁ±¥…‰±”¡•É”¸4(€€€€ŒQ¡”©½‰Ì½½±±…‰½É…Ñ¥½¸¡…¹‘±•ÉÌÉ•Ñ…¥¸Ñ¡•¥È€ØÐ-¥¼ÈÔØ-¥…ÁÀµ±•Ù•°4(€€€€ŒÁÉ½Ñ½½°‰½Õ¹‘Ì‰•™½É”Á…ÉÍ¥¹œ½ÈÉ•±…å¥¹œ™É…µ•Ì¸4(€€€¥µÁ½ÉÐÍåÌ4(4(€€€ÍåÌ¹Á…Ñ ¹¥¹Í•ÉÐ À°€ˆ½‰…­•¹ˆ¤4(€€€™É½´…ÁÀ¹µ…¥¸¥µÁ½ÉÐ…ÁÀ…Ì}…ÁÀ4(4(€€€É•ÑÕÉ¸}…ÁÀ4(
+          **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
+)
+
+# LaTeX worker image â€” same Python deps + full texlive for compilation
+latex_image = (
+    texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
+    .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
+)
+
+# Worker image â€” Python deps only (LLM, ATS, email, cleanup tasks)
+worker_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install(*_APT_BASE)
+    .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
+    .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
+)
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+# Object storage lives in its own secret rather than being added to
+# latexy-backend-secrets. `modal secret create --force` REPLACES a secret wholesale
+# and its values cannot be read back, so amending the existing one risks silently
+# dropping DATABASE_URL and every other key it holds. Modal merges the env from
+# each secret in this list, so a second one is both safer and easier to rotate.
+#
+# Without it, MINIO_ENDPOINT fell back to http://localhost:9000 â€” which does not
+# exist inside a Modal container â€” and every template thumbnail and preview PDF
+# answered 502 Storage unavailable (#1143).
+_secrets = [
+    modal.Secret.from_name("latexy-backend-secrets"),
+    modal.Secret.from_name("latexy-storage"),
+    # Redis is isolated so exhausted/rotated Upstash credentials can be
+    # replaced without recreating the opaque all-in-one backend secret.
+    # Keep this last: its queue/cache settings intentionally override the
+    # legacy Redis values still present in latexy-backend-secrets.
+    modal.Secret.from_name("latexy-redis"),
+]
+
+# Dodo credentials are needed by the public API and its read-only billing
+# preflight. Keep them out of unrelated render, worker, scheduler, and migration
+# containers; renderer_preflight uses this same full API configuration by design.
+_api_secrets = [*_secrets]
+if _billing_secret_name:
+    # Append after named base secrets so Dodo variables override legacy values
+    # while preserving every unrelated key in the opaque backend secret. This
+    # list is only attached to API and billing-configuration preflight functions.
+    _api_secrets.append(modal.Secret.from_name(_billing_secret_name))
+
+# Named Secrets can shadow image environment variables. Bind the deployment
+# choice after every opaque secret and before registering any function so API,
+# worker, scheduler, and operator functions receive the same hold mode.
+_deployment_hold_secret = modal.Secret.from_dict(
+    {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE}
+)
+_secrets.append(_deployment_hold_secret)
+_api_secrets.append(_deployment_hold_secret)
+
+
+# ---------------------------------------------------------------------------
+# Helper â€” initialise sync Redis for event publishing inside a worker fn
+# ---------------------------------------------------------------------------
+def _init_worker_redis() -> None:
+    from app.core.config import settings
+    from app.core.worker_runtime import prepare_worker_logging, prepare_worker_runtime
+    from app.workers.event_publisher import initialize_worker_redis
+
+    prepare_worker_logging()
+    # Run before .apply installs the task lifecycle/budget. Imports are memoized;
+    # scoped clients and durable owner/epoch checks remain per invocation.
+    prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
+    initialize_worker_redis(settings.REDIS_URL, password=settings.REDIS_PASSWORD or None)
+
+
+# ---------------------------------------------------------------------------
+# Worker functions
+# ---------------------------------------------------------------------------
+
+
+@app.function(
+    image=latex_image,
+    secrets=_secrets,
+    timeout=300,
+    # Keep one worker warm at all times. The texlive image cold-starts in ~40-45s,
+    # which dominated compile latency (warm compile work is only ~3.5s). min_containers=1
+    # eliminates the cold start for the common single-compile path. scaledown_window keeps
+    # extra burst containers around briefly so bursts stay warm too.
+    **capacity_options("LATEX"),
+)
+@_require_worker_dispatch
+def run_latex_task(payload: dict) -> None:
+    """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
+    # throw=False: prevents Celery's self.retry() Retry exception from propagating
+    # to Modal (which would cause a double-execution via Modal's retry mechanism).
+    # The Celery task publishes its own error events; Modal must not independently retry.
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.latex_worker import compile_latex_task
+        compile_latex_task.apply(kwargs=task_payload, throw=False)
+
+
+@app.function(
+    # latex_image (not worker_image): the orchestrator compiles LaTeX in-process
+    # during its pipeline, so it needs the full texlive toolchain â€” otherwise the
+    # compile stage fails (no pdflatex) and the combined job retries/stalls.
+    image=latex_image,
+    secrets=_secrets,
+    timeout=600,
+    # Keep one orchestrator warm: the texlive image cold-starts in ~2min, which
+    # made the flagship "Optimize + Compile" flow take ~230s. Warm it so combined
+    # jobs are ~40-50s (LLM-bound) instead. scaledown_window keeps burst
+    # containers around for back-to-back runs.
+    **capacity_options("ORCHESTRATOR"),
+)
+@_require_worker_dispatch
+def run_orchestrator_task(payload: dict) -> None:
+    """Combined LLM optimisation â†’ LaTeX compilation â†’ ATS scoring pipeline."""
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.orchestrator import optimize_and_compile_task
+        optimize_and_compile_task.apply(kwargs=task_payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    **capacity_options("LLM"),
+)
+@_require_worker_dispatch
+def run_llm_task(payload: dict) -> None:
+    """LLM resume optimisation (streaming tokens published via Redis)."""
+    from app.core.tracing import worker_trace
+    task_payload = dict(payload)
+    with worker_trace(task_payload.pop("_trace_context", None)):
+        _init_worker_redis()
+        from app.workers.llm_worker import optimize_resume_task
+        optimize_resume_task.apply(kwargs=task_payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_ats_task(payload: dict) -> None:
+    """ATS resume scoring."""
+    _init_worker_redis()
+    from app.workers.ats_worker import score_resume_ats_task
+
+    score_resume_ats_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=60,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_jd_analysis_task(payload: dict) -> None:
+    """Job-description keyword analysis."""
+    _init_worker_redis()
+    from app.workers.ats_worker import analyze_job_description_ats_task
+
+    analyze_job_description_ats_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    scaledown_window=300,
+)
+@_require_worker_dispatch
+def run_deep_analyze_task(payload: dict) -> None:
+    """Deep LLM-powered ATS analysis."""
+    _init_worker_redis()
+    from app.workers.ats_worker import deep_analyze_ats_task
+
+    deep_analyze_ats_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=60,
+    scaledown_window=600,
+)
+@_require_worker_dispatch
+def run_embed_resume_task(payload: dict) -> None:
+    """Compute and store resume embedding (low-priority background task)."""
+    from app.workers.ats_worker import embed_resume_task
+
+    embed_resume_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    scaledown_window=600,
+)
+@_require_worker_dispatch
+def run_cleanup_task(payload: dict) -> None:
+    """Temp-file and expired-job cleanup (fire-and-forget maintenance tasks)."""
+    task_type = payload.pop("task_type", "temp_files")
+    if task_type == "expired_jobs":
+        from app.workers.cleanup_worker import cleanup_expired_jobs_task
+
+        cleanup_expired_jobs_task.apply(kwargs=payload, throw=False)
+    else:
+        from app.workers.cleanup_worker import cleanup_temp_files_task
+
+        cleanup_temp_files_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_cover_letter_task(payload: dict) -> None:
+    """LLM cover-letter generation."""
+    _init_worker_redis()
+    from app.workers.cover_letter_worker import generate_cover_letter_task
+
+    resume_latex = payload.pop("resume_latex")
+    job_description = payload.pop("job_description")
+    generate_cover_letter_task.apply(args=[resume_latex, job_description], kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_interview_prep_task(payload: dict) -> None:
+    """LLM interview-prep generation."""
+    _init_worker_redis()
+    from app.workers.interview_prep_worker import generate_interview_prep_task
+
+    resume_latex = payload.pop("resume_latex")
+    prep_id = payload.pop("prep_id")
+    generate_interview_prep_task.apply(args=[resume_latex, prep_id], kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_github_import_task(payload: dict) -> None:
+    """Import + summarize a user's top public GitHub projects."""
+    _init_worker_redis()
+    from app.workers.github_import_worker import import_github_projects_task
+
+    import_github_projects_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_document_conversion_task(payload: dict) -> None:
+    """LLM document conversion (imported resume -> LaTeX)."""
+    _init_worker_redis()
+    from app.workers.converter_worker import convert_document_task
+
+    convert_document_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    scaledown_window=300,
+)
+@_require_worker_dispatch
+def run_auto_save_task(payload: dict) -> None:
+    """Auto-save checkpoint recorded after a successful compile."""
+    from app.workers.auto_save_worker import record_auto_save_checkpoint
+
+    record_auto_save_checkpoint.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    scaledown_window=300,
+)
+@_require_worker_dispatch
+def run_email_task(payload: dict) -> None:
+    """Transactional job-completion email."""
+    from app.workers.email_worker import send_job_completion_email
+
+    send_job_completion_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_comment_mention_task(payload: dict) -> None:
+    """Transactional collaborator mention email."""
+    from app.workers.email_worker import send_comment_mention_email
+
+    send_comment_mention_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_document_email_delivery_task(payload: dict) -> None:
+    """Deliver one durable compiled-document email in Modal production."""
+    from app.workers.email_worker import send_document_email_delivery
+
+    send_document_email_delivery.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_job_failure_email_task(payload: dict) -> None:
+    """Transactional terminal job-failure email."""
+    from app.workers.email_worker import send_job_failure_email
+
+    send_job_failure_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_share_viewed_email_task(payload: dict) -> None:
+    """Transactional notification for a debounced public resume view."""
+    from app.workers.email_worker import send_share_viewed_email
+
+    send_share_viewed_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+@_require_worker_dispatch
+def run_weekly_digest_task(payload: dict) -> None:
+    """Send one user's weekly digest from the Modal scheduler fan-out."""
+    from app.workers.email_worker import send_weekly_digest
+
+    send_weekly_digest.apply(kwargs=payload, throw=False)
+
+
+# ---------------------------------------------------------------------------
+# Scheduled functions
+# ---------------------------------------------------------------------------
+# celery_app.py defines a beat_schedule, but Celery beat is only ever launched by
+# scripts/dev.sh and the docker/k8s manifests â€” none of which run in production.
+# Without these, the MinIO orphan pruner never runs (so the storage-growth fix it
+# was written to deliver is inert), expired-job Redis state is never reaped, and
+# /tmp grows unbounded in the warm min_containers=1 latex container, which now
+# lives for hours rather than per-job. Periods mirror the beat entries.
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=600,
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(hours=1),
+)
+@_require_worker_dispatch
+def scheduled_cleanup_expired_jobs() -> None:
+    """Reap expired job state from Redis (beat: every 3600s).
+
+    Also runs the MinIO orphan pruner added by #951 â€” it lives inside this task
+    (cleanup_worker.py:419), not as a task of its own, so scheduling this is what
+    makes the storage-growth fix actually take effect in production.
+    """
+    # cleanup_expired_jobs_task publishes progress events as its first action, so
+    # the worker Redis MUST be initialized or get_worker_redis() raises and the
+    # task aborts before the reaper/pruner runs â€” which .apply(throw=False) would
+    # then silently swallow, leaving the storage fix inert.
+    _init_worker_redis()
+    from app.workers.cleanup_worker import cleanup_expired_jobs_task
+
+    cleanup_expired_jobs_task.apply(throw=False)
+
+
+@app.function(
+    image=latex_image,
+    secrets=_secrets,
+    timeout=600,
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=30),
+)
+@_require_worker_dispatch
+def scheduled_cleanup_temp_files() -> None:
+    """Clear stale workspaces from /tmp (beat: every 1800s).
+
+    Runs on latex_image because the workspaces it removes are created by the
+    compile container.
+
+    NOTE: on Modal each container has an isolated ephemeral filesystem, so this
+    scheduled container only sees its OWN /tmp, not the warm run_latex_task
+    container's. It is a safety net (reaps /tmp if a compile container is reused
+    long enough to accumulate). The primary /tmp hygiene is the per-job
+    shutil.rmtree in the compile workers' finally blocks.
+    """
+    # Publishes events on some paths â†’ worker Redis must be initialized first.
+    _init_worker_redis()
+    from app.workers.cleanup_worker import cleanup_temp_files_task
+
+    cleanup_temp_files_task.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+)
+# This intentionally uses a new Modal name. The v49 registration used the old
+# name as a scheduled function; replacing it in place can leave server-side
+# schedule metadata associated with that name during rollout. The retention
+# behavior is deployment-dependent, so never restore the old function name.
+@_require_worker_dispatch
+def run_scheduled_health_check() -> None:
+    """Worker health check runner (beat: every 300s).
+
+    The cadence is owned by ``scheduled_five_minute_maintenance`` so this
+    runner remains independently callable and receives its own timeout.
+    """
+    _init_worker_redis()
+    from app.workers.cleanup_worker import health_check_task
+
+    health_check_task.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Cron("0 9 * * 1"),
+)
+@_require_worker_dispatch
+def scheduled_weekly_digest() -> None:
+    """Monday 09:00 weekly digest fan-out (inert while EMAIL_ENABLED is false)."""
+    _init_worker_redis()
+    from app.workers.email_worker import send_weekly_digest_to_all
+
+    send_weekly_digest_to_all.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+)
+@_require_worker_dispatch
+def scheduled_tracker_notifications() -> None:
+    """Deliver due application reminders and saved-search review nudges.
+
+    The cadence is owned by ``scheduled_five_minute_maintenance`` so this
+    runner remains independently callable and receives its own timeout.
+    """
+    _init_worker_redis()
+    from app.workers.tracker_notification_worker import send_tracker_notifications
+
+    send_tracker_notifications.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+)
+@_require_worker_dispatch
+def scheduled_comment_mention_recovery() -> None:
+    """Recover mention rows whose post-commit enqueue missed the queue.
+
+    The cadence is owned by ``scheduled_minute_recovery`` so this runner
+    remains independently callable and receives its own timeout.
+    """
+    _init_worker_redis()
+    from app.workers.email_worker import send_pending_comment_mention_emails
+
+    send_pending_comment_mention_emails.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+)
+@_require_worker_dispatch
+def scheduled_document_email_recovery() -> None:
+    """Recover compiled-document email rows missed by a broker/process crash.
+
+    The cadence is owned by ``scheduled_minute_recovery`` so this runner
+    remains independently callable and receives its own timeout.
+    """
+    _init_worker_redis()
+    from app.workers.email_worker import send_pending_document_email_deliveries
+
+    send_pending_document_email_deliveries.apply(throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=5),
+)
+@_require_worker_dispatch
+def scheduled_five_minute_maintenance() -> None:
+    """Fan out the two five-minute maintenance runners independently."""
+    _init_worker_redis()
+    spawn_failures = []
+
+    try:
+        run_scheduled_health_check.spawn()
+    except Exception as exc:
+        print(f"scheduled health-check spawn failed: {type(exc).__name__}")
+        spawn_failures.append("run_scheduled_health_check")
+
+    try:
+        scheduled_tracker_notifications.spawn()
+    except Exception as exc:
+        print(f"scheduled tracker-notification spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_tracker_notifications")
+
+    if spawn_failures:
+        raise RuntimeError(
+            "scheduled five-minute maintenance fan-out failed: "
+            + ",".join(spawn_failures)
+        )
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=120,
+    schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=1),
+)
+@_require_worker_dispatch
+def scheduled_minute_recovery() -> None:
+    """Fan out the two one-minute recovery runners independently."""
+    _init_worker_redis()
+    spawn_failures = []
+
+    try:
+        scheduled_comment_mention_recovery.spawn()
+    except Exception as exc:
+        print(f"scheduled comment-mention recovery spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_comment_mention_recovery")
+
+    try:
+        scheduled_document_email_recovery.spawn()
+    except Exception as exc:
+        print(f"scheduled document-email recovery spawn failed: {type(exc).__name__}")
+        spawn_failures.append("scheduled_document_email_recovery")
+
+    if spawn_failures:
+        raise RuntimeError(
+            "scheduled one-minute recovery fan-out failed: "
+            + ",".join(spawn_failures)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Deployment preflight and migrations
+# ---------------------------------------------------------------------------
+@operations_app.function(image=api_image, secrets=_api_secrets, timeout=60)
+def renderer_preflight() -> dict:
+    """Validate actual API configuration only; never certify or start a VM."""
+    import contextlib
+    import json
+    import logging
+    import os
+    import sys
+
+    previous_logging_disable = logging.root.manager.disable
+    check_failed = False
+    try:
+        # This isolated function has no concurrent inputs. Suppress startup
+        # diagnostics while importing settings: existing handlers may retain
+        # the original stderr, so redirecting the streams alone is insufficient.
+        logging.disable(sys.maxsize)
+        with open(os.devnull, "w") as discarded_output, contextlib.redirect_stdout(discarded_output), contextlib.redirect_stderr(discarded_output):
+            from app.services.render_engine.deployment_preflight import renderer_configuration_report
+
+            report = renderer_configuration_report()
+    except Exception:
+        # Configuration validation failures can contain secret input values.
+        # Keep the public diagnostic fixed, including import-time failures.
+        check_failed = True
+        report = {"configuration_ready": False, "certification_verified": False,
+                  "reasons": ["configuration_check_failed"]}
+    finally:
+        logging.disable(previous_logging_disable)
+    print(json.dumps(report, sort_keys=True))
+    if check_failed:
+        raise RuntimeError("Renderer configuration preflight failed") from None
+    if not report["configuration_ready"]:
+        raise RuntimeError("Renderer configuration preflight blocked deployment")
+    return report
+
+
+# Locally, migrations run on backend startup. Production migrations are invoked
+# only by deploy-modal.yml after an external drain/recovery procedure and a
+# read-only current App identity/state check. The workflow does not stop the App
+# or verify queued/in-flight work. Keep migration separate from API startup so
+# no container can migrate as an incidental side effect.
+migrate_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install(*_APT_BASE)
+    .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
+    .add_local_dir(
+        str(_BACKEND_DIR),
+        remote_path="/backend",
+        copy=True,
+        ignore=[p for p in _IGNORE if "alembic" not in p],
+    )
+    .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
+)
+
+
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
+def migrate() -> None:
+    """Apply Alembic migrations to the production database."""
+    import subprocess
+
+    result = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        cwd="/backend",
+        capture_output=True,
+        text=True,
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
+
+
+@operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
+def billing_preflight(
+    source_revision: str, expected_environment: str = "main", purpose: str = "report",
+    allow_configured_live: bool = False,
+) -> None:
+    """Print a redacted, read-only billing report using the deployment secret bindings.
+
+    This runs candidate source in an ephemeral diagnostic container. It does not
+    claim that candidate source is already deployed, migrate the database, or
+    contact a payment provider. The caller supplies its clean checkout revision.
+    """
+    import hashlib
+    import json
+    import os
+    import re
+    import subprocess
+
+    from scripts.dodo_billing_preflight import EXPECTED_HEAD, public_report, rollout_assessment
+
+    def safe_identifier(value: str) -> str:
+        return value if re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value) else "unavailable"
+
+    context = {
+        "application": _APP_NAME,
+        "selected_environment": safe_identifier(os.environ.get("MODAL_ENVIRONMENT", "")),
+        "expected_environment": safe_identifier(expected_environment),
+        "image_id": safe_identifier(os.environ.get("MODAL_IMAGE_ID", "")),
+        "image_role": "candidate_migration_preflight",
+        "source_revision_reported": source_revision if re.fullmatch(r"[0-9a-f]{40}", source_revision) else "invalid",
+        "expected_repository_head": EXPECTED_HEAD,
+        "purpose": "rollout" if purpose == "rollout" else "report" if purpose == "report" else "invalid",
+    }
+    if (
+        context["source_revision_reported"] == "invalid"
+        or context["purpose"] == "invalid"
+        or context["expected_environment"] == "unavailable"
+        or context["selected_environment"] != context["expected_environment"]
+    ):
+        print(json.dumps({"execution_context": context, "status": "blocked", "error": "execution_context_mismatch"}))
+        raise RuntimeError("Billing preflight refused mismatched execution context")
+
+    try:
+        fingerprint = hashlib.sha256()
+        files = [Path("/backend/app/core/config.py"), Path("/backend/scripts/dodo_billing_preflight.py")]
+        files.extend(sorted(Path("/backend/alembic/versions").glob("*.py")))
+        for path in files:
+            fingerprint.update(str(path.relative_to("/backend")).encode())
+            fingerprint.update(b"\0")
+            fingerprint.update(path.read_bytes())
+            fingerprint.update(b"\0")
+        context["source_files_sha256"] = fingerprint.hexdigest()
+        result = subprocess.run(
+            ["python", "/backend/scripts/dodo_billing_preflight.py"],
+            cwd="/backend", capture_output=True, text=True, timeout=90,
+        )
+        # The script has a deliberately redacted JSON contract. Never print raw
+        # stderr, a traceback, or an exception that could contain a database URL.
+        report = public_report(json.loads(result.stdout))
+        if not isinstance(report, dict) or result.returncode not in {0, 1, 2}:
+            raise ValueError("Unexpected diagnostic result")
+    except Exception:
+        print(json.dumps({"execution_context": context, "status": "error", "error": "preflight_execution_failed"}))
+        raise RuntimeError("Billing preflight failed; no diagnostic details were logged") from None
+    if expected_environment == "main" and report.get("production_like") is not True:
+        # Billing mode guards depend on the application's ENVIRONMENT setting.
+        # A diagnostic against main must not bless a development classification.
+        # A valid incomplete diagnostic may not include environment fields.
+        # Keep its failure state so rollout cannot mistake absent DB metadata
+        # for a malformed report; complete non-production reports still block.
+        if report.get("status") != "diagnostic_error":
+            report["status"] = "blocked"
+        report["blockers"] = list(dict.fromkeys([
+            *report.get("blockers", []), "main_environment_not_production_like",
+        ]))
+    rollout_safe = False
+    if purpose == "rollout":
+        try:
+            assessment = rollout_assessment(report, allow_configured_live=allow_configured_live)
+        except Exception:
+            print(json.dumps({"execution_context": context, "status": "error", "error": "preflight_execution_failed"}))
+            raise RuntimeError("Billing preflight failed; no diagnostic details were logged") from None
+        if result.returncode == 2:
+            assessment["safe_to_rollout"] = False
+            assessment["reasons"] = list(dict.fromkeys([
+                *assessment["reasons"], "rollout_diagnostics_incomplete",
+            ]))
+        report["rollout_safety"] = assessment
+        rollout_safe = assessment["safe_to_rollout"] is True
+    report["execution_context"] = context
+    if purpose == "rollout":
+        # Public workflow logs need only the decision, not operational account
+        # counts, catalog configuration, or credential-presence metadata.
+        print(json.dumps({"execution_context": context, "rollout_safety": assessment}, sort_keys=True))
+    else:
+        print(json.dumps(report, sort_keys=True))
+    if purpose == "rollout" and rollout_safe:
+        return
+    if purpose == "rollout" or result.returncode or report.get("status") != "ready":
+        raise RuntimeError("Billing preflight requires review; see the redacted JSON report")
+
+
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
+def sync_templates() -> None:
+    """Reconcile the production template catalog with the source-owned seed files."""
+    import subprocess
+
+    result = subprocess.run(
+        ["python", "-m", "app.scripts.seed_templates"],
+        cwd="/backend",
+        capture_output=True,
+        text=True,
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError(f"template synchronization failed with code {result.returncode}")
+
+
+# ---------------------------------------------------------------------------
+# FastAPI ASGI endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.function(
+    image=api_image,
+    secrets=_api_secrets,
+    min_containers=1,
+    timeout=3600,
+    scaledown_window=300,
+)
+@modal.concurrent(max_inputs=100)
+@modal.asgi_app()
+def fastapi_app():
+    # Modal serves this ASGI app through its managed ingress rather than
+    # Uvicorn, so Uvicorn's ``--ws-max-size`` option is not applicable here.
+    # The jobs/collaboration handlers retain their 64 KiB/256 KiB app-level
+    # protocol bounds before parsing or relaying frames.
+    import sys
+
+    sys.path.insert(0, "/backend")
+    from app.main import app as _app
+
+    return _app
