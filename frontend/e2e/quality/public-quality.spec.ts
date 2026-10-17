@@ -159,7 +159,7 @@ test('public routes expose named controls and valid document structure', async (
             for (const plan of ['Free', 'Basic', 'Pro', 'Your AI key']) {
                 await expect(routePage.getByRole('heading', { level: 2, name: plan, exact: true })).toBeVisible()
             }
-            await expect(routePage.getByRole('link', { name: 'Try the r�sum� builder ' })).toHaveAttribute('href', '/try?mode=visual')
+            await expect(routePage.getByRole('link', { name: 'Try the résumé builder →' })).toHaveAttribute('href', '/try?mode=visual')
             await expect(routePage.getByRole('link', { name: 'Choose Basic', exact: true })).toHaveAttribute('href', '/billing')
         }
 
@@ -212,7 +212,6 @@ test('public routes expose named controls and valid document structure', async (
                     '[aria-hidden="true"] button:not(:disabled), [aria-hidden="true"] a[href], [aria-hidden="true"] input:not(:disabled), [aria-hidden="true"] textarea:not(:disabled), [aria-hidden="true"] select:not(:disabled), [aria-hidden="true"] [tabindex]:not([tabindex="-1"])'
                 )
             ).map(element => element.outerHTML.slice(0, 180))
-
 
             const duplicateIds = Object.entries(
                 Array.from(document.querySelectorAll<HTMLElement>('[id]')).reduce<
@@ -428,7 +427,6 @@ test('updates motion hydrates cleanly and stays visible across preference change
         }
     })
 
-
     const assertVisible = async (name: string, reducedMotion: boolean, width: number, height: number) => {
         await expect(page.getByRole('heading', { name: /Shipping log and platform progress/ })).toBeVisible()
         await expect(page.locator('main article').first()).toBeVisible()
@@ -519,7 +517,7 @@ test('representative public surface produces non-empty visual evidence', async (
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(hydrationErrors, 'The landing page must hydrate without attribute drift').toEqual([])
 
-    const layouts = page.getByRole('group', { name: 'Sample r�sum� layouts' })
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
     await expect(layouts.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
     await expect(layouts.getByRole('button').first()).toContainText('Classic')
     const expectHeroCardsInsideScene = async () => {
@@ -626,7 +624,7 @@ test('representative public surface produces non-empty visual evidence', async (
         )
     }
     await page.getByRole('button', { name: 'Keywords', exact: true }).click()
-    await expect(page.locator('.lp-radar-insight')).toContainText('Keywords � 61/100')
+    await expect(page.locator('.lp-radar-insight')).toContainText('Keywords · 61/100')
     await testInfo.attach('landing-analysis-selected', {
         body: await page.locator('.lp-analysis-section').screenshot({ animations: 'disabled' }),
         contentType: 'image/png',
@@ -642,7 +640,6 @@ test('representative public surface produces non-empty visual evidence', async (
     await page.getByLabel('Role', { exact: true }).fill('W'.repeat(70))
     await page.getByLabel('What did you do?', { exact: true }).fill('W'.repeat(300))
     await page.getByRole('tab', { name: 'LaTeX source', exact: true }).click()
-
     await page.getByRole('tab', { name: 'PDF', exact: true }).click()
     await page.locator('.lp-faq summary').first().click()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -811,7 +808,7 @@ test('landing glass controls keep sound opt-in and preserve layout selection', a
     await expect(menu).toHaveAttribute('style', /height:\s*auto/)
     await testInfo.attach('landing-glass-menu-dark', { body: await page.screenshot(), contentType: 'image/png' })
     await page.keyboard.press('Escape')
-    const layouts = page.getByRole('group', { name: 'Sample r�sum� layouts' })
+    const layouts = page.getByRole('group', { name: 'Sample résumé layouts' })
     await layouts.getByRole('button', { name: /Modern/ }).click()
     await expect(layouts.getByRole('button', { name: /Modern/ })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.lp-document-card[data-slot="center"]')).toHaveAttribute('data-template', 'Modern')
@@ -858,8 +855,7 @@ test('landing sample controls change their visible state by keyboard and pointer
     test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
     await page.goto('/', { waitUntil: 'networkidle' })
 
-
-    const gallery = page.getByRole('group', { name: 'Sample r�sum� layouts' })
+    const gallery = page.getByRole('group', { name: 'Sample résumé layouts' })
     const modern = gallery.getByRole('button', { name: /Modern/ })
     const minimal = gallery.getByRole('button', { name: /Minimal/ })
     await modern.focus()
@@ -904,12 +900,11 @@ test('landing sample controls change their visible state by keyboard and pointer
     await expect(board.locator('.lp-board-column').nth(1)).toContainText('Acme')
     await expect(manage).toBeFocused()
 })
-
 test('landing sample tabs align selection and focus for repeated keyboard navigation', async ({ page }, testInfo) => {
     test.skip(testInfo.project.metadata.mobile === true, 'Desktop keyboard demo contract')
     await page.goto('/', { waitUntil: 'networkidle' })
 
-    const neutral = page.getByRole('group', { name: 'Sample r�sum� layouts' })
+    const neutral = page.getByRole('group', { name: 'Sample résumé layouts' })
         .getByRole('button', { name: /Modern/ })
     const authoring = page.getByRole('tablist', { name: 'Explore authoring modes' })
     const guided = authoring.getByRole('tab', { name: 'Guided builder' })
@@ -1000,7 +995,7 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
     const gallery = page.locator('.lp-gallery')
     await expect(gallery.locator('img')).toHaveCount(0)
     await expect(gallery.locator('canvas')).toHaveCount(0)
-    const controls = gallery.getByRole('group', { name: 'Sample r�sum� layouts' })
+    const controls = gallery.getByRole('group', { name: 'Sample résumé layouts' })
     await controls.getByRole('button', { name: /Classic/ }).focus()
     await page.keyboard.press('ArrowRight')
     await expect(controls.getByRole('button', { name: /Modern/ })).toBeFocused()
@@ -1012,7 +1007,7 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
     await page.setViewportSize({ width: 320, height: 900 })
     for (const layout of ['Classic', 'Modern', 'Minimal']) {
         await controls.getByRole('button', { name: new RegExp(layout) }).click()
-        const paper = gallery.getByRole('article', { name: `${layout} sample r�sum�` })
+        const paper = gallery.getByRole('article', { name: `${layout} sample résumé` })
         await expect(paper).toBeVisible()
         await expect(paper.getByRole('heading', { name: 'Alex Morgan' })).toBeVisible()
         await expect(paper.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible()
@@ -1040,7 +1035,7 @@ test('hero documents stay readable and selectable without WebGL', async ({ page 
     expect(errors).toEqual([])
 })
 
-test('landing workbench updates a real r�sum� sample and resets on a new visit', async ({ page }) => {
+test('landing workbench updates a real résumé sample and resets on a new visit', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
     const gallery = page.locator('.lp-gallery')
     await gallery.getByRole('textbox', { name: 'Sample name' }).fill('Jordan Lee')
@@ -1048,7 +1043,7 @@ test('landing workbench updates a real r�sum� sample and resets on a new vis
     const selected = gallery.locator('.lp-document-card[data-slot="center"]')
     await expect(selected.getByRole('heading', { name: 'Jordan Lee' })).toBeVisible()
     await expect(selected).toContainText('Product Designer')
-    await gallery.getByRole('group', { name: 'Sample r�sum� layouts' })
+    await gallery.getByRole('group', { name: 'Sample résumé layouts' })
         .getByRole('button', { name: /Modern/ }).click()
     await expect(gallery.locator('[data-template="Modern"]')).toHaveAttribute('data-slot', 'center')
     await expect(gallery.locator('.lp-document-card[data-slot="center"]'))
@@ -1072,7 +1067,6 @@ test('landing workbench updates a real r�sum� sample and resets on a new vis
 test('mobile landing presents focused demos in both themes and preserves edits', async ({
     page,
 }, testInfo) => {
-
     test.skip(testInfo.project.metadata.mobile !== true, 'Phone composition contract')
     await page.goto('/', { waitUntil: 'networkidle' })
     for (const width of [320, 390, 430]) {
@@ -1160,10 +1154,10 @@ test('mobile landing presents focused demos in both themes and preserves edits',
     await builder
         .getByLabel('What did you do?', { exact: true })
         .fill('Built accessible document tools with the design team.')
-    await builder.getByRole('button', { name: 'Preview r�sum�', exact: true }).click()
+    await builder.getByRole('button', { name: 'Preview résumé', exact: true }).click()
     await expect(builder.locator('.lp-builder-fields')).toBeHidden()
     await expect(
-        builder.getByRole('article', { name: 'Live sample r�sum� preview' })
+        builder.getByRole('article', { name: 'Live sample résumé preview' })
     ).toContainText('Built accessible document tools with the design team.')
     await testInfo.attach('mobile-builder-preview', {
         body: await builder.screenshot({ animations: 'disabled' }),
@@ -1281,6 +1275,5 @@ test('denied studio import preserves the baseline editor and manual compile', as
     const tools = page.getByRole('button', { name: 'Tools', exact: true })
     if (await tools.isVisible()) await tools.click()
     await expect(page.getByRole('button', { name: /Import file/ })).toHaveCount(0)
-    await expect(page.getByRole('heading', { level: 1, name: 'R�sum� Studio' })).toBeAttached()
+    await expect(page.getByRole('heading', { level: 1, name: 'Résumé Studio' })).toBeAttached()
 })
-
