@@ -136,9 +136,9 @@ async function mockVariant(
       body: JSON.stringify(body),
     })
   })
-  await page.route('**/config/feature-flags', (route) =>
+  await page.route((url) => url.pathname === '/config/feature-flags', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-  await page.route('**/config/entitlements', (route) =>
+  await page.route((url) => url.pathname === '/config/entitlements', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"features":{"b12":true}}' }))
   await page.route((url) => url.pathname === '/tenants/resolve-host', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"tenant":null}' }))
