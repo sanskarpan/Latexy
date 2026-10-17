@@ -78,20 +78,27 @@ and revocation must remain available to the owner.
   existing core browser case passed after moving F01 last, so the prior signup
   429 did not recur. The latest run's Cross-Browser Quality and Isolated Real
   Compile/Preview jobs were still in progress when this evidence was updated.
-- Latest exact-head run `39032327195` at `56efe1a9002f1a77c9b6c7b4160e19380d6f0e13`:
-  **Backend Tests passed** and **Full-Stack Smoke passed all 5 non-skipped
-  Chromium cases**. The F01 browser case completed role, family, SKU, parent,
-  public-link, owner-source, review-disable, cross-owner and revoke/re-enable
-  assertions. The wrong-owner share POST returns 404 while F01 is available;
-  under the disabled parent, it returns 403 at the earlier capability gate.
-  The previous browser expectation conflated those two stages and is corrected.
-  Classifier, Frontend Build/Lint, Backend Lint, TUI, Browser Extension,
-  Deployment Parity, Privacy Guard, Observability, Template PDF, and Reusable
-  Render CV checks also passed. Cross-Browser Quality and Isolated Real
-  Compile/Preview were still running at this update.
-- At 2026-10-17 12:41 UTC, **Cross-Browser Quality** and **Isolated Real
-  Compile/Preview** remained in progress; their outcomes are not counted as
-  passed or failed here.
+- Exact PR-head run `39033621265` at
+  `2375752d67319cf613ace881f6a2eb8c2b141bb1` completed successfully. Backend
+  Tests passed. Full-Stack Smoke's D14 HTTP admission check passed 1 test, and
+  Playwright passed all 5 non-skipped Chromium cases. The F01 case verified
+  role, family, SKU, parent, public-link, source-read, review-disable,
+  cross-owner, and revoke/re-enable behavior. A different ordinary user gets
+  404 from the resource ACL while F01 is enabled; while the parent is disabled,
+  that request correctly gets 403 at the capability gate.
+- Isolated Real Compile and Preview passed its harness guards and a real
+  Chromium guest compile/preview test (`1 passed` in 5.1 minutes). Isolated
+  `pdflatex` and `lualatex` fixtures both returned successful, storage-verified
+  artifacts.
+- Cross-Browser Quality passed: workspace search (`1`), admin capabilities and
+  plan catalog (`40`), Chromium owner-regression (`110`), and Better Auth
+  hydration/replay (`2`). Its desktop/mobile public-quality audit reported
+  `200 passed`, `10 skipped` out of 210, `0 unexpected`, and `0 flaky`.
+- Classifier, Frontend Build/Lint, Backend Lint, TUI, Browser Extension,
+  Deployment Parity, Privacy Guard, Observability, Template PDF, Modal Harness,
+  and Reusable Render CV jobs also passed. The earlier run `39032327195` was
+  superseded by the evidence-only commit; its two extended jobs were cancelled
+  by CI concurrency and are replaced by these completed results.
 - The Vercel preview check has been rejected by its provider's daily deployment
   limit (`api-deployments-free-per-day`). No deployment or production action was
   run.
