@@ -14,9 +14,9 @@ User selected the second visual concept on 17 October 2026, with a change of typ
 
 ## Typography
 
-The homepage now pairs Hubot Sans headlines with Mona Sans reading text. The display face uses a carefully chosen width and a strong, consistent weight without relying on italic slogans or excessive letter spacing. The serif inside the résumé and document is Tinos, used to demonstrate document typography, not as the marketing voice.
+The homepage pairs Latexy Display (derived from Hubot Sans) headlines with Latexy Reading (derived from Mona Sans) text. The display face uses a carefully chosen width and a strong, consistent weight without relying on italic slogans or excessive letter spacing. The serif inside the résumé and document is Tinos, used to demonstrate document typography, not as the marketing voice.
 
-Fonts are self hosted and limited to this homepage/header/footer. Both new fonts are licensed under SIL OFL 1.1; their notices accompany the WOFF2 files. The UI subset covers Latin/extended Latin and common punctuation. Visual QA found that Windows WebKit rendered the variable fonts too thin despite the correct computed CSS weight. The shipped files are static instances: Hubot 600 at width 95, and Mona 400/500/600 at optical size 20. The four files total 130,288 bytes. They introduce no runtime font service request.
+Fonts are self hosted and limited to this homepage/header/footer. Both new fonts are licensed under SIL OFL 1.1; their notices accompany the WOFF2 files. The UI subset covers Latin/extended Latin and common punctuation. Visual QA found that Windows WebKit rendered the variable fonts too thin despite the correct computed CSS weight. The shipped files are static instances: Hubot 600 at width 95, and Mona 400/500/600 at optical size 20. The four files total 130,528 bytes. They introduce no runtime font service request. Their internal and file names identify them as modified subsets, respecting the upstream reserved names; FONTLOG.md records the changes.
 
 Sources:
 - https://github.com/github/hubot-sans — geometric details and variable width for display typography.
@@ -50,3 +50,4 @@ Motion is limited to selected-state transitions, panel entry and short section r
 ## Verification
 
 See design-qa.md for the visual comparison and final verification status. Browser tests replace obsolete gallery/old-workbench checks with contracts for the approved review desk; existing navigation, capability, sound, privacy and studio tests remain in place. No unrelated product logic or release/deployment hold is changed.
+
