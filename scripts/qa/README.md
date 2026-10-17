@@ -26,7 +26,8 @@ boundary-probe run. The runtime backend accepts this binding only when
 `ENVIRONMENT=test`, `DEPLOY_TARGET=modal`, and Modal supplies an explicit
 nonproduction `MODAL_ENVIRONMENT`; the renderer image ID and fingerprint must
 still be well formed. It uses a distinct noncacheable backend identity and
-reports `renderer_boundary_probe: not_run` and
+explicitly blanks `MODAL_ENGINE_VM_CERTIFIED` (including any image-layer
+assertion), then reports `renderer_boundary_probe: not_run` and
 `production_certification_claimed: false`.
 
 Functional-only mode skips only `_VM_BOUNDARY_PREFLIGHT`. It retains the

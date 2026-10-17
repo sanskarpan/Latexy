@@ -113,11 +113,11 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
         self.assertNotIn("MODAL_ENVIRONMENT", runtime_env)
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
 
-    def test_functional_only_runtime_binding_is_distinct_and_does_not_certify(self):
+    def test_functional_only_runtime_binding_blanks_certification_and_uses_test_flag(self):
         runtime_env = function_runtime_environment(
             "fd00::1", "im-TestRenderer123", "a" * 64, renderer_mode="functional-only",
         )
-        self.assertNotIn("MODAL_ENGINE_VM_CERTIFIED", runtime_env)
+        self.assertEqual(runtime_env["MODAL_ENGINE_VM_CERTIFIED"], "")
         self.assertEqual(runtime_env["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"], "true")
         self.assertEqual(runtime_env["ENVIRONMENT"], "test")
 

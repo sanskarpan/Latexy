@@ -196,6 +196,8 @@ def function_runtime_environment(
     else:
         # This opt-in is recognized only by the test-only backend gate. It is
         # intentionally distinct from the operator's production certification.
+        # Empty also overrides a stale assertion baked into the test image.
+        environment["MODAL_ENGINE_VM_CERTIFIED"] = ""
         environment["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"] = "true"
     return environment
 
