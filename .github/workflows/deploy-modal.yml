@@ -232,7 +232,7 @@ jobs:
       # first. This gate only checks its fresh, candidate-scoped record and
       # performs read-only Modal App name/ID/state queries. It never stops Apps.
       # The identity/state query is the command immediately before Alembic.
-      - name: Verify external drain prerequisite and apply production migrations
+      - name: Apply production database migrations after external drain verification
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
         env:

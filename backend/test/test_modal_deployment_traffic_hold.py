@@ -142,7 +142,7 @@ def test_workflow_defaults_to_held_and_only_manual_release_can_open_traffic() ->
 def test_release_requires_same_sha_and_healthy_held_deployment_before_migration() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
-    migration = source.index("Verify external drain prerequisite and apply production migrations")
+    migration = source.index("Apply production database migrations after external drain verification")
     deploy = source.index("modal deploy --env main --strategy rolling --tag")
     assert release_guard < migration < deploy
     guard = source[release_guard:migration]
@@ -172,7 +172,7 @@ def test_automatic_and_manual_migrations_require_external_drain_and_current_app_
     manual = source.index("  workflow_dispatch:")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
     cutover_gate = source.index("Require schema cutover and recovery approval")
-    migration = source.index("Verify external drain prerequisite and apply production migrations")
+    migration = source.index("Apply production database migrations after external drain verification")
     deploy = source.index("Deploy backend with a rolling update")
 
     assert automatic < manual < release_guard < cutover_gate < migration < deploy
@@ -203,7 +203,7 @@ def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_readonly_
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
     billing = source.index("Validate read-only billing rollout safety")
     cutover = source.index("Require schema cutover and recovery approval")
-    drain_gate = source.index("Verify external drain prerequisite and apply production migrations")
+    drain_gate = source.index("Apply production database migrations after external drain verification")
     deploy = source.index("Deploy backend with a rolling update")
     assert release_guard < billing < cutover < drain_gate < deploy
     assert "inputs.traffic_mode == 'release'" in source[release_guard:billing]
