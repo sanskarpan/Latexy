@@ -7,11 +7,15 @@ Captured from `https://latexy.xyz` on 2026-10-17 before the change.
 - [Production desktop](production-desktop.png)
 - [Production mobile](production-mobile.png)
 
-The desktop hero put the résumé gallery high on the right while the headline and actions sat much lower, leaving a large blank area. At phone width, the header, hero buttons, layout selector, and résumé sample were clipped horizontally.
+The desktop hero put the résumé gallery high on the right while the headline and actions sat much lower. On phone widths, the header, hero actions, layout picker, and résumé sample clipped horizontally.
 
 ## Refined direction
 
-The change builds on the current `main` landing page, including its editable HTML résumé gallery and five interactive product chapters. It keeps the paper-and-ink palette, brings the copy and sample into a balanced two-column opening, and uses the bundled Geist Sans for the headline. The new headline is “Write a résumé. Own every word.” The supporting copy describes guided fields, LaTeX source editing, role-specific versions, and PDF export.
+The implementation builds on the current `main` landing page, including its editable HTML résumé gallery and five interactive product chapters. It balances the copy and sample in the opening, uses a paper-and-ink palette, and presents an editable fictional résumé for Alex Morgan. The headline is “Write a résumé. Own every word.” Copy describes existing product capabilities: guided fields, LaTeX source editing, role-specific versions, and PDF export.
+
+Typography now uses the bundled Bricolage Grotesque for display headings and Geist Sans for reading and interface text. The résumé sample retains its own specimen typography; code stays monospaced. No sound is activated by default.
+
+The proposal images below were captured during the earlier layout iteration, before the final typography pass. They remain useful for reviewing layout and narrow-width wrapping, but **they are not final visual approval captures for the current font styling**.
 
 - [Desktop opening, light](proposal-desktop-light.png)
 - [Desktop opening, dark](proposal-desktop-dark.png)
@@ -24,19 +28,19 @@ The change builds on the current `main` landing page, including its editable HTM
 - [Phone first screen, dark](proposal-mobile-dark-first-screen.png)
 - [Phone first screen, 320px](proposal-mobile-320-first-screen.png)
 
-## Browser evidence
+## Browser and entitlement verification status
 
-Captured with the installed Chrome 155 against a disposable local preview based on current `main` plus this change. The preview used fictional Alex Morgan sample data. Its temporary `CapabilityGate` fixture rendered the entitled state so the `Try the studio` link and templates link could be reviewed; repository gate code was not changed. The shared install is missing the pinned `@fontsource/tinos` package, so the disposable preview used local Times New Roman as a Tinos fallback. Neither fixture, the font fallback, nor preview configuration is part of the branch.
+The earlier proposal captures used a disposable local preview with fictional résumé data, a temporary Times New Roman fallback for Tinos, and an entitlement fixture. Those temporary settings were removed. The exact locked frontend dependencies are now installed with pnpm 10.10.0. The current browser inventory for this execution environment is empty; Chrome and the in-app browser provider both report unavailable, so fresh final-font screenshots and interaction captures could not be taken here.
 
-At 1440px, 390px, and 320px, the document width matched the viewport width. Chrome reported no page errors. In each viewport, selecting Modern moved that layout into the preview and editing the sample name changed the document heading to “Jordan Lee”. The primary hero link targets `/try?mode=visual`.
-
-The local preview returned HTTP 200 for `/platform`, `/resources`, `/pricing`, and `/login`. `/try?mode=visual` returned HTTP 500 because `pdfjs-dist/build/pdf.worker.min.mjs` is missing from the shared install (`ReactPdfClient.tsx` → `pdf-renderer-loader.ts` → `PDFPreview.tsx` → `/try`). That route is unchanged by this redesign.
+The local API is unavailable, so the real entitlement provider remains in its fail-closed state. The public `/platform` fallback stays visible. The added test exercises the actual `MarketingCTA` and `CapabilityGate`: the studio link remains hidden until all required grants are present, and disappears if a grant is removed. Existing tests continue to cover template and route gating. This verifies the enabled and denied states in tests; it is not a claim of an enabled-state browser capture.
 
 ## Checks
 
-- Target ESLint: passed with zero warnings.
-- Prettier: passed for all changed TypeScript and CSS files.
-- Focused Vitest: 3 files, 7 tests passed with a temporary alias for the missing Tinos CSS files. The default runner cannot load `marketing-origin.test.ts` because the pinned font package is absent from the shared install; the shim only resolves those CSS imports.
-- Production build: blocked before compilation by the shared install's Next hydration backport check: `react-dom-client.development.js` is reported as `patched` when the validator expects the checked-in renderer state. `pnpm run build` also stalled in this environment; direct `next build` confirmed the validator error.
+- Exact locked dependency install: passed; pnpm 10.10.0 and the repository hydration check succeeded.
+- ESLint on changed TSX files: passed with zero warnings.
+- Prettier on the changed landing CSS and page module: passed.
+- Focused Vitest: 4 files, 35 tests passed.
+- Local production-mode Next server: `/`, `/platform`, `/pricing`, `/resources`, `/login`, and `/try?mode=visual` returned HTTP 200. This is a route smoke check, not browser rendering.
+- Production build: compilation, type checking, page-data collection, and all 44 static pages completed. Next then failed while packaging standalone traces because Windows denied dependency symlink creation (`EPERM`). The build used process-only `https://localhost:5180` auth URL values to satisfy production passkey URL validation; no project or production configuration was changed.
 
-No preview fixture, generated cache, dependency shim, or production configuration change is included in the branch.
+No preview fixture, font fallback, entitlement shim, secret, or production configuration change is included in the branch.
