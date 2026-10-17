@@ -88,6 +88,34 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     assert cross_owner.status_code == 403, cross_owner.text
     assert cross_owner.json()["detail"] == "Access denied"
 
+    # B07 remains denied when either the ordinary-user role cell or the
+    # concrete annual plan cell is switched off, even with global B07 on.
+    await entitlement_service.set_role_cell("user", "b07", False, db_session)
+    role_denied = await client.get(
+        f"/export/{saved_resume_id}/json", headers=auth_headers,
+    )
+    assert role_denied.status_code == 403, role_denied.text
+    assert "b07" in role_denied.text
+    await entitlement_service.set_role_cell("user", "b07", True, db_session)
+
+    await entitlement_service.set_matrix_cell("pro_annual", "b07", False, db_session)
+    plan_denied = await client.get(
+        f"/export/{saved_resume_id}/json", headers=auth_headers,
+    )
+    assert plan_denied.status_code == 403, plan_denied.text
+    assert "b07" in plan_denied.text
+    await entitlement_service.set_matrix_cell("pro_annual", "b07", True, db_session)
+
+    # H01 is B07's parent. Turning the parent off must block JSON even while
+    # B07's own global, plan and role cells all allow it.
+    await entitlement_service.set_kill_switch("h01", False, db_session)
+    parent_denied = await client.get(
+        f"/export/{saved_resume_id}/json", headers=auth_headers,
+    )
+    assert parent_denied.status_code == 403, parent_denied.text
+    assert "h01" in parent_denied.text
+    await entitlement_service.set_kill_switch("h01", True, db_session)
+
     await entitlement_service.set_kill_switch("b07", False, db_session)
     disabled = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
     assert disabled.status_code == 200, disabled.text
@@ -139,3 +167,4 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     )
     assert still_cross_owner.status_code == 403, still_cross_owner.text
     assert still_cross_owner.json()["detail"] == "Access denied"
+
