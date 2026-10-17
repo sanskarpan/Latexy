@@ -1,44 +1,38 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { IconArrowUpRight, IconArrowRight } from '@tabler/icons-react'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import { reviewFonts } from './review-fonts'
 
 export default function LandingFooter({ year }: { year: number }) {
     const { billing } = useFeatureFlags()
     return (
-        <footer className="lp-footer">
+        <footer className={`lp-footer ${reviewFonts}`}>
             <div className="lp-container">
                 <section className="lp-footer-lead lp-closing" aria-labelledby="landing-closing">
                     <div className="lp-footer-message">
-                        <p className="lp-footer-eyebrow">Start with what you know</p>
+                        <p className="rd-eyebrow">Start with what you know</p>
                         <h2 id="landing-closing">
-                            You have the experience.
+                            Put your experience
                             <br />
-                            <em>Put it on the page.</em>
+                            <span>on the page.</span>
                         </h2>
                         <p>
-                            Choose a layout, add your experience, and make a résumé you are ready to
-                            send.
+                            A first draft, a new role, or a document from scratch. Make room for the
+                            work you want to do next.
                         </p>
                         <MarketingCTA label="Try the studio" />
                         <Link className="lp-primary-fallback" href="/platform">
                             Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
                     </div>
-                    <div className="lp-footer-art" aria-hidden="true">
-                        <Image
-                            src="/marketing/footer-papers.webp"
-                            width={1536}
-                            height={1024}
-                            alt=""
-                            sizes="(max-width: 700px) 100vw, 650px"
-                        />
-                    </div>
+                    <a className="rd-footer-back" href="#landing-title" aria-label="Back to top">
+                        <IconArrowUpRight size={36} stroke={1} aria-hidden="true" />
+                    </a>
                 </section>
                 <div className="lp-footer-directory">
                     <div className="lp-footer-brand">

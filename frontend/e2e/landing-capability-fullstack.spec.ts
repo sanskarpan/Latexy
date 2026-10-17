@@ -189,16 +189,31 @@ test('live anonymous landing gates reflect each capability and recover after fet
         })
 
         await page.setViewportSize({ width: 390, height: 844 })
-        const mobileGallery = page.locator('.lp-gallery')
-        await expect(mobileGallery.getByRole('textbox', { name: 'Sample name' })).toBeVisible()
-        await expect(mobileGallery.getByRole('textbox', { name: 'Sample role' })).toBeVisible()
-        await expect(
-            mobileGallery.getByRole('button', { name: 'Read the full sample' })
-        ).toBeVisible()
-        expect(
-            (await mobileGallery.boundingBox())!.height,
-            'mobile gallery remains compact and usable'
-        ).toBeLessThan(550)
+        const mobileDesk = page.getByTestId('review-desk')
+        const mobilePaper = mobileDesk.locator('.rd-paper')
+        await expect(mobileDesk).toBeVisible()
+        await expect(mobilePaper.getByRole('heading', { name: 'Alex Morgan' })).toBeVisible()
+        await expect(mobileDesk.getByRole('tab', { name: 'Review', exact: true })).toHaveAttribute(
+            'aria-selected',
+            'true'
+        )
+        await mobileDesk.getByRole('button', { name: 'Use suggestion', exact: true }).click()
+        await expect(mobilePaper).toContainText(
+            'Designed the checkout flow with research and engineering.'
+        )
+        await mobileDesk.getByRole('button', { name: 'Undo', exact: true }).click()
+        await expect(mobilePaper).toContainText(
+            'Worked with engineering to ship the checkout flow.'
+        )
+
+        await mobileDesk.getByRole('tab', { name: 'Write', exact: true }).click()
+        const mobileContribution = 'Improved a mobile application flow with product research.'
+        await page.getByLabel('Your role', { exact: true }).fill('Mobile Product Designer')
+        await page.getByLabel('One contribution', { exact: true }).fill(mobileContribution)
+        await mobileDesk.getByRole('button', { name: 'Update sample', exact: true }).click()
+        await expect(mobilePaper).toContainText('Mobile Product Designer')
+        await expect(mobilePaper).toContainText(mobileContribution)
+
         const mobileWidth = await page.evaluate(() => ({
             viewport: document.documentElement.clientWidth,
             document: document.documentElement.scrollWidth,

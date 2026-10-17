@@ -512,6 +512,8 @@
         "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/ReviewDesk.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -609,6 +611,8 @@
         "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/ReviewDesk.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -1626,6 +1630,8 @@
         "frontend/src/components/marketing/LandingExperience.tsx",
         "frontend/src/components/marketing/MarketingFooter.tsx",
         "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/ReviewDesk.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx",
         "frontend/src/hooks/useSuggestionRecovery.ts"
       ],

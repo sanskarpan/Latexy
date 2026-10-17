@@ -36,10 +36,20 @@ wanted = {
       for section in ("hero", "gallery", "footer")},
     *{f"mobile-{width}-{theme}-first-screen" for width in (320, 390, 430)
       for theme in ("light", "dark")},
+    # Current Review Desk quality evidence: whole page + hero at representative
+    # widths, and the native phone interaction states in both themes.
+    *{f"review-{kind}-{width}-{theme}" for kind in ("desk", "hero")
+      for width in (1440, 390, 320) for theme in ("light", "dark")},
+    *{f"review-phone-{theme}-{stage}" for theme in ("light", "dark")
+      for stage in ("write", "review", "tailor", "export")},
 }
 titles = {
+    # Preserve the original evidence contracts for older report shapes.
     "representative public surface produces non-empty visual evidence",
     "mobile landing presents focused demos in both themes and preserves edits",
+    # Names in public-quality.spec.ts at the current PR head.
+    "landing review desk produces desktop and phone evidence in both themes",
+    "landing phone stages retain edits and usable controls in both themes",
 }
 
 
@@ -78,6 +88,9 @@ def walk(value, project=""):
 for filename in report.namelist():
     if filename.endswith(".json"):
         walk(json.loads(report.read(filename)))
+
+if not manifest["files"]:
+    raise SystemExit("Expected landing screenshots, but no evidence files were extracted")
 
 (destination / "capture.json").write_text(
     json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

@@ -2,17 +2,19 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { IconArrowRight as ArrowRight, IconMinus, IconPlus } from '@tabler/icons-react'
 import CapabilityGate from '@/components/CapabilityGate'
-import DocumentGallery from '@/components/marketing/DocumentGallery'
-import LandingExperience from '@/components/marketing/LandingExperience'
+import ReviewDesk from '@/components/marketing/ReviewDesk'
+import ReviewJourney from '@/components/marketing/ReviewJourney'
 import LandingMotion from '@/components/marketing/LandingMotion'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
+import { reviewFonts } from '@/components/marketing/review-fonts'
+import { IconFileText, IconFolder } from '@tabler/icons-react'
 import { siteUrl } from '@/lib/site-url'
-import './landing.css'
-import './landing-mobile.css'
-import './landing-glass.css'
-import './landing-editorial.css'
-import './landing-refresh.css'
-import './landing-type.css'
+import './landing-review.css'
+
+// Public copy and samples are identical for every visitor. Prerender the
+// homepage to deliver its copy and samples in the server's HTML response;
+// account state and effective feature access still resolve in client gates.
+export const dynamic = 'force-static'
 
 const description =
     'Build a professional resume without code. Review ATS feedback, tailor your resume to each job, track applications, and compile LaTeX documents with Latexy.'
@@ -76,7 +78,7 @@ export default function LandingPage() {
         })),
     }
     return (
-        <div className="lp-page">
+        <div className={`lp-page rd-landing ${reviewFonts}`}>
             <LandingMotion />
             <script
                 type="application/ld+json"
@@ -90,43 +92,61 @@ export default function LandingPage() {
                     __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c'),
                 }}
             />
-            <div className="lp-opening lp-container">
-                <section className="lp-hero" aria-labelledby="landing-title">
-                    <div className="lp-hero-heading">
-                        <p className="lp-hero-eyebrow">
-                            <span>Latexy / 01</span> The résumé &amp; LaTeX studio
-                        </p>
-                        <h1 id="landing-title">
-                            Write a résumé.
-                            <br />
-                            <span>Own every word.</span>
-                        </h1>
-                    </div>
-                    <div className="lp-hero-copy">
-                        <p>
-                            Start with guided fields or edit the source in LaTeX. Review the
-                            structure, tailor a version to each role, and export a PDF.
-                        </p>
-                        <div className="lp-hero-actions">
-                            <MarketingCTA label="Try the studio" />
-                            <Link className="lp-primary-fallback" href="/platform">
-                                Explore Latexy <ArrowRight size={15} aria-hidden="true" />
+            <section className="rd-hero lp-container" aria-labelledby="landing-title">
+                <div className="rd-hero-copy">
+                    <p className="rd-eyebrow">Resume builder &amp; LaTeX studio</p>
+                    <h1 id="landing-title">
+                        Build a résumé.
+                        <br />
+                        <span>Keep it yours.</span>
+                    </h1>
+                    <p className="rd-hero-description">
+                        Build a résumé without code. Check its structure, tailor it to the job, and
+                        export a LaTeX PDF.
+                    </p>
+                    <div className="lp-hero-actions">
+                        <MarketingCTA label="Try the studio" />
+                        <Link className="lp-primary-fallback" href="/platform">
+                            Explore Latexy <ArrowRight size={15} aria-hidden="true" />
+                        </Link>
+                        <CapabilityGate feature="b04">
+                            <Link className="lp-secondary-button" href="/templates">
+                                Explore templates
+                                <ArrowRight size={15} aria-hidden="true" />
                             </Link>
-                            <CapabilityGate feature="b04">
-                                <Link className="lp-secondary-button" href="/templates">
-                                    Explore templates
-                                    <ArrowRight size={15} aria-hidden="true" />
-                                </Link>
-                            </CapabilityGate>
-                        </div>
-                        <p className="lp-trial-note">
-                            Try the guest studio. No account or card needed. Usage limits apply.
-                        </p>
+                        </CapabilityGate>
                     </div>
-                </section>
-                <DocumentGallery />
-            </div>
-            <LandingExperience />
+                    <p className="rd-trial-note">Limited guest usage. Sign in to save your work.</p>
+                </div>
+                <ReviewDesk />
+            </section>
+            <section className="rd-overview lp-container" aria-labelledby="landing-next-steps">
+                <div>
+                    <p className="rd-eyebrow">Beyond the first draft</p>
+                    <h2 id="landing-next-steps">
+                        Keep the next{' '}
+                        <br />
+                        steps in view.
+                    </h2>
+                </div>
+                <a href="#resume-feedback">
+                    <IconFileText size={24} stroke={1.5} aria-hidden="true" />
+                    <h3>Tailor for each role</h3>
+                    <p>See where your experience fits, then decide what deserves a closer look.</p>
+                    <span>
+                        Review your résumé <ArrowRight size={15} aria-hidden="true" />
+                    </span>
+                </a>
+                <a href="#applications">
+                    <IconFolder size={24} stroke={1.5} aria-hidden="true" />
+                    <h3>Organise your applications</h3>
+                    <p>Keep versions, cover letters, and application stages together as you go.</p>
+                    <span>
+                        Keep track <ArrowRight size={15} aria-hidden="true" />
+                    </span>
+                </a>
+            </section>
+            <ReviewJourney />
             <section className="lp-faq lp-container" aria-labelledby="landing-faq">
                 <h2 id="landing-faq">Before you start</h2>
                 <div>
