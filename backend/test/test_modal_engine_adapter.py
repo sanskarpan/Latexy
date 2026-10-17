@@ -18,6 +18,8 @@ from app.services.render_engine.modal_sandbox import (
     _BATCH_EXPORT_MAX_BYTES,
     _BATCH_EXPORT_SLOTS,
     _BOUNDED_EXPORT,
+    _IMAGE_PREFLIGHT,
+    _VM_BOUNDARY_PREFLIGHT,
     ModalEngineProcess,
     ModalEngineSession,
     ModalEngineUnavailable,
@@ -41,7 +43,9 @@ class FakeSandbox:
 
     def exec(self, *args, **kwargs):
         self.calls.append((args, kwargs))
-        return SimpleNamespace(stdout=io.BytesIO(json.dumps(self.observed).encode()), wait=lambda: 0,
+        observed = ({"uid": 65534, "private_process_read": False, "network_connect": False}
+                    if len(args) >= 3 and args[2] == _VM_BOUNDARY_PREFLIGHT else self.observed)
+        return SimpleNamespace(stdout=io.BytesIO(json.dumps(observed).encode()), wait=lambda: 0,
                                poll=lambda: 0, returncode=0)
 
     def terminate(self, **kwargs):
@@ -88,6 +92,58 @@ def test_sdk_contract_has_no_credentials_network_or_mounts(tmp_path):
     finally:
         process.close()
     assert sandbox.terminated
+
+
+def test_credential_free_vm_keeps_boundary_probe_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", raising=False)
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
+    process = request(tmp_path, sdk, policy="credential_free_vm")
+    try:
+        scripts = [args[2] for args, _kwargs in sandbox.calls if len(args) >= 3 and args[1] == "-c"]
+        assert _VM_BOUNDARY_PREFLIGHT in scripts
+        assert calls[0][1]["block_network"] is True
+    finally:
+        process.close()
+
+
+def test_functional_only_vm_skips_only_boundary_probe_and_keeps_image_preflight(tmp_path, monkeypatch):
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
+    monkeypatch.setenv("DEPLOY_TARGET", "modal")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "isolated-test")
+    monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
+    process = request(
+        tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False,
+    )
+    try:
+        scripts = [args[2] for args, _kwargs in sandbox.calls if len(args) >= 3 and args[1] == "-c"]
+        assert _IMAGE_PREFLIGHT in scripts
+        assert _VM_BOUNDARY_PREFLIGHT not in scripts
+        assert all(kwargs.get("secrets") == [] for _args, kwargs in sandbox.calls)
+        assert calls[0][1]["block_network"] is True
+        assert sandbox.calls[-1][0][1].endswith("sandbox_io_bridge.py")
+    finally:
+        process.close()
+
+
+def test_functional_only_flag_cannot_run_boundary_or_be_used_outside_test_environment(tmp_path, monkeypatch):
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
+    monkeypatch.setenv("DEPLOY_TARGET", "modal")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "isolated-test")
+    with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
+        request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=True)
+    assert not calls and not sandbox.calls
+
+    monkeypatch.delenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", raising=False)
+    with pytest.raises(ModalEngineUnavailable, match="requires functional-only mode"):
+        request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False)
+    assert not calls and not sandbox.calls
 
 
 @pytest.mark.parametrize("bad", [{"landlock_abi": -1}, {"landlock_abi": 2},

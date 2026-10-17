@@ -1,106 +1,122 @@
 # Modal spawn acceptance harness
 
 `modal_spawn_acceptance.py` is an opt-in nonproduction test. It does not change
-the deployment workflow or certify an image. It needs explicit operator input
-for the API/LaTeX image, a disposable services image, and the reviewed bare
-renderer image/fingerprint tuple. The renderer tuple is supplied only to the
-unique test app so the existing admission gate can be exercised; a passing run
-does not certify that tuple or populate GitHub Production variables.
+the deployment workflow or certify a renderer image. It accepts reviewed
+immutable IDs for the API/LaTeX test image, disposable services image, and bare
+renderer image/fingerprint tuple. A passing run checks the API-to-worker path,
+synthetic document compilation, PDF finalization, and accepted-PDF visibility.
 
-The script requires an existing nonproduction Environment selected with
-`--environment-name` and an explicit `--confirm-nonproduction-environment`
-attestation. Before any app, queue, or service resource is created, it validates
-the name using the read-only `modal.Environment.objects.list()` SDK method.
-It never creates an Environment and rejects `main`, `prod`, and `production`.
-The script also fails closed unless all five confirmations are supplied:
-`--confirm-isolated-modal-run`, `--confirm-nonproduction-environment`,
+## Renderer modes
+
+The default `--renderer-mode boundary` preserves the existing path and requires
+all five confirmations: `--confirm-isolated-modal-run`,
+`--confirm-nonproduction-environment`,
 `--confirm-nonproduction-renderer-binding`, `--confirm-default-egress`, and
-`--confirm-renderer-boundary-probe`. It creates uniquely named
-`latexy-harness-*` Modal apps inside the selected Environment and uses generated
-test credentials in an inline `Secret.from_dict`. It never attaches named
-production Secrets, a Volume, or a public tunnel. PostgreSQL 15, password-protected Redis,
-and Moto S3 run in one disposable I6PN service Function. The service, caller,
-and worker report only Modal provider/region labels and Redis/S3 reachability.
-The caller and worker both check Redis DB 0 and DB 1 plus S3 `HeadBucket` before
-the API submission. The actual spawned worker repeats that check, then compares
-its own provider and region to the caller's preflight placement immediately
-before entering the compile task. A mismatch is recorded only in disposable
-test Redis and stops before compilation. Provider is read from the runtime
-`MODAL_CLOUD_PROVIDER` value when present; if Modal omits it, the test stops
-instead of assuming same-cloud placement. Modal supplies its
-`MODAL_ENVIRONMENT` runtime variable; the harness does not pass an override in
-the function `env` mapping. The selected `environment_name` is passed explicitly
-to both ephemeral queues, the service App run, the dispatch App deployment, and
-the preflight Function lookup; no resource relies on an active-environment
-default.
+`--confirm-renderer-boundary-probe`. Its renderer adapter performs image
+identity preflight and `_VM_BOUNDARY_PREFLIGHT` checks for `/proc/1` access and
+outbound network denial. A passing boundary run still does not certify the
+image or populate production variables.
 
-Example PowerShell invocation (replace each placeholder with reviewed values
-and an existing sandbox Environment name):
+`--renderer-mode functional-only` runs the same API/worker/PDF functional flow
+but sets a distinct test-only renderer binding. It requires
+`--confirm-functional-renderer-binding` along with the isolated-run,
+nonproduction-environment, and default-egress confirmations. It rejects
+`--confirm-renderer-boundary-probe` so this mode cannot be mistaken for a
+boundary-probe run. The runtime backend accepts this binding only when
+`ENVIRONMENT=test`, `DEPLOY_TARGET=modal`, and Modal supplies an explicit
+nonproduction `MODAL_ENVIRONMENT`; the renderer image ID and fingerprint must
+still be well formed. It uses a distinct noncacheable backend identity and
+reports `renderer_boundary_probe: not_run` and
+`production_certification_claimed: false`.
+
+Functional-only mode skips only `_VM_BOUNDARY_PREFLIGHT`. It retains the
+renderer image/asset preflight, `block_network=True`, no Modal Secrets, no
+Volumes, and the actual renderer compile. The test-only setting cannot be
+combined with `MODAL_ENGINE_VM_CERTIFIED=true`, and the adapter refuses to
+skip the boundary probe outside its explicit nonproduction test configuration.
+
+## Resource scope and environment
+
+Both modes require an existing Modal Environment selected with
+`--environment-name` and the explicit `--confirm-nonproduction-environment`
+attestation. Before creating an app, queue, or service, the harness checks
+existence using the read-only `modal.Environment.objects.list()` SDK method. It
+never creates an Environment and rejects `main`, `prod`, and `production`.
+The selected environment name is passed explicitly to the ephemeral queues,
+service App run, dispatch App deployment, and preflight Function lookup.
+Modal's `MODAL_ENVIRONMENT` runtime variable is not overridden by the harness.
+
+The harness creates uniquely named `latexy-harness-*` Modal apps and generated
+test credentials in an inline `Secret.from_dict`. It never attaches named
+production Secrets, a Volume, or a public tunnel. PostgreSQL 15,
+password-protected Redis, and Moto S3 run in one disposable I6PN service
+Function. Service, caller, and worker report only provider/region labels and
+Redis/S3 reachability. The caller and worker check Redis DB 0 and DB 1 plus S3
+`HeadBucket` before API submission. The spawned worker checks again and compares
+its provider/region to the caller before compilation. Unknown or mismatched
+placement stops before compile. The service, caller, and worker use Modal's
+default outbound egress; I6PN does not block internet egress.
+
+## Functional-only invocation
+
+Use fresh API/services test images built from the exact source revision under
+acceptance, plus the already accepted bare renderer tuple below. Replace the
+environment and report path with reviewed nonproduction values:
 
 ```powershell
 python scripts/qa/modal_spawn_acceptance.py `
-  --image-id <approved-api-test-image-id> `
-  --services-image-id <approved-services-image-id> `
-  --renderer-image-id <reviewed-renderer-image-id> `
-  --renderer-assets-fingerprint <reviewed-64-character-fingerprint> `
+  --image-id <current-source-api-test-image-id> `
+  --services-image-id <nonproduction-services-image-id> `
+  --renderer-image-id im-mF0rpCXgH2MBjw3TKMYXEf `
+  --renderer-assets-fingerprint db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9 `
+  --renderer-mode functional-only `
+  --region us-east `
   --environment-name <existing-nonproduction-environment> `
   --private-report <private-path-outside-checkout> `
   --confirm-isolated-modal-run `
   --confirm-nonproduction-environment `
-  --confirm-nonproduction-renderer-binding `
   --confirm-default-egress `
-  --confirm-renderer-boundary-probe
+  --confirm-functional-renderer-binding
 ```
 
-The operator must verify that the selected existing Environment is intended
-for nonproduction use. The lookup checks existence only; the name and explicit
-attestation do not independently certify its purpose.
+Modal's current `modal image` CLI exposes build-log and named-image management
+commands, but no direct `image build` subcommand. Build each current-source
+image from a separate, nonproduction image-build script using Modal's
+`Image.build(app)` API, then pass the resulting immutable image IDs here; do
+not use `modal deploy` on the production application as an image-build shortcut.
+Modal documents this independent image-build-script flow in its
+[Named Images guide](https://modal.com/docs/guide/named-images).
 
-The detailed report containing runtime identities is written to the required
-`--private-report` path outside this checkout. The harness rejects report paths
-inside the checkout but does not set filesystem permissions or ACLs; choose a
-location with appropriate access controls. Standard output contains only a
+Before a later run, the operator must approve the two exact test image IDs and
+their source provenance, the existing nonproduction Environment and its
+purpose, the test-only binding of the accepted renderer tuple, generated test
+credentials sent to Modal, isolated app/environment and private networking,
+bounded paid compute, outer Modal control-plane access, Functions' default
+egress, and a private report destination. Functional-only mode does not require
+approval to run the renderer boundary probes. It does not repeat or invalidate
+the existing 61-template acceptance evidence. The API/services images must
+include the exact source revision carrying this harness and backend path.
+
+For a boundary run, omit `--renderer-mode` or pass `boundary`, retain the old
+`--confirm-nonproduction-renderer-binding` acknowledgement, and add
+`--confirm-renderer-boundary-probe` instead of the functional-only binding
+acknowledgement.
+
+## Reports and cleanup
+
+The detailed report is written only to the required `--private-report` path
+outside this checkout. The harness rejects report paths inside the checkout but
+does not set filesystem permissions or ACLs. Standard output includes only a
 status and fixed failure code. No raw endpoint, provider exception, job/user
-identifier, or credential is included. The test uses a synthetic user and LaTeX
-document, checks finalization and accepted-PDF visibility, then attempts
-share/bulk selection with a newer unaccepted fixture. The service, caller, and
-worker Functions use Modal's default egress policy; I6PN does not mean outbound
-internet is blocked. The test creates no public tunnel. The renderer VM uses
-the application's existing credential-free adapter with `block_network=True`,
-no Secrets, and no Volumes. Its `_VM_BOUNDARY_PREFLIGHT` still probes `/proc/1`
-and outbound connectivity; its separate approval is required before a real
-full-path run.
-
-## Resource and approval boundary
-
-Running this test creates paid nonproduction Modal resources. It uses at most
-one service Function, one caller Function, one worker Function at a time, and
-the renderer adapter's single VM at a time. Function calls have hard timeouts;
-the renderer session remains bounded by the adapter's existing 300-second,
-2-GiB ceiling. Functions connect over disposable private I6PN addresses; their
-default outbound egress remains enabled and needs explicit approval. Modal's
-automatic cloud placement is not pinned by this harness: if the service,
-caller, and worker do not report the same provider and requested region, no
-compile request is submitted.
-
-Before running, an operator must approve the exact current-source test image
-IDs, the nonproduction renderer assertion, the temporary generated test
-credentials sent to Modal, the isolated app/environment and private networking,
-the bounded paid compute, outer Modal control-plane access, the Functions'
-default egress, and the renderer boundary probe. Existing `billing-acceptance-*`
-Secret labels are not reused.
-The API/LaTeX image must independently be shown to contain the intended clean
-source revision; this harness accepts an immutable image ID but does not
-attest its source provenance. Private services are signaled and joined while
-their queues and app run scope remain active. Teardown failure changes a
-would-be pass into a failed final report and exit status. Dispatch app stop is
-attempted even if deployment raises after partially creating the unique app;
-Moto, Redis, and PostgreSQL stop results are checked independently, and
-cleanup failures are bounded and do not suppress report writing.
+identifier, or credential is included. Teardown failure turns a would-be pass
+into a failed final report and exit status. Dispatch App stop is attempted even
+if deployment raises after partially creating the unique app; Moto, Redis, and
+PostgreSQL stop results are checked independently, and cleanup failures do not
+suppress report writing.
 
 ## Synthetic tests
 
 Run the dependency-free harness regressions with
 `python scripts/qa/run_modal_spawn_diagnostics.py`. The runner discovers the
-dedicated test module and fails if fewer than 38 tests are selected. CI runs
-this source-only suite without Modal credentials, SDK access, or infrastructure.
+dedicated test module and requires a minimum test count. The suite uses no Modal
+credentials, SDK calls, or infrastructure.

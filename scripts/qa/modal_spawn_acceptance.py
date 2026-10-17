@@ -7,7 +7,9 @@ Secrets, uses Volumes or public tunnels, or writes its runtime report inside
 the repository. It does not set report file permissions or ACLs. Running
 it provisions paid infrastructure and requires
 explicit confirmations for resource use, default function egress, the
-nonproduction renderer binding, and the renderer boundary probe.
+nonproduction renderer binding, and (in boundary mode) the renderer boundary
+probe. Functional-only mode performs the same API/worker/PDF acceptance flow
+without executing the renderer boundary probe and never asserts certification.
 """
 
 from __future__ import annotations
@@ -176,17 +178,26 @@ def require_worker_placement(
 
 def function_runtime_environment(
     address: str, renderer_image_id: str, renderer_assets_fingerprint: str,
+    *, renderer_mode: str = "boundary",
 ) -> dict[str, str]:
     """Build app settings without overriding Modal-owned runtime variables."""
-    return {
+    if renderer_mode not in {"boundary", "functional-only"}:
+        raise ValueError("unsupported renderer acceptance mode")
+    environment = {
         "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal",
         "BILLING_MODE": "disabled", "DODO_MODE": "test",
         "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
         "PYTHONPATH": "/backend:/pkg", "NO_PROXY": address + ",localhost,127.0.0.1",
-        "MODAL_ENGINE_VM_CERTIFIED": "true",
         "MODAL_ENGINE_VM_IMAGE_ID": renderer_image_id,
         "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": renderer_assets_fingerprint,
     }
+    if renderer_mode == "boundary":
+        environment["MODAL_ENGINE_VM_CERTIFIED"] = "true"
+    else:
+        # This opt-in is recognized only by the test-only backend gate. It is
+        # intentionally distinct from the operator's production certification.
+        environment["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"] = "true"
+    return environment
 
 
 def _probe_redis(redis_url: str) -> bool:
@@ -787,6 +798,20 @@ def _private_report_path(path_value: str) -> Path:
     raise HarnessFailure("arguments", "private_report_must_be_outside_repository")
 
 
+def _set_renderer_report_scope(report: dict[str, object], renderer_mode: str) -> None:
+    if renderer_mode not in {"boundary", "functional-only"}:
+        raise HarnessFailure("arguments", "invalid_renderer_mode")
+    report["renderer_mode"] = renderer_mode
+    report["renderer_boundary_probe"] = "not_run" if renderer_mode == "functional-only" else "enabled"
+    report["production_certification_claimed"] = False
+
+
+def _acceptance_report(renderer_mode: str) -> dict[str, object]:
+    report = terminal_failure_report("initialize", "acceptance_not_started")
+    _set_renderer_report_scope(report, renderer_mode)
+    return report
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-id", required=True, help="Approved nonproduction API/LaTeX test image ID")
@@ -795,6 +820,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--renderer-image-id", required=True, help="Operator-reviewed bare renderer image ID")
     parser.add_argument("--renderer-assets-fingerprint", required=True,
                         help="Operator-reviewed renderer asset fingerprint")
+    parser.add_argument(
+        "--renderer-mode", choices=("boundary", "functional-only"), default="boundary",
+        help="boundary runs the security probe; functional-only runs API/worker/PDF checks only",
+    )
     parser.add_argument("--region", default="us-east", help="Modal container region (default: us-east)")
     parser.add_argument(
         "--environment-name", required=True,
@@ -814,6 +843,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Acknowledge API/worker/service Functions use Modal's default outbound egress")
     parser.add_argument("--confirm-renderer-boundary-probe", action="store_true",
                         help="Acknowledge the renderer adapter probes /proc/1 and outbound network denial")
+    parser.add_argument("--confirm-functional-renderer-binding", action="store_true",
+                        help="Bind this renderer tuple for nonproduction functional testing only; does not certify it")
     args = parser.parse_args(argv)
     try:
         private_report = _private_report_path(args.private_report)
@@ -832,12 +863,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise HarnessFailure("arguments", "isolated_modal_run_confirmation_required")
         if not args.confirm_nonproduction_environment:
             raise HarnessFailure("arguments", "nonproduction_environment_confirmation_required")
-        if not args.confirm_nonproduction_renderer_binding:
-            raise HarnessFailure("arguments", "nonproduction_renderer_binding_confirmation_required")
-        if not args.confirm_default_egress:
-            raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
-        if not args.confirm_renderer_boundary_probe:
-            raise HarnessFailure("arguments", "renderer_boundary_probe_confirmation_required")
+        if args.renderer_mode == "functional-only":
+            if args.confirm_renderer_boundary_probe:
+                raise HarnessFailure("arguments", "boundary_probe_confirmation_not_allowed_in_functional_mode")
+            if not args.confirm_default_egress:
+                raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
+            if not args.confirm_functional_renderer_binding:
+                raise HarnessFailure("arguments", "functional_renderer_binding_confirmation_required")
+        else:
+            if not args.confirm_nonproduction_renderer_binding:
+                raise HarnessFailure("arguments", "nonproduction_renderer_binding_confirmation_required")
+            if not args.confirm_default_egress:
+                raise HarnessFailure("arguments", "default_function_egress_confirmation_required")
+            if args.confirm_functional_renderer_binding:
+                raise HarnessFailure("arguments", "functional_renderer_binding_not_allowed_in_boundary_mode")
+            if not args.confirm_renderer_boundary_probe:
+                raise HarnessFailure("arguments", "renderer_boundary_probe_confirmation_required")
     except HarnessFailure as failure:
         print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
         return 2
@@ -878,7 +919,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         image=services_image, i6pn=True, region=args.region, secrets=[], volumes={},
         timeout=550, memory=(2048, 2048), max_containers=1, single_use_containers=True,
     )(run_services)
-    report: dict[str, object] = terminal_failure_report("initialize", "acceptance_not_started")
+    report = _acceptance_report(args.renderer_mode)
     dispatch_deploy_state = {"attempted": False}
     service_call = None
     try:
@@ -912,6 +953,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     })
                     runtime_env = function_runtime_environment(
                         address, args.renderer_image_id, args.renderer_assets_fingerprint,
+                        renderer_mode=args.renderer_mode,
                     )
                     dispatch_app = modal.App(dispatch_app_name)
                     secret = modal.Secret.from_dict(runtime_secrets)
@@ -946,6 +988,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             report["dispatch_app_stopped"] = stopped
         _finalize_cleanup_status(report)
 
+    _set_renderer_report_scope(report, args.renderer_mode)
     private_report.parent.mkdir(parents=True, exist_ok=True)
     private_report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(_public_summary(report), sort_keys=True))

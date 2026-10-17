@@ -14,6 +14,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from modal_spawn_acceptance import (
+    _acceptance_report,
     HarnessFailure,
     _acceptance_exit_code,
     _cleanup_private_service,
@@ -21,6 +22,7 @@ from modal_spawn_acceptance import (
     _ephemeral_queue,
     _finalize_cleanup_status,
     _private_service_lifetime,
+    _set_renderer_report_scope,
     _public_summary,
     _stop_dispatch_app,
     _stop_disposable_services,
@@ -110,6 +112,19 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
         )
         self.assertNotIn("MODAL_ENVIRONMENT", runtime_env)
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
+
+    def test_functional_only_runtime_binding_is_distinct_and_does_not_certify(self):
+        runtime_env = function_runtime_environment(
+            "fd00::1", "im-TestRenderer123", "a" * 64, renderer_mode="functional-only",
+        )
+        self.assertNotIn("MODAL_ENGINE_VM_CERTIFIED", runtime_env)
+        self.assertEqual(runtime_env["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"], "true")
+        self.assertEqual(runtime_env["ENVIRONMENT"], "test")
+
+    def test_unknown_renderer_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            function_runtime_environment("fd00::1", "im-TestRenderer123", "a" * 64,
+                                         renderer_mode="skip-everything")
 
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
@@ -306,6 +321,49 @@ class ConnectivityReportTests(unittest.TestCase):
         self.assertIn("renderer_boundary_probe_confirmation_required", output.getvalue())
         self.assertFalse(Path(private_report).exists())
 
+    def test_functional_mode_requires_its_own_binding_ack_and_never_requires_probe_ack(self):
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
+                "--private-report", private_report,
+                "--renderer-mode", "functional-only",
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+                "--confirm-default-egress",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("functional_renderer_binding_confirmation_required", output.getvalue())
+        self.assertNotIn("renderer_boundary_probe_confirmation_required", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+    def test_functional_mode_rejects_boundary_probe_acknowledgement(self):
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "test-sandbox",
+                "--private-report", private_report,
+                "--renderer-mode", "functional-only",
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+                "--confirm-default-egress",
+                "--confirm-functional-renderer-binding",
+                "--confirm-renderer-boundary-probe",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("boundary_probe_confirmation_not_allowed_in_functional_mode", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
     def test_same_provider_and_region_is_accepted_before_compile(self):
         reports = [
             {"identity": {"role": role, "provider": "CLOUD_PROVIDER_AZURE", "region": "us-east"}}
@@ -465,6 +523,24 @@ class ConnectivityReportTests(unittest.TestCase):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_functional_only_cleanup_failure_remains_failed_and_uncertified(self):
+        report = _acceptance_report("functional-only")
+        report["renderer_boundary_probe"] = "executed"
+        report["production_certification_claimed"] = True
+        _set_renderer_report_scope(report, "functional-only")
+        report.update({
+            "status": "passed",
+            "service_stop_signal_sent": True,
+            "private_services_stopped": True,
+            "dispatch_app_stopped": False,
+        })
+        _finalize_cleanup_status(report)
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["failure_code"], "dispatch_app_stop_failed")
+        self.assertEqual(report["renderer_boundary_probe"], "not_run")
+        self.assertFalse(report["production_certification_claimed"])
+        self.assertEqual(_acceptance_exit_code(report), 1)
+
     def test_private_services_are_cleaned_up_on_success_and_body_error_in_scope(self):
         for fail_body in (False, True):
             with self.subTest(fail_body=fail_body):
