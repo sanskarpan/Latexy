@@ -143,7 +143,7 @@ if ! (
   PLAYWRIGHT_BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}" \
   PLAYWRIGHT_API_URL="http://127.0.0.1:${BACKEND_PORT}" \
   PLAYWRIGHT_PORT="$FRONTEND_PORT" \
-  pnpm exec playwright test e2e/full-stack-smoke.spec.ts e2e/landing-capability-fullstack.spec.ts e2e/capability-fullstack.spec.ts e2e/core-capabilities-fullstack.spec.ts --project=chromium --workers=1 --retries=0 --trace=on --reporter=line --output=test-results/full-stack
+  pnpm exec playwright test e2e/full-stack-smoke.spec.ts e2e/landing-capability-fullstack.spec.ts e2e/capability-fullstack.spec.ts e2e/core-capabilities-fullstack.spec.ts e2e/b07-json-export-fullstack.spec.ts --project=chromium --workers=1 --retries=0 --trace=on --reporter=line --output=test-results/full-stack
 ); then
   if [[ "$started_frontend" -eq 1 ]]; then
     cat "$frontend_log"
