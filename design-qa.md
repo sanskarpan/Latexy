@@ -1,70 +1,98 @@
-# Mobile landing-page QA
+# Review Desk visual QA — 17 October 2026
 
-Scope: mobile homepage, keeping the approved logo, native document hero and desktop composition. Isolated worktree, branch `codex/mobile-landing`, started at `253c5f63` and integrated current main `2e77a1ca` without conflicts. That main update changed documentation only.
+## Result and scope
 
-## Current-run audit
+The selected second direction is implemented as native, interactive UI. No actionable P0, P1 or P2 visual finding remains in the reviewed homepage states. This is visual acceptance of the marketing page, not a claim that the entire product has no bugs. Production CI is reported separately in PR #1923.
 
-The live homepage was inspected through the in-app browser at a requested 390 x 844 phone viewport (375px content width with its scrollbar). Fresh light/dark screenshots were opened for the hero, builder, analysis and footer. The authenticated browser also showed a feature-access recovery banner; public PR screenshots will use isolated anonymous fixtures and will not publish account state.
+Product source: `32fdea72078c5a3824570fdba89bed582c47f044`, rebased on main `fc3e3df9`. The primary checkout was not edited. Only the homepage, its header/footer and relevant marketing contracts were changed.
 
-Findings:
+## Visual truth and captures
 
-1. Hero: headline line breaks and a nearly 700px document gallery dominate the first screens. Product CTAs disappear while capability access cannot resolve. Severity P1 for the missing marketing path, P2 for composition.
-2. Builder: editor and full paper stack to over 1,000px. The miniature desktop rail adds controls without labels. P2.
-3. Analysis: two stacked panels consume about 775px; keyword content is squeezed into narrow columns and metrics wrap awkwardly. P2.
-4. Applications and LaTeX: the board stacks to about 706px, and the code/equation workspace takes about 590px. P2.
-5. Footer: about 925px, with a large decorative illustration and small links. Header utility controls also crowd account navigation. P2.
+- Selected direction: option 2, The Review Desk. User authorised new fonts and more useful copy.
+- Revised source: `docs/design/review-desk-target.png`. Original generated reference: `C:/Users/Sansk/.codex/generated_images/01a111a6-7bd6-7a81-9f26-b61e551a5767/exec-88ae5791-aebc-4bb3-a083-0df0ec05b49f.png`.
+- Actual captures: `docs/qa/review-desk-2026-10-17/desktop-{light,dark}-full.png` and `mobile-{light,dark}-full.png`. Hero files are native-density top crops of those screenshots.
+- Route/state: `/`, signed out, Review selected, original sample wording, Classic layout, normal contrast, reduced motion for stable capture. Existing quality API fixtures enable normal public guest features. These are actual local development renders from the committed source, not generated mockups or production-site screenshots.
+- Desktop: Chromium, 1440×1000 CSS viewport, DPR 1; full page 1440×4454 pixels.
+- Phone: WebKit iPhone profile, 390×1000 CSS viewport, DPR 3; full page 1170×16434 pixels. Additional checks cover 320, 360, 430, 768, 1024 and 1101 CSS pixels in both themes.
+- The source board is 1536×1024 pixels. Desktop crop: `(22,59)-(964,970)`; light phone: `(976,59)-(1237,970)`; dark phone: `(1252,59)-(1518,970)`. The board does not specify a CSS viewport or DPR. Comparison copies normalise width only: desktop 1440, phone 390; aspect ratio is preserved. The phone reference is taller than the actual viewport. These comparisons establish composition and fidelity, not a misleading pixel-perfect score.
+- The small circular N in local captures is Next development chrome, not product UI. Screenshots are not masked. Full images are untouched; section and hero images are crops. `capture.json` records source and capture details.
 
-Screenshot inspection alone does not establish accessibility compliance. Keyboard, state preservation, overflow, capability handling and browser behavior require the tests below.
+## Combined comparisons inspected
 
-## Changes
+Reference and actual were composed into the same image before judgment:
 
-- Two-line mobile heading, consistent margins, side-by-side conversion actions and larger touch controls. Public platform/demo links remain available when product-entry gates are closed; all existing product capability gates stay intact.
-- Native compact resume preview with layout controls above it and an explicit full-sample expansion. No raster documents or clipped content. The full resume stays available on demand.
-- Edit/preview controls preserve builder state and eliminate the stacked full document; Visual/Source/Studio modes remain available. Mobile rail is removed from display.
-- ATS overview and keyword report switch between focused panels. Keyword filters use the full panel width and metric controls remain reachable.
-- Horizontally scrollable application stages with the next stage visible; existing card menus remain functional. LaTeX uses its existing Source/PDF selection without a duplicated second preview.
-- Consistent section spacing, readable light/dark surfaces, larger controls and a shorter footer with the approved logo. The decorative footer illustration remains on desktop.
+- `comparison-desktop-light.png`: complete desktop source and corresponding implementation region.
+- `comparison-mobile-light.png`, `comparison-mobile-dark.png`: phone source and native UI, with density normalised.
+- `comparison-detail-type.png`: readable desktop headline, description, actions and guest note.
+- `comparison-detail-paper.png`: résumé hierarchy, highlighted sentence, attached review, connector and workflow tabs.
 
-## Verification
+Focused actual section crops were inspected because a whole-page thumbnail cannot establish readability: `section-desktop-{light,dark}-{1,2,3,4}.png` and `section-mobile-{light,dark}-{1,2,3,4}.png`. The source board ends after the next-steps overview; lower sections are original extensions of its visual language, not claimed replicas of an unseen reference.
 
-Existing marketing unit tests: 9 passed. Scoped ESLint and TypeScript passed. No existing unit-test assertions were changed; implementation preserved the existing CTA contract after the local checks identified an API/fixture mismatch.
+## Findings and comparison history
 
-New browser coverage exercises 320/390/430px in both themes, compact/full samples, edit/preview state preservation, analysis views, horizontally reachable card menus, native PDF tabs and public navigation when capabilities are unavailable. Existing five-profile, desktop keyboard, long-content, no-WebGL and reduced-motion assertions are retained. Fresh screenshots are captured per section on mobile as well as desktop.
+1. **[P1, resolved] WebKit rendered variable display/body fonts too thin.**
+   Evidence: `iteration-variable-font.png` and the first WebKit comparison. Correct computed weights did not produce the intended optical weight. This weakened hierarchy on phone. Replaced variable delivery with static instances, then captured WebKit again. The final combined phone comparisons show the intended solid headline and readable body. Derivative names, attribution and OFL notices are included in `fonts/FONTLOG.md`.
+2. **[P2, resolved] Phone sample type was too small and the review controls needed larger targets.**
+   Raised document text to 14px, note body to 13px, quotation to 14px and phone buttons to 44px minimum. Final phone hero comparisons show clear text, adjacent primary actions and separate, usable review actions. Long role/contribution values wrap without horizontal overflow.
+3. **[P2, resolved] Desktop document and annotation were undersized next to the display heading.**
+   Evidence: `iteration-small-desktop.png`. Raised document body 12→14px, annotation body 11→13px, quotation 12→14px and relevant small labels. Eased headline tracking. Final `comparison-detail-paper.png` and desktop hero show the corrected density; the annotation remains anchored after reflow.
+4. **[P2, resolved] Hiding the overview line break joined “next” and “steps” on phone.**
+   Added an explicit word space before the responsive break. Final `section-mobile-light-1.png` shows “Keep the next steps in view.” The browser contract now asserts the complete accessible heading at every tested width/theme.
+5. **[P2, resolved] Review undo could restore an unfinished Write draft instead of the previous applied wording.**
+   Separated the undo snapshot from the unsaved draft and tracked dirty edits. Regression coverage verifies Undo and Keep original preserve unfinished input and restore the correct paper text on desktop Chromium and mobile WebKit.
+6. **[P2, resolved] Menu could accept an early tap before its parent was hydrated.**
+   Keep it disabled until the parent handler is ready. Appearance/menu keyboard contracts remain enabled.
 
-## First capture review
+## Required fidelity surfaces
 
-Source `613efd59`, artifact `11982286315` from run `38749680730`, archive SHA256 `e9fb92b75f50d9b833419d7f8cd6f582aafd08f531d11921934300ccb0bd5a65`, was downloaded, verified and inspected. Native 320/390/430px first screens, light/dark gallery, builder editor/preview, ATS/keywords, applications, tailoring, LaTeX and footer were opened at full resolution. Desktop gallery remained intact.
+### Fonts and typography
 
-The new mobile interaction cases passed in Chromium and WebKit, as did all no-WebGL and public fallback cases (175 passed, 10 skipped). Five representative cases failed on changed UI assumptions: a hidden fallback anchor was included in geometry, and mobile footer motion was checked on the intentionally hidden illustration. The checks now require two visible actions, restore the original device viewport for motion checks, retain desktop paper motion, and verify the visible phone brand reveal plus zero animations under reduced motion. No unrelated functional test was patched.
+Latexy Display is a static Hubot-derived display subset; Latexy Reading is a Mona-derived body subset. The user explicitly requested a font change, so exact reproduction of the generated typeface is not a goal. Static weights avoid the observed WebKit variation. Tinos distinguishes typeset documents from the marketing voice. Headline hierarchy, two-line hero, wrapping, label weights and quote readability were inspected in combined comparisons and native renders. No rasterised text is used. The existing brand wordmark is retained.
 
-Visual review identified a duplicate mobile document caption caused by CSS ordering, a list marker against its container border, extra analysis switch padding, and inconsistent Source/PDF control styling. These are corrected together with header label sizing and readable rewrite inputs. The mobile browser contract now covers caption suppression and a full rewrite edit/accept flow.
+### Spacing and layout rhythm
 
-## Corrected capture review
+Desktop preserves the asymmetric copy/document composition, attached annotation and lower workflow. Phone has its own sequence: introduction, adjacent actions, workflow, readable excerpt and review. Secondary desktop history is omitted from the phone excerpt. Long sample text, all four modes and layout changes were checked. The overview remains a compact pair; supporting sections use consistent dividers and aligned columns. No page overflow at tested widths. Width-normalised concept-board proportions differ from a specified CSS design; the compact 48px phone actions and shorter document are deliberate usable UI choices.
 
-Source `4996cff1`, artifact `11982989437` from run `38753709994`, archive SHA256 `ed07495127e9cc7ec815f606127e5842ec75b81aac29de65c4e8074be43b6d71`, was verified and opened. Both phone engines passed the representative evidence, new six-width/theme combinations, touch-target, edit-preservation, rewrite and public fallback contracts. Full quality result: 178 passed, 2 failed, 10 skipped, no flaky cases.
+### Colors and visual tokens
 
-1. Header and hero: 390/430px composition is readable; CTAs share a row. Chromium at 320px exposed doubled header gutters that wrapped utilities. Source `393214f5` removes the extra inset, retains 44px targets and asserts the brand/utilities share a horizontal center line in all six phone combinations. Fresh confirmation is pending.
-2. Document gallery: duplicate caption removed; Classic remains first/default. Classic, Modern and Minimal have readable native text and a reachable full-sample expansion, including without WebGL. No clipping observed in opened gallery captures.
-3. Builder: the editor and preview are distinct focused views in both themes. The edited synthetic bullet appears in the actual preview and survives return to the editor/source. No second full document underneath the editor.
-4. ATS: overview and keyword panels use consistent selection controls and full panel width. Chart labels, metric controls and keyword results are readable in both themes.
-5. Tailoring and applications: list markers sit inside their container; rewrite editing uses 16px text and passes the edit/accept flow. The board shows one stage plus the next-stage edge; menus remain reachable by horizontal scrolling.
-6. LaTeX: Source/PDF controls match the other secondary views; readable source, 44px compile action and no duplicate PDF panel on phones. The native PDF tab works.
-7. FAQ and footer: legible disclosures, large link targets, compact three-column directory and approved brand signature. Both theme footer captures were inspected. Desktop retains its illustration.
+Ivory/navy in light mode; deep navy, pale blue and light text in dark mode. Existing semantic color and high-contrast tokens are retained. Highlight, selected step, focus and primary actions share the accent. The source's pale feedback treatment maps to the existing semantic highlight rather than introducing a second palette. Borders and surfaces remain visible in both modes. High contrast stays inside Menu; one theme control remains in the header.
 
-The two failures are desktop motion checks introduced by the additional target scroll. The Chromium trace records that scrolling the animated image waited 4,640ms for stable geometry, consuming the 4,500ms float before testing whether it was running. The test now scrolls the static footer on desktop (as before) and only scrolls the phone signature. The animation-running assertion and reduced-motion zero-animation assertion remain. No production motion code was changed to address this test issue.
+### Image quality, assets and icons
 
-## Final capture acceptance
+The hero is selectable HTML, inputs, radios and semantic tabs. No image/canvas, blurred screenshot, WebGL requirement, fake avatar or stock decoration. The visual reference describes editable document UI, so code-native rendering follows the user's explicit requirement. The approved Baseline SVG is reused, with Tabler icons for interface controls; no substitute logo or bespoke illustration was drawn. The source's invented percentage and profile URL are omitted. Full-density mobile captures show sharp document text.
 
-Source `393214f5957c68fac7fda8d5fb96326934587a9e`, artifact `11985179689` from [run `38757881363`](https://github.com/sanskarpan/Latexy/actions/runs/38757881363), archive SHA256 `5269682dba8b78af5cd8e3c72f20de4c74202bba230cc40c602a6aeb33da9869`, was downloaded and verified. Quality report: **180 passed, 10 intentionally skipped, 0 failed, 0 flaky** across five profiles. Every reported source CI check passed, including build, lint/unit, backend, full-stack smoke, isolated real compilation and browser quality. CodeRabbit's draft status is a skipped review, not a code-review approval.
+### Copy and content
 
-The six Chromium first screens and WebKit 320px dark first screen were opened. The header now stays on one row with aligned controls in both themes. Fresh section captures were compared with the inspected `4996cff1` captures: gallery, builder, ATS, applications, FAQ and footer have identical pixels. The changed tailoring/LaTeX captures and interactive builder/keyword states were opened again and accepted. Desktop rendering and all three no-WebGL layouts retain their earlier composition and passed their browser contracts.
+Hero copy states the actual tasks: build without code, check structure, tailor to a job and export a LaTeX PDF. Sections separately explain ATS guidance, application organisation and non-résumé LaTeX work. Samples are labelled illustrative. No customer numbers, invented hiring results, universal ATS guarantees or fabricated testimonials. Guest limits and account requirements are visible. Metadata, canonical, application schema, ownership verification and visible FAQ/schema agreement are retained. Research and official references are in `docs/design/landing-review-desk.md`; no ranking or AI-search guarantee is claimed.
 
-Seven steps above are healthy within the inspected scope. Remaining evidence limits: screenshots use anonymous-session and feature fixtures; they do not establish production service health or full accessibility conformance. Production verification and the final publication revision's required CI are recorded in the PR before merge.
+## Interactions, accessibility and verification
 
-Twenty-two actual PNGs are copied unchanged to [the capture directory](docs/design/landing-mobile/README.md). [Capture metadata](docs/design/landing-mobile/capture.json) records source, archive digest, original attachment names, dimensions and image hashes. The publication commit retains source frontend tree `f003165b661e39f7170cb8b4b39679452c8d3f9d`; only documentation and captures are added after visual acceptance.
+- Edit role and contribution; apply/undo/decline suggestion; retain saved and unfinished text across stages; select target-role guidance; change Classic/Modern/Minimal layouts; reset on reload.
+- Radix keyboard tabs, labelled fields/radios, live status feedback, native text selection and touch controls. Classic is first and selected by default.
+- Supporting ATS tabs, application stage selectors, source/PDF tabs, FAQ disclosure, theme, contrast menu, opt-in sound, navigation and capability fallback.
+- Reduced motion disables animation; no sound before explicit opt-in; hero works without WebGL. Runtime-error collection in final capture tests is empty.
+- Final focused run: native hero and capture contracts in desktop Chromium/mobile WebKit. Four tests passed. Phone long-text/mode contracts passed in both themes. Earlier full marketing contracts passed on desktop/mobile Chromium; core native/keyboard/gates contracts also passed on desktop WebKit.
+- Relevant unit tests: 14 passed across five files. Targeted ESLint passed. Production build passed before final naming-only font change; current production build and all-engine browser checks run in CI.
+- Broader Windows unit run: 290 files passed, five files failed (five assertions plus one Monaco suite setup error). All failures reproduce in an untouched main worktree with the same dependencies. They concern CRLF/source-string and local patch/tooling assumptions; no unrelated assertions or product code were patched. Linux CI on the preceding source revision passed the complete unit suite after the missing metadata-test font mock was added.
+- Local Firefox launch fails with Windows `spawn UNKNOWN`; Linux CI covers it. Existing Windows WebKit keyboard/sound assumptions are not reported as full-suite success.
+- Automatic approval review blocked a local production-preview launch. Visual work continued in the already-running development preview; CI exercises the production bundle. No workaround server was launched.
 
-Before final verification, main advanced to `482a9b17` with the multilingual renderer VM memory reservation and its backend contract test. That update was integrated without conflicts. The captured frontend tree remains identical; the combined revision runs the required CI before merge.
+## Expected differences and follow-up polish
 
-Main subsequently advanced to `a03ca9de` with the multilingual LaTeX language/font setup and backend tests. It was also integrated without conflicts or frontend changes; required checks run on that latest combined revision.
+- Font/copy changes were explicitly authorised. Product truth takes priority over generated example claims.
+- The concept board does not define supporting sections, interaction states or every breakpoint. These are implemented as coherent extensions using real product routes and existing permission gates.
+- Whole-app JavaScript-disabled operation is outside this homepage redesign: the shared Next streaming/loading shell still needs framework bootstrap. Native sample/copy are delivered in response HTML, but this is not a full no-JavaScript website guarantee.
+- [P3] A future review could tune the exact display tracking or expand the illustrative sample. No extra decorative effects are needed to complete the selected direction.
+- Deployment remains held; Vercel rate limiting is the user-approved deferral. This report does not claim production deployment.
 
-final result: passed — mobile composition and interactions accepted in both themes, with source CI green and evidence saved.
+## Implementation checklist
+
+- [x] Resolve option 2 and inspect the exact revised reference.
+- [x] Build real interactive hero with no raster product preview.
+- [x] Check phone light/dark and narrow widths separately.
+- [x] Fix and recapture every P1/P2 visual/state finding above.
+- [x] Inspect combined comparisons and readable section details.
+- [x] Preserve brand, product entry gates, truthful copy and search metadata.
+- [x] Capture committed page screenshots for PR review.
+
+final result: passed
