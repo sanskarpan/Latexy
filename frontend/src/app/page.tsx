@@ -8,10 +8,11 @@ import LandingMotion from '@/components/marketing/LandingMotion'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { siteUrl } from '@/lib/site-url'
 import './landing.css'
-import './landing-type.css'
 import './landing-mobile.css'
 import './landing-glass.css'
 import './landing-editorial.css'
+import './landing-refresh.css'
+import './landing-type.css'
 
 const description =
     'Build a professional resume without code. Review ATS feedback, tailor your resume to each job, track applications, and compile LaTeX documents with Latexy.'
@@ -90,41 +91,40 @@ export default function LandingPage() {
                 }}
             />
             <div className="lp-opening lp-container">
-            <section className="lp-hero" aria-labelledby="landing-title">
-                <div className="lp-hero-heading">
-                    <p className="lp-hero-eyebrow"><span>Latexy / 01</span> Your work, well presented</p>
-                    <h1 id="landing-title">
-                        A résumé in
-                        <br />
-                        <span>your own words.</span>
-                    </h1>
-                </div>
-                <div className="lp-hero-copy">
-                    <p>
-                        Start with guided fields or LaTeX. Review the structure, tailor a version
-                        for each role, and export a PDF you can stand behind.
-                    </p>
-                    <div className="lp-hero-actions">
-                        <MarketingCTA />
-                        <Link className="lp-primary-fallback" href="/platform">
-                            Explore Latexy <ArrowRight size={15} aria-hidden="true" />
-                        </Link>
-                        <CapabilityGate feature="b04">
-                            <Link className="lp-secondary-button" href="/templates">
-                                Explore templates
-                                <ArrowRight size={15} aria-hidden="true" />
-                            </Link>
-                        </CapabilityGate>
-                        <Link className="lp-secondary-button lp-secondary-fallback" href="#product">
-                            See it in action <ArrowRight size={15} aria-hidden="true" />
-                        </Link>
+                <section className="lp-hero" aria-labelledby="landing-title">
+                    <div className="lp-hero-heading">
+                        <p className="lp-hero-eyebrow">
+                            <span>Latexy / 01</span> The résumé &amp; LaTeX studio
+                        </p>
+                        <h1 id="landing-title">
+                            Write a résumé.
+                            <br />
+                            <span>Own every word.</span>
+                        </h1>
                     </div>
-                    <p className="lp-trial-note">
-                        Try the guest studio. No account or card needed. Usage limits apply.
-                    </p>
-                </div>
-            </section>
-            <DocumentGallery />
+                    <div className="lp-hero-copy">
+                        <p>
+                            Start with guided fields or edit the source in LaTeX. Review the
+                            structure, tailor a version to each role, and export a PDF.
+                        </p>
+                        <div className="lp-hero-actions">
+                            <MarketingCTA label="Try the studio" />
+                            <Link className="lp-primary-fallback" href="/platform">
+                                Explore Latexy <ArrowRight size={15} aria-hidden="true" />
+                            </Link>
+                            <CapabilityGate feature="b04">
+                                <Link className="lp-secondary-button" href="/templates">
+                                    Explore templates
+                                    <ArrowRight size={15} aria-hidden="true" />
+                                </Link>
+                            </CapabilityGate>
+                        </div>
+                        <p className="lp-trial-note">
+                            Try the guest studio. No account or card needed. Usage limits apply.
+                        </p>
+                    </div>
+                </section>
+                <DocumentGallery />
             </div>
             <LandingExperience />
             <section className="lp-faq lp-container" aria-labelledby="landing-faq">
