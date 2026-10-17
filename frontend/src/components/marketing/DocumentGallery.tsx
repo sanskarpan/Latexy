@@ -8,13 +8,13 @@ import './document-scene.css'
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 type Layout = (typeof layouts)[number]
 
-function ResumePaper({ layout }: { layout: Layout }) {
+function ResumePaper({ layout, name, role }: { layout: Layout; name: string; role: string }) {
     return (
         <article className="lp-hero-paper" aria-label={`${layout} sample résumé`}>
             <header>
-                <h2>Alex Morgan</h2>
-                <p>Senior Software Engineer</p>
-                <small>London · alex@example.com</small>
+                <h2>{name || 'Your name'}</h2>
+                <p>{role || 'Your role'}</p>
+                <small>London · sample@example.com</small>
             </header>
             <section className="lp-hero-paper-profile">
                 <h3>Profile</h3>
@@ -23,7 +23,7 @@ function ResumePaper({ layout }: { layout: Layout }) {
             <section>
                 <h3>Experience</h3>
                 <div className="lp-hero-paper-role">
-                    <strong>Senior Software Engineer</strong>
+                    <strong>{role || 'Your role'}</strong>
                     <span>2021 — Present</span>
                 </div>
                 <p className="lp-hero-paper-company">BrightCode</p>
@@ -41,7 +41,7 @@ function ResumePaper({ layout }: { layout: Layout }) {
                     Delivered product features and improved engineering practices.
                 </p>
             </section>
-            <section>
+            <section className="lp-hero-paper-education">
                 <h3>Education</h3>
                 <strong>BSc Computer Science</strong>
                 <p>University of Bristol · 2014 — 2018</p>
@@ -56,6 +56,8 @@ function ResumePaper({ layout }: { layout: Layout }) {
 
 export default function DocumentGallery() {
     const [layout, setLayout] = useState<Layout>('Classic')
+    const [sampleName, setSampleName] = useState('Alex Morgan')
+    const [sampleRole, setSampleRole] = useState('Senior Software Engineer')
     const [expanded, setExpanded] = useState(false)
     const [reducedMotion, setReducedMotion] = useState(true)
     const [dark, setDark] = useState(false)
@@ -118,6 +120,10 @@ export default function DocumentGallery() {
     }
     return (
         <div className="lp-gallery" data-mobile-expanded={expanded}>
+            <div className="lp-gallery-heading">
+                <span className="lp-gallery-kicker">LIVE RÉSUMÉ SAMPLE · NOT SAVED</span>
+                <p>Try a heading, then compare the layouts.</p>
+            </div>
             <div
                 className="lp-gallery-art lp-document-scene"
                 id="landing-document-samples"
@@ -161,15 +167,23 @@ export default function DocumentGallery() {
                                 </span>
                             </figcaption>
                             <div className="lp-document-mat">
-                                <ResumePaper layout={name} />
+                                <ResumePaper layout={name} name={sampleName} role={sampleRole} />
                             </div>
                         </figure>
                     )
                 })}
             </div>
             <div className="lp-gallery-controls">
-                <span>Choose a layout</span>
-                <div role="group" aria-label="Sample résumé layouts">
+                <span>
+                    <span className="lp-gallery-label-desktop">Choose a layout</span>
+                    <span className="lp-gallery-label-mobile">Layout</span>
+                </span>
+                <div
+                    role="group"
+                    aria-label="Sample résumé layouts"
+                    style={{ '--layout-index': layouts.indexOf(layout) } as CSSProperties}
+                >
+                    <span className="lp-layout-indicator" aria-hidden="true" />
                     {layouts.map((name, index) => (
                         <button
                             type="button"
@@ -200,6 +214,29 @@ export default function DocumentGallery() {
                         </button>
                     ))}
                 </div>
+            </div>
+            <div className="lp-gallery-personalise" aria-label="Edit the sample résumé heading">
+                <label>
+                    <span>Sample name</span>
+                    <input
+                        type="text"
+                        value={sampleName}
+                        maxLength={38}
+                        onChange={event => setSampleName(event.target.value)}
+                        autoComplete="off"
+                    />
+                </label>
+                <label>
+                    <span>Sample role</span>
+                    <input
+                        type="text"
+                        value={sampleRole}
+                        maxLength={48}
+                        onChange={event => setSampleRole(event.target.value)}
+                        autoComplete="off"
+                    />
+                </label>
+                <p>Sample only. Your edits here are not saved.</p>
             </div>
             <button
                 type="button"

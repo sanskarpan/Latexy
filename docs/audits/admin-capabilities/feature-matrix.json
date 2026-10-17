@@ -1180,14 +1180,16 @@
       ],
       "serverHandlers": [],
       "dynamicOrServiceGates": [
-        "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach; content changes also require c01)"
+        "backend/app/middleware/capability_router.py:payload_capabilities (normalized force_reattach on legacy and versioned builder update routes; content changes also require c01)"
       ],
       "clientControls": [
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx"
       ],
       "verification": {
-        "status": "client_control_wiring; per-capability behavior not exhaustively tested",
-        "automatedBackendEvidence": [],
+        "status": "automated_backend_policy_coverage",
+        "automatedBackendEvidence": [
+          "backend/test/test_capability_route_policy.py::test_force_reattach_capability_blocks_legacy_and_v1_routes_before_database (global, role, family, exact-SKU denial on both handlers)"
+        ],
         "catalogCoverage": "backend/test/test_entitlement_wiring.py",
         "rolePolicyEvidence": "backend/test/test_capability_roles.py::test_role_feature_plan_cross_product (all four account contexts and eleven concrete SKUs; pure policy, not UI/API workflow)",
         "roleCoverage": [

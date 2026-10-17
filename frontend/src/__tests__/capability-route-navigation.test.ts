@@ -5,6 +5,7 @@ import ts from 'typescript'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CapabilityGate from '@/components/CapabilityGate'
 import CapabilityRouteBoundary from '@/components/CapabilityRouteBoundary'
+import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { capabilityForRoute } from '@/lib/capability-ui-policy'
 import { resumeEditorHref } from '@/lib/resume-navigation'
 
@@ -102,6 +103,25 @@ describe('optional route entry controls render OFF and ON', () => {
     state.grants.add('b08')
     expect(renderExpression(expression)).toContain('href="/workspace/builder/source"')
     expect(renderExpression(expression)).toContain('Saved source title')
+  })
+
+  it('keeps the studio CTA gated while leaving the public fallback available', () => {
+    const renderCta = () =>
+      renderToStaticMarkup(React.createElement(MarketingCTA, { label: 'Try the studio' }))
+    const fallback = renderExpression(linkExpression(home, '/platform'))
+
+    expect(renderCta()).not.toContain('href="/try?mode=visual"')
+    expect(fallback).toContain('href="/platform"')
+    expect(fallback).toContain('Explore Latexy')
+
+    state.grants.add('a09')
+    state.grants.add('b01')
+    expect(renderCta()).not.toContain('href="/try?mode=visual"')
+    state.grants.add('c01')
+    expect(renderCta()).toContain('href="/try?mode=visual"')
+    expect(renderCta()).toContain('Try the studio')
+    state.grants.delete('b01')
+    expect(renderCta()).not.toContain('href="/try?mode=visual"')
   })
 
   it('hides onboarding creation actions without core grants and retains skip exploration', () => {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import CapabilityGate from '@/components/CapabilityGate'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Circle, Line, Polygon } from '@visx/shape'
 import katex from 'katex'
@@ -504,8 +504,10 @@ function AnalysisDemo() {
         missing: ['System design', 'CI/CD', 'Stakeholder communication'],
     }
     const point = (index: number, radius: number): [number, number] => [
-        140 + Math.sin((index * Math.PI * 2) / 5) * radius,
-        118 - Math.cos((index * Math.PI * 2) / 5) * radius,
+        // Node and browser trig implementations may differ in the last binary
+        // digit. Stable SVG attributes prevent a server/client hydration warning.
+        Number((140 + Math.sin((index * Math.PI * 2) / 5) * radius).toFixed(3)),
+        Number((118 - Math.cos((index * Math.PI * 2) / 5) * radius).toFixed(3)),
     ]
     return (
         <div className="lp-analysis-demo" data-mobile-view={mobileView}>
@@ -1067,71 +1069,125 @@ function LatexDemo() {
 }
 
 export default function LandingExperience() {
+    const [activeChapter, setActiveChapter] = useState('builder')
+    useEffect(() => {
+        const chapters = ['builder', 'analysis', 'tailoring', 'applications', 'latex']
+        const sections = chapters
+            .map(chapter => document.getElementById(`lp-${chapter}`))
+            .filter((section): section is HTMLElement => section instanceof HTMLElement)
+        if (!('IntersectionObserver' in window)) return
+        const observer = new IntersectionObserver(
+            entries => {
+                const visible = entries
+                    .filter(entry => entry.isIntersecting)
+                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+                if (visible[0]) setActiveChapter(visible[0].target.id.replace('lp-', ''))
+            },
+            { rootMargin: '-15% 0px -65% 0px', threshold: 0 },
+        )
+        sections.forEach(section => observer.observe(section))
+        return () => observer.disconnect()
+    }, [])
     return (
         <div className="lp-experience" id="product">
+            <div className="lp-chapter-intro">
+                <p>FROM FIRST DRAFT TO EVERY APPLICATION</p>
+                <h2>A résumé is only the start.</h2>
+                <span>Build it, check it, tailor it, and keep track of where it goes.</span>
+            </div>
+            <nav className="lp-chapter-nav" aria-label="Explore Latexy features">
+                {[
+                    ['builder', 'Build'],
+                    ['analysis', 'Review'],
+                    ['tailoring', 'Tailor'],
+                    ['applications', 'Track'],
+                    ['latex', 'Typeset'],
+                ].map(([chapter, label], index) => (
+                    <a
+                        key={chapter}
+                        href={`#lp-${chapter}`}
+                        aria-current={activeChapter === chapter ? 'location' : undefined}
+                    >
+                        <small>0{index + 1}</small><span>{label}</span>
+                    </a>
+                ))}
+            </nav>
             <section
+                id="lp-builder"
                 className="lp-feature-row lp-builder-section"
                 aria-labelledby="lp-builder-title"
             >
                 <div className="lp-section-copy">
+                    <p className="lp-section-label">01 / Resume builder</p>
                     <h2 id="lp-builder-title">
-                        A builder for people.
-                        <br />A studio for precision.
+                        Write your résumé. <br />
+                        See it take shape.
                     </h2>
                     <p>
-                        Write, refine, and export with a tool designed for clarity, not complexity.
+                        Add your experience in familiar fields and watch the preview update. Switch
+                        to visual editing or LaTeX when you need more control.
                     </p>
                 </div>
                 <BuilderDemo />
             </section>
             <section
+                id="lp-analysis"
                 className="lp-feature-row lp-analysis-section"
                 aria-labelledby="lp-analysis-title"
             >
                 <div className="lp-section-copy">
+                    <p className="lp-section-label">02 / ATS feedback</p>
                     <h2 id="lp-analysis-title">
-                        Understand what
-                        <br />
-                        your résumé is saying.
+                        Find the gaps <br />
+                        before you apply.
                     </h2>
                     <p>
-                        Get clear, actionable feedback on your content, from structure to keywords.
+                        Review your résumé’s structure, bullet points, and keywords. Use the
+                        feedback to decide what needs attention before sending it.
                     </p>
                 </div>
                 <AnalysisDemo />
             </section>
             <section
+                id="lp-tailoring"
                 className="lp-full-section lp-tailoring-section"
                 aria-labelledby="lp-tailoring-title"
             >
                 <div className="lp-section-copy">
-                    <h2 id="lp-tailoring-title">Tailor to the role. Keep your voice.</h2>
+                    <p className="lp-section-label">03 / Job tailoring</p>
+                    <h2 id="lp-tailoring-title">Show the experience that fits the role.</h2>
                     <p>
-                        See how your experience matches a job description, and get suggestions to
-                        make it stronger.
+                        Compare your résumé with a job description. Review suggested rewrites, keep
+                        what is accurate, and leave out anything you cannot stand behind.
                     </p>
                 </div>
                 <TailoringDemo />
             </section>
             <section
+                id="lp-applications"
                 className="lp-full-section lp-applications-section"
                 aria-labelledby="lp-applications-title"
             >
                 <div className="lp-section-copy">
-                    <h2 id="lp-applications-title">The application does not end at the PDF.</h2>
+                    <p className="lp-section-label">04 / Application tracker</p>
+                    <h2 id="lp-applications-title">Remember what you sent. Know what’s next.</h2>
                     <p>
-                        Keep everything in one place — saved variants, cover letters, interview
-                        prep, and a simple tracker.
+                        Keep the résumé version and cover letter with each application. Move jobs
+                        from saved to applied to interview as your search progresses.
                     </p>
                 </div>
                 <ApplicationDemo />
             </section>
-            <section className="lp-feature-row lp-latex-section" aria-labelledby="lp-latex-title">
+            <section id="lp-latex" className="lp-feature-row lp-latex-section" aria-labelledby="lp-latex-title">
                 <div className="lp-section-copy">
-                    <h2 id="lp-latex-title">More than résumés. Real LaTeX.</h2>
+                    <p className="lp-section-label">05 / LaTeX studio</p>
+                    <h2 id="lp-latex-title">
+                        Papers, reports, <br />
+                        and résumés.
+                    </h2>
                     <p>
-                        Use the same LaTeX toolchain for academic papers, technical reports, and
-                        more.
+                        Write LaTeX, choose your compiler, and preview the PDF. The studio supports
+                        pdfLaTeX, XeLaTeX, and LuaLaTeX for documents beyond your résumé.
                     </p>
                 </div>
                 <LatexDemo />

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import CapabilityGate from '@/components/CapabilityGate'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -22,6 +23,8 @@ import { useI18n } from '@/components/I18nProvider'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import LandingHeader from '@/components/marketing/LandingHeader'
 import type { UiMessageKey } from '@/lib/i18n'
+
+const LandingSoundToggle = dynamic(() => import('@/components/marketing/LandingSoundToggle'), { ssr: false })
 
 const guestNav = [
   { label: 'nav.platform', href: '/platform' },
@@ -272,6 +275,8 @@ export default function GlobalHeader() {
         {isMobileMenuOpen && (
           <motion.div
             ref={mobileRef}
+            id={pathname === '/' ? 'landing-navigation' : undefined}
+            aria-label={pathname === '/' ? 'Navigation and appearance' : undefined}
             initial={reduceMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
@@ -298,6 +303,14 @@ export default function GlobalHeader() {
                   </Link>
                 )
               })}
+
+              {pathname === '/' && (
+                <section className="lp-menu-appearance" aria-label="Preferences">
+                  <p>Preferences</p>
+                  <ContrastToggle showLabel />
+                  <LandingSoundToggle />
+                </section>
+              )}
 
               {hydrated && canInstall && (
                 <button

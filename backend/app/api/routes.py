@@ -1455,9 +1455,6 @@ async def create_subscription(
 ):
     """Create a new subscription."""
     try:
-        if request_data.planId != "free" and not await feature_flag_service.get_flag("billing", db):
-            raise HTTPException(status_code=503, detail="Billing is currently disabled")
-
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required to create a subscription")
 

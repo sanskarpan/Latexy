@@ -15,17 +15,17 @@ export default function LandingFooter({ year }: { year: number }) {
             <div className="lp-container">
                 <section className="lp-footer-lead lp-closing" aria-labelledby="landing-closing">
                     <div className="lp-footer-message">
-                        <p className="lp-footer-eyebrow">Your next chapter starts here</p>
+                        <p className="lp-footer-eyebrow">Start with what you know</p>
                         <h2 id="landing-closing">
-                            Make your work
+                            You have the experience.
                             <br />
-                            <em>worth a second look.</em>
+                            <em>Put it on the page.</em>
                         </h2>
                         <p>
-                            From the first draft to the next opportunity. Give your experience a
-                            place to shine.
+                            Choose a layout, add your experience, and make a résumé you are ready to
+                            send.
                         </p>
-                        <MarketingCTA />
+                        <MarketingCTA label="Try the studio" />
                         <Link className="lp-primary-fallback" href="/platform">
                             Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
@@ -50,7 +50,7 @@ export default function LandingFooter({ year }: { year: number }) {
                     </div>
                     <nav aria-label="Footer navigation" className="lp-footer-links">
                         <div>
-                            <h3>Make it yours</h3>
+                            <h3>Product</h3>
                             <Link href="/platform">Product</Link>
                             <CapabilityGate feature="b04">
                                 <Link href="/templates">Templates</Link>
@@ -58,13 +58,13 @@ export default function LandingFooter({ year }: { year: number }) {
                             {billing && <Link href="/pricing">Pricing</Link>}
                         </div>
                         <div>
-                            <h3>Find your way</h3>
+                            <h3>Help</h3>
                             <Link href="/resources">Resources</Link>
                             <Link href="/faq">Help &amp; FAQs</Link>
                             <Link href="/login">Sign in</Link>
                         </div>
                         <div>
-                            <h3>Stay in touch</h3>
+                            <h3>Company</h3>
                             <Link href="/updates">Product updates</Link>
                             <a href="mailto:support@latexy.com">Contact us</a>
                             <a className="lp-footer-top-link" href="#landing-title">

@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og'
 import { BrandMark } from '@/components/brand/BrandLogo'
 
-export const alt = 'Latexy — Your next chapter, well written.'
+export const alt = 'Latexy — Resume builder, ATS feedback and LaTeX studio.'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
@@ -42,11 +42,11 @@ export default function OpenGraphImage() {
                     lineHeight: 1.08,
                 }}
             >
-                <span>Your next chapter,</span>
-                <span style={{ color: '#19375D' }}>well written.</span>
+                <span>Turn your experience</span>
+                <span style={{ color: '#19375D' }}>into a résumé.</span>
             </div>
             <div style={{ display: 'flex', marginTop: 36, fontSize: 28, color: '#4A443C' }}>
-                Build without code. Refine with feedback. Keep moving.
+                Write your résumé. Review feedback. Export a PDF.
             </div>
             <div
                 style={{

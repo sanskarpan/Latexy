@@ -1,0 +1,106 @@
+/*
+ * Landing-page type system. Bricolage carries display hierarchy, Geist carries
+ * reading and interface text, and each résumé sample keeps its own specimen
+ * typography. Keep this stylesheet last in page.tsx so legacy layout rules
+ * cannot reintroduce a second marketing font.
+ */
+.lp-page,
+.lp-header,
+.lp-footer {
+    --lp-font-display:
+        var(--font-bricolage), 'Hanken Grotesk', 'Helvetica Neue', system-ui, sans-serif;
+    --lp-font-body: var(--font-geist-sans), 'Avenir Next', 'Helvetica Neue', system-ui, sans-serif;
+    --grotesque: var(--lp-font-display);
+    --sans: var(--lp-font-body);
+    --font-display: var(--lp-font-display);
+    --font-body: var(--lp-font-body);
+    --font-ui: var(--lp-font-body);
+    font-family: var(--lp-font-body);
+    font-optical-sizing: auto;
+}
+
+.lp-page :where(button, input, select, textarea),
+.lp-header :where(a, button),
+.lp-footer :where(a, button) {
+    font-family: var(--lp-font-body);
+}
+
+.lp-page .lp-opening .lp-hero h1,
+.lp-page .lp-opening .lp-hero h1 > span,
+.lp-page .lp-experience .lp-chapter-intro h2,
+.lp-page .lp-experience .lp-section-copy h2,
+.lp-page .lp-experience .lp-feature-copy h2,
+.lp-page .lp-experience .lp-wide-section h2,
+.lp-page .lp-faq > h2,
+.lp-page .lp-closing h2,
+.lp-footer .lp-footer-lead h2,
+.lp-footer .lp-footer-message h2 {
+    font-family: var(--lp-font-display);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+}
+
+.lp-page .lp-opening .lp-hero h1 {
+    font-weight: 620;
+    letter-spacing: -0.055em;
+}
+
+.lp-page .lp-opening .lp-hero h1 > span {
+    font-weight: inherit;
+    letter-spacing: inherit;
+}
+
+.lp-page .lp-opening .lp-gallery-heading p {
+    font-family: var(--lp-font-body);
+    font-style: normal;
+}
+
+.lp-page .lp-experience :is(h3, h4) {
+    font-family: var(--lp-font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+/* Document text is a product specimen; keep its template-specific faces. */
+.lp-page .lp-experience .lp-demo-paper h3,
+.lp-page .lp-experience .lp-demo-paper header h3 {
+    font-family: var(--lp-serif);
+    letter-spacing: normal;
+    text-wrap: initial;
+}
+
+.lp-page .lp-experience .lp-demo-paper h4 {
+    font-family: var(--lp-font-body);
+    letter-spacing: normal;
+    text-wrap: initial;
+}
+
+.lp-page .lp-section-copy p:not(.lp-section-label),
+.lp-page .lp-wide-section > p,
+.lp-page .lp-faq summary,
+.lp-page .lp-faq details > p,
+.lp-footer .lp-footer-message > p:not(.lp-footer-eyebrow) {
+    font-family: var(--lp-font-body);
+    text-wrap: pretty;
+}
+
+.lp-page .lp-section-copy .lp-section-label,
+.lp-page .lp-chapter-intro > p,
+.lp-footer .lp-footer-eyebrow {
+    font-family: var(--lp-font-body);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+}
+
+.lp-footer .lp-footer-directory h3 {
+    font-family: var(--lp-font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.lp-page pre,
+.lp-page code {
+    font-family: var(--mono);
+}

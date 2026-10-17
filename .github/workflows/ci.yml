@@ -115,6 +115,23 @@ jobs:
         run: bash scripts/ci/no-unsubstantiated-marketing-claims.sh
 
   # ── Backend ────────────────────────────────────────────────────────────────
+  # The private harness tests live outside pytest's backend/test discovery
+  # tree. Keep this unconditional and source-only: no Modal SDK, credentials,
+  # services, or infrastructure are used.
+  modal-harness-synthetic:
+    name: Modal Harness Synthetic Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Run explicitly selected, dependency-free harness regressions
+        run: python scripts/qa/run_modal_spawn_diagnostics.py
+
   backend-lint:
     name: Backend Lint (ruff)
     needs: classify-changes
@@ -448,6 +465,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Verify workspace search close/reopen in Chromium
+        env:
+          PLAYWRIGHT_PORT: "5185"
+          PLAYWRIGHT_SERVER_MODE: production
+        run: >-
+          pnpm exec playwright test e2e/project-search.spec.ts
+          --grep 'close and reopen clears prior search results, query, and error in the browser DOM'
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
+          --output=test-results/workspace-search
       - name: Verify admin capabilities and plan catalog
         env:
           PLAYWRIGHT_PORT: "5184"
@@ -459,6 +485,22 @@ jobs:
           --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
+      - name: Extract landing screenshots for review
+        if: ${{ !cancelled() && hashFiles('frontend/playwright-quality-report/index.html') != '' }}
+        env:
+          LANDING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/extract-landing-evidence.py playwright-quality-report landing-visual-evidence
+      - name: Upload landing screenshots
+        if: ${{ !cancelled() && hashFiles('frontend/landing-visual-evidence/capture.json') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: landing-visual-evidence
+          path: frontend/landing-visual-evidence
+          if-no-files-found: error
+          retention-days: 14
+      # Fail closed if a required production-bundle owner suite drops out of the selection.
+      - name: Validate the Chromium owner-regression suite manifest
+        run: node ../scripts/ci/verify-owner-regression-manifest.mjs
       - name: Verify guided builder, compile cadence and source-PDF synchronization
         id: editor-owner-regressions
         env:
@@ -476,6 +518,9 @@ jobs:
           e2e/onboarding-owner-isolation.spec.ts
           e2e/settings-preferences-owner-race.spec.ts
           e2e/settings-legacy-callback-owner-isolation.spec.ts
+          e2e/personal-dictionary-owner-isolation.spec.ts
+          e2e/settings-passkey-owner-isolation.spec.ts
+          e2e/linked-variant-owner-race.spec.ts
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/editor-compile-sync
       - name: Diagnose the failed Settings hydration callback
@@ -525,6 +570,7 @@ jobs:
           path: |
             frontend/playwright-quality-report
             frontend/test-results/quality
+            frontend/test-results/workspace-search
             frontend/test-results/admin-capabilities
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
@@ -671,7 +717,7 @@ jobs:
         with:
           name: playwright-full-stack-report
           path: frontend/test-results/full-stack
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   real-compile-preview:
