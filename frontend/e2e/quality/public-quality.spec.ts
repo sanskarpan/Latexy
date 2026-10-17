@@ -379,6 +379,95 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
     }
 })
 
+test('updates motion hydrates cleanly and stays visible across preference changes and navigation', async ({ page }, testInfo) => {
+    const consoleErrors: string[] = []
+    const hydrationWarnings: string[] = []
+    const pageErrors: string[] = []
+    const hydrationPattern = /hydration|hydrated|server rendered HTML|did not match/i
+
+    page.on('console', message => {
+        const text = message.text()
+        if (message.type() === 'error') consoleErrors.push(text)
+        if (hydrationPattern.test(text)) hydrationWarnings.push(`${message.type()}: ${text}`)
+    })
+    page.on('pageerror', error => pageErrors.push(error.message))
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    // Confirm the server emits the same motion-wrapper shape used for the
+    // first hydration pass, before the browser preference snapshot is applied.
+    const serverResponse = await page.request.get('/updates')
+    expect(serverResponse.status()).toBe(200)
+    expect(await serverResponse.text()).toContain('data-marketing-motion')
+
+    const readMotionState = () => page.evaluate(() => {
+        const heading = document.querySelector('main h1')
+        const article = document.querySelector('main article')
+        const measure = (element: Element | null) => {
+            if (!element) return null
+            const style = getComputedStyle(element)
+            const rect = element.getBoundingClientRect()
+            return { opacity: style.opacity, transform: style.transform, width: rect.width, height: rect.height }
+        }
+
+        return {
+            reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+            motionWrapperCount: document.querySelectorAll('[data-marketing-motion]').length,
+            heading: measure(heading?.parentElement ?? null),
+            article: measure(article?.parentElement ?? null),
+            viewportWidth: document.documentElement.scrollWidth,
+        }
+    })
+
+    const assertVisible = async (name: string, reducedMotion: boolean, width: number, height: number) => {
+        await expect(page.getByRole('heading', { name: /Shipping log and platform progress/ })).toBeVisible()
+        await expect(page.locator('main article').first()).toBeVisible()
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        await expect.poll(async () => Number((await readMotionState()).heading?.opacity ?? 0)).toBeGreaterThan(0.99)
+        await expect.poll(async () => Number((await readMotionState()).article?.opacity ?? 0)).toBeGreaterThan(0.99)
+
+        const state = await readMotionState()
+        expect(state.heading?.width).toBeGreaterThan(0)
+        expect(state.heading?.height).toBeGreaterThan(0)
+        expect(state.article?.width).toBeGreaterThan(0)
+        expect(state.article?.height).toBeGreaterThan(0)
+        expect(state.viewportWidth).toBeLessThanOrEqual(width + 1)
+        if (reducedMotion) {
+            expect(state.motionWrapperCount).toBe(0)
+            expect(state.heading?.transform).toBe('none')
+            expect(state.article?.transform).toBe('none')
+        } else {
+            expect(state.motionWrapperCount).toBeGreaterThan(0)
+        }
+
+        const screenshotPath = testInfo.outputPath(`updates-hydrated-${name}.png`)
+        await page.screenshot({ path: screenshotPath, fullPage: true })
+        await testInfo.attach(`updates-hydrated-${name}`, { path: screenshotPath, contentType: 'image/png' })
+    }
+
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('desktop-reduced-initial', true, 1280, 900)
+
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await assertVisible('desktop-motion-enabled', false, 1280, 900)
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await assertVisible('desktop-reduced-after-toggle', true, 1280, 900)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await assertVisible('mobile-reduced', true, 390, 844)
+
+    await page.goto('/pricing', { waitUntil: 'networkidle' })
+    await expect(page.locator('#main-content')).toBeVisible()
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('mobile-reduced-after-navigation', true, 390, 844)
+
+    expect(hydrationWarnings).toEqual([])
+    expect(consoleErrors).toEqual([])
+    expect(pageErrors).toEqual([])
+})
+
 test('representative public surface produces non-empty visual evidence', async ({
     page,
 }, testInfo) => {
