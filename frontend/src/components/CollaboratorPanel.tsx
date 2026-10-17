@@ -27,6 +27,16 @@ const ROLE_META: Record<CollabRole, { label: string; icon: React.ReactNode; desc
   },
 }
 
+const ROLE_RANK: Record<CollabRole, number> = {
+  viewer: 0,
+  commenter: 1,
+  editor: 2,
+}
+
+function isRoleDowngrade(currentRole: CollabRole, nextRole: CollabRole): boolean {
+  return ROLE_RANK[nextRole] < ROLE_RANK[currentRole]
+}
+
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 interface CollaboratorPanelProps {
@@ -47,6 +57,12 @@ export default function CollaboratorPanel({
   onClose,
 }: CollaboratorPanelProps) {
   const { can } = useEntitlements()
+  const hasF04 = can('f04')
+  const accessRef = useRef({ isOwner, hasF04 })
+  // Async handlers can outlive the render that created them. Keep this guard
+  // current so a revoked F04 grant or changed owner scope cannot authorize a
+  // stale click while the UI is updating.
+  accessRef.current = { isOwner, hasF04 }
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -91,7 +107,7 @@ export default function CollaboratorPanel({
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
-    if (!can('f04')) return
+    if (!accessRef.current.isOwner || !accessRef.current.hasF04) return
     if (!inviteEmail.trim()) return
     setInviting(true)
     try {
@@ -107,7 +123,8 @@ export default function CollaboratorPanel({
   }
 
   async function handleRoleChange(collab: CollaboratorInfo, newRole: CollabRole) {
-    if (!can('f04') && newRole !== 'viewer') return
+    const access = accessRef.current
+    if (!access.isOwner || (!access.hasF04 && !isRoleDowngrade(collab.role, newRole))) return
     setRoleChangeId(collab.user_id)
     try {
       const updated = await apiClient.updateCollaboratorRole(resumeId, collab.user_id, newRole)
@@ -181,7 +198,7 @@ export default function CollaboratorPanel({
           )}
 
           {/* Invite form (owner only) */}
-          {isOwner && can('f04') && (
+          {isOwner && hasF04 && (
             <form onSubmit={handleInvite} className="space-y-2">
               <p className="text-[10px] font-medium uppercase tracking-wider text-fg-3">
                 Invite by email
@@ -278,12 +295,18 @@ export default function CollaboratorPanel({
                           ) : (
                             <select
                               value={collab.role}
-                              disabled={!can('f04')}
+                              disabled={!hasF04 && collab.role === 'viewer'}
                               onChange={(e) => handleRoleChange(collab, e.target.value as CollabRole)}
                               className="appearance-none rounded border border-line bg-transparent py-0.5 pl-2 pr-5 text-[10px] text-fg-2 outline-none"
                             >
-                              {(Object.keys(ROLE_META) as CollabRole[]).map((r) => (
-                                <option key={r} value={r}>{ROLE_META[r].label}</option>
+                              {(Object.keys(ROLE_META) as CollabRole[]).map((role) => (
+                                <option
+                                  key={role}
+                                  value={role}
+                                  disabled={!hasF04 && role !== collab.role && !isRoleDowngrade(collab.role, role)}
+                                >
+                                  {ROLE_META[role].label}
+                                </option>
                               ))}
                             </select>
                           )}
