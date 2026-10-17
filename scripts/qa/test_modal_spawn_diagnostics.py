@@ -42,6 +42,7 @@ from modal_spawn_acceptance import (
     validate_nonproduction_environment_name,
 )
 from modal_functional_environment_inventory import main as functional_inventory_main
+import run_modal_spawn_diagnostics as diagnostics_runner
 from app.services.render_engine import functional_acceptance_policy
 
 
@@ -167,6 +168,7 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
     def test_functional_acceptance_is_fail_closed_for_known_and_unverified_names(self):
+        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 50)
         self.assertEqual(functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS, ())
         for name in (
             "prod-west", "production-blue", "live", "unknownenv",
