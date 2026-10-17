@@ -136,10 +136,10 @@ async function mockVariant(
       body: JSON.stringify(body),
     })
   })
-  await page.route((url) => ['/config/feature-flags', '/config/entitlements'].includes(url.pathname), (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
-      url.pathname === '/config/entitlements' ? { features: { b12: true } } : {},
-    ) }))
+  await page.route('**/config/feature-flags', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+  await page.route('**/config/entitlements', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"features":{"b12":true}}' }))
   await page.route((url) => url.pathname === '/tenants/resolve-host', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"tenant":null}' }))
   await page.route((url) => url.pathname === `/resumes/${RESUME_ID}/variant-visibility`, async (route) => {
