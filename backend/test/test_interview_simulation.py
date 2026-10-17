@@ -386,6 +386,18 @@ class TestInterviewSimulation:
             )
             await db_session.commit()
 
+            # Prove role recovery on the still-enabled Free family before
+            # introducing the separate plan-family denial below.
+            with resolve_patch, charge_patch, provider_patch:
+                role_recovered = await client.post(
+                    f"/interview-prep/{simulation_prep_id}/simulate",
+                    headers=auth_headers,
+                    json=payload,
+                )
+            assert role_recovered.status_code == 200, role_recovered.text
+            assert role_recovered.json()["average_score"] == 84
+            assert provider.chat.completions.create.await_count == 2
+
             # A plan-family denial is independent from role and the sibling
             # capability. The same account recovers on the enabled Pro family.
             await entitlement_service.set_matrix_cell("free", "e03", False, db_session)
@@ -403,7 +415,7 @@ class TestInterviewSimulation:
                     json=payload,
                 )
             assert planned.status_code == 200, planned.text
-            assert provider.chat.completions.create.await_count == 2
+            assert provider.chat.completions.create.await_count == 3
 
             # Another ordinary synthetic user cannot evaluate an owner's prep;
             # the ownership 404 precedes key resolution and provider use.
