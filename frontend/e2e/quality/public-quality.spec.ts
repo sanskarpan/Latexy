@@ -320,6 +320,184 @@ test('skip navigation and reduced-motion preferences are honored', async ({ page
     expect(motionAudit.runningAnimations).toBe(0)
 })
 
+test('updates copy stays visible without JavaScript for reduced-motion users at desktop and mobile widths', async ({ browser, baseURL }, testInfo) => {
+    const context = await browser.newContext({
+        baseURL,
+        viewport: { width: 1280, height: 900 },
+        locale: 'hi-IN',
+        reducedMotion: 'reduce',
+        javaScriptEnabled: false,
+        serviceWorkers: 'block',
+    })
+
+    try {
+        expect(await context.cookies()).toEqual([])
+        const page = await context.newPage()
+        await installPublicPageMocks(page)
+        const response = await page.goto('/updates', { waitUntil: 'networkidle' })
+        expect(response?.status()).toBe(200)
+        expect(await response?.text()).toContain('Shipping log and')
+        // WebKit omits its browser-generated Accept-Language from Request.allHeaders().
+        // With an empty cookie jar and locale configured above, the rendered lang
+        // verifies that the document request was negotiated as Hindi.
+        await expect(page.locator('html')).toHaveAttribute('lang', 'hi')
+
+        const heading = page.locator('main h1')
+        const article = page.locator('main article').first()
+        await expect(heading).toContainText(/Shipping log and.*platform progress/)
+        await expect(heading).toBeVisible()
+        await expect(article).toBeVisible()
+
+        for (const { name, width, height } of [
+            { name: 'desktop-1280x900', width: 1280, height: 900 },
+            { name: 'mobile-390x844', width: 390, height: 844 },
+        ]) {
+            await page.setViewportSize({ width, height })
+            const motionStyles = await page.evaluate(() => {
+                const main = document.querySelector('main')
+                const title = main?.querySelector('h1')
+                const firstArticle = main?.querySelector('article')
+                const item = firstArticle?.parentElement
+                const style = (element: Element | null | undefined) => {
+                    if (!element) return null
+                    const computed = getComputedStyle(element)
+                    return { opacity: computed.opacity, transform: computed.transform }
+                }
+
+                return {
+                    reveal: style(title?.parentElement),
+                    stagger: style(item?.parentElement),
+                    item: style(item),
+                    viewportWidth: document.documentElement.scrollWidth,
+                }
+            })
+
+            expect(motionStyles.reveal, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.stagger, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.item, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.viewportWidth, name).toBeLessThanOrEqual(width + 1)
+
+            const screenshotPath = testInfo.outputPath(`updates-reduced-motion-${name}.png`)
+            await page.screenshot({ path: screenshotPath, fullPage: true })
+            await testInfo.attach(`updates-reduced-motion-${name}`, {
+                path: screenshotPath,
+                contentType: 'image/png',
+            })
+        }
+    } finally {
+        await context.close()
+    }
+})
+
+test('updates motion hydrates cleanly and stays visible across preference changes and navigation', async ({ page }, testInfo) => {
+    const consoleErrors: string[] = []
+    const hydrationWarnings: string[] = []
+    const pageErrors: string[] = []
+    const hydrationPattern = /hydration|hydrated|server rendered HTML|did not match/i
+
+    page.on('console', message => {
+        const text = message.text()
+        if (message.type() === 'error') consoleErrors.push(text)
+        if (hydrationPattern.test(text)) hydrationWarnings.push(`${message.type()}: ${text}`)
+    })
+    page.on('pageerror', error => pageErrors.push(error.message))
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    // Confirm the server emits the same motion-wrapper shape used for the
+    // first hydration pass, before the browser preference snapshot is applied.
+    const serverResponse = await page.request.get('/updates')
+    expect(serverResponse.status()).toBe(200)
+    expect(await serverResponse.text()).toContain('data-marketing-motion')
+
+    const readMotionState = () => page.evaluate(() => {
+        const heading = document.querySelector('main h1')
+        const article = document.querySelector('main article')
+        const measure = (element: Element | null) => {
+            if (!element) return null
+            const style = getComputedStyle(element)
+            const rect = element.getBoundingClientRect()
+            return { opacity: style.opacity, transform: style.transform, width: rect.width, height: rect.height }
+        }
+
+        return {
+            reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+            motionWrapperCount: document.querySelectorAll('[data-marketing-motion]').length,
+            heading: measure(heading?.parentElement ?? null),
+            article: measure(article?.parentElement ?? null),
+            viewportWidth: document.documentElement.scrollWidth,
+        }
+    })
+
+    const assertVisible = async (name: string, reducedMotion: boolean, width: number, height: number) => {
+        await expect(page.getByRole('heading', { name: /Shipping log and platform progress/ })).toBeVisible()
+        await expect(page.locator('main article').first()).toBeVisible()
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        if (reducedMotion) {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBe(0)
+        } else {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBeGreaterThan(0)
+        }
+        await expect.poll(async () => Number((await readMotionState()).heading?.opacity ?? 0)).toBeGreaterThan(0.99)
+        await expect.poll(async () => Number((await readMotionState()).article?.opacity ?? 0)).toBeGreaterThan(0.99)
+
+        const state = await readMotionState()
+        expect(state.heading?.width).toBeGreaterThan(0)
+        expect(state.heading?.height).toBeGreaterThan(0)
+        expect(state.article?.width).toBeGreaterThan(0)
+        expect(state.article?.height).toBeGreaterThan(0)
+        expect(state.viewportWidth).toBeLessThanOrEqual(width + 1)
+        if (reducedMotion) {
+            expect(state.heading?.transform).toBe('none')
+            expect(state.article?.transform).toBe('none')
+        } else {
+            expect(state.motionWrapperCount).toBeGreaterThan(0)
+        }
+
+        const screenshotPath = testInfo.outputPath(`updates-hydrated-${name}.png`)
+        await page.screenshot({ path: screenshotPath, fullPage: true })
+        await testInfo.attach(`updates-hydrated-${name}`, { path: screenshotPath, contentType: 'image/png' })
+    }
+
+    const changePreferenceAndAssert = async (name: string, reducedMotion: boolean) => {
+        // Some mobile browser emulators update matchMedia.matches without
+        // dispatching MediaQueryList's change event. Exercise the live
+        // subscription where the browser emits it; otherwise, reload under
+        // the new preference to exercise the hook's fresh client snapshot.
+        await page.evaluate(() => {
+            const root = document.documentElement
+            root.dataset.motionPreferenceEvents = '0'
+            window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
+                root.dataset.motionPreferenceEvents = String(Number(root.dataset.motionPreferenceEvents ?? 0) + 1)
+            }, { once: true })
+        })
+        await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        const changeEventObserved = await page.evaluate(() => Number(document.documentElement.dataset.motionPreferenceEvents ?? 0) > 0)
+        if (!changeEventObserved) await page.goto('/updates', { waitUntil: 'networkidle' })
+        await assertVisible(name, reducedMotion, page.viewportSize()!.width, page.viewportSize()!.height)
+    }
+
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('desktop-reduced-initial', true, 1280, 900)
+
+    await changePreferenceAndAssert('desktop-motion-enabled', false)
+    await changePreferenceAndAssert('desktop-reduced-after-toggle', true)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await assertVisible('mobile-reduced', true, 390, 844)
+
+    await page.goto('/pricing', { waitUntil: 'networkidle' })
+    await expect(page.locator('#main-content')).toBeVisible()
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('mobile-reduced-after-navigation', true, 390, 844)
+
+    expect(hydrationWarnings).toEqual([])
+    expect(consoleErrors).toEqual([])
+    expect(pageErrors).toEqual([])
+})
+
 test('representative public surface produces non-empty visual evidence', async ({
     page,
 }, testInfo) => {

@@ -1,3 +1,6 @@
+import { headers } from 'next/headers'
+import UpdatesContent from './updates/UpdatesContent'
+
 /**
  * Root-level loading fallback (redesign). Next.js renders this as the Suspense
  * boundary for the root layout's `children` slot during route-level
@@ -6,7 +9,12 @@
  * next one is ready. Sibling to not-found.tsx / error.tsx: it renders inside
  * the root layout, so it inherits the active aesthetic + mode tokens.
  */
-export default function Loading() {
+export default async function Loading() {
+  const requestHeaders = await headers()
+  if (requestHeaders.get('x-latexy-route-pathname') === '/updates') {
+    return <UpdatesContent staticFallback />
+  }
+
   return (
     <div
       role="status"
