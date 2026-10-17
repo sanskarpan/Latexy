@@ -10,6 +10,7 @@
     --rd-body: var(--font-review-body), Arial, sans-serif;
     --rd-paper: var(--surface);
     --rd-highlight: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    --rd-amber: #a86625;
     font-family: var(--rd-body);
     font-optical-sizing: auto;
     font-feature-settings: 'ss03' on;
@@ -23,8 +24,8 @@
 .lp-footer h2 {
     font-family: var(--rd-display);
     font-weight: 650;
-    font-stretch: 92%;
-    letter-spacing: -0.035em;
+    font-stretch: normal;
+    letter-spacing: -0.02em;
     text-wrap: balance;
 }
 .rd-landing :is(button, a, input, textarea, select),
@@ -60,12 +61,27 @@
     font: inherit;
 }
 .rd-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.095em;
     color: var(--fg-2);
     line-height: 1.6;
+}
+.rd-eyebrow::before {
+    content: '';
+    flex: 0 0 18px;
+    height: 2px;
+    background: var(--rd-amber);
+}
+:root[data-mode='dark'] :is(.rd-landing, .lp-header, .lp-footer) {
+    --rd-amber: #e2b477;
+}
+:root[data-contrast='high'] :is(.rd-landing, .lp-header, .lp-footer) {
+    --rd-amber: var(--accent-strong);
 }
 .lp-header {
     position: relative;
@@ -75,14 +91,19 @@
     justify-content: space-between;
     gap: 24px;
     width: min(1280px, calc(100% - 96px));
-    min-height: 96px;
-    margin: auto;
-    background: var(--bg);
+    min-height: 68px;
+    margin: 14px auto 0;
+    padding: 8px 14px 8px 18px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px -23px color-mix(in srgb, var(--fg) 45%, transparent);
 }
 .lp-header > a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    color: var(--accent-strong);
 }
 .lp-header .lp-navigation {
     display: flex;
@@ -168,22 +189,24 @@
 }
 .rd-hero {
     display: grid;
-    grid-template-columns: 0.94fr 1.1fr;
-    gap: 36px;
-    align-items: center;
-    padding-block: 48px 36px;
-    min-height: 720px;
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    gap: clamp(28px, 4vw, 56px);
+    align-items: start;
+    padding-block: 34px 30px;
+    min-height: 690px;
 }
 .rd-hero-copy {
-    padding-bottom: 70px;
+    max-width: 540px;
+    padding: 78px 0 0;
 }
 .rd-hero h1 {
-    font-size: clamp(46px, 4.6vw, 66px);
-    line-height: 1.06;
-    margin-top: 22px;
-    font-stretch: 95%;
+    max-width: 13ch;
+    font-size: clamp(52px, 4.25vw, 62px);
+    line-height: 1.08;
+    margin-top: 20px;
+    font-stretch: normal;
     font-weight: 600;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.015em;
 }
 .rd-hero h1 span {
     color: var(--accent-strong);
@@ -320,14 +343,14 @@
     border-bottom: 1px solid var(--line);
 }
 .rd-paper > section {
-    padding-right: 102px;
+    padding-right: 132px;
 }
 .rd-paper h2 {
     font-family: 'Tinos', Georgia, serif;
     font-size: 34px;
     font-weight: 700;
     line-height: 1.1;
-    letter-spacing: -0.045em;
+    letter-spacing: -0.02em;
     color: var(--accent-strong);
     text-wrap: initial;
     font-stretch: normal;
@@ -397,7 +420,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-strong);
+    background: var(--rd-amber);
 }
 .rd-paper-history {
     margin-top: 26px;
@@ -409,7 +432,7 @@
 .rd-paper[data-layout='modern'] h2 {
     font-family: var(--rd-display);
     font-weight: 650;
-    letter-spacing: -0.05em;
+    letter-spacing: -0.02em;
 }
 .rd-paper[data-layout='minimal'] {
     border-radius: 0;
@@ -436,8 +459,8 @@
     width: var(--rd-connector-width, 12px);
     height: 30px;
     top: 76px;
-    border-left: 1.5px solid var(--accent-strong);
-    border-bottom: 1.5px solid var(--accent-strong);
+    border-left: 1.5px solid var(--rd-amber);
+    border-bottom: 1.5px solid var(--rd-amber);
     border-radius: 0 0 0 8px;
 }
 .rd-note {
@@ -598,7 +621,7 @@
 .rd-overview h3 {
     font-family: var(--rd-display);
     font-size: 21px;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.01em;
     font-weight: 600;
 }
 .rd-overview p:not(.rd-eyebrow) {
@@ -630,9 +653,45 @@
     align-items: center;
     scroll-margin-top: 30px;
 }
+.rd-section#resume-feedback {
+    position: relative;
+    padding-block: clamp(64px, 7vw, 92px);
+    padding-inline: clamp(20px, 4vw, 56px);
+    grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
+    gap: clamp(44px, 6vw, 88px);
+    border-top: 0;
+    background: var(--surface-2);
+    border-radius: 10px;
+}
+.rd-section#resume-feedback .rd-report {
+    background: var(--surface);
+}
+.rd-section#applications {
+    grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.28fr);
+    gap: clamp(40px, 6vw, 84px);
+    padding-block: 70px;
+    border-top: 0;
+}
+.rd-section#applications .rd-application-list {
+    overflow: hidden;
+    border-left: 4px solid var(--rd-amber);
+    border-radius: 6px;
+    background: var(--surface-2);
+}
+.rd-section#applications .rd-demo-top {
+    background: var(--bg);
+}
+.rd-section#applications .rd-application {
+    padding-block: 21px;
+}
+.rd-section#latex-studio {
+    grid-template-columns: minmax(280px, 0.84fr) minmax(0, 1.16fr);
+    gap: clamp(40px, 6vw, 88px);
+    padding-block: 72px;
+}
 .rd-section-copy h2 {
-    font-size: 43px;
-    line-height: 1.12;
+    font-size: clamp(38px, 3.25vw, 44px);
+    line-height: 1.16;
     margin-top: 18px;
 }
 .rd-section-copy > p:not(.rd-eyebrow) {
@@ -819,7 +878,7 @@
     font-weight: 700;
     line-height: 1.25;
     margin-block: 18px;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.01em;
 }
 .rd-document-paper p {
     font-size: 15px;
@@ -996,7 +1055,7 @@
     font-size: clamp(64px, 13vw, 176px);
     line-height: 1;
     font-weight: 600;
-    letter-spacing: -0.065em;
+    letter-spacing: -0.035em;
 }
 .lp-footer-row {
     display: flex;
@@ -1039,7 +1098,7 @@
     }
     .rd-hero h1 {
         font-size: 48px;
-        font-stretch: 93%;
+        font-stretch: normal;
     }
     .rd-hero-description {
         font-size: 16px;
@@ -1071,7 +1130,7 @@
         width: calc(100% - 48px);
     }
     .lp-header {
-        min-height: 80px;
+        min-height: 72px;
     }
     .lp-header .lp-navigation {
         display: none;
@@ -1083,11 +1142,11 @@
         gap: 40px;
     }
     .rd-hero-copy {
-        padding-bottom: 0;
+        padding: 0;
     }
     .rd-hero h1 {
         font-size: 60px;
-        font-stretch: 93%;
+        font-stretch: normal;
         max-width: 650px;
     }
     .rd-hero-description {
@@ -1124,6 +1183,17 @@
     .rd-section {
         gap: 32px;
         grid-template-columns: 1fr;
+        padding-block: 56px;
+    }
+    .rd-section#resume-feedback {
+        grid-template-columns: 1fr;
+        padding-block: 56px;
+        gap: 30px;
+    }
+    .rd-section#applications,
+    .rd-section#latex-studio {
+        grid-template-columns: 1fr;
+        gap: 28px;
         padding-block: 56px;
     }
     .rd-section-copy h2 {
@@ -1168,19 +1238,22 @@
     }
     .lp-mobile-navigation {
         position: fixed;
-        top: 72px;
+        top: 86px;
         left: 20px;
         right: 20px;
         width: auto;
         max-width: none;
     }
     .lp-mobile-navigation #landing-navigation {
-        max-height: calc(100dvh - 92px);
+        max-height: calc(100dvh - 106px);
     }
     .rd-hero {
         padding-top: 24px;
         gap: 26px;
         min-height: 0;
+    }
+    .rd-section#resume-feedback {
+        padding-block: 44px;
     }
     .rd-eyebrow {
         font-size: 10px;
@@ -1188,10 +1261,10 @@
     }
     .rd-hero h1 {
         font-size: clamp(34px, 10.7vw, 46px);
-        font-stretch: 95%;
+        font-stretch: normal;
         line-height: 1.07;
         margin-top: 14px;
-        letter-spacing: -0.035em;
+        letter-spacing: -0.015em;
     }
     .rd-hero-description {
         font-size: 16px;
@@ -1312,7 +1385,7 @@
         top: calc(24px - var(--rd-connector-length, 70px));
         width: 12px;
         height: var(--rd-connector-length, 70px);
-        border-top: 1.5px solid var(--accent-strong);
+        border-top: 1.5px solid var(--rd-amber);
         border-radius: 8px 0 0 8px;
     }
     .rd-note {

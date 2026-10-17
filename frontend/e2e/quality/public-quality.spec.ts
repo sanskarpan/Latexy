@@ -550,7 +550,7 @@ test('landing sends native résumé content and matching FAQ data in the HTML re
     const response = await request.get('/')
     expect(response.ok()).toBe(true)
     const html = await response.text()
-    expect(html).toContain('<h1 id="landing-title">Your experience.')
+    expect(html).toContain('<h1 id="landing-title">Build a résumé.')
     expect(html).toContain('aria-label="Classic sample résumé"')
     expect(html).toContain('<h3>Make the contribution clear</h3>')
     const scripts = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]

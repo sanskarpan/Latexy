@@ -96,9 +96,9 @@ export default function LandingPage() {
                 <div className="rd-hero-copy">
                     <p className="rd-eyebrow">Resume builder &amp; LaTeX studio</p>
                     <h1 id="landing-title">
-                        Your experience.
+                        Build a résumé.
                         <br />
-                        <span>Clearly presented.</span>
+                        <span>Keep it yours.</span>
                     </h1>
                     <p className="rd-hero-description">
                         Build a résumé without code. Check its structure, tailor it to the job, and
