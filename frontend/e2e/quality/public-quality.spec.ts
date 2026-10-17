@@ -324,10 +324,10 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
     const context = await browser.newContext({
         baseURL,
         viewport: { width: 1280, height: 900 },
+        locale: 'hi-IN',
         reducedMotion: 'reduce',
         javaScriptEnabled: false,
         serviceWorkers: 'block',
-        extraHTTPHeaders: { 'accept-language': 'hi-IN,hi;q=0.9,en;q=0.8' },
     })
 
     try {
@@ -336,6 +336,8 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
         await installPublicPageMocks(page)
         const response = await page.goto('/updates', { waitUntil: 'networkidle' })
         expect(response?.status()).toBe(200)
+        const documentHeaders = await response?.request().allHeaders()
+        expect(documentHeaders?.['accept-language']).toMatch(/^hi-IN(?:,|$)/i)
         expect(await response?.text()).toContain('Shipping log and')
         await expect(page.locator('html')).toHaveAttribute('lang', 'hi')
 

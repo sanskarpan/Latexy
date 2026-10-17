@@ -67,6 +67,7 @@ export async function middleware(request: NextRequest) {
   // it as a request header lets the server layout render the same locale that
   // the client provider receives, avoiding a hydration flash/mismatch.
   const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-latexy-route-pathname', request.nextUrl.pathname)
   requestHeaders.set(
     'x-latexy-ui-locale',
     negotiateUiLocale(request.cookies.get('latexy-ui-locale')?.value, request.headers.get('accept-language')),
