@@ -367,8 +367,8 @@ test('representative public surface produces non-empty visual evidence', async (
         const secondary = await actions[1].boundingBox()
         expect(primary).not.toBeNull()
         expect(secondary).not.toBeNull()
-        expect(Math.abs(primary!.y - secondary!.y)).toBeLessThan(1)
-        expect(secondary!.x).toBeGreaterThanOrEqual(primary!.x + primary!.width)
+        expect(Math.abs(primary!.x - secondary!.x)).toBeLessThan(1)
+        expect(secondary!.y).toBeGreaterThanOrEqual(primary!.y + primary!.height)
     }
 
     const viewport = page.viewportSize()
@@ -1036,13 +1036,13 @@ test('landing keeps a public entry point when capabilities are unavailable', asy
     )
     await page.goto('/', { waitUntil: 'networkidle' })
     const hero = page.locator('.lp-hero-actions')
-    await expect(hero.getByRole('link', { name: 'Build my résumé' })).toHaveCount(0)
+    await expect(hero.getByRole('link', { name: 'Try the studio' })).toHaveCount(0)
     await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toBeVisible()
     await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toHaveAttribute(
         'href',
         '/platform'
     )
-    await expect(hero.getByRole('link', { name: 'See it in action' })).toBeVisible()
+    await expect(hero.getByRole('link', { name: 'Explore templates' })).toHaveCount(0)
 })
 
 test('mobile studio keeps primary controls reachable without document overflow', async ({

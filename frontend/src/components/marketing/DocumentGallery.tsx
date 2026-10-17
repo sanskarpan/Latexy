@@ -176,7 +176,7 @@ export default function DocumentGallery() {
             <div className="lp-gallery-controls">
                 <span>
                     <span className="lp-gallery-label-desktop">Choose a layout</span>
-                    <span className="lp-gallery-label-mobile">Try a different layout</span>
+                    <span className="lp-gallery-label-mobile">Layout</span>
                 </span>
                 <div
                     role="group"

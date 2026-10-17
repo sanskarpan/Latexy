@@ -302,14 +302,18 @@
 
     .lp-page .lp-opening .lp-gallery-controls {
         order: -1;
-        display: block;
-        padding: 0 2px 12px;
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        align-items: center;
+        column-gap: 8px;
+        padding: 0 0 8px;
     }
 
     .lp-page .lp-opening .lp-gallery-controls > span {
-        display: block;
-        margin-bottom: 7px;
-        font-size: 11px;
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.2;
+        white-space: nowrap;
     }
 
     .lp-page .lp-opening .lp-gallery-controls > div {
@@ -327,10 +331,10 @@
         min-height: 44px;
         justify-content: center;
         gap: 5px;
-        padding: 7px 4px;
+        padding: 7px 2px;
         border: 1px solid var(--lp-line);
         border-radius: 8px;
-        font-size: 12px;
+        font-size: 11px;
         white-space: nowrap;
     }
 
@@ -347,7 +351,7 @@
         min-height: 0;
         height: auto;
         margin: 0;
-        padding: 16px clamp(16px, 5vw, 26px) 20px;
+        padding: 10px 10px 12px;
         overflow: clip;
         border-radius: 10px;
         background: var(--lp-soft);
@@ -368,12 +372,18 @@
         box-sizing: border-box;
         width: 100%;
         min-height: 0;
-        padding: 21px clamp(15px, 5vw, 22px);
+        padding: 12px clamp(10px, 4vw, 16px);
         overflow-wrap: anywhere;
     }
 
     .lp-page .lp-opening .lp-document-card[data-slot='center'] .lp-hero-paper header h2 {
-        font-size: clamp(24px, 7vw, 29px);
+        font-size: clamp(22px, 7vw, 28px);
+    }
+
+    .lp-page .lp-opening .lp-gallery[data-mobile-expanded='false']
+        .lp-document-card[data-slot='center']
+        :is(.lp-hero-paper-profile, .lp-hero-paper-extra, .lp-hero-paper-education, ul) {
+        display: none;
     }
 
     .lp-page .lp-opening .lp-document-card:not([data-slot='center']) {
@@ -397,6 +407,7 @@
 
     .lp-page .lp-opening .lp-gallery-personalise {
         order: 2;
+        display: grid;
         grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
         gap: 8px;
         padding: 11px 2px 0;
@@ -415,6 +426,13 @@
         font-size: 16px;
     }
 
+    .lp-page .lp-opening .lp-gallery-personalise label {
+        display: grid;
+        grid-template-rows: auto auto;
+        align-content: start;
+        gap: 4px;
+    }
+
     .lp-page .lp-opening .lp-gallery-personalise p {
         display: none;
     }
@@ -423,12 +441,6 @@
         order: 3;
         width: 100%;
         margin: 8px 0 0;
-    }
-}
-
-@media (max-width: 380px) {
-    .lp-page .lp-opening .lp-gallery-personalise {
-        grid-template-columns: minmax(0, 1fr);
     }
 }
 

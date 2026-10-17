@@ -717,7 +717,7 @@ jobs:
         with:
           name: playwright-full-stack-report
           path: frontend/test-results/full-stack
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   real-compile-preview:
