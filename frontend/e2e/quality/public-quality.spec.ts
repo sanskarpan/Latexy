@@ -336,9 +336,10 @@ test('updates copy stays visible without JavaScript for reduced-motion users at 
         await installPublicPageMocks(page)
         const response = await page.goto('/updates', { waitUntil: 'networkidle' })
         expect(response?.status()).toBe(200)
-        const documentHeaders = await response?.request().allHeaders()
-        expect(documentHeaders?.['accept-language']).toMatch(/^hi-IN(?:,|$)/i)
         expect(await response?.text()).toContain('Shipping log and')
+        // WebKit omits its browser-generated Accept-Language from Request.allHeaders().
+        // With an empty cookie jar and locale configured above, the rendered lang
+        // verifies that the document request was negotiated as Hindi.
         await expect(page.locator('html')).toHaveAttribute('lang', 'hi')
 
         const heading = page.locator('main h1')
