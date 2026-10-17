@@ -4,12 +4,37 @@ from __future__ import annotations
 
 import ast
 import functools
+import importlib.util
 from pathlib import Path
+
+import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND = REPO_ROOT / "backend"
 MODAL_APP = BACKEND / "modal_app.py"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy-modal.yml"
+_PHASE_SCRIPT = BACKEND / "scripts" / "modal_deployment_phase.py"
+_PHASE_SPEC = importlib.util.spec_from_file_location("modal_deployment_phase", _PHASE_SCRIPT)
+assert _PHASE_SPEC and _PHASE_SPEC.loader
+_PHASE_MODULE = importlib.util.module_from_spec(_PHASE_SPEC)
+_PHASE_SPEC.loader.exec_module(_PHASE_MODULE)
+
+
+def _workflow_steps() -> list[dict]:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return workflow["jobs"]["deploy"]["steps"]
+
+
+def _step(steps: list[dict], name: str) -> dict:
+    return next(step for step in steps if step.get("name") == name)
+
+
+def _selected_for_phase(step: dict, phase: str) -> bool:
+    condition = step.get("if", "")
+    phase_prefix = "steps.deployment_phase.outputs.phase == "
+    phase_conditions = [part.strip() for part in condition.split("&&") if phase_prefix in part]
+    return not phase_conditions or f"'{phase}'" in phase_conditions[0]
 
 
 def _source_tree() -> tuple[str, ast.Module]:
@@ -139,21 +164,100 @@ def test_workflow_defaults_to_held_and_only_manual_release_can_open_traffic() ->
     assert "Automatic held deployment skipped because this exact SHA is approved" in source
 
 
-def test_release_requires_same_sha_and_healthy_held_deployment_before_migration() -> None:
-    source = WORKFLOW.read_text(encoding="utf-8")
-    release_guard = source.index("Require approved SHA and healthy held candidate before release")
-    migration = source.index("Apply production database migrations after external drain verification")
-    deploy = source.index("modal deploy --env main --strategy rolling --tag")
-    assert release_guard < migration < deploy
-    guard = source[release_guard:migration]
-    assert "inputs.traffic_mode == 'release'" in guard
-    assert '"${MODAL_TRAFFIC_RELEASE_APPROVED_SHA:-}" != "$DEPLOY_SHA"' in guard
-    assert "verify_modal_deployment_identity.py --environment main --expected-sha \"$DEPLOY_SHA\"" in guard
-    assert "x-latexy-deployment-hold" in guard
-    assert "true[[:space:]]*$" in guard
-    assert "check_health /health healthy" in guard
-    assert "check_health /readyz ready" in guard
-    assert "check_health /jobs/health healthy" in guard
+def test_held_cutover_then_release_uses_distinct_ordered_workflow_sequences() -> None:
+    steps = _workflow_steps()
+    held_phase = _PHASE_MODULE.resolve_phase("workflow_run", "")
+    manual_held_phase = _PHASE_MODULE.resolve_phase("workflow_dispatch", "held")
+    release_phase = _PHASE_MODULE.resolve_phase("workflow_dispatch", "release")
+    assert held_phase == manual_held_phase == "held-cutover"
+    assert release_phase == "held-release"
+
+    held_names = [step.get("name", "") for step in steps if _selected_for_phase(step, held_phase)]
+    release_names = [step.get("name", "") for step in steps if _selected_for_phase(step, release_phase)]
+    drain = "Apply production database migrations after external drain verification"
+    recheck = "Recheck billing identities after migration"
+    release_guard = "Require approved SHA and healthy held candidate before release"
+    deploy = "Deploy backend with a rolling update"
+    identity = "Verify Modal production deployment identity"
+    health = "Verify production backend health"
+
+    assert drain in held_names and recheck in held_names
+    assert held_names.index(drain) < held_names.index(recheck) < held_names.index(deploy)
+    assert release_guard not in held_names
+
+    assert release_guard in release_names
+    assert drain not in release_names and recheck not in release_names
+    assert release_names.index(release_guard) < release_names.index(deploy)
+    assert release_names.index(deploy) < release_names.index(identity) < release_names.index(health)
+
+    # The workflow's own phase outputs select those sequences; the initial
+    # held phase must run the external gate before Alembic, while release only
+    # revalidates and redeploys the already-held candidate.
+    assert _step(steps, drain)["if"].endswith("steps.deployment_phase.outputs.phase == 'held-cutover'")
+    assert _step(steps, recheck)["if"].endswith("steps.deployment_phase.outputs.phase == 'held-cutover'")
+    assert _step(steps, release_guard)["if"].endswith("steps.deployment_phase.outputs.phase == 'held-release'")
+    held_script = _step(steps, drain)["run"]
+    assert "set -euo pipefail" in held_script
+    assert held_script.index("python scripts/verify_modal_drain.py") < held_script.index(
+        "modal run --env main modal_app.py::migrate"
+    )
+
+    release_script = _step(steps, release_guard)["run"]
+    assert 'verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"' in release_script
+    assert all(f"check_health {path} healthy" in release_script for path in ("/health", "/readyz", "/jobs/health"))
+    assert release_script.index("check_health /jobs/health healthy") < release_script.index(
+        "modal_deployment_phase.py authorize-release"
+    )
+
+
+def test_invalid_phase_or_candidate_evidence_cannot_migrate_or_release() -> None:
+    phase_error = _PHASE_MODULE.DeploymentPhaseError
+    with pytest.raises(phase_error):
+        _PHASE_MODULE.resolve_phase("workflow_dispatch", "unexpected")
+    with pytest.raises(phase_error):
+        _PHASE_MODULE.resolve_phase("workflow_run", "release")
+
+    common = {
+        "event_name": "workflow_dispatch",
+        "traffic_mode": "release",
+        "candidate_sha": "a" * 40,
+        "approved_sha": "a" * 40,
+        "observed_sha": "a" * 40,
+        "held_health_verified": True,
+    }
+    assert _PHASE_MODULE.authorize_release(**common)["status"] == "release_authorized"
+    for changes in (
+        {"event_name": "workflow_run", "traffic_mode": ""},
+        {"traffic_mode": "held"},
+        {"approved_sha": "b" * 40},
+        {"observed_sha": "b" * 40},
+        {"held_health_verified": False},
+    ):
+        with pytest.raises(phase_error):
+            _PHASE_MODULE.authorize_release(**(common | changes))
+
+    steps = _workflow_steps()
+    phase_step = _step(steps, "Resolve deployment phase")
+    drain = _step(steps, "Apply production database migrations after external drain verification")
+    release_guard = _step(steps, "Require approved SHA and healthy held candidate before release")
+    assert steps.index(phase_step) < steps.index(drain)
+    assert steps.index(phase_step) < steps.index(release_guard)
+    assert "python backend/scripts/modal_deployment_phase.py resolve" in phase_step["run"]
+
+
+def test_operator_pointer_and_phase_documentation_states_the_actual_limits() -> None:
+    schema_doc = (REPO_ROOT / "docs" / "operations" / "schema-cutover-compatibility.md").read_text()
+    handoff = (REPO_ROOT / "docs" / "HANDOFF.md").read_text()
+    for doc in (schema_doc, handoff):
+        normalized = " ".join(doc.split())
+        assert "trusted operator-pointer gate, not verified external drain evidence" in normalized
+        assert "arbitrary nonempty reference" in normalized
+        assert "does not fetch" in normalized and "authenticate" in normalized
+        assert "queued" in normalized and "in-flight" in normalized
+        assert "change freeze" in normalized
+    assert "separate Modal stop and" not in schema_doc
+    assert "release phase skips the old-App pointer/state gate and Alembic migration" in handoff
+    assert "does not repeat the old-App drain gate or database migration" in schema_doc
 
 
 def test_postdeploy_health_checks_verify_the_selected_hold_header() -> None:
@@ -170,15 +274,17 @@ def test_automatic_and_manual_migrations_require_external_drain_and_current_app_
     source = WORKFLOW.read_text(encoding="utf-8")
     automatic = source.index("  workflow_run:")
     manual = source.index("  workflow_dispatch:")
+    phase_step = source.index("Resolve deployment phase")
     release_guard = source.index("Require approved SHA and healthy held candidate before release")
     cutover_gate = source.index("Require schema cutover and recovery approval")
     migration = source.index("Apply production database migrations after external drain verification")
     deploy = source.index("Deploy backend with a rolling update")
 
-    assert automatic < manual < release_guard < cutover_gate < migration < deploy
+    assert automatic < manual < phase_step < release_guard < cutover_gate < migration < deploy
     migration_block_end = source.index("\n      - name:", migration + 1)
     migration_block = source[migration:migration_block_end]
-    assert "if: steps.freshness.outputs.current == 'true'" in migration_block
+    assert "steps.deployment_phase.outputs.phase == 'held-cutover'" in migration_block
+    assert "steps.deployment_phase.outputs.phase == 'held-release'" in source[release_guard:cutover_gate]
     assert "MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}" in migration_block
     assert "MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}" in migration_block
     assert "MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}" in migration_block
@@ -206,6 +312,7 @@ def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_readonly_
     drain_gate = source.index("Apply production database migrations after external drain verification")
     deploy = source.index("Deploy backend with a rolling update")
     assert release_guard < billing < cutover < drain_gate < deploy
-    assert "inputs.traffic_mode == 'release'" in source[release_guard:billing]
+    assert "steps.deployment_phase.outputs.phase == 'held-release'" in source[release_guard:billing]
     assert 'MODAL_TRAFFIC_RELEASE_APPROVED_SHA' in source[release_guard:billing]
+    assert "modal_deployment_phase.py authorize-release" in source[release_guard:billing]
     assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in source[cutover:drain_gate]

@@ -16,25 +16,35 @@ Frontend and backend delivery are automatic after a merge to `main`:
 
 1. `.github/workflows/ci.yml` validates the exact main revision.
 2. Vercel's GitHub integration builds and deploys that revision.
-3. `.github/workflows/deploy-modal.yml` runs only after successful main CI,
-   checks out the CI-validated SHA, applies migrations, performs a rolling Modal
-   deploy, and verifies `/health`, `/readyz`, and `/jobs/health`.
+3. `.github/workflows/deploy-modal.yml` runs after successful main CI, checks
+   out the CI-validated SHA, and performs the initial held cutover: the
+   operator-pointer gate, migration, rolling Modal deploy, and health checks.
 
-The Modal workflow also supports a manual `workflow_dispatch` with an explicit
-ref for recovery. Routine releases must use the automatic post-CI path; a local
-`modal deploy` is unsupported for production. Direct Modal source imports
+The Modal workflow also supports manual dispatch with an explicit ref and
+`traffic_mode`. Automatic deployments remain held; releasing an already-held
+candidate requires an explicit manual `traffic_mode=release`. A local `modal
+deploy` is unsupported for production. Direct Modal source imports
 default to held traffic, and an unheld production import requires the exact
 workflow-approved SHA. Local `modal serve` remains available with an explicit
 `MODAL_ENVIRONMENT=dev` and `MODAL_DEPLOYMENT_TRAFFIC_HOLD=false`.
 
-Production migration also requires a separately authorized external
-drain/recovery procedure. The deploy workflow reads its candidate SHA, prior
-App ID, completion time and evidence reference, then performs read-only Modal
-identity/state checks immediately before migration. It never stops the App or
-claims that Modal's stopped state proves queued or in-flight work has settled.
-An automatic post-CI run fails closed when the external record is absent or
-stale; use manual dispatch after the procedure and its production change freeze
-are in place.
+The migration gate is a trusted operator-pointer gate, not verified external
+drain evidence. It checks candidate-SHA equality, App ID format/equality, a
+completion timestamp no more than 300 seconds old, a nonempty reference, and
+read-only current Modal App identity/state. An arbitrary nonempty reference and
+recent timestamp can pass those pointer checks when the named App is stopped.
+The workflow does not fetch or authenticate the referenced material, establish
+that the external procedure happened, or verify queued/in-flight work. A
+separately authorized drain/recovery procedure and production change freeze
+must be independently verified before setting the pointer variables and
+allowing migration. The workflow never stops the App; Modal's stopped state
+does not prove queued or in-flight work has settled. Automatic post-CI runs fail
+closed when pointer fields are absent or stale, or the live App checks fail.
+Use manual dispatch only after the external prerequisites are verified.
+The release phase skips the old-App pointer/state gate and Alembic migration;
+it requires the exact release-approved candidate to be currently deployed in
+held mode with fresh health checks before redeploying that same candidate with
+the hold disabled.
 
 ## Development and verification
 

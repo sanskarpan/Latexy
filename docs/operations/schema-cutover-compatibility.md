@@ -98,20 +98,29 @@ the complete backend tree differs and production rollout was not certified.
    - `MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE`: a reference to the external
      procedure record.
 
-   These values are a pointer and authorization marker, not a measurement.
-   The workflow does not fetch or authenticate the referenced record and does
-   not claim to verify queued or in-flight work. Immediately before Alembic it
-   resolves the App name through Modal's non-creating SDK lookup, reads the
-   current App list state, and resolves the name again. The current App ID must
-   still equal the externally recorded ID and its state must be `stopped`.
+   This is a trusted operator-pointer gate, not verified external drain
+   evidence. The code checks only candidate-SHA equality, App ID format and
+   equality, a completion timestamp no more than 300 seconds old, and that the
+   reference string is nonempty. It does not fetch, authenticate, or inspect
+   the referenced record; an arbitrary nonempty reference and recent timestamp
+   satisfy those fields if the current App ID/state checks also pass. An
+   authorized operator must independently verify the external drain/recovery
+   procedure and production change freeze before setting these variables and
+   allowing migration. The workflow itself does not verify queued or in-flight
+   work. Immediately before Alembic it resolves the App name through Modal's
+   non-creating SDK lookup, reads the current App list state, and resolves the
+   name again. The current App ID must still equal the supplied old App ID and
+   its state must be `stopped`.
    Missing, mismatched, stale, live, recreated, ambiguous, or unavailable
    state blocks migration. Modal 1.5.4's App-list JSON has an `app_id` and a
    human-readable `description`, but no stable App-name field; the check binds
    by App ID and never treats `description` as identity.
 
    The automatic `workflow_run` path uses the same gate and therefore fails
-   closed if the external record is absent or stale. After completing the
-   procedure, use manual dispatch if the automatic run already failed. The
+   closed if pointer fields are absent or the timestamp is stale. The gate does
+   not establish that the referenced procedure happened. After completing and
+   independently verifying the separately authorized procedure, use manual
+   dispatch if the automatic run already failed. The
    workflow's concurrency group serializes only GitHub deployment runs; it
    cannot lock out a Modal deploy or other operator. There is a small
    check-to-migration race because Modal state and the database migration are
@@ -131,21 +140,24 @@ the complete backend tree differs and production rollout was not certified.
 
 ## Hold the replacement before releasing product traffic
 
-The deployment workflow never stops the previous App. It requires an external
-procedure record and performs read-only App identity/state queries immediately
-before migration. Modal's `stopped` state means the App is stopped at the
-observation time; it is not evidence of graceful completion of requests,
-queued workers, or in-flight business jobs. The external procedure must own
-those checks and preserve/replay work as needed. The workflow's record fields
-do not independently verify the external procedure's contents.
+The deployment workflow never stops the previous App. The initial held-cutover
+phase requires trusted operator-supplied pointer fields and performs read-only
+App identity/state queries immediately before migration. Those pointer fields
+do not authenticate the referenced procedure; an arbitrary nonempty reference
+with a fresh timestamp can pass their format checks. Modal's `stopped` state
+means the App is stopped at the observation time; it is not evidence of
+graceful completion of requests, queued workers, or in-flight business jobs.
+The external procedure must own those checks and preserve/replay work as
+needed. The workflow's pointer fields do not independently verify the external
+procedure's contents.
 
 The two Modal lookups and App-list query detect a name-to-ID change during the
 check, but cannot make the state check and database migration atomic. An
 out-of-band redeployment can race after the final lookup. Keep a production
 change freeze active from external drain through migration and deployment;
 the GitHub concurrency group does not control other Modal clients. Missing
-external evidence, an App that is live or recreated, or an unavailable API
-query blocks migration. A replacement deployment exposes its endpoint after
+pointer fields, an App that is live or recreated, or an unavailable
+API query blocks migration. A replacement deployment exposes its endpoint after
 startup, so it must remain held until the release gates pass. FastAPI startup
 also tolerates some Redis failures, and startup completion cannot substitute
 for readiness checks.
@@ -188,8 +200,9 @@ Use the deployment workflow's two explicit phases:
    `X-Latexy-Deployment-Hold: true` marker on fresh health responses and 503
    denials on product paths. This is an application admission hold; the public
    network endpoint still exists. The marker is not drain evidence and does
-   not cancel previously admitted work. The workflow's separate Modal stop and
-   readback gate runs immediately before migration.
+   not cancel previously admitted work. The workflow's read-only Modal
+   identity/state and trusted operator-pointer gate runs immediately before
+   migration. It does not authenticate external evidence or prove work drained.
    The existing outer CORS/verified-tenant layer can resolve domains and
    populate infrastructure caches before the hold; startup, health probes and
    explicit operator catalog work also access backing services. This hold
@@ -200,9 +213,10 @@ Use the deployment workflow's two explicit phases:
    `MODAL_TRAFFIC_RELEASE_APPROVED_SHA` to the same exact candidate and manually
    dispatch `traffic_mode=release`. Release requires the candidate's existing
    held deployment identity and fresh held/healthy probe responses before
-   migration or deployment. It repeats the existing rollout guards and deploys
-   the same source with the hold disabled. Verify the false marker and perform
-   bounded normal product checks after release.
+   redeploying that exact source with the hold disabled. It does not repeat the
+   old-App drain gate or database migration: those belong only to the initial
+   held cutover, and the held candidate is now the current serving App. Verify
+   the false marker and perform bounded normal product checks after release.
 5. Retain the release-approval SHA after success. An automatic CI rerun for that
    approved SHA skips another held deployment, so it cannot silently re-hold
    the released application. A different source SHA still needs fresh cutover

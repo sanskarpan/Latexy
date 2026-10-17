@@ -127,6 +127,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Resolve deployment phase
+        id: deployment_phase
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          REQUESTED_TRAFFIC_MODE: ${{ inputs.traffic_mode || '' }}
+        run: |
+          set -euo pipefail
+          python backend/scripts/modal_deployment_phase.py resolve \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --traffic-mode "${REQUESTED_TRAFFIC_MODE:-}" >> "$GITHUB_OUTPUT"
+
       - name: Validate renderer deployment inputs
         if: steps.freshness.outputs.current == 'true'
         run: |
@@ -152,19 +163,19 @@ jobs:
         run: python -m pip install "modal==1.5.4"
 
       # A release is a second, explicit deployment of a candidate already
-      # serving in held mode. Require the exact target version and fresh health
-      # responses carrying the hold header before any migration or deploy step.
+      # serving in held mode. Require the exact target version and fresh held
+      # health responses before deploying the same candidate without the hold.
       - name: Require approved SHA and healthy held candidate before release
-        if: steps.freshness.outputs.current == 'true' && inputs.traffic_mode == 'release'
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-release'
         env:
           BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+          REQUESTED_TRAFFIC_MODE: ${{ inputs.traffic_mode || '' }}
         run: |
           set -euo pipefail
-          if [[ "${MODAL_TRAFFIC_RELEASE_APPROVED_SHA:-}" != "$DEPLOY_SHA" ]]; then
-            echo "Refusing release: MODAL_TRAFFIC_RELEASE_APPROVED_SHA must equal $DEPLOY_SHA" >&2
-            exit 1
-          fi
-          timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"
+          identity_report="$(timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA")"
+          verified_sha="$(jq -er --arg expected "$DEPLOY_SHA" \
+            'select(.status == "verified" and .source_sha == $expected) | .source_sha' \
+            <<< "$identity_report")"
           check_health() {
             local path="$1"
             local expected_status="$2"
@@ -187,6 +198,13 @@ jobs:
           check_health /health healthy
           check_health /readyz ready
           check_health /jobs/health healthy
+          python backend/scripts/modal_deployment_phase.py authorize-release \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --traffic-mode "$REQUESTED_TRAFFIC_MODE" \
+            --candidate-sha "$DEPLOY_SHA" \
+            --approved-sha "${MODAL_TRAFFIC_RELEASE_APPROVED_SHA:-}" \
+            --observed-sha "$verified_sha" \
+            --held-health-verified
 
       - name: Validate read-only billing rollout safety
         if: steps.freshness.outputs.current == 'true'
@@ -231,9 +249,11 @@ jobs:
       # A separately authorized external drain/recovery procedure must finish
       # first. This gate only checks its fresh, candidate-scoped record and
       # performs read-only Modal App name/ID/state queries. It never stops Apps.
-      # The identity/state query is the command immediately before Alembic.
+      # This initial held cutover gate is not used for release: the candidate
+      # App is already serving in held mode then, so it cannot also be the old
+      # stopped App. The identity/state query is immediately before Alembic.
       - name: Apply production database migrations after external drain verification
-        if: steps.freshness.outputs.current == 'true'
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover'
         working-directory: backend
         env:
           MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
@@ -253,7 +273,7 @@ jobs:
       # Recheck after migration, while ingress remains held, so a legacy write
       # during the cutover window blocks serving the candidate build.
       - name: Recheck billing identities after migration
-        if: steps.freshness.outputs.current == 'true'
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover'
         working-directory: backend
         env:
           DODO_LIVE_BILLING_ACCEPTED: ${{ vars.DODO_LIVE_BILLING_ACCEPTED }}
