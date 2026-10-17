@@ -107,3 +107,129 @@ async def test_public_review_off_blocks_existing_link_but_owner_can_revoke_revie
     finally:
         await entitlement_service.set_kill_switch("f01", True, db_session)
         await entitlement_service.set_kill_switch("f03", True, db_session)
+
+
+async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_owner_recovery(
+    client, db_session, auth_headers, auth_headers2,
+):
+    """A child grant cannot outrank any owner-policy axis; private recovery remains available."""
+    owner = await _user_id(db_session, auth_headers)
+    unrelated_user = await _user_id(db_session, auth_headers2)
+    original_plan = await db_session.scalar(
+        text("SELECT subscription_plan FROM users WHERE id = :id"), {"id": owner},
+    )
+    original_owner_role = await db_session.scalar(
+        text("SELECT role FROM users WHERE id = :id"), {"id": owner},
+    )
+    original_unrelated_role = await db_session.scalar(
+        text("SELECT role FROM users WHERE id = :id"), {"id": unrelated_user},
+    )
+    original_policy = await entitlement_service.get_state()
+    controlled_keys = ("collaboration", "f01", "f03", "resume_builder", "b01", "c01")
+    original_globals = {key: original_policy["kill_switches"][key] for key in controlled_keys}
+    original_plans = {
+        (plan, key): original_policy["matrix"][plan][key]
+        for plan in ("pro", "pro_annual")
+        for key in controlled_keys
+    }
+    original_roles = {key: original_policy["role_matrix"]["user"][key] for key in controlled_keys}
+    await db_session.execute(
+        text("UPDATE users SET role = 'user', subscription_plan = 'pro_annual' WHERE id = :id"),
+        {"id": owner},
+    )
+    await db_session.execute(
+        text("UPDATE users SET role = 'user' WHERE id = :id"), {"id": unrelated_user},
+    )
+    await db_session.commit()
+
+    try:
+        for key in controlled_keys:
+            await entitlement_service.set_kill_switch(key, True, db_session)
+            await entitlement_service.set_matrix_cell("pro", key, True, db_session)
+            await entitlement_service.set_matrix_cell("pro_annual", key, True, db_session)
+            await entitlement_service.set_role_cell("user", key, True, db_session)
+
+        resume_id = await _resume(client, auth_headers, "Synthetic child-control owner")
+        created = await client.post(
+            f"/resumes/{resume_id}/share",
+            headers=auth_headers,
+            json={"review_comments": True},
+        )
+        assert created.status_code == 200, created.text
+        share_token = created.json()["share_token"]
+
+        # These are ordinary independent accounts. Product permission does not
+        # become document ownership or a collaborator ACL.
+        assert await db_session.scalar(
+            text("SELECT role FROM users WHERE id = :id"), {"id": owner},
+        ) == "user"
+        assert await db_session.scalar(
+            text("SELECT role FROM users WHERE id = :id"), {"id": unrelated_user},
+        ) == "user"
+        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 403
+
+        async def share_again():
+            return await client.post(f"/resumes/{resume_id}/share", headers=auth_headers)
+
+        # A retained authenticated client request must be rechecked against
+        # authoritative account role, plan family and exact SKU state.
+        await entitlement_service.set_role_cell("user", "f01", False, db_session)
+        assert (await share_again()).status_code == 403
+        await entitlement_service.set_role_cell("user", "f01", True, db_session)
+
+        await entitlement_service.set_matrix_cell("pro", "f01", False, db_session)
+        assert (await share_again()).status_code == 403
+        await entitlement_service.set_matrix_cell("pro", "f01", True, db_session)
+
+        await entitlement_service.set_matrix_cell("pro_annual", "f01", False, db_session)
+        assert (await share_again()).status_code == 403
+        await entitlement_service.set_matrix_cell("pro_annual", "f01", True, db_session)
+
+        # The F01 child remains explicitly ON while its collaboration parent is
+        # OFF. The public serving route and new link admission both fail closed.
+        await entitlement_service.set_kill_switch("collaboration", False, db_session)
+        state = await entitlement_service.get_state()
+        assert state["kill_switches"]["f01"] is True
+        assert state["kill_switches"]["collaboration"] is False
+        effective = await client.get("/config/entitlements", headers=auth_headers)
+        assert effective.status_code == 200
+        assert effective.json()["features"]["f01"] is False
+        assert (await share_again()).status_code == 403
+        assert (await client.get(f"/share/{share_token}")).status_code == 404
+
+        # Disabling review and revoking the existing link are owned recovery
+        # operations, even while new public sharing is disabled.
+        revoke_review = await client.post(
+            f"/resumes/{resume_id}/share",
+            headers=auth_headers,
+            json={"review_comments": False},
+        )
+        assert revoke_review.status_code == 200, revoke_review.text
+        assert revoke_review.json()["share_token"] == share_token
+        assert revoke_review.json()["review_comments"] is False
+        own_source = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+        assert own_source.status_code == 200
+        assert own_source.json()["latex_content"] == "owned source"
+        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 403
+        assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers)).status_code == 204
+
+        await entitlement_service.set_kill_switch("collaboration", True, db_session)
+        restored = await share_again()
+        assert restored.status_code == 200, restored.text
+        assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers)).status_code == 204
+    finally:
+        for key, enabled in original_globals.items():
+            await entitlement_service.set_kill_switch(key, enabled, db_session)
+        for (plan, key), enabled in original_plans.items():
+            await entitlement_service.set_matrix_cell(plan, key, enabled, db_session)
+        for key, enabled in original_roles.items():
+            await entitlement_service.set_role_cell("user", key, enabled, db_session)
+        await db_session.execute(
+            text("UPDATE users SET role = :role, subscription_plan = :plan WHERE id = :id"),
+            {"role": original_owner_role, "plan": original_plan, "id": owner},
+        )
+        await db_session.execute(
+            text("UPDATE users SET role = :role WHERE id = :id"),
+            {"role": original_unrelated_role, "id": unrelated_user},
+        )
+        await db_session.commit()
