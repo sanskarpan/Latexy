@@ -135,7 +135,8 @@ test('E03 global OFF/ON and E02 sibling OFF preserve saved prep, enforce owner s
       && response.status() === 200)
     await actorPage.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
     await e03OffSnapshot
-    await expect(actorPage.getByText('Coach mode', { exact: true }).locator('xpath=../../p')).toHaveText(question)
+    const simulationPanel = actorPage.getByText('Coach mode', { exact: true }).locator('xpath=../..')
+    await expect(simulationPanel.getByText(question, { exact: true })).toBeVisible()
     await expect(actorPage.getByRole('button', { name: 'Finish session' })).toHaveCount(0)
     await expect(actorPage.getByRole('textbox', { name: 'Answer to question 1' })).toHaveValue(payload.answers[0].answer)
     await expect(actorPage.getByText(/Your current answer is still here/)).toBeVisible()
