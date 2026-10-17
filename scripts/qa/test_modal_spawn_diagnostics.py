@@ -13,27 +13,30 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+import modal_spawn_acceptance as acceptance
+import run_modal_spawn_diagnostics as diagnostics_runner
+from app.services.render_engine import functional_acceptance_policy
+from modal_functional_environment_inventory import main as functional_inventory_main
 from modal_spawn_acceptance import (
-    _acceptance_report,
     HarnessFailure,
     _acceptance_exit_code,
+    _acceptance_report,
     _cleanup_private_service,
     _deploy_dispatch_app,
     _ephemeral_queue,
     _finalize_cleanup_status,
     _private_service_lifetime,
-    _set_renderer_report_scope,
     _public_summary,
+    _set_renderer_report_scope,
     _stop_dispatch_app,
     _stop_disposable_services,
     connectivity_report,
-    FunctionalEnvironmentInventory,
     function_runtime_environment,
     main,
+    read_functional_environment_inventory,
     require_compatible_placement,
     require_preflight,
     require_worker_placement,
-    read_functional_environment_inventory,
     run_latex_task,
     runtime_identity,
     terminal_failure_report,
@@ -41,9 +44,6 @@ from modal_spawn_acceptance import (
     validate_functional_acceptance_environment_name,
     validate_nonproduction_environment_name,
 )
-from modal_functional_environment_inventory import main as functional_inventory_main
-import run_modal_spawn_diagnostics as diagnostics_runner
-from app.services.render_engine import functional_acceptance_policy
 
 
 def _reviewed_test_environment(name="reviewed-test-environment", object_id="en-review-test"):
@@ -128,6 +128,7 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
         )
         self.assertNotIn("MODAL_ENVIRONMENT", runtime_env)
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
+        self.assertEqual(runtime_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"], "false")
 
     def test_functional_only_runtime_binding_requires_and_passes_reviewed_identity(self):
         approval = _reviewed_test_environment()
@@ -168,7 +169,7 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
     def test_functional_acceptance_is_fail_closed_for_known_and_unverified_names(self):
-        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 50)
+        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 53)
         self.assertEqual(functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS, ())
         for name in (
             "prod-west", "production-blue", "live", "unknownenv",
@@ -319,6 +320,110 @@ class ModalEnvironmentValidationTests(unittest.TestCase):
         self.assertIn('"secret_count": 1', output.getvalue())
         self.assertNotIn(secret_name, output.getvalue())
         self.assertNotIn("values", output.getvalue())
+
+    def test_read_only_inventory_reports_stage_and_error_class_without_exception_text(self):
+        private_detail = "private-secret-name-and-value-must-not-print"
+
+        class Environment:
+            name = "inventory-error-test"
+            object_id = "en-inventory-error-test"
+
+        class SecretManager:
+            def list(self, **kwargs):
+                raise PermissionError(private_detail)
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": SecretManager()}),
+        })
+        output = io.StringIO()
+        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+            result = functional_inventory_main(["--environment-name", Environment.name])
+        self.assertEqual(result, 2)
+        self.assertIn('"stage": "secret_list"', output.getvalue())
+        self.assertIn('"error_class": "PermissionError"', output.getvalue())
+        self.assertNotIn(private_detail, output.getvalue())
+
+    def test_inventory_uses_modal_15_cli_for_live_apps(self):
+        class Environment:
+            name = "inventory-legacy-sdk-test"
+            object_id = "en-inventory-legacy-sdk-test"
+
+        class Manager:
+            def __init__(self, items):
+                self.items = items
+
+            def list(self, **kwargs):
+                return self.items
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager([])}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager([])}),
+        })
+        cli_result = subprocess.CompletedProcess(
+            args=["python", "-m", "modal"],
+            returncode=0,
+            stdout=json.dumps([
+                {"app_id": "ap-live", "description": "live-app", "state": "ephemeral"},
+                {"app_id": "ap-stopped", "description": "old-app", "state": "stopped"},
+            ]),
+            stderr="",
+        )
+        with patch.object(acceptance.subprocess, "run", return_value=cli_result) as run_cli:
+            inventory = read_functional_environment_inventory(sdk, Environment.name)
+
+        self.assertEqual(inventory.active_app_count, 1)
+        run_cli.assert_called_once_with(
+            [
+                acceptance.sys.executable, "-m", "modal", "app", "list",
+                "--env", Environment.name, "--json",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+
+    def test_inventory_sanitizes_modal_cli_access_denial_stage(self):
+        private_detail = "Permission denied: private-app-and-secret-metadata"
+
+        class Environment:
+            name = "inventory-access-denial-test"
+            object_id = "en-inventory-access-denial-test"
+
+        class Manager:
+            def list(self, **kwargs):
+                return []
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager()}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager()}),
+        })
+        cli_result = subprocess.CompletedProcess(
+            args=["python", "-m", "modal"],
+            returncode=1,
+            stdout="",
+            stderr=private_detail,
+        )
+        output = io.StringIO()
+        with (
+            patch.dict("sys.modules", {"modal": sdk}),
+            patch.object(acceptance.subprocess, "run", return_value=cli_result),
+            redirect_stdout(output),
+        ):
+            result = functional_inventory_main(["--environment-name", Environment.name])
+        self.assertEqual(result, 2)
+        self.assertIn('"stage": "active_app_list"', output.getvalue())
+        self.assertIn('"error_class": "PermissionDeniedError"', output.getvalue())
+        self.assertNotIn(private_detail, output.getvalue())
 
     def test_existing_nonproduction_environment_is_found_by_read_only_list(self):
         class EnvironmentManager:

@@ -48,6 +48,11 @@ from the certified policy. `MODAL_ENGINE_VM_CERTIFIED` is explicitly blanked
 `renderer_boundary_probe: not_run` and
 `production_certification_claimed: false`.
 
+The direct temporary API/worker Functions explicitly set
+`MODAL_DEPLOYMENT_TRAFFIC_HOLD=false`, because Modal-tagged API processes now
+default to held. This is scoped to the reviewed nonproduction harness Functions;
+it does not change the deployment workflow's production hold or release approval.
+
 Functional-only mode skips only `_VM_BOUNDARY_PREFLIGHT`. It retains the
 renderer image/asset preflight, `block_network=True`, and the actual renderer
 compile. The API and worker receive only generated synthetic credentials in an
@@ -91,10 +96,15 @@ python scripts/qa/modal_functional_environment_inventory.py `
 
 The first command is Modal's documented Environment listing command. The
 second performs read-only `Environment.objects.list()`,
-`Secret.objects.list(environment_name=...)`, `Volume.objects.list(...)`, and
-`Environment.apps.list()` calls. It does not inspect Secret contents. Do not
-run it in this bounded source-preparation phase. An empty candidate inventory
-is ready for source review, but does not authorize a run. After its exact
+`Secret.objects.list(environment_name=...)`, and
+`Volume.objects.list(environment_name=...)` calls. For Apps, it uses
+`Environment.apps.list()` when available. On SDKs before 1.6 it uses the
+documented `python -m modal app list --env <candidate-environment> --json`
+command and filters stopped/disabled records in memory. Neither path reads
+Secret contents, and the report omits resource names. Failures include a fixed
+code and operation stage, with the exception class when available; raw exception
+text is omitted. An empty candidate inventory is
+ready for source review, but does not authorize a run. After its exact
 identity and fingerprint have been approved in source, fresh API/services test
 images must be built from that source revision, plus the already accepted bare
 renderer tuple below. Replace placeholders only with reviewed values:

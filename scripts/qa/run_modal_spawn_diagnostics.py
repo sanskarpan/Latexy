@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 _TEST_PATTERN = "test_modal_spawn_diagnostics.py"
-_MINIMUM_EXPECTED_TESTS = 50
+_MINIMUM_EXPECTED_TESTS = 53
 
 
 def main() -> int:

@@ -19,6 +19,17 @@ from modal_spawn_acceptance import (
 )
 
 
+def _blocked_payload(failure: HarnessFailure) -> dict[str, str]:
+    payload = {
+        "status": "blocked",
+        "failure_code": failure.failure_code,
+        "stage": failure.stage,
+    }
+    if failure.error_class:
+        payload["error_class"] = failure.error_class
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--environment-name", required=True)
@@ -26,19 +37,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         validate_nonproduction_environment_name(args.environment_name)
     except HarnessFailure as failure:
-        print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
+        print(json.dumps(_blocked_payload(failure), sort_keys=True))
         return 2
 
     try:
         import modal
-    except Exception:
-        print(json.dumps({"status": "blocked", "failure_code": "modal_sdk_unavailable"}, sort_keys=True))
+    except Exception as error:
+        failure = HarnessFailure("sdk_import", "modal_sdk_unavailable", error_class=type(error).__name__)
+        print(json.dumps(_blocked_payload(failure), sort_keys=True))
         return 2
 
     try:
         inventory = read_functional_environment_inventory(modal, args.environment_name)
     except HarnessFailure as failure:
-        print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
+        print(json.dumps(_blocked_payload(failure), sort_keys=True))
         return 2
 
     empty = not (inventory.secret_count or inventory.volume_count or inventory.active_app_count)

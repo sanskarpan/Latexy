@@ -87,14 +87,80 @@ class FunctionalEnvironmentInventory:
 def _read_named_object_identities(items: Sequence[Any]) -> tuple[tuple[str, str], ...]:
     identities = []
     for item in items:
-        name = getattr(item, "name", None)
-        object_id = getattr(item, "object_id", None)
+        if isinstance(item, Mapping):
+            name = item.get("name")
+            object_id = item.get("object_id")
+        else:
+            name = getattr(item, "name", None)
+            object_id = getattr(item, "object_id", None)
         if (not isinstance(name, str) or not name or any(ord(char) < 32 for char in name)
                 or not isinstance(object_id, str) or not object_id or len(object_id) > 128
                 or any(ord(char) < 32 for char in object_id)):
             raise HarnessFailure("environment_validation", "functional_inventory_identity_unavailable")
         identities.append((name, object_id))
     return tuple(sorted(identities))
+
+
+def _read_cli_active_app_identities(items: Any) -> tuple[tuple[str, str], ...]:
+    """Read live App metadata from the documented Modal CLI JSON listing."""
+    if not isinstance(items, list):
+        raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+    active_items = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+        state = item.get("state")
+        if not isinstance(state, str) or not state:
+            raise HarnessFailure("active_app_list", "functional_inventory_identity_unavailable")
+        # The CLI includes recently stopped records. Count anything not explicitly
+        # stopped or disabled so an unknown state fails closed as an active binding.
+        if state.casefold() in {"stopped", "disabled"}:
+            continue
+        active_items.append({"name": item.get("description"), "object_id": item.get("app_id")})
+    return _read_named_object_identities(active_items)
+
+
+def _modal_cli_error_class(stderr: str) -> str:
+    """Classify CLI failures without returning provider text or resource metadata."""
+    message = stderr.casefold()
+    if any(term in message for term in ("permission denied", "permissiondenied", "forbidden", "not authorized")):
+        return "PermissionDeniedError"
+    if any(term in message for term in ("unauthenticated", "not authenticated", "unauthorized", "no modal token")):
+        return "UnauthenticatedError"
+    return "ModalCliCommandError"
+
+
+def _read_active_app_identities(environment: Any, name: str) -> tuple[tuple[str, str], ...]:
+    """Use Environment.apps when present; use the supported 1.5.x CLI otherwise."""
+    apps_manager = getattr(environment, "apps", None)
+    apps_list = getattr(apps_manager, "list", None)
+    if callable(apps_list):
+        return _read_named_object_identities(list(apps_list()))
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "modal", "app", "list", "--env", name, "--json"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+    except Exception as error:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
+    if result.returncode != 0:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed",
+            error_class=_modal_cli_error_class(result.stderr),
+        )
+    try:
+        items = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise HarnessFailure(
+            "active_app_list", "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
+    return _read_cli_active_app_identities(items)
 
 
 def read_functional_environment_inventory(
@@ -105,6 +171,7 @@ def read_functional_environment_inventory(
     Secret values are never requested or inspected. Any unsupported or incomplete
     listing fails closed so the approval cannot silently degrade to a name check.
     """
+    stage = "environment_list"
     try:
         environments = list(modal_sdk.Environment.objects.list())
         matches = [environment for environment in environments
@@ -119,16 +186,20 @@ def read_functional_environment_inventory(
             raise HarnessFailure("environment_validation", "functional_environment_identity_unavailable")
 
         # These list APIs return named object handles; no Secret contents are read.
+        stage = "secret_list"
         secrets = list(modal_sdk.Secret.objects.list(environment_name=name))
+        stage = "volume_list"
         volumes = list(modal_sdk.Volume.objects.list(environment_name=name))
-        active_apps = list(environment.apps.list())
+        stage = "active_app_list"
+        app_identities = _read_active_app_identities(environment, name)
         secret_identities = _read_named_object_identities(secrets)
         volume_identities = _read_named_object_identities(volumes)
-        app_identities = _read_named_object_identities(active_apps)
     except HarnessFailure:
         raise
-    except Exception:
-        raise HarnessFailure("environment_validation", "functional_environment_inventory_failed") from None
+    except Exception as error:
+        raise HarnessFailure(
+            stage, "functional_environment_inventory_failed", error_class=type(error).__name__,
+        ) from None
 
     fingerprint = functional_environment_inventory_sha256(
         name, environment_object_id,
@@ -218,9 +289,10 @@ def connectivity_report(
 class HarnessFailure(RuntimeError):
     """A fixed-code exception which cannot retain client exception contents."""
 
-    def __init__(self, stage: str, failure_code: str):
+    def __init__(self, stage: str, failure_code: str, *, error_class: str | None = None):
         self.stage = _safe_label(stage)
         self.failure_code = _safe_label(failure_code)
+        self.error_class = _safe_label(error_class) if error_class else None
         super().__init__(self.failure_code)
 
 
@@ -297,6 +369,9 @@ def function_runtime_environment(
         raise ValueError("unsupported renderer acceptance mode")
     environment = {
         "ENVIRONMENT": "test", "DEPLOY_TARGET": "modal",
+        # Test Functions are direct temporary Apps rather than workflow source
+        # imports, so explicitly lift the API's production-default request hold.
+        "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false",
         "BILLING_MODE": "disabled", "DODO_MODE": "test",
         "OPENAI_API_KEY": "", "RESEND_API_KEY": "",
         "PYTHONPATH": "/backend:/pkg", "NO_PROXY": address + ",localhost,127.0.0.1",
@@ -472,6 +547,7 @@ def _stop_disposable_services(
 def _store_worker_identity(identity: Mapping[str, str]) -> None:
     """Retain the actual spawned worker identity only in disposable test Redis."""
     import os
+
     import redis
 
     run_id = os.environ.get("HARNESS_RUN_ID")
@@ -495,6 +571,7 @@ def _worker_failure_key(run_id: str) -> str:
 def _store_expected_placement(run_id: str, identity: Mapping[str, str]) -> None:
     """Store only the checked provider/region in disposable test Redis."""
     import os
+
     import redis
 
     provider = _safe_label(identity.get("provider"))
@@ -518,6 +595,7 @@ def _store_expected_placement(run_id: str, identity: Mapping[str, str]) -> None:
 
 def _read_expected_placement(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -543,6 +621,7 @@ def _read_expected_placement(run_id: str) -> dict[str, str] | None:
 
 def _record_worker_failure(run_id: str, stage: str, failure_code: str) -> None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -556,6 +635,7 @@ def _record_worker_failure(run_id: str, stage: str, failure_code: str) -> None:
 
 def _read_worker_failure(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -704,6 +784,7 @@ def run_latex_task(payload: dict[str, Any]) -> Any:
 
 def _read_actual_worker_identity(run_id: str) -> dict[str, str] | None:
     import os
+
     import redis
 
     client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3, socket_timeout=3)
@@ -728,7 +809,6 @@ def _read_actual_worker_identity(run_id: str) -> dict[str, str] | None:
 def api_probe(app_name: str, service_preflight: dict[str, object],
               expected_region: str, run_id: str, environment_name: str) -> dict[str, object]:
     """Preflight caller, then test one synthetic API submission and acceptance."""
-    import asyncio
     import io
     import os
     import subprocess as probe_subprocess
@@ -1093,7 +1173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                     dispatch_app = modal.App(dispatch_app_name)
                     secret = modal.Secret.from_dict(runtime_secrets)
-                    worker_function = dispatch_app.function(
+                    _worker_function = dispatch_app.function(
                         image=image, env=runtime_env, secrets=[secret], volumes={},
                         i6pn=True, region=args.region, timeout=330, max_containers=1,
                         single_use_containers=True,
