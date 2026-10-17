@@ -166,7 +166,7 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         assert await db_session.scalar(
             text("SELECT role FROM users WHERE id = :id"), {"id": unrelated_user},
         ) == "user"
-        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 403
+        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 404
 
         async def share_again():
             return await client.post(f"/resumes/{resume_id}/share", headers=auth_headers)
@@ -210,7 +210,7 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         own_source = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
         assert own_source.status_code == 200
         assert own_source.json()["latex_content"] == "owned source"
-        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 403
+        assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers2)).status_code == 404
         assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers)).status_code == 204
 
         await entitlement_service.set_kill_switch("collaboration", True, db_session)
