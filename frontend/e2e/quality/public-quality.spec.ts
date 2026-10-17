@@ -319,6 +319,28 @@ test('landing review desk produces desktop and phone evidence in both themes', a
             expect(Math.abs(bounds[0].y - bounds[1].y)).toBeLessThan(1)
             expect(bounds.every(box => box.height >= 44 && box.width >= 100)).toBe(true)
             expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
+            if (width === 320 || width === 390) {
+                const overviewCards = await page.locator('.rd-overview > a').evaluateAll(items =>
+                    items.map(item => {
+                        const { x, y, width, height } = item.getBoundingClientRect()
+                        return { x, y, width, height }
+                    })
+                )
+                expect(overviewCards).toHaveLength(2)
+                if (width === 320) {
+                    expect(Math.abs(overviewCards[0].x - overviewCards[1].x)).toBeLessThan(1)
+                    expect(overviewCards[1].y).toBeGreaterThan(overviewCards[0].y + overviewCards[0].height)
+                    const reviewLinkHeight = await page
+                        .locator('.rd-overview > a')
+                        .first()
+                        .locator('span')
+                        .evaluate(item => item.getBoundingClientRect().height)
+                    expect(reviewLinkHeight).toBeLessThan(24)
+                } else {
+                    expect(overviewCards[1].x).toBeGreaterThan(overviewCards[0].x + overviewCards[0].width)
+                    expect(Math.abs(overviewCards[0].y - overviewCards[1].y)).toBeLessThan(1)
+                }
+            }
             await expect(page.locator('.rd-note').getByRole('button', { name: 'Use suggestion' })).toBeVisible()
             if (width === 1440 || width === 390 || width === 320) {
                 await captureLandingEvidence(page, testInfo, `review-desk-${width}-${theme}`, true)
