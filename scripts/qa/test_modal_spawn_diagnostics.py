@@ -210,7 +210,7 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
     def test_functional_acceptance_is_fail_closed_for_known_and_unverified_names(self):
-        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 53)
+        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 55)
         self.assertEqual(functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS, ())
         for alias in (
             "prod-west", "production-blue", "main", "prod", "production", "live",
