@@ -22,7 +22,14 @@ but sets a distinct test-only renderer binding. It requires
 `--confirm-functional-renderer-binding` along with the isolated-run,
 nonproduction-environment, and default-egress confirmations. It rejects
 `--confirm-renderer-boundary-probe` so this mode cannot be mistaken for a
-boundary-probe run. The runtime backend accepts this binding only when
+boundary-probe run. The only source-allowlisted Modal Environment is
+`billing-acceptance-20261014`, recorded by the October 14 bridge acceptance.
+This is an exact-name allowlist shared by the harness, backend, and adapter;
+names such as `prod-west`, `production-blue`, `live`, and unknown aliases are
+rejected before Modal is imported. CLI acknowledgements and self-set test flags
+cannot add an environment to the allowlist. A different environment requires a
+reviewed source change to the allowlist and its regression tests. The runtime
+backend accepts this binding only when
 `ENVIRONMENT=test`, `DEPLOY_TARGET=modal`, and Modal supplies an explicit
 nonproduction `MODAL_ENVIRONMENT`; the renderer image ID and fingerprint must
 still be well formed. It uses a distinct noncacheable backend identity and
@@ -72,7 +79,7 @@ python scripts/qa/modal_spawn_acceptance.py `
   --renderer-assets-fingerprint db98401df2e8c2d2b5a158ef96dcca6be5cfc36f2fc8451c693cb4018bf6c4a9 `
   --renderer-mode functional-only `
   --region us-east `
-  --environment-name <existing-nonproduction-environment> `
+  --environment-name billing-acceptance-20261014 `
   --private-report <private-path-outside-checkout> `
   --confirm-isolated-modal-run `
   --confirm-nonproduction-environment `
@@ -95,8 +102,11 @@ credentials sent to Modal, isolated app/environment and private networking,
 bounded paid compute, outer Modal control-plane access, Functions' default
 egress, and a private report destination. Functional-only mode does not require
 approval to run the renderer boundary probes. It does not repeat or invalidate
-the existing 61-template acceptance evidence. The API/services images must
-include the exact source revision carrying this harness and backend path.
+the historical 61-template acceptance evidence. That evidence and the accepted
+renderer tuple do not certify the backend/adapter changes in this branch; the
+functional-only run checks this branch's current API/worker/PDF path. The
+API/services images must include the exact source revision carrying this
+harness and backend path.
 
 For a boundary run, omit `--renderer-mode` or pass `boundary`, retain the old
 `--confirm-nonproduction-renderer-binding` acknowledgement, and add

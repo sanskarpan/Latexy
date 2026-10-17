@@ -38,7 +38,7 @@ def _functional_test_environment(monkeypatch, **overrides):
     values = {
         "DEPLOY_TARGET": "modal",
         "ENVIRONMENT": "test",
-        "MODAL_ENVIRONMENT": "isolated-test",
+        "MODAL_ENVIRONMENT": "billing-acceptance-20261014",
         "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE": "true",
         "MODAL_ENGINE_VM_IMAGE_ID": "im-functionalTestImage",
         "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": "a" * 64,
@@ -59,8 +59,10 @@ def test_functional_only_backend_is_noncacheable_unverified_and_boundary_free(mo
     assert backend.boundary_preflight is False
 
 
-@pytest.mark.parametrize("modal_environment", ["main", "prod", "production", ""])
-def test_functional_only_backend_rejects_production_or_missing_modal_environment(monkeypatch, modal_environment):
+@pytest.mark.parametrize("modal_environment", [
+    "main", "prod", "production", "prod-west", "production-blue", "live", "unknownenv", "",
+])
+def test_functional_only_backend_rejects_unallowlisted_modal_environment(monkeypatch, modal_environment):
     _functional_test_environment(monkeypatch, MODAL_ENVIRONMENT=modal_environment)
     with pytest.raises(ModalEngineUnavailable, match="nonproduction tests"):
         resolve_backend("lualatex")

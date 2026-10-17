@@ -10,13 +10,13 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from .functional_acceptance_policy import is_trusted_functional_acceptance_environment
 from .modal_sandbox import ModalEngineUnavailable, create_modal_engine
 from .version import renderer_fingerprint
 
 VM_POLICY = "lua-credential-free-vm-v1"
 FUNCTIONAL_TEST_VM_POLICY = "lua-credential-free-vm-functional-test-only-v1"
 NATIVE_LUA_POLICY = "lua-landlock-seccomp-v2"
-_PRODUCTION_MODAL_ENVIRONMENTS = frozenset({"main", "prod", "production"})
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ def resolve_backend(compiler: str) -> RendererBackend:
         if functional_only:
             environment = os.getenv("MODAL_ENVIRONMENT", "")
             if (certified or os.getenv("ENVIRONMENT") != "test" or not environment
-                    or environment.casefold() in _PRODUCTION_MODAL_ENVIRONMENTS):
+                    or not is_trusted_functional_acceptance_environment(environment)):
                 raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
             policy = FUNCTIONAL_TEST_VM_POLICY
             material = json.dumps({"image_id": image_id, "assets": assets, "policy": policy}, sort_keys=True)

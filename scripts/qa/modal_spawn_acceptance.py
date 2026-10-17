@@ -32,6 +32,15 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
+_BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+from app.services.render_engine.functional_acceptance_policy import (
+    TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS,
+    is_trusted_functional_acceptance_environment,
+)
+
 _LABEL = re.compile(r"[A-Za-z0-9_.:-]{1,80}\Z")
 _IMAGE_ID = re.compile(r"im-[A-Za-z0-9]{6,128}\Z")
 _ROLES = frozenset({"service", "caller", "worker"})
@@ -53,9 +62,22 @@ def validate_nonproduction_environment_name(name: str) -> str:
     return name
 
 
-def validate_existing_nonproduction_environment(modal_sdk: Any, name: str) -> str:
+def validate_functional_acceptance_environment_name(name: str) -> str:
+    """Require exact membership in the source-reviewed functional test allowlist."""
+    validate_nonproduction_environment_name(name)
+    if not is_trusted_functional_acceptance_environment(name):
+        raise HarnessFailure("arguments", "functional_environment_not_allowlisted")
+    return name
+
+
+def validate_existing_nonproduction_environment(
+    modal_sdk: Any, name: str, *, functional_only: bool = False,
+) -> str:
     """Read-only existence check; never create an Environment implicitly."""
-    name = validate_nonproduction_environment_name(name)
+    name = (
+        validate_functional_acceptance_environment_name(name)
+        if functional_only else validate_nonproduction_environment_name(name)
+    )
     try:
         environments = modal_sdk.Environment.objects.list()
     except Exception:
@@ -829,7 +851,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east", help="Modal container region (default: us-east)")
     parser.add_argument(
         "--environment-name", required=True,
-        help="Existing nonproduction Modal Environment to use; the harness never creates Environments",
+        help=("Existing nonproduction Modal Environment; functional-only requires an exact allowlist match: "
+              + ", ".join(sorted(TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS))),
     )
     parser.add_argument(
         "--private-report", required=True,
@@ -860,7 +883,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise HarnessFailure("arguments", "invalid_renderer_assets_fingerprint")
         if not _LABEL.fullmatch(args.region) or args.region == "unknown":
             raise HarnessFailure("arguments", "invalid_region")
-        validate_nonproduction_environment_name(args.environment_name)
+        if args.renderer_mode == "functional-only":
+            validate_functional_acceptance_environment_name(args.environment_name)
+        else:
+            validate_nonproduction_environment_name(args.environment_name)
         if not args.confirm_isolated_modal_run:
             raise HarnessFailure("arguments", "isolated_modal_run_confirmation_required")
         if not args.confirm_nonproduction_environment:
@@ -892,7 +918,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        environment = validate_existing_nonproduction_environment(modal, args.environment_name)
+        environment = validate_existing_nonproduction_environment(
+            modal, args.environment_name, functional_only=args.renderer_mode == "functional-only",
+        )
     except HarnessFailure as failure:
         print(json.dumps({"status": "blocked", "failure_code": failure.failure_code}, sort_keys=True))
         return 2

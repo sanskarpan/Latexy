@@ -111,7 +111,7 @@ def test_functional_only_vm_skips_only_boundary_probe_and_keeps_image_preflight(
     monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
     monkeypatch.setenv("DEPLOY_TARGET", "modal")
     monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("MODAL_ENVIRONMENT", "isolated-test")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "billing-acceptance-20261014")
     monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
     sandbox = FakeSandbox()
     sdk, calls = fake_sdk(sandbox)
@@ -135,13 +135,30 @@ def test_functional_only_flag_cannot_run_boundary_or_be_used_outside_test_enviro
     monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
     monkeypatch.setenv("DEPLOY_TARGET", "modal")
     monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("MODAL_ENVIRONMENT", "isolated-test")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "billing-acceptance-20261014")
     with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
         request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=True)
     assert not calls and not sandbox.calls
-
     monkeypatch.delenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", raising=False)
     with pytest.raises(ModalEngineUnavailable, match="requires functional-only mode"):
+        request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False)
+    assert not calls and not sandbox.calls
+
+
+@pytest.mark.parametrize("modal_environment", [
+    "main", "prod", "production", "prod-west", "production-blue", "live", "unknownenv",
+])
+def test_functional_only_adapter_rejects_unallowlisted_environment_before_sdk(tmp_path, monkeypatch,
+                                                                                modal_environment):
+    sandbox = FakeSandbox()
+    sdk, calls = fake_sdk(sandbox)
+    monkeypatch.setenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "true")
+    monkeypatch.setenv("DEPLOY_TARGET", "modal")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", modal_environment)
+    monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
+
+    with pytest.raises(ModalEngineUnavailable, match="restricted to nonproduction tests"):
         request(tmp_path, sdk, policy="credential_free_vm", boundary_preflight=False)
     assert not calls and not sandbox.calls
 

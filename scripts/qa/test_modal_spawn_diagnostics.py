@@ -36,6 +36,7 @@ from modal_spawn_acceptance import (
     runtime_identity,
     terminal_failure_report,
     validate_existing_nonproduction_environment,
+    validate_functional_acceptance_environment_name,
     validate_nonproduction_environment_name,
 )
 
@@ -128,6 +129,17 @@ class ModalRuntimeEnvironmentTests(unittest.TestCase):
 
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
+    def test_functional_acceptance_environment_requires_exact_allowlist_name(self):
+        allowed = "billing-acceptance-20261014"
+        self.assertEqual(validate_functional_acceptance_environment_name(allowed), allowed)
+        for name in (
+            "prod-west", "production-blue", "live", "unknownenv",
+            "billing-acceptance-20261014-prod", "Billing-acceptance-20261014",
+        ):
+            with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
+                validate_functional_acceptance_environment_name(name)
+            self.assertEqual(raised.exception.failure_code, "functional_environment_not_allowlisted")
+
     def test_existing_nonproduction_environment_is_found_by_read_only_list(self):
         class EnvironmentManager:
             list_calls = 0
@@ -330,7 +342,7 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
-                "--environment-name", "test-sandbox",
+                "--environment-name", "billing-acceptance-20261014",
                 "--private-report", private_report,
                 "--renderer-mode", "functional-only",
                 "--confirm-isolated-modal-run",
@@ -351,7 +363,7 @@ class ConnectivityReportTests(unittest.TestCase):
                 "--services-image-id", "im-TestServices123",
                 "--renderer-image-id", "im-TestRenderer123",
                 "--renderer-assets-fingerprint", "a" * 64,
-                "--environment-name", "test-sandbox",
+                "--environment-name", "billing-acceptance-20261014",
                 "--private-report", private_report,
                 "--renderer-mode", "functional-only",
                 "--confirm-isolated-modal-run",
@@ -362,6 +374,27 @@ class ConnectivityReportTests(unittest.TestCase):
             ])
         self.assertEqual(result, 2)
         self.assertIn("boundary_probe_confirmation_not_allowed_in_functional_mode", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+    def test_functional_mode_rejects_production_alias_before_modal_import(self):
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "prod-west",
+                "--private-report", private_report,
+                "--renderer-mode", "functional-only",
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+                "--confirm-default-egress",
+                "--confirm-functional-renderer-binding",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("functional_environment_not_allowlisted", output.getvalue())
         self.assertFalse(Path(private_report).exists())
 
     def test_same_provider_and_region_is_accepted_before_compile(self):

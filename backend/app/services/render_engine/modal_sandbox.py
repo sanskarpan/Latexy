@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ...utils.bounded_io import MAX_COMPILE_LOG_BYTES, MAX_COMPILED_PDF_BYTES, read_file_bounded
+from .functional_acceptance_policy import is_trusted_functional_acceptance_environment
 
 _REMOTE = "/workspace"
 _BOOTSTRAP = "/tmp/latexy-sandbox-bootstrap"
@@ -39,7 +40,6 @@ _BATCH_EXPORT_SLOTS = tuple(_OUTPUT_LIMITS.items()) + (("engine.stdout", MAX_COM
 _BATCH_EXPORT_MAGIC = b"LXEX\x01"
 _BATCH_EXPORT_HEADER = struct.Struct("!BBI")
 _BATCH_EXPORT_LIMIT = sum(limit for _, limit in _BATCH_EXPORT_SLOTS)
-_PRODUCTION_MODAL_ENVIRONMENTS = frozenset({"main", "prod", "production"})
 _BATCH_EXPORT_MAX_BYTES = (
     len(_BATCH_EXPORT_MAGIC)
     + 1
@@ -378,7 +378,7 @@ def create_modal_engine(
                 or os.getenv("MODAL_ENGINE_VM_CERTIFIED") == "true"
                 or os.getenv("DEPLOY_TARGET") != "modal" or os.getenv("ENVIRONMENT") != "test"
                 or not runtime_environment
-                or runtime_environment.casefold() in _PRODUCTION_MODAL_ENVIRONMENTS):
+                or not is_trusted_functional_acceptance_environment(runtime_environment)):
             raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
     elif not boundary_preflight:
         raise ModalEngineUnavailable("Skipping the renderer boundary preflight requires functional-only mode")
