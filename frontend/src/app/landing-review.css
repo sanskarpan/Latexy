@@ -535,6 +535,16 @@
     filter: brightness(1.07);
     border-color: var(--accent-strong);
 }
+.rd-small-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    filter: none;
+}
+.rd-note .rd-field-error {
+    color: var(--accent-strong);
+    margin: -7px 0 10px;
+    font-size: 11px;
+}
 .rd-note :is(input, textarea, select) {
     display: block;
     width: 100%;
