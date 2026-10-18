@@ -133,6 +133,54 @@ describe('identity-scoped feature availability', () => {
     h.render(); h.fetch(); await flush()
     expect(h.render().can('c01')).toBe(true)
   })
+  it('keeps prior grants invalid after repeated session retry failures', async () => {
+    const h = await harness()
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: null })
+    h.getEntitlements.mockResolvedValue({ features: { d01: true } })
+    h.render(); h.fetch(); await flush()
+    expect(h.render().can('d01')).toBe(true)
+
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('session offline') })
+    h.refetchSession.mockRejectedValue(new Error('still offline'))
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const failed = h.render()
+      expect(failed.error).toBe('Could not verify your session')
+      expect(failed.can('d01')).toBe(false)
+      failed.refresh()
+      await flush()
+      h.render(); h.fetch()
+      expect(h.refetchSession).toHaveBeenCalledTimes(attempt)
+      expect(h.getEntitlements).toHaveBeenCalledTimes(1)
+      expect(h.render().features).toEqual({})
+    }
+  })
+  it('rejects a prior identity response during rapid session retries', async () => {
+    const h = await harness()
+    let resolveOld!: (data: unknown) => void
+    h.getEntitlements.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: null })
+    h.render(); const cleanupOld = h.fetch()
+
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('session offline') })
+    const retryCompletions: Array<() => void> = []
+    h.refetchSession.mockImplementation(() => new Promise<void>(resolve => { retryCompletions.push(resolve) }))
+    const failed = h.render()
+    failed.refresh(); failed.refresh()
+    expect(h.refetchSession).toHaveBeenCalledTimes(2)
+    expect(h.render().can('d01')).toBe(false)
+    h.fetch()
+    expect(h.getEntitlements).toHaveBeenCalledTimes(1)
+
+    cleanupOld?.()
+    h.session({ data: { user: { id: 'b' } }, isPending: false, error: null })
+    h.getEntitlements.mockResolvedValueOnce({ features: { d01: false } })
+    h.render(); h.fetch(); await flush()
+    resolveOld({ features: { d01: true } })
+    retryCompletions.forEach(resolve => resolve())
+    await flush()
+    expect(h.render().can('d01')).toBe(false)
+    expect(h.render().features).toMatchObject({ d01: false })
+  })
 })
 
 
