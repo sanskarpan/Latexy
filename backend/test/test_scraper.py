@@ -67,7 +67,7 @@ def test_ssrf_guard_preserves_existing_exclusions(address: str) -> None:
 @pytest.mark.parametrize("addresses", [("100.64.0.1",), ("8.8.8.8", "100.127.255.254")])
 def test_ssrf_guard_rejects_shared_and_mixed_dns_answers(addresses: tuple[str, ...]) -> None:
     infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0)) for address in addresses]
-    with patch("app.services.job_scraper_service.socket.getaddrinfo", return_value=infos):
+    with patch("app.core.egress_guard.socket.getaddrinfo", return_value=infos):
         assert _resolve_public_addresses("shared.example") == ()
         with pytest.raises(SSRFError, match="non-public"):
             _assert_public_url("https://shared.example/portfolio")
@@ -80,7 +80,7 @@ async def test_ssrf_transport_never_sends_to_shared_dns_answer() -> None:
     request = httpx.Request("GET", "https://shared.example/portfolio")
     try:
         with (
-            patch("app.services.job_scraper_service.socket.getaddrinfo", return_value=infos),
+            patch("app.core.egress_guard.socket.getaddrinfo", return_value=infos),
             patch.object(
                 httpx.AsyncHTTPTransport,
                 "handle_async_request",
@@ -109,7 +109,7 @@ async def test_url_import_rejects_shared_address_redirect() -> None:
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
 
     with (
-        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch("app.core.egress_guard.socket.getaddrinfo", side_effect=fake_getaddrinfo),
         patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
     ):
         with pytest.raises(SSRFError, match="Blocked or unreachable host"):
@@ -157,7 +157,7 @@ async def test_ssrf_transport_pins_validated_dns_answer() -> None:
 
     with (
         patch(
-            "app.services.job_scraper_service._resolve_public_addresses",
+            "app.core.egress_guard.resolve_public_addresses",
             return_value=("203.0.113.10",),
         ),
         patch.object(
@@ -181,7 +181,7 @@ async def test_ssrf_transport_rejects_non_public_dns_answer() -> None:
     request = httpx.Request("GET", "https://rebind.example/secrets")
 
     with patch(
-        "app.services.job_scraper_service._resolve_public_addresses",
+        "app.core.egress_guard.resolve_public_addresses",
         return_value=(),
     ):
         with pytest.raises(httpx.ConnectError, match="non-public"):
@@ -214,7 +214,7 @@ async def test_url_import_rejects_private_redirect_with_guarded_default_client()
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
 
     with (
-        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch("app.core.egress_guard.socket.getaddrinfo", side_effect=fake_getaddrinfo),
         patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
     ):
         with pytest.raises(SSRFError, match="Blocked or unreachable host"):
@@ -244,7 +244,7 @@ async def test_url_import_rejects_non_http_redirect_with_guarded_default_client(
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
 
     with (
-        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch("app.core.egress_guard.socket.getaddrinfo", side_effect=fake_getaddrinfo),
         patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
     ):
         with pytest.raises(SSRFError, match="Blocked or unreachable host"):
@@ -279,7 +279,7 @@ async def test_url_import_allows_public_redirect_and_revalidates_each_hop() -> N
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
 
     with (
-        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch("app.core.egress_guard.socket.getaddrinfo", side_effect=fake_getaddrinfo),
         patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
     ):
         text = await url_import.fetch_url_text("https://public.example/portfolio")
@@ -722,7 +722,7 @@ class TestJobScraperService:
         with (
             # HTTP is fully mocked below; keep the real public-address guard
             # deterministic rather than depending on the runner's DNS/VPN.
-            patch("app.services.job_scraper_service.socket.getaddrinfo",
+            patch("app.core.egress_guard.socket.getaddrinfo",
                   return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
@@ -754,7 +754,7 @@ class TestJobScraperService:
             "source": "api", "cached": False, "error": None, "scraped_at": "2025-01-01T00:00:00+00:00",
         }
         with (
-            patch("app.services.job_scraper_service.socket.getaddrinfo",
+            patch("app.core.egress_guard.socket.getaddrinfo",
                   return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=cached),
             patch("httpx.AsyncClient") as mock_cls,
@@ -790,7 +790,7 @@ class TestJobScraperService:
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
-            patch("app.services.job_scraper_service._host_is_public", return_value=True),
+            patch("app.core.egress_guard.host_is_public", return_value=True),
             patch("app.services.job_scraper_service._fetch_html", new=AsyncMock(return_value=html)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
@@ -811,7 +811,7 @@ class TestJobScraperService:
         service = JobScraperService()
         html = _indeed_html_with_initialdata("ML Researcher", "AILabs")
         with (
-            patch("app.services.job_scraper_service.socket.getaddrinfo",
+            patch("app.core.egress_guard.socket.getaddrinfo",
                   return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]),
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
