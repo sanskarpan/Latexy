@@ -9,8 +9,8 @@ import {
     IconPencil,
     IconDownload,
 } from '@tabler/icons-react'
-import Link from 'next/link'
-import CapabilityGate from '@/components/CapabilityGate'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { MarketingCTA } from './MarketingCTA'
 import { ReviewStageList, type ReviewStage } from './ReviewStages'
 import '@fontsource/tinos/latin-400.css'
 import '@fontsource/tinos/latin-700.css'
@@ -20,6 +20,7 @@ const suggested = 'Designed the checkout flow with research and engineering.'
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
 export default function ReviewDesk() {
+    const { can, loading, error } = useEntitlements()
     const [stage, setStage] = useState<ReviewStage>('Review')
     const [bullet, setBullet] = useState(original)
     const [draft, setDraft] = useState(original)
@@ -285,19 +286,16 @@ export default function ReviewDesk() {
                             ))}
                         </fieldset>
                         <p>
-                            Preview a layout here. Open the studio to create and export your own
-                            PDF.
+                            Preview a layout here.{' '}
+                            {error
+                                ? 'PDF export availability could not be verified.'
+                                : loading
+                                    ? 'Checking PDF export availability.'
+                                    : can('c05')
+                                        ? 'PDF export is available when studio access is enabled.'
+                                        : 'PDF export is currently unavailable.'}
                         </p>
-                        <CapabilityGate feature="a09">
-                            <CapabilityGate feature="b01">
-                                <CapabilityGate feature="c01">
-                                    <Link className="rd-small-primary" href="/try?mode=visual">
-                                        Open the studio{' '}
-                                        <IconArrowRight size={13} aria-hidden="true" />
-                                    </Link>
-                                </CapabilityGate>
-                            </CapabilityGate>
-                        </CapabilityGate>
+                        <MarketingCTA label="Open the studio" />
                     </Tabs.Content>
                 </div>
             </div>

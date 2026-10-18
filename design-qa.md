@@ -12,11 +12,13 @@
 ## Independent availability repair
 
 - Marketing CTA now distinguishes pending, failed (with Retry), denied, visual, and source-only states from effective entitlements and session identity. Public copy describes PDF generation as conditional on availability.
+- Retry also rechecks a failed session before entitlement loading resumes. The illustrative sample Export tab uses the same CTA and shows PDF export availability according to `c05`.
 - Homepage, platform, FAQ, and resources copy no longer promise an immediately available studio sample when the relevant capability is denied. The platform, FAQ, and resources pages link to the interactive illustrative homepage sample.
 - The existing backend admission and saved-document creation gates were not modified.
 - Locked dependency installation: `pnpm install --frozen-lockfile` succeeded with the project-pinned pnpm 10.10.0. The Next hydration integrity postinstall check passed.
-- Final-head checks after that installation: full frontend TypeScript (`tsc --noEmit`) passed; full frontend ESLint (`--max-warnings=0`) passed; four targeted Vitest files passed (28 tests).
+- Final-head checks after that installation: full frontend TypeScript (`tsc --noEmit`) passed; full frontend ESLint (`--max-warnings=0`) passed; five targeted Vitest files passed (38 tests).
 - Direct Playwright Chromium check passed at both viewports: denied CTA and fallback route, platform sample link and destination, visual editor route, source-only route, failed entitlement request followed by Retry, no horizontal overflow, and no uncaught page errors. Full-page screenshots were saved for each state in the local evidence directory above.
+- A further direct Chromium check passed at both viewports for failed session verification followed by Retry, sample Export tab copy with `c05` denied and allowed, the sample CTA route, and horizontal overflow.
 - The repository's Playwright quality wrapper could not run on this Windows executor because `playwright-server.mjs` failed with `EPERM` while creating a symlink. The direct browser check does not replace the complete repository browser suite.
 
 ## Open findings
