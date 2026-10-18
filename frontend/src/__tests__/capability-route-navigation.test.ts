@@ -9,12 +9,12 @@ import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { capabilityForRoute } from '@/lib/capability-ui-policy'
 import { resumeEditorHref } from '@/lib/resume-navigation'
 
-const state = vi.hoisted(() => ({ grants: new Set<string>(), pathname: '/workspace' }))
+const state = vi.hoisted(() => ({ grants: new Set<string>(), pathname: '/workspace', signedIn: false, loading: false, error: null as string | null }))
 vi.mock('@/contexts/EntitlementsContext', () => ({
-  useEntitlements: () => ({ can: (key: string) => state.grants.has(key), loading: false, error: null, refresh: vi.fn() }),
+  useEntitlements: () => ({ can: (key: string) => state.grants.has(key), loading: state.loading, error: state.error, refresh: vi.fn() }),
 }))
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname }))
-vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: { user: { id: 'owner' } } }) }))
+vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: state.signedIn ? { user: { id: 'owner' } } : null }) }))
 vi.mock('next/link', () => ({ default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) }))
 
 function source(relative: string) {
@@ -72,7 +72,7 @@ function renderExpression(expression: ts.Node, extra: Record<string, unknown> = 
   return renderToStaticMarkup(React.createElement(React.Fragment, null, view))
 }
 
-beforeEach(() => { state.grants = new Set(); state.pathname = '/workspace' })
+beforeEach(() => { state.grants = new Set(); state.pathname = '/workspace'; state.signedIn = false; state.loading = false; state.error = null })
 
 describe('optional route entry controls render OFF and ON', () => {
   it.each([
@@ -105,23 +105,39 @@ describe('optional route entry controls render OFF and ON', () => {
     expect(renderExpression(expression)).toContain('Saved source title')
   })
 
-  it('keeps the studio CTA gated while leaving the public fallback available', () => {
+  it('shows truthful studio states while leaving the public fallback available', () => {
     const renderCta = () =>
       renderToStaticMarkup(React.createElement(MarketingCTA, { label: 'Try the studio' }))
     const fallback = renderExpression(linkExpression(home, '/platform'))
 
     expect(renderCta()).not.toContain('href="/try?mode=visual"')
+    expect(renderCta()).toContain('Studio editing is currently unavailable.')
     expect(fallback).toContain('href="/platform"')
     expect(fallback).toContain('Explore Latexy')
 
-    state.grants.add('a09')
-    state.grants.add('b01')
-    expect(renderCta()).not.toContain('href="/try?mode=visual"')
-    state.grants.add('c01')
+    state.loading = true
+    expect(renderCta()).toContain('Checking studio availability')
+    state.loading = false
+    state.error = 'Feature availability could not be verified'
+    expect(renderCta()).toContain('Retry')
+    state.error = null
+
+    state.grants.add('a09'); state.grants.add('c01'); state.grants.add('b10')
     expect(renderCta()).toContain('href="/try?mode=visual"')
     expect(renderCta()).toContain('Try the studio')
-    state.grants.delete('b01')
-    expect(renderCta()).not.toContain('href="/try?mode=visual"')
+    state.grants.add('c05')
+    expect(renderCta()).toContain('href="/try?mode=visual"')
+    state.grants.add('b01')
+    expect(renderCta()).toContain('href="/try?mode=visual"')
+    state.grants.delete('b01'); state.grants.delete('b10')
+    expect(renderCta()).toContain('href="/try?mode=source"')
+    expect(renderCta()).toContain('Open the source editor')
+    state.grants.delete('a09')
+    expect(renderCta()).not.toContain('href="/try?mode=source"')
+    state.signedIn = true
+    expect(renderCta()).toContain('href="/try?mode=source"')
+    state.grants.delete('c01')
+    expect(renderCta()).not.toContain('href="/try?mode=source"')
   })
 
   it('hides onboarding creation actions without core grants and retains skip exploration', () => {

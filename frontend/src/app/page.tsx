@@ -47,7 +47,7 @@ const faq = [
     },
     {
         question: 'Can I try Latexy without creating an account?',
-        answer: 'Yes. Try the guest studio and edit a sample résumé with limited guest usage. Professional PDF output is available in the studio. A saved workspace and the guided builder require an account. Feature availability depends on your plan.',
+        answer: 'When guest studio access is available, you can edit a sample résumé with limited usage. PDF generation depends on the features currently enabled. A saved workspace and the guided builder require an account.',
     },
     {
         question: 'Will AI change my résumé without asking me?',
@@ -101,8 +101,8 @@ export default function LandingPage() {
                         <span>Keep it yours.</span>
                     </h1>
                     <p className="rd-hero-description">
-                        Build a résumé without code. Check its structure, tailor it to the job, and
-                        export a LaTeX PDF.
+                        Explore a sample résumé, review its structure, and see how LaTeX source and
+                        PDF output fit together.
                     </p>
                     <div className="lp-hero-actions">
                         <MarketingCTA label="Try the studio" />
@@ -116,7 +116,7 @@ export default function LandingPage() {
                             </Link>
                         </CapabilityGate>
                     </div>
-                    <p className="rd-trial-note">Limited guest usage. Sign in to save your work.</p>
+                    <p className="rd-trial-note">Studio access depends on availability. Sign in to save your work.</p>
                 </div>
                 <ReviewDesk />
             </section>

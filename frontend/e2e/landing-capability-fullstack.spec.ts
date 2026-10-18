@@ -9,7 +9,7 @@ test.skip(
 )
 test.setTimeout(180_000)
 
-const LANDING_KEYS = ['a09', 'b01', 'c01', 'b04'] as const
+const LANDING_KEYS = ['a09', 'b01', 'b10', 'c01', 'b04'] as const
 const PARENT_KEYS = ['templates'] as const
 const RESTORE_KEYS = [...LANDING_KEYS, ...PARENT_KEYS]
 
@@ -234,7 +234,7 @@ test('live anonymous landing gates reflect each capability and recover after fet
             contentType: 'image/png',
         })
 
-        for (const key of ['a09', 'b01', 'c01'] as const) {
+        for (const key of ['a09', 'b01', 'b10', 'c01'] as const) {
             await setRoleFeature(adminContext, backend, admin.headers, key, false)
             const deniedResponse = page.waitForResponse(
                 response => isEntitlementResponse(response) && response.status() === 200
@@ -245,14 +245,21 @@ test('live anonymous landing gates reflect each capability and recover after fet
                 boolean
             >
             expect(deniedFeatures[key], `${key} is denied by the live backend`).toBe(false)
-            for (const other of ['a09', 'b01', 'c01'].filter(candidate => candidate !== key)) {
+            for (const other of ['a09', 'b01', 'b10', 'c01'].filter(candidate => candidate !== key)) {
                 expect(deniedFeatures[other], `${other} remains enabled while testing ${key}`).toBe(
                     true
                 )
             }
-            await expect(studio, `${key} individually hides the studio CTA`).toHaveCount(0)
-            await expect(publicFallback).toBeVisible()
-            await expect(publicFallback).toHaveAttribute('href', '/platform')
+            if (key === 'a09' || key === 'c01') {
+                await expect(studio, `${key} individually hides the studio CTA`).toHaveCount(0)
+                await expect(publicFallback).toBeVisible()
+                await expect(publicFallback).toHaveAttribute('href', '/platform')
+            } else if (key === 'b10') {
+                await expect(studio).toHaveCount(0)
+                await expect(hero.getByRole('link', { name: 'Open the source editor' })).toHaveAttribute('href', '/try?mode=source')
+            } else {
+                await expect(studio, 'saved creation denial does not block the guest studio').toBeVisible()
+            }
 
             await setRoleFeature(adminContext, backend, admin.headers, key, true)
             const restoredResponse = page.waitForResponse(
