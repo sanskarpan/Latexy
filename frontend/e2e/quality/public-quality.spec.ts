@@ -309,37 +309,26 @@ test('landing review desk produces desktop and phone evidence in both themes', a
                 await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
             }
             await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
-            await expect(page.getByRole('heading', { name: 'Keep the next steps in view.', exact: true })).toBeVisible()
+            await expect(page.getByRole('heading', { name: 'Different roles. Sharper résumés.', exact: true })).toBeVisible()
             await page.evaluate(() => scrollTo(0, 0))
             const bounds = await page.locator('.lp-hero-actions > a:visible').evaluateAll(items => items.map(item => {
                 const { x, y, width, height } = item.getBoundingClientRect()
                 return { x, y, width, height }
             }))
             expect(bounds).toHaveLength(2)
-            expect(Math.abs(bounds[0].y - bounds[1].y)).toBeLessThan(1)
+            // The editorial hero may wrap its secondary link on narrow screens.
+            // Both actions must remain large enough and never overlap.
+            const separateRows = bounds[1].y >= bounds[0].y + bounds[0].height
+            const separateColumns = bounds[1].x >= bounds[0].x + bounds[0].width
+            expect(separateRows || separateColumns).toBe(true)
             expect(bounds.every(box => box.height >= 44 && box.width >= 100)).toBe(true)
             expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
-            if (width === 320 || width === 390) {
-                const overviewCards = await page.locator('.rd-overview > a').evaluateAll(items =>
-                    items.map(item => {
-                        const { x, y, width, height } = item.getBoundingClientRect()
-                        return { x, y, width, height }
-                    })
-                )
-                expect(overviewCards).toHaveLength(2)
-                if (width === 320) {
-                    expect(Math.abs(overviewCards[0].x - overviewCards[1].x)).toBeLessThan(1)
-                    expect(overviewCards[1].y).toBeGreaterThan(overviewCards[0].y + overviewCards[0].height)
-                    const reviewLinkHeight = await page
-                        .locator('.rd-overview > a')
-                        .first()
-                        .locator('span')
-                        .evaluate(item => item.getBoundingClientRect().height)
-                    expect(reviewLinkHeight).toBeLessThan(24)
-                } else {
-                    expect(overviewCards[1].x).toBeGreaterThan(overviewCards[0].x + overviewCards[0].width)
-                    expect(Math.abs(overviewCards[0].y - overviewCards[1].y)).toBeLessThan(1)
-                }
+            const workflow = page.locator('.ts-workflow ol a')
+            await expect(workflow).toHaveCount(4)
+            for (const link of await workflow.all()) {
+                const box = await link.boundingBox()
+                expect(box?.width).toBeGreaterThan(44)
+                expect(box?.height).toBeGreaterThan(44)
             }
             await expect(page.locator('.rd-note').getByRole('button', { name: 'Use suggestion' })).toBeVisible()
             if (width === 1440 || width === 390 || width === 320) {
@@ -487,17 +476,13 @@ test('landing native hero preserves edits, supports review undo and changes layo
     await desk.getByRole('button', { name: 'Update sample' }).click()
     await expect(paper).toContainText(contribution)
     await desk.getByRole('tab', { name: 'Review', exact: true }).click()
-    await desk.getByRole('button', { name: 'Use suggestion' }).click()
+    await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
     await desk.getByRole('button', { name: 'Keep original' }).click()
     await expect(paper).toContainText(contribution)
-    await desk.getByRole('button', { name: 'Use suggestion' }).click()
     await desk.getByRole('tab', { name: 'Write', exact: true }).click()
-    const unfinished = 'An unfinished edit that must survive a review undo.'
+    const unfinished = 'An unfinished edit that must survive changing tabs.'
     await page.getByLabel('One contribution', { exact: true }).fill(unfinished)
     await desk.getByRole('tab', { name: 'Review', exact: true }).click()
-    await desk.getByRole('button', { name: 'Undo', exact: true }).click()
-    await expect(paper).toContainText(contribution)
-    await desk.getByRole('button', { name: 'Use suggestion' }).click()
     await desk.getByRole('button', { name: 'Keep original' }).click()
     await expect(paper).toContainText(contribution)
     await desk.getByRole('tab', { name: 'Write', exact: true }).click()
@@ -539,13 +524,13 @@ test('landing workflow and supporting tabs align focus, content and selection', 
     await page.keyboard.press('End')
     await expect(tabs.getByRole('tab', { name: 'Export', exact: true })).toBeFocused()
     await page.getByRole('tab', { name: 'Keywords', exact: true }).click()
-    await expect(page.locator('.rd-report').getByRole('tabpanel')).toContainText('Use the language of the role.')
-    await page.getByLabel('Stage for Product Designer at Northstar Studio').selectOption('Interview')
-    await expect(page.getByLabel('Stage for Product Designer at Northstar Studio')).toHaveValue('Interview')
-    await page.getByRole('tab', { name: 'Source', exact: true }).click()
-    await expect(page.locator('.rd-document-source')).toContainText('documentclass')
-    await page.getByRole('tab', { name: 'PDF', exact: true }).click()
-    await expect(page.locator('.rd-document-paper')).toContainText('A note on energy')
+    await expect(page.locator('#resume-feedback').getByRole('tabpanel')).toContainText('Use relevant terms naturally')
+    await page.getByLabel('Explore a sample focus').selectOption('general')
+    await expect(page.locator('#tailor-application').getByRole('article', { name: 'Illustrative general résumé' })).toHaveCount(2)
+    await page.getByRole('combobox', { name: 'Typeface', exact: true }).selectOption('sans')
+    await expect(page.locator('#source-to-pdf article')).toHaveClass(/ts-document-sans/)
+    await page.getByRole('combobox', { name: 'Spacing', exact: true }).selectOption('relaxed')
+    await expect(page.locator('#source-to-pdf article')).toHaveClass(/ts-document-relaxed/)
 })
 
 test('landing phone stages retain edits and usable controls in both themes', async ({ page }, testInfo) => {
@@ -572,7 +557,7 @@ test('landing sends native résumé content and matching FAQ data in the HTML re
     const response = await request.get('/')
     expect(response.ok()).toBe(true)
     const html = await response.text()
-    expect(html).toContain('<h1 id="landing-title">Build a résumé.')
+    expect(html).toContain('<h1 id="landing-title">A better résumé')
     expect(html).toContain('aria-label="Classic sample résumé"')
     expect(html).toContain('<h3>Make the contribution clear</h3>')
     const scripts = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
@@ -592,11 +577,11 @@ test('landing keeps a public entry point when capabilities are unavailable', asy
     )
     await page.goto('/', { waitUntil: 'networkidle' })
     const hero = page.locator('.lp-hero-actions')
-    await expect(hero.getByRole('link', { name: 'Try the studio' })).toHaveCount(0)
-    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toBeVisible()
-    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toHaveAttribute(
+    await expect(hero.locator('[data-marketing-action="primary"]')).toHaveCount(0)
+    await expect(hero.getByRole('link', { name: 'Explore the sample' })).toBeVisible()
+    await expect(hero.getByRole('link', { name: 'Explore the sample' })).toHaveAttribute(
         'href',
-        '/platform'
+        '#resume-feedback'
     )
     await expect(hero.getByRole('link', { name: 'Explore templates' })).toHaveCount(0)
 })

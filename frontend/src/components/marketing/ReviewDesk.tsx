@@ -8,9 +8,10 @@ import {
     IconArrowBackUp,
     IconPencil,
     IconDownload,
+    IconArrowCurveLeft,
 } from '@tabler/icons-react'
-import Link from 'next/link'
-import CapabilityGate from '@/components/CapabilityGate'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { MarketingCTA } from './MarketingCTA'
 import { ReviewStageList, type ReviewStage } from './ReviewStages'
 import '@fontsource/tinos/latin-400.css'
 import '@fontsource/tinos/latin-700.css'
@@ -20,6 +21,7 @@ const suggested = 'Designed the checkout flow with research and engineering.'
 const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
 export default function ReviewDesk() {
+    const { can, loading, error } = useEntitlements()
     const [stage, setStage] = useState<ReviewStage>('Review')
     const [bullet, setBullet] = useState(original)
     const [draft, setDraft] = useState(original)
@@ -27,6 +29,9 @@ export default function ReviewDesk() {
     const [beforeSuggestion, setBeforeSuggestion] = useState(original)
     const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
     const [role, setRole] = useState('Product Designer')
+    const [roleDraft, setRoleDraft] = useState('Product Designer')
+    const [writeError, setWriteError] = useState('')
+    const canUseExample = bullet === original
     const [accepted, setAccepted] = useState(false)
     const [message, setMessage] = useState('')
     const [target, setTarget] = useState('Product design')
@@ -91,6 +96,11 @@ export default function ReviewDesk() {
         >
             <ReviewStageList selected={stage} />
             <div className="rd-desk-scene">
+                <aside className="ts-paper-caption" aria-label="Sample résumé preview">
+                    <strong>Résumé preview</strong>
+                    <span>Professional design,<br />typeset in LaTeX.</span>
+                    <IconArrowCurveLeft size={62} stroke={0.8} aria-hidden="true" />
+                </aside>
                 <article
                     ref={paperRef}
                     className="rd-paper"
@@ -153,8 +163,13 @@ export default function ReviewDesk() {
                         <label htmlFor="hero-sample-role">Your role</label>
                         <input
                             id="hero-sample-role"
-                            value={role}
-                            onChange={event => setRole(event.target.value)}
+                            value={roleDraft}
+                            onChange={event => {
+                                setRoleDraft(event.target.value)
+                                setWriteError('')
+                            }}
+                            aria-invalid={Boolean(writeError) && !roleDraft.trim()}
+                            aria-describedby={writeError ? 'hero-write-error' : undefined}
                             maxLength={60}
                         />
                         <label htmlFor="hero-sample-bullet">One contribution</label>
@@ -164,7 +179,10 @@ export default function ReviewDesk() {
                             onChange={event => {
                                 setDraft(event.target.value)
                                 setDraftDirty(true)
+                                setWriteError('')
                             }}
+                            aria-invalid={Boolean(writeError) && !draft.trim()}
+                            aria-describedby={writeError ? 'hero-write-error' : undefined}
                             maxLength={240}
                             rows={3}
                         />
@@ -172,7 +190,15 @@ export default function ReviewDesk() {
                             type="button"
                             className="rd-small-primary"
                             onClick={() => {
-                                const next = draft.trim() || original
+                                const next = draft.trim()
+                                if (!next || !roleDraft.trim()) {
+                                    setWriteError(
+                                        'Enter a role and a contribution before updating the sample.'
+                                    )
+                                    return
+                                }
+                                setWriteError('')
+                                setRole(roleDraft.trim())
                                 setBullet(next)
                                 setDraft(next)
                                 setDraftDirty(false)
@@ -182,6 +208,11 @@ export default function ReviewDesk() {
                         >
                             Update sample <IconArrowRight size={13} aria-hidden="true" />
                         </button>
+                        {writeError && (
+                            <p id="hero-write-error" className="rd-field-error" role="alert">
+                                {writeError}
+                            </p>
+                        )}
                     </Tabs.Content>
                     <Tabs.Content value="Review" className="rd-note">
                         <h3>
@@ -194,10 +225,16 @@ export default function ReviewDesk() {
                             when possible.
                         </p>
                         <blockquote>{suggested}</blockquote>
+                        <p className="rd-example-note">
+                            {canUseExample || accepted
+                                ? 'Illustrative suggestion for the starter sentence.'
+                                : 'This suggestion only fits the starter sentence. Your contribution stays unchanged.'}
+                        </p>
                         <div className="rd-note-actions">
                             <button
                                 type="button"
                                 className="rd-small-primary"
+                                disabled={!accepted && !canUseExample}
                                 onClick={() => {
                                     if (accepted) {
                                         setBullet(beforeSuggestion)
@@ -285,24 +322,21 @@ export default function ReviewDesk() {
                             ))}
                         </fieldset>
                         <p>
-                            Preview a layout here. Open the studio to create and export your own
-                            PDF.
+                            Preview a layout here.{' '}
+                            {error
+                                ? 'PDF export availability could not be verified.'
+                                : loading
+                                    ? 'Checking PDF export availability.'
+                                    : can('c05')
+                                        ? 'PDF export is available when studio access is enabled.'
+                                        : 'PDF export is currently unavailable.'}
                         </p>
-                        <CapabilityGate feature="a09">
-                            <CapabilityGate feature="b01">
-                                <CapabilityGate feature="c01">
-                                    <Link className="rd-small-primary" href="/try?mode=visual">
-                                        Open the studio{' '}
-                                        <IconArrowRight size={13} aria-hidden="true" />
-                                    </Link>
-                                </CapabilityGate>
-                            </CapabilityGate>
-                        </CapabilityGate>
+                        <MarketingCTA label="Open the studio" />
                     </Tabs.Content>
                 </div>
             </div>
             <div className="rd-desk-caption">
-                <span>Interactive sample</span>
+                <span>Illustrative, interactive sample</span>
                 <span>Try a step. Your edits stay here.</span>
             </div>
             <p className="rd-sample-status" role="status">

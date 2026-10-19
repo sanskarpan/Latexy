@@ -221,8 +221,12 @@
 .lp-hero-actions {
     display: flex;
     align-items: stretch;
+    flex-wrap: wrap;
     gap: 12px;
     margin-top: 36px;
+}
+.lp-hero-actions > [data-marketing-status] {
+    flex-basis: 100%;
 }
 .lp-hero-actions > a,
 .lp-footer-message > a[data-marketing-action],
@@ -255,7 +259,6 @@
     filter: brightness(1.08);
     border-color: var(--accent);
 }
-.lp-hero-actions > .lp-primary-fallback:has(~ a),
 .lp-hero-actions:has([data-marketing-action]) > .lp-primary-fallback {
     display: none;
 }
@@ -1277,6 +1280,9 @@
         grid-template-columns: 1fr 1fr;
         gap: 9px;
         margin-top: 24px;
+    }
+    .lp-hero-actions > [data-marketing-status] {
+        grid-column: 1 / -1;
     }
     .lp-hero-actions > a {
         min-height: 48px;
