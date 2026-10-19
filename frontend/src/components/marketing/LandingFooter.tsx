@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { IconArrowUpRight, IconArrowRight } from '@tabler/icons-react'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
@@ -15,7 +16,7 @@ export default function LandingFooter({ year }: { year: number }) {
             <div className="lp-container">
                 <section className="lp-footer-lead lp-closing" aria-labelledby="landing-closing">
                     <div className="lp-footer-message">
-                        <p className="rd-eyebrow">Start with what you know</p>
+                        <p className="rd-eyebrow">Ready when you are</p>
                         <h2 id="landing-closing">
                             Put your experience
                             <br />
@@ -25,17 +26,29 @@ export default function LandingFooter({ year }: { year: number }) {
                             A first draft, a new role, or a document from scratch. Make room for the
                             work you want to do next.
                         </p>
-                        <MarketingCTA label="Try the studio" />
-                        <Link className="lp-primary-fallback" href="/platform">
-                            Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
+                        <MarketingCTA label="Start your résumé" />
+                        <Link className="ts-closing-secondary" href="/#resume-feedback">
+                            Explore examples <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
                     </div>
-                    <a className="rd-footer-back" href="#landing-title" aria-label="Back to top">
-                        <IconArrowUpRight size={36} stroke={1} aria-hidden="true" />
-                    </a>
+                    <div className="ts-still-life">
+                        <Image
+                            src="/images/typeset-still-life-printed.webp"
+                            alt="Illustrative résumé on layered cream paper and a navy notebook, with a brass pen and olive sprig"
+                            width={2161}
+                            height={728}
+                            loading="eager"
+                            sizes="100vw"
+                        />
+                    </div>
+                    <p className="ts-closing-caption">Same experience.<br />A brighter<br />next chapter.</p>
                 </section>
                 <div className="lp-footer-directory">
                     <div className="lp-footer-brand">
+                        <Link className="lp-footer-signature" href="/" aria-label="Latexy home">
+                            <BrandLogo />
+                        </Link>
+
                         <h3>The document studio</h3>
                         <p>
                             Résumés, applications, and LaTeX documents — from a first draft to a
@@ -67,9 +80,6 @@ export default function LandingFooter({ year }: { year: number }) {
                         </div>
                     </nav>
                 </div>
-                <Link className="lp-footer-signature" href="/" aria-label="Latexy home">
-                    <BrandLogo />
-                </Link>
                 <div className="lp-footer-row">
                     <p>© {year} Latexy. All rights reserved.</p>
                     <nav aria-label="Legal navigation">

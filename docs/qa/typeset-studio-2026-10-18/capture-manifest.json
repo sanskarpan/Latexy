@@ -1,0 +1,337 @@
+{
+  "build_id": "TzhaFSVYpMX5dDc4W5Vq3",
+  "main_base": "6470eb032396224d07db602f4c57b4958bfe96fd",
+  "dependency_base": "ce0d915caa28b4258433519ff27582afa3f6dba4",
+  "rendered_implementation": "2e3c7696",
+  "test_commit": "c4dcd55808d7956347a14622bcb22e17a628e5b8",
+  "runtime_tree_sha256": "4a16566e1851fab8d3a50d2cb8c5547609145d51ebfc5f5b0c11314eff793b12",
+  "environment": "local production Next, synthetic API/auth fixtures, system Chromium;1180 manual capture uses supported cloud browser",
+  "image_count": 81,
+  "visual_scope": "See visual-review.md; capture alone is not visual signoff.",
+  "files": [
+    {
+      "path": "typeset-1180-production-full.png",
+      "sha256": "f561bf9904d4583b65cf2c6a4dfbfa027e19a0ece57b102a1d1441462e0d9355"
+    },
+    {
+      "path": "typeset-1440-dark-footer.png",
+      "sha256": "438918cc9494374b2e903be895ba6810792a34b7d0a6f71eb56a9d2654cc6aa5"
+    },
+    {
+      "path": "typeset-1440-dark-full.png",
+      "sha256": "1785bbc30ed749818f96f723eab73c3987939229edf8df4baadfd9921198825c"
+    },
+    {
+      "path": "typeset-1440-dark-hero-export.png",
+      "sha256": "a1150df94608966f590b9cd0e4dc523b0a5341694550958bac28ad0e1c91bb82"
+    },
+    {
+      "path": "typeset-1440-dark-hero-review.png",
+      "sha256": "5979cf45c312a0d6d99a0b014547c28cb10341c2c93d9fdf0109f8eea3407c47"
+    },
+    {
+      "path": "typeset-1440-dark-hero-tailor.png",
+      "sha256": "145e7f7bf44749612acb524ce9a800f65bfc92491d65a74c21da47c2e3deb2fe"
+    },
+    {
+      "path": "typeset-1440-dark-hero-write.png",
+      "sha256": "551f640aade4afa4161a44082dfac9472f08854ddc112e360d8c3173121a8daa"
+    },
+    {
+      "path": "typeset-1440-dark-hero.png",
+      "sha256": "7b72e039dbbc4ba20cdbfc5fdc09df5e6774ce1ce1e4e5643ae46899273fb12c"
+    },
+    {
+      "path": "typeset-1440-dark-review.png",
+      "sha256": "5a509456476c2b30b73cb00bcd91167b0c9435d9ff8f8cc0ee4070c2a1fc5bd6"
+    },
+    {
+      "path": "typeset-1440-dark-source.png",
+      "sha256": "b36d3aa139c070927e552e5c6d40ca016c697a2db3226bb774cd0ea5e2a35041"
+    },
+    {
+      "path": "typeset-1440-dark-versions.png",
+      "sha256": "8ada0a79a1d59f40495ad2caab7e7b4be5ad4be6dd4b233ac30b290cf4eee742"
+    },
+    {
+      "path": "typeset-1440-dark-workflow.png",
+      "sha256": "120c8818b3aa2cbf344215e42b9227a65d740c5a6564acf9ea7f3d5f39c98abe"
+    },
+    {
+      "path": "typeset-1440-light-footer.png",
+      "sha256": "67f6b098b624b4ab193ed9de28e6c8df1613ad2c063bfe5829b199b811c17ec9"
+    },
+    {
+      "path": "typeset-1440-light-full.png",
+      "sha256": "17ffe0be8dcf9b6972a7306b5e2989e4b8cc17eca718df6b9e056fac427173a9"
+    },
+    {
+      "path": "typeset-1440-light-hero-export.png",
+      "sha256": "4d82f45d90a15b065df99f01d3268d54f7472c83131be2919e606517d8e580e2"
+    },
+    {
+      "path": "typeset-1440-light-hero-review.png",
+      "sha256": "99ecc0558392f0d9be56067d929e6f7be04f0bebcbab14d149e5b3c8dde408e4"
+    },
+    {
+      "path": "typeset-1440-light-hero-tailor.png",
+      "sha256": "feb37bce2b3373c1fa5da0572c8063de34d39dab389b7d193c645cc4cd37abb0"
+    },
+    {
+      "path": "typeset-1440-light-hero-write.png",
+      "sha256": "614ee58e89dabb5ee6aff2fa3445a359ea6fc7c9c890fd1c615990f8a7e0c9f9"
+    },
+    {
+      "path": "typeset-1440-light-hero.png",
+      "sha256": "1f25fbafb30ee7c7f8edd68bd431ac942e8ca4ec7591a46dc0c5f572f9010e09"
+    },
+    {
+      "path": "typeset-1440-light-review.png",
+      "sha256": "bd78be4ba03b54e320df7791e36982c735ced75246911f77009e6c83ef262a4a"
+    },
+    {
+      "path": "typeset-1440-light-source.png",
+      "sha256": "a2ac8011011376b5b0702c3ca076a0d1765d7798f2ee89baf430fdd07e066288"
+    },
+    {
+      "path": "typeset-1440-light-versions.png",
+      "sha256": "3020e8f931a5a989392a8f6e7e3e3d087fda98510cef6548ebc7e28bf7bd7455"
+    },
+    {
+      "path": "typeset-1440-light-workflow.png",
+      "sha256": "c18c7a02fce1438022e1ddbdb07b8fcc0dce4c24870b22e69b5b5e6518f930c9"
+    },
+    {
+      "path": "typeset-320-dark-footer.png",
+      "sha256": "9fe9b42f6f145acb0de1d9303af9ee0f26d3ff81832f05fb20cfebc00ff9dc56"
+    },
+    {
+      "path": "typeset-320-dark-full.png",
+      "sha256": "8218f54c2d7b374430fa4b35621b925e55eba5aa257b5a3af8aea9098ef2a24b"
+    },
+    {
+      "path": "typeset-320-dark-hero.png",
+      "sha256": "edc2cc0456883a0364e48c6e5fafa953574bd2355dab1b5a56d533252ecd8586"
+    },
+    {
+      "path": "typeset-320-dark-review.png",
+      "sha256": "e0b96651de56717fc6ce7ccd657e26f14cee92e3ef0876aefec182e8a34493bd"
+    },
+    {
+      "path": "typeset-320-dark-source.png",
+      "sha256": "2fee6850ff91eabf683d26d67ca43973e7f8decdcfc3a18dc7b952ced6857485"
+    },
+    {
+      "path": "typeset-320-dark-versions.png",
+      "sha256": "3a01c43ba7244d8231031e696078ec2aef494080f8ac3530fcae1b703f092130"
+    },
+    {
+      "path": "typeset-320-dark-workflow.png",
+      "sha256": "ffda729450160cefa5c3abe698431bfbe5d07fb340b8aa64a24abba92ee53947"
+    },
+    {
+      "path": "typeset-320-light-footer.png",
+      "sha256": "91b0841d133c5b5d8c353ea5c0dc1885b997498e7c235645f5192cea42169661"
+    },
+    {
+      "path": "typeset-320-light-full.png",
+      "sha256": "f54ca9708f511e3b86e3cc7eae27175abe935087956d8d90c481a1089822e12d"
+    },
+    {
+      "path": "typeset-320-light-hero.png",
+      "sha256": "e9f196e8fa1ef8f6fccc22a173ee6b0acc0dd32740511d3fe0c58013fc23de48"
+    },
+    {
+      "path": "typeset-320-light-review.png",
+      "sha256": "5382373a45d3f30c9bfc2ce2a27fad9602603fbf5ca9be3ed60cecb6e22cbd93"
+    },
+    {
+      "path": "typeset-320-light-source.png",
+      "sha256": "c05ea647c15b79bd89aace3a607263793521fcc56b991e551f757749a27c0e0f"
+    },
+    {
+      "path": "typeset-320-light-versions.png",
+      "sha256": "498b336b095247e87e7b957c3a5d5f8168e6c355625245e6549cb70f880e3748"
+    },
+    {
+      "path": "typeset-320-light-workflow.png",
+      "sha256": "9324766a0f4e18bffd097a9bdfbab44c0b7c6c2229785680fa640127ca780a71"
+    },
+    {
+      "path": "typeset-390-dark-footer.png",
+      "sha256": "8d5d10fa82934e8f34e8e4f04b50de4bb9b09b3c042b0639a21a2f9830341b68"
+    },
+    {
+      "path": "typeset-390-dark-full.png",
+      "sha256": "5856fc82c33bdf3a0c6fdbe80014a1b6c803721574c3f29365a66b130451282a"
+    },
+    {
+      "path": "typeset-390-dark-hero.png",
+      "sha256": "bc739989b86fbb807a637af19e63a624b8638735117c38681459cccfb1419507"
+    },
+    {
+      "path": "typeset-390-dark-review.png",
+      "sha256": "e859bbc745127d3b631be7527b92866d0f5e3b1b0b4d71ded0c02cffde41667d"
+    },
+    {
+      "path": "typeset-390-dark-source.png",
+      "sha256": "efc6536a2cf68cb04d0fc2cb7960ed559c82623a115150c5dcb8d786008d388b"
+    },
+    {
+      "path": "typeset-390-dark-versions.png",
+      "sha256": "9db430c14e0f4dc1012743735dd55c0eef0af5c406db56721f3bf7ea408ee87c"
+    },
+    {
+      "path": "typeset-390-dark-workflow.png",
+      "sha256": "bc7f5474bc1d01efd14cfa9e2ff6b7ea1d7e8322eac76d11c3c37622d68bbc41"
+    },
+    {
+      "path": "typeset-390-light-footer.png",
+      "sha256": "4557cf89205d0d8806c1a9d03cfe8925b39971ace00ddd7588c78fc8d8dc1b99"
+    },
+    {
+      "path": "typeset-390-light-full.png",
+      "sha256": "26c60f525b8e72b6dfa0db6a953495dbb2478896221a7552684defe18805c52e"
+    },
+    {
+      "path": "typeset-390-light-hero.png",
+      "sha256": "55ea9aa69d70cf0707334b12d55abc45ed027e087b2183b0a23d3ae59fbba406"
+    },
+    {
+      "path": "typeset-390-light-review.png",
+      "sha256": "67f6416e2a6e1b6423076d92dade3e24d27595d4a0e59df8bffdbe0bb1c4d765"
+    },
+    {
+      "path": "typeset-390-light-source.png",
+      "sha256": "6f16193aa3ba618b6de563a36e00354c3ce4f709dbade57cc85eaaf25cc38009"
+    },
+    {
+      "path": "typeset-390-light-versions.png",
+      "sha256": "8d1ee5a004cdddd2d7f5d20db410931ea2b674f3ab6718adcc29124ec6e6a24a"
+    },
+    {
+      "path": "typeset-390-light-workflow.png",
+      "sha256": "04f14d092fa789689003d89054919413fc48f52866c2b6811b531336aae74bfa"
+    },
+    {
+      "path": "typeset-768-dark-footer.png",
+      "sha256": "ad2c8bfe69039726ed8b94a9c4fdcf3073edea58fe8c0b8f1f1afc1897d068db"
+    },
+    {
+      "path": "typeset-768-dark-full.png",
+      "sha256": "2f2565d4ef0c182d27cf11279c6f99de465bad600fada665e9799c7834c2effb"
+    },
+    {
+      "path": "typeset-768-dark-hero-export.png",
+      "sha256": "346558b2ddfc0085e4ab16851a1106626c59c3e853af8847aaf2ed446f12724f"
+    },
+    {
+      "path": "typeset-768-dark-hero-review.png",
+      "sha256": "672d3f87a6c7b6dc4729dbeb70b3fbc7390f2bbccef86180f7051b9e8b6d8d42"
+    },
+    {
+      "path": "typeset-768-dark-hero-tailor.png",
+      "sha256": "6e38d12c9e15622ec289beada39226a216a245872468c3d6e1493d373c876ddc"
+    },
+    {
+      "path": "typeset-768-dark-hero-write.png",
+      "sha256": "491864270a16cb22b90f92f0ea3b0f0caee35aef74ed2203a60014c4712be4f8"
+    },
+    {
+      "path": "typeset-768-dark-hero.png",
+      "sha256": "672d3f87a6c7b6dc4729dbeb70b3fbc7390f2bbccef86180f7051b9e8b6d8d42"
+    },
+    {
+      "path": "typeset-768-dark-review.png",
+      "sha256": "c22271e391d26823b8760c211c330f778783b88c729da6ed7c830950a23954ba"
+    },
+    {
+      "path": "typeset-768-dark-source.png",
+      "sha256": "6f547487c2fb237ecbc1fd8022f5abc1cc78cf8c733c851f49625222cb37e21c"
+    },
+    {
+      "path": "typeset-768-dark-versions.png",
+      "sha256": "fcdce4b4fcd17a95f4f7945638741ec5408afdd5bed0f637bbd9131c142dfdd2"
+    },
+    {
+      "path": "typeset-768-dark-workflow.png",
+      "sha256": "3ddb3559f88ffb65cc2463d4bda9354e8d2a5d86388acd9b33a2f67e502a4255"
+    },
+    {
+      "path": "typeset-768-light-footer.png",
+      "sha256": "d5488c002fd82573e3fd8da1d1a1a2cca7edb8f2d94006685eba564458894b06"
+    },
+    {
+      "path": "typeset-768-light-full.png",
+      "sha256": "928359d2a36ab87691cffea0d7b18042d21a10829396e6b5913f1f7c8a455ff7"
+    },
+    {
+      "path": "typeset-768-light-hero-export.png",
+      "sha256": "01936589c0bc3e52917accc3e14b0576bfade06daa613657b2d0a121b1b18069"
+    },
+    {
+      "path": "typeset-768-light-hero-review.png",
+      "sha256": "a22388ea71ead142f0c57000dd3a3da8b60bcd48a7b251d02b7852ba6ed5e82e"
+    },
+    {
+      "path": "typeset-768-light-hero-tailor.png",
+      "sha256": "475631abfaf99d411e8228f24b26ff33880aae95a18ddbf8aff98662d2dac796"
+    },
+    {
+      "path": "typeset-768-light-hero-write.png",
+      "sha256": "641a0a4ed39fbc38eb8b2e85043923ba8a0b23204fb42ba04f5d2531e5d43848"
+    },
+    {
+      "path": "typeset-768-light-hero.png",
+      "sha256": "a22388ea71ead142f0c57000dd3a3da8b60bcd48a7b251d02b7852ba6ed5e82e"
+    },
+    {
+      "path": "typeset-768-light-review.png",
+      "sha256": "2b2faf7b51b6ca8c679ca44eb97c346e055e2238b5a5f09f77501a6a97efeb6b"
+    },
+    {
+      "path": "typeset-768-light-source.png",
+      "sha256": "0a226bc3b483280028a1534d489f2914c50cfe3e9c80e158b072b7dac3a49f40"
+    },
+    {
+      "path": "typeset-768-light-versions.png",
+      "sha256": "816ebc4da33cf2d43a7ca15145071393202d9b693954b6d8c973297233bdc589"
+    },
+    {
+      "path": "typeset-768-light-workflow.png",
+      "sha256": "f1fe2fdc9aaa2de3803d723718a706d89bd8a10c89d2df424e840a308c215427"
+    },
+    {
+      "path": "typeset-desktop-chromium-hero-export-c05-off.png",
+      "sha256": "1bbfc55c46c803dc3637256c9929a3c033bebdad3525ffc5b5800dc3db01eed7"
+    },
+    {
+      "path": "typeset-desktop-chromium-hero-export-c05-on.png",
+      "sha256": "749a14b39601d76d80c5c800b7e545c654534afa5d67ab2a99c45093d6c00678"
+    },
+    {
+      "path": "typeset-desktop-chromium-hero-export-error.png",
+      "sha256": "c9fd949a084e07583160e92c67c837651d44ec526e6d8c2488b308a4a2494b2f"
+    },
+    {
+      "path": "typeset-desktop-chromium-hero-export-loading.png",
+      "sha256": "b94d145102c7e3a5b4f359de2b6e8a3ffb24414f130baad52c31df1ea08831e5"
+    },
+    {
+      "path": "typeset-mobile-chromium-hero-export-c05-off.png",
+      "sha256": "d8677c0443ae5554e09f45827f26bc16c4378cf9e1d3cf002354aaa07636f47f"
+    },
+    {
+      "path": "typeset-mobile-chromium-hero-export-c05-on.png",
+      "sha256": "b039897ed9c32fc5c52c02c87c884f7d24104a8de5574e138a0b324be5df3bcc"
+    },
+    {
+      "path": "typeset-mobile-chromium-hero-export-error.png",
+      "sha256": "7ded3d5a4968d32237c65de15238153d7c6f444dcda09ebedea56f11e52b4202"
+    },
+    {
+      "path": "typeset-mobile-chromium-hero-export-loading.png",
+      "sha256": "17de87a4b9a3a4973159bf46fc7b84f0247bd82203e277ce97167923244cd4b5"
+    }
+  ]
+}
