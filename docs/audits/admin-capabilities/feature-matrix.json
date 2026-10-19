@@ -832,7 +832,6 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/page.tsx",
         "frontend/src/app/templates/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
