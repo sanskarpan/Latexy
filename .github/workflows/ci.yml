@@ -498,6 +498,30 @@ jobs:
           path: frontend/landing-visual-evidence
           if-no-files-found: error
           retention-days: 14
+      - name: Upload ReviewDesk validation screenshots
+        if: ${{ !cancelled() && hashFiles('frontend/playwright-quality-report/index.html') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reviewdesk-validation-visual-evidence
+          path: |
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-high-disabled-hover.png
+          if-no-files-found: error
+          retention-days: 14
       # Fail closed if a required production-bundle owner suite drops out of the selection.
       - name: Validate the Chromium owner-regression suite manifest
         run: node ../scripts/ci/verify-owner-regression-manifest.mjs
@@ -703,14 +727,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Verify D14 actual HTTP admissions
         run: bash scripts/ci/d14-http-admission.sh
 
+      - name: Verify sharing isolation guards
+        run: |
+          python scripts/ci/sharing-storage-fixture.test.py -v
+          python scripts/ci/sharing-full-stack-smoke.test.py -v
+
       - name: Run full-stack smoke
-        run: bash scripts/ci/full-stack-smoke.sh
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
+        run: python scripts/ci/sharing-full-stack-smoke.py --confirm-isolated-sharing-run
       - name: Upload real full-stack browser evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

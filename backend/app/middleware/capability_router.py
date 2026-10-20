@@ -513,6 +513,9 @@ def payload_capabilities(module: str, name: str, body: dict, params: dict, query
     if (module, name) == ("resume_routes", "update_resume_tags") and body.get("tags") != []:
         keys.append("b02")
     if (module, name) == ("resume_routes", "update_collaborator_role") and body.get("role") not in ("viewer", "commenter"):
+        # A commenter target is ambiguous without the stored role: it can be
+        # an editor downgrade or a viewer promotion. The endpoint checks that
+        # latter case against the current database role before committing.
         keys.append("f04")
     if (module, name) == ("suggestion_routes", "decide_suggestion") and body.get("status") == "accepted":
         # Reject/conflict and authenticated decision reads are recovery. An

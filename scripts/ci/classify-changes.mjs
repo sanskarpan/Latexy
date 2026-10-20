@@ -198,7 +198,8 @@ function pathScope(path) {
       lower === 'frontend/playwright.config.ts' ||
       lower === 'frontend/playwright.quality.config.ts' ||
       lower === 'frontend/.env.production.example' ||
-      lower === 'frontend/vercel.json'
+      lower === 'frontend/vercel.json' ||
+      lower.startsWith('frontend/e2e/')
     ) return { ...emptyScope(), frontend: true, full_stack: true }
     return { ...emptyScope(), frontend: true }
   }

@@ -37,7 +37,13 @@ const nextConfig = {
   // subtree-level Strict Mode opt-out, so keep replay disabled until the
   // wrapper is replay-safe; production rendering is unaffected.
   reactStrictMode: false,
-  webpack: (config) => {
+  webpack: (config, { dev, isServer } = {}) => {
+    if (dev && !isServer) {
+      config.module.rules.push({
+        test: /[\\/]pdfjs-dist[\\/]build[\\/]pdf\.mjs$/,
+        use: [require.resolve('./scripts/pdfjs-webpack-dev-scope.cjs')],
+      })
+    }
     // Handle canvas for react-pdf
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false

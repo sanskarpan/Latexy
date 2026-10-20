@@ -33,7 +33,8 @@ export default function ReviewDesk() {
     const [layout, setLayout] = useState<(typeof layouts)[number]>('Classic')
     const [role, setRole] = useState('Product Designer')
     const [roleDraft, setRoleDraft] = useState('Product Designer')
-    const [writeError, setWriteError] = useState('')
+    const [roleError, setRoleError] = useState('')
+    const [contributionError, setContributionError] = useState('')
     const canUseExample = bullet === original
     const [accepted, setAccepted] = useState(false)
     const [message, setMessage] = useState('')
@@ -117,12 +118,17 @@ export default function ReviewDesk() {
                             value={roleDraft}
                             onChange={event => {
                                 setRoleDraft(event.target.value)
-                                setWriteError('')
+                                setRoleError(event.target.value.trim() ? '' : roleError)
                             }}
-                            aria-invalid={Boolean(writeError) && !roleDraft.trim()}
-                            aria-describedby={writeError ? 'hero-write-error' : undefined}
+                            aria-invalid={Boolean(roleError)}
+                            aria-describedby={roleError ? 'hero-role-error' : undefined}
                             maxLength={60}
                         />
+                        {roleError && (
+                            <p id="hero-role-error" className="rd-field-error" role="alert">
+                                {roleError}
+                            </p>
+                        )}
                         <label htmlFor="hero-sample-bullet">One contribution</label>
                         <textarea
                             id="hero-sample-bullet"
@@ -131,28 +137,33 @@ export default function ReviewDesk() {
                             onChange={event => {
                                 setDraft(event.target.value)
                                 setDraftDirty(true)
-                                setWriteError('')
+                                setContributionError(event.target.value.trim() ? '' : contributionError)
                             }}
-                            aria-invalid={Boolean(writeError) && !draft.trim()}
-                            aria-describedby={writeError ? 'hero-write-error' : undefined}
+                            aria-invalid={Boolean(contributionError)}
+                            aria-describedby={contributionError ? 'hero-contribution-error' : undefined}
                             maxLength={240}
                             rows={3}
                         />
+                        {contributionError && (
+                            <p id="hero-contribution-error" className="rd-field-error" role="alert">
+                                {contributionError}
+                            </p>
+                        )}
                         <button
                             type="button"
                             className="rd-small-primary"
                             disabled={!interactive}
                             onClick={() => {
+                                const nextRole = roleDraft.trim()
                                 const next = draft.trim()
-                                if (!next || !roleDraft.trim()) {
+                                setRoleError(nextRole ? '' : 'Enter a role before updating the sample.')
+                                setContributionError(next ? '' : 'Enter a contribution before updating the sample.')
+                                if (!next || !nextRole) {
                                     setMessage('')
-                                    setWriteError(
-                                        'Enter a role and a contribution before updating the sample.'
-                                    )
                                     return
                                 }
-                                setWriteError('')
-                                setRole(roleDraft.trim())
+                                setRole(nextRole)
+                                setRoleDraft(nextRole)
                                 setBullet(next)
                                 setDraft(next)
                                 setDraftDirty(false)
@@ -162,11 +173,6 @@ export default function ReviewDesk() {
                         >
                             Update sample <IconArrowRight size={13} aria-hidden="true" />
                         </button>
-                        {writeError && (
-                            <p id="hero-write-error" className="rd-field-error" role="alert">
-                                {writeError}
-                            </p>
-                        )}
                     </Tabs.Content>
                     <Tabs.Content value="Review" className="rd-note">
                         <h3>
