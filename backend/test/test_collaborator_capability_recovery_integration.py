@@ -18,8 +18,9 @@ async def _user_id(db, headers):
     )
 
 
+@pytest.mark.parametrize("preload_identity_map", [False, True])
 async def test_viewer_promotion_rechecks_role_after_concurrent_downgrade(
-    client, db_session, db_session_factory, auth_headers, auth_headers2
+    client, db_session, db_session_factory, auth_headers, auth_headers2, preload_identity_map
 ):
     owner_id = await _user_id(db_session, auth_headers)
     collaborator_id = await _user_id(db_session, auth_headers2)
@@ -65,6 +66,15 @@ async def test_viewer_promotion_rechecks_role_after_concurrent_downgrade(
             event.listen(sync_engine, "before_cursor_execute", observe_locked_read)
             try:
                 async with db_session_factory() as update_session:
+                    # Keep a strong reference: SQLAlchemy's identity map is weak.
+                    # The locked read must replace this stale editor snapshot
+                    # after the competing transaction commits viewer.
+                    stale_row = None
+                    if preload_identity_map:
+                        stale_row = await update_session.scalar(
+                            select(ResumeCollaborator).where(ResumeCollaborator.id == row.id)
+                        )
+                        assert stale_row is not None and stale_row.role == "editor"
                     request = asyncio.create_task(
                         update_collaborator_role(
                             resume_id,
@@ -85,6 +95,8 @@ async def test_viewer_promotion_rechecks_role_after_concurrent_downgrade(
 
                     with pytest.raises(HTTPException) as denied:
                         await asyncio.wait_for(request, timeout=5)
+                    if stale_row is not None:
+                        assert stale_row.role == "viewer"
                 assert denied.value.status_code == 403
                 assert "f04" in str(denied.value.detail)
             finally:

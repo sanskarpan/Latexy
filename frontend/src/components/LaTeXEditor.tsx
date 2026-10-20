@@ -20,7 +20,7 @@ import type { LintIssue } from '@/lib/latex-linter'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
-import { classifyCollabClose } from '@/lib/collab-close'
+import { classifyCollabClose, COLLAB_CLOSE_ROLE_CHANGED } from '@/lib/collab-close'
 import { createYWebsocketChatTransport, type ChatTransport } from '@/lib/collab-chat'
 import { keepLatestSuggestionDecisions, namespaceSuggestionPresence, sanitizeSuggestionDecision, sanitizeSuggestionPresence, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
 import {
@@ -425,6 +425,8 @@ export interface LaTeXEditorProps {
   collabUser?: { name: string; color: string }
   /** Known collaborator role; anything other than owner/editor forces read-only */
   collabRole?: string | null
+  /** Recheck authoritative document access after a live role change/revocation. */
+  onCollaborationAccessChanged?: (resumeId: string) => void
   /** Fires when the set of remote-presence users changes */
   onPresenceChange?: (users: PresenceUser[]) => void
   /** Exposes a bounded adapter over this editor's authenticated Y websocket. */
@@ -718,7 +720,7 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileDebounceMs, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileDebounceMs, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onCollaborationAccessChanged, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const { can } = useEntitlements()
@@ -787,6 +789,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onAddWordToDictionaryRef.current = onAddWordToDictionary
     const onPresenceChangeRef = useRef(onPresenceChange)
     onPresenceChangeRef.current = onPresenceChange
+    const onCollaborationAccessChangedRef = useRef(onCollaborationAccessChanged)
+    onCollaborationAccessChangedRef.current = onCollaborationAccessChanged
     const onChatTransportRef = useRef(onChatTransport)
     onChatTransportRef.current = onChatTransport
     const onSuggestionPresenceChangeRef = useRef(onSuggestionPresenceChange)
@@ -809,6 +813,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const collabReadOnly = collabLocked || collabRoleReadOnly
     const collabReadOnlyRef = useRef(collabReadOnly)
     collabReadOnlyRef.current = collabReadOnly
+    useEffect(() => {
+      // The parent rechecks this role with the API after a relay notice. A
+      // confirmed promotion must clear a prior viewer/commenter socket lock.
+      setCollabLocked(false)
+    }, [collabRole])
 
     useEffect(() => {
       autoCompileSchedulerRef.current?.setEnabled(can('c06') && autoCompileEnabled && !readOnly && !collabReadOnly)
@@ -2165,9 +2174,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             // they started with — so leave the buffer editable and let the
             // reconnect re-authorise.
             if (code === 'role_changed') {
+              onCollaborationAccessChangedRef.current?.(collabResumeId)
               toast.info(message || 'Your access level changed — reconnecting')
               return
             }
+            onCollaborationAccessChangedRef.current?.(collabResumeId)
             lockCollabEditing(
               code === 'access_revoked'
                 ? `Collaboration access revoked — ${message}`
@@ -2188,6 +2199,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             onSuggestionPresenceChangeRef.current?.([])
             const code = event?.code
             const action = classifyCollabClose(code, transientCollabRejections)
+            if (code === COLLAB_CLOSE_ROLE_CHANGED || action === 'lock') {
+              onCollaborationAccessChangedRef.current?.(collabResumeId)
+            }
             // provider.disconnect() clears shouldConnect before it emits close;
             // that is intentional teardown and must not resurrect the socket.
             if (action === 'ignore' && !provider.shouldConnect) return

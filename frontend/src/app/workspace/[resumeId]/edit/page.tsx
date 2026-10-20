@@ -1217,6 +1217,34 @@ export default function ResumeEditPage() {
   const checkpointRecoveryMobileRef = useRef(isMobile)
   const recoveryEditorIsMobile = currentCheckpointRecoveryPreview ? checkpointRecoveryMobileRef.current : isMobile
   const canEditDocument = sourceLoadReady && can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
+  const collaborationAllowed = can('f04')
+  const collaborationAccessRequestRef = useRef(0)
+  const refreshCollaborationAccess = useCallback(async (changedResumeId: string) => {
+    if (changedResumeId !== resumeId || !sessionUserId) return
+    const scope = offlinePdfIdentityRef.current
+    const token = apiClient.getAuthToken()
+    if (!token || scope.ownerId !== sessionUserId || scope.resumeId !== resumeId) return
+    const request = ++collaborationAccessRequestRef.current
+    const isCurrent = () => request === collaborationAccessRequestRef.current
+      && offlinePdfIdentityRef.current === scope && apiClient.getAuthToken() === token
+    try {
+      const data = await apiClient.getResume(resumeId)
+      if (isCurrent()) setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
+    } catch {
+      // Keep the source buffer untouched, but fail closed until access can be
+      // confirmed again. A capability regrant or focus retries this check.
+      if (isCurrent()) setCollabRole('viewer')
+    }
+  }, [resumeId, sessionUserId])
+  useEffect(() => {
+    const refresh = () => { void refreshCollaborationAccess(resumeId) }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => {
+      collaborationAccessRequestRef.current += 1
+      window.removeEventListener('focus', refresh)
+    }
+  }, [collaborationAllowed, refreshCollaborationAccess, resumeId])
   const latexGeneratorRecovery = useLatexGeneratorRecovery({
     ownerId: sessionUserId,
     documentId: resumeId,
@@ -4362,6 +4390,7 @@ export default function ResumeEditPage() {
               />
             ) : (
             <LaTeXEditor
+              key={`${resumeId}:${collaborationAllowed}`}
               editorRef={editorRef}
               onEditorReady={setMacroEditor}
               value={latexContent}
@@ -4411,7 +4440,7 @@ export default function ResumeEditPage() {
                   return next
                 })
               }}
-              collabEnabled={!!(sessionData?.session?.token)}
+              collabEnabled={!!(sessionData?.session?.token) && collaborationAllowed}
               collabResumeId={resumeId}
               collabUser={sessionData?.session?.token ? {
                 // Email addresses are never sent as collaboration display
@@ -4420,6 +4449,7 @@ export default function ResumeEditPage() {
                 color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
               } : undefined}
               collabRole={collabRole}
+              onCollaborationAccessChanged={refreshCollaborationAccess}
               onPresenceChange={setPresenceUsers}
               onChatTransport={setChatTransport}
               suggestionPresence={suggestionPresence}
