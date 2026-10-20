@@ -83,7 +83,6 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     const persistedSource = async () => (await db.query('SELECT latex_content FROM resumes WHERE id=$1', [resumeId])).rows[0].latex_content as string
     const ownerPage = await owner.context.newPage()
     const ownerSync = observeInitialSync(ownerPage)
-    await ownerPage.clock.install()
     await ownerPage.addInitScript(id => localStorage.setItem(`latexy_editor_mode_${id}`, 'source'), resumeId)
     await ownerPage.goto(`/workspace/${resumeId}/edit`)
     await ownerPage.getByTitle('Collaborators', { exact: true }).click()
@@ -105,7 +104,6 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     expect(allowedWrite.status(), await allowedWrite.text()).toBe(200)
     const actorPage = await actor.context.newPage()
     const actorSync = observeInitialSync(actorPage)
-    await actorPage.clock.install()
     await actorPage.addInitScript(id => localStorage.setItem(`latexy_editor_mode_${id}`, 'source'), resumeId)
     await actorPage.goto(`/workspace/${resumeId}/edit`)
     await refreshActorAccess()
@@ -153,6 +151,10 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     // Freeze only the short edit/checkpoint window in both browser pages.
     // This holds their 2500ms autosave debounces while real keyboard/CRDT and
     // database operations continue. Resume before UI/socket polling.
+    // Install after initial editor/render instrumentation settles. Replacing
+    // performance before navigation breaks Next dev measurements in WebKit.
+    await ownerPage.clock.install()
+    await actorPage.clock.install()
     await ownerPage.clock.pauseAt(new Date(Date.now() + 1000))
     await actorPage.clock.pauseAt(new Date(Date.now() + 1000))
     try {
