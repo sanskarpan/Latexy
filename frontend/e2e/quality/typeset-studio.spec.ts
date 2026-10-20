@@ -48,7 +48,9 @@ for (const field of ['Your role', 'One contribution']) {
         await desk.getByRole('tab', { name: 'Write', exact: true }).click()
         await desk.getByLabel(field, { exact: true }).fill('   ')
         await desk.getByRole('button', { name: 'Update sample' }).click()
-        await expect(desk.getByRole('alert')).toHaveText('Enter a role and a contribution before updating the sample.')
+        await expect(desk.getByRole('alert')).toHaveText(field === 'Your role'
+            ? 'Enter a role before updating the sample.'
+            : 'Enter a contribution before updating the sample.')
         await expect(desk.locator('.rd-highlight')).toHaveText(original)
         await expect(desk.locator('.rd-paper header')).toContainText('Product Designer')
         await desk.getByLabel(field, { exact: true }).fill(field === 'Your role' ? 'Researcher' : 'Interviewed users to improve onboarding.')
@@ -57,6 +59,131 @@ for (const field of ['Your role', 'One contribution']) {
         await expect(desk.getByRole('status')).toContainText('Your wording is now in the sample résumé.')
     })
 }
+
+for (const correctedFirst of ['Your role', 'One contribution']) {
+    test(`hero retains the other field error after correcting ${correctedFirst.toLowerCase()}`, async ({ page }) => {
+        const desk = page.getByTestId('review-desk')
+        await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+        const role = desk.getByLabel('Your role', { exact: true })
+        const contribution = desk.getByLabel('One contribution', { exact: true })
+        await role.fill('   ')
+        await contribution.fill('   ')
+        await desk.getByRole('button', { name: 'Update sample' }).click()
+        await expect(desk.getByRole('alert')).toHaveCount(2)
+        await expect(role).toHaveAttribute('aria-invalid', 'true')
+        await expect(contribution).toHaveAttribute('aria-invalid', 'true')
+        const corrected = correctedFirst === 'Your role' ? role : contribution
+        const remaining = correctedFirst === 'Your role' ? contribution : role
+        await corrected.fill('    ')
+        await expect(corrected).toHaveAttribute('aria-invalid', 'true')
+        await expect(desk.getByRole('alert')).toHaveCount(2)
+        await corrected.fill(correctedFirst === 'Your role' ? '  Researcher  ' : '  Interviewed users.  ')
+        await expect(corrected).toHaveAttribute('aria-invalid', 'false')
+        await expect(remaining).toHaveAttribute('aria-invalid', 'true')
+        await expect(desk.getByRole('alert')).toHaveCount(1)
+        await expect(remaining).toHaveAttribute('aria-describedby', correctedFirst === 'Your role'
+            ? 'hero-contribution-error' : 'hero-role-error')
+        // An invalid partial update must not commit either field.
+        await desk.getByRole('button', { name: 'Update sample' }).click()
+        await expect(desk.locator('.rd-highlight')).toHaveText(original)
+        await expect(desk.locator('.rd-paper header')).toContainText('Product Designer')
+        await remaining.fill(correctedFirst === 'Your role' ? '  Interviewed users.  ' : '  Researcher  ')
+        await expect(desk.getByRole('alert')).toHaveCount(0)
+        await desk.getByRole('button', { name: 'Update sample' }).click()
+        await expect(role).toHaveValue('Researcher')
+        await expect(contribution).toHaveValue('Interviewed users.')
+        await expect(desk.locator('.rd-highlight')).toHaveText('Interviewed users.')
+        await expect(desk.locator('.rd-paper header')).toContainText('Researcher')
+    })
+}
+
+for (const custom of [false, true]) {
+    test(`hero preserves ${custom ? 'custom contribution' : 'accepted suggestion'} through Tailor and Export`, async ({ page }) => {
+        const desk = page.getByTestId('review-desk')
+        const contribution = custom ? 'Led accessibility testing with six teams.' : suggestion
+        if (custom) {
+            await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+            await desk.getByLabel('Your role', { exact: true }).fill('  Staff Designer  ')
+            await desk.getByLabel('One contribution', { exact: true }).fill(contribution)
+            await desk.getByRole('button', { name: 'Update sample' }).click()
+        } else {
+            await desk.getByRole('button', { name: 'Use suggestion', exact: true }).click()
+        }
+        for (let round = 0; round < 2; round++) {
+            await desk.getByRole('tab', { name: 'Tailor', exact: true }).click()
+            await desk.getByLabel('Sample role', { exact: true }).selectOption('Design systems')
+            await desk.getByRole('tab', { name: 'Export', exact: true }).click()
+            await desk.getByRole('radio', { name: 'Modern', exact: true }).check()
+            await expect(desk.locator('.rd-highlight')).toHaveText(contribution)
+            await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+            const reviewAction = desk.getByRole('button', { name: custom ? 'Use suggestion' : 'Undo', exact: true })
+            if (custom) await expect(reviewAction).toBeDisabled()
+            else await expect(reviewAction).toBeEnabled()
+            await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+            await expect(desk.getByLabel('One contribution', { exact: true })).toHaveValue(contribution)
+            await expect(desk.getByLabel('Your role', { exact: true })).toHaveValue(custom ? 'Staff Designer' : 'Product Designer')
+            await expect(desk.locator('.rd-sample-status')).toBeEmpty()
+        }
+    })
+}
+
+test('hero field errors and disabled hover remain readable in both themes', async ({ page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-chromium', 'Canonical visual evidence uses Chromium; behavior runs in every project.')
+    test.setTimeout(180_000)
+    const directory = path.resolve(process.cwd(), '../docs/qa/reviewdesk-followup-2026-10-20')
+    await mkdir(directory, { recursive: true })
+    const desk = page.getByTestId('review-desk')
+    for (const width of [320, 1440]) {
+        await page.setViewportSize({ width, height: 1000 })
+        for (const theme of ['light', 'dark']) for (const contrast of ['normal', 'high']) {
+            await context.addCookies([
+                { name: 'latexy-theme', value: theme, url: qualityOrigins().appOrigin },
+                { name: 'latexy-contrast', value: contrast, url: qualityOrigins().appOrigin },
+            ])
+            await page.reload({ waitUntil: 'networkidle' })
+            await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
+            await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+            await desk.getByLabel('Your role', { exact: true }).fill(' ')
+            await desk.getByLabel('One contribution', { exact: true }).fill(' ')
+            await desk.getByRole('button', { name: 'Update sample' }).click()
+            await expect(desk.getByRole('alert')).toHaveCount(2)
+            await expect(page.locator('html')).toHaveAttribute('data-contrast', contrast)
+            await expect(desk.getByLabel('Your role', { exact: true })).toHaveAccessibleDescription('Enter a role before updating the sample.')
+            await expect(desk.getByLabel('One contribution', { exact: true })).toHaveAccessibleDescription('Enter a contribution before updating the sample.')
+            await page.evaluate(() => document.fonts.ready)
+            const fields = await desk.locator('.rd-note[data-state="active"] input, .rd-note[data-state="active"] textarea, .rd-note[data-state="active"] .rd-field-error, .rd-note[data-state="active"] button').evaluateAll(elements =>
+                elements.map(element => {
+                    const box = element.getBoundingClientRect()
+                    return { top: box.top, bottom: box.bottom, left: box.left, right: box.right }
+                })
+            )
+            for (let index = 0; index < fields.length; index++) {
+                expect(fields[index].left).toBeGreaterThanOrEqual(0)
+                expect(fields[index].right).toBeLessThanOrEqual(width)
+                if (index) expect(fields[index].top).toBeGreaterThanOrEqual(fields[index - 1].bottom)
+            }
+            const errorGaps = await desk.locator('.rd-field-error').evaluateAll(elements =>
+                elements.map(element => {
+                    const next = element.nextElementSibling
+                    if (!next) return -1
+                    return next.getBoundingClientRect().top - element.getBoundingClientRect().bottom
+                })
+            )
+            for (const gap of errorGaps) expect(gap).toBeGreaterThanOrEqual(12)
+            await desk.screenshot({ path: path.join(directory, `${width}-${theme}-${contrast}-errors.png`), animations: 'disabled' })
+            await desk.getByLabel('Your role', { exact: true }).fill('Designer')
+            await desk.getByLabel('One contribution', { exact: true }).fill('Led accessible design research.')
+            await desk.getByRole('button', { name: 'Update sample' }).click()
+            await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+            const disabled = desk.getByRole('button', { name: 'Use suggestion', exact: true })
+            await expect(disabled).toBeDisabled()
+            await disabled.hover({ force: true })
+            await expect(disabled).toHaveCSS('filter', 'none')
+            await desk.screenshot({ path: path.join(directory, `${width}-${theme}-${contrast}-disabled-hover.png`), animations: 'disabled' })
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        }
+    }
+})
 
 for (const action of ['Undo', 'Keep original']) {
     test(`hero ${action} restores the sample while preserving an unsaved contribution and role`, async ({ page }) => {

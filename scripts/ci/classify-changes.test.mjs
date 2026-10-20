@@ -84,6 +84,13 @@ describe('pure changed-file classification', () => {
     assert.deepEqual(classifyPaths(['backend/database/models.py']), cross)
   })
 
+  test('real browser acceptance specs select the isolated full-stack job', () => {
+    assert.deepEqual(
+      classifyPaths(['frontend/e2e/capability-fullstack.spec.ts']),
+      expected('frontend', 'full_stack'),
+    )
+  })
+
   test('known backend runtime and dependency paths avoid unrelated workspace jobs', () => {
     const runtime = expected('backend', 'frontend', 'full_stack')
     for (const path of [

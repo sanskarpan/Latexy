@@ -18,12 +18,29 @@ export interface OfflineDraft {
   latexContent: string
   /** Server source this draft was based on, when known. */
   expectedLatexContent?: string
+  /** A divergent collaboration buffer; never automatically replay into SQL. */
+  collaborationPaused?: boolean
   savedAt: Date
   syncStatus: 'pending' | 'synced' | 'conflict'
 }
 
 interface StoredOfflineDraft extends OfflineDraft {
   key: string
+}
+
+/** Recovery does not acknowledge another writer's new SQL source. */
+export function recoveredDraftBaseline(draft: OfflineDraft | null, serverSource: string): string {
+  return draft?.collaborationPaused && serverSource !== draft.latexContent
+    ? draft.expectedLatexContent ?? '' : serverSource
+}
+
+/** Source equality cannot acknowledge an unsaved recovered title. */
+export function canAcknowledgeCollaborationRecovery(draft: OfflineDraft, current: {
+  title?: string; savedTitle?: string; savedSource?: string; modelSource: string; relaySource: string
+}): boolean {
+  return Boolean(draft.collaborationPaused) && draft.title === current.title && draft.title === current.savedTitle &&
+    draft.latexContent === current.savedSource && draft.latexContent === current.modelSource &&
+    current.modelSource === current.relaySource
 }
 
 interface LatexyOfflineDB extends DBSchema {
@@ -126,6 +143,7 @@ export async function deleteDraftIfUnchanged(snapshot: OfflineDraft): Promise<bo
     current.ownerId === snapshot.ownerId && current.resumeId === snapshot.resumeId &&
     current.title === snapshot.title && current.latexContent === snapshot.latexContent &&
     current.expectedLatexContent === snapshot.expectedLatexContent &&
+    current.collaborationPaused === snapshot.collaborationPaused &&
     current.syncStatus === snapshot.syncStatus &&
     current.savedAt instanceof Date && snapshot.savedAt instanceof Date &&
     current.savedAt.getTime() === snapshot.savedAt.getTime())

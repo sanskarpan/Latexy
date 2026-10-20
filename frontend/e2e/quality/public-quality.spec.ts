@@ -385,27 +385,31 @@ test('landing glass controls keep sound opt-in and preserve layout selection', a
         const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
         return { created: scope.landingAudioCreates, closed: scope.landingAudioCloses }
     })
+    const menu = page.locator('#landing-navigation')
+    const openPreferences = async () => {
+        await page.getByRole('button', { name: 'Open navigation menu' }).click()
+        // Height animation changes the scroll container's scrollTop even when
+        // a child briefly looks stable. Wait for the visible, settled panel
+        // before clicking its controls, not just for the button to exist.
+        await expect(menu).toHaveCSS('opacity', '1')
+        await expect(menu).toHaveAttribute('style', /height:\s*auto/)
+    }
     await page.locator('#resume-feedback').scrollIntoViewIfNeeded()
     expect((await audioCounts()).created).toBe(0)
     await expect(page.getByRole('button', { name: 'Interface sounds', exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     const sound = page.getByRole('button', { name: 'Interface sounds', exact: true })
     await expect(sound).toHaveAttribute('aria-pressed', 'false')
     await sound.click()
     await expect(sound).toHaveAttribute('aria-pressed', 'true')
     await expect.poll(async () => (await audioCounts()).created).toBe(1)
-    const menu = page.locator('#landing-navigation')
-    await expect(menu).toHaveCSS('opacity', '1')
-    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
     await testInfo.attach('landing-glass-menu', { body: await page.screenshot(), contentType: 'image/png' })
     const soundBox = await sound.boundingBox()
     expect(soundBox?.height).toBeLessThanOrEqual(52)
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Toggle light or dark mode', exact: true }).click()
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     await expect(sound).toHaveAttribute('aria-pressed', 'true')
-    await expect(menu).toHaveCSS('opacity', '1')
-    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
     await testInfo.attach('landing-glass-menu-dark', { body: await page.screenshot(), contentType: 'image/png' })
     await page.keyboard.press('Escape')
     await page.getByRole('tab', { name: 'Export', exact: true }).click()
@@ -413,7 +417,7 @@ test('landing glass controls keep sound opt-in and preserve layout selection', a
     await expect(page.getByRole('radio', { name: 'Modern', exact: true })).toBeChecked()
     await expect(page.locator('.rd-paper')).toHaveAttribute('data-layout', 'modern')
     expect((await audioCounts()).created).toBe(1)
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     await sound.click()
     await expect(sound).toHaveAttribute('aria-pressed', 'false')
     await expect.poll(async () => (await audioCounts()).closed).toBe(1)

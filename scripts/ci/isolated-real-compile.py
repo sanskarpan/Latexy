@@ -160,11 +160,12 @@ class FixedTargetRelay(socketserver.ThreadingTCPServer):
     daemon_threads = True
     block_on_close = False
     request_queue_size = 64
+    allowed_ports = (8030, 5432)
 
     def __init__(self, address: str, port: int, deadline: float):
         ip = ipaddress.IPv4Address(address)
         if (not ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
-                or ip.is_reserved or ip.is_unspecified or port not in (8030, 5432)):
+                or ip.is_reserved or ip.is_unspecified or port not in self.allowed_ports):
             raise RuntimeError('Invalid fixed private relay target')
         self.target = (str(ip), port)
         self.deadline = deadline
