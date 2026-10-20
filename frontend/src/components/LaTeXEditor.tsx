@@ -21,6 +21,8 @@ import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
 import { classifyCollabClose, COLLAB_CLOSE_ROLE_CHANGED } from '@/lib/collab-close'
+import { bindCollaborationWithoutDiscardingDraft, canSeedCollaborationDocument } from '@/lib/collab-initial-sync'
+import { saveDraft, getDraft, deleteDraftIfUnchanged, canAcknowledgeCollaborationRecovery } from '@/lib/offline-drafts'
 import { createYWebsocketChatTransport, type ChatTransport } from '@/lib/collab-chat'
 import { keepLatestSuggestionDecisions, namespaceSuggestionPresence, sanitizeSuggestionDecision, sanitizeSuggestionPresence, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
 import {
@@ -425,6 +427,15 @@ export interface LaTeXEditorProps {
   collabUser?: { name: string; color: string }
   /** Known collaborator role; anything other than owner/editor forces read-only */
   collabRole?: string | null
+  /** Source differs from the saved snapshot, including a draft restored before mount. */
+  collabHasUnsavedChanges?: boolean
+  /** Persisted divergent recovery must not initialize an empty relay. */
+  collabRecoveryPaused?: boolean
+  onCollaborationRecoveryResolved?: () => void
+  collabActorId?: string
+  collabDocumentTitle?: string
+  collabSavedSource?: string
+  collabSavedTitle?: string
   /** Recheck authoritative document access after a live role change/revocation. */
   onCollaborationAccessChanged?: (resumeId: string) => void
   /** Fires when the set of remote-presence users changes */
@@ -720,7 +731,7 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileDebounceMs, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onCollaborationAccessChanged, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileDebounceMs, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, collabHasUnsavedChanges = false, collabRecoveryPaused = false, onCollaborationRecoveryResolved, collabActorId, collabDocumentTitle, collabSavedSource, collabSavedTitle, onCollaborationAccessChanged, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const { can } = useEntitlements()
@@ -833,6 +844,31 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const providerRef = useRef<any>(null)
     const suggestionDecisionsMapRef = useRef<any>(null)
     const bindingRef = useRef<any>(null)
+    const collabGenerationRef = useRef(0)
+    const collabScopeRef = useRef({ collabActorId, collabResumeId, collabEnabled })
+    collabScopeRef.current = { collabActorId, collabResumeId, collabEnabled }
+    const recoveryMetadataRef = useRef({ title: collabDocumentTitle, expected: collabSavedSource, savedTitle: collabSavedTitle })
+    recoveryMetadataRef.current = { title: collabDocumentTitle, expected: collabSavedSource, savedTitle: collabSavedTitle }
+    const recoveryWriteRef = useRef<Promise<unknown>>(Promise.resolve())
+    const recoveryFailureRef = useRef(false)
+    const recoveryPendingRef = useRef(false)
+    const recoveryRevisionRef = useRef(0)
+    const recoveryActiveRef = useRef(collabRecoveryPaused)
+    const clearAcknowledgedRecoveryRef = useRef<(() => void) | null>(null)
+    const [collabPaused, setCollabPaused] = useState(false)
+    const [recoveryFailed, setRecoveryFailed] = useState(false)
+    const [recoverySaved, setRecoverySaved] = useState(false)
+    const persistRecoveryRef = useRef<((source: string) => void) | null>(null)
+    const localEditsBeforeCollabBindingRef = useRef(collabHasUnsavedChanges)
+    // A draft may autosave while its initial ticket/sync is pending. Keep the
+    // local-change provenance even after the parent's dirty flag clears.
+    if (collabHasUnsavedChanges && !bindingRef.current) localEditsBeforeCollabBindingRef.current = true
+    const onCollaborationRecoveryResolvedRef = useRef(onCollaborationRecoveryResolved)
+    onCollaborationRecoveryResolvedRef.current = onCollaborationRecoveryResolved
+    const collabRecoveryPausedRef = useRef(collabRecoveryPaused)
+    collabRecoveryPausedRef.current = collabRecoveryPaused
+    const collabHasUnsavedChangesRef = useRef(collabHasUnsavedChanges)
+    collabHasUnsavedChangesRef.current = collabHasUnsavedChanges
     // Track changes refs (Feature 41)
     const trackChangesRef = useRef<TrackChangesHandle | null>(null)
     const trackedChangesDecsRef = useRef<any>(null)
@@ -845,6 +881,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     useEffect(() => {
       const valueGuard = parentValueGuardRef.current
       return () => {
+        collabGenerationRef.current += 1
+        persistRecoveryRef.current = null
+        clearAcknowledgedRecoveryRef.current = null
         keybindingActivationRef.current += 1
         keybindingAdapterRef.current?.dispose()
         keybindingAdapterRef.current = null
@@ -861,6 +900,23 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         onChatTransportRef.current?.(null)
       }
     }, [])
+
+    useEffect(() => {
+      const warn = (event: BeforeUnloadEvent) => {
+        if (!recoveryFailureRef.current && !recoveryPendingRef.current) return
+        event.preventDefault()
+        event.returnValue = ''
+      }
+      window.addEventListener('beforeunload', warn)
+      return () => window.removeEventListener('beforeunload', warn)
+    }, [])
+
+    useEffect(() => {
+      if (collabEnabled && (recoveryActiveRef.current || (!bindingRef.current && (collabPaused || collabRecoveryPaused || localEditsBeforeCollabBindingRef.current)))) {
+        const source = editorRef.current?.getModel()?.getValue()
+        if (source !== undefined) persistRecoveryRef.current?.(source)
+      }
+    }, [collabEnabled, collabPaused, collabRecoveryPaused, collabDocumentTitle, collabSavedSource, collabSavedTitle, value])
 
     // Suggestions use awareness only; they are ephemeral metadata and never
     // enter the Y.Text document. The existing authenticated provider remains
@@ -1400,6 +1456,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     }, [])
 
     const handleEditorDidMount: OnMount = async (editor, monaco) => {
+      const generation = ++collabGenerationRef.current
+      const authToken = apiClient.getAuthToken()
       editorRef.current = editor
       monacoRef.current = monaco
       setEditorReadyVersion(version => version + 1)
@@ -1408,6 +1466,41 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       void applyKeybindingMode(editor, canRef.current('c04') ? keybindingMode : 'standard')
       disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
       const mountedModel = editor.getModel()
+      const isCurrentCollab = () => {
+        const scope = collabScopeRef.current
+        return collabGenerationRef.current === generation && editorRef.current === editor &&
+          mountedModel != null && !mountedModel.isDisposed() && editor.getModel() === mountedModel &&
+          scope.collabActorId === collabActorId && scope.collabResumeId === collabResumeId &&
+          scope.collabEnabled === collabEnabled && apiClient.getAuthToken() === authToken
+      }
+      const persistRecovery = (source: string) => {
+        if (!isCurrentCollab() || !collabActorId || !collabResumeId) return
+        recoveryActiveRef.current = true
+        const metadata = recoveryMetadataRef.current
+        const revision = ++recoveryRevisionRef.current
+        recoveryPendingRef.current = true
+        // Serialize revisions so a slower old write cannot replace a new one.
+        setRecoverySaved(false)
+        recoveryWriteRef.current = recoveryWriteRef.current.catch(() => {}).then(() => {
+          if (!isCurrentCollab()) return
+          return saveDraft({
+          ownerId: collabActorId, resumeId: collabResumeId, title: metadata.title ?? '',
+          latexContent: source, expectedLatexContent: metadata.expected,
+          collaborationPaused: true, syncStatus: 'conflict', savedAt: new Date(),
+          })
+        }).then(() => {
+          if (isCurrentCollab() && revision === recoveryRevisionRef.current) {
+            recoveryPendingRef.current = false; recoveryFailureRef.current = false
+            setRecoveryFailed(false); setRecoverySaved(true)
+            clearAcknowledgedRecoveryRef.current?.()
+          }
+        }).catch(() => {
+          if (isCurrentCollab() && revision === recoveryRevisionRef.current) {
+            recoveryPendingRef.current = false; recoveryFailureRef.current = true; setRecoveryFailed(true)
+          }
+        })
+      }
+      persistRecoveryRef.current = persistRecovery
       if (mountedModel) {
         capabilitiesByModel.set(mountedModel, (key) => canRef.current(key))
         disposablesRef.current.push({ dispose: () => capabilitiesByModel.delete(mountedModel) })
@@ -2119,14 +2212,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       disposablesRef.current.push(spellCodeActionDisposable)
 
       // ── Y.js real-time collaboration (Feature 40) ────────────────────
-      if (collabEnabled && collabResumeId && collabUser) {
+      if (collabEnabled && collabResumeId && collabUser && mountedModel && authToken && collabActorId) {
         try {
           const Y = await import('yjs')
           const { WebsocketProvider } = await import('y-websocket')
           const { MonacoBinding } = await import('y-monaco')
-
-          const ydoc = new Y.Doc()
+          if (!isCurrentCollab()) return
           const initialTicket = await apiClient.createWebSocketTicket('collab', collabResumeId)
+          if (!isCurrentCollab()) return
+          const ydoc = new Y.Doc()
+          ydocRef.current = ydoc
 
           const provider = new WebsocketProvider(
             getCollabWebSocketUrl(),
@@ -2140,11 +2235,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               },
             },
           )
+          providerRef.current = provider
 
           // The relay refuses document frames from viewers / commenters, so
           // lock the editor rather than letting edits apply locally and then
           // silently disappear on reload.
           const lockCollabEditing = (message: string) => {
+            if (!isCurrentCollab()) return
             if (collabReadOnlyRef.current) return
             collabReadOnlyRef.current = true
             setCollabLocked(true)
@@ -2155,6 +2252,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             _encoder: unknown,
             decoder: { arr: Uint8Array; pos: number },
           ) => {
+            if (!isCurrentCollab()) return
             let code = 'read_only'
             let message = 'You do not have permission to edit this document'
             try {
@@ -2194,6 +2292,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           let collabGiveUpNotified = false
           let ticketRefreshInFlight = false
           provider.on('connection-close', (event: CloseEvent | null) => {
+            if (!isCurrentCollab() || providerRef.current !== provider) return
             // Awareness is ephemeral; never retain peer suggestions after a
             // disconnected session until a fresh awareness snapshot arrives.
             onSuggestionPresenceChangeRef.current?.([])
@@ -2215,11 +2314,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               ticketRefreshInFlight = true
               void apiClient.createWebSocketTicket('collab', collabResumeId)
                 .then(({ ticket }) => {
+                  if (!isCurrentCollab() || providerRef.current !== provider) return
                   provider.params.ticket = ticket
                   provider.shouldConnect = true
                   provider.connect()
                 })
                 .catch(() => {
+                  if (!isCurrentCollab() || providerRef.current !== provider) return
                   if (!collabGiveUpNotified) {
                     collabGiveUpNotified = true
                     toast.warning('Live collaboration could not reconnect — your edits are still saved')
@@ -2232,6 +2333,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             }
             // Deferred: y-websocket has not finished tearing this socket down yet.
             setTimeout(() => {
+              if (!isCurrentCollab() || providerRef.current !== provider) return
               try {
                 provider.disconnect()
               } catch {
@@ -2256,6 +2358,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           const suggestionDecisionsMap = ydoc.getMap('suggestion-decisions')
           suggestionDecisionsMapRef.current = suggestionDecisionsMap
           const emitSuggestionDecisions = () => {
+            if (!isCurrentCollab()) return
             const allValues = Array.from(suggestionDecisionsMap.values())
             const ownPrefix = `${provider.awareness.clientID}:`
             const decisions = keepLatestSuggestionDecisions(allValues).map((decision) =>
@@ -2265,22 +2368,68 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           }
           suggestionDecisionsMap.observe(emitSuggestionDecisions)
           emitSuggestionDecisions()
-          const model = editor.getModel()
-          if (!model) return
+          const model = mountedModel
 
+          const clearAcknowledgedRecovery = () => {
+            if (!bindingRef.current || !isCurrentCollab()) return
+            const revision = recoveryRevisionRef.current
+            recoveryWriteRef.current = recoveryWriteRef.current.catch(() => {}).then(async () => {
+              if (!isCurrentCollab() || revision !== recoveryRevisionRef.current) return
+              const snapshot = await getDraft(collabActorId, collabResumeId)
+              const metadata = recoveryMetadataRef.current
+              if (!isCurrentCollab() || revision !== recoveryRevisionRef.current) return
+              // Equality with Y.Text alone does not acknowledge a title-only
+              // draft. Both the current title and source must be saved in SQL.
+              if (snapshot && !canAcknowledgeCollaborationRecovery(snapshot, {
+                title: metadata.title, savedTitle: metadata.savedTitle, savedSource: metadata.expected,
+                modelSource: model.getValue(), relaySource: yText.toString(),
+              })) return
+              const cleared = !snapshot || await deleteDraftIfUnchanged(snapshot)
+              if (cleared && isCurrentCollab() && revision === recoveryRevisionRef.current) {
+                recoveryActiveRef.current = false
+                onCollaborationRecoveryResolvedRef.current?.()
+              }
+            }).catch(() => {})
+          }
+          clearAcknowledgedRecoveryRef.current = clearAcknowledgedRecovery
+
+          let preservedPreSyncDraft = collabRecoveryPausedRef.current
           const bindCollabDocument = () => {
-            if (bindingRef.current) return
+            if (!isCurrentCollab() || bindingRef.current || !provider.synced) return
 
             const localContent = model.getValue()
             // Seeding is a document write: read-only peers must not attempt it.
-            if (!collabReadOnlyRef.current && yText.length === 0 && localContent) {
+            if (canSeedCollaborationDocument({ localValue: localContent, remoteValue: yText.toString(),
+              hasHistory: Y.decodeStateVector(Y.encodeStateVector(ydoc)).size > 0,
+              readOnly: collabReadOnlyRef.current, paused: preservedPreSyncDraft || collabRecoveryPausedRef.current })) {
               ydoc.transact(() => {
                 yText.insert(0, localContent)
               })
             }
 
-            const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
+            const binding = bindCollaborationWithoutDiscardingDraft({
+              hasLocalEdits: localEditsBeforeCollabBindingRef.current,
+              hasParentDraft: collabHasUnsavedChangesRef.current,
+              hasRecoveredDraft: preservedPreSyncDraft || collabRecoveryPausedRef.current,
+              localValue: model.getValue(),
+              remoteValue: yText.toString(),
+              bind: () => new MonacoBinding(yText, model, new Set([editor]), provider.awareness),
+            })
+            if (!binding) {
+              // Keep the local buffer and permission-checked REST save path.
+              // The unbound provider still carries current ACL notices/chat;
+              // remote Y.Text updates cannot replace this model, and local
+              // edits cannot overwrite concurrent remote CRDT content.
+              if (!preservedPreSyncDraft) toast.warning('Live sync paused to preserve your local edits')
+              preservedPreSyncDraft = true
+              setCollabPaused(true)
+              persistRecovery(localContent)
+              return
+            }
             bindingRef.current = binding
+            setCollabPaused(false)
+            preservedPreSyncDraft = false
+            clearAcknowledgedRecoveryRef.current?.()
             parentValueGuardRef.current.clear()
 
             // Track changes (Feature 41)
@@ -2289,6 +2438,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               onTrackedChangesUpdateRef.current?.(updatedChanges)
             }, Y)
           }
+          // A paused session may safely rejoin only when the full buffers
+          // independently become equal. No full-document CRDT replacement.
+          yText.observe(() => { if (preservedPreSyncDraft) bindCollabDocument() })
+          const retryBinding = model.onDidChangeContent(() => {
+            if (preservedPreSyncDraft) bindCollabDocument()
+          })
+          disposablesRef.current.push(retryBinding)
 
           provider.awareness.setLocalStateField('user', {
             name: collabUser.name,
@@ -2298,6 +2454,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           // Broadcast presence changes to parent
           provider.awareness.on('change', () => {
+            if (!isCurrentCollab()) return
             const states = provider.awareness.getStates()
             const others = Array.from(states.entries())
               .filter(([id]: [number, any]) => id !== provider.awareness.clientID)
@@ -2313,17 +2470,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           // Seed the Y.Doc with the current value once synced (if remote doc is empty)
           const handleSync = (isSynced: boolean) => {
-            if (!isSynced) return
+            if (!isSynced || !isCurrentCollab()) return
             bindCollabDocument()
             provider.off('sync', handleSync)
           }
           provider.on('sync', handleSync)
           if (provider.synced) bindCollabDocument()
 
-          ydocRef.current = ydoc
-          providerRef.current = provider
           onChatTransportRef.current?.(createYWebsocketChatTransport(provider))
         } catch (err) {
+          if (!isCurrentCollab()) return
+          bindingRef.current?.destroy()
+          providerRef.current?.destroy()
+          ydocRef.current?.destroy()
+          bindingRef.current = providerRef.current = ydocRef.current = null
           console.warn('[LaTeXEditor] Y.js collab init failed:', err)
         }
       }
@@ -2332,6 +2492,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     return (
       <div className="flex h-full flex-col">
+        {collabPaused && <div role="status" className="border-b border-border bg-bg-2 px-3 py-2 text-sm">
+          Live sync is paused to preserve this document. Your local copy and other collaborators' changes remain separate.
+          {recoveryFailed ? ' Recovery storage failed. Keep this tab open and copy your source before leaving.' : recoverySaved ? ' A recovery copy is saved on this device. Live sync resumes when both copies match.' : ' Saving a recovery copy on this device. Keep this tab open until it finishes.'}
+        </div>}
         <div className="relative min-h-0 flex-1">
           <CapabilityGate feature="c03"><LaTeXSearchPanel
             presets={LATEX_SEARCH_PRESETS}
@@ -2349,8 +2513,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               // Monaco with an empty model can emit onChange('') before the
               // async collaboration imports finish, erasing the parent buffer.
               {...(collabEnabled ? { defaultValue: value } : { value })}
-              onChange={(v) => {
+              onChange={(v, event) => {
                 const nextValue = v || ''
+                if (collabEnabled && !bindingRef.current && !syncingParentValueRef.current && !event.isFlush) {
+                  localEditsBeforeCollabBindingRef.current = true
+                  persistRecoveryRef.current?.(nextValue)
+                }
                 forwardMonacoModelChange({
                   value: nextValue,
                   parentSync: syncingParentValueRef.current,

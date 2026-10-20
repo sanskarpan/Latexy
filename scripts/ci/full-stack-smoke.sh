@@ -149,6 +149,9 @@ if ! (
     e2e/capability-fullstack.spec.ts \
     e2e/core-capabilities-fullstack.spec.ts \
     e2e/e03-interview-simulation-fullstack.spec.ts \
+    e2e/b07-json-export-fullstack.spec.ts \
+    e2e/collaborator-launch-fullstack.spec.ts \
+    e2e/collaborator-initial-sync-fullstack.spec.ts \
     --project=chromium --workers=1 --retries=0 --trace=on --reporter=line \
     --output=test-results/full-stack
 ); then

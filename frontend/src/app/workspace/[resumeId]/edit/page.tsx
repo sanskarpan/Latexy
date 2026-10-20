@@ -115,9 +115,10 @@ import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { useCollaborationAccessRefresh } from '@/hooks/useCollaborationAccessRefresh'
 import MobileEditor from '@/components/MobileEditor'
 import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
-import { saveDraft, getDraft, getPendingDrafts, deleteDraftIfUnchanged, pendingDraftCount } from '@/lib/offline-drafts'
+import { saveDraft, getDraft, getPendingDrafts, deleteDraftIfUnchanged, pendingDraftCount, recoveredDraftBaseline } from '@/lib/offline-drafts'
 import { clearAllOfflineCompiledPdfs, getOfflineCompiledPdf, getRememberedOfflinePdfOwner, OFFLINE_PDF_OWNER_KEY, rememberOfflinePdfOwner, saveOfflineCompiledPdf } from '@/lib/offline-pdfs'
 import { resolveRetryableCompletedPdfJobId } from '@/lib/pdf-retry-target'
 import { checkpointRecoverySourceForRead, createCheckpointRecoveryPreview, isCurrentCheckpointRecoveryPreview, type CheckpointRecoveryPreview } from '@/lib/checkpoint-recovery-preview'
@@ -798,6 +799,12 @@ export default function ResumeEditPage() {
   const flags = useFeatureFlags()
   const { session: sessionData, isPending: sessionLoading, isRefetching: sessionRefetching, error: sessionError } = useRequireAuth()
   const sessionUserId = sessionData?.user?.id ?? null
+  // A new credential must tear down pending tickets, reconnects and bindings.
+  // Keep the credential itself out of React's key and diagnostic output.
+  const collabAuthGenerationRef = useRef({ token: sessionData?.session?.token, epoch: 0 })
+  if (collabAuthGenerationRef.current.token !== sessionData?.session?.token) {
+    collabAuthGenerationRef.current = { token: sessionData?.session?.token, epoch: collabAuthGenerationRef.current.epoch + 1 }
+  }
   const sessionUnauthorized = isConfirmedSessionUnauthorized(sessionError)
   const sessionSignedOut = !sessionData && !sessionLoading && !sessionRefetching && !sessionError
   const sessionEnded = sessionUnauthorized || sessionSignedOut
@@ -1161,6 +1168,7 @@ export default function ResumeEditPage() {
   const [collabOpen, setCollabOpen] = useState(false)
   const [collabIsOwner, setCollabIsOwner] = useState(true)
   const [collabRole, setCollabRole] = useState<ResumeAccessRole>('owner')
+  const [collabRecoveryPaused, setCollabRecoveryPaused] = useState(false)
   const [presenceUsers, setPresenceUsers] = useState<import('@/lib/api-client').PresenceUser[]>([])
   const [chatTransport, setChatTransport] = useState<ChatTransport | null>(null)
   const collaboratorChat = useCollaboratorChat({
@@ -1169,7 +1177,11 @@ export default function ResumeEditPage() {
     transport: chatTransport,
     canChat: !!sessionData?.session?.token,
   })
-  const collabCanEdit = canEditResume(collabRole)
+  const { refresh: refreshCollaborationAccess, pending: collabAccessPending } = useCollaborationAccessRefresh({
+    ownerId: sessionUserId, resumeId, token: sessionData?.session?.token,
+    collaborationAllowed: can('f04'), setRole: setCollabRole,
+  })
+  const collabCanEdit = !collabAccessPending && canEditResume(collabRole) && (collabRole === 'owner' || can('f04'))
 
   // Track Changes (Feature 41)
   const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
@@ -1218,33 +1230,6 @@ export default function ResumeEditPage() {
   const recoveryEditorIsMobile = currentCheckpointRecoveryPreview ? checkpointRecoveryMobileRef.current : isMobile
   const canEditDocument = sourceLoadReady && can('c01') && collabCanEdit && !currentCheckpointRecoveryPreview && (!isLinkedVariant || linkedEditEnabled)
   const collaborationAllowed = can('f04')
-  const collaborationAccessRequestRef = useRef(0)
-  const refreshCollaborationAccess = useCallback(async (changedResumeId: string) => {
-    if (changedResumeId !== resumeId || !sessionUserId) return
-    const scope = offlinePdfIdentityRef.current
-    const token = apiClient.getAuthToken()
-    if (!token || scope.ownerId !== sessionUserId || scope.resumeId !== resumeId) return
-    const request = ++collaborationAccessRequestRef.current
-    const isCurrent = () => request === collaborationAccessRequestRef.current
-      && offlinePdfIdentityRef.current === scope && apiClient.getAuthToken() === token
-    try {
-      const data = await apiClient.getResume(resumeId)
-      if (isCurrent()) setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
-    } catch {
-      // Keep the source buffer untouched, but fail closed until access can be
-      // confirmed again. A capability regrant or focus retries this check.
-      if (isCurrent()) setCollabRole('viewer')
-    }
-  }, [resumeId, sessionUserId])
-  useEffect(() => {
-    const refresh = () => { void refreshCollaborationAccess(resumeId) }
-    refresh()
-    window.addEventListener('focus', refresh)
-    return () => {
-      collaborationAccessRequestRef.current += 1
-      window.removeEventListener('focus', refresh)
-    }
-  }, [collaborationAllowed, refreshCollaborationAccess, resumeId])
   const latexGeneratorRecovery = useLatexGeneratorRecovery({
     ownerId: sessionUserId,
     documentId: resumeId,
@@ -2102,7 +2087,8 @@ export default function ResumeEditPage() {
           sessionUserId ? getDraft(sessionUserId, resumeId).catch(() => null) : Promise.resolve(null),
         ])
         if (!isActive()) return
-        const pendingDraft = localDraft?.syncStatus === 'pending' ? localDraft : null
+        const pendingDraft = localDraft?.syncStatus === 'pending' || localDraft?.collaborationPaused ? localDraft : null
+        setCollabRecoveryPaused(Boolean(pendingDraft?.collaborationPaused))
         const effectiveTitle = pendingDraft?.title ?? data.title
         const effectiveLatex = pendingDraft?.latexContent ?? data.latex_content
         const loadedContentRevision = Number.isInteger(data.content_revision) ? data.content_revision! : null
@@ -2115,7 +2101,11 @@ export default function ResumeEditPage() {
         // Keep the server copy as the CAS baseline even while showing a
         // pending local draft. A reconnect must never overwrite a newer
         // collaborative edit with this full-document draft.
-        setSavedSnapshot({ title: data.title, latex: data.latex_content })
+        // A divergent recovery copy must not silently acquire permission to
+        // replace a newer SQL source. Acknowledging its own successful save is
+        // safe; otherwise retain the baseline that protected that draft.
+        const recoveryBaseline = recoveredDraftBaseline(pendingDraft, data.latex_content)
+        setSavedSnapshot({ title: data.title, latex: recoveryBaseline })
         editorRef.current?.setValue(effectiveLatex)
         setCommittedDocumentContent({ scope: documentScope, sourceLoaded: true })
         if (pendingDraft) {
@@ -2275,7 +2265,8 @@ export default function ResumeEditPage() {
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionUserId)
         const loadedRole = data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer')
-        setCollabRole(loadedRole)
+        // ACL refresh owns role state; a delayed source load must not
+        // restore access after a newer revocation/role response.
         finishSuggestionDocumentLoad(suggestionLoad, true, loadedRole)
         finishSourceLoad(sourceLoad, 'ready', pendingDraft ? 'offline' : 'server')
 
@@ -4390,7 +4381,7 @@ export default function ResumeEditPage() {
               />
             ) : (
             <LaTeXEditor
-              key={`${resumeId}:${collaborationAllowed}`}
+              key={`${sessionUserId}:${collabAuthGenerationRef.current.epoch}:${resumeId}:${collaborationAllowed}`}
               editorRef={editorRef}
               onEditorReady={setMacroEditor}
               value={latexContent}
@@ -4449,6 +4440,13 @@ export default function ResumeEditPage() {
                 color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
               } : undefined}
               collabRole={collabRole}
+              collabHasUnsavedChanges={latexContent !== savedSnapshot.latex}
+              collabRecoveryPaused={collabRecoveryPaused}
+              onCollaborationRecoveryResolved={() => setCollabRecoveryPaused(false)}
+              collabActorId={sessionUserId ?? undefined}
+              collabDocumentTitle={title}
+              collabSavedSource={savedSnapshot.latex}
+              collabSavedTitle={savedSnapshot.title}
               onCollaborationAccessChanged={refreshCollaborationAccess}
               onPresenceChange={setPresenceUsers}
               onChatTransport={setChatTransport}
