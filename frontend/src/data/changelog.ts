@@ -14,10 +14,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: 'August 24, 2026',
-    title: 'ATS Score Card & Trust Commitments',
+    title: 'ATS Score Card & Page-Count Guidance',
     points: [
       'Multi-dimensional ATS score card breaks your score into named categories with click-to-fix deep links',
-      'Academic-CV aware page-count guidance and a published no-training data commitment',
+      'Academic-CV aware page-count guidance',
     ],
   },
   {
