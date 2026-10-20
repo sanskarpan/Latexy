@@ -337,6 +337,7 @@
 .ts-landing button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+    filter: none;
 }
 .ts-landing .rd-desk-caption {
     position: static;
