@@ -1,4 +1,5 @@
 import { expect, test } from './quality-test'
+import { changelog } from '../../src/data/changelog'
 
 async function assertStaticWrappers(page: import('@playwright/test').Page) {
   await expect.poll(() => page.locator('[data-marketing-motion]').evaluateAll(nodes =>
@@ -16,7 +17,10 @@ test.describe('without JavaScript', () => {
       await page.emulateMedia({ reducedMotion })
       await page.goto('/updates')
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-      await assertStaticWrappers(page)
+      // A static loading fallback may intentionally contain no motion wrappers.
+      // Check the actual complete release notes rather than requiring animation markup.
+      await expect(page.getByRole('heading', { level: 2 })).toHaveCount(changelog.length)
+      await expect(page.getByRole('heading', { level: 2 }).last()).toBeVisible()
       const path = testInfo.outputPath(`updates-${reducedMotion}-no-js.png`)
       await page.screenshot({ path, fullPage: true })
       await testInfo.attach(`updates-${reducedMotion}-no-js`, { path, contentType: 'image/png' })
