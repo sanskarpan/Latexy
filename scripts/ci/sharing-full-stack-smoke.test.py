@@ -281,7 +281,11 @@ raise SystemExit(h.cli())
         self.assertIn('python scripts/ci/sharing-storage-fixture.test.py -v', workflow)
         self.assertIn('python scripts/ci/sharing-full-stack-smoke.test.py -v', workflow)
         full_stack = workflow.split('  full-stack-smoke:', 1)[1].split('  real-compile-preview:', 1)[0]
-        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers', full_stack)
+        job_configuration, steps = full_stack.split('    steps:', 1)
+        self.assertNotIn('runner.temp', job_configuration)
+        for step_name in ('Install Playwright browser', 'Run full-stack smoke'):
+            step = steps.split('      - name: ' + step_name + '\n', 1)[1].split('      - ', 1)[0]
+            self.assertIn('        env:\n          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers', step)
         self.assertIn('pnpm exec playwright install --with-deps chromium', full_stack)
 
 

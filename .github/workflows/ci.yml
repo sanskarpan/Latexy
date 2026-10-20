@@ -673,7 +673,6 @@ jobs:
       BILLING_MODE: disabled
       ENVIRONMENT: staging
       NEXT_TELEMETRY_DISABLED: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -704,6 +703,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
@@ -716,6 +717,8 @@ jobs:
           python scripts/ci/sharing-full-stack-smoke.test.py -v
 
       - name: Run full-stack smoke
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
         run: python scripts/ci/sharing-full-stack-smoke.py --confirm-isolated-sharing-run
       - name: Upload real full-stack browser evidence
         if: ${{ !cancelled() }}
