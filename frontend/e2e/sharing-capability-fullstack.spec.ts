@@ -13,10 +13,24 @@ test('public sharing survives policy recovery, isolates accounts and permanently
   const backend = process.env.NEXT_PUBLIC_API_URL!
   const database = new URL((process.env.DATABASE_URL ?? '').replace('postgresql+asyncpg:', 'postgresql:'))
   for (const url of [new URL(frontend), new URL(backend), database]) {
-    if (!['localhost', '127.0.0.1', '::1'].includes(url.hostname)) throw new Error('Acceptance requires loopback services')
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('Acceptance requires loopback services')
   }
   if (!database.pathname.endsWith('_test') || process.env.OPENAI_API_KEY || process.env.RESEND_API_KEY || process.env.DEPLOY_TARGET === 'modal') {
     throw new Error('Acceptance requires an isolated test database and no live providers')
+  }
+  const storageMode = process.env.SHARING_ACCEPTANCE_STORAGE_MODE ?? 'docker'
+  const storageEndpoint = process.env.SHARING_ACCEPTANCE_STORAGE_ENDPOINT ?? ''
+  const storageBucket = process.env.SHARING_ACCEPTANCE_STORAGE_BUCKET ?? ''
+  const publicStorage = new URL(process.env.SHARING_ACCEPTANCE_PUBLIC_STORAGE_ENDPOINT ?? storageEndpoint)
+  const storage = new URL(storageEndpoint)
+  for (const endpoint of [storage, publicStorage]) {
+    const hosts = storageMode === 'docker' ? ['localhost', '127.0.0.1', '[::1]', 'storage', 'host.docker.internal'] : ['localhost', '127.0.0.1', '[::1]']
+    if (endpoint.protocol !== 'http:' || !hosts.includes(endpoint.hostname) || !endpoint.port || Number(endpoint.port) < 1024 || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/') {
+      throw new Error('Sharing acceptance requires isolated storage endpoints')
+    }
+  }
+  if (!['host', 'docker'].includes(storageMode) || process.env.SHARING_ACCEPTANCE_DISPOSABLE !== '1' || !/^latexy-sharing-[a-f0-9]{32}$/.test(storageBucket)) {
+    throw new Error('Sharing acceptance requires explicit disposable storage and a per-run bucket')
   }
   const pool = new Pool({ connectionString: database.toString() })
   const contexts: BrowserContext[] = []
@@ -63,15 +77,18 @@ test('public sharing survives policy recovery, isolates accounts and permanently
     const job = randomUUID()
     const key = `compilations/${job}/accepted.pdf`
     const pdf = readFileSync('../backend/test/fixtures/accepted-sharing.pdf')
-    execFileSync('docker', ['exec', process.env.SHARING_ACCEPTANCE_API_CONTAINER ?? 'latexy-share1920-api', 'python', '-c', [
-      'import base64',
-      'from app.services.storage_service import _get_client',
-      `data=base64.b64decode(${JSON.stringify(pdf.toString('base64'))})`,
-      's=_get_client()',
-      's.create_bucket(Bucket="acceptance")',
-      `s.put_bucket_cors(Bucket="acceptance",CORSConfiguration={"CORSRules":[{"AllowedOrigins":[${JSON.stringify(frontend)}],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag","Content-Length"]}]})`,
-      `s.put_object(Bucket="acceptance",Key=${JSON.stringify(key)},Body=data,ContentType="application/pdf")`,
-    ].join('\n')], { encoding: 'utf8', timeout: 60_000 }).trim()
+    const seedScript = readFileSync('../scripts/ci/sharing-storage-fixture.py', 'utf8')
+    const fixture = JSON.stringify({ mode: storageMode, endpoint: storageEndpoint, bucket: storageBucket,
+      origin: frontend, key, pdf: pdf.toString('base64') })
+    if (storageMode === 'host') {
+      execFileSync(process.env.SHARING_ACCEPTANCE_PYTHON ?? 'python', ['-c', seedScript, fixture], {
+        cwd: '../backend', encoding: 'utf8', timeout: 60_000,
+      })
+    } else {
+      execFileSync('docker', ['exec', '-e', 'SHARING_ACCEPTANCE_DISPOSABLE=1',
+        process.env.SHARING_ACCEPTANCE_API_CONTAINER ?? 'latexy-share1920-api', 'python', '-c', seedScript, fixture],
+      { encoding: 'utf8', timeout: 60_000 })
+    }
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     const digest = createHash('sha256').update(pdf).digest('hex')
     await pool.query('INSERT INTO compilations(id,resume_id,user_id,job_id,status,pdf_path,pdf_size,artifact_accepted,artifact_branch) VALUES($1,$2,$3,$4,$5,$6,$7,true,$8)',
@@ -86,9 +103,9 @@ test('public sharing survives policy recovery, isolates accounts and permanently
       const body = await response.json()
       expect(body.share_token).toBe(liveToken)
       const artifactUrl = new URL(body.pdf_url)
-      expect(artifactUrl.hostname).toBe('host.docker.internal')
+      expect(artifactUrl.origin).toBe(publicStorage.origin)
       const artifactHost = artifactUrl.host
-      artifactUrl.hostname = '127.0.0.1'
+      if (artifactUrl.hostname === 'host.docker.internal') artifactUrl.hostname = '127.0.0.1'
       // Keep the signed S3 Host while reaching the loopback-only published port.
       const artifact = await viewer.request.get(artifactUrl.toString(), { headers: { Host: artifactHost } })
       expect(artifact.status(), await artifact.text()).toBe(200)

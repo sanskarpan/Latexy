@@ -101,8 +101,7 @@ export default function LandingPage() {
                     <p className="rd-eyebrow">Résumés, reimagined in LaTeX</p>
                     <h1 id="landing-title">
                         A better résumé
-                        <br />
-                        is a <span>stronger you.</span>
+                        <br /> is a <span>stronger you.</span>
                     </h1>
                     <p className="rd-hero-description">
                         A focused résumé and LaTeX studio. Write, review your words, tailor for each

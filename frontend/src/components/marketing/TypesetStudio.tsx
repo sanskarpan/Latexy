@@ -168,7 +168,10 @@ export function TypesetReview() {
                                                 : reviews[item].original}
                                         </li>
                                     ))}
-                                    <li>Built a shared reporting dashboard with research and engineering.</li>
+                                    <li>
+                                        Built a shared reporting dashboard with research and
+                                        engineering.
+                                    </li>
                                 </ul>
                                 <p className="ts-small-note">
                                     Illustrative sample. No AI is running here.
@@ -375,7 +378,8 @@ export function TypesetSource() {
                         <IconCode size={15} aria-hidden="true" /> main.tex
                     </p>
                     <pre aria-label="Illustrative LaTeX source">
-                        <code>{String.raw`\section{Experience}
+                        <code>
+                            {String.raw`\section{Experience}
 \textbf{Product Designer}
 \textit{Nova Systems}
 \begin{itemize}
@@ -385,14 +389,30 @@ export function TypesetSource() {
   \item Built a reporting
     dashboard with research
     and engineering.
-\end{itemize}`.split('\n').map((line, index) => (
-                            <span className="ts-code-line" key={index}>
-                                <span className="ts-line-number" aria-hidden="true">{index + 1}</span>
-                                <span>{line.split(/(\\[a-zA-Z]+)/g).map((token, part) => (
-                                    <span key={part} className={token.startsWith('\\') ? 'ts-code-command' : undefined}>{token}</span>
-                                ))}</span>
-                            </span>
-                        ))}</code>
+\end{itemize}`
+                                .split('\n')
+                                .map((line, index) => (
+                                    <span className="ts-code-line" key={index}>
+                                        <span className="ts-line-number" aria-hidden="true">
+                                            {index + 1}
+                                        </span>
+                                        <span>
+                                            {line.split(/(\\[a-zA-Z]+)/g).map((token, part) => (
+                                                <span
+                                                    key={part}
+                                                    className={
+                                                        token.startsWith('\\')
+                                                            ? 'ts-code-command'
+                                                            : undefined
+                                                    }
+                                                >
+                                                    {token}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    </span>
+                                ))}
+                        </code>
                     </pre>
                 </div>
                 <div className="ts-preview-panel">
@@ -421,11 +441,22 @@ export function TypesetSource() {
                             </select>
                         </label>
                     </div>
-                    <SampleDocument
-                        compact
-                        serif={typeface === 'serif'}
-                        relaxed={spacing === 'relaxed'}
-                    />
+                    <p id="ts-preview-help" className="ts-preview-help">
+                        Scroll within the preview to read the full sample.
+                    </p>
+                    <div
+                        className="ts-preview-scroll"
+                        role="region"
+                        aria-label="Scrollable layout preview"
+                        aria-describedby="ts-preview-help"
+                        tabIndex={0}
+                    >
+                        <SampleDocument
+                            compact
+                            serif={typeface === 'serif'}
+                            relaxed={spacing === 'relaxed'}
+                        />
+                    </div>
                 </div>
             </div>
         </section>

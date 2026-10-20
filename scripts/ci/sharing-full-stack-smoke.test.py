@@ -1,0 +1,289 @@
+"""No Docker/services: prove isolation, exact cleanup and browser CI selection."""
+import importlib.util
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import json
+import os
+from pathlib import Path
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import MagicMock, patch
+
+spec = importlib.util.spec_from_file_location('sharing_ci', Path(__file__).with_name('sharing-full-stack-smoke.py'))
+harness = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(harness)
+
+
+class SharingCITests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='latexy-sharing-guards-')
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.browser_cache = self.directory / 'installed-browsers'
+        self.browser_cache.mkdir()
+
+    def services(self):
+        return dict(DATABASE_URL='postgresql+asyncpg://postgres@localhost:5432/latexy_test',
+            REDIS_URL='redis://localhost:6379/0', REDIS_CACHE_URL='redis://localhost:6379/1',
+            CELERY_BROKER_URL='redis://localhost:6379/0', CELERY_RESULT_BACKEND='redis://localhost:6379/0',
+            PLAYWRIGHT_BROWSERS_PATH=str(self.browser_cache))
+
+    def test_shared_installed_browser_cache_survives_home_replacement(self):
+        environment = harness.test_environment(self.services(), self.directory / 'fresh-home')
+        self.assertEqual(environment['PLAYWRIGHT_BROWSERS_PATH'], str(self.browser_cache))
+        self.assertNotEqual(environment['HOME'], str(self.browser_cache.parent))
+        for invalid in ('', '0', 'relative-cache', str(self.directory / 'missing-cache')):
+            with self.subTest(invalid=invalid), self.assertRaises(RuntimeError):
+                harness.test_environment(dict(self.services(), PLAYWRIGHT_BROWSERS_PATH=invalid), self.directory)
+
+    def test_runtime_dotenv_variants_are_rejected_without_reading_or_printing_contents(self):
+        for directory in (self.directory, self.directory / 'backend', self.directory / 'frontend'):
+            directory.mkdir(exist_ok=True)
+        synthetic = 'synthetic-do-not-read-or-print'
+        for location in ('', 'backend', 'frontend'):
+            for name in ('.env', '.env.local', '.env.test', '.env.development', '.env.development.local',
+                         '.env.production', '.env.production.local', '.env.staging'):
+                path = self.directory / location / name
+                path.write_text(synthetic)
+                output = io.StringIO()
+                with self.subTest(location=location, name=name), \
+                        patch.object(Path, 'read_text') as read, \
+                        patch.object(harness.subprocess, 'run') as run, \
+                        patch.object(harness.subprocess, 'Popen') as launch, \
+                        redirect_stdout(output), redirect_stderr(output):
+                    with self.assertRaisesRegex(RuntimeError, 'runtime dotenv files'):
+                        harness.reject_runtime_env_files(self.directory)
+                    read.assert_not_called()
+                    run.assert_not_called()
+                    launch.assert_not_called()
+                self.assertEqual(output.getvalue(), '')
+                path.unlink()
+        for location, name in (('', '.env.production.example'), ('backend', '.env.example'),
+                               ('frontend', '.env.example'), ('frontend', '.env.production.example')):
+            (self.directory / location / name).write_text(synthetic)
+        harness.reject_runtime_env_files(self.directory)
+
+    def test_main_dotenv_preflight_precedes_any_subprocess_or_storage_setup(self):
+        with patch.object(harness.sys, 'argv', ['sharing-full-stack-smoke.py', '--confirm-isolated-sharing-run']), \
+                patch.object(harness.os, 'name', 'posix'), \
+                patch.object(harness, 'reject_runtime_env_files', side_effect=RuntimeError('runtime dotenv files')), \
+                patch.object(harness.subprocess, 'run') as run, \
+                patch.object(harness.subprocess, 'Popen') as launch, \
+                patch.object(harness, 'SharingStorage') as storage:
+            with self.assertRaisesRegex(RuntimeError, 'runtime dotenv files'):
+                harness.main()
+        run.assert_not_called()
+        launch.assert_not_called()
+        storage.assert_not_called()
+
+    def test_remote_or_non_test_services_fail_before_any_subprocess(self):
+        for key, bad in [('DATABASE_URL', 'postgresql://postgres@remote.example:5432/latexy_test'),
+                         ('DATABASE_URL', 'postgresql://postgres@localhost:5432/latexy'),
+                         ('DATABASE_URL', 'postgresql://postgres@localhost:5432/latexy_test?service=live'),
+                         ('REDIS_URL', 'redis://remote.example:6379/0'),
+                         ('CELERY_RESULT_BACKEND', 'rediss://localhost:6379/0')]:
+            with self.subTest(key=key, bad=bad), patch.object(harness.subprocess, 'run') as run:
+                source = self.services()
+                source[key] = bad
+                with self.assertRaises(RuntimeError):
+                    harness.test_environment(source, Path('synthetic-home'))
+                run.assert_not_called()
+
+    def test_environment_discards_inherited_storage_and_provider_secrets(self):
+        source = dict(self.services(), OPENAI_API_KEY='synthetic-provider', AWS_SECRET_ACCESS_KEY='synthetic-key',
+                      MINIO_ENDPOINT='https://remote.example', MINIO_BUCKET='production',
+                      DOCKER_HOST='tcp://remote.example:2375', DOCKER_CONFIG='operator-config',
+                      BETTER_AUTH_SECRET='persistent-synthetic', PATH='runtime-path')
+        environment = harness.test_environment(source, Path('synthetic-home'))
+        self.assertEqual(environment['OPENAI_API_KEY'], '')
+        self.assertEqual(environment['PATH'], 'runtime-path')
+        self.assertEqual(environment['ENVIRONMENT'], 'test')
+        self.assertEqual(environment['DEPLOY_TARGET'], 'local')
+        for key in ('AWS_SECRET_ACCESS_KEY', 'MINIO_ENDPOINT', 'MINIO_BUCKET', 'DOCKER_HOST', 'BETTER_AUTH_SECRET'):
+            self.assertNotIn(key, environment)
+        self.assertNotEqual(environment['DOCKER_CONFIG'], source['DOCKER_CONFIG'])
+
+    def storage(self):
+        storage = harness.SharingStorage({})
+        state = {'Name': '/' + storage.name, 'Config': {'Labels': {'latexy.ci.run': storage.run_id}},
+                 'NetworkSettings': {'Networks': {storage.network: {}},
+                                     'Ports': {'9000/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19200'}]}}}
+        storage.docker = MagicMock(side_effect=lambda *args, **kwargs: json.dumps([state]) if args[0] == 'inspect' else '')
+        return storage, state
+
+    def test_only_owned_ephemeral_loopback_storage_is_selected(self):
+        storage, _ = self.storage()
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        with patch.object(harness, 'urlopen', return_value=response):
+            self.assertEqual(storage.start(), 'http://127.0.0.1:19200')
+        environment = storage.environment
+        self.assertRegex(environment['MINIO_BUCKET'], r'^latexy-sharing-[a-f0-9]{32}$')
+        self.assertEqual(environment['MINIO_ENDPOINT'], environment['SHARING_ACCEPTANCE_STORAGE_ENDPOINT'])
+        self.assertEqual(environment['MINIO_ENDPOINT'], environment['SHARING_ACCEPTANCE_PUBLIC_STORAGE_ENDPOINT'])
+        self.assertEqual(environment['SHARING_ACCEPTANCE_STORAGE_MODE'], 'host')
+        self.assertEqual(environment['SHARING_ACCEPTANCE_DISPOSABLE'], '1')
+        calls = storage.docker.call_args_list
+        self.assertIn('--internal', calls[1].args)
+        self.assertIn('127.0.0.1::9000', calls[2].args)
+        self.assertIn('/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700', calls[2].args)
+
+    def test_unowned_or_non_loopback_publication_fails_before_storage_probe(self):
+        for mutation in ('public', 'wrong-owner', 'wrong-network', 'extra-port'):
+            with self.subTest(mutation=mutation):
+                storage, state = self.storage()
+                if mutation == 'public':
+                    state['NetworkSettings']['Ports']['9000/tcp'][0]['HostIp'] = '0.0.0.0'
+                elif mutation == 'wrong-owner':
+                    state['Config']['Labels']['latexy.ci.run'] = 'other'
+                elif mutation == 'wrong-network':
+                    state['NetworkSettings']['Networks']['unowned-network'] = {}
+                else:
+                    state['NetworkSettings']['Ports']['9001/tcp'] = [{'HostIp': '127.0.0.1', 'HostPort': '19201'}]
+                with patch.object(harness, 'urlopen') as probe, self.assertRaises(RuntimeError):
+                    storage.start()
+                probe.assert_not_called()
+                self.assertNotIn('MINIO_ENDPOINT', storage.environment)
+
+    def test_cleanup_attempts_every_exact_owned_name_even_after_one_failure(self):
+        storage = harness.SharingStorage({})
+        storage.image_attempted = storage.network_attempted = storage.container_attempted = True
+        storage.docker = MagicMock(side_effect=[RuntimeError('synthetic cleanup failure'), '', ''])
+        with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
+            storage.cleanup()
+        self.assertEqual([call.args for call in storage.docker.call_args_list], [
+            ('rm', '--force', storage.name), ('network', 'rm', storage.network), ('image', 'rm', storage.image)])
+
+    def test_opt_in_is_required_before_any_docker_call(self):
+        with patch.object(harness.sys, 'argv', ['sharing-full-stack-smoke.py']), \
+                patch.object(harness.subprocess, 'run') as run:
+            with self.assertRaises(SystemExit):
+                harness.main()
+        run.assert_not_called()
+
+    def test_timeout_gives_only_the_owned_group_graceful_bash_cleanup(self):
+        process = MagicMock(pid=31415)
+        process.wait.side_effect = [subprocess.TimeoutExpired('synthetic-owned-bash', 1), 0]
+        with patch.object(harness.subprocess, 'Popen', return_value=process) as launch, \
+                patch.object(harness.os, 'killpg', side_effect=[None, ProcessLookupError()], create=True) as killpg, \
+                self.assertRaises(subprocess.TimeoutExpired):
+            harness.run_smoke({'PATH': 'synthetic'}, timeout=1)
+        self.assertTrue(launch.call_args.kwargs['start_new_session'])
+        self.assertEqual(launch.call_args.kwargs['env'], {'PATH': 'synthetic'})
+        self.assertEqual([call.args for call in killpg.call_args_list], [(31415, harness.signal.SIGTERM), (31415, 0)])
+        self.assertEqual(process.wait.call_args_list[-1].kwargs, {'timeout': 5})
+
+    def test_unresponsive_owned_descendants_are_killed_after_grace_period(self):
+        process = MagicMock(pid=31415)
+        with patch.object(harness.os, 'killpg', create=True) as killpg, \
+                patch.object(harness.signal, 'SIGKILL', 9, create=True), \
+                patch.object(harness.time, 'monotonic', side_effect=[0, 16]):
+            harness.stop_owned_process_group(process)
+        self.assertEqual([call.args for call in killpg.call_args_list], [(31415, harness.signal.SIGTERM), (31415, 0), (31415, 9)])
+        process.wait.assert_called_once_with(timeout=5)
+
+    def test_sigterm_raises_into_finally_and_ignores_repeated_cancellation_during_cleanup(self):
+        previous = object()
+        with patch.object(harness.signal, 'getsignal', return_value=previous), \
+                patch.object(harness.signal, 'signal') as install:
+            with self.assertRaises(harness.SharingCancelled):
+                with harness.cancellation_guard():
+                    handler = install.call_args.args[1]
+                    handler(harness.signal.SIGTERM, None)
+        self.assertEqual(install.call_args_list[1].args, (harness.signal.SIGTERM, harness.signal.SIG_IGN))
+        self.assertEqual(install.call_args_list[-1].args, (harness.signal.SIGTERM, previous))
+
+    def test_sigterm_during_normal_cleanup_is_deferred_until_that_cleanup_finishes(self):
+        completed = []
+        with patch.object(harness.signal, 'signal') as install, self.assertRaises(harness.SharingCancelled):
+            with harness.cancellation_guard() as cleanup:
+                handler = install.call_args.args[1]
+                with cleanup():
+                    handler(harness.signal.SIGTERM, None)
+                    completed.append('cleanup finished')
+        self.assertEqual(completed, ['cleanup finished'])
+
+    @unittest.skipUnless(os.name == 'posix' and Path('/proc').is_dir(), 'Requires native Linux process groups')
+    def test_real_sigterm_stops_owned_group_runs_both_cleanups_and_preserves_unrelated_process(self):
+        root = self.directory / 'synthetic-checkout'
+        (root / 'scripts/ci').mkdir(parents=True)
+        (root / 'backend').mkdir()
+        (root / 'frontend').mkdir()
+        group_file, child_file = self.directory / 'group', self.directory / 'child'
+        bash_exit, storage_exit = self.directory / 'bash-exit', self.directory / 'storage-exit'
+        script = root / 'scripts/ci/full-stack-smoke.sh'
+        script.write_text('trap ' + shlex.quote('printf done > ' + shlex.quote(str(bash_exit))) + ' EXIT\n'
+            'sleep 120 &\n'
+            'printf "%s" "$!" > ' + shlex.quote(str(child_file)) + '\n'
+            'printf "%s" "$$" > ' + shlex.quote(str(group_file)) + '\nwait\n')
+        program = '''import importlib.util, sys
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('synthetic_sharing',sys.argv[1])
+h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+h.ROOT=Path(sys.argv[2]);marker=Path(sys.argv[3])
+class FakeStorage:
+    def __init__(self,environment): pass
+    def start(self): pass
+    def cleanup(self): marker.write_text('done')
+h.SharingStorage=FakeStorage
+sys.argv=['sharing-full-stack-smoke.py','--confirm-isolated-sharing-run']
+raise SystemExit(h.cli())
+'''
+        environment = dict(self.services(), PATH=os.environ['PATH'])
+        wrapper = subprocess.Popen([sys.executable, '-c', program, str(Path(harness.__file__).resolve()),
+            str(root), str(storage_exit)], env=environment, start_new_session=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        unrelated = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(120)'], start_new_session=True)
+        group = None
+        try:
+            deadline = time.monotonic() + 10
+            while not group_file.exists() or not child_file.exists():
+                if wrapper.poll() is not None or time.monotonic() > deadline:
+                    self.fail('Synthetic wrapper did not reach its owned-process readiness marker')
+                time.sleep(0.02)
+            group, child = int(group_file.read_text()), int(child_file.read_text())
+            wrapper.send_signal(signal.SIGTERM)
+            output, error = wrapper.communicate(timeout=25)
+            self.assertEqual(wrapper.returncode, 128 + signal.SIGTERM, error)
+            self.assertEqual(output, '')
+            self.assertTrue(bash_exit.exists(), 'Bash EXIT trap must run')
+            self.assertTrue(storage_exit.exists(), 'Storage finally cleanup must run')
+            for pid in (group, child):
+                status = Path('/proc') / str(pid) / 'stat'
+                self.assertFalse(status.exists() and status.read_text().split()[2] != 'Z', 'Owned process remains live')
+            self.assertIsNone(unrelated.poll(), 'Cancellation must not stop an unrelated process group')
+        finally:
+            for owned_group in (group, wrapper.pid):
+                if owned_group is not None:
+                    try:
+                        os.killpg(owned_group, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            wrapper.communicate(timeout=5)
+            unrelated.terminate()
+            unrelated.wait(timeout=5)
+
+    def test_ci_selects_stronger_case_and_retains_existing_suites(self):
+        script = (harness.ROOT / 'scripts/ci/full-stack-smoke.sh').read_text()
+        workflow = (harness.ROOT / '.github/workflows/ci.yml').read_text()
+        for case in ('full-stack-smoke', 'landing-capability-fullstack', 'capability-fullstack',
+                     'core-capabilities-fullstack', 'e03-interview-simulation-fullstack',
+                     'b07-json-export-fullstack',
+                     'sharing-controls-fullstack', 'sharing-capability-fullstack'):
+            self.assertIn('e2e/' + case + '.spec.ts', script)
+        self.assertIn('"${sharing_specs[@]}"', script)
+        self.assertIn('python scripts/ci/sharing-full-stack-smoke.py --confirm-isolated-sharing-run', workflow)
+        self.assertIn('python scripts/ci/sharing-storage-fixture.test.py -v', workflow)
+        self.assertIn('python scripts/ci/sharing-full-stack-smoke.test.py -v', workflow)
+        full_stack = workflow.split('  full-stack-smoke:', 1)[1].split('  real-compile-preview:', 1)[0]
+        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers', full_stack)
+        self.assertIn('pnpm exec playwright install --with-deps chromium', full_stack)
+
+
+if __name__ == '__main__':
+    unittest.main()

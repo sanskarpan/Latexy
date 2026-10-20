@@ -673,6 +673,7 @@ jobs:
       BILLING_MODE: disabled
       ENVIRONMENT: staging
       NEXT_TELEMETRY_DISABLED: "1"
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -709,8 +710,13 @@ jobs:
       - name: Verify D14 actual HTTP admissions
         run: bash scripts/ci/d14-http-admission.sh
 
+      - name: Verify sharing isolation guards
+        run: |
+          python scripts/ci/sharing-storage-fixture.test.py -v
+          python scripts/ci/sharing-full-stack-smoke.test.py -v
+
       - name: Run full-stack smoke
-        run: bash scripts/ci/full-stack-smoke.sh
+        run: python scripts/ci/sharing-full-stack-smoke.py --confirm-isolated-sharing-run
       - name: Upload real full-stack browser evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
