@@ -12,12 +12,18 @@ export type ReviewStage = (typeof reviewStages)[number]
  * Radix supplies tab semantics, roving focus and keyboard activation. A single
  * active panel avoids the original stacked panels' hidden focusable content.
  */
-export function ReviewStageList({ selected }: { selected: ReviewStage }) {
+export function ReviewStageList({
+    selected,
+    disabled = false,
+}: {
+    selected: ReviewStage
+    disabled?: boolean
+}) {
     const reducedMotion = useReducedMotion()
     return (
         <Tabs.List className="rd-stages" aria-label="Explore the résumé workflow">
             {reviewStages.map(stage => (
-                <Tabs.Trigger className="rd-stage" key={stage} value={stage}>
+                <Tabs.Trigger className="rd-stage" key={stage} value={stage} disabled={disabled}>
                     <span className="rd-stage-dot" aria-hidden="true">
                         {selected === stage && (
                             <motion.span

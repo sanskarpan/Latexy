@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import {
     IconCheck,
@@ -8,7 +8,6 @@ import {
     IconArrowBackUp,
     IconPencil,
     IconDownload,
-    IconArrowCurveLeft,
 } from '@tabler/icons-react'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { MarketingCTA } from './MarketingCTA'
@@ -22,6 +21,10 @@ const layouts = ['Classic', 'Modern', 'Minimal'] as const
 
 export default function ReviewDesk() {
     const { can, loading, error } = useEntitlements()
+    // Server-rendered samples stay readable while their controls wait for this
+    // component's handlers. This is independent of remote feature availability.
+    const [interactive, setInteractive] = useState(false)
+    useEffect(() => setInteractive(true), [])
     const [stage, setStage] = useState<ReviewStage>('Review')
     const [bullet, setBullet] = useState(original)
     const [draft, setDraft] = useState(original)
@@ -35,56 +38,9 @@ export default function ReviewDesk() {
     const [accepted, setAccepted] = useState(false)
     const [message, setMessage] = useState('')
     const [target, setTarget] = useState('Product design')
-    const deskRef = useRef<HTMLDivElement>(null)
-    const paperRef = useRef<HTMLElement>(null)
-    const highlightRef = useRef<HTMLLIElement>(null)
-    const annotationRef = useRef<HTMLDivElement>(null)
-
-    // Keep the annotation tied to the selected sentence as text and fonts
-    // reflow. Only geometry changes; the document itself is never transformed.
-    useEffect(() => {
-        const desk = deskRef.current
-        const paper = paperRef.current
-        const highlight = highlightRef.current
-        const annotation = annotationRef.current
-        if (!desk || !paper || !highlight || !annotation) return
-        const align = () => {
-            const sentence = highlight.getBoundingClientRect()
-            const sheet = paper.getBoundingClientRect()
-            if (window.matchMedia('(max-width: 599px)').matches) {
-                const length = annotation.getBoundingClientRect().top + 24 - sentence.top - 16
-                desk.style.setProperty('--rd-connector-length', `${Math.max(24, length)}px`)
-                desk.style.removeProperty('--rd-scene-height')
-            } else {
-                const anchor = Math.max(70, sentence.top - sheet.top - 60)
-                desk.style.setProperty('--rd-note-anchor', `${anchor}px`)
-                desk.style.setProperty(
-                    '--rd-connector-width',
-                    `${Math.max(6, annotation.getBoundingClientRect().left - sentence.right - 1)}px`
-                )
-                desk.style.setProperty(
-                    '--rd-scene-height',
-                    `${Math.max(sheet.height, anchor + annotation.offsetHeight)}px`
-                )
-            }
-        }
-        align()
-        const observer = new ResizeObserver(align)
-        observer.observe(paper)
-        observer.observe(annotation)
-        let disposed = false
-        void document.fonts.ready.then(() => {
-            if (!disposed) align()
-        })
-        return () => {
-            disposed = true
-            observer.disconnect()
-        }
-    }, [stage, bullet, role, layout, accepted])
 
     return (
         <Tabs.Root
-            ref={deskRef}
             className="rd-desk"
             value={stage}
             onValueChange={value => {
@@ -94,15 +50,13 @@ export default function ReviewDesk() {
             data-stage={stage.toLowerCase()}
             data-testid="review-desk"
         >
-            <ReviewStageList selected={stage} />
+            <ReviewStageList selected={stage} disabled={!interactive} />
             <div className="rd-desk-scene">
                 <aside className="ts-paper-caption" aria-label="Sample résumé preview">
                     <strong>Résumé preview</strong>
-                    <span>Professional design,<br />typeset in LaTeX.</span>
-                    <IconArrowCurveLeft size={62} stroke={0.8} aria-hidden="true" />
+                    <span>Professional design, typeset in LaTeX.</span>
                 </aside>
                 <article
-                    ref={paperRef}
                     className="rd-paper"
                     data-layout={layout.toLowerCase()}
                     aria-label={`${layout} sample résumé`}
@@ -126,11 +80,7 @@ export default function ReviewDesk() {
                                 Led the redesign of the onboarding experience, from research to
                                 delivery.
                             </li>
-                            <li
-                                ref={highlightRef}
-                                className="rd-highlight"
-                                data-accepted={accepted}
-                            >
+                            <li className="rd-highlight" data-accepted={accepted}>
                                 {bullet.trim() || 'Your experience goes here.'}
                             </li>
                             <li className="rd-paper-secondary">
@@ -154,7 +104,7 @@ export default function ReviewDesk() {
                         </ul>
                     </section>
                 </article>
-                <div ref={annotationRef} className="rd-annotation">
+                <div className="rd-annotation">
                     <Tabs.Content value="Write" className="rd-note">
                         <p className="rd-note-kicker">
                             <IconPencil size={14} aria-hidden="true" /> Write in your own words
@@ -163,6 +113,7 @@ export default function ReviewDesk() {
                         <label htmlFor="hero-sample-role">Your role</label>
                         <input
                             id="hero-sample-role"
+                            disabled={!interactive}
                             value={roleDraft}
                             onChange={event => {
                                 setRoleDraft(event.target.value)
@@ -175,6 +126,7 @@ export default function ReviewDesk() {
                         <label htmlFor="hero-sample-bullet">One contribution</label>
                         <textarea
                             id="hero-sample-bullet"
+                            disabled={!interactive}
                             value={draft}
                             onChange={event => {
                                 setDraft(event.target.value)
@@ -189,9 +141,11 @@ export default function ReviewDesk() {
                         <button
                             type="button"
                             className="rd-small-primary"
+                            disabled={!interactive}
                             onClick={() => {
                                 const next = draft.trim()
                                 if (!next || !roleDraft.trim()) {
+                                    setMessage('')
                                     setWriteError(
                                         'Enter a role and a contribution before updating the sample.'
                                     )
@@ -234,7 +188,7 @@ export default function ReviewDesk() {
                             <button
                                 type="button"
                                 className="rd-small-primary"
-                                disabled={!accepted && !canUseExample}
+                                disabled={!interactive || (!accepted && !canUseExample)}
                                 onClick={() => {
                                     if (accepted) {
                                         setBullet(beforeSuggestion)
@@ -263,6 +217,7 @@ export default function ReviewDesk() {
                             <button
                                 type="button"
                                 className="rd-small-secondary"
+                                disabled={!interactive}
                                 onClick={() => {
                                     if (accepted) {
                                         setBullet(beforeSuggestion)
@@ -284,6 +239,7 @@ export default function ReviewDesk() {
                         <label htmlFor="hero-target-role">Sample role</label>
                         <select
                             id="hero-target-role"
+                            disabled={!interactive}
                             value={target}
                             onChange={event => setTarget(event.target.value)}
                         >
@@ -312,6 +268,7 @@ export default function ReviewDesk() {
                                 <label key={value}>
                                     <input
                                         type="radio"
+                                        disabled={!interactive}
                                         name="hero-layout"
                                         value={value}
                                         checked={layout === value}
@@ -326,10 +283,10 @@ export default function ReviewDesk() {
                             {error
                                 ? 'PDF export availability could not be verified.'
                                 : loading
-                                    ? 'Checking PDF export availability.'
-                                    : can('c05')
-                                        ? 'PDF export is available when studio access is enabled.'
-                                        : 'PDF export is currently unavailable.'}
+                                  ? 'Checking PDF export availability.'
+                                  : can('c05')
+                                    ? 'PDF export is available when studio access is enabled.'
+                                    : 'PDF export is currently unavailable.'}
                         </p>
                         <MarketingCTA label="Open the studio" />
                     </Tabs.Content>
