@@ -7,7 +7,7 @@ import { Pool } from 'pg'
 test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Requires explicitly started isolated local services')
 test.setTimeout(240_000)
 
-const CONTROLLED_KEYS = ['exports', 'h01', 'resume_builder', 'b07', 'b01', 'c01'] as const
+const CONTROLLED_KEYS = ['exports', 'h01', 'resume_builder', 'b08', 'b07', 'b01', 'c01'] as const
 const CONTROLLED_FAMILIES = ['pro', 'pro_annual'] as const
 
 function isolatedDatabase() {
@@ -114,6 +114,7 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
   expect(roles.rows).toHaveLength(CONTROLLED_KEYS.length)
 
   const createdUsers: string[] = []
+  let builderTemplateId: string | undefined
   let admin: Awaited<ReturnType<typeof signup>> | undefined
   let b07BaselineReady = false
 
@@ -127,6 +128,8 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
         "UPDATE users SET role = 'user', subscription_plan = 'pro_annual', subscription_status = 'active', email_verified = TRUE WHERE id = $1",
         [account.id],
       )
+      const identity = await database.query('SELECT role FROM users WHERE id = $1', [account.id])
+      expect(identity.rows[0]?.role).toBe('user')
     }
 
     // Give the synthetic pro_annual users a known allow baseline for B07/H01
@@ -148,6 +151,37 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     expect(created.status(), await created.text()).toBe(201)
     const resume = await created.json() as { id: string; latex_content: string }
 
+    builderTemplateId = randomUUID()
+    await database.query(
+      `INSERT INTO resume_templates
+        (id, name, description, category, tags, latex_content, is_active, sort_order, document_type)
+       VALUES ($1, $2, $3, 'minimal', ARRAY['minimal']::varchar[], $4, TRUE, 0, 'resume')`,
+      [builderTemplateId, `Synthetic B07 ${builderTemplateId}`, 'Synthetic B07 builder fixture',
+        '\\documentclass{article}\\begin{document}Template.\\end{document}'],
+    )
+    const builderCreated = await ownerContext.request.post(`${backend}/resumes/builder/v1`, {
+      headers: owner.headers,
+      data: {
+        title: 'Synthetic B07 structured builder owner',
+        template_id: builderTemplateId,
+        structured_content: {
+          basics: { name: 'Synthetic B07 Builder Candidate', email: 'builder-b07@example.test' },
+          experience: [{
+            id: 'b07-work-1', title: 'Engineer', company: 'Synthetic Test Company',
+            summary: 'Structured export fixture', bullets: ['Shipped a verified synthetic workflow'],
+          }],
+        },
+      },
+    })
+    expect(builderCreated.status(), await builderCreated.text()).toBe(201)
+    const builderPayload = await builderCreated.json() as {
+      resume: { id: string; content_source: string; builder_status: string; structured_content: { basics: { name: string } } }
+    }
+    const builderResume = builderPayload.resume
+    expect(builderResume.content_source).toBe('builder')
+    expect(builderResume.builder_status).toBe('active')
+    expect(builderResume.structured_content.basics.name).toBe('Synthetic B07 Builder Candidate')
+
     const enabled = await ownerContext.request.get(`${backend}/config/entitlements?include_quotas=false`, {
       headers: owner.headers,
     })
@@ -160,19 +194,19 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     })
     expect(crossOwner.status(), await crossOwner.text()).toBe(403)
     expect((await crossOwner.json()).detail).toBe('Access denied')
+    const crossOwnerBuilder = await otherContext.request.get(`${backend}/export/builder/v1/${builderResume.id}/json`, {
+      headers: other.headers,
+    })
+    expect(crossOwnerBuilder.status(), await crossOwnerBuilder.text()).toBe(403)
+    expect((await crossOwnerBuilder.json()).detail).toBe('Access denied')
 
     const adminPage = await adminContext.newPage()
     await adminPage.goto('/admin')
     await expect(adminPage.getByRole('heading', { name: 'Capability inventory' })).toBeVisible({ timeout: 45_000 })
     const ownerPage = await ownerContext.newPage()
-    await ownerPage.goto(`/workspace/${resume.id}/edit`)
+    await ownerPage.goto(`/workspace/builder/${builderResume.id}`)
     const exportButton = ownerPage.getByRole('button', { name: /^Export/ })
     await expect(exportButton).toBeVisible({ timeout: 45_000 })
-    // The editor opens in PDF preview, whose export menu intentionally shows
-    // only visual formats. Use Source mode to test the full interchange menu.
-    const sourceMode = ownerPage.getByRole('button', { name: 'Source', exact: true })
-    await sourceMode.click()
-    await expect(sourceMode).toHaveAttribute('aria-pressed', 'true')
     await exportButton.click()
     await expect(exportJsonOption(ownerPage)).toBeVisible()
 
@@ -196,7 +230,7 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
         headers: owner.headers, data: { latex_content: source },
       }),
       await ownerContext.request.get(`${backend}/export/${resume.id}/json`, { headers: owner.headers }),
-      await ownerContext.request.get(`${backend}/export/builder/v1/${resume.id}/json`, { headers: owner.headers }),
+      await ownerContext.request.get(`${backend}/export/builder/v1/${builderResume.id}/json`, { headers: owner.headers }),
     ]
     for (const response of denied) {
       const body = await response.text()
@@ -208,6 +242,11 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     const ownerSource = await ownerContext.request.get(`${backend}/resumes/${resume.id}`, { headers: owner.headers })
     expect(ownerSource.status(), await ownerSource.text()).toBe(200)
     expect((await ownerSource.json()).latex_content).toBe(source)
+    const ownerBuilderSource = await ownerContext.request.get(`${backend}/resumes/${builderResume.id}/builder/v1`, {
+      headers: owner.headers,
+    })
+    expect(ownerBuilderSource.status(), await ownerBuilderSource.text()).toBe(200)
+    expect((await ownerBuilderSource.json()).resume.structured_content.basics.name).toBe('Synthetic B07 Builder Candidate')
 
     await toggleB07InAdmin(adminPage, true)
     const recoveredConfigWait = ownerPage.waitForResponse((response) =>
@@ -228,15 +267,22 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     expect(download.suggestedFilename()).toBe('resume.json')
     const path = await download.path()
     expect(path).toBeTruthy()
-    const downloaded = JSON.parse(readFileSync(path!, 'utf8')) as Record<string, unknown>
-    expect(downloaded).toHaveProperty('basics')
+    const downloaded = JSON.parse(readFileSync(path!, 'utf8')) as {
+      basics: { name?: string; email?: string }
+      work?: Array<{ name?: string }>
+    }
+    expect(downloaded.basics).toMatchObject({
+      name: 'Synthetic B07 Builder Candidate',
+      email: 'builder-b07@example.test',
+    })
+    expect(downloaded.work?.[0]?.name).toBe('Synthetic Test Company')
 
     const recovered = [
       await ownerContext.request.post(`${backend}/export/content/json`, {
         headers: owner.headers, data: { latex_content: source },
       }),
       await ownerContext.request.get(`${backend}/export/${resume.id}/json`, { headers: owner.headers }),
-      await ownerContext.request.get(`${backend}/export/builder/v1/${resume.id}/json`, { headers: owner.headers }),
+      await ownerContext.request.get(`${backend}/export/builder/v1/${builderResume.id}/json`, { headers: owner.headers }),
     ]
     for (const response of recovered) {
       expect(response.status(), await response.text()).toBe(200)
@@ -248,6 +294,11 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
     })
     expect(stillCrossOwner.status(), await stillCrossOwner.text()).toBe(403)
     expect((await stillCrossOwner.json()).detail).toBe('Access denied')
+    const stillCrossOwnerBuilder = await otherContext.request.get(`${backend}/export/builder/v1/${builderResume.id}/json`, {
+      headers: other.headers,
+    })
+    expect(stillCrossOwnerBuilder.status(), await stillCrossOwnerBuilder.text()).toBe(403)
+    expect((await stillCrossOwnerBuilder.json()).detail).toBe('Access denied')
 
     await ownerPage.screenshot({ path: testInfo.outputPath('b07-json-export-reenabled.png'), fullPage: true })
   } finally {
@@ -274,6 +325,9 @@ test('real B07 toggle denies raw, saved and builder JSON routes, preserves owner
           await database.query('DELETE FROM session WHERE "userId" = ANY($1::text[])', [createdUsers])
           await database.query('DELETE FROM account WHERE "userId" = ANY($1::text[])', [createdUsers])
           await database.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [createdUsers])
+        }
+        if (builderTemplateId) {
+          await database.query('DELETE FROM resume_templates WHERE id = $1', [builderTemplateId])
         }
       } finally {
         await adminContext.close(); await ownerContext.close(); await otherContext.close(); await database.end()

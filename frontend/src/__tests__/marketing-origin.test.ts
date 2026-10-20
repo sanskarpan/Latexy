@@ -16,6 +16,9 @@ import robots from '@/app/robots'
 import { GET as llms } from '@/app/llms.txt/route'
 import { siteUrl } from '@/lib/site-url'
 
+// Next compiles localFont at build time; this test exercises metadata and HTML.
+vi.mock('@/components/marketing/review-fonts', () => ({ reviewFonts: 'review-fonts' }))
+
 afterEach(() => vi.unstubAllEnvs())
 
 describe('marketing origin consistency', () => {

@@ -34,12 +34,17 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     for user_id in (owner_id, other_id):
         await db_session.execute(
             text(
-                "UPDATE users SET subscription_plan = 'pro_annual', "
+                "UPDATE users SET role = 'user', subscription_plan = 'pro_annual', "
                 "subscription_status = 'active' WHERE id = :id"
             ),
             {"id": user_id},
         )
     await db_session.commit()
+    for user_id in (owner_id, other_id):
+        role = await db_session.scalar(
+            text("SELECT role FROM users WHERE id = :id"), {"id": user_id}
+        )
+        assert role == "user"
 
     source = r"\documentclass{article}\begin{document}Synthetic B07 owner.\end{document}"
     created = await client.post(
@@ -74,7 +79,11 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
         },
     )
     assert builder_created.status_code == 201, builder_created.text
-    builder_resume_id = builder_created.json()["resume"]["id"]
+    builder_resume = builder_created.json()["resume"]
+    builder_resume_id = builder_resume["id"]
+    assert builder_resume["content_source"] == "builder"
+    assert builder_resume["builder_status"] == "active"
+    assert builder_resume["structured_content"]["basics"]["name"] == "Synthetic B07 Candidate"
 
     enabled = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
     assert enabled.status_code == 200, enabled.text
@@ -87,6 +96,11 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     )
     assert cross_owner.status_code == 403, cross_owner.text
     assert cross_owner.json()["detail"] == "Access denied"
+    cross_owner_builder = await client.get(
+        f"/export/builder/v1/{builder_resume_id}/json", headers=auth_headers2,
+    )
+    assert cross_owner_builder.status_code == 403, cross_owner_builder.text
+    assert cross_owner_builder.json()["detail"] == "Access denied"
 
     # B07 remains denied when either the ordinary-user role cell or the
     # concrete annual plan cell is switched off, even with global B07 on.
@@ -98,6 +112,7 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     assert "b07" in role_denied.text
     await entitlement_service.set_role_cell("user", "b07", True, db_session)
 
+    await entitlement_service.set_matrix_cell("pro", "b07", True, db_session)
     await entitlement_service.set_matrix_cell("pro_annual", "b07", False, db_session)
     plan_denied = await client.get(
         f"/export/{saved_resume_id}/json", headers=auth_headers,
@@ -114,6 +129,11 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     )
     assert parent_denied.status_code == 403, parent_denied.text
     assert "h01" in parent_denied.text
+    parent_denied_builder = await client.get(
+        f"/export/builder/v1/{builder_resume_id}/json", headers=auth_headers,
+    )
+    assert parent_denied_builder.status_code == 403, parent_denied_builder.text
+    assert "h01" in parent_denied_builder.text
     await entitlement_service.set_kill_switch("h01", True, db_session)
 
     await entitlement_service.set_kill_switch("b07", False, db_session)
@@ -139,6 +159,15 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     source_recovery = await client.get(f"/resumes/{saved_resume_id}", headers=auth_headers)
     assert source_recovery.status_code == 200, source_recovery.text
     assert source_recovery.json()["latex_content"] == source
+    builder_source_recovery = await client.get(
+        f"/resumes/{builder_resume_id}/builder/v1", headers=auth_headers,
+    )
+    assert builder_source_recovery.status_code == 200, builder_source_recovery.text
+    assert builder_source_recovery.json()["resume"]["content_source"] == "builder"
+    assert (
+        builder_source_recovery.json()["resume"]["structured_content"]["basics"]["name"]
+        == "Synthetic B07 Candidate"
+    )
 
     await entitlement_service.set_kill_switch("b07", True, db_session)
     recovered = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
@@ -167,4 +196,9 @@ async def test_b07_toggle_denies_all_json_export_routes_and_recovers_with_owner_
     )
     assert still_cross_owner.status_code == 403, still_cross_owner.text
     assert still_cross_owner.json()["detail"] == "Access denied"
+    still_cross_owner_builder = await client.get(
+        f"/export/builder/v1/{builder_resume_id}/json", headers=auth_headers2,
+    )
+    assert still_cross_owner_builder.status_code == 403, still_cross_owner_builder.text
+    assert still_cross_owner_builder.json()["detail"] == "Access denied"
 

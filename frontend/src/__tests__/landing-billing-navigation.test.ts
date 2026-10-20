@@ -25,6 +25,7 @@ async function renderNavigation(billing: boolean | undefined) {
   vi.doMock('@/components/theme/ContrastToggle', () => ({ default: 'contrast-toggle' }))
   vi.doMock('@/components/CapabilityGate', () => ({ default: 'capability-gate' }))
   vi.doMock('@/components/marketing/MarketingSections', () => ({ MarketingCTA: 'marketing-cta' }))
+  vi.doMock('@/components/marketing/review-fonts', () => ({ reviewFonts: 'review-fonts' }))
 
   const { default: LandingHeader } = await import('@/components/marketing/LandingHeader')
   const { default: LandingFooter } = await import('@/components/marketing/LandingFooter')
@@ -50,6 +51,7 @@ afterEach(() => {
     '@/contexts/FeatureFlagsContext', '@/components/brand/BrandLogo',
     '@/components/theme/ModeToggle', '@/components/theme/ContrastToggle',
     '@/components/CapabilityGate', '@/components/marketing/MarketingSections',
+    '@/components/marketing/review-fonts',
   ]) vi.doUnmock(name)
   vi.resetModules()
 })

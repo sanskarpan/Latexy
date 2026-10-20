@@ -21,10 +21,10 @@ import ContrastToggle from '@/components/theme/ContrastToggle'
 import LocaleSwitcher from '@/components/LocaleSwitcher'
 import { useI18n } from '@/components/I18nProvider'
 import { BrandLogo } from '@/components/brand/BrandLogo'
-import LandingHeader from '@/components/marketing/LandingHeader'
 import type { UiMessageKey } from '@/lib/i18n'
 
 const LandingSoundToggle = dynamic(() => import('@/components/marketing/LandingSoundToggle'), { ssr: false })
+const LandingHeader = dynamic(() => import('@/components/marketing/LandingHeader'))
 
 const guestNav = [
   { label: 'nav.platform', href: '/platform' },
@@ -394,6 +394,7 @@ export default function GlobalHeader() {
 
   if (pathname === '/') {
     return <LandingHeader
+      ready={hydrated}
       signedIn={isAuthenticated}
       menuOpen={isMobileMenuOpen}
       menuTriggerRef={mobileTriggerRef}
