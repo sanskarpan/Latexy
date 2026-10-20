@@ -1202,3 +1202,12 @@
         color: HighlightText;
     }
 }
+
+@media (max-width: 699px) {
+    :root:has(.ts-landing) .ts-closing-secondary {
+        display: flex;
+        width: max-content;
+        max-width: 100%;
+        margin-top: 12px;
+    }
+}

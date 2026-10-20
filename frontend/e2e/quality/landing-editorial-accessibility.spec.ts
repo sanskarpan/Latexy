@@ -46,8 +46,18 @@ for (const mode of ['dark', 'light'])
             await page.evaluate(() => document.fonts.ready)
             if (screenshots) {
                 await mkdir(screenshots, { recursive: true })
-                for (const width of [390, 1440]) {
+                for (const width of [320, 375, 390, 430, 768, 1100, 1101, 1180, 1440]) {
                     await page.setViewportSize({ width, height: 960 })
+                    if (width <= 430) {
+                        const primary = await page
+                            .locator('.lp-footer-message [data-marketing-action]')
+                            .boundingBox()
+                        const secondary = await page.locator('.ts-closing-secondary').boundingBox()
+                        expect(
+                            secondary!.y - (primary!.y + primary!.height)
+                        ).toBeGreaterThanOrEqual(11)
+                    }
+
                     await page.screenshot({
                         path: path.join(screenshots, `${mode}-${contrast}-final-${width}.png`),
                         fullPage: true,
@@ -183,12 +193,10 @@ for (const mode of ['dark', 'light'])
             expect(focus.selected).toContain('underline')
             expect(focus.border).toBeGreaterThanOrEqual(3)
             if (screenshots) {
-                await page
-                    .locator('.rd-hero')
-                    .screenshot({
-                        path: path.join(screenshots, `${mode}-${contrast}-390-forced-keyboard.png`),
-                        animations: 'disabled',
-                    })
+                await page.locator('.rd-hero').screenshot({
+                    path: path.join(screenshots, `${mode}-${contrast}-390-forced-keyboard.png`),
+                    animations: 'disabled',
+                })
             }
             const selection = await page
                 .locator('.rd-paper li')
