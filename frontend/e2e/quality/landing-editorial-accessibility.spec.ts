@@ -160,7 +160,14 @@ for (const mode of ['dark', 'light'])
                 .getByTestId('review-desk')
                 .getByRole('tab', { name: 'Review', exact: true })
             await expect(tab).toBeEnabled()
-            await tab.focus()
+            for (
+                let step = 0;
+                step < 20 &&
+                !(await tab.evaluate(element => element === window.document.activeElement));
+                step++
+            ) {
+                await page.keyboard.press('Tab')
+            }
             await expect(tab).toBeFocused()
             const focus = await tab.evaluate(element => {
                 const style = getComputedStyle(element)
@@ -175,6 +182,14 @@ for (const mode of ['dark', 'light'])
             expect(focus.width).toBeGreaterThanOrEqual(2)
             expect(focus.selected).toContain('underline')
             expect(focus.border).toBeGreaterThanOrEqual(3)
+            if (screenshots) {
+                await page
+                    .locator('.rd-hero')
+                    .screenshot({
+                        path: path.join(screenshots, `${mode}-${contrast}-390-forced-keyboard.png`),
+                        animations: 'disabled',
+                    })
+            }
             const selection = await page
                 .locator('.rd-paper li')
                 .first()
