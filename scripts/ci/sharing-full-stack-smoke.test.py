@@ -147,6 +147,8 @@ class SharingCITests(unittest.TestCase):
         calls = storage.docker.call_args_list
         self.assertIn('--internal', calls[1].args)
         self.assertNotIn('--publish', calls[2].args)
+        self.assertIn('MINIO_API_CORS_ALLOW_ORIGIN=http://localhost:5180', calls[2].args)
+        self.assertEqual(environment['SHARING_ACCEPTANCE_CORS_ORIGIN'], 'http://localhost:5180')
         self.assertEqual(relay.call_args.args[:2], ('172.18.0.2', 9000))
         self.assertIn('/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700', calls[2].args)
 

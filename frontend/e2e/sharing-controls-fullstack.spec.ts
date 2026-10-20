@@ -2,6 +2,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
+import { postSignupWithRateLimitRetry } from './helpers/signup-retry'
 
 test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Requires explicitly started isolated local services')
 test.setTimeout(240_000)
@@ -20,7 +21,7 @@ function isolatedDatabase() {
 
 async function signup(context: BrowserContext, frontend: string) {
   const email = 'test_capability_' + randomUUID() + '@example.test'
-  const response = await context.request.post(frontend + '/api/auth/sign-up/email', {
+  const response = await postSignupWithRateLimitRetry(context.request, frontend + '/api/auth/sign-up/email', {
     headers: { Origin: frontend },
     data: { name: 'Synthetic capability acceptance', email, password: 'Synthetic-' + randomUUID() + '!' },
   })

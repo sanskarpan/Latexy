@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { Pool } from 'pg'
+import { postSignupWithRateLimitRetry } from './helpers/signup-retry'
 
 test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Requires explicitly started isolated local services')
 test.setTimeout(420_000)
@@ -41,7 +42,7 @@ test('public sharing survives policy recovery, isolates accounts and permanently
   const viewer = await browser.newContext()
   contexts.push(admin, owner, stranger, viewer)
   async function signup(context: BrowserContext, label: string) {
-    const response = await context.request.post(`${frontend}/api/auth/sign-up/email`, {
+    const response = await postSignupWithRateLimitRetry(context.request, `${frontend}/api/auth/sign-up/email`, {
       timeout: 120_000,
       headers: { Origin: frontend },
       data: { name: `Synthetic sharing ${label}`, email: `test_share_${randomUUID()}@example.test`, password: `Synthetic-${randomUUID()}!` },
@@ -86,6 +87,7 @@ test('public sharing survives policy recovery, isolates accounts and permanently
       })
     } else {
       execFileSync('docker', ['exec', '-e', 'SHARING_ACCEPTANCE_DISPOSABLE=1',
+        '-e', `SHARING_ACCEPTANCE_CORS_ORIGIN=${frontend}`,
         process.env.SHARING_ACCEPTANCE_API_CONTAINER ?? 'latexy-share1920-api', 'python', '-c', seedScript, fixture],
       { encoding: 'utf8', timeout: 60_000 })
     }

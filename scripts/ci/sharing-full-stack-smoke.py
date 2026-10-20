@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
+SHARING_FRONTEND_ORIGIN = "http://localhost:5180"
 RUNTIME_KEYS = {"PATH", "LANG", "LC_ALL", "TERM", "PNPM_HOME", "COREPACK_HOME",
                 "PLAYWRIGHT_BROWSERS_PATH", "VIRTUAL_ENV", "UV_CACHE_DIR"}
 
@@ -198,6 +199,7 @@ class SharingStorage:
                     "--tmpfs", "/tmp:rw,nosuid,size=64m,uid=65532,gid=65532,mode=0700",
                     "--tmpfs", "/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700",
                     "--env", "MINIO_ROOT_USER=" + access, "--env", "MINIO_ROOT_PASSWORD=" + secret,
+                    "--env", "MINIO_API_CORS_ALLOW_ORIGIN=" + SHARING_FRONTEND_ORIGIN,
                     self.image, "server", "/data", "--console-address", ":9001")
         container = json.loads(self.docker("inspect", "--format",
             _relay_module.CONTAINER_STATE_FORMAT, self.name, timeout=10))
@@ -226,6 +228,7 @@ class SharingStorage:
         self.environment.update(MINIO_ENDPOINT=endpoint, MINIO_BUCKET=self.name,
             MINIO_ACCESS_KEY=access, MINIO_SECRET_KEY=secret,
             SHARING_ACCEPTANCE_DISPOSABLE="1", SHARING_ACCEPTANCE_STORAGE_MODE="host",
+            SHARING_ACCEPTANCE_CORS_ORIGIN=SHARING_FRONTEND_ORIGIN,
             SHARING_ACCEPTANCE_PYTHON=str(backend_python) if backend_python.is_file() else sys.executable,
             SHARING_ACCEPTANCE_STORAGE_ENDPOINT=endpoint,
             SHARING_ACCEPTANCE_PUBLIC_STORAGE_ENDPOINT=endpoint, SHARING_ACCEPTANCE_STORAGE_BUCKET=self.name)
