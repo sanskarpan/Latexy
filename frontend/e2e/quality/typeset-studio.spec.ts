@@ -162,6 +162,14 @@ test('hero field errors and disabled hover remain readable in both themes', asyn
                 expect(fields[index].right).toBeLessThanOrEqual(width)
                 if (index) expect(fields[index].top).toBeGreaterThanOrEqual(fields[index - 1].bottom)
             }
+            const errorGaps = await desk.locator('.rd-field-error').evaluateAll(elements =>
+                elements.map(element => {
+                    const next = element.nextElementSibling
+                    if (!next) return -1
+                    return next.getBoundingClientRect().top - element.getBoundingClientRect().bottom
+                })
+            )
+            for (const gap of errorGaps) expect(gap).toBeGreaterThanOrEqual(12)
             await desk.screenshot({ path: path.join(directory, `${width}-${theme}-${contrast}-errors.png`), animations: 'disabled' })
             await desk.getByLabel('Your role', { exact: true }).fill('Designer')
             await desk.getByLabel('One contribution', { exact: true }).fill('Led accessible design research.')

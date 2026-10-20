@@ -317,7 +317,7 @@
     background: var(--ts-error-surface);
     padding: 10px 12px;
     border-left: 2px solid currentColor;
-    margin-top: 12px;
+    margin-block: 12px;
 }
 .ts-landing .rd-small-primary,
 .ts-landing .rd-small-secondary {
