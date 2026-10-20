@@ -187,14 +187,25 @@ class SharingStorage:
                     self.image, "server", "/data", "--console-address", ":9001")
         state = json.loads(self.docker("inspect", self.name))[0]
         ports = state["NetworkSettings"]["Ports"]
-        bindings = ports.get("9000/tcp", [])
-        if (state["Name"] != "/" + self.name or state["Config"]["Labels"].get("latexy.ci.run") != self.run_id
-                or set(state["NetworkSettings"]["Networks"]) != {self.network}
-                or len(bindings) != 1 or bindings[0]["HostIp"] != "127.0.0.1"
-                or not re.fullmatch(r"[0-9]{1,5}", bindings[0]["HostPort"])
-                or not 1024 <= int(bindings[0]["HostPort"]) <= 65535
-                or any(value for key, value in ports.items() if key != "9000/tcp")):
-            raise RuntimeError("Storage is not the exact owned loopback-only publication")
+        bindings = ports.get("9000/tcp") or []
+        # Report fixed check names only, never raw inspect state (which includes
+        # the generated storage credentials). Keep every isolation gate strict.
+        binding = bindings[0] if len(bindings) == 1 else {}
+        host_port = binding.get("HostPort", "")
+        checks = {
+            "owned_name": state["Name"] == "/" + self.name,
+            "owned_label": state["Config"]["Labels"].get("latexy.ci.run") == self.run_id,
+            "only_owned_network": set(state["NetworkSettings"]["Networks"]) == {self.network},
+            "exactly_one_binding": len(bindings) == 1,
+            "loopback_binding": binding.get("HostIp") == "127.0.0.1",
+            "valid_port": bool(re.fullmatch(r"[0-9]{1,5}", host_port)) and 1024 <= int(host_port) <= 65535,
+            "no_extra_published_ports": not any(value for key, value in ports.items() if key != "9000/tcp"),
+        }
+        if not all(checks.values()):
+            failed = ",".join(key for key, passed in checks.items() if not passed)
+            running = state.get("State", {}).get("Running") is True
+            raise RuntimeError("Storage is not the exact owned loopback-only publication; failed checks: "
+                               + failed + "; running=" + str(running))
         endpoint = "http://127.0.0.1:" + bindings[0]["HostPort"]
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:

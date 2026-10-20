@@ -150,6 +150,20 @@ class SharingCITests(unittest.TestCase):
                 probe.assert_not_called()
                 self.assertNotIn('MINIO_ENDPOINT', storage.environment)
 
+    def test_storage_failure_diagnostics_are_fixed_labels_not_inspect_contents(self):
+        storage, state = self.storage()
+        state['Config']['Env'] = ['MINIO_ROOT_PASSWORD=synthetic-do-not-log']
+        state['NetworkSettings']['Ports']['9000/tcp'] = None
+        state['State'] = {'Running': False, 'Error': 'synthetic-do-not-log'}
+        with patch.object(harness, 'urlopen') as probe, self.assertRaises(RuntimeError) as failure:
+            storage.start()
+        self.assertEqual(str(failure.exception),
+                         'Storage is not the exact owned loopback-only publication; failed checks: '
+                         'exactly_one_binding,loopback_binding,valid_port; running=False')
+        self.assertNotIn('synthetic-do-not-log', str(failure.exception))
+        probe.assert_not_called()
+        self.assertNotIn('MINIO_ENDPOINT', storage.environment)
+
     def test_cleanup_attempts_every_exact_owned_name_even_after_one_failure(self):
         storage = harness.SharingStorage({})
         storage.image_attempted = storage.network_attempted = storage.container_attempted = True
