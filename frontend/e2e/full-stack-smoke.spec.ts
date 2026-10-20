@@ -24,7 +24,7 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   expect(preflight.headers()['access-control-allow-credentials']).toBe('true')
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  const studioLink = page.getByRole('link', { name: 'Try the studio', exact: true }).first()
+  const studioLink = page.locator('.lp-hero-actions').getByRole('link', { name: 'Start your résumé', exact: true })
   await expect(studioLink).toBeVisible()
   await expect(studioLink).toHaveAttribute('href', '/try?mode=visual')
 

@@ -113,16 +113,20 @@ def test_invoking_tuple_reaches_both_api_and_compile_worker_images(monkeypatch, 
     monkeypatch.setenv("MODAL_BILLING_SECRET_NAME", "synthetic-billing-secret")
     monkeypatch.setenv("MODAL_ENVIRONMENT", "dev")
     monkeypatch.setenv("MODAL_DEPLOYMENT_TRAFFIC_HOLD", traffic_hold)
+    # Pin the unattested case: with no verified DEPLOY_SHA the serving-identity
+    # mapping must contribute nothing rather than baking a stale or empty value.
+    monkeypatch.delenv("DEPLOY_SHA", raising=False)
     tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
     names = {
-        "_billing_secret_name", "_billing_secret_binding_env", "_renderer_capability_env", "api_image", "latex_image",
+        "_billing_secret_name", "_billing_secret_binding_env", "_renderer_capability_env", "_serve_identity_env",
+        "api_image", "latex_image",
         "_DEPLOYMENT_TRAFFIC_HELD", "_DEPLOYMENT_TRAFFIC_HOLD_VALUE",
     }
     nodes = [node for node in tree.body
              if (isinstance(node, ast.FunctionDef) and node.name == "_validated_optional_billing_secret_name")
              or (isinstance(node, ast.Assign)
                  and any(isinstance(target, ast.Name) and target.id in names for target in node.targets))]
-    assert len(nodes) == 8
+    assert len(nodes) == 9
 
     class Image:
         def pip_install_from_requirements(self, *args, **kwargs):
@@ -151,3 +155,47 @@ def test_invoking_tuple_reaches_both_api_and_compile_worker_images(monkeypatch, 
         assert isinstance(decorator, ast.Call)
         image = next(keyword.value for keyword in decorator.keywords if keyword.arg == "image")
         assert isinstance(image, ast.Name) and image.id == "latex_image"
+
+
+def test_verified_deploy_sha_reaches_both_api_and_compile_worker_images(monkeypatch):
+    """The serving revision must reach the images that answer and render requests.
+
+    /health can only attest the exact revision if the verified DEPLOY_SHA is
+    baked into the container. A value that reached only one image would leave the
+    skew this attestation exists to detect.
+    """
+    from app.core.deployment_hold import deployment_traffic_held
+
+    deploy_sha = "a" * 40
+    for key, value in VALID.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("MODAL_BILLING_SECRET_NAME", "synthetic-billing-secret")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "dev")
+    monkeypatch.setenv("MODAL_DEPLOYMENT_TRAFFIC_HOLD", "true")
+    monkeypatch.setenv("DEPLOY_SHA", deploy_sha)
+
+    tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
+    names = {"_billing_secret_name", "_billing_secret_binding_env", "_renderer_capability_env", "_serve_identity_env",
+             "api_image", "latex_image", "_DEPLOYMENT_TRAFFIC_HELD", "_DEPLOYMENT_TRAFFIC_HOLD_VALUE"}
+    nodes = [node for node in tree.body
+             if (isinstance(node, ast.FunctionDef) and node.name == "_validated_optional_billing_secret_name")
+             or (isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id in names for target in node.targets))]
+
+    class Image:
+        def pip_install_from_requirements(self, *args, **kwargs):
+            return Image()
+
+        def add_local_dir(self, *args, **kwargs):
+            return self
+
+        def env(self, values):
+            self.values = values
+            return self
+
+    namespace = {"os": os, "re": __import__("re"), "texlive_image": Image(),
+                 "deployment_traffic_held": deployment_traffic_held,
+                 "_BACKEND_DIR": ROOT / "backend", "_IGNORE": []}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), "image_inputs", "exec"), namespace)
+    for image_name in ("api_image", "latex_image"):
+        assert namespace[image_name].values["DEPLOY_SHA"] == deploy_sha

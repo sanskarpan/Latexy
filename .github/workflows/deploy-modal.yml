@@ -296,6 +296,19 @@ jobs:
         if: steps.freshness.outputs.current == 'true'
         run: timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"
 
+      # The pointer above proves what was deployed; it does not prove which
+      # revision the containers answering requests are running. Production once
+      # served a backend 32 commits behind while every other signal was green.
+      # Require the serving process itself to attest the exact revision.
+      - name: Verify serving backend revision
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 260s python backend/scripts/verify_serving_identity.py \
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA"
+
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'
         working-directory: backend
