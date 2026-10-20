@@ -125,7 +125,7 @@ test('public sharing survives policy recovery, isolates accounts and permanently
       await expect(page.getByRole('heading', { name: /Something broke/ })).toHaveCount(0)
     }
     await publicPdf(token)
-    await page.screenshot({ path: 'sharing-enabled-browser.png', fullPage: true })
+    await page.screenshot({ path: test.info().outputPath('sharing-enabled-browser.png'), fullPage: true })
     for (const method of ['get', 'put', 'delete'] as const) {
       const path = method === 'delete' ? `/resumes/${resume.id}/share` : `/resumes/${resume.id}`
       const response = await stranger.request[method](`${backend}${path}`, {
@@ -175,7 +175,7 @@ test('public sharing survives policy recovery, isolates accounts and permanently
     expect((await viewer.request.get(`${backend}/share/${token}`)).status()).toBe(404)
     await page.goto(`${frontend}/r/${token}`)
     await expect(page.getByRole('heading', { name: 'Link unavailable' })).toBeVisible()
-    await page.screenshot({ path: 'sharing-revoked-browser.png', fullPage: true })
+    await page.screenshot({ path: test.info().outputPath('sharing-revoked-browser.png'), fullPage: true })
     await test.info().attach('accepted-pdf-identity', { body: JSON.stringify({ sha256: digest, bytes: pdf.length, checks: 'role/family/SKU/global/parent: enabled200 -> disabled404 -> recovered200; revoked old token404' }), contentType: 'application/json' })
   } finally {
     // This database is disposable; test-created accounts are still cleaned for reruns.

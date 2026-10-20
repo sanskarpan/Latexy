@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 spec = importlib.util.spec_from_file_location('sharing_ci', Path(__file__).with_name('sharing-full-stack-smoke.py'))
 harness = importlib.util.module_from_spec(spec)
@@ -110,14 +110,30 @@ class SharingCITests(unittest.TestCase):
 
     def storage(self):
         storage = harness.SharingStorage({})
-        state = {'Name': '/' + storage.name, 'Config': {'Labels': {'latexy.ci.run': storage.run_id}},
-                 'NetworkSettings': {'Networks': {storage.network: {}},
-                                     'Ports': {'9000/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19200'}]}}}
-        storage.docker = MagicMock(side_effect=lambda *args, **kwargs: json.dumps([state]) if args[0] == 'inspect' else '')
-        return storage, state
+        state = {'id': 'owned-container', 'name': '/' + storage.name, 'run': storage.run_id,
+                 'running': True, 'status': 'running', 'ports': {'9000/tcp': None},
+                 'networks': {storage.network: {'NetworkID': 'network-id', 'EndpointID': 'endpoint-id',
+                                               'IPAddress': '172.18.0.2'}}}
+        network = {'Id': 'network-id', 'Name': storage.network, 'Driver': 'bridge', 'Scope': 'local',
+                   'Internal': True, 'Labels': {'latexy.ci.run': storage.run_id},
+                   'IPAM': {'Config': [{'Subnet': '172.18.0.0/16', 'Gateway': '172.18.0.1'}]},
+                   'Containers': {'owned-container': {'Name': storage.name, 'EndpointID': 'endpoint-id',
+                                                     'IPv4Address': '172.18.0.2/16'}}}
+        def docker(*args, **kwargs):
+            if args[0] == 'inspect':
+                return json.dumps(state)
+            if args[:2] == ('network', 'inspect'):
+                return json.dumps(network)
+            return ''
+        storage.docker = MagicMock(side_effect=docker)
+        relay = patch.object(harness, 'StorageRelay')
+        mocked = relay.start()
+        self.addCleanup(relay.stop)
+        mocked.return_value.server_address = ('127.0.0.1', 19200)
+        return storage, state, network, mocked
 
     def test_only_owned_ephemeral_loopback_storage_is_selected(self):
-        storage, _ = self.storage()
+        storage, _, _, relay = self.storage()
         response = MagicMock()
         response.__enter__.return_value.status = 200
         with patch.object(harness, 'urlopen', return_value=response):
@@ -130,39 +146,91 @@ class SharingCITests(unittest.TestCase):
         self.assertEqual(environment['SHARING_ACCEPTANCE_DISPOSABLE'], '1')
         calls = storage.docker.call_args_list
         self.assertIn('--internal', calls[1].args)
-        self.assertIn('127.0.0.1::9000', calls[2].args)
+        self.assertNotIn('--publish', calls[2].args)
+        self.assertEqual(relay.call_args.args[:2], ('172.18.0.2', 9000))
         self.assertIn('/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700', calls[2].args)
 
-    def test_unowned_or_non_loopback_publication_fails_before_storage_probe(self):
-        for mutation in ('public', 'wrong-owner', 'wrong-network', 'extra-port'):
+    def test_unowned_or_non_internal_storage_fails_before_relay_or_probe(self):
+        for mutation in ('public', 'wrong-owner', 'wrong-network', 'extra-port',
+                         'egress', 'wrong-ip', 'wrong-member', 'not-running'):
             with self.subTest(mutation=mutation):
-                storage, state = self.storage()
+                storage, state, network, relay = self.storage()
                 if mutation == 'public':
-                    state['NetworkSettings']['Ports']['9000/tcp'][0]['HostIp'] = '0.0.0.0'
+                    state['ports']['9000/tcp'] = [{'HostIp': '0.0.0.0', 'HostPort': '19200'}]
                 elif mutation == 'wrong-owner':
-                    state['Config']['Labels']['latexy.ci.run'] = 'other'
+                    state['run'] = 'other'
                 elif mutation == 'wrong-network':
-                    state['NetworkSettings']['Networks']['unowned-network'] = {}
+                    state['networks']['unowned-network'] = {}
+                elif mutation == 'extra-port':
+                    state['ports']['9001/tcp'] = [{'HostIp': '127.0.0.1', 'HostPort': '19201'}]
+                elif mutation == 'egress':
+                    network['Internal'] = False
+                elif mutation == 'wrong-ip':
+                    state['networks'][storage.network]['IPAddress'] = '8.8.8.8'
+                elif mutation == 'wrong-member':
+                    network['Containers']['owned-container']['Name'] = 'unowned'
                 else:
-                    state['NetworkSettings']['Ports']['9001/tcp'] = [{'HostIp': '127.0.0.1', 'HostPort': '19201'}]
+                    state['running'] = False
                 with patch.object(harness, 'urlopen') as probe, self.assertRaises(RuntimeError):
                     storage.start()
+                relay.assert_not_called()
                 probe.assert_not_called()
                 self.assertNotIn('MINIO_ENDPOINT', storage.environment)
 
-    def test_storage_failure_diagnostics_are_fixed_labels_not_inspect_contents(self):
-        storage, state = self.storage()
-        state['Config']['Env'] = ['MINIO_ROOT_PASSWORD=synthetic-do-not-log']
-        state['NetworkSettings']['Ports']['9000/tcp'] = None
-        state['State'] = {'Running': False, 'Error': 'synthetic-do-not-log'}
+    def test_cancellation_during_relay_creation_records_then_closes_listener(self):
+        storage, _, _, factory = self.storage()
+        relay = factory.return_value
+        def construct(*args):
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            return relay
+        factory.side_effect = construct
+        with patch.object(harness, 'urlopen') as probe:
+            with self.assertRaises(harness.SharingCancelled):
+                with harness.cancellation_guard() as cleanup:
+                    try:
+                        storage.start(cleanup=cleanup)
+                    finally:
+                        with cleanup():
+                            storage.cleanup()
+        relay.close.assert_called_once()
+        probe.assert_not_called()
+        self.assertEqual(storage.docker.call_args_list[-3].args, ('rm', '--force', storage.name))
+
+    def test_invalid_storage_metadata_is_not_disclosed(self):
+        storage, state, network, relay = self.storage()
+        state['run'] = 'synthetic-do-not-log'
+        state['error'] = 'synthetic-do-not-log'
+        network['Labels']['unrelated'] = 'synthetic-do-not-log'
         with patch.object(harness, 'urlopen') as probe, self.assertRaises(RuntimeError) as failure:
             storage.start()
         self.assertEqual(str(failure.exception),
-                         'Storage is not the exact owned loopback-only publication; failed checks: '
-                         'exactly_one_binding,loopback_binding,valid_port; running=False')
-        self.assertNotIn('synthetic-do-not-log', str(failure.exception))
+                         'Relay target was not an exact-owned running private endpoint')
+        relay.assert_not_called()
         probe.assert_not_called()
         self.assertNotIn('MINIO_ENDPOINT', storage.environment)
+
+    def test_storage_relay_rejects_non_storage_ports_and_external_targets(self):
+        for address, port in (('8.8.8.8', 9000), ('127.0.0.1', 9000), ('172.18.0.2', 8030),
+                              ('172.18.0.2', 5432), ('172.18.0.2', 80)):
+            with self.assertRaises(RuntimeError):
+                harness.StorageRelay(address, port, time.monotonic() + 1)
+        self.assertEqual(harness.StorageRelay.allowed_ports, (9000,))
+        self.assertFalse(harness.StorageRelay.allow_reuse_address)
+
+    def test_storage_relay_cleanup_precedes_docker_and_does_not_block_other_cleanup(self):
+        storage = harness.SharingStorage({})
+        storage.relay = MagicMock()
+        storage.relay.close.side_effect = RuntimeError('synthetic failure')
+        storage.container_attempted = storage.network_attempted = storage.image_attempted = True
+        storage.docker = MagicMock()
+        ordered = MagicMock()
+        ordered.attach_mock(storage.relay.close, 'relay_close')
+        ordered.attach_mock(storage.docker, 'docker')
+        with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
+            storage.cleanup()
+        self.assertEqual(ordered.mock_calls, [
+            call.relay_close(), call.docker('rm', '--force', storage.name),
+            call.docker('network', 'rm', storage.network), call.docker('image', 'rm', storage.image)])
 
     def test_cleanup_attempts_every_exact_owned_name_even_after_one_failure(self):
         storage = harness.SharingStorage({})
@@ -242,7 +310,7 @@ h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
 h.ROOT=Path(sys.argv[2]);marker=Path(sys.argv[3])
 class FakeStorage:
     def __init__(self,environment): pass
-    def start(self): pass
+    def start(self, **kwargs): pass
     def cleanup(self): marker.write_text('done')
 h.SharingStorage=FakeStorage
 sys.argv=['sharing-full-stack-smoke.py','--confirm-isolated-sharing-run']

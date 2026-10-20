@@ -8,6 +8,7 @@ other smoke cases; storage uses the source-pinned CI MinIO recipe.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from contextlib import contextmanager, nullcontext
 import json
 import os
@@ -25,6 +26,18 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_KEYS = {"PATH", "LANG", "LC_ALL", "TERM", "PNPM_HOME", "COREPACK_HOME",
                 "PLAYWRIGHT_BROWSERS_PATH", "VIRTUAL_ENV", "UV_CACHE_DIR"}
+
+
+# Reuse the existing bounded relay and strict owned-network validator. Importing
+# this source-only module does not start its opt-in compile harness.
+_relay_spec = importlib.util.spec_from_file_location(
+    "sharing_owned_relay", ROOT / "scripts/ci/isolated-real-compile.py")
+_relay_module = importlib.util.module_from_spec(_relay_spec)
+_relay_spec.loader.exec_module(_relay_module)
+
+
+class StorageRelay(_relay_module.FixedTargetRelay):
+    allowed_ports = (9000,)
 
 
 def reject_runtime_env_files(root: Path) -> None:
@@ -154,6 +167,7 @@ def run_smoke(environment: dict[str, str], *, timeout: int = 1800, cleanup=nullc
 class SharingStorage:
     def __init__(self, environment: dict[str, str]):
         self.environment = environment
+        self.relay = None
         self.run_id = uuid.uuid4().hex
         self.name = "latexy-sharing-" + self.run_id
         self.network = self.name + "-network"
@@ -168,7 +182,7 @@ class SharingStorage:
             raise RuntimeError(f"Owned sharing storage command failed ({arguments[0]}; exit {result.returncode})")
         return result.stdout.strip()
 
-    def start(self) -> str:
+    def start(self, *, cleanup=nullcontext) -> str:
         self.image_attempted = True
         self.docker("build", "--file", str(ROOT / "scripts/ci/Dockerfile.minio-ci"),
                     "--tag", self.image, str(ROOT / "scripts/ci"), timeout=900)
@@ -178,35 +192,25 @@ class SharingStorage:
         access, secret = "ci-" + uuid.uuid4().hex, uuid.uuid4().hex + uuid.uuid4().hex
         self.container_attempted = True
         self.docker("run", "--detach", "--name", self.name, "--network", self.network,
-                    "--label", "latexy.ci.run=" + self.run_id, "--publish", "127.0.0.1::9000",
+                    "--label", "latexy.ci.run=" + self.run_id,
                     "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256",
                     "--memory", "1g", "--cpus", "1",
                     "--tmpfs", "/tmp:rw,nosuid,size=64m,uid=65532,gid=65532,mode=0700",
                     "--tmpfs", "/data:rw,nosuid,size=512m,uid=65532,gid=65532,mode=0700",
                     "--env", "MINIO_ROOT_USER=" + access, "--env", "MINIO_ROOT_PASSWORD=" + secret,
                     self.image, "server", "/data", "--console-address", ":9001")
-        state = json.loads(self.docker("inspect", self.name))[0]
-        ports = state["NetworkSettings"]["Ports"]
-        bindings = ports.get("9000/tcp") or []
-        # Report fixed check names only, never raw inspect state (which includes
-        # the generated storage credentials). Keep every isolation gate strict.
-        binding = bindings[0] if len(bindings) == 1 else {}
-        host_port = binding.get("HostPort", "")
-        checks = {
-            "owned_name": state["Name"] == "/" + self.name,
-            "owned_label": state["Config"]["Labels"].get("latexy.ci.run") == self.run_id,
-            "only_owned_network": set(state["NetworkSettings"]["Networks"]) == {self.network},
-            "exactly_one_binding": len(bindings) == 1,
-            "loopback_binding": binding.get("HostIp") == "127.0.0.1",
-            "valid_port": bool(re.fullmatch(r"[0-9]{1,5}", host_port)) and 1024 <= int(host_port) <= 65535,
-            "no_extra_published_ports": not any(value for key, value in ports.items() if key != "9000/tcp"),
-        }
-        if not all(checks.values()):
-            failed = ",".join(key for key, passed in checks.items() if not passed)
-            running = state.get("State", {}).get("Running") is True
-            raise RuntimeError("Storage is not the exact owned loopback-only publication; failed checks: "
-                               + failed + "; running=" + str(running))
-        endpoint = "http://127.0.0.1:" + bindings[0]["HostPort"]
+        container = json.loads(self.docker("inspect", "--format",
+            _relay_module.CONTAINER_STATE_FORMAT, self.name, timeout=10))
+        network = json.loads(self.docker("network", "inspect", "--format", "{{json .}}",
+            self.network, timeout=10))
+        address = _relay_module.owned_internal_address(container, network,
+            name=self.name, network_name=self.network, run_id=self.run_id)
+        # No container port publication or egress-capable network. Only this
+        # exact-owned private endpoint can receive bytes from our loopback port.
+        # Defer cancellation until the newly owned listener is recorded.
+        with cleanup():
+            self.relay = StorageRelay(address, 9000, time.monotonic() + 1900)
+        endpoint = "http://127.0.0.1:" + str(self.relay.server_address[1])
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             try:
@@ -230,6 +234,11 @@ class SharingStorage:
     def cleanup(self) -> None:
         # Exact generated names only; no prune, discovery, or existing resource removal.
         failures = []
+        if self.relay is not None:
+            try:
+                self.relay.close()
+            except (OSError, RuntimeError):
+                failures.append("relay")
         for attempted, arguments in (
             (self.container_attempted, ("rm", "--force", self.name)),
             (self.network_attempted, ("network", "rm", self.network)),
@@ -256,7 +265,7 @@ def main() -> int:
             environment = test_environment(dict(os.environ), Path(directory))
             storage = SharingStorage(environment)
             try:
-                storage.start()
+                storage.start(cleanup=cleanup)
                 return run_smoke(environment, cleanup=cleanup)
             finally:
                 with cleanup():
