@@ -1,0 +1,31 @@
+// Local acceptance comparison against the reviewed PR's original config.
+const fs = require('node:fs')
+const vm = require('node:vm')
+const path = require('node:path')
+const assert = require('node:assert/strict')
+const { createRequire } = require('node:module')
+const { execFileSync } = require('node:child_process')
+const repo = path.resolve(__dirname, '../..')
+const requireFrontend = createRequire(path.join(repo, 'frontend/package.json'))
+const before = execFileSync('git', ['-C', repo, 'show', 'eae7bf5b:frontend/next.config.js'], { encoding: 'utf8' })
+const after = fs.readFileSync(path.join(repo, 'frontend/next.config.js'), 'utf8')
+function hook(source) {
+  const match = source.match(/webpack: ([\s\S]*?)\n  },/)
+  assert.ok(match)
+  return vm.runInNewContext('(' + match[1] + '\n  })', { require: requireFrontend })
+}
+const oldHook = hook(before)
+const newHook = hook(after)
+const base = () => ({ resolve: { alias: {} }, module: { rules: [] }, plugins: [] })
+for (const context of [{ dev: false, isServer: false }, { dev: false, isServer: true }, { dev: true, isServer: true }]) {
+  assert.equal(JSON.stringify(newHook(base(), context)), JSON.stringify(oldHook(base(), context)))
+  console.log('Unchanged output:', JSON.stringify(context))
+}
+const development = newHook(base(), { dev: true, isServer: false })
+assert.equal(development.module.rules.length, 1)
+assert.ok(development.module.rules[0].test.test(requireFrontend.resolve('pdfjs-dist/build/pdf.mjs')))
+const pdfjs = fs.readFileSync(requireFrontend.resolve('pdfjs-dist/build/pdf.mjs'), 'utf8')
+const transform = require('./pdfjs-webpack-dev-scope.cjs')
+const renamed = transform.call({ cacheable() {} }, pdfjs)
+assert.equal(renamed.replace(/__latexy_pdfjs_(require|exports)__/g, (_match, name) => '__webpack_' + name + '__'), pdfjs)
+console.log('Positive control: only the PDF.js browser development module is transformed; byte round trip passed.')

@@ -1,10 +1,12 @@
 """Real-DB admission/recovery tests; no email, payment or provider calls."""
+import base64
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
-from app.database.models import ResumeCollaborator, Workspace, WorkspaceMember, WorkspaceResume
+from app.database.models import Compilation, ResumeCollaborator, Workspace, WorkspaceMember, WorkspaceResume
 from app.services.entitlement_service import entitlement_service
 
 
@@ -18,6 +20,36 @@ async def _resume(client, headers, title):
     result = await client.post("/resumes/", headers=headers, json={"title": title, "latex_content": "owned source"})
     assert result.status_code == 201, result.text
     return result.json()["id"]
+
+
+async def _accepted_pdf(db, resume_id, owner, monkeypatch):
+    """Use actual PDF bytes and an explicitly accepted row, isolating only storage."""
+    pdf = (Path(__file__).parent / "fixtures" / "accepted-sharing.pdf").read_bytes()
+    assert pdf.startswith(b"%PDF-")
+    key = f"compilations/{uuid4()}/accepted.pdf"
+    pdf_url = "data:application/pdf;base64," + base64.b64encode(pdf).decode()
+
+    def presign(requested_key, **_kwargs):
+        assert requested_key == key
+        return pdf_url
+
+    monkeypatch.setattr("app.services.storage_service.generate_presigned_url", presign)
+    db.add(Compilation(
+        resume_id=resume_id, user_id=owner, job_id=str(uuid4()), status="completed",
+        artifact_accepted=True, artifact_branch="draft", pdf_path=key, pdf_size=len(pdf),
+    ))
+    await db.commit()
+    return pdf_url
+
+
+async def _assert_public_pdf(client, token, pdf_url, *, review_comments=None):
+    response = await client.get(f"/share/{token}")
+    assert response.status_code == 200, response.text
+    assert response.json()["share_token"] == token
+    assert response.json()["pdf_url"] == pdf_url
+    assert base64.b64decode(response.json()["pdf_url"].split(",", 1)[1]).startswith(b"%PDF-")
+    if review_comments is not None:
+        assert response.json()["review_comments"] is review_comments
 
 
 @pytest.mark.parametrize("disabled_role", ["user", "support"])
@@ -88,29 +120,38 @@ async def test_disabled_workspace_hides_shared_documents_but_retains_own_submiss
 
 
 async def test_public_review_off_blocks_existing_link_but_owner_can_revoke_review(
-    client, db_session, auth_headers,
+    client, db_session, auth_headers, monkeypatch,
 ):
     resume_id = await _resume(client, auth_headers, "Review recovery")
+    pdf_url = await _accepted_pdf(db_session, resume_id, await _user_id(db_session, auth_headers), monkeypatch)
     link = await client.post(f"/resumes/{resume_id}/share", headers=auth_headers, json={"review_comments": True})
     assert link.status_code == 200, link.text
     token = link.json()["share_token"]
     try:
+        await _assert_public_pdf(client, token, pdf_url, review_comments=True)
+        assert (await client.get(f"/share/{token}/review-comments")).status_code == 200
         await entitlement_service.set_kill_switch("f03", False, db_session)
         assert (await client.get(f"/share/{token}/review-comments")).status_code == 404
+        await _assert_public_pdf(client, token, pdf_url, review_comments=False)
+        await entitlement_service.set_kill_switch("f03", True, db_session)
+        assert (await client.get(f"/share/{token}/review-comments")).status_code == 200
         await entitlement_service.set_kill_switch("f01", False, db_session)
+        assert (await client.get(f"/share/{token}")).status_code == 404
         revoke = await client.post(f"/resumes/{resume_id}/share", headers=auth_headers, json={"review_comments": "false"})
         assert revoke.status_code == 200, revoke.text
         assert revoke.json()["review_comments"] is False
         assert revoke.json()["share_token"] == token
         assert (await client.get(f"/resumes/{resume_id}", headers=auth_headers)).status_code == 200
         assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers)).status_code == 204
+        await entitlement_service.set_kill_switch("f01", True, db_session)
+        assert (await client.get(f"/share/{token}")).status_code == 404
     finally:
         await entitlement_service.set_kill_switch("f01", True, db_session)
         await entitlement_service.set_kill_switch("f03", True, db_session)
 
 
 async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_owner_recovery(
-    client, db_session, auth_headers, auth_headers2,
+    client, db_session, auth_headers, auth_headers2, monkeypatch,
 ):
     """A child grant cannot outrank any owner-policy axis; private recovery remains available."""
     owner = await _user_id(db_session, auth_headers)
@@ -160,6 +201,7 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
             await entitlement_service.set_role_cell("user", key, True, db_session)
 
         resume_id = await _resume(client, auth_headers, "Synthetic child-control owner")
+        pdf_url = await _accepted_pdf(db_session, resume_id, owner, monkeypatch)
         created = await client.post(
             f"/resumes/{resume_id}/share",
             headers=auth_headers,
@@ -167,6 +209,7 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         )
         assert created.status_code == 200, created.text
         share_token = created.json()["share_token"]
+        await _assert_public_pdf(client, share_token, pdf_url, review_comments=True)
         effective = await client.get("/config/entitlements?include_quotas=false", headers=auth_headers)
         assert effective.status_code == 200
         assert effective.json()["features"]["f01"] is True
@@ -179,6 +222,10 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
             f"/resumes/{resume_id}/share", headers=auth_headers2,
         )
         assert wrong_owner_share.status_code == 404
+        assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers2)).status_code == 404
+        assert (await client.put(f"/resumes/{resume_id}", headers=auth_headers2, json={
+            "latex_content": "unrelated write", "expected_latex_content": "owned source",
+        })).status_code == 404
 
         # These are ordinary independent accounts. Product permission does not
         # become document ownership or a collaborator ACL.
@@ -197,15 +244,21 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         # authoritative account role, plan family and exact SKU state.
         await entitlement_service.set_role_cell("user", "f01", False, db_session)
         assert (await share_again()).status_code == 403
+        assert (await client.get(f"/share/{share_token}")).status_code == 404
         await entitlement_service.set_role_cell("user", "f01", True, db_session)
+        await _assert_public_pdf(client, share_token, pdf_url)
 
         await entitlement_service.set_matrix_cell("pro", "f01", False, db_session)
         assert (await share_again()).status_code == 403
+        assert (await client.get(f"/share/{share_token}")).status_code == 404
         await entitlement_service.set_matrix_cell("pro", "f01", True, db_session)
+        await _assert_public_pdf(client, share_token, pdf_url)
 
         await entitlement_service.set_matrix_cell("pro_annual", "f01", False, db_session)
         assert (await share_again()).status_code == 403
+        assert (await client.get(f"/share/{share_token}")).status_code == 404
         await entitlement_service.set_matrix_cell("pro_annual", "f01", True, db_session)
+        await _assert_public_pdf(client, share_token, pdf_url)
 
         # The F01 child remains explicitly ON while its collaboration parent is
         # OFF. The public serving route and new link admission both fail closed.
@@ -222,6 +275,9 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         )
         assert parent_blocked_share.status_code == 403
         assert (await client.get(f"/share/{share_token}")).status_code == 404
+        await entitlement_service.set_kill_switch("collaboration", True, db_session)
+        await _assert_public_pdf(client, share_token, pdf_url)
+        await entitlement_service.set_kill_switch("collaboration", False, db_session)
 
         # Disabling review and revoking the existing link are owned recovery
         # operations, even while new public sharing is disabled.
@@ -242,7 +298,12 @@ async def test_share_child_denials_compose_across_role_plan_sku_and_parent_with_
         await entitlement_service.set_kill_switch("collaboration", True, db_session)
         restored = await share_again()
         assert restored.status_code == 200, restored.text
+        replacement_token = restored.json()["share_token"]
+        assert replacement_token != share_token
+        await _assert_public_pdf(client, replacement_token, pdf_url, review_comments=False)
+        assert (await client.get(f"/share/{share_token}")).status_code == 404
         assert (await client.delete(f"/resumes/{resume_id}/share", headers=auth_headers)).status_code == 204
+        assert (await client.get(f"/share/{replacement_token}")).status_code == 404
     finally:
         for key, enabled in original_globals.items():
             await entitlement_service.set_kill_switch(key, enabled, db_session)
