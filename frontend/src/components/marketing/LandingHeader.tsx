@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import ModeToggle from '@/components/theme/ModeToggle'
-import { MarketingCTA } from './MarketingSections'
 import CapabilityGate from '@/components/CapabilityGate'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import type { ReactNode, RefObject } from 'react'
+import { reviewFonts } from './review-fonts'
+import { MarketingCTA } from './MarketingCTA'
 
 export default function LandingHeader({
+    ready = true,
     signedIn,
     menuOpen,
     menuTriggerRef,
@@ -17,6 +19,7 @@ export default function LandingHeader({
     onMenuToggle,
     mobileNavigation,
 }: {
+    ready?: boolean
     signedIn: boolean
     menuOpen: boolean
     menuTriggerRef: RefObject<HTMLButtonElement>
@@ -27,7 +30,7 @@ export default function LandingHeader({
 }) {
     const { billing } = useFeatureFlags()
     return (
-        <header className="lp-header">
+        <header className={`lp-header ${reviewFonts}`}>
             <Link href="/" aria-label="Latexy home">
                 <BrandLogo small />
             </Link>
@@ -47,10 +50,11 @@ export default function LandingHeader({
                 >
                     {signedIn ? 'Dashboard' : 'Sign in'}
                 </Link>
-                <MarketingCTA label="Try the studio" />
+                <div className="ts-header-cta"><MarketingCTA label="Get started" /></div>
                 <button
                     ref={menuTriggerRef}
                     type="button"
+                    disabled={!ready}
                     className="lp-menu-trigger lp-header-control"
                     aria-label={menuLabel}
                     aria-expanded={menuOpen}

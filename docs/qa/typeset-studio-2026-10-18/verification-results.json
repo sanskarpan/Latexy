@@ -1,0 +1,31 @@
+{
+  "build_id": "TzhaFSVYpMX5dDc4W5Vq3",
+  "main_base": "6470eb032396224d07db602f4c57b4958bfe96fd",
+  "dependency_base": "ce0d915caa28b4258433519ff27582afa3f6dba4",
+  "rendered_implementation": "2e3c7696",
+  "test_commit": "c4dcd55808d7956347a14622bcb22e17a628e5b8",
+  "runtime_tree_sha256": "4a16566e1851fab8d3a50d2cb8c5547609145d51ebfc5f5b0c11314eff793b12",
+  "environment": "local production Next, synthetic API/auth fixtures, system Chromium;1180 manual capture uses supported cloud browser",
+  "image_count": 81,
+  "visual_scope": "See visual-review.md; capture alone is not visual signoff.",
+  "locked_install": "passed previously; lockfile unchanged",
+  "eslint": "passed",
+  "typescript": "passed",
+  "production_build": "passed",
+  "vitest": {
+    "passed": 2936,
+    "files": 296,
+    "failed": 0
+  },
+  "production_browser": {
+    "startTime": "2026-10-18T20:42:21.896Z",
+    "duration": 184925.338,
+    "expected": 53,
+    "skipped": 3,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "visual_status": "passed in documented inspected scope",
+  "live_backend": "not tested",
+  "publication": "not yet performed"
+}

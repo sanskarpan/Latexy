@@ -510,8 +510,8 @@
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -607,8 +607,7 @@
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
       "verification": {
@@ -833,7 +832,6 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/page.tsx",
         "frontend/src/app/templates/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
@@ -1249,7 +1247,8 @@
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/try/page.tsx",
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -1624,8 +1623,8 @@
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/SemanticOptimizationPanel.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx",
+        "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx",
         "frontend/src/hooks/useSuggestionRecovery.ts"
       ],
@@ -1914,7 +1913,8 @@
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
-        "frontend/src/components/CompareModal.tsx"
+        "frontend/src/components/CompareModal.tsx",
+        "frontend/src/components/marketing/ReviewDesk.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
