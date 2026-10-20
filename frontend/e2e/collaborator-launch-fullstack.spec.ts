@@ -7,6 +7,58 @@ test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Requires explicitly started 
 test.setTimeout(360_000)
 test.use({ actionTimeout: 60_000 })
 
+/** Freeze autosave scheduling without replacing Monaco's real performance entries. */
+async function installAutosaveClock(page: Page) {
+  await page.evaluate(() => {
+    const methods = ['mark', 'measure', 'getEntries', 'getEntriesByName', 'getEntriesByType', 'clearMarks', 'clearMeasures'] as const
+    ;(window as any).__acceptancePerformanceEntries = Object.fromEntries(
+      methods.map(name => [name, performance[name].bind(performance)]),
+    )
+  })
+  await page.clock.install()
+  await page.evaluate(() => {
+    // Playwright's fake performance entry methods return empty arrays. Monaco
+    // reads the real measure after keyboard input; keep its original bound APIs.
+    Object.assign(performance, (window as any).__acceptancePerformanceEntries)
+    delete (window as any).__acceptancePerformanceEntries
+  })
+}
+
+test('native entries remain real while scheduling remains frozen', async ({ page, browser }) => {
+  test.setTimeout(15_000)
+  // Counterfactual: the unmodified fake clock cannot supply Monaco's entries.
+  // Playwright clocks are context-scoped, so isolate the counterfactual.
+  const baselineContext = await browser.newContext()
+  const baseline = await baselineContext.newPage()
+  await baseline.clock.install()
+  expect(await baseline.evaluate(() => {
+    performance.mark('start'); performance.mark('end'); performance.measure('input', 'start', 'end')
+    return performance.getEntriesByName('input').length
+  })).toBe(0)
+  await baselineContext.close()
+  await page.goto('about:blank')
+  await installAutosaveClock(page)
+  await page.clock.pauseAt(new Date(Date.now() + 1000))
+  await page.evaluate(() => {
+    ;(window as any).saved = false
+    performance.mark('typing/start')
+    setTimeout(() => {
+      performance.mark('typing/end')
+      performance.measure('typing', 'typing/start', 'typing/end')
+      ;(window as any).measured = performance.getEntriesByName('typing')[0].duration
+    }, 50)
+    setTimeout(() => { (window as any).saved = true }, 2500)
+  })
+  await page.clock.runFor(100)
+  const before = await page.evaluate(() => ({ saved: (window as any).saved, measured: (window as any).measured, count: performance.getEntriesByName('typing').length }))
+  expect(before.saved).toBe(false)
+  expect(before.count).toBe(1)
+  expect(before.measured).toBeGreaterThanOrEqual(0)
+  expect(await page.evaluate(() => { try { performance.measure('invalid', 'does-not-exist'); return false } catch { return true } })).toBe(true)
+  await page.clock.runFor(2400)
+  expect(await page.evaluate(() => (window as any).saved)).toBe(true)
+})
+
 test('F04 role recovery, cross-account controls, live session revocation and recovery', async ({ browser }, info) => {
   const frontend = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '13427'}`
   const backend = process.env.PLAYWRIGHT_BACKEND_URL ?? 'http://localhost:19427'
@@ -151,10 +203,8 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     // Freeze only the short edit/checkpoint window in both browser pages.
     // This holds their 2500ms autosave debounces while real keyboard/CRDT and
     // database operations continue. Resume before UI/socket polling.
-    // Install after initial editor/render instrumentation settles. Replacing
-    // performance before navigation breaks Next dev measurements in WebKit.
-    await ownerPage.clock.install()
-    await actorPage.clock.install()
+    await installAutosaveClock(ownerPage)
+    await installAutosaveClock(actorPage)
     await ownerPage.clock.pauseAt(new Date(Date.now() + 1000))
     await actorPage.clock.pauseAt(new Date(Date.now() + 1000))
     try {
