@@ -780,6 +780,12 @@
 .ts-closing-secondary {
     margin-top: 12px;
 }
+@media (min-width: 700px) {
+    /* Both the admitted CTA and the fail-closed status need space before this link. */
+    .ts-closing-secondary {
+        margin-inline-start: 16px;
+    }
+}
 .ts-still-life {
     width: 100%;
     height: 280px;

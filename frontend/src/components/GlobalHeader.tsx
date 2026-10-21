@@ -281,7 +281,7 @@ export default function GlobalHeader() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
             onKeyDown={handleMobileKeyDown}
-            className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line bg-surface md:hidden"
+            className={`min-h-0 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line bg-surface ${pathname === '/' ? 'md:hidden' : 'lg:hidden'}`}
           >
             <div className="space-y-1 p-4">
               {activeNav.map((item) => {
@@ -406,8 +406,9 @@ export default function GlobalHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-[var(--z-sticky)] border-b border-line bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
+    <header className="sticky top-0 z-[var(--z-sticky)] flex max-h-dvh flex-col border-b border-line bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md lg:block lg:max-h-none">
+      {/* Keep full locale labels and control targets: narrow phones get a second row, not clipped controls. */}
+      <div className="mx-auto flex min-h-16 w-full max-w-[1600px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:h-16 lg:flex-nowrap lg:gap-0 lg:px-10 lg:py-0">
         <Link
           href={isAuthenticated ? '/dashboard' : '/'}
           className="text-fg transition hover:text-accent"
@@ -421,7 +422,7 @@ export default function GlobalHeader() {
           ) : <BrandLogo />}
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden items-center gap-7 lg:flex">
           {activeNav.map((item) => {
             const active = isActive(item.href)
             return (
@@ -441,7 +442,7 @@ export default function GlobalHeader() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-3 lg:flex">
           <LocaleSwitcher compact />
           <ContrastToggle />
           <ModeToggle />
@@ -550,7 +551,7 @@ export default function GlobalHeader() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="ml-auto flex shrink-0 items-center gap-2 lg:hidden">
           <ContrastToggle />
           <ModeToggle />
           <LocaleSwitcher compact />
