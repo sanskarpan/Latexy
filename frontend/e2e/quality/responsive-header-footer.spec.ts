@@ -44,10 +44,17 @@ async function mockPublicChrome(
     )
 }
 
+async function expectFontsLoaded(page: Page) {
+    // In Firefox's no-JS context, document.fonts.ready can remain pending.
+    // Poll the same font-loading state from the test process so SSR coverage
+    // still waits for fonts without depending on a page-side Promise callback.
+    await expect.poll(() => page.evaluate(() => document.fonts.status)).toBe('loaded')
+}
+
 async function expectHeaderFits(page: Page, width: number) {
     const header = page.locator('header')
     await expect(header).toBeVisible()
-    await page.evaluate(() => document.fonts.ready)
+    await expectFontsLoaded(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width
     )
@@ -203,7 +210,7 @@ for (const state of ['enabled', 'unavailable', 'error', 'loading'] as const) {
                     await expect(primary).toBeVisible()
                     const secondary = page.locator('.ts-closing-secondary')
                     await expect(secondary).toHaveAttribute('href', '/#resume-feedback')
-                    await page.evaluate(() => document.fonts.ready)
+                    await expectFontsLoaded(page)
                     const first = (await primary.boundingBox())!
                     const second = (await secondary.boundingBox())!
                     const sameRow =
