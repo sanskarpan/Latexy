@@ -8,6 +8,89 @@ test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Requires explicitly started 
 test.setTimeout(360_000)
 test.use({ actionTimeout: 60_000 })
 
+type ProviderObservation = {
+  id: number
+  opened: boolean
+  synced: boolean
+  notices: string[]
+  closeCode: number | null
+}
+
+/** Observe the editor's named provider, never the independent probe or its ticket. */
+async function observeActorProvider(page: Page, resumeId: string, name: string) {
+  await page.addInitScript(({ resumeId, name }) => {
+    const observations: ProviderObservation[] = []
+    Object.assign(window, { acceptanceProviders: observations })
+    // Playwright's WebSocket close event has no CloseEvent/code. Pass construction
+    // through to the native implementation and add passive listeners only: no
+    // fake sockets, changed messages, replaced handlers, or reconnect assistance.
+    window.WebSocket = new Proxy(window.WebSocket, {
+      construct(NativeWebSocket, args, newTarget) {
+        const socket = Reflect.construct(NativeWebSocket, args, newTarget) as WebSocket
+        const url = new URL(socket.url)
+        if (url.pathname !== `/ws/collab/${resumeId}` || url.searchParams.get('name') !== name) return socket
+        const observation: ProviderObservation = {
+          id: observations.length + 1, opened: false, synced: false, notices: [], closeCode: null,
+        }
+        observations.push(observation)
+        socket.addEventListener('open', () => { observation.opened = true })
+        socket.addEventListener('close', event => { observation.closeCode = event.code })
+        socket.addEventListener('message', event => {
+          if (!(event.data instanceof ArrayBuffer)) return
+          const frame = new Uint8Array(event.data)
+          // lib0 MSG_SYNC(0), SYNC_STEP2(1), on this individual connection.
+          if (frame[0] === 0 && frame[1] === 1) observation.synced = true
+          if (frame[0] !== 63) return // MSG_PERMISSION_DENIED
+          let offset = 1
+          let length = 0
+          let shift = 0
+          while (offset < frame.length && shift <= 28) {
+            const byte = frame[offset++]
+            length += (byte & 0x7f) * 2 ** shift
+            if ((byte & 0x80) === 0) {
+              try {
+                if (offset + length !== frame.length) break
+                const notice = JSON.parse(new TextDecoder().decode(frame.subarray(offset)))
+                if (typeof notice.code === 'string') observation.notices.push(notice.code)
+              } catch { /* An invalid frame cannot satisfy the notice assertions. */ }
+              break
+            }
+            shift += 7
+          }
+        })
+        return socket
+      },
+    })
+  }, { resumeId, name })
+  const read = () => page.evaluate(() => (
+    window as unknown as { acceptanceProviders: ProviderObservation[] }
+  ).acceptanceProviders)
+  async function syncedAfter(id: number, readOnly: boolean) {
+    let syncedProviderId = 0
+    await expect.poll(async () => {
+      const observations = await read()
+      const latest = observations[observations.length - 1]
+      if (!latest || latest.id <= id || !latest.opened || !latest.synced || latest.closeCode !== null
+        || (readOnly && !latest.notices.includes('read_only'))) return false
+      syncedProviderId = latest.id
+      return true
+    }, { message: 'The actual named editor provider must establish a fresh, synced connection' }).toBe(true)
+    return syncedProviderId
+  }
+  async function roleChanged(id: number, readOnly: boolean) {
+    await expect.poll(async () => (await read()).find(socket => socket.id === id)?.closeCode,
+      { message: 'A live role change must close the actual provider with retryable 4005, not terminal 4003' }).toBe(4005)
+    expect((await read()).find(socket => socket.id === id)?.notices).toContain('role_changed')
+    const reconnectedId = await syncedAfter(id, readOnly)
+    for (const socket of (await read()).filter(socket => socket.id >= id)) {
+      expect(socket.notices).not.toContain('access_revoked')
+      expect([4001, 4003, 4004]).not.toContain(socket.closeCode)
+    }
+    return reconnectedId
+  }
+  return { read, syncedAfter, roleChanged }
+}
+
 /** Freeze autosave scheduling without replacing Monaco's real performance entries. */
 async function installAutosaveClock(page: Page) {
   await page.evaluate(() => {
@@ -150,6 +233,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     expect(allowedWrite.status(), await allowedWrite.text()).toBe(200)
     const actorPage = await actor.context.newPage()
     const actorSync = observeInitialSync(actorPage)
+    const actorProvider = await observeActorProvider(actorPage, resumeId, 'Synthetic invited collaborator')
     await actorPage.addInitScript(id => localStorage.setItem(`latexy_editor_mode_${id}`, 'source'), resumeId)
     await actorPage.goto(`/workspace/${resumeId}/edit`)
     await refreshActorAccess()
@@ -190,6 +274,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     }
     await openActorSocket()
     await expect.poll(() => ownerSync.synced && actorSync.synced).toBe(true)
+    let actorProviderId = await actorProvider.syncedAfter(0, false)
     // Real peer awareness confirms async collaboration initialization has completed.
     await expect(ownerPage.getByText('Currently editing', { exact: true })).toBeVisible()
     await expect(ownerPage.getByText('Synthetic invited collaborator', { exact: true })).toHaveCount(2)
@@ -233,12 +318,14 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     // Role changes must close a currently authorized editor session with the
     // retryable role-change code, so reconnect can receive its new role.
     await expect.poll(() => actorPage.evaluate(() => (window as unknown as { acceptanceObservation: { code: number } }).acceptanceObservation.code)).toBe(4005)
+    actorProviderId = await actorProvider.roleChanged(actorProviderId, true)
     await expect(actorPage.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText('Synthetic source identity')
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText(unsavedMarker)
     await actorPage.screenshot({ path: info.outputPath('unsaved-draft-after-downgrade.png'), fullPage: true })
     const firstRecovery = await owner.context.request.patch(route, { headers: owner.headers, data: { role: 'editor' } })
     expect(firstRecovery.status()).toBe(200)
+    actorProviderId = await actorProvider.roleChanged(actorProviderId, false)
     await expect(actorPage.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText('Synthetic source identity')
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText(unsavedMarker)
@@ -246,7 +333,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     await ownerPage.keyboard.press('Escape')
     await ownerPage.getByTitle('Collaborators', { exact: true }).click()
     await expect(row.getByRole('combobox')).toHaveValue('editor')
-    evidence.push({ phase: 'live-editor-role-change', closeCode: 4005 })
+    evidence.push({ phase: 'live-editor-role-change', auxiliaryCloseCode: 4005, namedProviderCloseCode: 4005, namedProviderResyncedAfterDowngradeAndPromotion: true, activeProviderId: actorProviderId })
     await openActorSocket()
     expect(await actorPage.evaluate(() => (window as unknown as { acceptanceSocket: WebSocket }).acceptanceSocket.readyState)).toBe(1)
     await toggle(false)
@@ -294,6 +381,8 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     expect(deniedWrite.status()).toBe(403)
     evidence.push({ phase: 'off', crossAccount: foreign.status(), selfRoleChange: self.status(), downgrade: 200, promotion: deniedPromotion.status(), invite: deniedInvite.status(), write: deniedWrite.status() })
     await ownerPage.screenshot({ path: info.outputPath('f04-off-owner-recovery.png'), fullPage: true })
+    const providersBeforeReenable = await actorProvider.read()
+    const providerIdBeforeReenable = providersBeforeReenable[providersBeforeReenable.length - 1].id
     await toggle(true)
     await ownerPage.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
     await refreshActorAccess()
@@ -301,6 +390,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     await expect(row.getByRole('combobox')).toBeEnabled()
     await openActorSocket()
     await expect.poll(() => actorPage.evaluate(() => (window as unknown as { acceptanceObservation: { notices: string[] } }).acceptanceObservation.notices.join(' '))).toContain('read_only')
+    actorProviderId = await actorProvider.syncedAfter(providerIdBeforeReenable, true)
     const viewerWrite = await actor.context.request.put(`${backend}/resumes/${resumeId}`, {
       headers: actor.headers, data: { latex_content: 'Forbidden viewer with enabled F04', expected_latex_content: 'Synthetic source identity' },
     })
@@ -309,6 +399,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     await row.getByRole('combobox').selectOption('editor')
     await expect(row.getByRole('combobox')).toHaveValue('editor')
     await expect.poll(() => actorPage.evaluate(() => (window as unknown as { acceptanceObservation: { code: number } }).acceptanceObservation.code)).toBe(4005)
+    actorProviderId = await actorProvider.roleChanged(actorProviderId, false)
     await openActorSocket()
     await expect(actorPage.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText(unsavedMarker)
@@ -320,12 +411,18 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     await row.getByTitle('Remove collaborator').click()
     await expect(ownerPage.getByText(actor.email, { exact: true })).toHaveCount(0)
     await expect.poll(() => actorPage.evaluate(() => (window as unknown as { acceptanceObservation: { code: number } }).acceptanceObservation.code)).toBe(4003)
+    await expect.poll(async () => (await actorProvider.read()).find(socket => socket.id === actorProviderId)?.closeCode,
+      { message: 'Removal must terminally close the actual named provider' }).toBe(4003)
     await expect(actorPage.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
     await expect(actorPage.locator('.monaco-editor .view-lines')).toContainText(unsavedMarker)
     await actorPage.screenshot({ path: info.outputPath('removed-collaborator-save-disabled.png'), fullPage: true })
     const revokedRead = await actor.context.request.get(`${backend}/resumes/${resumeId}`, { headers: actor.headers })
     expect(revokedRead.status()).toBe(404)
-    evidence.push({ phase: 'recovered-and-revoked', write: recoveredWrite.status(), revokedRead: revokedRead.status(), promotionSocketClose: 4005, removalSocketClose: 4003, visibleSaveDisabled: true, distinctDraftPreserved: true })
+    const finalProviders = await actorProvider.read()
+    expect(finalProviders[finalProviders.length - 1].id, 'A revoked provider must not reconnect').toBe(actorProviderId)
+    expect(finalProviders.every(socket => socket.closeCode !== null), 'No actual provider remains open after removal').toBe(true)
+    evidence.push({ phase: 'recovered-and-revoked', write: recoveredWrite.status(), revokedRead: revokedRead.status(), promotionSocketClose: 4005, removalSocketClose: 4003, namedProviderResyncedAfterPromotion: true, namedProviderRemovalCloseCode: 4003, visibleSaveDisabled: true, distinctDraftPreserved: true })
+    evidence.push({ phase: 'actual-named-provider-connections', connections: finalProviders })
     await info.attach('acceptance-evidence', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' })
   } finally {
     for (const context of contexts) await context.close()
