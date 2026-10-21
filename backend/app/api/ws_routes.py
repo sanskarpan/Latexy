@@ -38,6 +38,7 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.collab_manager import (
     MAX_CHAT_FRAME_BYTES,
+    CollabAccess,
     _safe_chat_label,
     collab_manager,
     handle_collab_message,
@@ -493,26 +494,34 @@ def _collab_chat_access_callback(
     return check
 
 
-def _collab_live_access_callback(resume_id: str, user_id: str, owner_id: str, role: str) -> Callable[[], Awaitable[bool]]:
+def _collab_live_access_callback(resume_id: str, user_id: str, owner_id: str, role: str) -> Callable[[], Awaitable[CollabAccess]]:
     """Invalidate idle receivers and stale role snapshots as well as senders."""
-    async def check() -> bool:
+    async def check() -> CollabAccess:
         from sqlalchemy import select as sa_select
 
         from ..database.connection import get_async_db_session
         from ..database.models import Resume, ResumeCollaborator
 
         if not await _collab_capabilities_available(user_id, owner_id):
-            return False
+            return CollabAccess.REVOKED
         async with get_async_db_session() as db:
             current_owner = await db.scalar(sa_select(Resume.user_id).where(Resume.id == resume_id))
             if current_owner != owner_id:
-                return False
+                return CollabAccess.REVOKED
             if user_id == owner_id:
-                return role == "owner"
+                return CollabAccess.ALLOWED if role == "owner" else CollabAccess.REVOKED
             current_role = await db.scalar(sa_select(ResumeCollaborator.role).where(
                 ResumeCollaborator.resume_id == resume_id, ResumeCollaborator.user_id == user_id,
             ))
-            return current_role == role and role in {"editor", "commenter", "viewer"}
+            valid_roles = {"editor", "commenter", "viewer"}
+            if role not in valid_roles or current_role not in valid_roles:
+                return CollabAccess.REVOKED
+            # The committed role can become visible before the role route's
+            # revoke_access notification reaches this worker. Refuse this
+            # frame, but preserve the same retryable close as that notification.
+            if current_role != role:
+                return CollabAccess.ROLE_CHANGED
+            return CollabAccess.ALLOWED
     return check
 
 
