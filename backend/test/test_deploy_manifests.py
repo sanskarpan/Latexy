@@ -474,14 +474,23 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert step["env"] == {
         "PLAYWRIGHT_PORT": "5183",
         "PLAYWRIGHT_SERVER_MODE": "production",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE": "test-results/editor-compile-sync/results.json",
     }
     assert "e2e/editor-compile-sync.spec.ts" in step["run"]
     assert "e2e/resume-builder.spec.ts" in step["run"]
     assert "e2e/billing-developer.spec.ts" in step["run"]
+    assert "e2e/compiler-selector-keyboard.spec.ts" in step["run"]
     assert "--retries=0" in step["run"]
     assert "--trace=on" in step["run"]
     assert "--workers=1" in step["run"]
     assert "--output=test-results/editor-compile-sync" in step["run"]
+    assert "--reporter=line,json" in step["run"]
+    assert "set -euo pipefail" in step["run"]
+    assert "rm -f test-results/editor-compile-sync/results.json" in step["run"]
+    assert (
+        "node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json"
+        in step["run"]
+    )
     assert "if" not in step  # Normal success chaining: no softened failure gate.
     assert step["id"] == "editor-owner-regressions"
     assert step.get("continue-on-error", "false") == "false"
