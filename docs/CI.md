@@ -38,8 +38,14 @@ and [`jobs.<job_id>.if` status checks](https://docs.github.com/en/actions/writin
 It runs the isolation/evidence guard tests and then
 [`scripts/ci/isolated-real-compile.py`](../scripts/ci/isolated-real-compile.py)
 with fresh local PostgreSQL, Redis and MinIO services, synthetic signing/storage
-values, actual worker/TeX artifacts and a managed Chromium browser. The job
-retains its functional evidence as an artifact. This Linux/container check does
+values, actual worker/TeX artifacts and a managed Chromium browser. After schema
+setup, it requires all three opt-in render-storage integration tests with zero
+skips before starting serving processes. Browser acceptance then requires both
+the original guest journey and an ordinary saved-owner journey using the stored
+default Lua compiler. The owner proof binds saved/admitted source, accepted
+durable artifact, immutable private preview, painted PDF and download bytes,
+and checks an authenticated unrelated owner's denial without an extra job.
+The job retains its functional evidence as an artifact. This Linux/container check does
 not use production credentials, invoke a Modal deployment, certify a provider
 VM, or establish production acceptance or a latency objective.
 

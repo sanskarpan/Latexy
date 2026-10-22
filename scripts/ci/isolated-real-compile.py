@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -333,6 +334,41 @@ def require_browser_proof(path: Path) -> None:
                        "canvas_painted", "expected_text_rendered", "synctex_mappable",
                        "pdf_geometry_synctex_fingerprint_matches")) for sample in samples)):
         raise RuntimeError("Required real browser proof was empty, partial, or failed")
+
+
+def require_owner_browser_proof(path: Path) -> dict:
+    """Require saved-owner bytes and persisted default across the normal UI."""
+    value = json.loads(path.read_text())
+    true_fields = ('stored_default_verified', 'source_saved_and_reloaded', 'durable_artifact_accepted',
+                   'canvas_painted', 'expected_text_rendered', 'preview_download_bytes_match',
+                   'download_admission_count_unchanged', 'unrelated_owner_denied', 'private_preview_bytes_match')
+    zero_fields = ('runtime_error_count', 'capture_error_count', 'external_request_count',
+                   'compiler_settings_update_count')
+    source_fields = ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256')
+    pdf_fields = ('pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256')
+    if (not isinstance(value, dict) or value.get('success') is not True
+            or value.get('scenario') != 'normal-saved-owner-default-lua' or value.get('compiler') != 'lualatex'
+            or type(value.get('admission_count')) is not int or value['admission_count'] != 1
+            or type(value.get('pdf_bytes')) is not int or not 0 < value['pdf_bytes'] <= 20 * 1024 * 1024
+            or any(value.get(field) is not True for field in true_fields)
+            or any(type(value.get(field)) is not int or value[field] != 0 for field in zero_fields)
+            or value.get('compiler_settings_override_used') is not False
+            or any(not isinstance(value.get(field), str) or not re.fullmatch(r'[0-9a-f]{64}', value[field])
+                   for field in (*source_fields, *pdf_fields, 'artifact_id'))
+            or len({value[field] for field in source_fields}) != 1 or len({value[field] for field in pdf_fields}) != 1
+            or not isinstance(value.get('limitations'), list) or not value['limitations']
+            or any(not isinstance(limit, str) or not limit.strip() for limit in value['limitations'])):
+        raise RuntimeError('Required saved-owner browser proof was empty, partial, or failed')
+    try:
+        measured = datetime.fromisoformat(value.get('measured_at_utc', '').replace('Z', '+00:00'))
+        if measured.utcoffset() != timezone.utc.utcoffset(measured):
+            raise ValueError('UTC timestamp required')
+    except (AttributeError, TypeError, ValueError):
+        raise RuntimeError('Required saved-owner browser proof has no UTC measurement time') from None
+    return {'scope': 'isolated saved-owner default Lua flow; not production acceptance',
+            'scenario': value['scenario'], 'admission_count': value['admission_count'],
+            'artifact_id': value['artifact_id'], 'source_sha256': value['source_sha256'],
+            'pdf_sha256': value['pdf_sha256'], 'pdf_bytes': value['pdf_bytes']}
 
 
 def wait_until_ready(probe, alive, timeout: float) -> None:
@@ -691,8 +727,9 @@ print('Fresh private artifact bucket ready')
         wait_until_ready(frontend_ready, lambda: self.frontend.poll() is None, self.phase_timeout(1200))
         self.command(["pnpm", "exec", "playwright", "test", "--config=playwright.real-preview.config.ts"],
                      timeout=900, cwd=self.root / "frontend")
-        require_junit_cases(self.evidence / "real-preview.xml", expected=1)
+        require_junit_cases(self.evidence / "real-preview.xml", expected=2)
         require_browser_proof(self.evidence / "browser-proof.json")
+        self.provenance['owner_browser_acceptance'] = require_owner_browser_proof(self.evidence / 'owner-browser-proof.json')
         if context_digest(self.root / "frontend", frontend=True) != self.provenance["frontend_source_sha256"]:
             raise RuntimeError("Frontend source changed during its real functional proof")
 

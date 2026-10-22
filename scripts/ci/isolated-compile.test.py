@@ -85,6 +85,22 @@ def cors_response(origin='http://127.0.0.1:23456', *, status=200, headers=None, 
     return response
 
 
+def owner_browser_proof():
+    value = {field: True for field in ('stored_default_verified', 'source_saved_and_reloaded',
+        'durable_artifact_accepted', 'canvas_painted', 'expected_text_rendered',
+        'preview_download_bytes_match', 'download_admission_count_unchanged', 'unrelated_owner_denied',
+        'private_preview_bytes_match')}
+    value.update(success=True, scenario='normal-saved-owner-default-lua', admission_count=1,
+        compiler='lualatex', pdf_bytes=2048, artifact_id='c' * 64, compiler_settings_override_used=False,
+        runtime_error_count=0, capture_error_count=0, external_request_count=0, compiler_settings_update_count=0,
+        measured_at_utc='2026-10-22T19:00:00Z', limitations=['Isolated functional proof, not production acceptance.'])
+    for field in ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256'):
+        value[field] = 'a' * 64
+    for field in ('pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256'):
+        value[field] = 'b' * 64
+    return value
+
+
 class HarnessGuards(unittest.TestCase):
     def test_browser_cors_positive_contract_reads_capability_and_four_real_preflights(self):
         api, frontend = 'http://127.0.0.1:12345', 'http://127.0.0.1:23456'
@@ -656,6 +672,63 @@ class HarnessGuards(unittest.TestCase):
                 path.write_text(json.dumps({**good, **updates}))
                 with self.assertRaises(RuntimeError):
                     harness.require_browser_proof(path)
+
+    def test_owner_browser_proof_requires_saved_default_and_matching_cross_channel_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            good = owner_browser_proof()
+            path.write_text(json.dumps(good))
+            proof = harness.require_owner_browser_proof(path)
+            self.assertEqual((proof['admission_count'], proof['source_sha256'], proof['pdf_sha256']),
+                             (1, good['source_sha256'], good['pdf_sha256']))
+            self.assertIn('not production acceptance', proof['scope'])
+            for field in ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256',
+                          'pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256'):
+                path.write_text(json.dumps({**good, field: 'd' * 64}))
+                with self.subTest(field=field), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+
+    def test_owner_browser_proof_refuses_missing_false_mocked_or_incomplete_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            good = owner_browser_proof()
+            with self.assertRaises(FileNotFoundError):
+                harness.require_owner_browser_proof(path)
+            invalid = [('success', False), ('scenario', 'normal-guest-initial-and-latest-source'),
+                ('compiler', 'pdflatex'), ('admission_count', 0), ('admission_count', 2), ('admission_count', True),
+                ('pdf_bytes', 0), ('pdf_bytes', 20 * 1024 * 1024 + 1), ('pdf_bytes', True),
+                ('compiler_settings_override_used', True), ('compiler_settings_override_used', 0),
+                ('limitations', []), ('limitations', ['']), ('artifact_id', 'C' * 64), ('artifact_id', '../other')]
+            invalid += [(field, False) for field in good if field in (
+                'stored_default_verified', 'source_saved_and_reloaded', 'durable_artifact_accepted', 'canvas_painted',
+                'expected_text_rendered', 'preview_download_bytes_match', 'download_admission_count_unchanged',
+                'unrelated_owner_denied', 'private_preview_bytes_match')]
+            invalid += [(field, value) for field in ('runtime_error_count', 'capture_error_count',
+                'external_request_count', 'compiler_settings_update_count') for value in (1, -1, False, '0')]
+            for field, value in invalid:
+                path.write_text(json.dumps({**good, field: value}))
+                with self.subTest(field=field, value=value), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+            for field in good:
+                path.write_text(json.dumps({key: value for key, value in good.items() if key != field}))
+                with self.subTest(missing=field), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+            for value in (None, [], {}, {'success': True}):
+                path.write_text(json.dumps(value))
+                with self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+
+    def test_owner_browser_proof_requires_utc_and_both_browser_scenarios_are_wired(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            for measured in ('', '2026-10-22T19:00:00', '2026-10-22T19:00:00+05:30', 'bad-time', None):
+                path.write_text(json.dumps({**owner_browser_proof(), 'measured_at_utc': measured}))
+                with self.subTest(measured=measured), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+        source = inspect.getsource(harness.Harness.browser)
+        self.assertIn('require_junit_cases(self.evidence / "real-preview.xml", expected=2)', source)
+        self.assertIn('require_browser_proof(self.evidence / "browser-proof.json")', source)
+        self.assertIn("require_owner_browser_proof(self.evidence / 'owner-browser-proof.json')", source)
 
     def test_local_origin_rejects_external_and_credential_destinations(self):
         for value in ('https://127.0.0.1:1', 'http://remote:1', 'http://name:secret@localhost:1',
