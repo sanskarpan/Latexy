@@ -7,6 +7,7 @@ Those facts require a separate, commit-scoped operator attestation.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
 import os
@@ -79,7 +80,8 @@ def _public_pdf_transport_is_fenced(recovery: str, public_api: str) -> bool:
     )
 
 
-def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]]) -> None:
+def validate_approval_inputs(env: Mapping[str, str]) -> None:
+    """Reject invalid supplied approvals without I/O or verifying recovery facts."""
     deploy = env.get("DEPLOY_SHA", "")
     rollback = env.get("MODAL_FORWARD_ROLLBACK_SHA", "")
     repository = env.get("GITHUB_REPOSITORY", "")
@@ -93,6 +95,13 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
         raise CutoverBlocked("Recovery image and artifact-reader attestation is absent or stale")
     if not REPOSITORY.fullmatch(repository):
         raise CutoverBlocked("GitHub repository identity is invalid")
+
+
+def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]]) -> None:
+    validate_approval_inputs(env)
+    deploy = env["DEPLOY_SHA"]
+    rollback = env["MODAL_FORWARD_ROLLBACK_SHA"]
+    repository = env["GITHUB_REPOSITORY"]
 
     _result(runner, ["git", "merge-base", "--is-ancestor", rollback, deploy],
             "Recovery SHA is not an ancestor of the deployment SHA")
@@ -134,13 +143,23 @@ def _run(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, capture_output=True, text=True, timeout=20, check=False)
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--approvals-only", action="store_true",
+                        help="Check supplied approval inputs locally; do not verify recovery or drain")
+    args = parser.parse_args(argv)
     try:
-        validate(os.environ, _run)
+        if args.approvals_only:
+            validate_approval_inputs(os.environ)
+        else:
+            validate(os.environ, _run)
     except CutoverBlocked as exc:
         print(f"Modal schema cutover blocked: {exc}", file=sys.stderr)
         return 1
-    print("Modal schema cutover source and CI checks passed; operator attestations supplied")
+    if args.approvals_only:
+        print("Approval inputs accepted; recovery and drain remain unverified")
+    else:
+        print("Modal schema cutover source and CI checks passed; operator attestations supplied")
     return 0
 
 

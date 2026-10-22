@@ -109,8 +109,8 @@ describe('Next-vendored host hydration replay diagnostic', () => {
       }
       const packagePath = path.join(isolatedNext, 'package.json')
       const metadata = JSON.parse(readFileSync(packagePath, 'utf8'))
-      writeFileSync(packagePath, JSON.stringify({ ...metadata, version: '15.5.28' }))
-      expect(() => verifyNextHydrationBackport(temporaryDirectory)).toThrow('Expected exact Next 15.5.27')
+      writeFileSync(packagePath, JSON.stringify({ ...metadata, version: '15.5.29' }))
+      expect(() => verifyNextHydrationBackport(temporaryDirectory)).toThrow('Expected exact Next 15.5.28')
       writeFileSync(packagePath, JSON.stringify(metadata))
       rmSync(renderer)
       expect(() => verifyNextHydrationBackport(temporaryDirectory)).toThrow()
