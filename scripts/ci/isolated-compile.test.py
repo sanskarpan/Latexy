@@ -679,6 +679,132 @@ class HarnessGuards(unittest.TestCase):
         self.assertLess(source.index('self.qa(["alembic", "upgrade", "head"]'), source.index('self.storage_integration()'))
         self.assertLess(source.index('self.storage_integration()'), source.index('api = self.start("api"'))
 
+    def test_builder_catalog_uses_actual_compatibility_and_rejects_empty_or_incompatible_rows(self):
+        # Exercise the probe's real aggregation with the production pure
+        # compatibility predicate, without importing settings or opening a DB.
+        service_path = HERE.parents[1] / 'backend/app/services/resume_builder_service.py'
+        service_tree = ast.parse(service_path.read_text(encoding='utf-8'))
+        categories = next(node for node in service_tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'SUPPORTED_BUILDER_CATEGORIES' for target in node.targets))
+        service_class = next(node for node in service_tree.body if isinstance(node, ast.ClassDef)
+            and node.name == 'ResumeBuilderService')
+        predicate = next(node for node in service_class.body if isinstance(node, ast.FunctionDef)
+            and node.name == 'is_supported_category')
+        production = {}
+        exec(compile(ast.Module(body=[categories, predicate], type_ignores=[]), str(service_path), 'exec'), production)
+        service = type('Compatibility', (), {'is_supported_category': production['is_supported_category']})()
+        count_function = next(node for node in ast.parse(harness.BUILDER_CATALOG_PROBE).body
+            if isinstance(node, ast.FunctionDef) and node.name == 'catalog_counts')
+        probe = {'resume_builder_service': service}
+        exec(compile(ast.Module(body=[count_function], type_ignores=[]), '<owned-catalog-probe>', 'exec'), probe)
+        counts = probe['catalog_counts']
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'builder-catalog-readiness.json'
+            for rows in ([], [('ats_safe', 'resume', False)], [('academic', 'resume', True)],
+                         [('ats_safe', 'presentation', True)]):
+                path.write_text(json.dumps(counts(rows)))
+                with self.subTest(rows=rows), self.assertRaises(RuntimeError):
+                    harness.require_builder_catalog_proof(path)
+            value = counts([('ats_safe', 'resume', True), ('minimal', 'resume', False),
+                            ('academic', 'resume', True), ('ats_safe', 'presentation', True)])
+            path.write_text(json.dumps(value))
+            self.assertEqual(harness.require_builder_catalog_proof(path), {
+                'total_templates': 4, 'active_templates': 3, 'compatible_active_resume_templates': 1})
+
+    def test_builder_catalog_proof_is_strictly_count_only_and_nonempty(self):
+        good = {'total_templates': 3, 'active_templates': 2, 'compatible_active_resume_templates': 1}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'catalog.json'
+            for value in ([], {}, {**good, 'template_ids': ['synthetic-id']},
+                          {**good, 'active_templates': True}, {**good, 'total_templates': '3'},
+                          {**good, 'compatible_active_resume_templates': 0},
+                          {**good, 'active_templates': 0}, {**good, 'total_templates': 1}):
+                path.write_text(json.dumps(value))
+                with self.subTest(value=value), self.assertRaises(RuntimeError):
+                    harness.require_builder_catalog_proof(path)
+            path.write_text(' ' * 4097)
+            with self.assertRaises(RuntimeError):
+                harness.require_builder_catalog_proof(path)
+
+    def test_builder_catalog_seed_and_probe_are_owned_ordered_and_fresh(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            original = dict(instance.app_environment)
+            report = work / 'builder-catalog-readiness.json'
+            proof = {'total_templates': 2, 'active_templates': 2, 'compatible_active_resume_templates': 1}
+            def qa(command, **kwargs):
+                if command[:2] == ['python', '-c']:
+                    report.write_text(json.dumps(proof))
+            instance.qa = MagicMock(side_effect=qa)
+            instance.seed_builder_catalog()
+            self.assertEqual(instance.app_environment, original)
+            self.assertEqual(instance.qa.call_args_list[0].args[0], ['python', '-m', 'app.scripts.seed_templates'])
+            self.assertEqual(instance.qa.call_args_list[1].args[0], ['python', '-c', harness.BUILDER_CATALOG_PROBE])
+            self.assertEqual(instance.qa.call_count, 2)
+            self.assertIn('SET TRANSACTION READ ONLY', harness.BUILDER_CATALOG_PROBE)
+            self.assertEqual(instance.provenance['builder_catalog'], proof)
+            instance.qa.reset_mock()
+            with self.assertRaisesRegex(RuntimeError, 'must be fresh'):
+                instance.seed_builder_catalog()
+            instance.qa.assert_not_called()
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertLess(prepare.index('self.storage_integration()'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('converter-failure-ledger.xml'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('required-template-certification.json'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('self.seed_builder_catalog()'), prepare.index('api = self.start("api"'))
+
+    def test_builder_catalog_rejects_unowned_targets_before_seeding(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            original = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            instance.qa = MagicMock()
+            for update in ({'DATABASE_URL': 'postgresql+asyncpg://operator@provider.invalid/production'},
+                           {'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/other_test'},
+                           {'ENVIRONMENT': 'production'}, {'DEPLOY_TARGET': 'modal'},
+                           {'LATEXY_ISOLATED_CI': '0'}):
+                instance.app_environment = {**original, **update}
+                with self.subTest(update=update), self.assertRaisesRegex(RuntimeError, 'exact owned disposable'):
+                    instance.seed_builder_catalog()
+            instance.app_environment = original
+            instance.names = ['unrelated-postgres']
+            with self.assertRaisesRegex(RuntimeError, 'exact owned disposable'):
+                instance.seed_builder_catalog()
+            instance.qa.assert_not_called()
+
+    def test_builder_catalog_missing_report_or_failed_seed_cannot_record_readiness(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            instance.qa = MagicMock()
+            with self.assertRaises(FileNotFoundError):
+                instance.seed_builder_catalog()
+            self.assertNotIn('builder_catalog', instance.provenance)
+            instance.qa.reset_mock(side_effect=True)
+            instance.qa.side_effect = RuntimeError('Owned seed failed')
+            with self.assertRaisesRegex(RuntimeError, 'Owned seed failed'):
+                instance.seed_builder_catalog()
+            self.assertEqual(instance.qa.call_count, 1)
+            self.assertNotIn('builder_catalog', instance.provenance)
+
     def test_browser_proof_requires_two_complete_nonmocked_samples(self):
         sample = {key: True for key in ('websocket_artifact', 'websocket_completed', 'canvas_painted',
             'expected_text_rendered', 'synctex_mappable', 'pdf_geometry_synctex_fingerprint_matches')}

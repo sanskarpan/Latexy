@@ -51,6 +51,41 @@ STORAGE_INTEGRATION_CASES = frozenset({
     'test_real_guest_completed_artifact_binding_and_exact_cache',
 })
 
+BUILDER_CATALOG_PROBE = """
+import asyncio
+import json
+from pathlib import Path
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.core.config import settings
+from app.database.models import ResumeTemplate
+from app.services.resume_builder_service import resume_builder_service
+from app.utils.db_url import normalize_database_url
+
+def catalog_counts(rows):
+    return {
+        'total_templates': len(rows),
+        'active_templates': sum(active is True for category, document_type, active in rows),
+        'compatible_active_resume_templates': sum(
+            active is True and resume_builder_service.is_supported_category(category, document_type)
+            for category, document_type, active in rows),
+    }
+
+async def main():
+    engine = create_async_engine(normalize_database_url(settings.DATABASE_URL), echo=False)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text('SET TRANSACTION READ ONLY'))
+            rows = (await connection.execute(select(
+                ResumeTemplate.category, ResumeTemplate.document_type, ResumeTemplate.is_active))).all()
+            counts = catalog_counts(rows)
+        Path('/evidence/builder-catalog-readiness.json').write_text(json.dumps(counts) + '\\n')
+    finally:
+        await engine.dispose()
+
+asyncio.run(main())
+"""
+
 
 def owned_frontend_auth_environment(frontend_origin: str) -> dict[str, str]:
     """Trust only the exact owned browser Origin, keeping CSRF checks enabled."""
@@ -320,6 +355,19 @@ def require_storage_integration_proof(path: Path) -> dict:
             'cases': sorted(STORAGE_INTEGRATION_CASES)}
 
 
+def require_builder_catalog_proof(path: Path) -> dict:
+    """Only aggregate readiness for the normal builder's canonical catalog."""
+    if path.stat().st_size > 4096:
+        raise RuntimeError('Owned builder catalog evidence exceeds its bound')
+    value = json.loads(path.read_text())
+    fields = {'total_templates', 'active_templates', 'compatible_active_resume_templates'}
+    if (not isinstance(value, dict) or set(value) != fields
+            or any(type(value[field]) is not int for field in fields)
+            or not 0 < value['compatible_active_resume_templates'] <= value['active_templates'] <= value['total_templates']):
+        raise RuntimeError('Owned builder catalog is empty, incompatible, or invalid')
+    return value
+
+
 def context_digest(directory: Path, *, frontend: bool = False) -> str:
     digest = hashlib.sha256()
     for path in sorted(directory.rglob("*")):
@@ -582,6 +630,24 @@ class Harness:
         self.provenance["storage_image_id"] = self.docker(
             "image", "inspect", "--format", "{{.Id}}", self.storage_image, capture=True)
 
+    def seed_builder_catalog(self) -> None:
+        """Seed shipped layouts only into our fresh disposable database."""
+        expected = {
+            'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development', 'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+            'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+            'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+        }
+        if (not re.fullmatch(r'latexy-ci-[0-9a-f]{32}', self.prefix) or not self.network_created
+                or self.prefix + '-postgres' not in self.names
+                or any(self.app_environment.get(key) != value for key, value in expected.items())):
+            raise RuntimeError('Builder catalog seeding requires exact owned disposable fixtures')
+        report = self.evidence / 'builder-catalog-readiness.json'
+        if report.exists():
+            raise RuntimeError('Builder catalog evidence must be fresh')
+        self.qa(['python', '-m', 'app.scripts.seed_templates'], timeout=120)
+        self.qa(['python', '-c', BUILDER_CATALOG_PROBE], timeout=60)
+        self.provenance['builder_catalog'] = require_builder_catalog_proof(report)
+
     def prepare(self) -> tuple[str, str]:
         context = self.work / "context"
         copy_candidate_context(self.root, context)
@@ -686,6 +752,9 @@ print('Fresh private artifact bucket ready')
         self.qa(["python", "scripts/certify_resume_templates.py", "--samples", "1", "--timeout", "40",
                  "--fixture", "ats_safe/ats_clean.tex", "--fixture", "ats_safe/hindi_professional.tex",
                  "--output", "/evidence/required-template-certification.json"], timeout=180)
+        # Database-backed checks can clean fixture rows. Restore the normal
+        # source-owned catalog only after those checks, before serving the UI.
+        self.seed_builder_catalog()
         api = self.start("api", self.image, self.app_options(), [])
         worker = self.start("worker", self.image, self.app_options(),
             ["celery", "-A", "app.core.celery_app", "worker", "--queues", "latex", "--concurrency", "1",

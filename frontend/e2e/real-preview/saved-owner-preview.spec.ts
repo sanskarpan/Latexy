@@ -97,7 +97,11 @@ test('ordinary saved owner previews and downloads the stored default Lua revisio
     const role = await pool.query('SELECT role FROM users WHERE id=$1', [owner])
     expect(role.rows.map(row => row.role)).toEqual(['user'])
     await page.getByLabel('Resume Title', { exact: true }).fill('Synthetic saved-owner renderer acceptance')
-    await page.getByRole('button', { name: /Start my r.sum./ }).click()
+    await expect(page.getByText('No builder-compatible templates are currently available.', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Selected layout', { exact: true })).toHaveCount(1)
+    const create = page.getByRole('button', { name: /Start my r.sum./ })
+    await expect(create).toBeEnabled()
+    await create.click()
     await expect(page).toHaveURL(/\/workspace\/builder\/[a-f0-9-]{36}$/, { timeout: 30_000 })
     const resumeId = new URL(page.url()).pathname.split('/').pop()!
     const autosaved = page.waitForResponse(response => {
