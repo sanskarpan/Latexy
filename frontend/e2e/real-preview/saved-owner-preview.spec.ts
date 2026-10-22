@@ -5,7 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Pool } from 'pg'
 import { localHttpOrigin, isLocalPreviewResource } from '../../scripts/real-preview-contract.mjs'
-import { isolatedPreviewDatabase, ownedPdfCapture } from '../../scripts/saved-owner-preview-contract.mjs'
+import { isolatedPreviewDatabase, ownedPdfCapture, uiIssuedOwnerSession } from '../../scripts/saved-owner-preview-contract.mjs'
 import { installBrowserPdfCapture, type BrowserPdfCapture, type PdfCaptureController } from './capture-browser-pdf'
 import { digest, extractReceivedPdfText, normalizedText, isAdmissionRequest } from './observe-real-preview'
 
@@ -15,11 +15,23 @@ const frontendOrigin = localHttpOrigin(process.env.REAL_PREVIEW_BASE_URL)
 async function signupThroughUi(page: Page) {
   await page.goto('/signup?redirect=/workspace/builder/new')
   await page.locator('#name').fill('Synthetic renderer owner')
-  await page.locator('#email').fill(`test_real_renderer_${randomUUID()}@example.invalid`)
+  const email = `test_real_renderer_${randomUUID()}@example.invalid`
+  await page.locator('#email').fill(email)
   const password = `Synthetic-${randomUUID()}!`
   await page.locator('#password').fill(password)
   await page.locator('#confirm').fill(password)
+  // Observe the response to this normal UI submission, before its hard
+  // navigation. Better Auth signup returns { token, user }, not the nested
+  // get-session shape; a later independent session read is not issuance proof.
+  const issued = page.waitForResponse(response => {
+    const url = new URL(response.url())
+    return url.origin === frontendOrigin && url.pathname === '/api/auth/sign-up/email'
+      && response.request().method() === 'POST'
+  })
   await page.locator('form button[type="submit"]').click()
+  const response = await issued
+  expect(response.status()).toBe(200)
+  const session = uiIssuedOwnerSession(await response.json(), email)
   await expect(page).toHaveURL(/\/workspace\/builder\/new$/, { timeout: 60_000 })
   // Complete the real optional tour through its ordinary dismiss action.
   const tour = page.getByRole('dialog')
@@ -27,12 +39,10 @@ async function signupThroughUi(page: Page) {
     await tour.getByRole('button', { name: /^Skip/ }).first().click()
     await expect(tour).toBeHidden()
   }
-  const value = await page.evaluate(async () => (await fetch('/api/auth/get-session')).json())
-  expect(Boolean(value?.user?.id && value?.session?.token)).toBe(true)
   // Observe the real UI-issued fixture session, keeping it in memory only.
   // APIRequestContext has different Secure-cookie handling than Chromium on
   // loopback; explicit session headers mirror the app's authenticated API reads.
-  return { id: value.user.id as string, headers: { Authorization: `Bearer ${value.session.token}` } }
+  return session
 }
 
 test('ordinary saved owner previews and downloads the stored default Lua revision', async ({ page, browser }) => {
@@ -74,6 +84,8 @@ test('ordinary saved owner previews and downloads the stored default Lua revisio
   const peer = await browser.newContext({ baseURL: frontendOrigin })
   try {
     const ownerSession = await signupThroughUi(page)
+    const authenticated = await page.request.get(`${apiOrigin}/resumes/`, { headers: ownerSession.headers })
+    expect(authenticated.status()).toBe(200)
     const owner = ownerSession.id
     const role = await pool.query('SELECT role FROM users WHERE id=$1', [owner])
     expect(role.rows.map(row => row.role)).toEqual(['user'])

@@ -8,6 +8,18 @@ export function isolatedPreviewDatabase(value) {
   return value
 }
 
+/** Bind the normal UI signup exchange without exposing session values in errors. */
+export function uiIssuedOwnerSession(value, email) {
+  if (typeof email !== 'string' || !/^test_real_renderer_[a-f0-9-]{36}@example\.invalid$/.test(email)
+    || !value || value.user?.email !== email
+    || typeof value.user?.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.user.id)
+    || typeof value.token !== 'string' || value.token.length < 1 || value.token.length > 4096
+    || /[\s\x00-\x1f\x7f]/.test(value.token)) {
+    throw new Error('Normal UI signup did not issue the exact synthetic owner session')
+  }
+  return { id: value.user.id, headers: { Authorization: `Bearer ${value.token}` } }
+}
+
 /** Bounded original-response bytes, never source/session values in errors. */
 export function ownedPdfCapture(value, now = Date.now()) {
   if (!value || value.error || value.status !== 200 || value.artifactId !== ''

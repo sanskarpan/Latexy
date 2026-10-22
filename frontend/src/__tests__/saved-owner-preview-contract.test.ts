@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { isolatedPreviewDatabase, ownedPdfCapture } from '../../scripts/saved-owner-preview-contract.mjs'
+import { isolatedPreviewDatabase, ownedPdfCapture, uiIssuedOwnerSession } from '../../scripts/saved-owner-preview-contract.mjs'
 
 describe('saved-owner real preview evidence boundaries', () => {
+  const email = 'test_real_renderer_11111111-1111-4111-8111-111111111111@example.invalid'
+  const issued = () => ({ user: { id: '11111111-1111-4111-8111-111111111111', email }, token: 'synthetic-issued-token' })
+
+  it('binds the normal UI signup response to its exact synthetic owner and issued token', () => {
+    expect(uiIssuedOwnerSession(issued(), email)).toEqual({ id: issued().user.id,
+      headers: { Authorization: 'Bearer synthetic-issued-token' } })
+  })
+
+  it.each([null, {}, { ...issued(), token: null }, { ...issued(), token: '' },
+    { ...issued(), token: 'synthetic\r\nheader' }, { ...issued(), token: 'x'.repeat(4097) },
+    { ...issued(), user: { ...issued().user, email: 'another@example.invalid' } },
+    { ...issued(), user: { ...issued().user, id: 'not-an-owner-id' } },
+    { user: issued().user, session: { token: 'synthetic-nested-token' } }])(
+    'rejects absent, unrelated or non-issued sessions without exposing their values', value => {
+      expect(() => uiIssuedOwnerSession(value, email)).toThrow('Normal UI signup did not issue the exact synthetic owner session')
+    },
+  )
+
   it('accepts only explicit isolated loopback databases, never production or ambiguous options', () => {
     expect(isolatedPreviewDatabase('postgresql://postgres@127.0.0.1:54321/latexy_ci_test'))
       .toBe('postgresql://postgres@127.0.0.1:54321/latexy_ci_test')
