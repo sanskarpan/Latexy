@@ -23,17 +23,35 @@ and [`jobs.<job_id>.if` status checks](https://docs.github.com/en/actions/writin
 
 | Scope | Jobs |
 | --- | --- |
-| `backend` | Backend Lint, Modal Deployment Parity, Backend Tests |
+| `backend` | Backend Lint, Modal Deployment Parity, Backend Tests, Isolated Real Compile and Preview |
 | `frontend` | Frontend Lint, Frontend Build, Cross-Browser Quality |
 | `tui` | TUI Tests |
 | `extension` | Browser Extension |
 | `render_cv` | Reusable Render CV Action |
-| `templates` | Template PDF Extraction Contract |
+| `templates` | Template PDF Extraction Contract, Isolated Real Compile and Preview |
 | `observability` | Observability Smoke |
 | `full_stack` | Frontend Build and Full-Stack Smoke (with backend prerequisite rules below) |
 
+**Isolated Real Compile and Preview** is also selected for `frontend` or
+`full_stack` changes. Its condition is the union of the `backend`, `frontend`,
+`templates` and `full_stack` scopes; it is one job, not one execution per scope.
+It runs the isolation/evidence guard tests and then
+[`scripts/ci/isolated-real-compile.py`](../scripts/ci/isolated-real-compile.py)
+with fresh local PostgreSQL, Redis and MinIO services, synthetic signing/storage
+values, actual worker/TeX artifacts and a managed Chromium browser. The job
+retains its functional evidence as an artifact. This Linux/container check does
+not use production credentials, invoke a Modal deployment, certify a provider
+VM, or establish production acceptance or a latency objective.
+
+**Modal Harness Synthetic Tests** is unconditional and independent of component
+classification. It runs the explicitly selected, dependency-free tests in
+[`scripts/qa/run_modal_spawn_diagnostics.py`](../scripts/qa/run_modal_spawn_diagnostics.py).
+The job does not import the Modal SDK, use credentials, start services or create
+provider infrastructure. It verifies harness behavior using synthetic inputs;
+it does not run the opt-in Modal acceptance harness itself.
+
 Documentation-only changes therefore retain the visible privacy/classification
-and required check contexts, while unrelated database, package, build, or
+and synthetic-harness checks and required check contexts, while unrelated database, package, build, or
 browser work is skipped. A skipped check is visible as skipped/successful to
 branch protection; it does not mean that suite ran. The previously visible
 33/34 entries were check runs, including duplicate CI jobs, not 33 workflows.

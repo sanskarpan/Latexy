@@ -554,6 +554,92 @@ class HarnessGuards(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 harness.require_junit_cases(path, expected=1)
 
+    def test_storage_integration_requires_exact_complete_case_evidence(self):
+        names = sorted(harness.STORAGE_INTEGRATION_CASES)
+        def report(case_names=names, *, extra='', classname='test.test_render_storage_integration'):
+            return '<testsuite>' + ''.join(
+                f'<testcase classname="{classname}" name="{name}">{extra}</testcase>' for name in case_names) + '</testsuite>'
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'storage.xml'
+            with self.assertRaises(FileNotFoundError):
+                harness.require_storage_integration_proof(path)
+            for body in (report([]), report(names[:2]), report(names + [names[0]]),
+                         report([names[0], names[0], names[1]]), report(classname='unrelated_suite'),
+                         report(extra='<skipped/>'), report(extra='<failure/>'), report(extra='<error/>')):
+                path.write_text(body)
+                with self.subTest(body=body), self.assertRaises(RuntimeError):
+                    harness.require_storage_integration_proof(path)
+            path.write_text(report())
+            proof = harness.require_storage_integration_proof(path)
+            self.assertEqual((proof['passed'], proof['skipped'], proof['failed'], proof['errors']), (3, 0, 0, 0))
+            self.assertEqual(proof['cases'], names)
+            self.assertIn('not production acceptance', proof['scope'])
+
+    def test_storage_integration_opt_in_is_scoped_to_owned_qa_process_and_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.app_environment = {
+                'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14',
+            }
+            original = dict(instance.app_environment)
+            path = work / 'render-storage-integration.xml'
+            instance.qa = MagicMock(side_effect=lambda *args, **kwargs: path.write_text('<testsuite>' + ''.join(
+                f'<testcase classname="test.test_render_storage_integration" name="{name}"/>'
+                for name in harness.STORAGE_INTEGRATION_CASES) + '</testsuite>'))
+            instance.storage_integration()
+            self.assertEqual(instance.app_environment, original)
+            command = instance.qa.call_args.args[0]
+            self.assertEqual(command[:5], ['env', 'RUN_RENDER_STORAGE_INTEGRATION=1', 'python', '-m', 'pytest'])
+            self.assertIn('test/test_render_storage_integration.py', command)
+            self.assertIn('--junitxml=/evidence/render-storage-integration.xml', command)
+            self.assertEqual(instance.qa.call_args.kwargs['timeout'], 300)
+            self.assertEqual(instance.provenance['render_storage_integration']['passed'], 3)
+            with self.assertRaisesRegex(RuntimeError, 'fresh'):
+                instance.storage_integration()
+            self.assertEqual(instance.qa.call_count, 1)
+
+    def test_storage_integration_refuses_nonowned_services_before_qa(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            valid = {'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14'}
+            instance.qa = MagicMock()
+            for key in valid:
+                instance.app_environment = {**valid, key: 'unrelated-target'}
+                with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'owned disposable'):
+                    instance.storage_integration()
+            instance.app_environment = valid
+            instance.prefix = 'existing-bucket'
+            with self.assertRaisesRegex(RuntimeError, 'owned disposable'):
+                instance.storage_integration()
+            instance.qa.assert_not_called()
+
+    def test_storage_integration_missing_report_or_failed_process_cannot_record_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14'}
+            instance.qa = MagicMock()
+            with self.assertRaises(FileNotFoundError):
+                instance.storage_integration()
+            self.assertNotIn('render_storage_integration', instance.provenance)
+            instance.qa.side_effect = RuntimeError('Owned candidate QA process failed')
+            with self.assertRaisesRegex(RuntimeError, 'QA process failed'):
+                instance.storage_integration()
+            self.assertNotIn('render_storage_integration', instance.provenance)
+
+    def test_real_storage_suite_is_wired_after_schema_and_before_serving_processes(self):
+        source = inspect.getsource(harness.Harness.prepare)
+        self.assertLess(source.index('self.qa(["alembic", "upgrade", "head"]'), source.index('self.storage_integration()'))
+        self.assertLess(source.index('self.storage_integration()'), source.index('api = self.start("api"'))
+
     def test_browser_proof_requires_two_complete_nonmocked_samples(self):
         sample = {key: True for key in ('websocket_artifact', 'websocket_completed', 'canvas_painted',
             'expected_text_rendered', 'synctex_mappable', 'pdf_geometry_synctex_fingerprint_matches')}

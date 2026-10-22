@@ -44,6 +44,11 @@ CONTAINER_STATE_FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
     '"error":{{json .State.Error}},"networks":{{json .NetworkSettings.Networks}},'
     '"ports":{{json .NetworkSettings.Ports}}}')
 BROWSER_PREFLIGHT_HEADERS = ('content-type', 'authorization', 'x-device-fingerprint', 'x-request-id', 'traceparent')
+STORAGE_INTEGRATION_CASES = frozenset({
+    'test_real_conditional_immutable_writes',
+    'test_real_admitted_render_cache_preview_export_sync_geometry',
+    'test_real_guest_completed_artifact_binding_and_exact_cache',
+})
 
 
 def verify_browser_cors(api_origin: str, frontend_origin: str, *, timeout: float = 40) -> dict:
@@ -290,6 +295,18 @@ def require_junit_cases(path: Path, expected: int) -> int:
     return len(cases)
 
 
+def require_storage_integration_proof(path: Path) -> dict:
+    """Require every real-storage case, not an empty/skipped opt-in suite."""
+    count = require_junit_cases(path, expected=len(STORAGE_INTEGRATION_CASES))
+    cases = list(ET.parse(path).getroot().iter('testcase'))
+    if ({case.get('name') for case in cases} != STORAGE_INTEGRATION_CASES
+            or any(case.get('classname', '').split('.')[-1] != 'test_render_storage_integration' for case in cases)):
+        raise RuntimeError('Required storage integration case identities are missing or unexpected')
+    return {'scope': 'isolated PostgreSQL/Redis/MinIO/native-TeX storage integration; not production acceptance',
+            'passed': count, 'skipped': 0, 'failed': 0, 'errors': 0,
+            'cases': sorted(STORAGE_INTEGRATION_CASES)}
+
+
 def context_digest(directory: Path, *, frontend: bool = False) -> str:
     digest = hashlib.sha256()
     for path in sorted(directory.rglob("*")):
@@ -363,7 +380,7 @@ class Harness:
         self.app_environment: dict[str, str] = {}
         self.frontend_reservation = None
         self.relays: list[FixedTargetRelay] = []
-        self.provenance: dict[str, str] = {}
+        self.provenance: dict[str, object] = {}
         self.deadline = time.monotonic() + 45 * 60
         self.cleaning = False
 
@@ -479,6 +496,27 @@ class Harness:
             self.docker("logs", "--tail", "80", name)
             raise RuntimeError(f"Owned candidate QA process failed (exit {code})")
 
+    def storage_integration(self) -> None:
+        """Run only against this harness's fresh, private service fixtures."""
+        expected = {
+            'LATEXY_ISOLATED_CI': '1',
+            'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': self.prefix,
+            'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+            'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14',
+        }
+        if (not re.fullmatch(r'latexy-ci-[0-9a-f]{32}', self.prefix)
+                or any(self.app_environment.get(key) != value for key, value in expected.items())):
+            raise RuntimeError('Storage integration requires exact owned disposable fixtures')
+        report = self.evidence / 'render-storage-integration.xml'
+        if report.exists():
+            raise RuntimeError('Storage integration evidence must be fresh')
+        # The opt-in belongs to this QA process only. Never inherit it into the
+        # API/worker or use operator-provided storage configuration.
+        self.qa(['env', 'RUN_RENDER_STORAGE_INTEGRATION=1', 'python', '-m', 'pytest',
+                 'test/test_render_storage_integration.py', '-v',
+                 '--junitxml=/evidence/render-storage-integration.xml'], timeout=300)
+        self.provenance['render_storage_integration'] = require_storage_integration_proof(report)
+
     def prepare_storage_image(self) -> None:
         context = self.work / "storage-context"
         context.mkdir()
@@ -593,6 +631,7 @@ print('Fresh private artifact bucket ready')
         self.provenance["renderer_assets_fingerprint"] = json.loads(
             (self.evidence / "renderer-assets.json").read_text())["fingerprint_sha256"]
         self.qa(["alembic", "upgrade", "head"], timeout=180)
+        self.storage_integration()
         self.qa(["python", "-m", "pytest", "test/test_converter_failure_ledger_integration.py", "-v",
                  "--junitxml=/evidence/converter-failure-ledger.xml"], timeout=240)
         require_junit_cases(self.evidence / "converter-failure-ledger.xml", expected=11)
