@@ -59,7 +59,7 @@ component was tested.
 ## Production service-worker checks
 
 Cross-Browser Quality also runs the dedicated
-[`pwa-acceptance.mjs`](../frontend/scripts/pwa-acceptance.mjs) runner after its
+[`pwa-acceptance.mjs`](../frontend/scripts/pwa-acceptance.mjs) runner before its
 HTTP-mocked quality suite. The dedicated Chromium config allows service workers
 and selects the existing offline PDF/account-isolation cases plus worker
 installation, controlled update and private-response cache checks. It requires
