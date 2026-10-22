@@ -56,6 +56,23 @@ provenance, freshness, and environment guards. This document describes CI
 selection only; it does not authorize deployment or imply that a skipped
 component was tested.
 
+## Production service-worker checks
+
+Cross-Browser Quality also runs the dedicated
+[`pwa-acceptance.mjs`](../frontend/scripts/pwa-acceptance.mjs) runner after its
+HTTP-mocked quality suite. The dedicated Chromium config allows service workers
+and selects the existing offline PDF/account-isolation cases plus worker
+installation, controlled update and private-response cache checks. It requires
+all 12 named cases to pass with no skips or flaky retries, and retains the JSON
+report, worker byte identities and failure evidence under `test-results/pwa`.
+
+The ordinary quality suite continues to block workers so its HTTP interception
+contracts remain deterministic. The PWA suite runs a disposable local production
+build; its account/API fixtures are synthetic. The controlled worker update
+changes a test-proxy version comment and records original/derived hashes. It
+does not establish installed-device behavior, real backend authorization or a
+production rollout. See the [PWA acceptance scope](../frontend/e2e/PWA_ACCEPTANCE.md).
+
 ## Superseded-run cancellation regression (#1822)
 
 PR #1821 exposed this distinction: run `37513121390` continued its component

@@ -485,6 +485,16 @@ jobs:
           --output=test-results/admin-capabilities
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
+      - name: Verify production service-worker lifecycle and offline owner isolation
+        timeout-minutes: 30
+        env:
+          PLAYWRIGHT_PWA_PORT: "5193"
+        # Uses a disposable production build with real workers enabled. Account
+        # and private-response fixtures are synthetic; no live provider is used.
+        # The runner requires every named case with zero skips or retries.
+        run: |
+          node --test scripts/pwa-acceptance.test.mjs
+          node scripts/pwa-acceptance.mjs
       - name: Extract landing screenshots for review
         if: ${{ !cancelled() && hashFiles('frontend/playwright-quality-report/index.html') != '' }}
         env:
@@ -599,6 +609,7 @@ jobs:
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
             frontend/test-results/settings-hydration-diagnostic
+            frontend/test-results/pwa
           if-no-files-found: warn
           retention-days: 14
 
