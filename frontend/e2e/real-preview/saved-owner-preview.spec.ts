@@ -5,7 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Pool } from 'pg'
 import { localHttpOrigin, isLocalPreviewResource } from '../../scripts/real-preview-contract.mjs'
-import { isolatedPreviewDatabase, ownedPdfCapture, uiIssuedOwnerSession } from '../../scripts/saved-owner-preview-contract.mjs'
+import { authenticatedUiOwnerSession, isolatedPreviewDatabase, ownedPdfCapture } from '../../scripts/saved-owner-preview-contract.mjs'
 import { installBrowserPdfCapture, type BrowserPdfCapture, type PdfCaptureController } from './capture-browser-pdf'
 import { digest, extractReceivedPdfText, normalizedText, isAdmissionRequest } from './observe-real-preview'
 
@@ -20,9 +20,8 @@ async function signupThroughUi(page: Page) {
   const password = `Synthetic-${randomUUID()}!`
   await page.locator('#password').fill(password)
   await page.locator('#confirm').fill(password)
-  // Observe the response to this normal UI submission, before its hard
-  // navigation. Better Auth signup returns { token, user }, not the nested
-  // get-session shape; a later independent session read is not issuance proof.
+  // Check this normal UI submission's status, without reading a response body
+  // that Chromium can discard when SignUpForm performs its hard navigation.
   const issued = page.waitForResponse(response => {
     const url = new URL(response.url())
     return url.origin === frontendOrigin && url.pathname === '/api/auth/sign-up/email'
@@ -31,7 +30,6 @@ async function signupThroughUi(page: Page) {
   await page.locator('form button[type="submit"]').click()
   const response = await issued
   expect(response.status()).toBe(200)
-  const session = uiIssuedOwnerSession(await response.json(), email)
   await expect(page).toHaveURL(frontendOrigin + '/workspace/builder/new', { timeout: 60_000 })
   // Complete the real optional tour through its ordinary dismiss action.
   const tour = page.getByRole('dialog')
@@ -39,7 +37,16 @@ async function signupThroughUi(page: Page) {
     await tour.getByRole('button', { name: /^Skip/ }).first().click()
     await expect(tour).toBeHidden()
   }
-  // Observe the real UI-issued fixture session, keeping it in memory only.
+  // Read the actual browser-authenticated session after exact navigation.
+  // The same-origin request uses the cookies installed by normal UI signup;
+  // no token, cookie, route or fetch implementation is replaced by the test.
+  const observed = await page.evaluate(async () => {
+    const result = await fetch('/api/auth/get-session', { credentials: 'same-origin', cache: 'no-store' })
+    return { status: result.status, value: await result.json().catch(() => null) }
+  })
+  expect(observed.status).toBe(200)
+  const session = authenticatedUiOwnerSession(observed.value, email)
+  // Keep the observed real fixture session in memory only.
   // APIRequestContext has different Secure-cookie handling than Chromium on
   // loopback; explicit session headers mirror the app's authenticated API reads.
   return session

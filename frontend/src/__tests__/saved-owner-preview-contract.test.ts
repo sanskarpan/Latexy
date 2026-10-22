@@ -1,22 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { isolatedPreviewDatabase, ownedPdfCapture, uiIssuedOwnerSession } from '../../scripts/saved-owner-preview-contract.mjs'
+import { authenticatedUiOwnerSession, isolatedPreviewDatabase, ownedPdfCapture } from '../../scripts/saved-owner-preview-contract.mjs'
 
 describe('saved-owner real preview evidence boundaries', () => {
   const email = 'test_real_renderer_11111111-1111-4111-8111-111111111111@example.invalid'
-  const issued = () => ({ user: { id: '11111111-1111-4111-8111-111111111111', email }, token: 'synthetic-issued-token' })
+  const ownerId = '11111111-1111-4111-8111-111111111111'
+  const authenticated = () => ({ user: { id: ownerId, email },
+    session: { userId: ownerId, token: 'synthetic-authenticated-token' } })
 
-  it('binds the normal UI signup response to its exact synthetic owner and issued token', () => {
-    expect(uiIssuedOwnerSession(issued(), email)).toEqual({ id: issued().user.id,
-      headers: { Authorization: 'Bearer synthetic-issued-token' } })
+  it('binds the browser-authenticated UI session to its exact synthetic owner', () => {
+    expect(authenticatedUiOwnerSession(authenticated(), email)).toEqual({ id: ownerId,
+      headers: { Authorization: 'Bearer synthetic-authenticated-token' } })
   })
 
-  it.each([null, {}, { ...issued(), token: null }, { ...issued(), token: '' },
-    { ...issued(), token: 'synthetic\r\nheader' }, { ...issued(), token: 'x'.repeat(4097) },
-    { ...issued(), user: { ...issued().user, email: 'another@example.invalid' } },
-    { ...issued(), user: { ...issued().user, id: 'not-an-owner-id' } },
-    { user: issued().user, session: { token: 'synthetic-nested-token' } }])(
-    'rejects absent, unrelated or non-issued sessions without exposing their values', value => {
-      expect(() => uiIssuedOwnerSession(value, email)).toThrow('Normal UI signup did not issue the exact synthetic owner session')
+  it.each([null, {}, { ...authenticated(), session: null },
+    ...[undefined, null, '', 'synthetic\r\nheader', 'x'.repeat(4097)].map(token => ({
+      ...authenticated(), session: { ...authenticated().session, token },
+    })),
+    { ...authenticated(), user: { ...authenticated().user, email: 'another@example.invalid' } },
+    { ...authenticated(), user: { ...authenticated().user, id: 'not-an-owner-id' } },
+    { ...authenticated(), session: { ...authenticated().session, userId: '22222222-2222-4222-8222-222222222222' } },
+    { user: authenticated().user, token: 'synthetic-raw-signup-token' },
+    { user: authenticated().user, session: { token: 'synthetic-missing-owner-token' } },
+    { code: 'INVALID_ORIGIN', message: 'Synthetic error response' },
+    { ...authenticated(), error: { code: 'SYNTHETIC_ERROR' } }])(
+    'rejects absent, malformed, unrelated or error sessions without exposing their values', value => {
+      expect(() => authenticatedUiOwnerSession(value, email))
+        .toThrow('Browser-authenticated UI session does not match the exact synthetic owner')
     },
   )
 

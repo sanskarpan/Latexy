@@ -8,16 +8,17 @@ export function isolatedPreviewDatabase(value) {
   return value
 }
 
-/** Bind the normal UI signup exchange without exposing session values in errors. */
-export function uiIssuedOwnerSession(value, email) {
+/** Bind the browser-authenticated UI owner session without exposing its values. */
+export function authenticatedUiOwnerSession(value, email) {
   if (typeof email !== 'string' || !/^test_real_renderer_[a-f0-9-]{36}@example\.invalid$/.test(email)
-    || !value || value.user?.email !== email
+    || !value || value.error || value.user?.email !== email
     || typeof value.user?.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.user.id)
-    || typeof value.token !== 'string' || value.token.length < 1 || value.token.length > 4096
-    || /[\s\x00-\x1f\x7f]/.test(value.token)) {
-    throw new Error('Normal UI signup did not issue the exact synthetic owner session')
+    || value.session?.userId !== value.user.id
+    || typeof value.session?.token !== 'string' || value.session.token.length < 1 || value.session.token.length > 4096
+    || /[\s\x00-\x1f\x7f]/.test(value.session.token)) {
+    throw new Error('Browser-authenticated UI session does not match the exact synthetic owner')
   }
-  return { id: value.user.id, headers: { Authorization: `Bearer ${value.token}` } }
+  return { id: value.user.id, headers: { Authorization: `Bearer ${value.session.token}` } }
 }
 
 /** Bounded original-response bytes, never source/session values in errors. */
