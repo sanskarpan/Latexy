@@ -5,7 +5,6 @@ opt-in skip. DNS verification is seeded as prior state; no DNS, email or other
 external-provider acceptance is claimed.
 """
 import os
-from test.test_admin_control_plane_api import _create_session, _create_user
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -17,6 +16,7 @@ from app.core.redis import get_redis_cache_client
 from app.database.models import Tenant, TenantMember, User, Workspace
 from app.middleware.tenant_middleware import invalidate_tenant_cache
 from app.services.entitlement_service import entitlement_service
+from test.test_admin_control_plane_api import _create_session, _create_user
 
 _CASE_FEATURES = {
     "test_f10_denial_preserves_invitation_and_membership_removal_then_recovers": "f10",

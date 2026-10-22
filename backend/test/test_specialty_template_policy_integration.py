@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from test.test_admin_control_plane_api import _create_session, _create_user
 
 import pytest
 from sqlalchemy import delete, select, text
@@ -18,6 +17,7 @@ from sqlalchemy import delete, select, text
 from app.database.models import FeatureFlag, ResumeTemplate, RoleFeature, User
 from app.services import storage_service
 from app.services.entitlement_service import entitlement_service
+from test.test_admin_control_plane_api import _create_session, _create_user
 
 _SPECIALTY_CATEGORIES = ("academic", "regional", "presentation")
 _ORDINARY_CATEGORY = "software_engineering"
@@ -115,6 +115,9 @@ async def catalog(db_session, monkeypatch):
         db_session.add(template)
         templates[category] = template
     await db_session.commit()
+    # Other fixture rollbacks expire ORM attributes before this teardown runs.
+    # Keep immutable IDs while the inserted objects are still loaded.
+    template_ids = tuple(template.id for template in templates.values())
     storage = SyntheticStorage(
         {
             f"templates/{template.id}.{extension}": f"Synthetic {category} {extension} bytes".encode()
@@ -130,7 +133,7 @@ async def catalog(db_session, monkeypatch):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(ResumeTemplate).where(ResumeTemplate.id.in_([t.id for t in templates.values()]))
+            delete(ResumeTemplate).where(ResumeTemplate.id.in_(template_ids))
         )
         await db_session.commit()
 
