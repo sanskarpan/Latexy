@@ -52,6 +52,18 @@ STORAGE_INTEGRATION_CASES = frozenset({
 })
 
 
+def owned_frontend_auth_environment(frontend_origin: str) -> dict[str, str]:
+    """Trust only the exact owned browser Origin, keeping CSRF checks enabled."""
+    match = re.fullmatch(r'http://127\.0\.0\.1:([1-9][0-9]{0,4})', frontend_origin)
+    if not match or int(match[1]) > 65535:
+        raise RuntimeError('Frontend auth requires an exact owned loopback origin')
+    return {
+        'PLAYWRIGHT_APP_URL': frontend_origin,
+        'PLAYWRIGHT_AUTH_URL': frontend_origin.replace('http:', 'https:', 1),
+        'BETTER_AUTH_TRUSTED_ORIGINS': frontend_origin,
+    }
+
+
 def verify_browser_cors(api_origin: str, frontend_origin: str, *, timeout: float = 40) -> dict:
     """Positive Origin requests only; no admission, credential or quota bypass."""
     for origin in (api_origin, frontend_origin):
@@ -698,11 +710,12 @@ print('Fresh private artifact bucket ready')
                         "--fixture", fixture, "--verify-isolated-storage", "--output", f"/evidence/real-job-{fixture}.json", timeout=180)
         postgres_origin = f"postgresql://postgres@127.0.0.1:{self.relay_port(postgres, 5432)}/latexy_ci_test"
         self.environment.update({
+            **owned_frontend_auth_environment(frontend_origin),
             "REAL_PREVIEW_BASE_URL": frontend_origin, "REAL_PREVIEW_API_URL": api_origin,
             "CI_ISOLATED_EVIDENCE_DIR": str(self.evidence), "PLAYWRIGHT_PORT": str(frontend_port),
-            "PLAYWRIGHT_SERVER_MODE": "production", "PLAYWRIGHT_APP_URL": frontend_origin,
+            "PLAYWRIGHT_SERVER_MODE": "production",
             "PLAYWRIGHT_BACKEND_URL": api_origin, "PLAYWRIGHT_API_URL": api_origin,
-            "PLAYWRIGHT_DATABASE_URL": postgres_origin, "PLAYWRIGHT_AUTH_URL": frontend_origin.replace("http:", "https:"),
+            "PLAYWRIGHT_DATABASE_URL": postgres_origin,
             "PLAYWRIGHT_BETTER_AUTH_SECRET": self.app_environment["BETTER_AUTH_SECRET"],
             "NEXT_PUBLIC_WS_URL": api_origin.replace("http:", "ws:"),
         })

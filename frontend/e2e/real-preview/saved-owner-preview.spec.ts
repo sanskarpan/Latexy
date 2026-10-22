@@ -32,7 +32,7 @@ async function signupThroughUi(page: Page) {
   const response = await issued
   expect(response.status()).toBe(200)
   const session = uiIssuedOwnerSession(await response.json(), email)
-  await expect(page).toHaveURL(/\/workspace\/builder\/new$/, { timeout: 60_000 })
+  await expect(page).toHaveURL(frontendOrigin + '/workspace/builder/new', { timeout: 60_000 })
   // Complete the real optional tour through its ordinary dismiss action.
   const tour = page.getByRole('dialog')
   if (await tour.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)) {

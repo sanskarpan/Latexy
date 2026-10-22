@@ -102,6 +102,29 @@ def owner_browser_proof():
 
 
 class HarnessGuards(unittest.TestCase):
+    def test_frontend_auth_trusts_exact_owned_browser_origin_without_inherited_origins(self):
+        origin = 'http://127.0.0.1:23456'
+        with patch.dict(os.environ, {'BETTER_AUTH_TRUSTED_ORIGINS': 'https://operator.invalid,*',
+            'PLAYWRIGHT_APP_URL': 'https://operator.invalid', 'PLAYWRIGHT_AUTH_URL': 'https://operator.invalid'}):
+            environment = harness.owned_frontend_auth_environment(origin)
+        self.assertEqual(environment, {
+            'PLAYWRIGHT_APP_URL': origin,
+            'PLAYWRIGHT_AUTH_URL': 'https://127.0.0.1:23456',
+            'BETTER_AUTH_TRUSTED_ORIGINS': origin,
+        })
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertIn('**owned_frontend_auth_environment(frontend_origin)', prepare)
+
+    def test_frontend_auth_rejects_non_owned_or_ambiguous_origins(self):
+        invalid = ('https://127.0.0.1:1', 'http://localhost:1', 'http://example.com:1', '*',
+            'http://127.0.0.1', 'http://name:secret@127.0.0.1:1', 'http://127.0.0.1:1/',
+            'http://127.0.0.1:1?query', 'http://127.0.0.1:1#fragment', 'http://127.0.0.1:0',
+            'http://127.0.0.1:01', 'http://127.0.0.1:65536', 'http://127.0.0.1:abc',
+            'http://127.0.0.1:1,http://127.0.0.1:2', 'http://127.0.0.1:1\n')
+        for origin in invalid:
+            with self.subTest(origin=origin), self.assertRaisesRegex(RuntimeError, 'exact owned loopback'):
+                harness.owned_frontend_auth_environment(origin)
+
     def test_browser_cors_positive_contract_reads_capability_and_four_real_preflights(self):
         api, frontend = 'http://127.0.0.1:12345', 'http://127.0.0.1:23456'
         responses = [cors_response() for _ in range(5)]
