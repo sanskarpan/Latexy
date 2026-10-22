@@ -16,6 +16,18 @@ export function localUpstream(value) {
   return url
 }
 
+function upstreamRequestOptions(upstreamValue, requestTarget, { method, headers } = {}) {
+  const upstream = localUpstream(upstreamValue)
+  const localRequest = new URL(requestTarget, 'http://localhost')
+  // A normalized pathname can begin with // after removing dot segments.
+  // Keep it an HTTP request path; resolving it as a URL would replace the host.
+  return {
+    protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port,
+    path: localRequest.pathname + localRequest.search,
+    method, headers: { ...headers, host: upstream.host },
+  }
+}
+
 export function versionedWorker(original, headers, version) {
   const body = version === 1 ? Buffer.from(original)
     : Buffer.concat([original, Buffer.from(`\n// isolated PWA acceptance version ${version}\n`)])
@@ -30,7 +42,7 @@ export function versionedWorker(original, headers, version) {
   return { body, identity, headers: nextHeaders }
 }
 
-export function createPwaAcceptanceProxy(upstreamValue) {
+export function createPwaAcceptanceProxy(upstreamValue, requestUpstream = httpRequest) {
   const upstream = localUpstream(upstreamValue)
   let version = 1
   let workerIdentity = null
@@ -60,13 +72,13 @@ export function createPwaAcceptanceProxy(upstreamValue) {
         : JSON.stringify({ owner, source: `Synthetic private source for ${owner}` }))
     }
     const isWorker = pathname === '/sw.js'
-    const headers = { ...incoming.headers, host: upstream.host }
+    const headers = { ...incoming.headers }
     // Appending a harmless version comment must not corrupt compressed bytes.
     if (isWorker) delete headers['accept-encoding']
     // Never interpret the incoming request target as a proxy destination.
-    const outgoing = httpRequest(new URL(pathname + localRequest.search, upstream.origin), {
+    const outgoing = requestUpstream(upstreamRequestOptions(upstream, localRequest, {
       method: incoming.method, headers,
-    }, upstreamResponse => {
+    }), upstreamResponse => {
       if (!isWorker || upstreamResponse.statusCode !== 200) {
         response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers)
         upstreamResponse.pipe(response)
