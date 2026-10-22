@@ -10,8 +10,7 @@ import { mainDocumentKind, runOwnerIsolationHydrationFixture } from '../../e2e/h
 vi.mock('node:crypto', () => ({ createHash: vi.fn() }))
 const BASE = new URL('http://127.0.0.1:5184')
 const OWN = 'owned-breakpoint'
-const source = ' '.repeat(173133)
-const CANDIDATE_PATH = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
+const source = ' '.repeat(173132)
 const validCapture = () => ({
   expected: { type: 'main', idCategory: 'main-content' },
   candidate: { nodeType: 8, nodeName: '#comment', idCategory: 'none', boundaryCommentKind: 'suspense-pending' },
@@ -47,18 +46,12 @@ function fake() {
 }
 function parsed(cdp: FakeCDP, scriptId = 'script-1', url = new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href) {
   cdp.emit('Debugger.scriptParsed', { scriptId, url, executionContextId: scriptId === 'script-2' ? 2 : 1, executionContextAuxData: { frameId: 'main-frame', isDefault: true } })
-  cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35060 } })
+  cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35059 } })
 }
 function pause(cdp: FakeCDP, overrides: Record<string, unknown> = {}) {
   cdp.emit('Debugger.paused', {
-    callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35060 } }],
+    callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35059 } }],
     hitBreakpoints: [OWN], reason: 'other', ...overrides,
-  })
-}
-function candidateParsed(cdp: FakeCDP, overrides: Record<string, unknown> = {}) {
-  cdp.emit('Debugger.scriptParsed', {
-    scriptId: 'candidate-script', url: new URL(CANDIDATE_PATH, BASE).href, executionContextId: 7,
-    executionContextAuxData: { frameId: 'main-frame', isDefault: true, type: 'default' }, ...overrides,
   })
 }
 async function flush() { for (let index = 0; index < 40; index++) await Promise.resolve() }
@@ -83,7 +76,6 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('PLAYWRIGHT_SERVER_MODE', 'production')
-    vi.stubEnv('GITHUB_SHA', '')
     digest.mockReturnValue(LEGACY_SETTINGS_REACT_SHA256)
     update.mockReturnValue({ digest })
     vi.mocked(createHash).mockReturnValue({ update } as unknown as ReturnType<typeof createHash>)
@@ -108,8 +100,9 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(fixture).toContain('expect(fixture.pageErrors).toEqual([])')
     const helper = readFileSync(new URL('../../e2e/helpers/legacy-settings-hydration-diagnostics.ts', import.meta.url), 'utf8')
     expect(helper).not.toMatch(/route\.fetch|route\.fulfill|page\.route|addInitScript|MutationObserver|outerHTML|innerHTML|textContent|document\.cookie|localStorage|authToken|session\.token|writeFile/)
-    expect(LEGACY_SETTINGS_REACT_BYTES).toBe(173133)
-    expect(LEGACY_SETTINGS_REACT_SHA256).toBe('fa2c533810f6e61eaa4849afbc041758c4eb89953b7f19f71e5b3527e1748941')
+    expect(LEGACY_SETTINGS_REACT_CHUNK).toBe('/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js')
+    expect(LEGACY_SETTINGS_REACT_BYTES).toBe(173132)
+    expect(LEGACY_SETTINGS_REACT_SHA256).toBe('30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d')
   })
 
   it('verifies parsed source and owned resolution, captures structural data, then resumes/removes/detaches', async () => {
@@ -117,9 +110,9 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
     expect(test.cdp.send.mock.calls.slice(0, 4)).toEqual([
       ['Page.getFrameTree'],
-      ['Debugger.enable', { maxScriptsCacheSize: 173133 }],
+      ['Debugger.enable', { maxScriptsCacheSize: 173132 }],
       ['Debugger.setPauseOnExceptions', { state: 'none' }],
-      ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35054 }],
+      ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35053 }],
     ])
     parsed(test.cdp)
     pause(test.cdp)
@@ -162,7 +155,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     const test = fake()
     if (drift === 'hash') digest.mockReturnValue('0'.repeat(64))
     if (drift === 'length') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: source + 'x' }))
-    if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: 'é'.repeat(173133) }))
+    if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: 'é'.repeat(173132) }))
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
     parsed(test.cdp)
     pause(test.cdp)
@@ -191,9 +184,10 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   })
 
   it.each([
-    { functionName: 'anotherFunction', scriptId: 'script-1', columnNumber: 35060 },
-    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35061 },
-    { functionName: 'rD', scriptId: 'wrong-script', columnNumber: 35054 },
+    { functionName: 'anotherFunction', scriptId: 'script-1', columnNumber: 35059 },
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35052 },
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35060 },
+    { functionName: 'rD', scriptId: 'wrong-script', columnNumber: 35053 },
   ])('resumes but rejects an unexpected frame: %s', async frame => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
@@ -206,11 +200,22 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
   })
 
+  it.each([35053, 35059])('accepts the exact verified claim range endpoint: %s', async columnNumber => {
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
+    parsed(test.cdp)
+    pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber } }] })
+    await flush()
+    await diagnostics.verifyReady(1)
+    await diagnostics.finish(test.info, false)
+    expect(report(test)).toMatchObject({ capture_attempts: 1, failures: [], captures: [validCapture()] })
+  })
+
   it('does not fetch source for a different origin/path/query or accept an unrelated resolution', async () => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    for (const url of ['http://localhost:5184' + LEGACY_SETTINGS_REACT_CHUNK, new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href + '?private', new URL('/_next/static/chunks/082d2186-other.js', BASE).href]) parsed(test.cdp, 'wrong', url)
-    test.cdp.emit('Debugger.breakpointResolved', { breakpointId: 'unrelated', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35054 } })
+    for (const url of ['http://localhost:5184' + LEGACY_SETTINGS_REACT_CHUNK, new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href + '?private', new URL('/_next/static/chunks/082d2186-other.js', BASE).href, new URL('/_next/static/chunks/acabd415-aedf19c35bd5be5e.js', BASE).href]) parsed(test.cdp, 'wrong', url)
+    test.cdp.emit('Debugger.breakpointResolved', { breakpointId: 'unrelated', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35053 } })
     pause(test.cdp)
     await flush()
     await expect(diagnostics.verifyReady(1)).rejects.toThrow('could not be verified')
@@ -449,7 +454,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   })
 
   it('fails closed when setup returns no breakpoint or a wrong location', async () => {
-    for (const breakpoint of [{ breakpointId: '', locations: [] }, { breakpointId: OWN, locations: [{ scriptId: 'script-1', lineNumber: 0, columnNumber: 35061 }] }]) {
+    for (const breakpoint of [{ breakpointId: '', locations: [] }, { breakpointId: OWN, locations: [{ scriptId: 'script-1', lineNumber: 0, columnNumber: 35060 }] }]) {
       const test = fake()
       test.cdp.handlers.set('Debugger.setBreakpointByUrl', async () => breakpoint)
       const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
@@ -657,7 +662,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       ['contradictory-world', { frameId: 'main-frame', isDefault: false, type: 'default' }],
     ] as const) {
       test.cdp.emit('Debugger.scriptParsed', { scriptId, url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, executionContextId: 2, executionContextAuxData: context })
-      test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35060 } })
+      test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35059 } })
     }
     const verifying = expect(diagnostics.verifyReady(2)).rejects.toThrow('could not be verified')
     await vi.advanceTimersByTimeAsync(2001)
@@ -775,148 +780,6 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
       expect(test.attachments[0]).not.toContain('SECRET')
     }
-  })
-
-  it('attaches the exact loaded candidate as unverified data without promoting the trusted pin', async () => {
-    vi.useFakeTimers()
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    vi.stubEnv('UNRELATED_PRIVATE_TEST_VALUE', 'SECRET-env')
-    const test = fake()
-    const body = '/* already-loaded public candidate; data only */'
-    test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: body }))
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp, { privateMetadata: 'SECRET-event' })
-    candidateParsed(test.cdp, { scriptId: 'candidate-script-2' })
-    await flush()
-    const unverified = expect(diagnostics.verifyReady(1)).rejects.toThrow('could not be verified')
-    await vi.advanceTimersByTimeAsync(2001)
-    await unverified
-    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
-    expect(LEGACY_SETTINGS_REACT_CHUNK).toBe('/_next/static/chunks/acabd415-aedf19c35bd5be5e.js')
-    expect(test.cdp.send.mock.calls.filter(([method]) => method === 'Debugger.getScriptSource')).toEqual([
-      ['Debugger.getScriptSource', { scriptId: 'candidate-script' }],
-    ])
-    expect(test.cdp.send.mock.calls.filter(([method]) => method === 'Debugger.setBreakpointByUrl')).toEqual([
-      ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35054 }],
-    ])
-    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
-    expect(report(test)).toMatchObject({ verified_scripts: 0, resolved_scripts: 0, capture_attempts: 0,
-      observation_status: 'unavailable', failures: ['diagnostic-verification-unavailable', 'diagnostic-proof-unavailable'] })
-    expect(test.attach).toHaveBeenCalledWith('unverified-candidate-renderer.js', {
-      body: Buffer.from(body), contentType: 'application/javascript',
-    })
-    expect(createHash).toHaveBeenCalledExactlyOnceWith('sha256')
-    expect(update).toHaveBeenCalledExactlyOnceWith(Buffer.from(body))
-    expect(JSON.parse(test.attachments[2])).toEqual({
-      status: 'unverified-candidate-script', runner_context_sha: 'a'.repeat(40), next_version: '15.5.28',
-      filename: '630253d5-0ac8e4a42daf72ba.js', bytes: Buffer.byteLength(body), sha256: LEGACY_SETTINGS_REACT_SHA256,
-    })
-    expect(test.attachments.join('')).not.toContain('SECRET')
-    expect(test.cdp.detach).toHaveBeenCalledOnce()
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it.each([
-    { url: 'http://localhost:5184' + CANDIDATE_PATH },
-    { url: new URL(CANDIDATE_PATH, BASE).href + '?private' },
-    { url: new URL(CANDIDATE_PATH, BASE).href + '#private' },
-    { url: new URL('/_next/static/chunks/another.js', BASE).href },
-    { executionContextAuxData: { frameId: 'subframe', isDefault: true } },
-    { executionContextAuxData: { frameId: 'main-frame', isDefault: false } },
-    { executionContextAuxData: { frameId: 'main-frame', isDefault: true, type: 'isolated' } },
-    { executionContextAuxData: undefined },
-    { executionContextId: 0 }, { executionContextId: -1 }, { executionContextId: 1.5 },
-    { executionContextId: undefined },
-  ])('does not read candidate evidence outside the exact owned script/context: %j', async overrides => {
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    const test = fake()
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp, overrides)
-    await diagnostics.finish(test.info, true)
-    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.getScriptSource')).toBe(false)
-    expect(test.attachments).toHaveLength(1)
-    expect(report(test).verified_scripts).toBe(0)
-  })
-
-  it.each([undefined, '', 'A'.repeat(40), 'a'.repeat(39), 'SECRET-invalid-sha'])('does not capture with invalid runner context: %s', async sha => {
-    vi.stubEnv('GITHUB_SHA', sha)
-    const test = fake()
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp)
-    await diagnostics.finish(test.info, true)
-    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.getScriptSource')).toBe(false)
-    expect(test.attachments).toHaveLength(1)
-    expect(test.attachments[0]).not.toContain('SECRET')
-  })
-
-  it.each([undefined, null, 123, '', 'x'.repeat(200_001), 'é'.repeat(100_001)])('bounds candidate source type and UTF-8 bytes (case %#)', async body => {
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    const test = fake()
-    test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: body }))
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp)
-    candidateParsed(test.cdp, { scriptId: 'no-retry' })
-    await diagnostics.finish(test.info, true)
-    expect(test.cdp.send.mock.calls.filter(([method]) => method === 'Debugger.getScriptSource')).toHaveLength(1)
-    expect(createHash).not.toHaveBeenCalled()
-    expect(test.attachments).toHaveLength(1)
-  })
-
-  it('awaits a single candidate read before cleanup and permits exactly the byte limit', async () => {
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    const test = fake()
-    const reading = deferred<unknown>()
-    test.cdp.handlers.set('Debugger.getScriptSource', () => reading.promise)
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp)
-    candidateParsed(test.cdp, { scriptId: 'no-retry' })
-    const finishing = diagnostics.finish(test.info, true)
-    await flush()
-    expect(test.cdp.detach).not.toHaveBeenCalled()
-    reading.resolve({ scriptSource: 'x'.repeat(200_000) })
-    await finishing
-    expect(test.cdp.send.mock.calls.filter(([method]) => method === 'Debugger.getScriptSource')).toHaveLength(1)
-    expect(test.attachments[1]).toHaveLength(200_000)
-    expect(JSON.parse(test.attachments[2]).bytes).toBe(200_000)
-    expect(test.cdp.detach).toHaveBeenCalledOnce()
-    expect(report(test).verified_scripts).toBe(0)
-  })
-
-  it('bounds a stalled candidate read and never attaches its late completion', async () => {
-    vi.useFakeTimers()
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    const test = fake()
-    const reading = deferred<unknown>()
-    test.cdp.handlers.set('Debugger.getScriptSource', () => reading.promise)
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    candidateParsed(test.cdp)
-    const finishing = diagnostics.finish(test.info, true)
-    await vi.advanceTimersByTimeAsync(2001)
-    await finishing
-    reading.resolve({ scriptSource: source })
-    await flush()
-    expect(test.attachments).toHaveLength(1)
-    expect(createHash).not.toHaveBeenCalled()
-    expect(test.cdp.detach).toHaveBeenCalledOnce()
-    expect(report(test).failures).toEqual(['diagnostic-proof-unavailable'])
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('keeps optional evidence attachment failure out of the existing acceptance decision', async () => {
-    vi.stubEnv('GITHUB_SHA', 'a'.repeat(40))
-    const test = fake()
-    test.attach.mockImplementation(async (name, options) => {
-      if (name !== 'settings-hydration-structural-diagnostic') throw new Error('SECRET-attachment')
-      test.attachments.push(options.body.toString())
-    })
-    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    parsed(test.cdp)
-    candidateParsed(test.cdp)
-    await diagnostics.verifyReady(1)
-    await diagnostics.finish(test.info, false)
-    expect(report(test)).toMatchObject({ verified_scripts: 1, failures: [] })
-    expect(test.attachments).toHaveLength(1)
-    expect(test.attachments[0]).not.toContain('SECRET')
   })
 
 })

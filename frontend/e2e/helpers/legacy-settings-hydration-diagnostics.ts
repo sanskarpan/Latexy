@@ -1,23 +1,19 @@
 import type { CDPSession, Page, TestInfo } from '@playwright/test'
 import { createHash } from 'node:crypto'
-import { createRequire } from 'node:module'
 
 // Test-only CDP observer: never rewrite a response or guess another React hook.
-// Exact normal-channel production bundle after the reviewed Next 15.5.27
+// Exact normal-channel production bundle after the reviewed Next 15.5.28
 // host-replay backport. rD(e), rN (cursor), and rP (parent) retain their roles.
-export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/acabd415-aedf19c35bd5be5e.js'
-export const LEGACY_SETTINGS_REACT_SHA256 = 'fa2c533810f6e61eaa4849afbc041758c4eb89953b7f19f71e5b3527e1748941'
-export const LEGACY_SETTINGS_REACT_BYTES = 173133
-const CLAIM_LOCATION = { lineNumber: 0, columnNumber: 35054 } as const
+export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
+export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'
+export const LEGACY_SETTINGS_REACT_BYTES = 173132
+const CLAIM_LOCATION = { lineNumber: 0, columnNumber: 35053 } as const
 const COMMAND_TIMEOUT_MS = 250
 const SETUP_TIMEOUT_MS = 2000
 const PAUSE_WATCHDOG_MS = 1000
 const VERIFY_TIMEOUT_MS = 2000
 const MAX_CAPTURES = 8
 const MAX_FIBERS = 24
-// Evidence only: this observed CI candidate is not a second trusted pin.
-const CANDIDATE_SCRIPT = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
-const MAX_CANDIDATE_BYTES = 200_000
 const HOST_TAGS = 'a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption circle cite clippath code col colgroup data datalist dd defs del details dfn dialog div dl dt ellipse em embed fieldset figcaption figure footer form g h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li line link main map mark mask menu meta meter nav noscript object ol optgroup option output p path picture polygon polyline pre progress q rect rp rt ruby s samp script search section select slot small source span stop strong style sub summary sup svg symbol table tbody td template text textarea tfoot th thead time title tr track tspan u ul use var video wbr'.split(' ')
 const TYPE_CATEGORIES = ['function', 'symbol', 'object', 'other', 'none', 'other-host']
 const ID_CATEGORIES = ['main-content', 'stream-boundary', 'other', 'none']
@@ -120,16 +116,12 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   let paused = false
   let pauseGeneration = 0
   let resuming: Promise<void> | null = null
-  let candidateRead: Promise<void> | null = null
-  let candidateAttempted = false
-  let candidateEvidence: { body: Buffer; manifest: Record<string, string | number> } | null = null
-  const runnerContextSha = process.env.GITHUB_SHA
   const fail = (code: string) => { if (failures.size < 16) failures.add(code) }
   const verifiedDocuments = () => new Set([...verifiedScripts].filter(id => resolvedScripts.has(id)).map(id => scriptContexts.get(id))).size
   // Chrome can advance the first statement to Error(), six columns later.
   // This range stays within the reviewed rD statement of the exact hash pin.
   const locationMatches = (location: { lineNumber: number; columnNumber?: number }) => location.lineNumber === 0
-    && typeof location.columnNumber === 'number' && location.columnNumber >= 35054 && location.columnNumber <= 35060
+    && typeof location.columnNumber === 'number' && location.columnNumber >= 35053 && location.columnNumber <= 35059
 
   async function removeOwnedBreakpoint(id = breakpointId) {
     if (!session || !id || breakpointRemoved) return
@@ -211,38 +203,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   type ParsedEvent = Parameters<Parameters<ReturnType<typeof parsedEvent>>[1]>[0]
   const resolvedEvent = (cdp: CDPSession) => cdp.on<'Debugger.breakpointResolved'>
   type ResolvedEvent = Parameters<Parameters<ReturnType<typeof resolvedEvent>>[1]>[0]
-  async function readCandidateEvidence(scriptId: string): Promise<void> {
-    // Read only an already-loaded public script. Never bind its breakpoint,
-    // evaluate it, or add it to any verified-script/acceptance collection.
-    try {
-      if (!session || !runnerContextSha || !/^[0-9a-f]{40}$/.test(runnerContextSha)) return
-      const { scriptSource } = await deadline(session.send('Debugger.getScriptSource', { scriptId }), VERIFY_TIMEOUT_MS)
-      if (typeof scriptSource !== 'string' || scriptSource.length > MAX_CANDIDATE_BYTES) return
-      const body = Buffer.from(scriptSource)
-      if (body.length === 0 || body.length > MAX_CANDIDATE_BYTES) return
-      const version: unknown = createRequire(`${process.cwd()}/package.json`)('next/package.json').version
-      if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) return
-      candidateEvidence = { body, manifest: {
-        status: 'unverified-candidate-script',
-        // Runner context identifies this CI execution, not clean/deploy provenance.
-        runner_context_sha: runnerContextSha, next_version: version,
-        filename: CANDIDATE_SCRIPT.split('/').pop()!, bytes: body.length,
-        sha256: createHash('sha256').update(body).digest('hex'),
-      } }
-    } catch { /* Optional evidence cannot replace or satisfy the existing gates. */ }
-  }
   function onParsed(event: ParsedEvent) {
-    if (!disposed && !detached && !candidateAttempted && pinnedURL
-      && event.url === new URL(CANDIDATE_SCRIPT, baseURL.origin).href
-      && runnerContextSha && /^[0-9a-f]{40}$/.test(runnerContextSha)) {
-      const context = record(event.executionContextAuxData)
-      if (context?.frameId === mainFrameId && context.isDefault === true
-        && (context.type === undefined || context.type === 'default')
-        && Number.isInteger(event.executionContextId) && event.executionContextId > 0) {
-        candidateAttempted = true
-        candidateRead = readCandidateEvidence(event.scriptId)
-      }
-    }
     if (disposed || event.url !== pinnedURL || scriptChecks.has(event.scriptId)) return
     const context = record(event.executionContextAuxData)
     if (context?.frameId !== mainFrameId || context.isDefault !== true
@@ -369,9 +330,6 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
     dispose,
     async finish(testInfo: TestInfo, originalFailure: boolean, observation?: MainDocumentObservation) {
       // Cleanup/attachment failures must never replace a behavior assertion.
-      if (candidateRead) {
-        try { await deadline(candidateRead, VERIFY_TIMEOUT_MS) } catch { /* Unverified evidence only. */ }
-      }
       try { await dispose() } catch { fail('diagnostic-cleanup-unavailable') }
       const excluded = observation?.syntheticOpenerOnly === true && observation.expectedDocuments === 0
         && observation.successfulAppDocuments === 0 && observation.successfulSyntheticOpeners > 0 && verifiedScripts.size === 0
@@ -395,16 +353,6 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
           }, null, 2) + '\n'), contentType: 'application/json',
         }), VERIFY_TIMEOUT_MS)
       } catch { fail('diagnostic-attachment-unavailable') }
-      if (candidateEvidence) {
-        try {
-          await deadline(testInfo.attach('unverified-candidate-renderer.js', {
-            body: candidateEvidence.body, contentType: 'application/javascript',
-          }), VERIFY_TIMEOUT_MS)
-          await deadline(testInfo.attach('unverified-candidate-renderer-manifest', {
-            body: Buffer.from(JSON.stringify(candidateEvidence.manifest, null, 2) + '\n'), contentType: 'application/json',
-          }), VERIFY_TIMEOUT_MS)
-        } catch { /* Preserve original failures and every existing acceptance gate. */ }
-      }
       if (!originalFailure && (failures.size || (!excluded && (!breakpointId || !verifiedDocuments())))) throw new Error('Original-case owner-isolation hydration diagnostic was unavailable')
     },
   }
