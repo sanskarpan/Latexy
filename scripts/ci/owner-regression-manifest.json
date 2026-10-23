@@ -23,9 +23,10 @@
     "e2e/personal-dictionary-owner-isolation.spec.ts",
     "e2e/settings-passkey-owner-isolation.spec.ts",
     "e2e/linked-variant-owner-race.spec.ts",
-    "e2e/compiler-selector-keyboard.spec.ts"
+    "e2e/compiler-selector-keyboard.spec.ts",
+    "e2e/builder-saved-owner-race.spec.ts"
   ],
-  "expectedCaseCount": 111,
+  "expectedCaseCount": 115,
   "suiteCaseCounts": {
     "e2e/editor-compile-sync.spec.ts": 5,
     "e2e/resume-builder.spec.ts": 8,
@@ -38,12 +39,29 @@
     "e2e/personal-dictionary-owner-isolation.spec.ts": 6,
     "e2e/settings-passkey-owner-isolation.spec.ts": 8,
     "e2e/linked-variant-owner-race.spec.ts": 10,
-    "e2e/compiler-selector-keyboard.spec.ts": 1
+    "e2e/compiler-selector-keyboard.spec.ts": 1,
+    "e2e/builder-saved-owner-race.spec.ts": 4
   },
   "addedCases": [
     {
       "suite": "e2e/compiler-selector-keyboard.spec.ts",
       "title": "C07 saved owner selects a compiler with keyboard navigation and one settings write"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "does not apply a deferred owner-A autosave after the authenticated owner switches to B"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "same-owner autosave still applies its accepted terminal response"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "rearms a dirty same-owner autosave after verification interrupts an in-flight save"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "does not apply a deferred owner-A force-reattach after the authenticated owner switches to B"
     }
   ]
 }

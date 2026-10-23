@@ -562,6 +562,7 @@ jobs:
           e2e/settings-passkey-owner-isolation.spec.ts \
           e2e/linked-variant-owner-race.spec.ts \
           e2e/compiler-selector-keyboard.spec.ts \
+          e2e/builder-saved-owner-race.spec.ts \
           --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,json \
           --output=test-results/editor-compile-sync
           node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json

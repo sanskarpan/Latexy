@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
+  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+    json: { features: { b08: true, c01: true } },
+  }))
   await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
 })
 
@@ -242,7 +245,15 @@ test.describe('saved guided builder ownership boundaries', () => {
       releaseFirstSave()
       await expect.poll(() => firstSaveFinished).toBe(true)
       await expect(page.getByText('Saving…')).not.toBeVisible()
-      await expect(page.getByText('Unsaved changes')).toBeVisible()
+      const dirtyStatus = page.getByText('Unsaved changes', { exact: true })
+      await expect(dirtyStatus).toBeAttached()
+      await expect(dirtyStatus).toBeHidden()
+      const retainedBuilder = page.locator('main > div[hidden][inert]').filter({ has: dirtyStatus })
+      await expect(retainedBuilder).toBeAttached()
+      await expect(retainedBuilder.locator('h1')).toHaveText('Owner A interrupted save')
+      await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
+      await expect(page.getByText('Feature availability could not be verified.', { exact: true })).toBeVisible()
+      expect(autosaves).toBe(1)
 
       sessionMode = 'ok'
       await page.evaluate(() => {

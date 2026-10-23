@@ -2508,11 +2508,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               height="100%"
               defaultLanguage="latex"
               theme={editorTheme}
-              // A collaborative editor is uncontrolled once Y.js binds it, but
-              // it must still start with the fetched REST content. Mounting
-              // Monaco with an empty model can emit onChange('') before the
-              // async collaboration imports finish, erasing the parent buffer.
-              {...(collabEnabled ? { defaultValue: value } : { value })}
+              // Start with fetched REST content; the guarded sync effect owns
+              // later parent updates, until Y.js binds a collaborative model.
+              // A controlled value prop would also let the wrapper replace the
+              // full model with a stale parent echo during native typing.
+              defaultValue={value}
               onChange={(v, event) => {
                 const nextValue = v || ''
                 if (collabEnabled && !bindingRef.current && !syncingParentValueRef.current && !event.isFlush) {
