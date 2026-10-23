@@ -347,7 +347,16 @@ test('landing appearance keeps contrast inside the keyboard accessible menu', as
         await expect(page.getByRole('button', { name: 'Toggle light or dark mode' })).toHaveCount(1)
         await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
         const trigger = page.getByRole('button', { name: 'Open navigation menu' })
-        await trigger.click()
+        const openMenu = async () => {
+            await trigger.click()
+            // Visibility alone includes opacity-zero, height-animating panels.
+            // Let the real menu finish opening before Playwright scrolls a control.
+            await expect.poll(() => page.locator('#landing-navigation').evaluate(element => ({
+                opacity: getComputedStyle(element).opacity,
+                height: (element as HTMLElement).style.height,
+            })), { timeout: 5000 }).toEqual({ opacity: '1', height: 'auto' })
+        }
+        await openMenu()
         const contrast = page.getByRole('button', { name: 'Turn on high contrast mode' })
         await expect(contrast).toBeVisible()
         await contrast.click()
@@ -355,7 +364,7 @@ test('landing appearance keeps contrast inside the keyboard accessible menu', as
         await page.keyboard.press('Escape')
         await expect(trigger).toBeFocused()
         await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
-        await trigger.click()
+        await openMenu()
         await page.getByRole('button', { name: 'Turn off high contrast mode' }).click()
         await expect(page.locator('html')).toHaveAttribute('data-contrast', 'normal')
         await page.keyboard.press('Escape')
