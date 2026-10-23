@@ -621,7 +621,7 @@ function BuilderResumeForm({
   }
 
   const forceReattach = async () => {
-    const canReattachNow = () => canRef.current('c01') && canRef.current('b08')
+    const canReattachNow = () => canRef.current('c01') && canRef.current('b08') && canRef.current('b09')
     if (!canReattachNow() || !isCurrentRequest()) return
     if (!window.confirm('Replace the advanced editor version with the details shown in this builder?')) return
     const revision = editRevision.current
@@ -780,7 +780,7 @@ function BuilderResumeForm({
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            {contentEditAllowed && can('b08') && <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+            {contentEditAllowed && can('b08') && can('b09') && <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
             </button>}

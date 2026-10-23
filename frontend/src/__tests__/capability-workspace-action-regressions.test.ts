@@ -258,9 +258,10 @@ describe('workspace optional-action regressions', () => {
     })
     let c01 = false
     let b08 = true
+    let b09 = true
     const confirm = vi.fn(() => true)
     const setSaving = vi.fn()
-    const canRef = { current: (feature: string) => feature === 'c01' ? c01 : feature === 'b08' ? b08 : false }
+    const canRef = { current: (feature: string) => feature === 'c01' ? c01 : feature === 'b08' ? b08 : feature === 'b09' ? b09 : false }
     const common = {
       canRef,
       isCurrentRequest: () => true,
@@ -289,25 +290,39 @@ describe('workspace optional-action regressions', () => {
 
     c01 = true
     b08 = true
+    b09 = false
+    await action(builderPage, 'forceReattach', common)()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(updateBuilderResume).not.toHaveBeenCalled()
+
+    b09 = true
     await action(builderPage, 'forceReattach', common)()
     expect(updateBuilderResume).toHaveBeenCalledOnce()
     expect(updateBuilderResume).toHaveBeenCalledWith('resume-id', expect.objectContaining({ force_reattach: true }))
 
     updateBuilderResume.mockClear()
-    let finishCompatibility!: () => void
-    const pendingCompatibility = new Promise<void>((resolve) => { finishCompatibility = resolve })
-    const staleAction = action(builderPage, 'forceReattach', {
-      ...common,
-      ensureCompatible: () => pendingCompatibility,
-    })()
-    await Promise.resolve()
-    c01 = false
-    finishCompatibility()
-    await staleAction
-    expect(updateBuilderResume).not.toHaveBeenCalled()
+    for (const revoked of ['c01', 'b09']) {
+      c01 = true
+      b09 = true
+      let finishCompatibility!: () => void
+      const pendingCompatibility = new Promise<void>((resolve) => { finishCompatibility = resolve })
+      const staleAction = action(builderPage, 'forceReattach', {
+        ...common,
+        ensureCompatible: () => pendingCompatibility,
+      })()
+      await Promise.resolve()
+      if (revoked === 'c01') c01 = false
+      else b09 = false
+      finishCompatibility()
+      await staleAction
+      expect(updateBuilderResume).not.toHaveBeenCalled()
+    }
+    c01 = true
+    b09 = true
+    await action(builderPage, 'forceReattach', common)()
+    expect(updateBuilderResume).toHaveBeenCalledOnce()
 
     expect(builderPage.getFullText()).toContain("const contentEditAllowed = can('c01')")
-    expect(builderPage.getFullText()).toContain('{contentEditAllowed && can(\'b08\') && <button type="button" onClick={() => void forceReattach()}')
     await action(newBuilderPage, 'handleSeedUpload', { isCurrentRequest: () => true })({ name: 'resume.pdf' })
     const error = vi.fn()
     await action(newBuilderPage, 'handleSeedUpload', {
