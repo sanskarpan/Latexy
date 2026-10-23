@@ -121,7 +121,7 @@
         "@typescript-eslint/parser": "^8.68.0",
         "autoprefixer": "^10.5.4",
         "eslint": "^8.56.0",
-        "eslint-config-next": "15.5.28",
+        "eslint-config-next": "16.4.2",
         "fake-indexeddb": "^6.2.5",
         "monaco-editor": "0.55.1",
         "postcss": "^8.5.24",
