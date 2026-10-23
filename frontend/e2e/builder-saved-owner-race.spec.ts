@@ -250,7 +250,7 @@ test.describe('saved guided builder ownership boundaries', () => {
       await expect(dirtyStatus).toBeHidden()
       const retainedBuilder = page.locator('main > div[hidden][inert]').filter({ has: dirtyStatus })
       await expect(retainedBuilder).toBeAttached()
-      await expect(retainedBuilder.locator('#builder-resume-title')).toHaveValue('Owner A interrupted save')
+      await expect(retainedBuilder.locator('h1')).toHaveText('Owner A interrupted save')
       await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
       await expect(page.getByText('Feature availability could not be verified.', { exact: true })).toBeVisible()
       expect(autosaves).toBe(1)
