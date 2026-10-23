@@ -341,6 +341,7 @@ function BuilderResumeForm({
   const canRef = useRef(can)
   canRef.current = can
   const contentEditAllowed = can('c01')
+  const builderEditAllowed = can('b08') && contentEditAllowed
   const ownerId = session.user.id
   const { ensureCompatible, isCompatible, available } = useBuilderCapability()
 
@@ -482,6 +483,7 @@ function BuilderResumeForm({
   // uses its returned version, preventing an older PATCH from arriving last.
   const flushSave = useCallback(async (): Promise<BuilderResumeResponse | null> => {
     if (!canRef.current('c01') && dirtyRef.current) throw new Error('Editing résumé content is unavailable right now. Your saved source remains available.')
+    if (!canRef.current('b08') && dirtyRef.current) throw new Error('Guided editing is unavailable right now. Your changes are preserved in this tab.')
     if (saveFlightRef.current) return saveFlightRef.current
     const saveLatest = async () => {
       if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Please wait for your session to be verified.')
@@ -496,6 +498,11 @@ function BuilderResumeForm({
         // transient save failure even though there is no PATCH to send.
         if (!dirtyRef.current) setSaveError(null)
         while (dirtyRef.current) {
+          // Compatibility checks and earlier writes can settle after a grant
+          // changes. Admit each new revision only under the current policy.
+          if (!canRef.current('b08') || !canRef.current('c01') || !isCompatible()) {
+            throw new Error('Guided editing is unavailable right now. Your changes are preserved in this tab.')
+          }
           const snapshot = draftRef.current
           if (!snapshot.title.trim() || snapshot.title.length > 255) throw new Error(!snapshot.title.trim() ? 'A résumé title is required' : 'Résumé titles must be 255 characters or fewer')
           const revision = editRevision.current
@@ -540,7 +547,7 @@ function BuilderResumeForm({
     const flight = saveLatest()
     saveFlightRef.current = flight
     try { return await flight } finally { if (saveFlightRef.current === flight) saveFlightRef.current = null }
-  }, [resumeId, ensureCompatible])
+  }, [resumeId, ensureCompatible, isCompatible])
 
   const isCurrentPdfRequest = useCallback(() => mountedRef.current && authVerifiedRef.current && isCompatible(), [isCompatible])
   const { previewPdf, downloadPdf, pdfUrl, isGenerating, error: pdfError, clearPreview } = useBuilderPdf({
@@ -552,10 +559,10 @@ function BuilderResumeForm({
 
   useEffect(() => {
     if (initialLoad.current) { initialLoad.current = false; return }
-    if (authUnverified || !dirty || builderStatus === 'detached' || saveConflict) return
+    if (authUnverified || !available || !builderEditAllowed || !dirty || builderStatus === 'detached' || saveConflict) return
     const timeout = window.setTimeout(() => { void flushSave().catch(() => {}) }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, flushSave])
+  }, [authUnverified, available, builderEditAllowed, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, flushSave])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
