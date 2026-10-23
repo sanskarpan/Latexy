@@ -317,3 +317,28 @@ def test_release_gate_and_recovery_barriers_are_preserved_ahead_of_the_readonly_
     assert 'MODAL_TRAFFIC_RELEASE_APPROVED_SHA' in source[release_guard:billing]
     assert "modal_deployment_phase.py authorize-release" in source[release_guard:billing]
     assert "MODAL_RECOVERY_VERIFIED_FOR_SHA" in source[cutover:drain_gate]
+
+
+def test_local_approval_precheck_precedes_modal_work_and_retains_the_full_gate() -> None:
+    steps = _workflow_steps()
+    early = _step(steps, "Reject absent or stale cutover approval inputs")
+    phase = _step(steps, "Resolve deployment phase")
+    full = _step(steps, "Require schema cutover and recovery approval")
+    assert steps.index(phase) < steps.index(early)
+    for name in (
+        "Validate renderer deployment inputs", "Install pinned Modal CLI",
+        "Require approved SHA and healthy held candidate before release",
+        "Validate read-only billing rollout safety", "Check renderer configuration before migrations",
+    ):
+        assert steps.index(early) < steps.index(_step(steps, name)) < steps.index(full)
+    assert early["if"] == full["if"] == "steps.freshness.outputs.current == 'true'"
+    assert early["run"] == "python backend/scripts/check_modal_schema_cutover.py --approvals-only"
+    assert full["run"] == "python backend/scripts/check_modal_schema_cutover.py"
+    keys = ("MODAL_SCHEMA_CUTOVER_APPROVED_SHA", "MODAL_FORWARD_ROLLBACK_SHA", "MODAL_RECOVERY_VERIFIED_FOR_SHA")
+    assert early["env"] == {key: "${{ vars." + key + " }}" for key in keys}
+    assert all(early["env"][key] == full["env"][key] for key in keys)
+    for step in (early, full):
+        assert "continue-on-error" not in step
+        assert all(_selected_for_phase(step, phase_name) for phase_name in ("held-cutover", "held-release"))
+    assert steps.index(full) < steps.index(_step(steps, "Apply production database migrations after external drain verification"))
+    assert steps.index(full) < steps.index(_step(steps, "Deploy backend with a rolling update"))

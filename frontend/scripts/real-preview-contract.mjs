@@ -33,7 +33,9 @@ export async function readDemoSource(filename = resolve(process.cwd(), 'src/lib/
   const sourceModule = await readFile(filename, 'utf8')
   const match = /export const FIRST_USE_ENGINE_RESUME_TEMPLATE = String\.raw`([^`]*)`/.exec(sourceModule)
   if (!match) throw new Error('The shipped engine demo source could not be read')
-  return match[1]
+  // JavaScript normalizes literal CRLF/CR line terminators even in String.raw
+  // templates. Match the shipped runtime value on Windows checkouts as well.
+  return match[1].replace(/\r\n?/g, '\n')
 }
 
 /** Keep the normal guest allowance/cooldown; fail rather than resetting it. */
