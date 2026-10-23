@@ -21,12 +21,25 @@ const requiredSuites = [
   'e2e/settings-passkey-owner-isolation.spec.ts',
   'e2e/linked-variant-owner-race.spec.ts',
   'e2e/compiler-selector-keyboard.spec.ts',
+  'e2e/builder-saved-owner-race.spec.ts',
 ]
-const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1]
+const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1, 4]
 const expectedCaseCount = requiredSuiteCaseCounts.reduce((total, count) => total + count, 0)
 const addedCases = [{
   suite: 'e2e/compiler-selector-keyboard.spec.ts',
   title: 'C07 saved owner selects a compiler with keyboard navigation and one settings write',
+}, {
+  suite: 'e2e/builder-saved-owner-race.spec.ts',
+  title: 'does not apply a deferred owner-A autosave after the authenticated owner switches to B',
+}, {
+  suite: 'e2e/builder-saved-owner-race.spec.ts',
+  title: 'same-owner autosave still applies its accepted terminal response',
+}, {
+  suite: 'e2e/builder-saved-owner-race.spec.ts',
+  title: 'rearms a dirty same-owner autosave after verification interrupts an in-flight save',
+}, {
+  suite: 'e2e/builder-saved-owner-race.spec.ts',
+  title: 'does not apply a deferred owner-A force-reattach after the authenticated owner switches to B',
 }]
 
 function fail(message) {
@@ -61,7 +74,7 @@ if (manifest.expectedCaseCount !== expectedCaseCount
   || JSON.stringify(manifest.suiteCaseCounts) !== JSON.stringify(Object.fromEntries(
     requiredSuites.map((suite, index) => [suite, requiredSuiteCaseCounts[index]]),
   ))) {
-  fail('Manifest case inventory must retain the original 110 cases plus the exact C07 case')
+  fail('Manifest case inventory must retain the original 111 cases plus the four exact saved-builder owner cases')
 }
 
 const frontendRoot = resolve(repoRoot, 'frontend')
@@ -162,7 +175,7 @@ function verifyReport(report) {
   }
   for (const expected of addedCases) {
     if (cases.filter(test => test.file === expected.suite && test.title === expected.title).length !== 1) {
-      throw new Error('The exact added C07 case is missing or duplicated')
+      throw new Error('An exact required added case is missing or duplicated')
     }
   }
 }

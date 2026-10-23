@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
+  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+    json: { features: { b08: true, c01: true } },
+  }))
   await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
 })
 
