@@ -3,7 +3,14 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.services.render_engine.backend import RendererBackend, resolve_backend, start_engine_process
+from app.services.render_engine import functional_acceptance_policy
+from app.services.render_engine.backend import (
+    FUNCTIONAL_TEST_VM_POLICY,
+    VM_POLICY,
+    RendererBackend,
+    resolve_backend,
+    start_engine_process,
+)
 from app.services.render_engine.modal_sandbox import ModalEngineUnavailable
 
 
@@ -23,7 +30,87 @@ def test_vm_fingerprint_distinct_and_asset_scoped(monkeypatch):
     monkeypatch.setenv("MODAL_ENGINE_VM_ASSETS_FINGERPRINT", "b" * 64)
     second = resolve_backend("lualatex")
     assert first.kind == "modal_vm" and first.policy_identity == "lua-credential-free-vm-v1"
+    assert first.certification_flag_asserted and first.boundary_preflight
     assert first.engine_fingerprint != second.engine_fingerprint
+
+
+def _functional_test_environment(monkeypatch, **overrides):
+    environment_name = "reviewed-functional-test-environment"
+    environment_object_id = "en-functional-test-fixture"
+    manifest = functional_acceptance_policy.functional_environment_inventory_sha256(
+        environment_name, environment_object_id,
+    )
+    approval = functional_acceptance_policy.FunctionalAcceptanceEnvironmentApproval(
+        name=environment_name,
+        environment_object_id=environment_object_id,
+        binding_manifest_sha256=manifest,
+        evidence_ref="tests/functional-environment-fixture#sha256=" + "a" * 64,
+    )
+    monkeypatch.setattr(
+        functional_acceptance_policy, "TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS", (approval,),
+    )
+    monkeypatch.delenv("MODAL_ENGINE_VM_CERTIFIED", raising=False)
+    values = {
+        "DEPLOY_TARGET": "modal",
+        "ENVIRONMENT": "test",
+        "MODAL_ENVIRONMENT": environment_name,
+        "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE": "true",
+        "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID": environment_object_id,
+        "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256": manifest,
+        "MODAL_ENGINE_VM_IMAGE_ID": "im-functionalTestImage",
+        "MODAL_ENGINE_VM_ASSETS_FINGERPRINT": "a" * 64,
+    }
+    values.update(overrides)
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+
+
+def test_functional_only_backend_is_noncacheable_unverified_and_boundary_free(monkeypatch):
+    _functional_test_environment(monkeypatch)
+    backend = resolve_backend("lualatex")
+    assert backend.kind == "modal_vm"
+    assert backend.policy_identity == FUNCTIONAL_TEST_VM_POLICY
+    assert backend.policy_identity != VM_POLICY
+    assert backend.cacheable is False
+    assert backend.certification_flag_asserted is False
+    assert backend.boundary_preflight is False
+
+
+@pytest.mark.parametrize("modal_environment", [
+    "main", "prod", "production", "prod-west", "production-blue", "live", "unknownenv", "",
+])
+def test_functional_only_backend_rejects_unallowlisted_modal_environment(monkeypatch, modal_environment):
+    _functional_test_environment(monkeypatch, MODAL_ENVIRONMENT=modal_environment)
+    with pytest.raises(ModalEngineUnavailable, match="nonproduction tests"):
+        resolve_backend("lualatex")
+
+
+def test_functional_only_backend_rejects_non_test_and_certified_configurations(monkeypatch):
+    _functional_test_environment(monkeypatch, ENVIRONMENT="production")
+    with pytest.raises(ModalEngineUnavailable, match="nonproduction tests"):
+        resolve_backend("lualatex")
+    _functional_test_environment(monkeypatch, MODAL_ENGINE_VM_CERTIFIED="true")
+    with pytest.raises(ModalEngineUnavailable, match="nonproduction tests"):
+        resolve_backend("lualatex")
+
+
+def test_functional_only_backend_rejects_invalid_tuple_or_flag(monkeypatch):
+    _functional_test_environment(monkeypatch, MODAL_ENGINE_VM_IMAGE_ID="bad-image")
+    with pytest.raises(ModalEngineUnavailable, match="capability is unavailable"):
+        resolve_backend("lualatex")
+    _functional_test_environment(monkeypatch, MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE="yes")
+    with pytest.raises(ModalEngineUnavailable, match="Invalid functional-only"):
+        resolve_backend("lualatex")
+
+
+@pytest.mark.parametrize("name, value", [
+    ("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "en-wrong-object"),
+    ("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "b" * 64),
+])
+def test_functional_only_backend_requires_exact_reviewed_environment_proof(monkeypatch, name, value):
+    _functional_test_environment(monkeypatch, **{name: value})
+    with pytest.raises(ModalEngineUnavailable, match="nonproduction tests"):
+        resolve_backend("lualatex")
 
 
 def test_mutable_docker_image_cannot_share_cache(monkeypatch):

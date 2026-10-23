@@ -13,20 +13,27 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+import modal_spawn_acceptance as acceptance
+import run_modal_spawn_diagnostics as diagnostics_runner
+from app.services.render_engine import functional_acceptance_policy
+from modal_functional_environment_inventory import main as functional_inventory_main
 from modal_spawn_acceptance import (
     HarnessFailure,
     _acceptance_exit_code,
+    _acceptance_report,
     _cleanup_private_service,
     _deploy_dispatch_app,
     _ephemeral_queue,
     _finalize_cleanup_status,
     _private_service_lifetime,
     _public_summary,
+    _set_renderer_report_scope,
     _stop_dispatch_app,
     _stop_disposable_services,
     connectivity_report,
     function_runtime_environment,
     main,
+    read_functional_environment_inventory,
     require_compatible_placement,
     require_preflight,
     require_worker_placement,
@@ -34,8 +41,19 @@ from modal_spawn_acceptance import (
     runtime_identity,
     terminal_failure_report,
     validate_existing_nonproduction_environment,
+    validate_functional_acceptance_environment_name,
     validate_nonproduction_environment_name,
 )
+
+
+def _reviewed_test_environment(name="reviewed-test-environment", object_id="en-review-test"):
+    digest = functional_acceptance_policy.functional_environment_inventory_sha256(name, object_id)
+    return functional_acceptance_policy.FunctionalAcceptanceEnvironmentApproval(
+        name=name,
+        environment_object_id=object_id,
+        binding_manifest_sha256=digest,
+        evidence_ref="docs/acceptance/environment-inventory.md#sha256=" + "a" * 64,
+    )
 
 
 class _ActiveScope:
@@ -105,14 +123,355 @@ class RuntimeIdentityTests(unittest.TestCase):
 
 class ModalRuntimeEnvironmentTests(unittest.TestCase):
     def test_modal_environment_is_not_overridden_in_function_env(self):
-        runtime_env = function_runtime_environment(
-            "fd00::1", "im-TestRenderer123", "a" * 64,
-        )
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            runtime_env = function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                functional_environment_approval=approval,
+            )
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
         self.assertNotIn("MODAL_ENVIRONMENT", runtime_env)
         self.assertEqual(runtime_env["DEPLOY_TARGET"], "modal")
+        self.assertEqual(runtime_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"], "false")
+
+    def test_boundary_traffic_hold_override_requires_reviewed_nonproduction_identity(self):
+        with self.assertRaises(HarnessFailure) as raised:
+            function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                renderer_mode="boundary",
+            )
+        self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+
+        approval = _reviewed_test_environment()
+        with self.assertRaises(HarnessFailure) as raised:
+            function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64,
+                renderer_mode="boundary", functional_environment_approval=approval,
+            )
+        self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+
+    def test_boundary_traffic_hold_override_rejects_allowlisted_production_aliases(self):
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            for name in (
+                "main", "prod", "production", "prod-west", "production-blue", "live",
+                "latexy-acceptance-prod",
+            ):
+                approval = _reviewed_test_environment(name=name)
+                functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+                with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
+                    function_runtime_environment(
+                        "fd00::1", "im-TestRenderer123", "a" * 64,
+                        renderer_mode="boundary", functional_environment_approval=approval,
+                    )
+                self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+
+    def test_functional_only_runtime_binding_requires_and_passes_reviewed_identity(self):
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            runtime_env = function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64, renderer_mode="functional-only",
+                functional_environment_approval=approval,
+            )
+            self.assertEqual(runtime_env["MODAL_ENGINE_VM_CERTIFIED"], "")
+            self.assertEqual(runtime_env["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE"], "true")
+            self.assertEqual(
+                runtime_env["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID"],
+                approval.environment_object_id,
+            )
+            self.assertEqual(
+                runtime_env["MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256"],
+                approval.binding_manifest_sha256,
+            )
+            self.assertEqual(runtime_env["ENVIRONMENT"], "test")
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+
+    def test_functional_only_runtime_binding_rejects_unreviewed_identity(self):
+        with self.assertRaises(HarnessFailure) as raised:
+            function_runtime_environment(
+                "fd00::1", "im-TestRenderer123", "a" * 64, renderer_mode="functional-only",
+                functional_environment_approval=_reviewed_test_environment(),
+            )
+        self.assertEqual(raised.exception.failure_code, "functional_environment_approval_required")
+
+    def test_unknown_renderer_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            function_runtime_environment("fd00::1", "im-TestRenderer123", "a" * 64,
+                                         renderer_mode="skip-everything")
 
 
 class ModalEnvironmentValidationTests(unittest.TestCase):
+    def test_functional_acceptance_is_fail_closed_for_known_and_unverified_names(self):
+        self.assertEqual(diagnostics_runner._MINIMUM_EXPECTED_TESTS, 55)
+        self.assertEqual(functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS, ())
+        for alias in (
+            "prod-west", "production-blue", "main", "prod", "production", "live",
+            "billing-acceptance-20261014-prod",
+        ):
+            with self.subTest(name=alias), self.assertRaises(HarnessFailure) as raised:
+                validate_nonproduction_environment_name(alias)
+            self.assertEqual(raised.exception.failure_code, "nonproduction_environment_required")
+        for name in (
+            "unknownenv", "Billing-acceptance-20261014",
+            "billing-acceptance-20261014", "latexy-synthetic-20261016-4182705d",
+        ):
+            with self.subTest(name=name), self.assertRaises(HarnessFailure) as raised:
+                validate_functional_acceptance_environment_name(name)
+            self.assertEqual(raised.exception.failure_code, "functional_environment_not_allowlisted")
+
+    def test_policy_entry_needs_complete_provenance_and_unambiguous_name(self):
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (
+                functional_acceptance_policy.FunctionalAcceptanceEnvironmentApproval(
+                    approval.name, approval.environment_object_id,
+                    approval.binding_manifest_sha256, "",
+                ),
+            )
+            self.assertIsNone(
+                functional_acceptance_policy.get_functional_acceptance_environment_approval(
+                    approval.name,
+                ),
+            )
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (
+                approval,
+                functional_acceptance_policy.FunctionalAcceptanceEnvironmentApproval(
+                    approval.name, "en-other-object", approval.binding_manifest_sha256,
+                    approval.evidence_ref,
+                ),
+            )
+            self.assertIsNone(
+                functional_acceptance_policy.get_functional_acceptance_environment_approval(
+                    approval.name,
+                ),
+            )
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+
+    def test_reviewed_environment_requires_exact_object_id_and_empty_inventory(self):
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+
+        class Environment:
+            name = approval.name
+            object_id = approval.environment_object_id
+            apps = type("Apps", (), {"list": lambda self: []})()
+
+        class Manager:
+            def __init__(self, items):
+                self.items = items
+                self.calls = []
+
+            def list(self, **kwargs):
+                self.calls.append(kwargs)
+                return self.items
+
+        secret_manager, volume_manager = Manager([]), Manager([])
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": secret_manager}),
+            "Volume": type("VolumeAPI", (), {"objects": volume_manager}),
+        })
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            verified = validate_existing_nonproduction_environment(
+                sdk, approval.name, functional_only=True,
+            )
+            self.assertEqual(verified, approval)
+            self.assertEqual(secret_manager.calls, [{"environment_name": approval.name}])
+            self.assertEqual(volume_manager.calls, [{"environment_name": approval.name}])
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+
+    def test_functional_environment_inventory_blocks_existing_named_secret_without_exposing_it(self):
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+
+        class Resource:
+            name = "latexy-backend-secrets"
+            object_id = "sc-secret-object-id"
+
+        class Environment:
+            name = approval.name
+            object_id = approval.environment_object_id
+            apps = type("Apps", (), {"list": lambda self: []})()
+
+        class Manager:
+            def __init__(self, items):
+                self.items = items
+
+            def list(self, **kwargs):
+                return self.items
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager([Resource()])}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager([])}),
+        })
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            with self.assertRaises(HarnessFailure) as raised:
+                validate_existing_nonproduction_environment(sdk, approval.name, functional_only=True)
+            self.assertEqual(raised.exception.failure_code, "functional_environment_not_empty")
+            self.assertNotIn(Resource.name, str(raised.exception))
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+
+    def test_read_only_inventory_cli_reports_counts_without_secret_names_or_values(self):
+        secret_name = "private-secret-name-must-not-print"
+
+        class SecretHandle:
+            name = secret_name
+            object_id = "sc-test-secret"
+
+            @property
+            def values(self):
+                raise AssertionError("Secret contents must never be inspected")
+
+        class Environment:
+            name = "inventory-cli-test"
+            object_id = "en-inventory-cli-test"
+            apps = type("Apps", (), {"list": lambda self: []})()
+
+        class Manager:
+            def __init__(self, items):
+                self.items = items
+
+            def list(self, **kwargs):
+                return self.items
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager([SecretHandle()])}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager([])}),
+        })
+        output = io.StringIO()
+        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+            result = functional_inventory_main(["--environment-name", Environment.name])
+        self.assertEqual(result, 2)
+        self.assertIn('"secret_count": 1', output.getvalue())
+        self.assertNotIn(secret_name, output.getvalue())
+        self.assertNotIn("values", output.getvalue())
+
+    def test_read_only_inventory_reports_stage_and_error_class_without_exception_text(self):
+        private_detail = "private-secret-name-and-value-must-not-print"
+
+        class Environment:
+            name = "inventory-error-test"
+            object_id = "en-inventory-error-test"
+
+        class SecretManager:
+            def list(self, **kwargs):
+                raise PermissionError(private_detail)
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": SecretManager()}),
+        })
+        output = io.StringIO()
+        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+            result = functional_inventory_main(["--environment-name", Environment.name])
+        self.assertEqual(result, 2)
+        self.assertIn('"stage": "secret_list"', output.getvalue())
+        self.assertIn('"error_class": "PermissionError"', output.getvalue())
+        self.assertNotIn(private_detail, output.getvalue())
+
+    def test_inventory_uses_modal_15_cli_for_live_apps(self):
+        class Environment:
+            name = "inventory-legacy-sdk-test"
+            object_id = "en-inventory-legacy-sdk-test"
+
+        class Manager:
+            def __init__(self, items):
+                self.items = items
+
+            def list(self, **kwargs):
+                return self.items
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager([])}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager([])}),
+        })
+        cli_result = subprocess.CompletedProcess(
+            args=["python", "-m", "modal"],
+            returncode=0,
+            stdout=json.dumps([
+                {"app_id": "ap-live", "description": "live-app", "state": "ephemeral"},
+                {"app_id": "ap-stopped", "description": "old-app", "state": "stopped"},
+            ]),
+            stderr="",
+        )
+        with patch.object(acceptance.subprocess, "run", return_value=cli_result) as run_cli:
+            inventory = read_functional_environment_inventory(sdk, Environment.name)
+
+        self.assertEqual(inventory.active_app_count, 1)
+        run_cli.assert_called_once_with(
+            [
+                acceptance.sys.executable, "-m", "modal", "app", "list",
+                "--env", Environment.name, "--json",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+
+    def test_inventory_sanitizes_modal_cli_access_denial_stage(self):
+        private_detail = "Permission denied: private-app-and-secret-metadata"
+
+        class Environment:
+            name = "inventory-access-denial-test"
+            object_id = "en-inventory-access-denial-test"
+
+        class Manager:
+            def list(self, **kwargs):
+                return []
+
+        sdk = type("ModalSDK", (), {
+            "Environment": type("EnvironmentAPI", (), {
+                "objects": type("EnvironmentManager", (), {"list": lambda self: [Environment()]})(),
+            }),
+            "Secret": type("SecretAPI", (), {"objects": Manager()}),
+            "Volume": type("VolumeAPI", (), {"objects": Manager()}),
+        })
+        cli_result = subprocess.CompletedProcess(
+            args=["python", "-m", "modal"],
+            returncode=1,
+            stdout="",
+            stderr=private_detail,
+        )
+        output = io.StringIO()
+        with (
+            patch.dict("sys.modules", {"modal": sdk}),
+            patch.object(acceptance.subprocess, "run", return_value=cli_result),
+            redirect_stdout(output),
+        ):
+            result = functional_inventory_main(["--environment-name", Environment.name])
+        self.assertEqual(result, 2)
+        self.assertIn('"stage": "active_app_list"', output.getvalue())
+        self.assertIn('"error_class": "PermissionDeniedError"', output.getvalue())
+        self.assertNotIn(private_detail, output.getvalue())
+
     def test_existing_nonproduction_environment_is_found_by_read_only_list(self):
         class EnvironmentManager:
             list_calls = 0
@@ -195,7 +554,12 @@ class ModalEnvironmentValidationTests(unittest.TestCase):
         })
         private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
         output = io.StringIO()
-        with patch.dict("sys.modules", {"modal": sdk}), redirect_stdout(output):
+        approval = _reviewed_test_environment(name="test-sandbox")
+        with (
+            patch.object(functional_acceptance_policy, "TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS", (approval,)),
+            patch.dict("sys.modules", {"modal": sdk}),
+            redirect_stdout(output),
+        ):
             result = main([
                 "--image-id", "im-TestImage123",
                 "--services-image-id", "im-TestServices123",
@@ -304,6 +668,79 @@ class ConnectivityReportTests(unittest.TestCase):
             ])
         self.assertEqual(result, 2)
         self.assertIn("renderer_boundary_probe_confirmation_required", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+    def test_functional_mode_remains_blocked_even_with_acknowledgements_for_quarantined_names(self):
+        for environment_name in (
+            "billing-acceptance-20261014", "latexy-synthetic-20261016-4182705d",
+        ):
+            private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+            output = io.StringIO()
+            with self.subTest(environment_name=environment_name), redirect_stdout(output):
+                result = main([
+                    "--image-id", "im-TestImage123",
+                    "--services-image-id", "im-TestServices123",
+                    "--renderer-image-id", "im-TestRenderer123",
+                    "--renderer-assets-fingerprint", "a" * 64,
+                    "--environment-name", environment_name,
+                    "--private-report", private_report,
+                    "--renderer-mode", "functional-only",
+                    "--confirm-isolated-modal-run",
+                    "--confirm-nonproduction-environment",
+                    "--confirm-default-egress",
+                    "--confirm-functional-renderer-binding",
+                ])
+            self.assertEqual(result, 2)
+            self.assertIn("functional_environment_not_allowlisted", output.getvalue())
+            self.assertFalse(Path(private_report).exists())
+
+    def test_functional_mode_rejects_boundary_probe_acknowledgement(self):
+        approval = _reviewed_test_environment()
+        original = functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        try:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = (approval,)
+            with redirect_stdout(output):
+                result = main([
+                    "--image-id", "im-TestImage123",
+                    "--services-image-id", "im-TestServices123",
+                    "--renderer-image-id", "im-TestRenderer123",
+                    "--renderer-assets-fingerprint", "a" * 64,
+                    "--environment-name", approval.name,
+                    "--private-report", private_report,
+                    "--renderer-mode", "functional-only",
+                    "--confirm-isolated-modal-run",
+                    "--confirm-nonproduction-environment",
+                    "--confirm-default-egress",
+                    "--confirm-functional-renderer-binding",
+                    "--confirm-renderer-boundary-probe",
+                ])
+        finally:
+            functional_acceptance_policy.TRUSTED_FUNCTIONAL_ACCEPTANCE_ENVIRONMENTS = original
+        self.assertEqual(result, 2)
+        self.assertIn("boundary_probe_confirmation_not_allowed_in_functional_mode", output.getvalue())
+        self.assertFalse(Path(private_report).exists())
+
+    def test_functional_mode_rejects_production_alias_before_modal_import(self):
+        private_report = str(Path(tempfile.gettempdir()) / f"latexy-harness-test-{uuid4().hex}.json")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "--image-id", "im-TestImage123",
+                "--services-image-id", "im-TestServices123",
+                "--renderer-image-id", "im-TestRenderer123",
+                "--renderer-assets-fingerprint", "a" * 64,
+                "--environment-name", "prod-west",
+                "--private-report", private_report,
+                "--renderer-mode", "functional-only",
+                "--confirm-isolated-modal-run",
+                "--confirm-nonproduction-environment",
+                "--confirm-default-egress",
+                "--confirm-functional-renderer-binding",
+            ])
+        self.assertEqual(result, 2)
+        self.assertIn("nonproduction_environment_required", output.getvalue())
         self.assertFalse(Path(private_report).exists())
 
     def test_same_provider_and_region_is_accepted_before_compile(self):
@@ -465,6 +902,24 @@ class ConnectivityReportTests(unittest.TestCase):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_functional_only_cleanup_failure_remains_failed_and_uncertified(self):
+        report = _acceptance_report("functional-only")
+        report["renderer_boundary_probe"] = "executed"
+        report["production_certification_claimed"] = True
+        _set_renderer_report_scope(report, "functional-only")
+        report.update({
+            "status": "passed",
+            "service_stop_signal_sent": True,
+            "private_services_stopped": True,
+            "dispatch_app_stopped": False,
+        })
+        _finalize_cleanup_status(report)
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["failure_code"], "dispatch_app_stop_failed")
+        self.assertEqual(report["renderer_boundary_probe"], "not_run")
+        self.assertFalse(report["production_certification_claimed"])
+        self.assertEqual(_acceptance_exit_code(report), 1)
+
     def test_private_services_are_cleaned_up_on_success_and_body_error_in_scope(self):
         for fail_body in (False, True):
             with self.subTest(fail_body=fail_body):
