@@ -23,17 +23,41 @@ and [`jobs.<job_id>.if` status checks](https://docs.github.com/en/actions/writin
 
 | Scope | Jobs |
 | --- | --- |
-| `backend` | Backend Lint, Modal Deployment Parity, Backend Tests |
+| `backend` | Backend Lint, Modal Deployment Parity, Backend Tests, Isolated Real Compile and Preview |
 | `frontend` | Frontend Lint, Frontend Build, Cross-Browser Quality |
 | `tui` | TUI Tests |
 | `extension` | Browser Extension |
 | `render_cv` | Reusable Render CV Action |
-| `templates` | Template PDF Extraction Contract |
+| `templates` | Template PDF Extraction Contract, Isolated Real Compile and Preview |
 | `observability` | Observability Smoke |
 | `full_stack` | Frontend Build and Full-Stack Smoke (with backend prerequisite rules below) |
 
+**Isolated Real Compile and Preview** is also selected for `frontend` or
+`full_stack` changes. Its condition is the union of the `backend`, `frontend`,
+`templates` and `full_stack` scopes; it is one job, not one execution per scope.
+It runs the isolation/evidence guard tests and then
+[`scripts/ci/isolated-real-compile.py`](../scripts/ci/isolated-real-compile.py)
+with fresh local PostgreSQL, Redis and MinIO services, synthetic signing/storage
+values, actual worker/TeX artifacts and a managed Chromium browser. After schema
+setup, it requires all three opt-in render-storage integration tests with zero
+skips before starting serving processes. Browser acceptance then requires both
+the original guest journey and an ordinary saved-owner journey using the stored
+default Lua compiler. The owner proof binds saved/admitted source, accepted
+durable artifact, immutable private preview, painted PDF and download bytes,
+and checks an authenticated unrelated owner's denial without an extra job.
+The job retains its functional evidence as an artifact. This Linux/container check does
+not use production credentials, invoke a Modal deployment, certify a provider
+VM, or establish production acceptance or a latency objective.
+
+**Modal Harness Synthetic Tests** is unconditional and independent of component
+classification. It runs the explicitly selected, dependency-free tests in
+[`scripts/qa/run_modal_spawn_diagnostics.py`](../scripts/qa/run_modal_spawn_diagnostics.py).
+The job does not import the Modal SDK, use credentials, start services or create
+provider infrastructure. It verifies harness behavior using synthetic inputs;
+it does not run the opt-in Modal acceptance harness itself.
+
 Documentation-only changes therefore retain the visible privacy/classification
-and required check contexts, while unrelated database, package, build, or
+and synthetic-harness checks and required check contexts, while unrelated database, package, build, or
 browser work is skipped. A skipped check is visible as skipped/successful to
 branch protection; it does not mean that suite ran. The previously visible
 33/34 entries were check runs, including duplicate CI jobs, not 33 workflows.
@@ -55,23 +79,6 @@ Deployment workflows are separate from this policy and keep their own
 provenance, freshness, and environment guards. This document describes CI
 selection only; it does not authorize deployment or imply that a skipped
 component was tested.
-
-## Production service-worker checks
-
-Cross-Browser Quality also runs the dedicated
-[`pwa-acceptance.mjs`](../frontend/scripts/pwa-acceptance.mjs) runner before its
-HTTP-mocked quality suite. The dedicated Chromium config allows service workers
-and selects the existing offline PDF/account-isolation cases plus worker
-installation, controlled update and private-response cache checks. It requires
-all 12 named cases to pass with no skips or flaky retries, and retains the JSON
-report, worker byte identities and failure evidence under `test-results/pwa`.
-
-The ordinary quality suite continues to block workers so its HTTP interception
-contracts remain deterministic. The PWA suite runs a disposable local production
-build; its account/API fixtures are synthetic. The controlled worker update
-changes a test-proxy version comment and records original/derived hashes. It
-does not establish installed-device behavior, real backend authorization or a
-production rollout. See the [PWA acceptance scope](../frontend/e2e/PWA_ACCEPTANCE.md).
 
 ## Superseded-run cancellation regression (#1822)
 

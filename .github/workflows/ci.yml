@@ -300,12 +300,54 @@ jobs:
       - name: Verify schema cutover compatibility on disposable PostgreSQL
         run: uv run pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 
+      - name: Verify B05 and F10/F11 real route recovery
+        run: |
+          uv run pytest -vv -ra \
+            test/test_specialty_template_policy_integration.py \
+            test/test_tenant_capability_recovery_integration.py \
+            --junitxml=test-results/feature-control-integration.xml \
+            -W error::ResourceWarning \
+            -W error::RuntimeWarning \
+            -W error::pytest.PytestUnraisableExceptionWarning
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('test-results/feature-control-integration.xml').getroot()
+          cases = list(root.iter('testcase'))
+          expected = {
+              ('test_specialty_template_policy_integration',
+               f'test_specialty_catalog_assets_revoke_and_restore_via_real_policy[{axis}-{role}]')
+              for axis in ('global', 'role')
+              for role in ('anonymous', 'user', 'support', 'admin')
+          }
+          expected.update(
+              ('test_tenant_capability_recovery_integration', f'{name}[{axis}]')
+              for name in (
+                  'test_f10_denial_preserves_invitation_and_membership_removal_then_recovers',
+                  'test_f11_denial_preserves_verified_domain_and_allows_removal_then_new_admission',
+              )
+              for axis in ('global', 'role', 'plan_family')
+          )
+          actual = {(case.get('classname', '').rsplit('.', 1)[-1], case.get('name')) for case in cases}
+          if (len(cases) != 14 or actual != expected
+                  or any(list(root.iter(tag)) for tag in ('skipped', 'failure', 'error'))):
+              raise SystemExit('Feature-control integration evidence is incomplete, skipped or failed')
+          print('B05/F10/F11 real route recovery: 14 passed, zero skipped/errors/failures')
+          PY
+
       - name: Run tests
         run: >-
           uv run pytest --tb=short -q
           -W error::ResourceWarning
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
+
+      - name: Retain feature-control integration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: feature-control-integration-evidence
+          path: backend/test-results/feature-control-integration.xml
+          if-no-files-found: error
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend-lint:
@@ -501,23 +543,28 @@ jobs:
         env:
           PLAYWRIGHT_PORT: "5183"
           PLAYWRIGHT_SERVER_MODE: production
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/editor-compile-sync/results.json
         # Reuse one disposable production bundle for builder, editor and Settings owner
         # regressions with synthetic HTTP/WS/PDF/provider fixtures. No TeX
         # installation, provider credentials or live backend is required.
-        run: >-
-          pnpm exec playwright test e2e/editor-compile-sync.spec.ts
-          e2e/resume-builder.spec.ts
-          e2e/builder-capabilities.spec.ts
-          e2e/billing-developer.spec.ts
-          e2e/settings-provider-action-owner-isolation.spec.ts
-          e2e/onboarding-owner-isolation.spec.ts
-          e2e/settings-preferences-owner-race.spec.ts
-          e2e/settings-legacy-callback-owner-isolation.spec.ts
-          e2e/personal-dictionary-owner-isolation.spec.ts
-          e2e/settings-passkey-owner-isolation.spec.ts
-          e2e/linked-variant-owner-race.spec.ts
-          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
+        run: |
+          set -euo pipefail
+          rm -f test-results/editor-compile-sync/results.json
+          pnpm exec playwright test e2e/editor-compile-sync.spec.ts \
+          e2e/resume-builder.spec.ts \
+          e2e/builder-capabilities.spec.ts \
+          e2e/billing-developer.spec.ts \
+          e2e/settings-provider-action-owner-isolation.spec.ts \
+          e2e/onboarding-owner-isolation.spec.ts \
+          e2e/settings-preferences-owner-race.spec.ts \
+          e2e/settings-legacy-callback-owner-isolation.spec.ts \
+          e2e/personal-dictionary-owner-isolation.spec.ts \
+          e2e/settings-passkey-owner-isolation.spec.ts \
+          e2e/linked-variant-owner-race.spec.ts \
+          e2e/compiler-selector-keyboard.spec.ts \
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,json \
           --output=test-results/editor-compile-sync
+          node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
       - name: Extract landing screenshots for review

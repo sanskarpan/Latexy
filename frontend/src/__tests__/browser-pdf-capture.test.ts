@@ -13,7 +13,7 @@ function response(options: { status?: number; type?: string; url?: string } = {}
   return value
 }
 
-function setup(value: Response, options: { maxBytes?: number; maxCaptures?: number; deadlineMs?: number; hungBinding?: boolean } = {}) {
+function setup(value: Response, options: { maxBytes?: number; maxCaptures?: number; deadlineMs?: number; hungBinding?: boolean; ownedDownloads?: boolean } = {}) {
   const delivered: BrowserPdfCapture[] = []
   const native = vi.fn<typeof fetch>(async () => value)
   const binding = vi.fn(async (capture: BrowserPdfCapture) => {
@@ -24,13 +24,31 @@ function setup(value: Response, options: { maxBytes?: number; maxCaptures?: numb
     __latexyRealPreviewCapture: undefined as PdfCaptureController | undefined }
   vi.stubGlobal('window', target)
   installBrowserPdfCapture({ apiOrigin: origin, bindingName: 'receivePdf', maxBytes: options.maxBytes ?? 1024,
-    maxCaptures: options.maxCaptures ?? 6, deadlineMs: options.deadlineMs ?? 1000 })
+    maxCaptures: options.maxCaptures ?? 6, deadlineMs: options.deadlineMs ?? 1000, ownedDownloads: options.ownedDownloads })
   return { target, native, delivered, binding, controller: target.__latexyRealPreviewCapture! }
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('bounded original browser PDF response observation', () => {
+  it.each([false, true])('observes ordinary saved-owner downloads only with explicit opt-in %s', async ownedDownloads => {
+    const ownedUrl = `${origin}/download/11111111-1111-4111-8111-111111111111`
+    const original = response({ url: ownedUrl })
+    const clone = vi.spyOn(original, 'clone')
+    const { target, native, delivered, controller } = setup(original, { ownedDownloads })
+    expect(await target.fetch(ownedUrl, { headers })).toBe(original)
+    expect(new Uint8Array(await original.arrayBuffer())).toEqual(bytes)
+    expect(await controller.settle()).toEqual([])
+    expect(native).toHaveBeenCalledOnce()
+    expect(clone).toHaveBeenCalledTimes(ownedDownloads ? 1 : 0)
+    expect(delivered).toHaveLength(ownedDownloads ? 1 : 0)
+    if (ownedDownloads) {
+      expect(delivered[0].artifactId).toBe('')
+      expect(Buffer.from(delivered[0].bodyBase64!, 'base64')).toEqual(Buffer.from(bytes))
+    }
+    controller.cleanup()
+  })
+
   it('calls native fetch once and returns its identical consumable Response with exact binary clone bytes', async () => {
     const original = response()
     const { target, native, delivered, controller } = setup(original)
