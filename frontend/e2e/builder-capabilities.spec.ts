@@ -27,7 +27,8 @@ async function setup(page: Page, status = 'active') {
     b01: true, // create a builder document in create/import scenarios
     b06: true, // reach the upload handler before compatibility is revoked
     b07: true, // allow JSON Resume import scenarios to reach their handler
-    b08: true, // enter and reattach the guided builder
+    b08: true, // enter the guided builder
+    b09: true, // reach explicit reattachment before compatibility is revoked
     c01: true, // edit/save structured content
     c05: true, // expose PDF preview and compile-backed exports
     h01: true, // reach the JSON export handler in compatibility-revocation coverage

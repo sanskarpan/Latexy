@@ -58,13 +58,16 @@ async function expectHeaderFits(page: Page, width: number) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width
     )
-    const bounds = await header
+    const sampleBounds = () => header
         .locator('a:visible, button:visible, select:visible')
-        .evaluateAll(elements =>
-            elements.map(element => {
+        .evaluateAll(elements => {
+            const bounds = []
+            for (const element of elements) {
+                const owner = element.closest('header')
+                if (!element.isConnected || !owner?.isConnected) return null
                 const { left, right, top, bottom, width, height } = element.getBoundingClientRect()
-                const headerBottom = element.closest('header')!.getBoundingClientRect().bottom
-                return {
+                const headerBottom = owner.getBoundingClientRect().bottom
+                bounds.push({
                     left,
                     right,
                     top,
@@ -73,9 +76,24 @@ async function expectHeaderFits(page: Page, width: number) {
                     height,
                     headerBottom,
                     tag: element.tagName,
-                }
-            })
-        )
+                })
+            }
+            return bounds
+        })
+    let bounds: NonNullable<Awaited<ReturnType<typeof sampleBounds>>> = []
+    // A closing AnimatePresence menu can detach between the locator query and
+    // evaluation. Resample the entire collection; never discard a control or
+    // retry a failed geometry assertion below.
+    await expect.poll(async () => {
+        const sample = await sampleBounds()
+        if (!sample?.length) return false
+        bounds = sample
+        return true
+    }, {
+        timeout: 5_000,
+        message: 'Header controls must form a complete, connected, nonempty sample',
+    }).toBe(true)
+    expect(bounds.length).toBeGreaterThan(0)
     for (const box of bounds) {
         expect(box.left).toBeGreaterThanOrEqual(0)
         expect(box.right).toBeLessThanOrEqual(width)

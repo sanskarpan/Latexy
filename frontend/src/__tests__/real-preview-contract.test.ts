@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FIRST_USE_ENGINE_RESUME_TEMPLATE } from '../lib/first-use-resume'
 import {
@@ -22,6 +25,17 @@ describe('credential-free real preview harness', () => {
     expect(await readDemoSource()).toBe(FIRST_USE_ENGINE_RESUME_TEMPLATE)
     expect(firstEditableBullet(await readDemoSource())).toBe('Guided new customers through onboarding and answered questions about their account.')
     expect(() => firstEditableBullet('no bullet')).toThrow(/no plain editable bullet/)
+  })
+
+  it('matches JavaScript template-literal line endings on CRLF checkouts', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'latexy-demo-source-'))
+    try {
+      const filename = join(directory, 'first-use-resume.ts')
+      await writeFile(filename, 'export const FIRST_USE_ENGINE_RESUME_TEMPLATE = String.raw`first\r\nsecond\rthird\\nkept\\rkept`')
+      expect(await readDemoSource(filename)).toBe('first\nsecond\nthird\\nkept\\rkept')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   it('recognizes local PDF blob/data loads without allowing remote network or blob origins', () => {
