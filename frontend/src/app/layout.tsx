@@ -21,6 +21,7 @@ import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
 import ReferralCapture from '@/components/ReferralCapture'
+import PWARegistration from '@/components/PWARegistration'
 import { siteUrl } from '@/lib/site-url'
 
 export const metadata: Metadata = {
@@ -90,6 +91,7 @@ export default async function RootLayout({
           Skip to content
         </a>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <PWARegistration />
         <I18nProvider initialLocale={initialLocale}>
         <ThemeProvider>
         <AestheticController />

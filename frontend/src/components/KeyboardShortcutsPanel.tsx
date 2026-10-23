@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { X, Search, Keyboard } from 'lucide-react'
 import { SHORTCUTS, CATEGORY_LABELS, CATEGORY_ORDER, type Shortcut } from '@/lib/editor-shortcuts'
 
@@ -11,16 +11,55 @@ interface KeyboardShortcutsPanelProps {
 
 export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShortcutsPanelProps) {
   const [search, setSearch] = useState('')
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const onCloseRef = useRef(onClose)
 
-  // Close on Escape
-  useEffect(() => {
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useLayoutEffect(() => {
     if (!isOpen) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    searchRef.current?.focus()
+
+    const focusableElements = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.getClientRects().length > 0)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onCloseRef.current()
+      } else if (event.key === 'Tab') {
+        const elements = focusableElements()
+        const first = elements[0] ?? dialog
+        const last = elements[elements.length - 1] ?? dialog
+        const active = document.activeElement
+        if (!dialog.contains(active) || (event.shiftKey ? active === first : active === last)) {
+          event.preventDefault()
+          const target = event.shiftKey ? last : first
+          target.focus()
+        }
+      }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, onClose])
+    const containFocus = (event: FocusEvent) => {
+      if (!dialog.contains(event.target as Node)) searchRef.current?.focus()
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    document.addEventListener('focusin', containFocus)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      document.removeEventListener('focusin', containFocus)
+      document.body.style.overflow = previousOverflow
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [isOpen])
 
   // Reset search when opening
   useEffect(() => {
@@ -61,16 +100,20 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="keyboard-shortcuts-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-lg rounded-[var(--radius-md)] border border-line bg-bg shadow-[var(--shadow-2)]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-shortcuts-title"
+        tabIndex={-1}
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[var(--radius-md)] border border-line bg-bg shadow-[var(--shadow-2)]"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-5 py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
               <Keyboard size={14} className="text-accent-strong" />
             </div>
@@ -79,30 +122,35 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
           <button
             onClick={onClose}
             aria-label="Close keyboard shortcuts"
-            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
+            className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="border-b border-line px-5 py-2.5">
+        <div className="shrink-0 border-b border-line px-5 py-2.5">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" size={13} />
             <input
+              ref={searchRef}
               type="text"
               aria-label="Search keyboard shortcuts"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search shortcuts..."
-              autoFocus
               className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent"
             />
           </div>
         </div>
 
         {/* Shortcuts list */}
-        <div className="max-h-[420px] overflow-y-auto px-5 py-3">
+        <div
+          role="region"
+          aria-label="Keyboard shortcuts list"
+          tabIndex={0}
+          className="min-h-0 max-h-[420px] overflow-y-auto px-5 py-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        >
           {grouped.length === 0 ? (
             <p className="py-8 text-center text-sm text-fg-3">No shortcuts match your search</p>
           ) : (
@@ -116,10 +164,10 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
                     {shortcuts.map((s) => (
                       <div
                         key={s.description}
-                        className="flex items-center justify-between rounded-[var(--radius-md)] px-2 py-1.5 transition hover:bg-surface-2"
+                        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[var(--radius-md)] px-2 py-1.5 transition hover:bg-surface-2"
                       >
-                        <span className="text-[13px] text-fg-2">{s.description}</span>
-                        <div className="flex items-center gap-1">
+                        <span className="min-w-0 break-words text-[13px] text-fg-2">{s.description}</span>
+                        <div className="ml-auto flex max-w-full flex-wrap items-center gap-1">
                           {s.keys.map((key, i) => (
                             <kbd
                               key={i}
@@ -139,7 +187,7 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
         </div>
 
         {/* Footer */}
-        <div className="border-t border-line px-5 py-2.5">
+        <div className="shrink-0 border-t border-line px-5 py-2.5">
           <p className="text-[10px] text-fg-3">
             Press <kbd className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-1 py-0.5 text-[10px] text-fg-3">Esc</kbd> to close
           </p>
