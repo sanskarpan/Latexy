@@ -85,7 +85,46 @@ def cors_response(origin='http://127.0.0.1:23456', *, status=200, headers=None, 
     return response
 
 
+def owner_browser_proof():
+    value = {field: True for field in ('stored_default_verified', 'source_saved_and_reloaded',
+        'durable_artifact_accepted', 'canvas_painted', 'expected_text_rendered',
+        'preview_download_bytes_match', 'download_admission_count_unchanged', 'unrelated_owner_denied',
+        'private_preview_bytes_match')}
+    value.update(success=True, scenario='normal-saved-owner-default-lua', admission_count=1,
+        compiler='lualatex', pdf_bytes=2048, artifact_id='c' * 64, compiler_settings_override_used=False,
+        runtime_error_count=0, capture_error_count=0, external_request_count=0, compiler_settings_update_count=0,
+        measured_at_utc='2026-10-22T19:00:00Z', limitations=['Isolated functional proof, not production acceptance.'])
+    for field in ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256'):
+        value[field] = 'a' * 64
+    for field in ('pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256'):
+        value[field] = 'b' * 64
+    return value
+
+
 class HarnessGuards(unittest.TestCase):
+    def test_frontend_auth_trusts_exact_owned_browser_origin_without_inherited_origins(self):
+        origin = 'http://127.0.0.1:23456'
+        with patch.dict(os.environ, {'BETTER_AUTH_TRUSTED_ORIGINS': 'https://operator.invalid,*',
+            'PLAYWRIGHT_APP_URL': 'https://operator.invalid', 'PLAYWRIGHT_AUTH_URL': 'https://operator.invalid'}):
+            environment = harness.owned_frontend_auth_environment(origin)
+        self.assertEqual(environment, {
+            'PLAYWRIGHT_APP_URL': origin,
+            'PLAYWRIGHT_AUTH_URL': 'https://127.0.0.1:23456',
+            'BETTER_AUTH_TRUSTED_ORIGINS': origin,
+        })
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertIn('**owned_frontend_auth_environment(frontend_origin)', prepare)
+
+    def test_frontend_auth_rejects_non_owned_or_ambiguous_origins(self):
+        invalid = ('https://127.0.0.1:1', 'http://localhost:1', 'http://example.com:1', '*',
+            'http://127.0.0.1', 'http://name:secret@127.0.0.1:1', 'http://127.0.0.1:1/',
+            'http://127.0.0.1:1?query', 'http://127.0.0.1:1#fragment', 'http://127.0.0.1:0',
+            'http://127.0.0.1:01', 'http://127.0.0.1:65536', 'http://127.0.0.1:abc',
+            'http://127.0.0.1:1,http://127.0.0.1:2', 'http://127.0.0.1:1\n')
+        for origin in invalid:
+            with self.subTest(origin=origin), self.assertRaisesRegex(RuntimeError, 'exact owned loopback'):
+                harness.owned_frontend_auth_environment(origin)
+
     def test_browser_cors_positive_contract_reads_capability_and_four_real_preflights(self):
         api, frontend = 'http://127.0.0.1:12345', 'http://127.0.0.1:23456'
         responses = [cors_response() for _ in range(5)]
@@ -554,6 +593,218 @@ class HarnessGuards(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 harness.require_junit_cases(path, expected=1)
 
+    def test_storage_integration_requires_exact_complete_case_evidence(self):
+        names = sorted(harness.STORAGE_INTEGRATION_CASES)
+        def report(case_names=names, *, extra='', classname='test.test_render_storage_integration'):
+            return '<testsuite>' + ''.join(
+                f'<testcase classname="{classname}" name="{name}">{extra}</testcase>' for name in case_names) + '</testsuite>'
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'storage.xml'
+            with self.assertRaises(FileNotFoundError):
+                harness.require_storage_integration_proof(path)
+            for body in (report([]), report(names[:2]), report(names + [names[0]]),
+                         report([names[0], names[0], names[1]]), report(classname='unrelated_suite'),
+                         report(extra='<skipped/>'), report(extra='<failure/>'), report(extra='<error/>')):
+                path.write_text(body)
+                with self.subTest(body=body), self.assertRaises(RuntimeError):
+                    harness.require_storage_integration_proof(path)
+            path.write_text(report())
+            proof = harness.require_storage_integration_proof(path)
+            self.assertEqual((proof['passed'], proof['skipped'], proof['failed'], proof['errors']), (3, 0, 0, 0))
+            self.assertEqual(proof['cases'], names)
+            self.assertIn('not production acceptance', proof['scope'])
+
+    def test_storage_integration_opt_in_is_scoped_to_owned_qa_process_and_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.app_environment = {
+                'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14',
+            }
+            original = dict(instance.app_environment)
+            path = work / 'render-storage-integration.xml'
+            instance.qa = MagicMock(side_effect=lambda *args, **kwargs: path.write_text('<testsuite>' + ''.join(
+                f'<testcase classname="test.test_render_storage_integration" name="{name}"/>'
+                for name in harness.STORAGE_INTEGRATION_CASES) + '</testsuite>'))
+            instance.storage_integration()
+            self.assertEqual(instance.app_environment, original)
+            command = instance.qa.call_args.args[0]
+            self.assertEqual(command[:5], ['env', 'RUN_RENDER_STORAGE_INTEGRATION=1', 'python', '-m', 'pytest'])
+            self.assertIn('test/test_render_storage_integration.py', command)
+            self.assertIn('--junitxml=/evidence/render-storage-integration.xml', command)
+            self.assertEqual(instance.qa.call_args.kwargs['timeout'], 300)
+            self.assertEqual(instance.provenance['render_storage_integration']['passed'], 3)
+            with self.assertRaisesRegex(RuntimeError, 'fresh'):
+                instance.storage_integration()
+            self.assertEqual(instance.qa.call_count, 1)
+
+    def test_storage_integration_refuses_nonowned_services_before_qa(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            valid = {'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14'}
+            instance.qa = MagicMock()
+            for key in valid:
+                instance.app_environment = {**valid, key: 'unrelated-target'}
+                with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'owned disposable'):
+                    instance.storage_integration()
+            instance.app_environment = valid
+            instance.prefix = 'existing-bucket'
+            with self.assertRaisesRegex(RuntimeError, 'owned disposable'):
+                instance.storage_integration()
+            instance.qa.assert_not_called()
+
+    def test_storage_integration_missing_report_or_failed_process_cannot_record_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': instance.prefix,
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14'}
+            instance.qa = MagicMock()
+            with self.assertRaises(FileNotFoundError):
+                instance.storage_integration()
+            self.assertNotIn('render_storage_integration', instance.provenance)
+            instance.qa.side_effect = RuntimeError('Owned candidate QA process failed')
+            with self.assertRaisesRegex(RuntimeError, 'QA process failed'):
+                instance.storage_integration()
+            self.assertNotIn('render_storage_integration', instance.provenance)
+
+    def test_real_storage_suite_is_wired_after_schema_and_before_serving_processes(self):
+        source = inspect.getsource(harness.Harness.prepare)
+        self.assertLess(source.index('self.qa(["alembic", "upgrade", "head"]'), source.index('self.storage_integration()'))
+        self.assertLess(source.index('self.storage_integration()'), source.index('api = self.start("api"'))
+
+    def test_builder_catalog_uses_actual_compatibility_and_rejects_empty_or_incompatible_rows(self):
+        # Exercise the probe's real aggregation with the production pure
+        # compatibility predicate, without importing settings or opening a DB.
+        service_path = HERE.parents[1] / 'backend/app/services/resume_builder_service.py'
+        service_tree = ast.parse(service_path.read_text(encoding='utf-8'))
+        categories = next(node for node in service_tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'SUPPORTED_BUILDER_CATEGORIES' for target in node.targets))
+        service_class = next(node for node in service_tree.body if isinstance(node, ast.ClassDef)
+            and node.name == 'ResumeBuilderService')
+        predicate = next(node for node in service_class.body if isinstance(node, ast.FunctionDef)
+            and node.name == 'is_supported_category')
+        production = {}
+        exec(compile(ast.Module(body=[categories, predicate], type_ignores=[]), str(service_path), 'exec'), production)
+        service = type('Compatibility', (), {'is_supported_category': production['is_supported_category']})()
+        count_function = next(node for node in ast.parse(harness.BUILDER_CATALOG_PROBE).body
+            if isinstance(node, ast.FunctionDef) and node.name == 'catalog_counts')
+        probe = {'resume_builder_service': service}
+        exec(compile(ast.Module(body=[count_function], type_ignores=[]), '<owned-catalog-probe>', 'exec'), probe)
+        counts = probe['catalog_counts']
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'builder-catalog-readiness.json'
+            for rows in ([], [('ats_safe', 'resume', False)], [('academic', 'resume', True)],
+                         [('ats_safe', 'presentation', True)]):
+                path.write_text(json.dumps(counts(rows)))
+                with self.subTest(rows=rows), self.assertRaises(RuntimeError):
+                    harness.require_builder_catalog_proof(path)
+            value = counts([('ats_safe', 'resume', True), ('minimal', 'resume', False),
+                            ('academic', 'resume', True), ('ats_safe', 'presentation', True)])
+            path.write_text(json.dumps(value))
+            self.assertEqual(harness.require_builder_catalog_proof(path), {
+                'total_templates': 4, 'active_templates': 3, 'compatible_active_resume_templates': 1})
+
+    def test_builder_catalog_proof_is_strictly_count_only_and_nonempty(self):
+        good = {'total_templates': 3, 'active_templates': 2, 'compatible_active_resume_templates': 1}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'catalog.json'
+            for value in ([], {}, {**good, 'template_ids': ['synthetic-id']},
+                          {**good, 'active_templates': True}, {**good, 'total_templates': '3'},
+                          {**good, 'compatible_active_resume_templates': 0},
+                          {**good, 'active_templates': 0}, {**good, 'total_templates': 1}):
+                path.write_text(json.dumps(value))
+                with self.subTest(value=value), self.assertRaises(RuntimeError):
+                    harness.require_builder_catalog_proof(path)
+            path.write_text(' ' * 4097)
+            with self.assertRaises(RuntimeError):
+                harness.require_builder_catalog_proof(path)
+
+    def test_builder_catalog_seed_and_probe_are_owned_ordered_and_fresh(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            original = dict(instance.app_environment)
+            report = work / 'builder-catalog-readiness.json'
+            proof = {'total_templates': 2, 'active_templates': 2, 'compatible_active_resume_templates': 1}
+            def qa(command, **kwargs):
+                if command[:2] == ['python', '-c']:
+                    report.write_text(json.dumps(proof))
+            instance.qa = MagicMock(side_effect=qa)
+            instance.seed_builder_catalog()
+            self.assertEqual(instance.app_environment, original)
+            self.assertEqual(instance.qa.call_args_list[0].args[0], ['python', '-m', 'app.scripts.seed_templates'])
+            self.assertEqual(instance.qa.call_args_list[1].args[0], ['python', '-c', harness.BUILDER_CATALOG_PROBE])
+            self.assertEqual(instance.qa.call_count, 2)
+            self.assertIn('SET TRANSACTION READ ONLY', harness.BUILDER_CATALOG_PROBE)
+            self.assertEqual(instance.provenance['builder_catalog'], proof)
+            instance.qa.reset_mock()
+            with self.assertRaisesRegex(RuntimeError, 'must be fresh'):
+                instance.seed_builder_catalog()
+            instance.qa.assert_not_called()
+        prepare = inspect.getsource(harness.Harness.prepare)
+        self.assertLess(prepare.index('self.storage_integration()'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('converter-failure-ledger.xml'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('required-template-certification.json'), prepare.index('self.seed_builder_catalog()'))
+        self.assertLess(prepare.index('self.seed_builder_catalog()'), prepare.index('api = self.start("api"'))
+
+    def test_builder_catalog_rejects_unowned_targets_before_seeding(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            original = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            instance.qa = MagicMock()
+            for update in ({'DATABASE_URL': 'postgresql+asyncpg://operator@provider.invalid/production'},
+                           {'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/other_test'},
+                           {'ENVIRONMENT': 'production'}, {'DEPLOY_TARGET': 'modal'},
+                           {'LATEXY_ISOLATED_CI': '0'}):
+                instance.app_environment = {**original, **update}
+                with self.subTest(update=update), self.assertRaisesRegex(RuntimeError, 'exact owned disposable'):
+                    instance.seed_builder_catalog()
+            instance.app_environment = original
+            instance.names = ['unrelated-postgres']
+            with self.assertRaisesRegex(RuntimeError, 'exact owned disposable'):
+                instance.seed_builder_catalog()
+            instance.qa.assert_not_called()
+
+    def test_builder_catalog_missing_report_or_failed_seed_cannot_record_readiness(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            instance = harness.Harness(work, work, work)
+            instance.network_created = True
+            instance.names = [instance.prefix + '-postgres']
+            instance.app_environment = {'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development',
+                'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+                'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+                'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test'}
+            instance.qa = MagicMock()
+            with self.assertRaises(FileNotFoundError):
+                instance.seed_builder_catalog()
+            self.assertNotIn('builder_catalog', instance.provenance)
+            instance.qa.reset_mock(side_effect=True)
+            instance.qa.side_effect = RuntimeError('Owned seed failed')
+            with self.assertRaisesRegex(RuntimeError, 'Owned seed failed'):
+                instance.seed_builder_catalog()
+            self.assertEqual(instance.qa.call_count, 1)
+            self.assertNotIn('builder_catalog', instance.provenance)
+
     def test_browser_proof_requires_two_complete_nonmocked_samples(self):
         sample = {key: True for key in ('websocket_artifact', 'websocket_completed', 'canvas_painted',
             'expected_text_rendered', 'synctex_mappable', 'pdf_geometry_synctex_fingerprint_matches')}
@@ -570,6 +821,63 @@ class HarnessGuards(unittest.TestCase):
                 path.write_text(json.dumps({**good, **updates}))
                 with self.assertRaises(RuntimeError):
                     harness.require_browser_proof(path)
+
+    def test_owner_browser_proof_requires_saved_default_and_matching_cross_channel_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            good = owner_browser_proof()
+            path.write_text(json.dumps(good))
+            proof = harness.require_owner_browser_proof(path)
+            self.assertEqual((proof['admission_count'], proof['source_sha256'], proof['pdf_sha256']),
+                             (1, good['source_sha256'], good['pdf_sha256']))
+            self.assertIn('not production acceptance', proof['scope'])
+            for field in ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256',
+                          'pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256'):
+                path.write_text(json.dumps({**good, field: 'd' * 64}))
+                with self.subTest(field=field), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+
+    def test_owner_browser_proof_refuses_missing_false_mocked_or_incomplete_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            good = owner_browser_proof()
+            with self.assertRaises(FileNotFoundError):
+                harness.require_owner_browser_proof(path)
+            invalid = [('success', False), ('scenario', 'normal-guest-initial-and-latest-source'),
+                ('compiler', 'pdflatex'), ('admission_count', 0), ('admission_count', 2), ('admission_count', True),
+                ('pdf_bytes', 0), ('pdf_bytes', 20 * 1024 * 1024 + 1), ('pdf_bytes', True),
+                ('compiler_settings_override_used', True), ('compiler_settings_override_used', 0),
+                ('limitations', []), ('limitations', ['']), ('artifact_id', 'C' * 64), ('artifact_id', '../other')]
+            invalid += [(field, False) for field in good if field in (
+                'stored_default_verified', 'source_saved_and_reloaded', 'durable_artifact_accepted', 'canvas_painted',
+                'expected_text_rendered', 'preview_download_bytes_match', 'download_admission_count_unchanged',
+                'unrelated_owner_denied', 'private_preview_bytes_match')]
+            invalid += [(field, value) for field in ('runtime_error_count', 'capture_error_count',
+                'external_request_count', 'compiler_settings_update_count') for value in (1, -1, False, '0')]
+            for field, value in invalid:
+                path.write_text(json.dumps({**good, field: value}))
+                with self.subTest(field=field, value=value), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+            for field in good:
+                path.write_text(json.dumps({key: value for key, value in good.items() if key != field}))
+                with self.subTest(missing=field), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+            for value in (None, [], {}, {'success': True}):
+                path.write_text(json.dumps(value))
+                with self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+
+    def test_owner_browser_proof_requires_utc_and_both_browser_scenarios_are_wired(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'owner-browser-proof.json'
+            for measured in ('', '2026-10-22T19:00:00', '2026-10-22T19:00:00+05:30', 'bad-time', None):
+                path.write_text(json.dumps({**owner_browser_proof(), 'measured_at_utc': measured}))
+                with self.subTest(measured=measured), self.assertRaises(RuntimeError):
+                    harness.require_owner_browser_proof(path)
+        source = inspect.getsource(harness.Harness.browser)
+        self.assertIn('require_junit_cases(self.evidence / "real-preview.xml", expected=2)', source)
+        self.assertIn('require_browser_proof(self.evidence / "browser-proof.json")', source)
+        self.assertIn("require_owner_browser_proof(self.evidence / 'owner-browser-proof.json')", source)
 
     def test_local_origin_rejects_external_and_credential_destinations(self):
         for value in ('https://127.0.0.1:1', 'http://remote:1', 'http://name:secret@localhost:1',
