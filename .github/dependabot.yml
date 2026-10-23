@@ -67,9 +67,15 @@ updates:
       # is on react 18 + fiber 8. Hold major drei bumps until a React 19 upgrade.
       - dependency-name: "@react-three/drei"
         update-types: ["version-update:semver-major"]
+      # Fiber majors must move with the React/Drei migration.
+      - dependency-name: "@react-three/fiber"
+        update-types: ["version-update:semver-major"]
       # eslint 9/10 is flat-config only; `next lint` (Next 14) doesn't support it.
       # Hold eslint majors until the lint tooling migrates.
       - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      # Next lint preset majors need the same flat-config migration.
+      - dependency-name: "eslint-config-next"
         update-types: ["version-update:semver-major"]
       # react-pdf 10 jumps to pdfjs-dist 5, which references browser globals
       # (DOMMatrix) at import time → breaks Next SSR/build, and needs same-origin
