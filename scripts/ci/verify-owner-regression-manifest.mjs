@@ -22,8 +22,9 @@ const requiredSuites = [
   'e2e/linked-variant-owner-race.spec.ts',
   'e2e/compiler-selector-keyboard.spec.ts',
   'e2e/builder-saved-owner-race.spec.ts',
+  'e2e/editor-shortcuts-focus.spec.ts',
 ]
-const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1, 5]
+const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1, 5, 2]
 const expectedCaseCount = requiredSuiteCaseCounts.reduce((total, count) => total + count, 0)
 const addedCases = [{
   suite: 'e2e/compiler-selector-keyboard.spec.ts',
@@ -43,6 +44,12 @@ const addedCases = [{
 }, {
   suite: 'e2e/builder-saved-owner-race.spec.ts',
   title: 'C25 saved owner recovers current local JSON across capability denial without new effects or cross-scope drafts',
+}, {
+  suite: 'e2e/editor-shortcuts-focus.spec.ts',
+  title: 'C04 keyboard shortcut dialog contains focus and restores the saved source opener',
+}, {
+  suite: 'e2e/editor-shortcuts-focus.spec.ts',
+  title: 'C04 shortcut dialog remains reachable and keyboard scrollable at 320 CSS pixels',
 }]
 
 function fail(message) {
@@ -77,7 +84,7 @@ if (manifest.expectedCaseCount !== expectedCaseCount
   || JSON.stringify(manifest.suiteCaseCounts) !== JSON.stringify(Object.fromEntries(
     requiredSuites.map((suite, index) => [suite, requiredSuiteCaseCounts[index]]),
   ))) {
-  fail('Manifest case inventory must retain the original 115 cases plus the exact saved-builder local recovery case')
+  fail('Manifest case inventory must retain the original 116 cases plus the exact two keyboard shortcut dialog cases')
 }
 
 const frontendRoot = resolve(repoRoot, 'frontend')
