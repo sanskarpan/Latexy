@@ -7,8 +7,7 @@ import { usePathname } from 'next/navigation'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { capabilityForRoute } from '@/lib/capability-ui-policy'
 import CapabilityGate from '@/components/CapabilityGate'
-import { CapabilityRecoveryContext, type CapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
-import { downloadBlob } from '@/lib/download'
+import { CapabilityRecoveryContext, downloadCapabilityDraft, type CapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
 
 /** Generation and optional editing modes only. Owned data, recovery, settings,
  * sharing revocation and billing management routes are deliberately reachable.
@@ -47,7 +46,7 @@ export default function CapabilityRouteBoundary({ children }: { children: ReactN
         <CapabilityGate feature={feature} fallback>{null}</CapabilityGate>
         {ownedRecovery && <div className="space-y-2 rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-fg-2">
           <p>{ownedRecovery.dirty ? 'Your unsaved builder fields are still held in this page.' : 'Your current builder fields are still held in this page.'} Download them before navigating away. The source editor contains the last saved version.</p>
-          <button type="button" className="font-semibold text-accent-strong underline" onClick={() => downloadBlob(new Blob([ownedRecovery.read()], { type: 'application/json' }), ownedRecovery.filename)}>Download current builder draft (.json)</button>
+          <button type="button" className="font-semibold text-accent-strong underline" onClick={() => downloadCapabilityDraft(ownedRecovery)}>Download current builder draft (.json)</button>
         </div>}
         <p className="text-sm text-fg-3">Your saved documents and source editor remain available.</p>
         <div className="flex gap-4 text-sm text-accent-strong">

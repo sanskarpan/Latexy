@@ -23,7 +23,7 @@ const requiredSuites = [
   'e2e/compiler-selector-keyboard.spec.ts',
   'e2e/builder-saved-owner-race.spec.ts',
 ]
-const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1, 4]
+const requiredSuiteCaseCounts = [5, 8, 13, 10, 10, 9, 12, 19, 6, 8, 10, 1, 5]
 const expectedCaseCount = requiredSuiteCaseCounts.reduce((total, count) => total + count, 0)
 const addedCases = [{
   suite: 'e2e/compiler-selector-keyboard.spec.ts',
@@ -40,6 +40,9 @@ const addedCases = [{
 }, {
   suite: 'e2e/builder-saved-owner-race.spec.ts',
   title: 'does not apply a deferred owner-A force-reattach after the authenticated owner switches to B',
+}, {
+  suite: 'e2e/builder-saved-owner-race.spec.ts',
+  title: 'C25 saved owner recovers current local JSON across capability denial without new effects or cross-scope drafts',
 }]
 
 function fail(message) {
@@ -74,7 +77,7 @@ if (manifest.expectedCaseCount !== expectedCaseCount
   || JSON.stringify(manifest.suiteCaseCounts) !== JSON.stringify(Object.fromEntries(
     requiredSuites.map((suite, index) => [suite, requiredSuiteCaseCounts[index]]),
   ))) {
-  fail('Manifest case inventory must retain the original 111 cases plus the four exact saved-builder owner cases')
+  fail('Manifest case inventory must retain the original 115 cases plus the exact saved-builder local recovery case')
 }
 
 const frontendRoot = resolve(repoRoot, 'frontend')

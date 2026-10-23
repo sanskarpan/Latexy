@@ -34,6 +34,7 @@ import {
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useBuilderPdf } from '@/hooks/useBuilderPdf'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
 import {
   cloneStructuredResume,
   createBuilderId,
@@ -378,6 +379,11 @@ function BuilderResumeForm({
   const mountedRef = useRef(false)
   const authVerifiedRef = useRef(!authUnverified)
   authVerifiedRef.current = !authUnverified
+  const recoveryReady = savedBuilderRef.current?.resume.user_id === ownerId && savedBuilderRef.current.resume.id === resumeId
+  const downloadDraft = useCapabilityDraftRecovery(ownerId, `latexy-builder-${encodeURIComponent(resumeId)}-draft.json`, dirty, {
+    format: 'latexy-builder-draft', version: 1, resume_id: resumeId,
+    title, template_id: selectedTemplateId, structured_content: structured,
+  }, recoveryReady)
 
   useEffect(() => {
     mountedRef.current = true
@@ -825,6 +831,7 @@ function BuilderResumeForm({
 
       {!contentEditAllowed && <section role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 text-sm text-fg-2">
         Editing guided résumé fields is unavailable. Your saved résumé and PDF recovery remain available in the source editor.
+        {recoveryReady && <button type="button" onClick={downloadDraft} className="mt-3 block font-semibold text-accent-strong underline">Download current builder draft (.json)</button>}
       </section>}
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[240px_minmax(0,1fr)_420px]">
         <aside className="space-y-4 xl:col-span-2 2xl:col-span-1">
