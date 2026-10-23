@@ -393,7 +393,9 @@ test('C25 saved owner recovers current local JSON across capability denial witho
   await page.locator('#builder-resume-title').fill('Owner A unsaved recovery title')
   await page.locator('#builder-template-select').selectOption(TEMPLATE_B)
   await page.locator('#builder-basics-summary').fill('Owner A unsaved recovery summary')
-  await expect(page.getByText('A newer saved version exists. Your edits are preserved here.', { exact: true })).toBeVisible()
+  const conflictAlert = page.getByRole('alert').filter({ has: page.getByText('A newer saved version exists', { exact: true }) })
+  await expect(conflictAlert.getByText('A newer saved version exists', { exact: true })).toBeVisible()
+  await expect(conflictAlert.getByText('Your edits are preserved here. Reload the saved copy to review the changes before saving or exporting.', { exact: true })).toBeVisible()
   expect(saveAttempts).toBe(1)
 
   features.b08 = false
