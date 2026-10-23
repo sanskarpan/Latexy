@@ -300,12 +300,54 @@ jobs:
       - name: Verify schema cutover compatibility on disposable PostgreSQL
         run: uv run pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 
+      - name: Verify B05 and F10/F11 real route recovery
+        run: |
+          uv run pytest -vv -ra \
+            test/test_specialty_template_policy_integration.py \
+            test/test_tenant_capability_recovery_integration.py \
+            --junitxml=test-results/feature-control-integration.xml \
+            -W error::ResourceWarning \
+            -W error::RuntimeWarning \
+            -W error::pytest.PytestUnraisableExceptionWarning
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('test-results/feature-control-integration.xml').getroot()
+          cases = list(root.iter('testcase'))
+          expected = {
+              ('test_specialty_template_policy_integration',
+               f'test_specialty_catalog_assets_revoke_and_restore_via_real_policy[{axis}-{role}]')
+              for axis in ('global', 'role')
+              for role in ('anonymous', 'user', 'support', 'admin')
+          }
+          expected.update(
+              ('test_tenant_capability_recovery_integration', f'{name}[{axis}]')
+              for name in (
+                  'test_f10_denial_preserves_invitation_and_membership_removal_then_recovers',
+                  'test_f11_denial_preserves_verified_domain_and_allows_removal_then_new_admission',
+              )
+              for axis in ('global', 'role', 'plan_family')
+          )
+          actual = {(case.get('classname', '').rsplit('.', 1)[-1], case.get('name')) for case in cases}
+          if (len(cases) != 14 or actual != expected
+                  or any(list(root.iter(tag)) for tag in ('skipped', 'failure', 'error'))):
+              raise SystemExit('Feature-control integration evidence is incomplete, skipped or failed')
+          print('B05/F10/F11 real route recovery: 14 passed, zero skipped/errors/failures')
+          PY
+
       - name: Run tests
         run: >-
           uv run pytest --tb=short -q
           -W error::ResourceWarning
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
+
+      - name: Retain feature-control integration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: feature-control-integration-evidence
+          path: backend/test-results/feature-control-integration.xml
+          if-no-files-found: error
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend-lint:
