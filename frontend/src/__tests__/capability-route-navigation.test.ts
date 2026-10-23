@@ -76,6 +76,29 @@ function renderExpression(expression: ts.Node, extra: Record<string, unknown> = 
 beforeEach(() => { state.grants = new Set(); state.pathname = '/workspace'; state.signedIn = false; state.loading = false; state.error = null })
 
 describe('optional route entry controls render OFF and ON', () => {
+  it.each(['b08', 'b09', 'c01'])('reattachment requires %s and returns after an explicit regrant', feature => {
+    const [button] = find(builder, node => ts.isJsxElement(node)
+      && node.openingElement.tagName.getText(builder) === 'button'
+      && node.children.some(child => ts.isJsxText(child) && child.text.trim() === 'Reattach Builder'))
+    expect(button).toBeDefined()
+    let container = button.parent
+    while (!ts.isJsxExpression(container)) container = container.parent
+    const expression = container.expression!
+    const render = () => renderExpression(expression, {
+      contentEditAllowed: state.grants.has('c01'), RefreshCcw: emptyIcon, forceReattach: vi.fn(),
+    })
+    state.grants = new Set(['b08', 'b09', 'c01'])
+    state.grants.delete(feature)
+    expect(render()).toBe('')
+    state.grants.add(feature)
+    const allowed = render()
+    expect(allowed).toContain('Reattach Builder')
+    state.grants.delete(feature)
+    expect(render()).toBe('')
+    state.grants.add(feature)
+    expect(render()).toBe(allowed)
+  })
+
   it.each([
     ['workspace grid Optimize', workspace, '/workspace/${resume.id}/optimize', 0, 'd01', '/workspace/resume/optimize'],
     ['workspace list Optimize', workspace, '/workspace/${resume.id}/optimize', 1, 'd01', '/workspace/resume/optimize'],

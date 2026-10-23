@@ -260,6 +260,9 @@ test.describe('saved guided builder ownership boundaries', () => {
   })
 
   test('does not apply a deferred owner-A force-reattach after the authenticated owner switches to B', async ({ page }) => {
+    await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+      json: { features: { b08: true, b09: true, c01: true } },
+    }))
     const owner = { value: 'owner-a' }
     let reattachStarted = false
     let reattachFinished = false
