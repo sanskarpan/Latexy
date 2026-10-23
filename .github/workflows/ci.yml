@@ -533,23 +533,28 @@ jobs:
         env:
           PLAYWRIGHT_PORT: "5183"
           PLAYWRIGHT_SERVER_MODE: production
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/editor-compile-sync/results.json
         # Reuse one disposable production bundle for builder, editor and Settings owner
         # regressions with synthetic HTTP/WS/PDF/provider fixtures. No TeX
         # installation, provider credentials or live backend is required.
-        run: >-
-          pnpm exec playwright test e2e/editor-compile-sync.spec.ts
-          e2e/resume-builder.spec.ts
-          e2e/builder-capabilities.spec.ts
-          e2e/billing-developer.spec.ts
-          e2e/settings-provider-action-owner-isolation.spec.ts
-          e2e/onboarding-owner-isolation.spec.ts
-          e2e/settings-preferences-owner-race.spec.ts
-          e2e/settings-legacy-callback-owner-isolation.spec.ts
-          e2e/personal-dictionary-owner-isolation.spec.ts
-          e2e/settings-passkey-owner-isolation.spec.ts
-          e2e/linked-variant-owner-race.spec.ts
-          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
+        run: |
+          set -euo pipefail
+          rm -f test-results/editor-compile-sync/results.json
+          pnpm exec playwright test e2e/editor-compile-sync.spec.ts \
+          e2e/resume-builder.spec.ts \
+          e2e/builder-capabilities.spec.ts \
+          e2e/billing-developer.spec.ts \
+          e2e/settings-provider-action-owner-isolation.spec.ts \
+          e2e/onboarding-owner-isolation.spec.ts \
+          e2e/settings-preferences-owner-race.spec.ts \
+          e2e/settings-legacy-callback-owner-isolation.spec.ts \
+          e2e/personal-dictionary-owner-isolation.spec.ts \
+          e2e/settings-passkey-owner-isolation.spec.ts \
+          e2e/linked-variant-owner-race.spec.ts \
+          e2e/compiler-selector-keyboard.spec.ts \
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,json \
           --output=test-results/editor-compile-sync
+          node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
       - name: Extract landing screenshots for review

@@ -8,7 +8,8 @@
     "project": "chromium",
     "workers": 1,
     "retries": 0,
-    "outputDirectory": "test-results/editor-compile-sync"
+    "outputDirectory": "test-results/editor-compile-sync",
+    "resultFile": "test-results/editor-compile-sync/results.json"
   },
   "suites": [
     "e2e/editor-compile-sync.spec.ts",
@@ -21,6 +22,28 @@
     "e2e/settings-legacy-callback-owner-isolation.spec.ts",
     "e2e/personal-dictionary-owner-isolation.spec.ts",
     "e2e/settings-passkey-owner-isolation.spec.ts",
-    "e2e/linked-variant-owner-race.spec.ts"
+    "e2e/linked-variant-owner-race.spec.ts",
+    "e2e/compiler-selector-keyboard.spec.ts"
+  ],
+  "expectedCaseCount": 111,
+  "suiteCaseCounts": {
+    "e2e/editor-compile-sync.spec.ts": 5,
+    "e2e/resume-builder.spec.ts": 8,
+    "e2e/builder-capabilities.spec.ts": 13,
+    "e2e/billing-developer.spec.ts": 10,
+    "e2e/settings-provider-action-owner-isolation.spec.ts": 10,
+    "e2e/onboarding-owner-isolation.spec.ts": 9,
+    "e2e/settings-preferences-owner-race.spec.ts": 12,
+    "e2e/settings-legacy-callback-owner-isolation.spec.ts": 19,
+    "e2e/personal-dictionary-owner-isolation.spec.ts": 6,
+    "e2e/settings-passkey-owner-isolation.spec.ts": 8,
+    "e2e/linked-variant-owner-race.spec.ts": 10,
+    "e2e/compiler-selector-keyboard.spec.ts": 1
+  },
+  "addedCases": [
+    {
+      "suite": "e2e/compiler-selector-keyboard.spec.ts",
+      "title": "C07 saved owner selects a compiler with keyboard navigation and one settings write"
+    }
   ]
 }
