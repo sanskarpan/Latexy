@@ -1,5 +1,5 @@
 import { test as base, type Page, type Response, type TestInfo } from '@playwright/test'
-import { installLegacySettingsHydrationDiagnostics, type MainDocumentObservation } from './legacy-settings-hydration-diagnostics'
+import { installLegacySettingsHydrationDiagnostics, parseHydrationDiagnosticBundleVariant, type MainDocumentObservation } from './legacy-settings-hydration-diagnostics'
 
 export type OwnerIsolationHydration = {
   requireDocuments: (minimum: 1 | 2) => void
@@ -24,6 +24,9 @@ export async function runOwnerIsolationHydrationFixture(
   page: Page, baseURL: URL, testInfo: TestInfo,
   runTestBody: (control: OwnerIsolationHydration) => Promise<void>,
 ) {
+  const metadata = testInfo.project.metadata
+  const variant = Object.prototype.hasOwnProperty.call(metadata, 'hydrationDiagnosticBundle')
+    ? parseHydrationDiagnosticBundleVariant(metadata.hydrationDiagnosticBundle) : 'canonical'
   // Ordinary pnpm test uses development assets. This exact production-byte pin
   // is mandatory only in the explicitly selected production acceptance run.
   if (process.env.PLAYWRIGHT_SERVER_MODE !== 'production') {
@@ -40,7 +43,7 @@ export async function runOwnerIsolationHydrationFixture(
     if (kind === 'synthetic-opener') observation.successfulSyntheticOpeners = Math.min(33, observation.successfulSyntheticOpeners + 1)
   }
   page.on('response', onResponse)
-  const diagnostics = await installLegacySettingsHydrationDiagnostics(page, baseURL)
+  const diagnostics = await installLegacySettingsHydrationDiagnostics(page, baseURL, variant)
   const control: OwnerIsolationHydration = {
     requireDocuments(minimum) {
       if (minimum !== 1 && minimum !== 2) throw new Error('Invalid main-document hydration requirement')
