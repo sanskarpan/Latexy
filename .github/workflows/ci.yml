@@ -525,6 +525,13 @@ jobs:
           pnpm exec playwright test --config=playwright.capabilities.config.ts
           --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/admin-capabilities
+      - name: Verify public UI when optional worker registration is denied
+        timeout-minutes: 30
+        env:
+          PLAYWRIGHT_PWA_POLICY_PORT: "5195"
+        run: |
+          node --test scripts/pwa-policy-acceptance.test.mjs
+          node scripts/pwa-policy-acceptance.mjs
       - name: Verify production service-worker lifecycle and offline owner isolation
         timeout-minutes: 30
         env:
@@ -658,6 +665,7 @@ jobs:
             frontend/test-results/hydration-session-store
             frontend/test-results/settings-hydration-diagnostic
             frontend/test-results/pwa
+            frontend/test-results/pwa-policy
           if-no-files-found: warn
           retention-days: 14
 
