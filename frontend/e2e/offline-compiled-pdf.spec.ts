@@ -223,6 +223,14 @@ test.describe('offline compiled PDF reader', () => {
   test('does not create a partial v3 database when no offline store exists', async ({ page, context }) => {
     test.skip(process.env.PWA_PRODUCTION !== '1', 'cold app-shell reload requires the production service worker')
     await page.goto('/', { waitUntil: 'networkidle' })
+    await page.evaluate(async () => navigator.serviceWorker.ready)
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller))
+    // Leave the live app before deleting its database: the header's anonymous
+    // cleanup can retain open draft/PDF handles. This static route has no resume
+    // id, so its guarded reader never opens the offline database.
+    await page.goto('/offline.html', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible()
     await page.evaluate(async () => {
       localStorage.setItem('latexy:last-authenticated-owner', 'offline-owner')
       await new Promise<void>((resolve, reject) => {
@@ -232,9 +240,7 @@ test.describe('offline compiled PDF reader', () => {
         request.onblocked = () => reject(new Error('offline database deletion was blocked'))
       })
     })
-    await page.evaluate(async () => navigator.serviceWorker.ready)
-    await page.reload({ waitUntil: 'networkidle' })
-    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller))
+    expect(await page.evaluate(async () => (await indexedDB.databases()).filter((database) => database.name === 'latexy-offline'))).toEqual([])
     await context.setOffline(true)
     const offlinePage = await context.newPage()
     await offlinePage.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
