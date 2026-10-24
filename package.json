@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.10.0",
   "devDependencies": {
-    "turbo": "2.11.7"
+    "turbo": "2.11.10"
   },
   "pnpm": {
     "overrides": {
