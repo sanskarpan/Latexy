@@ -24,9 +24,10 @@
     "e2e/settings-passkey-owner-isolation.spec.ts",
     "e2e/linked-variant-owner-race.spec.ts",
     "e2e/compiler-selector-keyboard.spec.ts",
-    "e2e/builder-saved-owner-race.spec.ts"
+    "e2e/builder-saved-owner-race.spec.ts",
+    "e2e/editor-shortcuts-focus.spec.ts"
   ],
-  "expectedCaseCount": 116,
+  "expectedCaseCount": 120,
   "suiteCaseCounts": {
     "e2e/editor-compile-sync.spec.ts": 5,
     "e2e/resume-builder.spec.ts": 8,
@@ -40,7 +41,8 @@
     "e2e/settings-passkey-owner-isolation.spec.ts": 8,
     "e2e/linked-variant-owner-race.spec.ts": 10,
     "e2e/compiler-selector-keyboard.spec.ts": 1,
-    "e2e/builder-saved-owner-race.spec.ts": 5
+    "e2e/builder-saved-owner-race.spec.ts": 7,
+    "e2e/editor-shortcuts-focus.spec.ts": 2
   },
   "addedCases": [
     {
@@ -66,6 +68,22 @@
     {
       "suite": "e2e/builder-saved-owner-race.spec.ts",
       "title": "C25 saved owner recovers current local JSON across capability denial without new effects or cross-scope drafts"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "B08 rechecks live admission after awaited compatibility and saves the retained revision once on regrant"
+    },
+    {
+      "suite": "e2e/builder-saved-owner-race.spec.ts",
+      "title": "B08 and C01 let an admitted save settle but pause the queued newer revision until both grants return"
+    },
+    {
+      "suite": "e2e/editor-shortcuts-focus.spec.ts",
+      "title": "C04 keyboard shortcut dialog contains focus and restores the saved source opener"
+    },
+    {
+      "suite": "e2e/editor-shortcuts-focus.spec.ts",
+      "title": "C04 shortcut dialog remains reachable and keyboard scrollable at 320 CSS pixels"
     }
   ]
 }

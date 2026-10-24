@@ -72,6 +72,9 @@ const nextConfig = {
 
 const configuredNext = withPWA({
   dest: 'public',
+  // The client registrar contains optional-worker policy failures. next-pwa
+  // still constructs its Workbox instance before the application entry.
+  register: false,
   // Disable service worker in dev to avoid caching surprises during development
   disable: process.env.NODE_ENV === 'development',
   fallbacks: {
