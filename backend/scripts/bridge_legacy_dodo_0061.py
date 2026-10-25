@@ -373,12 +373,13 @@ def run(*, apply: bool, expected_database: str, allow_primary_local_database: bo
     # Import only after args are validated; no connection string is logged.
     sys.path.insert(0, str(BACKEND_ROOT))
     from app.core.config import settings
+    from app.database.urls import normalize_sync_database_url
 
     alembic_config = Config()
     alembic_config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     validate_current_alembic_head(ScriptDirectory.from_config(alembic_config).get_heads())
 
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+    sync_url = normalize_sync_database_url(settings.DATABASE_URL)
     actual_database = _database_name(sync_url)
     if not expected_database or actual_database != expected_database:
         raise ValueError("configured database does not match --expected-database")

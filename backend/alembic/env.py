@@ -19,6 +19,7 @@ sys.path.insert(0, str(_here))
 
 from app.core.config import settings
 from app.database.models import Base
+from app.database.urls import normalize_sync_database_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,11 +34,12 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Use DATABASE_URL from env — strip asyncpg driver prefix for psycopg2 (sync alembic)
-_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
-if not _db_url:
+# Select the installed synchronous driver explicitly across SQLAlchemy versions.
+if not settings.DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set. Check your .env file.")
-config.set_main_option("sqlalchemy.url", _db_url)
+_db_url = normalize_sync_database_url(settings.DATABASE_URL)
+# ConfigParser interpolation must not reinterpret percent-encoded URL components.
+config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

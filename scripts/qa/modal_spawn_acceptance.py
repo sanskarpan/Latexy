@@ -603,6 +603,7 @@ def api_probe(app_name: str, service_preflight: dict[str, object],
     import httpx
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import Session
+    from app.database.urls import normalize_sync_database_url
 
     caller_preflight = _runtime_preflight("caller")
     report: dict[str, object] = {
@@ -634,7 +635,7 @@ def api_probe(app_name: str, service_preflight: dict[str, object],
             aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
             aws_secret_access_key=os.environ["MINIO_SECRET_KEY"], region_name="us-east-1",
         )
-        sync_db_url = os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg2")
+        sync_db_url = normalize_sync_database_url(os.environ["DATABASE_URL"])
         engine = create_engine(sync_db_url)
         from app.database.models import Resume, User
 

@@ -6,6 +6,40 @@ import pytest
 from sqlalchemy.engine import make_url
 
 from app.database import connection
+from app.database.urls import normalize_sync_database_url
+
+
+@pytest.mark.parametrize("scheme", ["postgres", "postgresql", "postgresql+asyncpg", "postgresql+psycopg2"])
+def test_sync_engine_retains_installed_psycopg2_without_connecting(scheme):
+    from sqlalchemy import create_engine
+
+    raw = f"{scheme}://qa:p%40ss%2Basyncpg@localhost/latexy_test?sslmode=verify-full&application_name=unit"
+    normalized = normalize_sync_database_url(raw)
+    parsed = make_url(normalized)
+    assert parsed.password == "p@ss+asyncpg"
+    assert parsed.database == "latexy_test"
+    assert parsed.query == {"sslmode": "verify-full", "application_name": "unit"}
+    engine = create_engine(normalized)
+    try:
+        assert engine.dialect.driver == "psycopg2"
+    finally:
+        engine.dispose()
+
+
+def test_sync_url_survives_alembic_config_interpolation():
+    from alembic.config import Config
+
+    normalized = normalize_sync_database_url("postgresql+asyncpg://qa:p%40ss%25word@localhost/latexy_test")
+    config = Config()
+    config.set_main_option("sqlalchemy.url", normalized.replace("%", "%%"))
+    assert make_url(config.get_main_option("sqlalchemy.url")).password == "p@ss%word"
+
+
+@pytest.mark.parametrize("raw", ["not-a-url-private-sentinel", "mysql://private-user:private-password@localhost/db"])
+def test_sync_url_errors_do_not_expose_input(raw):
+    with pytest.raises(ValueError) as error:
+        normalize_sync_database_url(raw)
+    assert "private" not in str(error.value)
 
 
 @pytest.mark.parametrize(
@@ -129,9 +163,9 @@ def test_normalize_async_database_url_round_trips_escaped_password_and_database_
     normalized = make_url(connection.normalize_async_database_url(raw_url))
 
     assert normalized.password == "p@ss?mode=require"
-    # A slash is a path separator in a URL, so SQLAlchemy preserves its
-    # percent-encoded representation when rendering the database component.
-    assert normalized.database == "latexy%2Fpreview"
+    # SQLAlchemy 2.1 decodes the database component when parsing. Driver
+    # conversion must retain that actual database name through a URL round trip.
+    assert normalized.database == "latexy/preview"
     assert normalized.query["ssl"] == "require"
 
 
