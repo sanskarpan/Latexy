@@ -29,7 +29,7 @@
         "test:headed": "playwright test --headed"
     },
     "dependencies": {
-        "@better-auth/passkey": "1.7.7",
+        "@better-auth/passkey": "1.7.12",
         "@codemirror/basic-setup": "^0.20.0",
         "@codemirror/commands": "^6.10.4",
         "@codemirror/lang-markdown": "^6.5.1",
@@ -79,7 +79,7 @@
         "@visx/text": "^4.0.0",
         "@visx/tooltip": "^4.0.0",
         "@xyflow/react": "^12.11.2",
-        "better-auth": "1.7.7",
+        "better-auth": "1.7.12",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.0.0",
         "cmdk": "^1.1.1",
@@ -98,9 +98,10 @@
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-pdf": "^10.5.0",
-        "slate": "^0.126.0",
-        "slate-history": "^0.115.0",
-        "slate-react": "^0.126.0",
+        "slate": "^0.146.0",
+        "slate-dom": "^0.147.3",
+        "slate-history": "^0.144.0",
+        "slate-react": "^0.147.1",
         "sonner": "^2.0.7",
         "tailwind-merge": "^3.6.0",
         "tailwindcss-animate": "^1.0.7",
@@ -112,12 +113,13 @@
         "yjs": "^13.6.31"
     },
     "devDependencies": {
+        "webpack": "5.112.2",
         "@playwright/test": "^1.62.1",
         "@types/node": "^26.1.2",
         "@types/pako": "^3.0.0",
         "@types/react": "^18.2.45",
         "@types/react-dom": "^18.2.18",
-        "@types/three": "^0.185.1",
+        "@types/three": "^0.186.0",
         "@typescript-eslint/parser": "^8.68.0",
         "autoprefixer": "^10.5.4",
         "eslint": "^8.56.0",
@@ -125,11 +127,11 @@
         "fake-indexeddb": "^6.2.5",
         "monaco-editor": "0.55.1",
         "postcss": "^8.5.24",
-        "postcss-selector-parser": "7.1.6",
+        "postcss-selector-parser": "7.1.7",
         "prettier": "^3.9.6",
         "tailwindcss": "^3.3.6",
         "typescript": "^5.3.3",
-        "vite": "8.1.6",
+        "vite": "8.3.5",
         "vitest": "^4.1.12"
     }
 }

@@ -480,28 +480,44 @@ test('landing native hero preserves edits, supports review undo and changes layo
     await expect(desk.getByRole('tab', { name: 'Review', exact: true })).toHaveAttribute('aria-selected', 'true')
     await desk.getByRole('button', { name: 'Use suggestion' }).click()
     await expect(paper).toContainText('Designed the checkout flow with research and engineering.')
+    await desk.getByRole('tab', { name: 'Tailor', exact: true }).click()
+    await desk.getByRole('tab', { name: 'Export', exact: true }).click()
+    await desk.getByRole('tab', { name: 'Review', exact: true }).click()
     await desk.getByRole('button', { name: 'Undo', exact: true }).click()
     await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
     await desk.getByRole('tab', { name: 'Write', exact: true }).click()
     await page.getByLabel('Your role', { exact: true }).fill('W'.repeat(60))
     const contribution = 'Designed a clearer application flow with research and engineering.'
     await page.getByLabel('One contribution', { exact: true }).fill(contribution)
-    await desk.getByRole('button', { name: 'Update sample' }).click()
-    await expect(paper).toContainText(contribution)
     await desk.getByRole('tab', { name: 'Review', exact: true }).click()
-    await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
-    await desk.getByRole('button', { name: 'Keep original' }).click()
-    await expect(paper).toContainText(contribution)
+    await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
+    await desk.getByRole('button', { name: 'Use suggestion' }).click()
     await desk.getByRole('tab', { name: 'Write', exact: true }).click()
-    const unfinished = 'An unfinished edit that must survive changing tabs.'
+    const unfinished = 'An unfinished edit that must survive a review undo.'
     await page.getByLabel('One contribution', { exact: true }).fill(unfinished)
     await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+    await desk.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
+    await desk.getByRole('button', { name: 'Use suggestion' }).click()
     await desk.getByRole('button', { name: 'Keep original' }).click()
-    await expect(paper).toContainText(contribution)
+    await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
     await desk.getByRole('tab', { name: 'Write', exact: true }).click()
     await expect(page.getByLabel('One contribution', { exact: true })).toHaveValue(unfinished)
     await page.getByLabel('One contribution', { exact: true }).fill(contribution)
     await desk.getByRole('button', { name: 'Update sample' }).click()
+    await expect(paper).toContainText(contribution)
+    await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+    await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
+    await expect(desk.getByRole('tabpanel')).toContainText('Your contribution stays unchanged.')
+    await desk.getByRole('button', { name: 'Keep original' }).click()
+    await expect(paper).toContainText(contribution)
+    for (const nextStage of ['Tailor', 'Export', 'Write', 'Review']) {
+        await desk.getByRole('tab', { name: nextStage, exact: true }).click()
+        await expect(paper).toContainText(contribution)
+    }
+    await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
+    await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+    await expect(page.getByLabel('One contribution', { exact: true })).toHaveValue(contribution)
     await desk.getByRole('tab', { name: 'Tailor', exact: true }).click()
     await page.getByLabel('Sample role', { exact: true }).selectOption('Design systems')
     await expect(desk.getByRole('tabpanel')).toContainText('accessible components')
@@ -518,6 +534,57 @@ test('landing native hero preserves edits, supports review undo and changes layo
     await page.reload({ waitUntil: 'networkidle' })
     await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
     await expect(paper).toContainText('Product Designer')
+})
+
+test('landing sample rejects empty role and contribution until corrected, retaining the accepted sample', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const desk = page.getByTestId('review-desk')
+    const paper = desk.locator('.rd-paper')
+    await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+    const role = page.getByLabel('Your role', { exact: true })
+    const contribution = page.getByLabel('One contribution', { exact: true })
+    await role.fill('   ')
+    await contribution.fill(' \t ')
+    await desk.getByRole('button', { name: 'Update sample' }).click()
+    await expect(desk.getByRole('alert')).toHaveCount(2)
+    await expect(role).toHaveAttribute('aria-invalid', 'true')
+    await expect(contribution).toHaveAttribute('aria-invalid', 'true')
+    await expect(paper).toContainText('Product Designer')
+    await expect(paper).toContainText('Worked with engineering to ship the checkout flow.')
+    await expect(desk.locator('.rd-sample-status')).toHaveText('')
+    await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+    await desk.getByRole('tab', { name: 'Write', exact: true }).click()
+    await expect(role).toHaveValue('   ')
+    await expect(contribution).toHaveValue(' \t ')
+    await role.fill('Design Systems Designer')
+    await desk.getByRole('button', { name: 'Update sample' }).click()
+    await expect(desk.getByRole('alert')).toHaveCount(1)
+    await expect(paper).toContainText('Product Designer')
+    await contribution.fill('Built accessible components with the product team.')
+    await desk.getByRole('button', { name: 'Update sample' }).click()
+    await expect(desk.getByRole('alert')).toHaveCount(0)
+    await expect(paper).toContainText('Design Systems Designer')
+    await expect(paper).toContainText('Built accessible components with the product team.')
+    await expect(desk.getByRole('status')).toContainText('Your wording is now')
+    await role.fill(' \t ')
+    await contribution.fill('  ')
+    await desk.getByRole('button', { name: 'Update sample' }).click()
+    await expect(paper).toContainText('Design Systems Designer')
+    await expect(paper).toContainText('Built accessible components with the product team.')
+    await expect(desk.locator('.rd-sample-status')).toHaveText('')
+    await desk.getByRole('tab', { name: 'Review', exact: true }).click()
+    await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
+})
+
+test('landing workflow feedback link opens the review it describes', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const link = page.locator('.ts-workflow a[href="#resume-feedback"]')
+    await expect(link).toContainText('Review')
+    await expect(link).toContainText('Consider suggestions on structure, content, and readability.')
+    await link.click()
+    await expect(page).toHaveURL(/#resume-feedback$/)
+    await expect(page.locator('#resume-feedback')).toBeInViewport()
+    await expect(page.locator('#resume-feedback')).toContainText('ATS feedback is guidance, not a hiring prediction.')
 })
 
 test('landing workflow and supporting tabs align focus, content and selection', async ({ page }) => {
@@ -656,4 +723,182 @@ test('denied studio import preserves the baseline editor and manual compile', as
     if (await tools.isVisible()) await tools.click()
     await expect(page.getByRole('button', { name: /Import file/ })).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 1, name: 'Résumé Studio' })).toBeAttached()
+})
+
+test('updates copy stays visible without JavaScript for reduced-motion users at desktop and mobile widths', async ({ browser, baseURL }, testInfo) => {
+    const context = await browser.newContext({
+        baseURL,
+        viewport: { width: 1280, height: 900 },
+        locale: 'hi-IN',
+        reducedMotion: 'reduce',
+        javaScriptEnabled: false,
+        serviceWorkers: 'block',
+    })
+
+    try {
+        expect(await context.cookies()).toEqual([])
+        const page = await context.newPage()
+        await installPublicPageMocks(page)
+        const response = await page.goto('/updates', { waitUntil: 'networkidle' })
+        expect(response?.status()).toBe(200)
+        expect(await response?.text()).toContain('Shipping log and')
+        // WebKit omits its browser-generated Accept-Language from Request.allHeaders().
+        // With an empty cookie jar and locale configured above, the rendered lang
+        // verifies that the document request was negotiated as Hindi.
+        await expect(page.locator('html')).toHaveAttribute('lang', 'hi')
+
+        const heading = page.locator('main h1')
+        const article = page.locator('main article').first()
+        await expect(heading).toContainText(/Shipping log and.*platform progress/)
+        await expect(heading).toBeVisible()
+        await expect(article).toBeVisible()
+
+        for (const { name, width, height } of [
+            { name: 'desktop-1280x900', width: 1280, height: 900 },
+            { name: 'mobile-390x844', width: 390, height: 844 },
+        ]) {
+            await page.setViewportSize({ width, height })
+            const motionStyles = await page.evaluate(() => {
+                const main = document.querySelector('main')
+                const title = main?.querySelector('h1')
+                const firstArticle = main?.querySelector('article')
+                const item = firstArticle?.parentElement
+                const style = (element: Element | null | undefined) => {
+                    if (!element) return null
+                    const computed = getComputedStyle(element)
+                    return { opacity: computed.opacity, transform: computed.transform }
+                }
+
+                return {
+                    reveal: style(title?.parentElement),
+                    stagger: style(item?.parentElement),
+                    item: style(item),
+                    viewportWidth: document.documentElement.scrollWidth,
+                }
+            })
+
+            expect(motionStyles.reveal, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.stagger, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.item, name).toEqual({ opacity: '1', transform: 'none' })
+            expect(motionStyles.viewportWidth, name).toBeLessThanOrEqual(width + 1)
+
+            const screenshotPath = testInfo.outputPath(`updates-reduced-motion-${name}.png`)
+            await page.screenshot({ path: screenshotPath, fullPage: true })
+            await testInfo.attach(`updates-reduced-motion-${name}`, {
+                path: screenshotPath,
+                contentType: 'image/png',
+            })
+        }
+    } finally {
+        await context.close()
+    }
+})
+
+test('updates motion hydrates cleanly and stays visible across preference changes and navigation', async ({ page }, testInfo) => {
+    const consoleErrors: string[] = []
+    const hydrationWarnings: string[] = []
+    const pageErrors: string[] = []
+    const hydrationPattern = /hydration|hydrated|server rendered HTML|did not match/i
+
+    page.on('console', message => {
+        const text = message.text()
+        if (message.type() === 'error') consoleErrors.push(text)
+        if (hydrationPattern.test(text)) hydrationWarnings.push(`${message.type()}: ${text}`)
+    })
+    page.on('pageerror', error => pageErrors.push(error.message))
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    // Confirm the server emits the same motion-wrapper shape used for the
+    // first hydration pass, before the browser preference snapshot is applied.
+    const serverResponse = await page.request.get('/updates')
+    expect(serverResponse.status()).toBe(200)
+    expect(await serverResponse.text()).toContain('data-marketing-motion')
+
+    const readMotionState = () => page.evaluate(() => {
+        const heading = document.querySelector('main h1')
+        const article = document.querySelector('main article')
+        const measure = (element: Element | null) => {
+            if (!element) return null
+            const style = getComputedStyle(element)
+            const rect = element.getBoundingClientRect()
+            return { opacity: style.opacity, transform: style.transform, width: rect.width, height: rect.height }
+        }
+
+        return {
+            reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+            motionWrapperCount: document.querySelectorAll('[data-marketing-motion]').length,
+            heading: measure(heading?.parentElement ?? null),
+            article: measure(article?.parentElement ?? null),
+            viewportWidth: document.documentElement.scrollWidth,
+        }
+    })
+
+    const assertVisible = async (name: string, reducedMotion: boolean, width: number, height: number) => {
+        await expect(page.getByRole('heading', { name: /Shipping log and platform progress/ })).toBeVisible()
+        await expect(page.locator('main article').first()).toBeVisible()
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        if (reducedMotion) {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBeGreaterThan(0)
+        } else {
+            await expect.poll(async () => (await readMotionState()).motionWrapperCount).toBeGreaterThan(0)
+        }
+        await expect.poll(async () => Number((await readMotionState()).heading?.opacity ?? 0)).toBeGreaterThan(0.99)
+        await expect.poll(async () => Number((await readMotionState()).article?.opacity ?? 0)).toBeGreaterThan(0.99)
+
+        const state = await readMotionState()
+        expect(state.heading?.width).toBeGreaterThan(0)
+        expect(state.heading?.height).toBeGreaterThan(0)
+        expect(state.article?.width).toBeGreaterThan(0)
+        expect(state.article?.height).toBeGreaterThan(0)
+        expect(state.viewportWidth).toBeLessThanOrEqual(width + 1)
+        if (reducedMotion) {
+            expect(state.heading?.transform).toBe('none')
+            expect(state.article?.transform).toBe('none')
+        } else {
+            expect(state.motionWrapperCount).toBeGreaterThan(0)
+        }
+
+        const screenshotPath = testInfo.outputPath(`updates-hydrated-${name}.png`)
+        await page.screenshot({ path: screenshotPath, fullPage: true })
+        await testInfo.attach(`updates-hydrated-${name}`, { path: screenshotPath, contentType: 'image/png' })
+    }
+
+    const changePreferenceAndAssert = async (name: string, reducedMotion: boolean) => {
+        // Some mobile browser emulators update matchMedia.matches without
+        // dispatching MediaQueryList's change event. Exercise the live
+        // subscription where the browser emits it; otherwise, reload under
+        // the new preference to exercise the hook's fresh client snapshot.
+        await page.evaluate(() => {
+            const root = document.documentElement
+            root.dataset.motionPreferenceEvents = '0'
+            window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
+                root.dataset.motionPreferenceEvents = String(Number(root.dataset.motionPreferenceEvents ?? 0) + 1)
+            }, { once: true })
+        })
+        await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
+        await expect.poll(async () => (await readMotionState()).reducedMotion).toBe(reducedMotion)
+        const changeEventObserved = await page.evaluate(() => Number(document.documentElement.dataset.motionPreferenceEvents ?? 0) > 0)
+        if (!changeEventObserved) await page.goto('/updates', { waitUntil: 'networkidle' })
+        await assertVisible(name, reducedMotion, page.viewportSize()!.width, page.viewportSize()!.height)
+    }
+
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('desktop-reduced-initial', true, 1280, 900)
+
+    await changePreferenceAndAssert('desktop-motion-enabled', false)
+    await changePreferenceAndAssert('desktop-reduced-after-toggle', true)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await assertVisible('mobile-reduced', true, 390, 844)
+
+    await page.goto('/pricing', { waitUntil: 'networkidle' })
+    await expect(page.locator('#main-content')).toBeVisible()
+    await page.goto('/updates', { waitUntil: 'networkidle' })
+    await assertVisible('mobile-reduced-after-navigation', true, 390, 844)
+
+    expect(hydrationWarnings).toEqual([])
+    expect(consoleErrors).toEqual([])
+    expect(pageErrors).toEqual([])
 })

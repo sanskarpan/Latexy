@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-import httpx
+import httpx2
 import pytest
 import redis
 from sqlalchemy import delete, select
@@ -155,11 +155,11 @@ def provider_transport(monkeypatch, outcome):
         assert payload["model"] == PROVIDER_MODEL
         requests.append(payload)
         if outcome == "model_404":
-            return httpx.Response(404, json={"error": {"message": "Synthetic model not found",
+            return httpx2.Response(404, json={"error": {"message": "Synthetic model not found",
                                   "type": "invalid_request_error", "code": "model_not_found"}})
         if outcome == "timeout":
-            raise httpx.ReadTimeout("Synthetic provider read timeout", request=request)
-        return httpx.Response(200, json={
+            raise httpx2.ReadTimeout("Synthetic provider read timeout", request=request)
+        return httpx2.Response(200, json={
             "id": "synthetic-completion", "object": "chat.completion", "created": 0,
             "model": PROVIDER_MODEL,
             "choices": [{"index": 0, "finish_reason": "stop", "message": {
@@ -167,11 +167,13 @@ def provider_transport(monkeypatch, outcome):
             "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
         })
 
-    transport = httpx.MockTransport(handle)
+    transport = httpx2.MockTransport(handle)
     # Intercept below OpenAI rather than replacing its constructor or create().
     # The SDK still serializes requests and maps HTTP 404/timeouts to its real
     # exceptions; max_retries=0 is verified by the observed request count.
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", lambda _self, request: transport.handle_request(request))
+    # SDK 3's default client uses httpx2; intercept its actual public transport
+    # rather than the unrelated legacy httpx transport used by ASGI tests.
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", lambda _self, request: transport.handle_request(request))
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "synthetic-test-key")
     monkeypatch.setattr(settings, "OPENAI_BASE_URL", PROVIDER_ORIGIN)
     monkeypatch.setattr(settings, "OPENAI_MODEL", PROVIDER_MODEL)

@@ -425,6 +425,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+      - name: Retain public React bundle for diagnostic review
+        run: node ../scripts/ci/collect-hydration-bundle.mjs
+      - name: Upload exact diagnostic bundle candidate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hydration-bundle-review
+          path: frontend/test-results/hydration-bundle-review
+          if-no-files-found: error
+          retention-days: 14
 
   browser-extension:
     name: Browser Extension

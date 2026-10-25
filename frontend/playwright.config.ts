@@ -57,6 +57,7 @@ export default defineConfig({
     projects: [
         {
             name: 'chromium',
+            metadata: { hydrationDiagnosticBundle: 'react-3ea14a6d' },
             use: { ...devices['Desktop Chrome'] },
         },
     ],

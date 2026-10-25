@@ -3,10 +3,11 @@
   "private": true,
   "packageManager": "pnpm@10.10.0",
   "devDependencies": {
-    "turbo": "2.11.7"
+    "turbo": "2.11.10"
   },
   "pnpm": {
     "overrides": {
+      "webpack@>=5.0.0 <5.112.0": "5.112.2",
       "axios@>=1.0.0 <1.20.0": "1.20.0",
       "brace-expansion@<1.1.21": "1.1.21",
       "brace-expansion@>=2.0.0 <2.1.7": "2.1.7",
