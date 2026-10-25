@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     empty = not (inventory.secret_count or inventory.volume_count or inventory.active_app_count)
+    # These counts are collection cardinalities, not Secret contents. The reader
+    # never requests Secret values; names/IDs enter only the SHA-256 manifest.
     print(json.dumps({
         "status": "empty_candidate_for_review" if empty else "blocked_nonempty",
         "environment_name": args.environment_name,

@@ -366,7 +366,17 @@ class ModalEnvironmentValidationTests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertIn('"secret_count": 1', output.getvalue())
         self.assertNotIn(secret_name, output.getvalue())
+        self.assertNotIn(SecretHandle.object_id, output.getvalue())
         self.assertNotIn("values", output.getvalue())
+        report = json.loads(output.getvalue())
+        self.assertEqual(set(report), {
+            "status", "environment_name", "environment_object_id", "secret_count",
+            "volume_count", "active_app_count", "binding_manifest_sha256", "approval_added",
+        })
+        self.assertIs(type(report["secret_count"]), int)
+        self.assertEqual(report["status"], "blocked_nonempty")
+        self.assertFalse(report["approval_added"])
+        self.assertRegex(report["binding_manifest_sha256"], r"^[0-9a-f]{64}$")
 
     def test_read_only_inventory_reports_stage_and_error_class_without_exception_text(self):
         private_detail = "private-secret-name-and-value-must-not-print"
