@@ -48,6 +48,7 @@ function saveHarness() {
     Error,
     useCallback: (callback: unknown) => callback,
     ensureCompatible: vi.fn().mockResolvedValue(undefined),
+    isCompatible: vi.fn().mockReturnValue(true),
     mountedRef: { current: true }, authVerifiedRef: { current: true },
     saveFlightRef: { current: null }, conflictRef: { current: false },
     builderStatusRef: { current: 'active' }, dirtyRef: { current: true },

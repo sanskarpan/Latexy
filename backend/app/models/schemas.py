@@ -29,6 +29,12 @@ class HealthResponse(BaseModel):
     # Object storage was unprobed, so /health reported "healthy" while every
     # template thumbnail and preview PDF returned 502 Storage unavailable.
     storage: str = "ok"
+    # Exact revision of the process answering this request, when the runtime
+    # carries a validated value. The backend previously reported only the static
+    # APP_VERSION, so a frontend and backend serving different commits could not
+    # be distinguished from the response itself while both looked healthy.
+    commit_sha: Optional[str] = None
+    deployment_target: str = "local"
 
 
 class CompilationRequest(BaseModel):

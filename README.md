@@ -24,8 +24,8 @@ Latexy's scores are heuristic document checks. They do not emulate an employer A
 ## Quick Start
 
 ```bash
-# 1. Copy env template and fill in secrets
-cp .env.example .env        # edit DATABASE_URL, BETTER_AUTH_SECRET, OPENAI_API_KEY, etc.
+# 1. Copy the tracked development template used by Docker Compose
+cp backend/.env.example .env # set a local BETTER_AUTH_SECRET; provider keys are optional
 
 # 2. Build and start everything
 make run
@@ -205,7 +205,7 @@ already points at `latexy_test`.
 
 ## Environment variables
 
-Copy `.env.example` and fill in values. Key variables:
+For the Docker development stack, copy `backend/.env.example` to the repository-root `.env` and fill in the local values you need. The root Compose file passes that file to its app services. For self-hosting, use `.env.production.example` as described in [Self-hosting](docs/self-hosting.md). Key variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -285,9 +285,10 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.p
 ├── docker-compose.yml          # full dev stack (make run)
 ├── docker-compose.prod.yml     # production stack (nginx + prod images)
 ├── Makefile                    # all common tasks
-├── .env.example                # env template
+├── .env.production.example     # self-hosting env template
 │
 ├── backend/
+│   ├── .env.example             # backend / Docker development env template
 │   ├── app/
 │   │   ├── api/                # FastAPI routers (jobs, templates, ATS, BYOK, resumes…)
 │   │   ├── core/               # config, Redis, Celery, event bus
@@ -304,6 +305,7 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.p
 │   └── requirements.txt
 │
 ├── frontend/
+│   ├── .env.example             # local frontend env template
 │   ├── src/
 │   │   ├── app/                # Next.js pages (templates, workspace, dashboard…)
 │   │   ├── components/         # React components (editor, PDF preview, template cards…)

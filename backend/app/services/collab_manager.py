@@ -42,6 +42,7 @@ import unicodedata
 import uuid
 from collections import deque
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from fastapi.websockets import WebSocket
@@ -91,6 +92,17 @@ CLOSE_ACCESS_REVOKED = 4003
 # viewer->editor left them with LESS access than before — the frontend saw
 # "access revoked" and locked the editor.
 CLOSE_ROLE_CHANGED = 4005
+
+
+class CollabAccess(Enum):
+    """A live check can require reauthorization without revoking access."""
+
+    ALLOWED = "allowed"
+    REVOKED = "revoked"
+    ROLE_CHANGED = "role_changed"
+
+
+AccessCheck = Callable[[], Awaitable[bool | CollabAccess]]
 
 # Maximum accepted size of a single collaboration frame (256 KiB). Oversized
 # frames are dropped to bound Redis writes and broadcast amplification.
@@ -350,14 +362,14 @@ class CollabRoom:
         self.resume_id = resume_id
         # Maps client_id → (websocket, user_info)
         self._clients: Dict[str, Tuple[WebSocket, dict]] = {}
-        self._access_checks: Dict[str, Callable[[], Awaitable[bool]]] = {}
+        self._access_checks: Dict[str, AccessCheck] = {}
         self._lock = asyncio.Lock()
 
     # ── Connection management ─────────────────────────────────────────────
 
     async def add(
         self, client_id: str, ws: WebSocket, user_info: dict,
-        *, access_check: Optional[Callable[[], Awaitable[bool]]] = None,
+        *, access_check: Optional[AccessCheck] = None,
     ) -> None:
         async with self._lock:
             self._clients[client_id] = (ws, user_info)
@@ -384,14 +396,28 @@ class CollabRoom:
         if check is None:
             return True
         try:
-            allowed = await check()
+            access = await check()
         except Exception:
-            allowed = False
-        if allowed:
+            access = CollabAccess.REVOKED
+        # Keep boolean callbacks supported, but never mistake a non-allow
+        # result (including a role change) for truthy authorization.
+        if access is True or access is CollabAccess.ALLOWED:
             return True
         await self.remove(client_id)
+        role_changed = access is CollabAccess.ROLE_CHANGED
+        reason = "Role changed" if role_changed else "Collaboration is unavailable"
+        if role_changed:
+            try:
+                # Send directly: this client is already removed and must not
+                # re-enter the same ACL check through send_to().
+                await entry[0].send_bytes(_build_permission_denied("role_changed", reason))
+            except Exception:
+                pass
         try:
-            await entry[0].close(code=CLOSE_ACCESS_REVOKED, reason="Collaboration is unavailable")
+            await entry[0].close(
+                code=CLOSE_ROLE_CHANGED if role_changed else CLOSE_ACCESS_REVOKED,
+                reason=reason,
+            )
         except Exception:
             pass
         return False

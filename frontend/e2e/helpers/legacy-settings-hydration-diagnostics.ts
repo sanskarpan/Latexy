@@ -2,12 +2,29 @@ import type { CDPSession, Page, TestInfo } from '@playwright/test'
 import { createHash } from 'node:crypto'
 
 // Test-only CDP observer: never rewrite a response or guess another React hook.
-// Exact normal-channel production bundle after the reviewed Next 15.5.27
+// Exact normal-channel production bundle after the reviewed Next 15.5.28
 // host-replay backport. rD(e), rN (cursor), and rP (parent) retain their roles.
-export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/acabd415-aedf19c35bd5be5e.js'
-export const LEGACY_SETTINGS_REACT_SHA256 = 'fa2c533810f6e61eaa4849afbc041758c4eb89953b7f19f71e5b3527e1748941'
-export const LEGACY_SETTINGS_REACT_BYTES = 173133
-const CLAIM_LOCATION = { lineNumber: 0, columnNumber: 35054 } as const
+export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
+export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'
+export const LEGACY_SETTINGS_REACT_BYTES = 173132
+export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d'
+export function parseHydrationDiagnosticBundleVariant(value: unknown): HydrationDiagnosticBundleVariant {
+  if (value === 'canonical' || value === 'react-cf9dbc7d') return value
+  throw new Error('Unsupported hydration diagnostic bundle variant')
+}
+const BUNDLES = Object.freeze({
+  canonical: Object.freeze({
+    chunk: LEGACY_SETTINGS_REACT_CHUNK, sha256: LEGACY_SETTINGS_REACT_SHA256,
+    bytes: LEGACY_SETTINGS_REACT_BYTES, claimColumn: 35053, lastColumn: 35059,
+  }),
+  // Independently reviewed bytes: only the webpack header IDs differ; the
+  // complete React implementation suffix and rD/rN/rP roles are identical.
+  'react-cf9dbc7d': Object.freeze({
+    chunk: '/_next/static/chunks/3bd6aaeb-d409a982c8f29501.js',
+    sha256: 'cf9dbc7db51665504380f569df7154f49083a80900d9bae41546549cb5e3cb3c',
+    bytes: 173133, claimColumn: 35054, lastColumn: 35060,
+  }),
+})
 const COMMAND_TIMEOUT_MS = 250
 const SETUP_TIMEOUT_MS = 2000
 const PAUSE_WATCHDOG_MS = 1000
@@ -97,7 +114,11 @@ async function deadline<T>(promise: Promise<T>, timeout = COMMAND_TIMEOUT_MS): P
   } finally { clearTimeout(timer) }
 }
 
-export async function installLegacySettingsHydrationDiagnostics(page: Page, baseURL: URL) {
+export async function installLegacySettingsHydrationDiagnostics(
+  page: Page, baseURL: URL, variant: HydrationDiagnosticBundleVariant = 'canonical',
+) {
+  const selectedVariant = parseHydrationDiagnosticBundleVariant(variant)
+  const bundle = BUNDLES[selectedVariant]
   const failures = new Set<string>()
   const captures: StructuralCapture[] = []
   const verifiedScripts = new Set<string>()
@@ -121,7 +142,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
   // Chrome can advance the first statement to Error(), six columns later.
   // This range stays within the reviewed rD statement of the exact hash pin.
   const locationMatches = (location: { lineNumber: number; columnNumber?: number }) => location.lineNumber === 0
-    && typeof location.columnNumber === 'number' && location.columnNumber >= 35054 && location.columnNumber <= 35060
+    && typeof location.columnNumber === 'number' && location.columnNumber >= bundle.claimColumn && location.columnNumber <= bundle.lastColumn
 
   async function removeOwnedBreakpoint(id = breakpointId) {
     if (!session || !id || breakpointRemoved) return
@@ -185,9 +206,9 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
     if (!session || disposed || detached) return false
     try {
       const { scriptSource: source } = await deadline(session.send('Debugger.getScriptSource', { scriptId }))
-      if (typeof source !== 'string' || source.length > LEGACY_SETTINGS_REACT_BYTES
-        || Buffer.byteLength(source) !== LEGACY_SETTINGS_REACT_BYTES
-        || createHash('sha256').update(source).digest('hex') !== LEGACY_SETTINGS_REACT_SHA256) {
+      if (typeof source !== 'string' || source.length > bundle.bytes
+        || Buffer.byteLength(source) !== bundle.bytes
+        || createHash('sha256').update(source).digest('hex') !== bundle.sha256) {
         fail('pinned-script-drift'); return false
       }
       if (disposed || detached) return false
@@ -279,7 +300,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
     if (baseURL.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(baseURL.hostname)
       || baseURL.username || baseURL.password || baseURL.search || baseURL.hash) fail('loopback-origin-unavailable')
     else {
-      pinnedURL = new URL(LEGACY_SETTINGS_REACT_CHUNK, baseURL.origin).href
+      pinnedURL = new URL(bundle.chunk, baseURL.origin).href
       const connecting = page.context().newCDPSession(page)
       // Cleanup late completions after their caller's bounded wait has ended.
       void connecting.then(async lateSession => {
@@ -296,9 +317,9 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
       const { frameTree } = await deadline(session.send('Page.getFrameTree'), SETUP_TIMEOUT_MS)
       if (!frameTree.frame.id) throw new Error('Diagnostic main frame unavailable')
       mainFrameId = frameTree.frame.id
-      await deadline(session.send('Debugger.enable', { maxScriptsCacheSize: LEGACY_SETTINGS_REACT_BYTES }), SETUP_TIMEOUT_MS)
+      await deadline(session.send('Debugger.enable', { maxScriptsCacheSize: bundle.bytes }), SETUP_TIMEOUT_MS)
       await deadline(session.send('Debugger.setPauseOnExceptions', { state: 'none' }), SETUP_TIMEOUT_MS)
-      const setting = session.send('Debugger.setBreakpointByUrl', { url: pinnedURL, ...CLAIM_LOCATION })
+      const setting = session.send('Debugger.setBreakpointByUrl', { url: pinnedURL, lineNumber: 0, columnNumber: bundle.claimColumn })
       void setting.then(async lateBreakpoint => {
         if (disposed && typeof lateBreakpoint.breakpointId === 'string' && lateBreakpoint.breakpointId) {
           try { await deadline(session!.send('Debugger.removeBreakpoint', { breakpointId: lateBreakpoint.breakpointId })) } catch { fail('late-breakpoint-cleanup-unavailable') }
@@ -339,6 +360,7 @@ export async function installLegacySettingsHydrationDiagnostics(page: Page, base
       try {
         await deadline(testInfo.attach('settings-hydration-structural-diagnostic', {
           body: Buffer.from(JSON.stringify({
+            bundle_variant: selectedVariant,
             scope: failures.has('target-closed-by-diagnostic')
               ? 'diagnostic recovery closed a paused target; no evidence of the original React throw'
               : 'original-case main-page-only CDP observation; production response unchanged; popup hydration capture outside scope',

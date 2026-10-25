@@ -295,10 +295,21 @@ _renderer_capability_env = {
     if key in os.environ
 }
 
+# Serving-revision provenance. The deployment workflow verifies the exact commit
+# and exports DEPLOY_SHA; baking it here lets /health attest which revision the
+# container answering a request is running. Modal's deployment pointer alone
+# cannot distinguish a fully drained fleet from an old one, and a frontend and
+# backend serving different commits previously looked identically healthy.
+# This value is non-secret and is validated again before it is published.
+_serve_identity_env = (
+    {"DEPLOY_SHA": os.environ["DEPLOY_SHA"]} if os.environ.get("DEPLOY_SHA") else {}
+)
+
 api_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_serve_identity_env,
           **_billing_secret_binding_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
@@ -308,6 +319,7 @@ latex_image = (
     texlive_image.pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
+          **_serve_identity_env,
           **_billing_secret_binding_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
@@ -319,6 +331,7 @@ worker_image = (
     .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          **_serve_identity_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
@@ -959,6 +972,7 @@ migrate_image = (
         ignore=[p for p in _IGNORE if "alembic" not in p],
     )
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          **_serve_identity_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 

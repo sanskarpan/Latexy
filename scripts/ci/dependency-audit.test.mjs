@@ -11,13 +11,13 @@ const known = {
 }
 const report = (...advisories) => ({
   advisories: Object.fromEntries(advisories.map((value, index) => [index, value])),
-  metadata: { vulnerabilities: {
-    info: advisories.filter(value => value.severity === 'info').length,
-    low: advisories.filter(value => value.severity === 'low').length,
-    moderate: advisories.filter(value => value.severity === 'moderate').length,
-    high: advisories.filter(value => value.severity === 'high').length,
-    critical: advisories.filter(value => value.severity === 'critical').length,
-  } },
+  metadata: { vulnerabilities: Object.fromEntries(
+    ['info', 'low', 'moderate', 'high', 'critical'].map(severity => [
+      severity, advisories.filter(value => value.severity === severity)
+        .reduce((sum, value) => sum + (value.findings ?? [])
+          .reduce((n, finding) => n + (finding.paths?.length ?? 0), 0), 0),
+    ]),
+  ) },
 })
 
 test('accepts an empty successful report without manufacturing a mitigation', () => {
@@ -27,10 +27,11 @@ test('recognizes only the exact patched version and advisory', () => {
   assert.deepEqual(classifyAudit(report(known)), { mitigated: 1, unresolved: 0 })
   for (const change of [
     { github_advisory_id: 'GHSA-another-advisory' }, { module_name: 'another-package' },
-    { findings: [{ version: '3.0.2' }] }, { findings: [] },
+    { findings: [{ version: '3.0.2', paths: ['other>braces'] }] },
   ]) {
     assert.deepEqual(classifyAudit(report({ ...known, ...change })), { mitigated: 0, unresolved: 1 })
   }
+  assert.throws(() => classifyAudit(report({ ...known, findings: [] })), /Invalid dependency audit advisory/)
   assert.throws(() => classifyAudit(report({ ...known, findings: null })), /Invalid dependency audit advisory/)
 })
 test('never hides an additional finding on the same package', () => {
@@ -52,7 +53,7 @@ test('summarizes every finding, including repeated packages, without registry pa
   const second = {
     ...known,
     github_advisory_id: 'GHSA-second-braces',
-    findings: [{ version: '3.0.2' }],
+    findings: [{ version: '3.0.2', paths: ['other>braces'] }],
   }
   const summary = summarizeAudit(report(known, second))
   assert.equal(summary.advisoryCount, 2)
@@ -82,7 +83,7 @@ test('writes a validated summary artifact and fixed-prefix JSON finding logs', (
       return args[0] === '--test'
         ? { status: 0, error: undefined }
         : { status: 1, error: undefined, stdout: JSON.stringify(report(known, {
-          ...known, github_advisory_id: 'GHSA-second-braces', findings: [{ version: '3.0.2' }],
+          ...known, github_advisory_id: 'GHSA-second-braces', findings: [{ version: '3.0.2', paths: ['other>braces'] }],
         })) }
     },
   })
@@ -137,7 +138,7 @@ test('main returns a nonzero process status for unresolved findings', () => {
     const unresolved = {
       ...known,
       github_advisory_id: 'GHSA-unresolved-braces',
-      findings: [{ version: '3.0.2' }],
+      findings: [{ version: '3.0.2', paths: ['other>braces'] }],
     }
     const summary = main({
       reportPath: join(mkdtempSync(join(tmpdir(), 'latexy-audit-main-')), 'summary.json'),
@@ -163,4 +164,64 @@ test('fails closed rather than truncating oversized responses', () => {
     ...known,
     findings: Array.from({ length: 101 }, () => ({ version: '3.0.3' })),
   })), /Invalid dependency audit advisory/)
+})
+
+const multiPath = {
+  github_advisory_id: 'GHSA-698v-4r3x-3vcv', module_name: 'vite', severity: 'moderate',
+  findings: [
+    { version: '8.0.16', paths: ['frontend>vitest>vite', 'other>vite'] },
+    { version: '8.0.16', paths: ['packages__tui>vitest>vite'] },
+  ],
+}
+test('reconciles affected paths across findings without hiding a multi-context advisory', () => {
+  const summary = summarizeAudit(report(known, multiPath))
+  assert.equal(summary.counts.moderate, 3)
+  assert.equal(summary.advisoryCount, 2)
+  assert.equal(summary.unresolvedCount, 1)
+  assert.equal(summary.findings[1].affectedPathCount, 3)
+  assert.deepEqual(summary.findings[1].lockedVersions, ['8.0.16'])
+  assert.equal(JSON.stringify(summary).includes('frontend>'), false)
+  for (const count of [0, 1, 2, 4]) {
+    const bad = report(known, multiPath)
+    bad.metadata.vulnerabilities.moderate = count
+    assert.throws(() => summarizeAudit(bad), /Contradictory/)
+  }
+})
+test('rejects missing, empty, malformed and oversized path evidence', () => {
+  for (const paths of [undefined, [], [null], [''], [123], ['x'.repeat(10001)], Array(10001).fill('a')]) {
+    assert.throws(() => summarizeAudit(report({ ...known, findings: [{ version: '3.0.3', paths }] })), /finding paths/)
+  }
+})
+test('never mitigates mixed patched and unpatched versions across paths', () => {
+  const mixed = { ...known, findings: [...known.findings, { version: '3.0.2', paths: ['other>braces'] }] }
+  assert.deepEqual(classifyAudit(report(mixed)), { mitigated: 0, unresolved: 1 })
+})
+
+test('real two-workspace Vite shape produces actionable unresolved output and failure', () => {
+  const previousExitCode = process.exitCode
+  process.exitCode = 0
+  const logs = []
+  const reportPath = join(mkdtempSync(join(tmpdir(), 'latexy-audit-multipath-')), 'summary.json')
+  const vite = { ...multiPath, findings: multiPath.findings.map(finding => ({
+    ...finding, paths: [finding.paths[0]],
+  })) }
+  try {
+    const summary = main({
+      reportPath,
+      logger: line => logs.push(line),
+      spawn: (_command, args) => args[0] === '--test'
+        ? { status: 0 }
+        : { status: 1, stdout: JSON.stringify(report(known, vite)) },
+    })
+    assert.equal(process.exitCode, 1)
+    assert.equal(summary.status, 'unresolved')
+    assert.equal(summary.counts.moderate, 2)
+    assert.equal(summary.unresolvedCount, 1)
+    assert.equal(summary.findings[1].ghsa, 'GHSA-698v-4r3x-3vcv')
+    assert.deepEqual(JSON.parse(readFileSync(reportPath, 'utf8')), summary)
+    assert.equal(logs.some(line => line.includes('GHSA-698v-4r3x-3vcv')), true)
+    assert.equal(logs.some(line => line.includes('frontend>')), false)
+  } finally {
+    process.exitCode = previousExitCode
+  }
 })

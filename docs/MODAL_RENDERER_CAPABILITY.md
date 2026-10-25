@@ -131,6 +131,15 @@ requests to the staging API. Browser PDF/editing and the broader supported
 template/language matrix remain unverified. These results do not authorize
 setting production certification or live-sales flags.
 
+On 2026-10-17 the boundary-certification harness was run against that same
+tuple: asset identity compared and matched, fontspec plus all three private-read
+probes behaved as required, and the Hindi and CJK fixtures both exited 0 with
+extracted text verified — the CJK failure previously recorded against the older
+cached image no longer reproduces. The
+[dated record](audits/resume-engine/modal-vm-certification-2026-10-17.md) retains
+the command, output and limits, and explicitly does not certify the default
+resume flow.
+
 The [October 15 execution record](audits/resume-engine/acceptance-2026-10-15/README.md)
 updates functional coverage for that same bare image/assets tuple after the
 2 GiB reservation and multilingual source repairs in #1895/#1896. All 15

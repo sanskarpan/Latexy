@@ -8,7 +8,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const NEXT_VERSION = '15.5.27'
+export const NEXT_VERSION = '15.5.28'
 export const REACT_VERSION = '19.2.0-canary-0bdb9206-20250818'
 export const PRODUCTION_RENDERER = 'react-dom-client.production.js'
 export const UPSTREAM_CURSOR_FIX = 'https://github.com/react/react/commit/c18662405cc436646411647f8a8965c1c0594c3c'
