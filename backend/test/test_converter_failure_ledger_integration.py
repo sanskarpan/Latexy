@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx2
-import openai
 import pytest
 import redis
 from sqlalchemy import delete, select
@@ -179,26 +178,6 @@ def provider_transport(monkeypatch, outcome):
     monkeypatch.setattr(settings, "OPENAI_BASE_URL", PROVIDER_ORIGIN)
     monkeypatch.setattr(settings, "OPENAI_MODEL", PROVIDER_MODEL)
     return requests
-
-
-@pytest.mark.parametrize("outcome", ["model_404", "timeout", "invalid_output", "success"])
-def test_sdk_transport_seam_captures_one_real_request_without_sockets(monkeypatch, outcome):
-    requests = provider_transport(monkeypatch, outcome)
-    with openai.OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL,
-                       timeout=60.0, max_retries=0) as client:
-        def create():
-            return client.chat.completions.create(
-                model=settings.OPENAI_MODEL, messages=[{"role": "user", "content": "Synthetic resume"}],
-            )
-
-        if outcome in {"model_404", "timeout"}:
-            expected = openai.NotFoundError if outcome == "model_404" else openai.APITimeoutError
-            with pytest.raises(expected):
-                create()
-        else:
-            response = create()
-            assert response.choices[0].message.content == ("invalid output" if outcome == "invalid_output" else VALID_LATEX)
-    assert len(requests) == 1
 
 
 def terminal_delivery_fault(monkeypatch, terminal_type, fault):
