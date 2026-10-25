@@ -42,6 +42,15 @@ def test_sync_url_errors_do_not_expose_input(raw):
     assert "private" not in str(error.value)
 
 
+@pytest.mark.parametrize("query", ["sslmode=", "ssl=", "sslmode=&sslmode=require", "ssl=&ssl=require"])
+def test_sync_url_rejects_explicit_blank_ssl_options(query):
+    with pytest.raises(ValueError, match="blank SSL") as error:
+        normalize_sync_database_url(
+            f"postgresql://private-user:private-password@localhost/latexy_test?{query}"
+        )
+    assert "private" not in str(error.value)
+
+
 @pytest.mark.parametrize(
     "raw_url",
     [
