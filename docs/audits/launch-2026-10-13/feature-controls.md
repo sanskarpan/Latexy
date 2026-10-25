@@ -16,7 +16,7 @@ The route-policy regression uses a synthetic entitlement snapshot and real ASGI 
 
 The full backend pytest suite passed in isolated PostgreSQL/Redis CI run [38552786155](https://github.com/sanskarpan/Latexy/actions/runs/38552786155) on PR #1882 head `1e13c80869197386ab63f42027d072258dcfa7f7`. Current main also contains the browser/Next-auth/FastAPI/PostgreSQL acceptance suite `frontend/e2e/b07-json-export-fullstack.spec.ts`, merged in [PR #1925](https://github.com/sanskarpan/Latexy/pull/1925) as `f1435b83`. Exact-main [CI 40142194134](https://github.com/sanskarpan/Latexy/actions/runs/40142194134) passed, including the isolated full-stack acceptance job.
 
-This corrects the current B07 code-gap status and records the separate isolated browser acceptance evidence. It does not establish exhaustive role/plan/SKU route acceptance, live provider behavior, or deployed backend acceptance. Launch checklist L06 remains unchanged as separate operator verification; the backend cutover remains held and payments remain unavailable.
+This corrects the current B07 code-gap status and records the separate isolated browser acceptance evidence. It does not establish exhaustive role/plan/SKU route acceptance, live provider behavior, or deployed backend acceptance. Launch checklist L06 remains unchanged as separate operator verification.
 
 
 ## Verdict
