@@ -10,10 +10,12 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from .functional_acceptance_policy import is_trusted_functional_acceptance_environment
 from .modal_sandbox import ModalEngineUnavailable, create_modal_engine
 from .version import renderer_fingerprint
 
 VM_POLICY = "lua-credential-free-vm-v1"
+FUNCTIONAL_TEST_VM_POLICY = "lua-credential-free-vm-functional-test-only-v1"
 NATIVE_LUA_POLICY = "lua-landlock-seccomp-v2"
 
 
@@ -25,20 +27,52 @@ class RendererBackend:
     image_id: str | None = None
     assets_fingerprint: str | None = None
     cacheable: bool = True
+    certification_flag_asserted: bool = False
+    boundary_preflight: bool = True
 
 
 def resolve_backend(compiler: str) -> RendererBackend:
     """Admission and workers share immutable operator configuration, never client metadata."""
+    functional_setting = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ACCEPTANCE", "")
+    if functional_setting not in {"", "true"}:
+        raise ModalEngineUnavailable("Invalid functional-only renderer configuration")
     if compiler == "lualatex" and os.getenv("DEPLOY_TARGET") == "modal":
         image_id = os.getenv("MODAL_ENGINE_VM_IMAGE_ID", "")
         assets = os.getenv("MODAL_ENGINE_VM_ASSETS_FINGERPRINT", "")
-        if (os.getenv("MODAL_ENGINE_VM_CERTIFIED") != "true"
-                or not re.fullmatch(r"im-[A-Za-z0-9]{1,128}", image_id)
+        certified = os.getenv("MODAL_ENGINE_VM_CERTIFIED") == "true"
+        functional_only = functional_setting == "true"
+        if (not re.fullmatch(r"im-[A-Za-z0-9]{1,128}", image_id)
                 or not re.fullmatch(r"[0-9a-f]{64}", assets)):
+            raise ModalEngineUnavailable("Modal credential-free renderer capability is unavailable")
+        if functional_only:
+            environment = os.getenv("MODAL_ENVIRONMENT", "")
+            environment_object_id = os.getenv("MODAL_ENGINE_VM_FUNCTIONAL_ONLY_ENVIRONMENT_ID", "")
+            binding_manifest = os.getenv(
+                "MODAL_ENGINE_VM_FUNCTIONAL_ONLY_BINDING_MANIFEST_SHA256", "",
+            )
+            if (certified or os.getenv("ENVIRONMENT") != "test" or not environment
+                    or not is_trusted_functional_acceptance_environment(
+                        environment, environment_object_id, binding_manifest,
+                    )):
+                raise ModalEngineUnavailable("Functional-only renderer mode is restricted to nonproduction tests")
+            policy = FUNCTIONAL_TEST_VM_POLICY
+            material = json.dumps({"image_id": image_id, "assets": assets, "policy": policy}, sort_keys=True)
+            identity = "modal-vm-functional-test-assets:" + hashlib.sha256(material.encode()).hexdigest()
+            return RendererBackend(
+                "modal_vm", identity, policy, image_id, assets, cacheable=False,
+                certification_flag_asserted=False, boundary_preflight=False,
+            )
+        if not certified:
             raise ModalEngineUnavailable("Certified credential-free renderer capability is unavailable")
         material = json.dumps({"image_id": image_id, "assets": assets, "policy": VM_POLICY}, sort_keys=True)
         identity = "modal-vm-assets:" + hashlib.sha256(material.encode()).hexdigest()
-        return RendererBackend("modal_vm", identity, VM_POLICY, image_id, assets)
+        return RendererBackend(
+            "modal_vm", identity, VM_POLICY, image_id, assets,
+            certification_flag_asserted=True, boundary_preflight=True,
+        )
+    if (compiler == "lualatex"
+            and functional_setting == "true"):
+        raise ModalEngineUnavailable("Functional-only renderer mode requires a Modal test runtime")
     selected = os.getenv("LATEXY_RENDER_BACKEND", "auto")
     if selected == "auto":
         selected = "docker" if shutil.which("docker") else "native"
@@ -78,7 +112,7 @@ def start_engine_process(command: list[str], *, cwd: str, env: dict[str, str], w
     return create_modal_engine(workspace=workspace, compiler=engine, arguments=command[index + 1:],
                                timeout=timeout, enabled=True, image_id=chosen.image_id,
                                expected_assets=chosen.assets_fingerprint, policy="credential_free_vm",
-                               session=engine_session)
+                               boundary_preflight=chosen.boundary_preflight, session=engine_session)
 
 
 def close_engine_session(process: Any) -> None:
