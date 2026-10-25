@@ -113,6 +113,7 @@
         "yjs": "^13.6.31"
     },
     "devDependencies": {
+        "webpack": "5.112.2",
         "@playwright/test": "^1.62.1",
         "@types/node": "^26.1.2",
         "@types/pako": "^3.0.0",
