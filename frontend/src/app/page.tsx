@@ -1,18 +1,24 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { IconArrowRight as ArrowRight, IconMinus, IconPlus } from '@tabler/icons-react'
-import CapabilityGate from '@/components/CapabilityGate'
-import DocumentGallery from '@/components/marketing/DocumentGallery'
-import LandingExperience from '@/components/marketing/LandingExperience'
+import ReviewDesk from '@/components/marketing/ReviewDesk'
+import {
+    TypesetWorkflow,
+    TypesetReview,
+    TypesetVersions,
+    TypesetSource,
+} from '@/components/marketing/TypesetStudio'
 import LandingMotion from '@/components/marketing/LandingMotion'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
+import { reviewFonts } from '@/components/marketing/review-fonts'
 import { siteUrl } from '@/lib/site-url'
-import './landing.css'
-import './landing-mobile.css'
-import './landing-glass.css'
-import './landing-editorial.css'
-import './landing-refresh.css'
-import './landing-type.css'
+import './landing-review.css'
+import './landing-typeset.css'
+
+// Public copy and samples are identical for every visitor. Prerender the
+// homepage to deliver its copy and samples in the server's HTML response;
+// account state and effective feature access still resolve in client gates.
+export const dynamic = 'force-static'
 
 const description =
     'Build a professional resume without code. Review ATS feedback, tailor your resume to each job, track applications, and compile LaTeX documents with Latexy.'
@@ -45,7 +51,7 @@ const faq = [
     },
     {
         question: 'Can I try Latexy without creating an account?',
-        answer: 'Yes. Try the guest studio and edit a sample résumé with limited guest usage. Professional PDF output is available in the studio. A saved workspace and the guided builder require an account. Feature availability depends on your plan.',
+        answer: 'When guest studio access is available, you can edit a sample résumé with limited usage. PDF generation depends on the features currently enabled. A saved workspace and the guided builder require an account.',
     },
     {
         question: 'Will AI change my résumé without asking me?',
@@ -76,7 +82,7 @@ export default function LandingPage() {
         })),
     }
     return (
-        <div className="lp-page">
+        <div className={`lp-page rd-landing ts-landing ${reviewFonts}`}>
             <LandingMotion />
             <script
                 type="application/ld+json"
@@ -90,45 +96,41 @@ export default function LandingPage() {
                     __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c'),
                 }}
             />
-            <div className="lp-opening lp-container">
-                <section className="lp-hero" aria-labelledby="landing-title">
-                    <div className="lp-hero-heading">
-                        <p className="lp-hero-eyebrow">
-                            <span>Latexy / 01</span> The résumé &amp; LaTeX studio
-                        </p>
-                        <h1 id="landing-title">
-                            Write a résumé.
-                            <br />
-                            <span>Own every word.</span>
-                        </h1>
+            <section className="rd-hero lp-container" aria-labelledby="landing-title">
+                <div className="rd-hero-copy">
+                    <p className="rd-eyebrow">Résumés, reimagined in LaTeX</p>
+                    <h1 id="landing-title">
+                        A better résumé
+                        <br /> is a <span>stronger you.</span>
+                    </h1>
+                    <p className="rd-hero-description">
+                        A focused résumé and LaTeX studio. Write, review your words, tailor for each
+                        opportunity, and prepare a document you’re proud to send.
+                    </p>
+                    <div className="lp-hero-actions">
+                        <MarketingCTA label="Start your résumé" />
+                        <Link className="ts-text-link" href="#resume-feedback">
+                            Explore the sample <ArrowRight size={16} aria-hidden="true" />
+                        </Link>
                     </div>
-                    <div className="lp-hero-copy">
-                        <p>
-                            Start with guided fields or edit the source in LaTeX. Review the
-                            structure, tailor a version to each role, and export a PDF.
-                        </p>
-                        <div className="lp-hero-actions">
-                            <MarketingCTA label="Try the studio" />
-                            <Link className="lp-primary-fallback" href="/platform">
-                                Explore Latexy <ArrowRight size={15} aria-hidden="true" />
-                            </Link>
-                            <CapabilityGate feature="b04">
-                                <Link className="lp-secondary-button" href="/templates">
-                                    Explore templates
-                                    <ArrowRight size={15} aria-hidden="true" />
-                                </Link>
-                            </CapabilityGate>
-                        </div>
-                        <p className="lp-trial-note">
-                            Try the guest studio. No account or card needed. Usage limits apply.
-                        </p>
-                    </div>
-                </section>
-                <DocumentGallery />
-            </div>
-            <LandingExperience />
+                    <p className="rd-trial-note">
+                        A workspace for thoughtful documents. Studio access depends on availability.
+                    </p>
+                </div>
+                <ReviewDesk />
+            </section>
+            <TypesetWorkflow />
+            <TypesetReview />
+            <TypesetVersions />
+            <TypesetSource />
             <section className="lp-faq lp-container" aria-labelledby="landing-faq">
-                <h2 id="landing-faq">Before you start</h2>
+                <div>
+                    <p className="rd-eyebrow">Common questions</p>
+                    <h2 id="landing-faq">Before you start.</h2>
+                    <p className="ts-section-description">
+                        A few quick answers to help you get oriented with Latexy.
+                    </p>
+                </div>
                 <div>
                     {faq.map(item => (
                         <details key={item.question}>

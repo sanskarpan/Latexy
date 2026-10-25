@@ -1,0 +1,23 @@
+{
+  "scope": "Reviewed collaborator fixes and verified test coverage for draft PR1927",
+  "reviewed_local_commit": "7cdacd9ef1c6f73a34102de1fe0d0f3e403a674d",
+  "targeted_gap_test_commit": "c80885031731da286f04751270a57b95769cd989",
+  "integrated_main": "5c307d282c66d7807a5d6ab9c01b197f6ff0c013",
+  "contention": { "passed": 2, "identity_map_cases": ["empty", "preloaded strong stale editor reference"] },
+  "focused_frontend": { "passed": 12, "files": 2 },
+  "chromium_targeted": { "passed": 1, "workers": 1, "retries": 0 },
+  "assertions": [
+    "Both actual UI sockets complete initial sync before role-transition acceptance",
+    "Distinct keyboard draft remains absent from saved resume source before and after committed downgrade while autosave clocks are held",
+    "Draft remains visible after downgrade, F04 OFF, recovery and removal",
+    "Active observation socket OPEN before F04 OFF closes4003; stored editor role unchanged; REST write403; forbidden marker not persisted",
+    "After removal visible Save disabled, active socket closes4003, old session document GET404"
+  ],
+  "broader_backend": { "successful_completion": true, "existing_policy_skips": 4, "exact_pass_count_retained": false },
+  "counterfactual": "Removing populate_existing from copied source makes the stale identity-map case fail DID NOT RAISE HTTPException; source restored",
+  "merge_ready": false,
+  "unpublished_blocker": "A distinct draft entered before initial collaboration sync can be overwritten by the binding constructor. A separate production fix is under independent review and is not included here.",
+  "evidence_policy": "Raw local runtime logs, account/session values and container identities are excluded from published history",
+  "limits": ["Role-transition browser acceptance requires settled initial UI sync", "Initial-sync fix excluded pending review", "Desktop Chromium only", "No competing production build"],
+  "historical_record_notice": "This record describes its stated earlier commits, not the current candidate. Its initial-sync exclusion is superseded by collaborator-cloud-acceptance.json (2026-10-20); prior results remain historical."
+}

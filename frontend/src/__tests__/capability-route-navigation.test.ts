@@ -9,12 +9,12 @@ import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { capabilityForRoute } from '@/lib/capability-ui-policy'
 import { resumeEditorHref } from '@/lib/resume-navigation'
 
-const state = vi.hoisted(() => ({ grants: new Set<string>(), pathname: '/workspace' }))
+const state = vi.hoisted(() => ({ grants: new Set<string>(), pathname: '/workspace', signedIn: false, loading: false, error: null as string | null }))
 vi.mock('@/contexts/EntitlementsContext', () => ({
-  useEntitlements: () => ({ can: (key: string) => state.grants.has(key), loading: false, error: null, refresh: vi.fn() }),
+  useEntitlements: () => ({ can: (key: string) => state.grants.has(key), loading: state.loading, error: state.error, refresh: vi.fn() }),
 }))
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname }))
-vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: { user: { id: 'owner' } } }) }))
+vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: state.signedIn ? { user: { id: 'owner' } } : null }) }))
 vi.mock('next/link', () => ({ default: (props: React.ComponentProps<'a'>) => React.createElement('a', props) }))
 
 function source(relative: string) {
@@ -26,6 +26,7 @@ const builder = source('../app/workspace/builder/[resumeId]/page.tsx')
 const variant = source('../app/workspace/variant/[resumeId]/page.tsx')
 const onboarding = source('../components/onboarding/OnboardingFlow.tsx')
 const home = source('../app/page.tsx')
+const landingHeader = source('../components/marketing/LandingHeader.tsx')
 const newResume = source('../app/workspace/new/page.tsx')
 
 function find(source: ts.SourceFile, predicate: (node: ts.Node) => boolean): ts.Node[] {
@@ -72,9 +73,32 @@ function renderExpression(expression: ts.Node, extra: Record<string, unknown> = 
   return renderToStaticMarkup(React.createElement(React.Fragment, null, view))
 }
 
-beforeEach(() => { state.grants = new Set(); state.pathname = '/workspace' })
+beforeEach(() => { state.grants = new Set(); state.pathname = '/workspace'; state.signedIn = false; state.loading = false; state.error = null })
 
 describe('optional route entry controls render OFF and ON', () => {
+  it.each(['b08', 'b09', 'c01'])('reattachment requires %s and returns after an explicit regrant', feature => {
+    const [button] = find(builder, node => ts.isJsxElement(node)
+      && node.openingElement.tagName.getText(builder) === 'button'
+      && node.children.some(child => ts.isJsxText(child) && child.text.trim() === 'Reattach Builder'))
+    expect(button).toBeDefined()
+    let container = button.parent
+    while (!ts.isJsxExpression(container)) container = container.parent
+    const expression = container.expression!
+    const render = () => renderExpression(expression, {
+      contentEditAllowed: state.grants.has('c01'), RefreshCcw: emptyIcon, forceReattach: vi.fn(),
+    })
+    state.grants = new Set(['b08', 'b09', 'c01'])
+    state.grants.delete(feature)
+    expect(render()).toBe('')
+    state.grants.add(feature)
+    const allowed = render()
+    expect(allowed).toContain('Reattach Builder')
+    state.grants.delete(feature)
+    expect(render()).toBe('')
+    state.grants.add(feature)
+    expect(render()).toBe(allowed)
+  })
+
   it.each([
     ['workspace grid Optimize', workspace, '/workspace/${resume.id}/optimize', 0, 'd01', '/workspace/resume/optimize'],
     ['workspace list Optimize', workspace, '/workspace/${resume.id}/optimize', 1, 'd01', '/workspace/resume/optimize'],
@@ -82,7 +106,7 @@ describe('optional route entry controls render OFF and ON', () => {
     ['workspace Merge including mobile icon', workspace, '/workspace/merge', 0, 'b13', '/workspace/merge'],
     ['editor Career Path', editor, '/workspace/${resumeId}/career', 0, 'e04', '/workspace/resume/career'],
     ['editor Manage visibility', editor, '/workspace/variant/${resumeId}', 0, 'b12', '/workspace/variant/resume'],
-    ['homepage Templates', home, '/templates', 0, 'b04', '/templates'],
+    ['homepage header Templates', landingHeader, '/templates', 0, 'b04', '/templates'],
     ['new resume Builder', newResume, '/workspace/builder/new', 0, 'b08', '/workspace/builder/new'],
   ] as const)('%s disappears on denial and returns without changing other controls', (_name, page, href, index, feature, renderedHref) => {
     const expression = linkExpression(page, href, index)
@@ -105,23 +129,39 @@ describe('optional route entry controls render OFF and ON', () => {
     expect(renderExpression(expression)).toContain('Saved source title')
   })
 
-  it('keeps the studio CTA gated while leaving the public fallback available', () => {
+  it('shows truthful studio states while leaving the public fallback available', () => {
     const renderCta = () =>
       renderToStaticMarkup(React.createElement(MarketingCTA, { label: 'Try the studio' }))
-    const fallback = renderExpression(linkExpression(home, '/platform'))
+    const fallback = renderExpression(linkExpression(home, '#resume-feedback'))
 
     expect(renderCta()).not.toContain('href="/try?mode=visual"')
-    expect(fallback).toContain('href="/platform"')
-    expect(fallback).toContain('Explore Latexy')
+    expect(renderCta()).toContain('Studio editing is currently unavailable.')
+    expect(fallback).toContain('href="#resume-feedback"')
+    expect(fallback).toContain('Explore the sample')
 
-    state.grants.add('a09')
-    state.grants.add('b01')
-    expect(renderCta()).not.toContain('href="/try?mode=visual"')
-    state.grants.add('c01')
+    state.loading = true
+    expect(renderCta()).toContain('Checking studio availability')
+    state.loading = false
+    state.error = 'Feature availability could not be verified'
+    expect(renderCta()).toContain('Retry')
+    state.error = null
+
+    state.grants.add('a09'); state.grants.add('c01'); state.grants.add('b10')
     expect(renderCta()).toContain('href="/try?mode=visual"')
     expect(renderCta()).toContain('Try the studio')
-    state.grants.delete('b01')
-    expect(renderCta()).not.toContain('href="/try?mode=visual"')
+    state.grants.add('c05')
+    expect(renderCta()).toContain('href="/try?mode=visual"')
+    state.grants.add('b01')
+    expect(renderCta()).toContain('href="/try?mode=visual"')
+    state.grants.delete('b01'); state.grants.delete('b10')
+    expect(renderCta()).toContain('href="/try?mode=source"')
+    expect(renderCta()).toContain('Open the source editor')
+    state.grants.delete('a09')
+    expect(renderCta()).not.toContain('href="/try?mode=source"')
+    state.signedIn = true
+    expect(renderCta()).toContain('href="/try?mode=source"')
+    state.grants.delete('c01')
+    expect(renderCta()).not.toContain('href="/try?mode=source"')
   })
 
   it('hides onboarding creation actions without core grants and retains skip exploration', () => {

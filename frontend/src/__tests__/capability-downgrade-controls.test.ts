@@ -22,6 +22,7 @@ async function recoveryHarness() {
   vi.doMock('react', () => ({
     createContext: () => ({ Provider: 'Provider', value: register }),
     useContext: (context: { value: unknown }) => context.value,
+    useCallback: (callback: unknown) => callback,
     useRef: (initial: unknown) => { const slot = index++; if (!(slot in values)) values[slot] = { current: initial }; return values[slot] },
     useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
     useState: (initial: unknown) => { const slot = index++; if (!(slot in values)) values[slot] = initial; return [values[slot], (next: unknown) => { values[slot] = next }] },

@@ -1,10 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import CapabilityGate from '@/components/CapabilityGate'
+import { MarketingCTA } from './MarketingSections'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
-import LandingFooter from './LandingFooter'
+import dynamic from 'next/dynamic'
+
+const LandingFooter = dynamic(() => import('./LandingFooter'))
 
 export default function MarketingFooter() {
   const pathname = usePathname()
@@ -33,12 +35,7 @@ export default function MarketingFooter() {
             <Link href="/resources" className="transition hover:text-fg">Resources</Link>
             <Link href="/updates" className="transition hover:text-fg">Updates</Link>
             <Link href="/faq" className="transition hover:text-fg">FAQ</Link>
-            <CapabilityGate feature="a09"><CapabilityGate feature="b01"><CapabilityGate feature="c01"><Link
-              href="/try?mode=visual"
-              className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-            >
-              Build my résumé
-            </Link></CapabilityGate></CapabilityGate></CapabilityGate>
+            <MarketingCTA />
           </nav>
         </div>
 

@@ -1,5 +1,5 @@
 /** Real browser + Next auth + FastAPI + PostgreSQL. No API route interception. */
-import { expect, test, type BrowserContext } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
 
@@ -33,6 +33,32 @@ async function signup(context: BrowserContext, frontend: string) {
     localStorage.setItem('latexy_auto_compile', 'false')
   })
   return { id: result.user.id, headers: { Authorization: `Bearer ${result.token}` } }
+}
+
+async function setAdminCapability(
+  page: Page,
+  feature: string,
+  label: string,
+  scope: 'global' | 'family' | 'sku' | 'role',
+  enabled: boolean,
+) {
+  await page.getByRole('searchbox', { name: 'Search capabilities' }).fill(feature)
+  if (scope === 'family') await page.getByRole('button', { name: 'Family defaults', exact: true }).click()
+  if (scope === 'sku') await page.getByRole('button', { name: 'Individual plans', exact: true }).click()
+  if (scope === 'role') await page.getByRole('button', { name: 'Account roles', exact: true }).click()
+  const name = scope === 'global'
+    ? `${label} global kill-switch`
+    : `${label} for ${scope === 'role' ? 'role ' : ''}${scope === 'family' ? 'pro' : scope === 'sku' ? 'pro_annual' : 'user'}`
+  const control = page.getByRole('switch', { name, exact: true })
+  await expect(control).toHaveAttribute('aria-checked', String(!enabled))
+  const changed = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.startsWith('/admin/entitlements/')
+      && response.request().method() === 'PATCH',
+  )
+  await control.click()
+  const response = await changed
+  expect(response.status(), await response.text()).toBe(200)
+  await expect(control).toHaveAttribute('aria-checked', String(enabled))
 }
 
 test('real role toggles hide desktop/mobile controls and block API while owner data and admin recovery survive', async ({ browser }, testInfo) => {
@@ -115,7 +141,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toHaveCount(0)
     await expect(guestPage.getByRole('button', { name: 'Automatically update the PDF after edits', exact: true })).toHaveCount(0)
     await expect(guestPage.locator('[aria-label="Source and PDF synchronization"]')).toHaveCount(0)
-    await expect(guestPage.getByText('ATS —', { exact: true })).toHaveCount(0)
+    await expect(guestPage.getByText('ATS -', { exact: true })).toHaveCount(0)
     const guestDenied = await guestContext.request.post(`${backend}/jobs/submit`, {
       data: { job_type: 'latex_compilation', latex_content: 'Synthetic source' },
     })
@@ -126,7 +152,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await anonymousSwitch.click(); expect((await guestOn).status()).toBe(200)
     await guestPage.reload()
     // The engine-backed Studio opens in Resume mode, where compilation is called
-    // “Update PDF preview”. Verify the source mode toggle and compile control
+    // "Update PDF preview". Verify the source mode toggle and compile control
     // in both editor modes so this acceptance test covers the current UI.
     await expect(guestPage.getByRole('button', { name: 'Update PDF preview' })).toBeVisible({ timeout: 45_000 })
     await expect(guestPage.getByRole('button', { name: 'Source', exact: true })).toBeVisible()

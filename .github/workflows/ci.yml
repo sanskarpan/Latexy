@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Run explicitly selected, dependency-free harness regressions
@@ -142,7 +142,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           python-version: "3.12"
           activate-environment: true
@@ -199,7 +199,7 @@ jobs:
       DEBUG: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           python-version: "3.12"
           activate-environment: true
@@ -284,7 +284,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           python-version: "3.12"
           activate-environment: true
@@ -300,12 +300,54 @@ jobs:
       - name: Verify schema cutover compatibility on disposable PostgreSQL
         run: uv run pytest -vv -ra test/test_schema_rollout_compatibility.py test/test_modal_schema_cutover_gate.py
 
+      - name: Verify B05 and F10/F11 real route recovery
+        run: |
+          uv run pytest -vv -ra \
+            test/test_specialty_template_policy_integration.py \
+            test/test_tenant_capability_recovery_integration.py \
+            --junitxml=test-results/feature-control-integration.xml \
+            -W error::ResourceWarning \
+            -W error::RuntimeWarning \
+            -W error::pytest.PytestUnraisableExceptionWarning
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('test-results/feature-control-integration.xml').getroot()
+          cases = list(root.iter('testcase'))
+          expected = {
+              ('test_specialty_template_policy_integration',
+               f'test_specialty_catalog_assets_revoke_and_restore_via_real_policy[{axis}-{role}]')
+              for axis in ('global', 'role')
+              for role in ('anonymous', 'user', 'support', 'admin')
+          }
+          expected.update(
+              ('test_tenant_capability_recovery_integration', f'{name}[{axis}]')
+              for name in (
+                  'test_f10_denial_preserves_invitation_and_membership_removal_then_recovers',
+                  'test_f11_denial_preserves_verified_domain_and_allows_removal_then_new_admission',
+              )
+              for axis in ('global', 'role', 'plan_family')
+          )
+          actual = {(case.get('classname', '').rsplit('.', 1)[-1], case.get('name')) for case in cases}
+          if (len(cases) != 14 or actual != expected
+                  or any(list(root.iter(tag)) for tag in ('skipped', 'failure', 'error'))):
+              raise SystemExit('Feature-control integration evidence is incomplete, skipped or failed')
+          print('B05/F10/F11 real route recovery: 14 passed, zero skipped/errors/failures')
+          PY
+
       - name: Run tests
         run: >-
           uv run pytest --tb=short -q
           -W error::ResourceWarning
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
+
+      - name: Retain feature-control integration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: feature-control-integration-evidence
+          path: backend/test-results/feature-control-integration.xml
+          if-no-files-found: error
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend-lint:
@@ -483,6 +525,55 @@ jobs:
           pnpm exec playwright test --config=playwright.capabilities.config.ts
           --workers=1 --retries=0 --trace=on --reporter=line
           --output=test-results/admin-capabilities
+      - name: Verify public UI when optional worker registration is denied
+        timeout-minutes: 30
+        env:
+          PLAYWRIGHT_PWA_POLICY_PORT: "5195"
+        run: |
+          node --test scripts/pwa-policy-acceptance.test.mjs
+          node scripts/pwa-policy-acceptance.mjs
+      - name: Verify production service-worker lifecycle and offline owner isolation
+        timeout-minutes: 30
+        env:
+          PLAYWRIGHT_PWA_PORT: "5193"
+        # Uses a disposable production build with real workers enabled. Account
+        # and private-response fixtures are synthetic; no live provider is used.
+        # The runner requires every named case with zero skips or retries.
+        run: |
+          node --test scripts/pwa-acceptance.test.mjs
+          node scripts/pwa-acceptance.mjs
+      # Fail closed if a required production-bundle owner suite drops out of the selection.
+      - name: Validate the Chromium owner-regression suite manifest
+        run: node ../scripts/ci/verify-owner-regression-manifest.mjs
+      - name: Verify guided builder, compile cadence and source-PDF synchronization
+        id: editor-owner-regressions
+        env:
+          PLAYWRIGHT_PORT: "5183"
+          PLAYWRIGHT_SERVER_MODE: production
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/editor-compile-sync/results.json
+        # Reuse one disposable production bundle for builder, editor and Settings owner
+        # regressions with synthetic HTTP/WS/PDF/provider fixtures. No TeX
+        # installation, provider credentials or live backend is required.
+        run: |
+          set -euo pipefail
+          rm -f test-results/editor-compile-sync/results.json
+          pnpm exec playwright test e2e/editor-compile-sync.spec.ts \
+          e2e/resume-builder.spec.ts \
+          e2e/builder-capabilities.spec.ts \
+          e2e/billing-developer.spec.ts \
+          e2e/settings-provider-action-owner-isolation.spec.ts \
+          e2e/onboarding-owner-isolation.spec.ts \
+          e2e/settings-preferences-owner-race.spec.ts \
+          e2e/settings-legacy-callback-owner-isolation.spec.ts \
+          e2e/personal-dictionary-owner-isolation.spec.ts \
+          e2e/settings-passkey-owner-isolation.spec.ts \
+          e2e/linked-variant-owner-race.spec.ts \
+          e2e/compiler-selector-keyboard.spec.ts \
+          e2e/builder-saved-owner-race.spec.ts \
+          e2e/editor-shortcuts-focus.spec.ts \
+          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line,json \
+          --output=test-results/editor-compile-sync
+          node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json
       - name: Audit desktop and mobile browser quality
         run: pnpm test:quality --retries=0
       - name: Extract landing screenshots for review
@@ -498,31 +589,30 @@ jobs:
           path: frontend/landing-visual-evidence
           if-no-files-found: error
           retention-days: 14
-      # Fail closed if a required production-bundle owner suite drops out of the selection.
-      - name: Validate the Chromium owner-regression suite manifest
-        run: node ../scripts/ci/verify-owner-regression-manifest.mjs
-      - name: Verify guided builder, compile cadence and source-PDF synchronization
-        id: editor-owner-regressions
-        env:
-          PLAYWRIGHT_PORT: "5183"
-          PLAYWRIGHT_SERVER_MODE: production
-        # Reuse one disposable production bundle for builder, editor and Settings owner
-        # regressions with synthetic HTTP/WS/PDF/provider fixtures. No TeX
-        # installation, provider credentials or live backend is required.
-        run: >-
-          pnpm exec playwright test e2e/editor-compile-sync.spec.ts
-          e2e/resume-builder.spec.ts
-          e2e/builder-capabilities.spec.ts
-          e2e/billing-developer.spec.ts
-          e2e/settings-provider-action-owner-isolation.spec.ts
-          e2e/onboarding-owner-isolation.spec.ts
-          e2e/settings-preferences-owner-race.spec.ts
-          e2e/settings-legacy-callback-owner-isolation.spec.ts
-          e2e/personal-dictionary-owner-isolation.spec.ts
-          e2e/settings-passkey-owner-isolation.spec.ts
-          e2e/linked-variant-owner-race.spec.ts
-          --project=chromium --workers=1 --retries=0 --trace=on --reporter=line
-          --output=test-results/editor-compile-sync
+      - name: Upload ReviewDesk validation screenshots
+        if: ${{ !cancelled() && hashFiles('frontend/playwright-quality-report/index.html') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reviewdesk-validation-visual-evidence
+          path: |
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-light-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/320-dark-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-light-high-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-normal-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-normal-disabled-hover.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-high-errors.png
+            docs/qa/reviewdesk-followup-2026-10-20/1440-dark-high-disabled-hover.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Diagnose the failed Settings hydration callback
         if: ${{ failure() && steps.editor-owner-regressions.outcome == 'failure' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/trace.zip') != '' && hashFiles('frontend/test-results/editor-compile-sync/settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/error-context.md') != '' }}
         timeout-minutes: 15
@@ -575,6 +665,8 @@ jobs:
             frontend/test-results/editor-compile-sync
             frontend/test-results/hydration-session-store
             frontend/test-results/settings-hydration-diagnostic
+            frontend/test-results/pwa
+            frontend/test-results/pwa-policy
           if-no-files-found: warn
           retention-days: 14
 
@@ -677,7 +769,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           python-version: "3.12"
           activate-environment: true
@@ -703,14 +795,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Verify D14 actual HTTP admissions
         run: bash scripts/ci/d14-http-admission.sh
 
+      - name: Verify sharing isolation guards
+        run: |
+          python scripts/ci/sharing-storage-fixture.test.py -v
+          python scripts/ci/sharing-full-stack-smoke.test.py -v
+
       - name: Run full-stack smoke
-        run: bash scripts/ci/full-stack-smoke.sh
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/latexy-sharing-browsers
+        run: python scripts/ci/sharing-full-stack-smoke.py --confirm-isolated-sharing-run
       - name: Upload real full-stack browser evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -732,7 +833,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           python-version: "3.12"
           activate-environment: true

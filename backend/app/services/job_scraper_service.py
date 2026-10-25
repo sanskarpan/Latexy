@@ -15,18 +15,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import ipaddress
 import json
 import re
-import socket
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from ..core import egress_guard
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
 
@@ -45,127 +44,23 @@ def _safe_url_for_log(value: str) -> str:
         return "<invalid-url>"
 
 
-# ── SSRF protection ────────────────────────────────────────────────────────────
+# ── SSRF protection ─────────────────────────────────────────────────────────────
 # The scrape endpoint accepts arbitrary user-supplied URLs, so the fetcher must
 # refuse to connect to internal/private/link-local addresses (cloud metadata at
 # 169.254.169.254, localhost, RFC1918, etc.). The guard is enforced at the httpx
 # transport layer so it also covers every redirect hop, not just the first URL.
+#
+# The implementation moved to `app.core.egress_guard` so the scraper, URL
+# import and the fixed-origin provider clients share one reviewed boundary rather
+# than three drifting copies. These aliases keep the historical names this module
+# and its tests already reference.
+SSRFError = egress_guard.SSRFError
 
-class SSRFError(Exception):
-    """Raised when a requested URL resolves to a non-public address."""
-
-
-def _ip_is_public(ip_str: str) -> bool:
-    try:
-        ip = ipaddress.ip_address(ip_str)
-    except ValueError:
-        return False
-    # Shared address space (100.64.0.0/10) is neither private nor global.
-    # Negating only the private/reserved flags admits carrier or VPN-local
-    # destinations, including their IPv4-mapped IPv6 representations.
-    return ip.is_global and not (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
-
-
-def _host_is_public(host: str) -> bool:
-    """Resolve host and require every resolved address to be public."""
-    if not host:
-        return False
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except (socket.gaierror, UnicodeError, OSError):
-        return False
-    addrs = {info[4][0] for info in infos}
-    return bool(addrs) and all(_ip_is_public(a) for a in addrs)
-
-
-def _resolve_public_addresses(host: str) -> tuple[str, ...]:
-    """Resolve once, reject mixed/private answers, and return normalized IPs."""
-    if not host:
-        return ()
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except (socket.gaierror, UnicodeError, OSError):
-        return ()
-    addresses = tuple(sorted({str(ipaddress.ip_address(info[4][0])) for info in infos}))
-    return addresses if addresses and all(_ip_is_public(ip) for ip in addresses) else ()
-
-
-def _assert_public_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise SSRFError(f"Blocked non-http(s) URL scheme: {parsed.scheme!r}")
-    if not _host_is_public(parsed.hostname or ""):
-        raise SSRFError(f"Blocked request to non-public host: {parsed.hostname!r}")
-
-
-class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
-    """Validate and DNS-pin every request target, including redirect hops.
-
-    Validation followed by an ordinary hostname request has a DNS-rebinding
-    race: an attacker can return a public address for validation and a private
-    one for the transport's second lookup. Rewriting the connection URL to the
-    already-validated IP removes that second lookup. The original Host header
-    and TLS SNI name are preserved for virtual hosting and certificate checks.
-    """
-
-    def __init__(self, **transport_options: Any) -> None:
-        super().__init__(**transport_options)
-        self._transport_options = transport_options
-        self._host_transports: dict[str, httpx.AsyncHTTPTransport] = {}
-        self._transport_lock = asyncio.Lock()
-
-    async def _transport_for(self, host: str) -> httpx.AsyncHTTPTransport:
-        async with self._transport_lock:
-            transport = self._host_transports.get(host)
-            if transport is None:
-                transport = httpx.AsyncHTTPTransport(**self._transport_options)
-                self._host_transports[host] = transport
-            return transport
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        if request.url.scheme not in ("http", "https"):
-            raise httpx.UnsupportedProtocol(
-                f"Blocked non-http(s) scheme: {request.url.scheme!r}", request=request
-            )
-        original_host = request.url.host
-        addresses = await asyncio.to_thread(_resolve_public_addresses, original_host)
-        if not addresses:
-            raise httpx.ConnectError(
-                f"Blocked request to non-public host: {original_host!r}", request=request
-            )
-        extensions = dict(request.extensions)
-        extensions["sni_hostname"] = original_host
-        pinned_request = httpx.Request(
-            request.method,
-            request.url.copy_with(host=addresses[0]),
-            headers=request.headers,
-            stream=request.stream,
-            extensions=extensions,
-        )
-        # Keep pools separated by the original host. Two unrelated TLS hosts can
-        # legitimately share an IP; pooling solely by the pinned IP could reuse a
-        # connection authenticated for the wrong hostname.
-        transport = await self._transport_for(original_host)
-        response = await transport.handle_async_request(pinned_request)
-        # Redirect resolution and caller-visible diagnostics must retain the
-        # public hostname, not expose or resolve relative to the pinned IP.
-        response.request = request
-        return response
-
-    async def aclose(self) -> None:
-        async with self._transport_lock:
-            transports = list(self._host_transports.values())
-            self._host_transports.clear()
-        for transport in transports:
-            await transport.aclose()
-        await super().aclose()
+_ip_is_public = egress_guard.ip_is_public
+_host_is_public = egress_guard.host_is_public
+_resolve_public_addresses = egress_guard.resolve_public_addresses
+_assert_public_url = egress_guard.assert_public_url
+_SSRFGuardTransport = egress_guard.SSRFGuardTransport
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

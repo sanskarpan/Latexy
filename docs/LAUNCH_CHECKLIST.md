@@ -1,6 +1,6 @@
 # Launch Checklist
 
-Last source audit: **2026-10-13**. Baseline: [`c24531e2722bbe36d40fffb38684cecfe2682790`](https://github.com/sanskarpan/Latexy/commit/c24531e2722bbe36d40fffb38684cecfe2682790).
+Last public-evidence reconciliation: **2026-10-20, 20:07 UTC**. Snapshot source: [`main` at `c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087). Full source-audit baseline: [`c24531e2722bbe36d40fffb38684cecfe2682790`](https://github.com/sanskarpan/Latexy/commit/c24531e2722bbe36d40fffb38684cecfe2682790) from 2026-10-13.
 
 This is a release decision ledger, not a claim that every feature works or that the
 absence of findings proves the absence of bugs. Read it with the individual
@@ -11,7 +11,7 @@ are independently verified. Do not turn a code merge into a production pass.
 
 ## 1. Decision, scope and ownership
 
-**Public launch: HOLD. Limited unpaid beta: conditional, not signed off.**
+**Public launch: HOLD. Limited unpaid beta: not signed off.**
 The repository has substantial passing automated coverage. Deployment, provider,
 capacity, security-operations and full product-path evidence still have open gates.
 A small beta requires matching deployed contracts, working core flows, safe billing
@@ -63,16 +63,16 @@ Priority is release risk, not proof of a current production outage.
 
 | ID | Priority / state | Required outcome | Owner / kind | Tracking/evidence |
 |---|---|---|---|---|
-| L01 | P0 / OPERATOR | Certify the actual candidate Modal renderer and default application flow; bind approved image/assets to deployment inputs. Passing input syntax is not certification. | OPS + QA + SEC; authorized environment work | [#1865](https://github.com/sanskarpan/Latexy/issues/1865), [capability contract](MODAL_RENDERER_CAPABILITY.md) |
-| L02 | P0 / OPERATOR | Complete current-source read-only billing preflight, schema/access servicing checks and safe-disabled acceptance before migrations/deploy. | OPS + BILL; operator diagnosis | [#1866](https://github.com/sanskarpan/Latexy/issues/1866), [Dodo runbook](BILLING_DODO.md) |
-| L03 | P0 / OPERATOR | Verify matching frontend/backend capability and mutation contracts on the serving deployment; fail-closed controls must not leave advertised core flows unavailable. | OPS + ENG + QA; rollout acceptance | [deploy workflow](../.github/workflows/deploy-modal.yml), [feature controls](audits/launch-2026-10-13/feature-controls.md) |
-| L04 | P0 / OPERATOR | Verify historical exposed-account remediation with private rotation/disablement evidence; repository sanitization alone is insufficient. | SEC; no credentials in evidence | [#1683](https://github.com/sanskarpan/Latexy/issues/1683) |
-| L05 | P0 / OPERATOR | Establish current Redis database binding, command headroom, authoritative monitoring and an approved exhaustion response before new traffic. Health/PING does not establish monthly capacity. | OPS + PRODUCT; paid changes need separate approval | [#1628](https://github.com/sanskarpan/Latexy/issues/1628), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity) |
-| L06 | P1 / SOURCE + OPERATOR | B07/H01 JSON admission composition and recovery repairs merged in #1882 (`8f73b0c6`). Verify the actual serving contract before launch. | ENG + OPS; deployed acceptance | [route policy](../backend/app/middleware/capability_router.py), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), feature matrix B07 |
-| L07 | P1 / SOURCE + OPERATOR | E03 simulation and F10/F11 tenant visibility/revocation repairs merged in #1882 (`8f73b0c6`). Actual deployed denial/recovery acceptance remains pending. | ENG + QA + OPS | [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), feature matrix E03/F10/F11 |
-| L08 | P1 / SOURCE + OPERATOR | Restore now stops after safety-backup/recreation or SQL failure; source and fake-command regressions merged in #1882 (`8f73b0c6`). An isolated restore drill remains pending. | ENG + OPS; isolated recovery exercise | [restore script](../scripts/backup/restore-database.sh), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882) |
+| L01 | P0 / ISOLATED ACCEPTANCE COMPLETE; PRODUCTION OPEN | Four scoped renderer/default-flow acceptance criteria remain recorded in #1865; #1931 adds the three-fixture boundary report. Exact deployed-image qualification, serving identity and production cutover/release remain open. | OPS + QA + SEC; authorized rollout | [#1865](https://github.com/sanskarpan/Latexy/issues/1865), [#1931 boundary report](https://github.com/sanskarpan/Latexy/pull/1931), [boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555), [capability contract](MODAL_RENDERER_CAPABILITY.md) |
+| L02 | P0 / READ-ONLY PREFLIGHT PASSED; PRODUCTION OPEN | The Oct 19 current-main read-only rollout preflight returned `safe_to_rollout=true` and `sales_state=safe_disabled`; `live_sales_acceptance` remains unverified. The preflight did not migrate production or deploy a backend. | OPS + BILL; owner-authorized rollout and verification | [#1866](https://github.com/sanskarpan/Latexy/issues/1866), [Oct 19 current-main Modal run](https://github.com/sanskarpan/Latexy/actions/runs/39284640168), [Dodo runbook](BILLING_DODO.md) |
+| L03 | P0 / CI + FRONTEND CHECK PASS; BACKEND CUTOVER OPEN | Current-main CI and exact-SHA Vercel verification passed. The Modal run passed renderer-input validation, read-only billing safety and renderer configuration; it then failed at the schema cutover/recovery approval gate. Migration, deployment and production serving-identity verification were skipped. Matching frontend/backend contracts on the serving deployment remain unverified. | OPS + ENG + QA; rollout acceptance | [current CI](https://github.com/sanskarpan/Latexy/actions/runs/39441542202), [Vercel](https://github.com/sanskarpan/Latexy/actions/runs/39448878986), [Modal](https://github.com/sanskarpan/Latexy/actions/runs/39448879064), [serving-revision guard](https://github.com/sanskarpan/Latexy/pull/1928) |
+| L04 | P0 / OPERATOR | Public issue #1683 records repository-side remediation, but rotation or disablement of the historically exposed accounts remains unconfirmed. Do not include credentials or private diagnostic evidence. | SEC; owner attestation only | [#1683](https://github.com/sanskarpan/Latexy/issues/1683), [status](https://github.com/sanskarpan/Latexy/issues/1683#issuecomment-5447565146) |
+| L05 | P0 / PARTIAL; OWNER INPUT OPEN | Redis health/command monitoring is deployed, but monthly provider capacity remains unconfigured. Completion requires authorized Upstash account-level management access; no credentials are included or changed here. | OPS + PRODUCT; owner-managed provider access | [#1628](https://github.com/sanskarpan/Latexy/issues/1628), [capacity status](https://github.com/sanskarpan/Latexy/issues/1628#issuecomment-5444933030), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity) |
+| L06 | P1 / SOURCE + CI; DEPLOYED ACCEPTANCE OPEN | B07/H01 JSON admission composition and recovery repairs merged in #1882 (`8f73b0c6`); B07 JSON export toggle/recovery acceptance merged in #1925 (`f1435b83`). Its final PR-head CI and post-merge CI passed. The historical matrix correction in #1924 remains separate. Verify the actual serving contract and deployed denial/recovery before launch. | ENG + OPS; deployed acceptance | [route policy](../backend/app/middleware/capability_router.py), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), [B07 status follow-up](https://github.com/sanskarpan/Latexy/pull/1924), [B07 recovery tests](https://github.com/sanskarpan/Latexy/pull/1925), feature matrix B07 |
+| L07 | P1 / SOURCE + OPERATOR | E03 simulation and F10/F11 tenant visibility/revocation repairs merged in #1882 (`8f73b0c6`); #1926 adds E03 simulation-control recovery tests. Actual deployed denial/recovery acceptance remains pending. | ENG + QA + OPS | [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), [E03 recovery tests](https://github.com/sanskarpan/Latexy/pull/1926), feature matrix E03/F10/F11 |
+| L08 | P1 / SOURCE + ISOLATED REHEARSAL PASS; PRODUCTION RECOVERY OPEN | #1882 contains the restore safety/fake-command repair. The Oct 16 record reports an isolated 61-table rehearsal with counts/hashes and readiness checks; this is not a production restore. A fresh cutover recovery point and a qualified hold-capable recovery revision remain open. | ENG + OPS; isolated evidence recorded, cutover recovery owner action pending | [restore script](../scripts/backup/restore-database.sh), [#1882](https://github.com/sanskarpan/Latexy/pull/1882), [Oct 16 recovery record](audits/resume-engine/acceptance-2026-10-16/README.md#recovery-and-production-preflight) |
 | L09 | P1 / OPERATOR | Run real saved-owner create/edit/save/reload/conflict/preview/export flow against final integrated source; cover rapid replacement, reconnect and account changes. | QA + ENG; isolated E2E then deployed acceptance | [#1819](https://github.com/sanskarpan/Latexy/issues/1819) |
-| L10 | P1 / OPERATOR | Verify bounded conversion success/failure, reconnect, cancellation and exactly-once refund on deployed runtime. | QA + OPS; synthetic data, approved provider budget | [#1863](https://github.com/sanskarpan/Latexy/issues/1863), [#1818](https://github.com/sanskarpan/Latexy/issues/1818) |
+| L10 | P1 / SOURCE/CONTROLLED FIXES; PRODUCTION ACCEPTANCE OPEN | Controlled conversion recovery fixes are recorded, but the production nonterminal-conversion issue remains open. Verify bounded success/failure, reconnect, cancellation and exactly-once refund on the deployed runtime. | QA + OPS; synthetic data, approved provider budget | [#1863](https://github.com/sanskarpan/Latexy/issues/1863), [#1818](https://github.com/sanskarpan/Latexy/issues/1818) |
 | L11 | P1 / DECISION | Approve end-to-visible-PDF budgets, then measure cold/warm/cache/overlap/burst distributions and resolve unexplained regressions. | PRODUCT + ENG + QA | [#1820](https://github.com/sanskarpan/Latexy/issues/1820), [SLOs](observability/slos.md) |
 | L12 | P1 / DECISION | Reconcile Terms with trial, quotas, saved-document retention, entity/contact and actual billing offer; verify support/privacy mailbox operation. Do not fabricate legal facts. | LEGAL + BILL + PRODUCT | [public audit PUB-01](audits/launch-2026-10-13/public-surfaces.md), [Terms source](../legal/terms-of-service.md) |
 | L13 | P1 paid launch / OPERATOR | Accept live Dodo merchant/products/tax/currency/recurrence, signed lifecycle events, payment/recovery/refund and servicing. Unaccepted products remain unavailable. | BILL + QA + OPS; separately approved transactions | [Dodo operations](BILLING_DODO.md), [#1866](https://github.com/sanskarpan/Latexy/issues/1866) |
@@ -87,32 +87,74 @@ is useful availability evidence, not evidence for L01–L15 completion.
 
 ## 3. Evidence baseline and coverage limits
 
+### Source and implementation
+
+This reconciliation is anchored to `main` at `c062da81db98cad8be6569ed8f6d79ef0c404087` on **2026-10-20**. Recent merged changes add or repair source/test paths; a merge alone does not establish that the changed source is serving in production.
+
+| Merged change | Main commit / merge date | What the public record establishes |
+|---|---|---|
+| [#1911 traffic and worker hold](https://github.com/sanskarpan/Latexy/pull/1911) | [`25ecfe99defda3706c740159f3f43317ff3d1dc8`](https://github.com/sanskarpan/Latexy/commit/25ecfe99defda3706c740159f3f43317ff3d1dc8), Oct 17 | Adds held-mode admission and a separately gated release path. The Modal workflow for this main head did not deploy it; current serving hold state is not established by source alone. |
+| [#1918 landing redesign](https://github.com/sanskarpan/Latexy/pull/1918) | [`622545aa622d8b1cf6e75167aff89ffd8ca69c18`](https://github.com/sanskarpan/Latexy/commit/622545aa622d8b1cf6e75167aff89ffd8ca69c18), Oct 17 | Merged with exact-PR-head build, lint, browser and visual evidence; that evidence is not a backend or full-product release acceptance. |
+| [#1917 bounded Modal harness](https://github.com/sanskarpan/Latexy/pull/1917) | [`0f06fb2a293f0363ac3f578407012995ea6d02fa`](https://github.com/sanskarpan/Latexy/commit/0f06fb2a293f0363ac3f578407012995ea6d02fa), Oct 17 | Adds an opt-in nonproduction harness; 13 synthetic harness tests passed. No Modal infrastructure was launched and no production setting was changed. |
+| [#1916 B09 versioned-builder gate](https://github.com/sanskarpan/Latexy/pull/1916) | [`7691d832d68e8a9ae4889bdcdede45fb6d5c7b7f`](https://github.com/sanskarpan/Latexy/commit/7691d832d68e8a9ae4889bdcdede45fb6d5c7b7f), Oct 17 | B09 is checked on both legacy and versioned builder update routes. Its policy suite reports 397 passed / 4 skipped using synthetic entitlement state and a mocked database. |
+| [#1915 owner-regression CI](https://github.com/sanskarpan/Latexy/pull/1915) | [`c27da8027b7d8118b311aae1faf936bb54f02405`](https://github.com/sanskarpan/Latexy/commit/c27da8027b7d8118b311aae1faf936bb54f02405), Oct 17 | The 11-suite manifest is bounded and fail-closed; all 110 selected Chromium production-bundle cases passed on the exact PR head with synthetic fixtures. This is not live-owner/provider acceptance. |
+
+Since that table's Oct 17 snapshot, `main` also includes [#1926](https://github.com/sanskarpan/Latexy/pull/1926) (E03 recovery tests), [#1928](https://github.com/sanskarpan/Latexy/pull/1928) (serving-revision attestation guard), [#1929](https://github.com/sanskarpan/Latexy/pull/1929) (provider egress hardening), [#1931](https://github.com/sanskarpan/Latexy/pull/1931) (boundary report), and [#1933](https://github.com/sanskarpan/Latexy/pull/1933) (landing update). These merges add source or scoped-test evidence; they do not by themselves close production gates. Open follow-ups [#1930](https://github.com/sanskarpan/Latexy/pull/1930), [#1924](https://github.com/sanskarpan/Latexy/pull/1924), [#1920](https://github.com/sanskarpan/Latexy/pull/1920), and [#1927](https://github.com/sanskarpan/Latexy/pull/1927) are not part of this `main` snapshot and do not count as merged or deployed acceptance.
+
+The Oct 20 snapshot additionally includes [#1943](https://github.com/sanskarpan/Latexy/pull/1943) (evidence ledger), [#1925](https://github.com/sanskarpan/Latexy/pull/1925) (B07 full-stack acceptance, merge `f1435b833b27bffb286279de3e7e41f2be03bae0`), and [#1944](https://github.com/sanskarpan/Latexy/pull/1944) (landing themes and responsive document flow, merge `c062da81db98cad8be6569ed8f6d79ef0c404087`). B07's [final PR-head CI](https://github.com/sanskarpan/Latexy/actions/runs/39428887430) and [post-merge CI](https://github.com/sanskarpan/Latexy/actions/runs/39432708860) passed all 16 jobs. These isolated tests do not establish production B07 acceptance. Landing's [final PR-head CI](https://github.com/sanskarpan/Latexy/actions/runs/39432997550) passed its selected checks; skipped unrelated jobs are not test passes.
+
+### Isolated acceptance and tests
+
+- [#1865](https://github.com/sanskarpan/Latexy/issues/1865) has four scoped renderer/default-flow acceptance criteria checked: retained sanitized evidence, actual candidate bridge coverage, separately authorized boundary certification, and the ordinary default Lua new-resume flow. The Oct 15 renderer/bridge record and Oct 16 application record are distinct dated scopes, not one simultaneous exact-head matrix. Together they record 15 profiles, 61 LuaLaTeX templates, bridge scenarios, the defined 76-PDF application matrix and a separate Guided Builder journey. See the [independently reviewed boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555) and the [Oct 16 application record](audits/resume-engine/acceptance-2026-10-16/README.md). These scopes are completed; they do not qualify an exact deployed image or release production traffic.
+- The [Oct 16 recovery record](audits/resume-engine/acceptance-2026-10-16/README.md#recovery-and-production-preflight) reports a successful **isolated** restore rehearsal: 61 tables restored, counts/hashes checked, candidate and recovery sources started against the temporary restored database and returned `/readyz` 200, and the temporary database was removed after connections drained. The record explicitly says this was not a production API deployment or a fresh recovery point at cutover. The `4182705d` recovery source predates the traffic hold and cannot serve as the held-rollout recovery revision.
+- The source inventory below records **129 product IDs** once each. It is an inventory statement only; it does not mean those controls or their user journeys were all independently tested. No overall completion percentage is calculated.
+
+### Production acceptance
+
+- Current `main` is [`c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087). [Canonical CI run 39441542202](https://github.com/sanskarpan/Latexy/actions/runs/39441542202) passed its selected jobs, including frontend build/lint, cross-browser quality, isolated real compile/preview, classification, privacy and the Modal harness. Backend Tests and Full-Stack Smoke were skipped in this landing-scoped run; those skips are not passes. [Exact-main Vercel verification 39448878986](https://github.com/sanskarpan/Latexy/actions/runs/39448878986) passed; it verifies the frontend source/deployment only.
+- [Modal run 39448879064](https://github.com/sanskarpan/Latexy/actions/runs/39448879064) is for the same main SHA. Renderer-input validation, read-only billing safety and renderer configuration passed. It failed at “Require schema cutover and recovery approval”; migration, deployment, serving-identity, template synchronization and production health/catalog checks were skipped. No production database migration or backend rollout is evidenced by this run. Historical preflight outputs are not private operational certification or current live-sales acceptance.
+- Public read-only probes at **2026-10-20 20:07 UTC** returned `/health` HTTP 200 with degraded status (database/storage OK, Redis/cache unavailable and capacity unconfigured), `/readyz` HTTP 503, and `/jobs/health` HTTP 200 with unhealthy status. These observations confirm failed readiness, not its root cause; they do not establish quota exhaustion or authorize changing credentials. [Health](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/health), [readiness](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/readyz), [jobs health](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/health).
+- The five P0 gates L01–L05 remain open: renderer/backend rollout; deployed billing and recovery acceptance; matching frontend/backend serving identities; credential rotation or disablement; and authoritative Redis capacity. A green CI run, frontend deployment check, or safe-disabled preflight does not close these gates.
+- Actual production cutover, serving-image/source identity, renderer release qualification, live-sales acceptance, and the final release decision remain open. A green CI run or Vercel check does not close these gates.
+
+### Owner inputs
+
+- **SEC:** confirm exposed-account rotation or disablement privately; [#1683](https://github.com/sanskarpan/Latexy/issues/1683) remains open without that owner attestation.
+- **OPS / PRODUCT:** provide authorized Upstash account-level management access and a capacity/exhaustion response decision; production Redis health and monitoring exist, while authoritative monthly capacity remains unconfigured ([#1628](https://github.com/sanskarpan/Latexy/issues/1628)).
+- **BILL / LEGAL / PRODUCT:** separately accept live billing, customer-facing terms/offer, audience and service commitments. No payment, live-sales activation or legal conclusion is inferred here.
+- **QA / OPS:** resolve the open production conversion acceptance in [#1863](https://github.com/sanskarpan/Latexy/issues/1863) after controlled recovery fixes; source/test repair evidence is not deployed acceptance.
+
+### Assistant follow-up
+
+Keep **HOLD** and the limited unpaid beta unsigned until owners provide the remaining exact-scope acceptance evidence. Update this ledger only with dated public evidence that identifies the tested source and distinguishes isolated checks from deployed behavior. This review performs documentation work only; it does not run production operations, change credentials, configure provider capacity, migrate data, deploy code or set flags.
+
 Completed baseline checks (scope is deliberately bounded):
 
-- [x] Source inventory reconciled: all 129 product IDs represented exactly once.
+- [x] Source inventory lists 129 product IDs exactly once; this does not verify every control or journey.
 - [x] Canonical baseline CI and frontend identity certification verified below.
 - [x] Local source/privacy/claim guards and 21 dependency-free classifier cases passed.
 - [x] Current audit ran 1,121 isolated policy cases and 582 rollout/capacity unit cases.
   Three real-PostgreSQL acceptance cases across those groups remain blocked by
   the unavailable disposable database; their repository tests were not removed.
 - [x] Restore regression demonstrated eight baseline failures; nine fake-command
-  tests pass after the local repair, with independent review. The repair is not
-  in this documentation-only change and is not deployed or a real restore drill.
+  tests pass after the source repair. These tests do not constitute the separately
+  recorded isolated restore rehearsal or production restore acceptance.
 
 The October 13 source audit remains the baseline. UI/indexing, admission and
 restore repairs subsequently merged in [#1882](https://github.com/sanskarpan/Latexy/pull/1882)
 at `8f73b0c6`; suggestion recovery followed in
 [#1885](https://github.com/sanskarpan/Latexy/pull/1885) at `7cb1c8b7`, and D14 child
 controls in [#1883](https://github.com/sanskarpan/Latexy/pull/1883) at `d22998e0`.
-These source references do not prove production deployment or a restore drill.
+These source references do not prove production deployment. A later isolated restore rehearsal is recorded below; production recovery remains separate.
 
 The [October 15 acceptance record](audits/resume-engine/acceptance-2026-10-15/README.md)
 adds 15 representative renderer profiles, all 61 shipped LuaLaTeX templates,
 four actual bridge scenarios and one small synthetic owner/browser flow. It
 also records a fresh safe-disabled rollout diagnostic and recovery branch.
-Source snapshots and limitations are explicit. L01/L02/L03 and broad L09
-acceptance remain open; live sales, Student checkout and production rollout
-are not signed off by those isolated results.
+Source snapshots and limitations are explicit. At that October 15 snapshot,
+L01/L02/L03 and broad L09 acceptance remained open. Later public evidence adds
+bounded renderer/default-flow and read-only billing-preflight acceptance, but
+production rollout, live sales and Student checkout remain unsigned.
 
 The [October 16 scoped owner/browser update](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6206854567)
 records 31 painted previews and 31 normal PDF downloads after [#1904](https://github.com/sanskarpan/Latexy/pull/1904)
@@ -120,7 +162,7 @@ and [#1905](https://github.com/sanskarpan/Latexy/pull/1905), with owner/job/sour
 accepted artifact, durable storage, quota and cross-owner checks. Temporary QA
 services were stopped. One semantic geometry contract remains unsupported and
 read-only; these 31 cases do not certify the whole product or a production
-backend rollout. The checked main revision `d35b00fe` passed
+backend rollout. At that dated snapshot, main `d35b00fe` passed
 [CI](https://github.com/sanskarpan/Latexy/actions/runs/38841762846) and
 [exact-SHA Vercel verification](https://github.com/sanskarpan/Latexy/actions/runs/38844218686),
 while the [Modal workflow](https://github.com/sanskarpan/Latexy/actions/runs/38844218590)
@@ -131,8 +173,10 @@ adds the remaining 45 normal owner/browser cases, completing the defined
 76-PDF matrix, plus a separate Guided Builder create/form/save/preview/download
 journey. It records a successful isolated 61-table restore rehearsal, distinct
 recovery-code startup and live Dodo catalog reads/previews. These observations
-do not close the production deployment, real payment/lifecycle, broader product
-journey or service-level gates. The temporary QA services were stopped.
+do not close production deployment, real payment/lifecycle, broader product
+journey or service-level gates. The temporary QA services were stopped. The
+restore rehearsal was not a production restore and its pre-hold recovery revision
+is not the required held-rollout recovery image.
 
 
 - Baseline main [CI 38185842538](https://github.com/sanskarpan/Latexy/actions/runs/38185842538)
@@ -358,8 +402,14 @@ This checklist contains outcomes, not credentials or exploit instructions.
   traffic or rotate databases casually: in-flight jobs/tickets/counters can be lost.
 - [ ] Capture DB backups/PITR plus object-store consistency, encryption/access,
   retention, destination and success alerts. Local gzip integrity is not restoration.
-- [ ] Exercise restore into an isolated target, verify representative rows/artifact
-  identities, RPO/RTO and application startup, then clean up authorized test data.
+- [x] Oct 16 isolated rehearsal: restore 61 tables, verify counts/hashes, migrate
+  the temporary copy using the recorded recovery and candidate sources, start the
+  application to `/readyz` 200, and remove the temporary DB after connections drain.
+  This does not verify production restore, artifact-by-artifact recovery, RPO/RTO
+  or the fresh recovery point required at actual cutover; see [the dated record](audits/resume-engine/acceptance-2026-10-16/README.md#recovery-and-production-preflight).
+- [ ] At an authorized cutover, verify a fresh recovery point and the exact
+  hold-capable recovery image, required artifact identities, RPO/RTO and startup;
+  record approval and cleanup before traffic release.
 - [ ] Restore tooling refuses destructive continuation if safety backup/compression
   or recreation fails and detects SQL statement failures. Actual restore remains
   a separately approved operational action, not part of routine tests.

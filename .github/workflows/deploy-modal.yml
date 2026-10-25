@@ -122,7 +122,7 @@ jobs:
 
       - name: Set up Python
         if: steps.freshness.outputs.current == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -137,6 +137,16 @@ jobs:
           python backend/scripts/modal_deployment_phase.py resolve \
             --event-name "$GITHUB_EVENT_NAME" \
             --traffic-mode "${REQUESTED_TRAFFIC_MODE:-}" >> "$GITHUB_OUTPUT"
+
+      # Reject unusable approval inputs before any Modal work. This local check
+      # does not verify recovery or drain; the full gate below remains required.
+      - name: Reject absent or stale cutover approval inputs
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          MODAL_SCHEMA_CUTOVER_APPROVED_SHA: ${{ vars.MODAL_SCHEMA_CUTOVER_APPROVED_SHA }}
+          MODAL_FORWARD_ROLLBACK_SHA: ${{ vars.MODAL_FORWARD_ROLLBACK_SHA }}
+          MODAL_RECOVERY_VERIFIED_FOR_SHA: ${{ vars.MODAL_RECOVERY_VERIFIED_FOR_SHA }}
+        run: python backend/scripts/check_modal_schema_cutover.py --approvals-only
 
       - name: Validate renderer deployment inputs
         if: steps.freshness.outputs.current == 'true'
@@ -295,6 +305,19 @@ jobs:
       - name: Verify Modal production deployment identity
         if: steps.freshness.outputs.current == 'true'
         run: timeout --kill-after=5s 40s python backend/scripts/verify_modal_deployment_identity.py --environment main --expected-sha "$DEPLOY_SHA"
+
+      # The pointer above proves what was deployed; it does not prove which
+      # revision the containers answering requests are running. Production once
+      # served a backend 32 commits behind while every other signal was green.
+      # Require the serving process itself to attest the exact revision.
+      - name: Verify serving backend revision
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 260s python backend/scripts/verify_serving_identity.py \
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA"
 
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'
