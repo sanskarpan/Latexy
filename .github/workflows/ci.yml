@@ -336,7 +336,7 @@ jobs:
 
       - name: Run tests
         run: >-
-          uv run pytest --tb=short -q
+          uv run pytest --asyncio-debug --tb=short -q
           -W error::ResourceWarning
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning
