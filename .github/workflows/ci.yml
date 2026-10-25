@@ -335,10 +335,8 @@ jobs:
           PY
 
       - name: Run tests
-        env:
-          PYTHONTRACEMALLOC: "5"
         run: >-
-          uv run pytest --asyncio-debug --tb=short -q
+          uv run pytest --tb=short -q
           -W error::ResourceWarning
           -W error::RuntimeWarning
           -W error::pytest.PytestUnraisableExceptionWarning

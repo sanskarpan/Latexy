@@ -1024,11 +1024,12 @@ def commit_latex_finalization(
                     return LatexFinalizationResult(True, canonical, replayed=True, terminal_status="completed")
                 if existing is not None and existing.state in {"cancelled", "failed", "fenced"}:
                     canonical = existing.result_payload if isinstance(existing.result_payload, dict) else None
+                    terminal_status = "cancelled" if existing.state == "cancelled" else "failed"
                     await session.rollback()
                     return LatexFinalizationResult(
                         False,
                         canonical,
-                        terminal_status="cancelled" if existing.state == "cancelled" else "failed",
+                        terminal_status=terminal_status,
                     )
                 if existing is None:
                     await session.rollback()
@@ -1126,6 +1127,9 @@ def commit_latex_finalization(
                         # publish its own terminal decision.
                         await session.rollback()
                         return LatexFinalizationResult(False, None)
+                    # Rollback expires ORM attributes even with
+                    # expire_on_commit=False. Read the durable scalar first.
+                    terminal_status = "cancelled" if row is not None and row.state == "cancelled" else "failed"
                     if outcome is FinalizationOutcome.ACCEPTED:
                         compilation = await session.scalar(
                             select(Compilation)
@@ -1138,7 +1142,6 @@ def commit_latex_finalization(
                         await session.commit()
                     else:
                         await session.rollback()
-                    terminal_status = "cancelled" if row is not None and row.state == "cancelled" else "failed"
                     return LatexFinalizationResult(False, canonical, terminal_status=terminal_status)
 
                 if not pdf_bytes:
@@ -1189,8 +1192,9 @@ def commit_latex_finalization(
                     return LatexFinalizationResult(True, canonical, replayed=True, terminal_status="completed")
                 if existing is not None and existing.state in {"cancelled", "failed", "fenced"}:
                     canonical = existing.result_payload if isinstance(existing.result_payload, dict) else None
+                    terminal_status = "cancelled" if existing.state == "cancelled" else "failed"
                     await session.rollback()
-                    return LatexFinalizationResult(False, canonical, terminal_status="cancelled" if existing.state == "cancelled" else "failed")
+                    return LatexFinalizationResult(False, canonical, terminal_status=terminal_status)
                 outcome = await commit_success(
                     session,
                     job_id=job_id,

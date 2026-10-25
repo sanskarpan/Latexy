@@ -250,7 +250,8 @@ async def test_storage_failure_is_durable_failure_without_compilation_completion
 
 
 @pytest.mark.asyncio
-async def test_cancel_can_commit_while_storage_upload_is_blocked(db_session_factory, monkeypatch):
+@pytest.mark.parametrize("storage_fails", [False, True])
+async def test_cancel_can_commit_while_storage_upload_is_blocked(db_session_factory, monkeypatch, storage_fails):
     job_id, owner, user_id, _ = await _seed(
         db_session_factory, with_compilation=True, with_resume=False
     )
@@ -265,6 +266,8 @@ async def test_cancel_can_commit_while_storage_upload_is_blocked(db_session_fact
             import time
 
             time.sleep(0.01)
+        if storage_fails:
+            raise OSError("Synthetic upload failure after cancellation")
         return compilation_pdf_key(job, token), hashlib.sha256(data).hexdigest()
 
     monkeypatch.setattr("app.services.storage_service.upload_compilation_pdf", blocked_upload)
@@ -289,6 +292,7 @@ async def test_cancel_can_commit_while_storage_upload_is_blocked(db_session_fact
     release_upload.set()
     outcome = await task
     assert not outcome
+    assert outcome.terminal_status == "cancelled"
     async with db_session_factory() as session:
         compilation = await session.scalar(select(Compilation).where(Compilation.job_id == job_id))
         row = await session.scalar(select(JobFinalization).where(JobFinalization.job_id == job_id))
