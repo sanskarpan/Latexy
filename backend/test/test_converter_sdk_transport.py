@@ -26,5 +26,3 @@ def test_sdk_transport_seam_captures_one_real_request_without_sockets(monkeypatc
             response = create()
             assert response.choices[0].message.content == ("invalid output" if outcome == "invalid_output" else VALID_LATEX)
     assert len(requests) == 1
-
-
