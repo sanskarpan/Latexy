@@ -109,7 +109,9 @@ export default function FAQPage() {
                     See how it feels.
                 </h2>
                 <p className="mx-auto mt-4 max-w-[45ch] leading-relaxed text-fg-2">
-                    Open the sample and make one edit. For writing advice, visit our{' '}
+                    Explore the interactive sample on our{' '}
+                    <Link href="/#landing-title" className="text-accent-strong underline underline-offset-4">homepage</Link>
+                    . Studio editing depends on availability. For writing advice, visit our{' '}
                     <Link
                         href="/resources"
                         className="text-accent-strong underline underline-offset-4"

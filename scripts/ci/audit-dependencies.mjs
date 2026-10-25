@@ -8,6 +8,7 @@ const mitigatedGhsa = 'GHSA-vfj7-8cjw-p6xm'
 const severities = ['info', 'low', 'moderate', 'high', 'critical']
 const MAX_ADVISORIES = 1000
 const MAX_FINDINGS_PER_ADVISORY = 100
+const MAX_PATHS_PER_FINDING = 10000
 const MAX_FIELD_LENGTH = 160
 const versionPattern = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$/
 const packagePattern = /^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/
@@ -32,7 +33,8 @@ function auditCounts(report) {
 
 function normalizedAdvisory(advisory) {
   if (!advisory || typeof advisory !== 'object' || Array.isArray(advisory) ||
-      !Array.isArray(advisory.findings) || advisory.findings.length > MAX_FINDINGS_PER_ADVISORY) {
+      !Array.isArray(advisory.findings) || advisory.findings.length === 0 ||
+      advisory.findings.length > MAX_FINDINGS_PER_ADVISORY) {
     throw new Error('Invalid dependency audit advisory')
   }
   const packageName = boundedString(advisory.module_name, 'package', packagePattern)
@@ -41,6 +43,11 @@ function normalizedAdvisory(advisory) {
   const lockedVersions = advisory.findings.map((finding) => {
     if (!finding || typeof finding !== 'object' || Array.isArray(finding)) {
       throw new Error('Invalid dependency audit finding')
+    }
+    if (!Array.isArray(finding.paths) || finding.paths.length === 0 ||
+        finding.paths.length > MAX_PATHS_PER_FINDING ||
+        finding.paths.some(path => typeof path !== 'string' || path.length === 0 || path.length > 10000)) {
+      throw new Error('Invalid dependency audit finding paths')
     }
     return boundedString(finding.version, 'locked version', versionPattern)
   })
@@ -53,6 +60,7 @@ function normalizedAdvisory(advisory) {
     severity: advisory.severity,
     lockedVersions: [...new Set(lockedVersions)].sort(),
     mitigated,
+    affectedPathCount: advisory.findings.reduce((sum, finding) => sum + finding.paths.length, 0),
   }
 }
 
@@ -65,12 +73,13 @@ export function summarizeAudit(report) {
   const advisories = Object.values(report.advisories)
   if (advisories.length > MAX_ADVISORIES) throw new Error('Dependency audit response exceeds supported bounds')
   const counts = auditCounts(report)
-  if (severities.reduce((sum, level) => sum + counts[level], 0) !== advisories.length) {
-    throw new Error('Incomplete dependency audit response')
-  }
   const findings = advisories.map(normalizedAdvisory)
+  // pnpm 10 forwards the npm v1 audit response. Its severity totals count
+  // affected dependency paths, not distinct advisory IDs or locked versions.
+  // Reconcile every path, but never emit provider-controlled path strings.
   const actualCounts = Object.fromEntries(severities.map(level => [
-    level, findings.filter(finding => finding.severity === level).length,
+    level, findings.filter(finding => finding.severity === level)
+      .reduce((sum, finding) => sum + finding.affectedPathCount, 0),
   ]))
   if (severities.some(level => counts[level] !== actualCounts[level])) {
     throw new Error('Contradictory dependency audit severity counts')

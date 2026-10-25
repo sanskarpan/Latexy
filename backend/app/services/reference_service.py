@@ -19,6 +19,7 @@ import httpx
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
+from ..core.egress_guard import assert_within_origin, guarded_async_client
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
 
@@ -175,12 +176,16 @@ class ReferenceService:
 
         encoded_doi = quote(doi, safe="")
         url = f"https://api.crossref.org/works/{encoded_doi}/transform/application/x-bibtex"
+        # The DOI reaches this path from user input. Encoding keeps it inert as a
+        # segment; this assertion additionally makes the Crossref origin a
+        # checked invariant rather than an assumption about the literal above.
+        assert_within_origin(url, "https://api.crossref.org")
         headers = {
             "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
         }
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with guarded_async_client(timeout=10.0) as client:
                 response = await client.get(url, headers=headers)
 
             if response.status_code == 200:
@@ -228,7 +233,7 @@ class ReferenceService:
             "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
         }
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with guarded_async_client(timeout=10.0) as client:
                 response = await client.get(
                     "https://api.crossref.org/works",
                     params={
@@ -305,7 +310,7 @@ class ReferenceService:
 
         url = "https://export.arxiv.org/api/query"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with guarded_async_client(timeout=10.0) as client:
                 response = await client.get(url, params={"id_list": clean_id})
 
             if response.status_code != 200:
@@ -496,7 +501,7 @@ class ReferenceService:
             "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
         }
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with guarded_async_client(timeout=15.0) as client:
                 response = await client.get(url, headers=headers)
 
             if response.status_code == 404:

@@ -7,6 +7,7 @@ import CapabilityGate from '@/components/CapabilityGate'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import type { ReactNode, RefObject } from 'react'
 import { reviewFonts } from './review-fonts'
+import { MarketingCTA } from './MarketingCTA'
 
 export default function LandingHeader({
     ready = true,
@@ -49,6 +50,7 @@ export default function LandingHeader({
                 >
                     {signedIn ? 'Dashboard' : 'Sign in'}
                 </Link>
+                <div className="ts-header-cta"><MarketingCTA label="Get started" /></div>
                 <button
                     ref={menuTriggerRef}
                     type="button"

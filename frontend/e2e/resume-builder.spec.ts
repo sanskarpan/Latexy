@@ -14,7 +14,8 @@ test.beforeEach(async ({ page }) => {
     b01: true, // create the builder document
     b06: true, // upload a seed document
     b07: true, // builder/JSON Resume import
-    b08: true, // guided builder experience
+    b08: true, // enter the guided builder
+    b09: true, // explicitly reattach structured builder data
     c01: true, // edit and save structured source
     c05: true, // compile for PDF preview and email/export
     h01: true, // JSON Resume interchange export

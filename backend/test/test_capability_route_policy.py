@@ -489,6 +489,8 @@ def test_safe_downgrade_routes_do_not_gain_product_dependencies():
     ("ws_routes", "create_websocket_ticket", {"purpose": "collab"}, ("f05",)),
     ("resume_routes", "update_resume_tags", {"tags": []}, ()),
     ("resume_routes", "update_collaborator_role", {"role": "viewer"}, ()),
+    # The stored role decides whether a commenter target is recovery or a write grant.
+    ("resume_routes", "update_collaborator_role", {"role": "commenter"}, ()),
     ("resume_routes", "update_collaborator_role", {"role": "editor"}, ("f04",)),
     ("workspace_routes", "update_member_role", {"role": "viewer"}, ()),
     ("workspace_routes", "update_member_role", {"role": "editor"}, ("f08",)),

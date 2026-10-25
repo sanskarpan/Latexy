@@ -1,0 +1,136 @@
+{
+  "scope": "Cloud validation of collaborator initial-sync recovery and access lifetime fixes",
+  "observed_date_utc": "2026-10-20",
+  "candidate_head": "96df50e1f25a659b65bcc5e643a2fbffe0ebc2a8",
+  "candidate_tree": "583ea4594ab2f1b23ccf4973c1bb10d34e1104b4",
+  "integrated_main": "74bd83197560bc57cfb32e04b8a5a433b513e0f1",
+  "runtime_subtrees": {
+    "frontend/src": "e29c206de621543ccc01e1b01559dbb5eae785f3",
+    "backend/app": "cd3a081a598cc78268ed7c1c917a6eb3b874301d"
+  },
+  "review": {
+    "production_delta": "independently reviewed",
+    "test_clock_helper": "independently reviewed; original bound native performance entry APIs retained"
+  },
+  "focused_checks": {
+    "frontend_tests_passed": 44,
+    "independent_frontend_tests_passed": 28,
+    "postgresql_integration_passed": 2,
+    "postgresql_integration_skipped": 0,
+    "typescript": "passed",
+    "changed_runtime_eslint": "passed"
+  },
+  "initial_sync_run": {
+    "browser": "WebKit",
+    "server_mode": "Next development",
+    "source_head": "0359aefe71365532276cdf34c0daec378e938b8c",
+    "source_tree": "8ad049c2de5792251066881b0e387054b855f766",
+    "scenario_passed": true,
+    "same_runtime_subtrees_as_candidate": true,
+    "assertions": [
+      {
+        "phase": "empty-relay-recovery",
+        "recoveredSource": "L",
+        "cleanPeerSource": "P",
+        "staleSave": 409
+      },
+      {
+        "phase": "title-only-rebind-reload",
+        "recoveredTitle": "Recovered T1",
+        "clearedOnlyAfterAcknowledgment": true
+      },
+      {
+        "phase": "clean-join-and-reload",
+        "source": "A + peer unsaved",
+        "paused": false
+      },
+      {
+        "phase": "pre-sync-title-reload",
+        "title": "T1",
+        "source": "Local before sync",
+        "autosavedBeforeInitialTicket": true
+      }
+    ],
+    "aggregate_limit": "This scenario passed in a run whose overall exit was nonzero: unavailable managed Chromium projects and the separate pre-fix role clock scenario failed."
+  },
+  "role_and_clock_run": {
+    "browser": "WebKit",
+    "server_mode": "Next development",
+    "source_head": "96df50e1f25a659b65bcc5e643a2fbffe0ebc2a8",
+    "source_tree": "583ea4594ab2f1b23ccf4973c1bb10d34e1104b4",
+    "tests_passed": 2,
+    "tests_failed": 0,
+    "exit_code": 0,
+    "assertions": [
+      {
+        "phase": "distinct-unsaved-pre-transition",
+        "browserMarkerPresent": true,
+        "storedMarkerPresent": false,
+        "autosaveDebounceHeldMs": 2500
+      },
+      {
+        "phase": "distinct-unsaved-at-role-commit",
+        "rolePatch": 200,
+        "storedMarkerPresent": false
+      },
+      {
+        "phase": "live-editor-role-change",
+        "closeCode": 4005
+      },
+      {
+        "phase": "active-editor-socket-f04-off",
+        "observationSocketOpenBeforeDisable": true,
+        "closeCode": 4003,
+        "currentStoredRole": "editor",
+        "restWrite": 403,
+        "forbiddenMarkerPersisted": false
+      },
+      {
+        "phase": "off",
+        "crossAccount": 404,
+        "selfRoleChange": 404,
+        "downgrade": 200,
+        "promotion": 403,
+        "invite": 403,
+        "write": 403
+      },
+      {
+        "phase": "recovered-and-revoked",
+        "write": 200,
+        "revokedRead": 404,
+        "promotionSocketClose": 4005,
+        "removalSocketClose": 4003,
+        "visibleSaveDisabled": true,
+        "distinctDraftPreserved": true
+      }
+    ],
+    "owner_f04_off_save_enabled": true
+  },
+  "clock_contract": {
+    "tracked_in": "frontend/e2e/collaborator-launch-fullstack.spec.ts",
+    "real_native_measure_entry": true,
+    "missing_mark_still_throws": true,
+    "timeout_ms": 2500,
+    "pending_after_virtual_ms": 100,
+    "fires_after_remaining_virtual_ms": 2400,
+    "counterfactual_unmodified_clock_entries": 0,
+    "no_fabricated_entries_or_exception_suppression": true
+  },
+  "prior_attempts": [
+    "Initial cloud run interrupted during editor compilation under memory pressure, before browser assertions.",
+    "Temporary local config inherited unavailable managed Chromium projects; their launch failures are not product passes.",
+    "Role scenario failed at Monaco input-latency getEntriesByName(...)[0].duration because fake performance entry methods returned no entries.",
+    "Moving clock installation after editor initialization did not resolve that failure. Earlier attribution to Next instrumentation was incorrect.",
+    "Preserving original bound native entry APIs fixed the harness contract; the role and removal scenario then passed."
+  ],
+  "isolation": "Fresh loopback test PostgreSQL and Redis, synthetic accounts, real Next auth, REST and CRDT relay. Owned services stopped. No mocked document or permission API responses, live providers, production writes, or deployments.",
+  "limits": [
+    "Separate initial-sync and role runs, not a single full-suite aggregate.",
+    "WebKit with development server; canonical Chromium CI remains required.",
+    "Canonical CI and shared dependency remediation pending at recording time.",
+    "Historical earlier Chromium results do not certify this candidate."
+  ],
+  "merge_ready": false,
+  "supersedes": "The initial-sync exclusion/pending-review statement in collaborator-reviewed-acceptance.json is historical; the implementation is now included and reviewed, with the scoped evidence above.",
+  "evidence_policy": "Only assertion summaries and source identifiers are retained; account/session/ticket values, raw traces, local runtime paths and generated metadata are excluded."
+}

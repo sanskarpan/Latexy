@@ -1,0 +1,19 @@
+{
+  "scope": "Reviewed source and tests for draft PR 1920; local synthetic acceptance",
+  "tested_local_commit": "843630f1a02c5940c85aa1ef8968bb17fb161b0d",
+  "integrated_main": "5c307d282c66d7807a5d6ab9c01b197f6ff0c013",
+  "backend": { "tests": 36, "failures": 0, "errors": 0, "skipped": 0 },
+  "chromium": { "passed": 1, "skipped": 0, "unexpected": 0, "flaky": 0 },
+  "pdf": { "bytes": 15628, "sha256": "5d8f68765dc018615c3d1bb2f2cac87c0447c5cee3b123c29d555e2159df3ece" },
+  "assertions": [
+    "Accepted PDF HTTP200 and matching HTTP/browser SHA256 before policy denial",
+    "Rendered review canvas before denial and after recovery",
+    "Role, plan family, SKU, F01 and collaboration parent: enabled200, disabled404, recovered200",
+    "Independent account read/write/share/revoke404 and private document absent from workspace",
+    "Owner revocation while parent disabled; old token remains404 after reenable; distinct replacement works"
+  ],
+  "counterfactual": "Removing only the public-share gate in copied container source makes the strengthened test fail: assert200==404; source restored",
+  "publication_fixture_setup": "Uses the backend configured storage client; no literal storage credentials",
+  "evidence_policy": "Raw local runtime logs, account/session/share values and container identities are excluded from published history",
+  "limits": ["Desktop Chromium only", "No full production build or fresh remote CI at local acceptance", "Worker finalization and provider delivery not exercised", "Already issued presigned URLs retain their configured TTL"]
+}

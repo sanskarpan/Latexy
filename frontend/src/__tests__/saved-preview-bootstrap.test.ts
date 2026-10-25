@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { recoveredDraftBaseline } from '@/lib/offline-drafts'
 import { PreviewScheduler } from '@/lib/preview-scheduler'
 import type { AccountPreferenceRequestContext } from '@/lib/api-client'
 import { isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, shouldSubmitInitialPreview, type AcceptedPreviewRecoveryResponse } from '@/lib/accepted-artifact-recovery'
@@ -83,6 +84,7 @@ function harness() {
     return true
   })
   const context: Record<string, unknown> = {
+    recoveredDraftBaseline,
     Error, AbortController, performance, TextEncoder, navigator: { onLine: true }, shouldSubmitInitialPreview,
     useCallback: (callback: (...args: never[]) => unknown) => callback,
     isCurrentAcceptedPreviewRecovery, isMatchingAcceptedArtifact, resolveCurrentAcceptedPreviewRecovery, sha256Bytes,

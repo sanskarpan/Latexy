@@ -27,8 +27,8 @@ const capabilities = [
     {
         icon: FileText,
         title: 'Build a résumé that reads well',
-        copy: 'Start visually, choose a professional template, and focus on your experience. Preview the PDF before you download it.',
-        availability: 'Start in the guest studio',
+        copy: 'Start visually, choose a professional template, and focus on your experience. PDF preview is available when compilation is enabled.',
+        availability: 'Guest studio access depends on availability',
     },
     {
         icon: Check,
@@ -79,7 +79,7 @@ export default function PlatformPage() {
                         <MarketingCTA />
                     </div>
                     <p className="mt-4 text-sm text-fg-3">
-                        Try the studio without an account. Sign up to save your work.
+                        Studio access depends on availability. Sign up to save your work.
                     </p>
                 </div>
                 <ol className="divide-y divide-line rounded-[var(--radius-lg)] border border-line bg-surface px-6 shadow-[var(--shadow-2)]">
@@ -177,7 +177,12 @@ export default function PlatformPage() {
                     <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
                         Start with one good edit.
                     </h2>
-                    <p className="mt-4 text-fg-2">Open the sample and see how it feels.</p>
+                    <p className="mt-4 text-fg-2">
+                        Explore the interactive sample on our homepage. Studio access depends on availability.
+                    </p>
+                    <Link href="/#landing-title" className="mt-3 inline-flex min-h-11 items-center gap-2 font-semibold text-accent-strong underline underline-offset-4">
+                        Explore the sample <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </Link>
                     <div className="mt-7">
                         <MarketingCTA />
                     </div>

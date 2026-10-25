@@ -34,6 +34,7 @@ import {
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useBuilderPdf } from '@/hooks/useBuilderPdf'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
+import { useCapabilityDraftRecovery } from '@/contexts/CapabilityRecoveryContext'
 import {
   cloneStructuredResume,
   createBuilderId,
@@ -340,6 +341,7 @@ function BuilderResumeForm({
   const canRef = useRef(can)
   canRef.current = can
   const contentEditAllowed = can('c01')
+  const builderEditAllowed = can('b08') && contentEditAllowed
   const ownerId = session.user.id
   const { ensureCompatible, isCompatible, available } = useBuilderCapability()
 
@@ -378,6 +380,11 @@ function BuilderResumeForm({
   const mountedRef = useRef(false)
   const authVerifiedRef = useRef(!authUnverified)
   authVerifiedRef.current = !authUnverified
+  const recoveryReady = savedBuilderRef.current?.resume.user_id === ownerId && savedBuilderRef.current.resume.id === resumeId
+  const downloadDraft = useCapabilityDraftRecovery(ownerId, `latexy-builder-${encodeURIComponent(resumeId)}-draft.json`, dirty, {
+    format: 'latexy-builder-draft', version: 1, resume_id: resumeId,
+    title, template_id: selectedTemplateId, structured_content: structured,
+  }, recoveryReady)
 
   useEffect(() => {
     mountedRef.current = true
@@ -476,6 +483,7 @@ function BuilderResumeForm({
   // uses its returned version, preventing an older PATCH from arriving last.
   const flushSave = useCallback(async (): Promise<BuilderResumeResponse | null> => {
     if (!canRef.current('c01') && dirtyRef.current) throw new Error('Editing résumé content is unavailable right now. Your saved source remains available.')
+    if (!canRef.current('b08') && dirtyRef.current) throw new Error('Guided editing is unavailable right now. Your changes are preserved in this tab.')
     if (saveFlightRef.current) return saveFlightRef.current
     const saveLatest = async () => {
       if (!mountedRef.current || !authVerifiedRef.current) throw new Error('Please wait for your session to be verified.')
@@ -490,6 +498,11 @@ function BuilderResumeForm({
         // transient save failure even though there is no PATCH to send.
         if (!dirtyRef.current) setSaveError(null)
         while (dirtyRef.current) {
+          // Compatibility checks and earlier writes can settle after a grant
+          // changes. Admit each new revision only under the current policy.
+          if (!canRef.current('b08') || !canRef.current('c01') || !isCompatible()) {
+            throw new Error('Guided editing is unavailable right now. Your changes are preserved in this tab.')
+          }
           const snapshot = draftRef.current
           if (!snapshot.title.trim() || snapshot.title.length > 255) throw new Error(!snapshot.title.trim() ? 'A résumé title is required' : 'Résumé titles must be 255 characters or fewer')
           const revision = editRevision.current
@@ -534,7 +547,7 @@ function BuilderResumeForm({
     const flight = saveLatest()
     saveFlightRef.current = flight
     try { return await flight } finally { if (saveFlightRef.current === flight) saveFlightRef.current = null }
-  }, [resumeId, ensureCompatible])
+  }, [resumeId, ensureCompatible, isCompatible])
 
   const isCurrentPdfRequest = useCallback(() => mountedRef.current && authVerifiedRef.current && isCompatible(), [isCompatible])
   const { previewPdf, downloadPdf, pdfUrl, isGenerating, error: pdfError, clearPreview } = useBuilderPdf({
@@ -546,10 +559,10 @@ function BuilderResumeForm({
 
   useEffect(() => {
     if (initialLoad.current) { initialLoad.current = false; return }
-    if (authUnverified || !dirty || builderStatus === 'detached' || saveConflict) return
+    if (authUnverified || !available || !builderEditAllowed || !dirty || builderStatus === 'detached' || saveConflict) return
     const timeout = window.setTimeout(() => { void flushSave().catch(() => {}) }, 600)
     return () => window.clearTimeout(timeout)
-  }, [authUnverified, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, flushSave])
+  }, [authUnverified, available, builderEditAllowed, dirty, structured, title, selectedTemplateId, builderStatus, saveConflict, flushSave])
 
   useEffect(() => {
     const warnIfDirty = (event: BeforeUnloadEvent) => {
@@ -621,7 +634,7 @@ function BuilderResumeForm({
   }
 
   const forceReattach = async () => {
-    const canReattachNow = () => canRef.current('c01') && canRef.current('b08')
+    const canReattachNow = () => canRef.current('c01') && canRef.current('b08') && canRef.current('b09')
     if (!canReattachNow() || !isCurrentRequest()) return
     if (!window.confirm('Replace the advanced editor version with the details shown in this builder?')) return
     const revision = editRevision.current
@@ -780,7 +793,7 @@ function BuilderResumeForm({
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            {contentEditAllowed && can('b08') && <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
+            {contentEditAllowed && can('b08') && can('b09') && <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
             </button>}
@@ -825,6 +838,7 @@ function BuilderResumeForm({
 
       {!contentEditAllowed && <section role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 text-sm text-fg-2">
         Editing guided résumé fields is unavailable. Your saved résumé and PDF recovery remain available in the source editor.
+        {recoveryReady && <button type="button" onClick={downloadDraft} className="mt-3 block font-semibold text-accent-strong underline">Download current builder draft (.json)</button>}
       </section>}
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[240px_minmax(0,1fr)_420px]">
         <aside className="space-y-4 xl:col-span-2 2xl:col-span-1">

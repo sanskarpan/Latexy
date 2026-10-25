@@ -510,9 +510,7 @@
         "frontend/src/app/try/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
-        "frontend/src/components/marketing/ReviewDesk.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx",
         "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
@@ -609,9 +607,6 @@
         "frontend/src/app/workspace/page.tsx",
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
-        "frontend/src/components/marketing/ReviewDesk.tsx",
         "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx"
       ],
@@ -837,7 +832,6 @@
       ],
       "dynamicOrServiceGates": [],
       "clientControls": [
-        "frontend/src/app/page.tsx",
         "frontend/src/app/templates/page.tsx",
         "frontend/src/app/workspace/new/page.tsx",
         "frontend/src/components/GlobalHeader.tsx",
@@ -1253,7 +1247,8 @@
       "dynamicOrServiceGates": [],
       "clientControls": [
         "frontend/src/app/try/page.tsx",
-        "frontend/src/app/workspace/[resumeId]/edit/page.tsx"
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -1628,9 +1623,7 @@
         "frontend/src/components/PdfImportWizard.tsx",
         "frontend/src/components/SemanticOptimizationPanel.tsx",
         "frontend/src/components/marketing/LandingExperience.tsx",
-        "frontend/src/components/marketing/MarketingFooter.tsx",
-        "frontend/src/components/marketing/MarketingSections.tsx",
-        "frontend/src/components/marketing/ReviewDesk.tsx",
+        "frontend/src/components/marketing/MarketingCTA.tsx",
         "frontend/src/components/marketing/ReviewJourney.tsx",
         "frontend/src/components/onboarding/OnboardingFlow.tsx",
         "frontend/src/hooks/useSuggestionRecovery.ts"
@@ -1920,7 +1913,8 @@
         "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/app/workspace/[resumeId]/optimize/page.tsx",
         "frontend/src/app/workspace/builder/[resumeId]/page.tsx",
-        "frontend/src/components/CompareModal.tsx"
+        "frontend/src/components/CompareModal.tsx",
+        "frontend/src/components/marketing/ReviewDesk.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
@@ -6360,15 +6354,19 @@
         "backend/app/api/resume_routes.py:invite_collaborator"
       ],
       "dynamicOrServiceGates": [
-        "backend/app/middleware/capability_router.py:payload_capabilities (collaborator role increase; viewer downgrade exempt)",
+        "backend/app/middleware/capability_router.py:payload_capabilities (editor promotion; commenter target is checked against the stored role by update_collaborator_role)",
+        "backend/app/api/resume_routes.py:update_collaborator_role (viewer-to-commenter write grant remains gated; role reductions are recovery)",
         "backend/app/api/resume_routes.py:_get_resume_document_access/update_resume (current collaborator and owner grants on reads and writes)"
       ],
       "clientControls": [
+        "frontend/src/app/workspace/[resumeId]/edit/page.tsx",
         "frontend/src/components/CollaboratorPanel.tsx"
       ],
       "verification": {
         "status": "automated_backend_policy_coverage",
         "automatedBackendEvidence": [
+          "backend/test/test_collaborator_capability_recovery.py (registered route OFF/recovery hierarchy, owner scope, and stale database-role denial)",
+          "backend/test/test_collaborator_capability_recovery_integration.py (PostgreSQL row-lock recheck denies stale editor-to-commenter after concurrent downgrade with F04 off)",
           "backend/test/test_capability_route_policy.py::test_disabled_capability_blocks_every_registered_operation (each listed handler/key)",
           "backend/test/test_capability_route_policy.py::test_dynamic_policy_preserves_recovery_and_checks_requested_operations (selector cases)"
         ],

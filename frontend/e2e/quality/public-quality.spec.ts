@@ -309,37 +309,26 @@ test('landing review desk produces desktop and phone evidence in both themes', a
                 await page.getByRole('button', { name: 'Toggle light or dark mode' }).click()
             }
             await expect(page.locator('html')).toHaveAttribute('data-mode', theme)
-            await expect(page.getByRole('heading', { name: 'Keep the next steps in view.', exact: true })).toBeVisible()
+            await expect(page.getByRole('heading', { name: 'Different roles. Sharper résumés.', exact: true })).toBeVisible()
             await page.evaluate(() => scrollTo(0, 0))
             const bounds = await page.locator('.lp-hero-actions > a:visible').evaluateAll(items => items.map(item => {
                 const { x, y, width, height } = item.getBoundingClientRect()
                 return { x, y, width, height }
             }))
             expect(bounds).toHaveLength(2)
-            expect(Math.abs(bounds[0].y - bounds[1].y)).toBeLessThan(1)
+            // The editorial hero may wrap its secondary link on narrow screens.
+            // Both actions must remain large enough and never overlap.
+            const separateRows = bounds[1].y >= bounds[0].y + bounds[0].height
+            const separateColumns = bounds[1].x >= bounds[0].x + bounds[0].width
+            expect(separateRows || separateColumns).toBe(true)
             expect(bounds.every(box => box.height >= 44 && box.width >= 100)).toBe(true)
             expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
-            if (width === 320 || width === 390) {
-                const overviewCards = await page.locator('.rd-overview > a').evaluateAll(items =>
-                    items.map(item => {
-                        const { x, y, width, height } = item.getBoundingClientRect()
-                        return { x, y, width, height }
-                    })
-                )
-                expect(overviewCards).toHaveLength(2)
-                if (width === 320) {
-                    expect(Math.abs(overviewCards[0].x - overviewCards[1].x)).toBeLessThan(1)
-                    expect(overviewCards[1].y).toBeGreaterThan(overviewCards[0].y + overviewCards[0].height)
-                    const reviewLinkHeight = await page
-                        .locator('.rd-overview > a')
-                        .first()
-                        .locator('span')
-                        .evaluate(item => item.getBoundingClientRect().height)
-                    expect(reviewLinkHeight).toBeLessThan(24)
-                } else {
-                    expect(overviewCards[1].x).toBeGreaterThan(overviewCards[0].x + overviewCards[0].width)
-                    expect(Math.abs(overviewCards[0].y - overviewCards[1].y)).toBeLessThan(1)
-                }
+            const workflow = page.locator('.ts-workflow ol a')
+            await expect(workflow).toHaveCount(4)
+            for (const link of await workflow.all()) {
+                const box = await link.boundingBox()
+                expect(box?.width).toBeGreaterThan(44)
+                expect(box?.height).toBeGreaterThan(44)
             }
             await expect(page.locator('.rd-note').getByRole('button', { name: 'Use suggestion' })).toBeVisible()
             if (width === 1440 || width === 390 || width === 320) {
@@ -358,7 +347,16 @@ test('landing appearance keeps contrast inside the keyboard accessible menu', as
         await expect(page.getByRole('button', { name: 'Toggle light or dark mode' })).toHaveCount(1)
         await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
         const trigger = page.getByRole('button', { name: 'Open navigation menu' })
-        await trigger.click()
+        const openMenu = async () => {
+            await trigger.click()
+            // Visibility alone includes opacity-zero, height-animating panels.
+            // Let the real menu finish opening before Playwright scrolls a control.
+            await expect.poll(() => page.locator('#landing-navigation').evaluate(element => ({
+                opacity: getComputedStyle(element).opacity,
+                height: (element as HTMLElement).style.height,
+            })), { timeout: 5000 }).toEqual({ opacity: '1', height: 'auto' })
+        }
+        await openMenu()
         const contrast = page.getByRole('button', { name: 'Turn on high contrast mode' })
         await expect(contrast).toBeVisible()
         await contrast.click()
@@ -366,7 +364,7 @@ test('landing appearance keeps contrast inside the keyboard accessible menu', as
         await page.keyboard.press('Escape')
         await expect(trigger).toBeFocused()
         await expect(page.getByRole('button', { name: /Turn .* high contrast mode/ })).toHaveCount(0)
-        await trigger.click()
+        await openMenu()
         await page.getByRole('button', { name: 'Turn off high contrast mode' }).click()
         await expect(page.locator('html')).toHaveAttribute('data-contrast', 'normal')
         await page.keyboard.press('Escape')
@@ -396,27 +394,31 @@ test('landing glass controls keep sound opt-in and preserve layout selection', a
         const scope = window as typeof window & { landingAudioCreates: number; landingAudioCloses: number }
         return { created: scope.landingAudioCreates, closed: scope.landingAudioCloses }
     })
+    const menu = page.locator('#landing-navigation')
+    const openPreferences = async () => {
+        await page.getByRole('button', { name: 'Open navigation menu' }).click()
+        // Height animation changes the scroll container's scrollTop even when
+        // a child briefly looks stable. Wait for the visible, settled panel
+        // before clicking its controls, not just for the button to exist.
+        await expect(menu).toHaveCSS('opacity', '1')
+        await expect(menu).toHaveAttribute('style', /height:\s*auto/)
+    }
     await page.locator('#resume-feedback').scrollIntoViewIfNeeded()
     expect((await audioCounts()).created).toBe(0)
     await expect(page.getByRole('button', { name: 'Interface sounds', exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     const sound = page.getByRole('button', { name: 'Interface sounds', exact: true })
     await expect(sound).toHaveAttribute('aria-pressed', 'false')
     await sound.click()
     await expect(sound).toHaveAttribute('aria-pressed', 'true')
     await expect.poll(async () => (await audioCounts()).created).toBe(1)
-    const menu = page.locator('#landing-navigation')
-    await expect(menu).toHaveCSS('opacity', '1')
-    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
     await testInfo.attach('landing-glass-menu', { body: await page.screenshot(), contentType: 'image/png' })
     const soundBox = await sound.boundingBox()
     expect(soundBox?.height).toBeLessThanOrEqual(52)
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Toggle light or dark mode', exact: true }).click()
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     await expect(sound).toHaveAttribute('aria-pressed', 'true')
-    await expect(menu).toHaveCSS('opacity', '1')
-    await expect(menu).toHaveAttribute('style', /height:\s*auto/)
     await testInfo.attach('landing-glass-menu-dark', { body: await page.screenshot(), contentType: 'image/png' })
     await page.keyboard.press('Escape')
     await page.getByRole('tab', { name: 'Export', exact: true }).click()
@@ -424,7 +426,7 @@ test('landing glass controls keep sound opt-in and preserve layout selection', a
     await expect(page.getByRole('radio', { name: 'Modern', exact: true })).toBeChecked()
     await expect(page.locator('.rd-paper')).toHaveAttribute('data-layout', 'modern')
     expect((await audioCounts()).created).toBe(1)
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await openPreferences()
     await sound.click()
     await expect(sound).toHaveAttribute('aria-pressed', 'false')
     await expect.poll(async () => (await audioCounts()).closed).toBe(1)
@@ -574,14 +576,15 @@ test('landing sample rejects empty role and contribution until corrected, retain
     await expect(desk.getByRole('button', { name: 'Use suggestion' })).toBeDisabled()
 })
 
-test('landing overview feedback card opens the ATS review it describes', async ({ page }) => {
+test('landing workflow feedback link opens the review it describes', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
-    const card = page.locator('.rd-overview > a[href="#resume-feedback"]')
-    await expect(card).toContainText('Review your résumé')
-    await card.click()
+    const link = page.locator('.ts-workflow a[href="#resume-feedback"]')
+    await expect(link).toContainText('Review')
+    await expect(link).toContainText('Consider suggestions on structure, content, and readability.')
+    await link.click()
     await expect(page).toHaveURL(/#resume-feedback$/)
     await expect(page.locator('#resume-feedback')).toBeInViewport()
-    await expect(page.locator('#resume-feedback')).toContainText('ATS feedback, with context')
+    await expect(page.locator('#resume-feedback')).toContainText('ATS feedback is guidance, not a hiring prediction.')
 })
 
 test('landing workflow and supporting tabs align focus, content and selection', async ({ page }) => {
@@ -601,13 +604,13 @@ test('landing workflow and supporting tabs align focus, content and selection', 
     await page.keyboard.press('End')
     await expect(tabs.getByRole('tab', { name: 'Export', exact: true })).toBeFocused()
     await page.getByRole('tab', { name: 'Keywords', exact: true }).click()
-    await expect(page.locator('.rd-report').getByRole('tabpanel')).toContainText('Use the language of the role.')
-    await page.getByLabel('Stage for Product Designer at Northstar Studio').selectOption('Interview')
-    await expect(page.getByLabel('Stage for Product Designer at Northstar Studio')).toHaveValue('Interview')
-    await page.getByRole('tab', { name: 'Source', exact: true }).click()
-    await expect(page.locator('.rd-document-source')).toContainText('documentclass')
-    await page.getByRole('tab', { name: 'PDF', exact: true }).click()
-    await expect(page.locator('.rd-document-paper')).toContainText('A note on energy')
+    await expect(page.locator('#resume-feedback').getByRole('tabpanel')).toContainText('Use relevant terms naturally')
+    await page.getByLabel('Explore a sample focus').selectOption('general')
+    await expect(page.locator('#tailor-application').getByRole('article', { name: 'Illustrative general résumé' })).toHaveCount(2)
+    await page.getByRole('combobox', { name: 'Typeface', exact: true }).selectOption('sans')
+    await expect(page.locator('#source-to-pdf article')).toHaveClass(/ts-document-sans/)
+    await page.getByRole('combobox', { name: 'Spacing', exact: true }).selectOption('relaxed')
+    await expect(page.locator('#source-to-pdf article')).toHaveClass(/ts-document-relaxed/)
 })
 
 test('landing phone stages retain edits and usable controls in both themes', async ({ page }, testInfo) => {
@@ -634,7 +637,7 @@ test('landing sends native résumé content and matching FAQ data in the HTML re
     const response = await request.get('/')
     expect(response.ok()).toBe(true)
     const html = await response.text()
-    expect(html).toContain('<h1 id="landing-title">Build a résumé.')
+    expect(html).toContain('<h1 id="landing-title">A better résumé')
     expect(html).toContain('aria-label="Classic sample résumé"')
     expect(html).toContain('<h3>Make the contribution clear</h3>')
     const scripts = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
@@ -654,11 +657,11 @@ test('landing keeps a public entry point when capabilities are unavailable', asy
     )
     await page.goto('/', { waitUntil: 'networkidle' })
     const hero = page.locator('.lp-hero-actions')
-    await expect(hero.getByRole('link', { name: 'Try the studio' })).toHaveCount(0)
-    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toBeVisible()
-    await expect(hero.getByRole('link', { name: 'Explore Latexy' })).toHaveAttribute(
+    await expect(hero.locator('[data-marketing-action="primary"]')).toHaveCount(0)
+    await expect(hero.getByRole('link', { name: 'Explore the sample' })).toBeVisible()
+    await expect(hero.getByRole('link', { name: 'Explore the sample' })).toHaveAttribute(
         'href',
-        '/platform'
+        '#resume-feedback'
     )
     await expect(hero.getByRole('link', { name: 'Explore templates' })).toHaveCount(0)
 })

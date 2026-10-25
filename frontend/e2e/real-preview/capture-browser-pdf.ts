@@ -5,6 +5,8 @@ export type BrowserPdfCapture = {
 
 export type PdfCaptureOptions = {
   apiOrigin: string; bindingName: string; maxBytes: number; maxCaptures: number; deadlineMs: number
+  /** Explicit opt-in for the saved-owner builder's normal /download/{job} fetch. */
+  ownedDownloads?: boolean
 }
 
 export type PdfCaptureController = {
@@ -49,10 +51,11 @@ export function installBrowserPdfCapture(options: PdfCaptureOptions) {
     } catch { return response }
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
     const match = /^\/download\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/preview\/([a-f0-9]{64})$/.exec(requested.pathname)
+      ?? (options.ownedDownloads ? /^\/download\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.exec(requested.pathname) : null)
     if (method !== 'GET' || requested.origin !== options.apiOrigin || requested.search || !match
       || returned.href !== requested.href) return response
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
-    const identity: BrowserPdfCapture = { jobId: match[1], artifactId: match[2], status: response.status,
+    const identity: BrowserPdfCapture = { jobId: match[1], artifactId: match[2] ?? '', status: response.status,
       fingerprint: headers.get('x-device-fingerprint') ?? '', requestId: headers.get('x-request-id') ?? '',
       deadlineAt: Date.now() + options.deadlineMs }
     captures++
