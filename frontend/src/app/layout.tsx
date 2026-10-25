@@ -21,6 +21,7 @@ import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
 import ReferralCapture from '@/components/ReferralCapture'
+import PWARegistration from '@/components/PWARegistration'
 import { siteUrl } from '@/lib/site-url'
 
 export const metadata: Metadata = {
@@ -80,6 +81,9 @@ export default async function RootLayout({
   return (
     <html lang={initialLocale} data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <noscript>
+          <style>{'[data-marketing-motion] { opacity: 1 !important; transform: none !important; }'}</style>
+        </noscript>
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-[var(--radius-md)] focus:bg-accent focus:px-4 focus:py-2 focus:font-ui focus:text-sm focus:font-semibold focus:text-accent-fg focus:shadow-[var(--shadow-2)] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg"
@@ -87,6 +91,7 @@ export default async function RootLayout({
           Skip to content
         </a>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <PWARegistration />
         <I18nProvider initialLocale={initialLocale}>
         <ThemeProvider>
         <AestheticController />

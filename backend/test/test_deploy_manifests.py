@@ -474,14 +474,24 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert step["env"] == {
         "PLAYWRIGHT_PORT": "5183",
         "PLAYWRIGHT_SERVER_MODE": "production",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE": "test-results/editor-compile-sync/results.json",
     }
     assert "e2e/editor-compile-sync.spec.ts" in step["run"]
     assert "e2e/resume-builder.spec.ts" in step["run"]
     assert "e2e/billing-developer.spec.ts" in step["run"]
+    assert "e2e/compiler-selector-keyboard.spec.ts" in step["run"]
+    assert "e2e/builder-saved-owner-race.spec.ts" in step["run"]
     assert "--retries=0" in step["run"]
     assert "--trace=on" in step["run"]
     assert "--workers=1" in step["run"]
     assert "--output=test-results/editor-compile-sync" in step["run"]
+    assert "--reporter=line,json" in step["run"]
+    assert "set -euo pipefail" in step["run"]
+    assert "rm -f test-results/editor-compile-sync/results.json" in step["run"]
+    assert (
+        "node ../scripts/ci/verify-owner-regression-manifest.mjs --report=test-results/editor-compile-sync/results.json"
+        in step["run"]
+    )
     assert "if" not in step  # Normal success chaining: no softened failure gate.
     assert step["id"] == "editor-owner-regressions"
     assert step.get("continue-on-error", "false") == "false"
@@ -529,7 +539,10 @@ def test_settings_hydration_diagnostic_is_failure_only_and_preserves_original_br
     steps = workflow["jobs"]["cross-browser-quality"]["steps"]
     original = next(step for step in steps if step.get("id") == "editor-owner-regressions")
     diagnostic = next(step for step in steps if step.get("name") == "Diagnose the failed Settings hydration callback")
-    assert steps.index(diagnostic) == steps.index(original) + 1
+    quality = next(step for step in steps if step.get("name") == "Audit desktop and mobile browser quality")
+    replay = next(step for step in steps if step.get("name") == "Verify Better Auth snapshot and vendored host replay contracts")
+    assert steps.index(original) < steps.index(quality)
+    assert steps.index(original) < steps.index(diagnostic) < steps.index(replay)
     failure_path = ("frontend/test-results/editor-compile-sync/"
                     "settings-legacy-callback-o-b4eb6-r-the-session-token-rotates-chromium/")
     assert diagnostic["if"] == (
@@ -558,6 +571,7 @@ def test_settings_hydration_diagnostic_is_failure_only_and_preserves_original_br
     assert "--repeat-each" not in command and "--update-snapshots" not in command and "|| true" not in command
     assert "if" not in original and original.get("continue-on-error", "false") == "false"
     artifact = next(step for step in steps if step.get("name") == "Upload browser quality evidence")
+    assert steps.index(replay) < steps.index(artifact)
     assert artifact["if"] == "${{ !cancelled() }}"
     assert "frontend/test-results/settings-hydration-diagnostic" in artifact["with"]["path"]
 

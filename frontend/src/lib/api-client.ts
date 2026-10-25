@@ -222,6 +222,11 @@ export interface HealthResponse {
   /** Object storage. Its absence from this type is how a 502-ing template
    *  gallery went unnoticed while /health still reported healthy. */
   storage?: string
+  /** Exact revision of the backend process answering this request, when the
+   *  runtime carries a validated value. Null means unattested, not healthy. */
+  commit_sha?: string | null
+  /** "modal" | "production" | "local" - descriptive observability metadata. */
+  deployment_target?: string
 }
 
 export interface BillingAvailability {

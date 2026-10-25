@@ -37,7 +37,13 @@ const nextConfig = {
   // subtree-level Strict Mode opt-out, so keep replay disabled until the
   // wrapper is replay-safe; production rendering is unaffected.
   reactStrictMode: false,
-  webpack: (config) => {
+  webpack: (config, { dev, isServer } = {}) => {
+    if (dev && !isServer) {
+      config.module.rules.push({
+        test: /[\\/]pdfjs-dist[\\/]build[\\/]pdf\.mjs$/,
+        use: [require.resolve('./scripts/pdfjs-webpack-dev-scope.cjs')],
+      })
+    }
     // Handle canvas for react-pdf
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false
@@ -66,6 +72,9 @@ const nextConfig = {
 
 const configuredNext = withPWA({
   dest: 'public',
+  // The client registrar contains optional-worker policy failures. next-pwa
+  // still constructs its Workbox instance before the application entry.
+  register: false,
   // Disable service worker in dev to avoid caching surprises during development
   disable: process.env.NODE_ENV === 'development',
   fallbacks: {

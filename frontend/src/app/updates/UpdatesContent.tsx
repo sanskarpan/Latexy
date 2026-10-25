@@ -10,9 +10,9 @@ export default function UpdatesContent({ staticFallback = false }: { staticFallb
   const Reveal = staticFallback ? StaticWrapper : MotionReveal
   const Stagger = staticFallback ? StaticWrapper : MotionStagger
   const Item = staticFallback ? StaticWrapper : MotionItem
-
   return (
     <div className="bg-bg text-fg">
+      {/* ── masthead ── */}
       <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <Reveal>
           <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Updates</span>
@@ -25,6 +25,7 @@ export default function UpdatesContent({ staticFallback = false }: { staticFallb
         </Reveal>
       </section>
 
+      {/* ── changelog ── */}
       <section className="mx-auto max-w-6xl px-5 pb-24 sm:px-8">
         <Stagger className="border-t border-line">
           {updates.map((item) => (

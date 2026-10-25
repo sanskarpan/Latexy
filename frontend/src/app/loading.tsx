@@ -10,6 +10,7 @@ import UpdatesContent from './updates/UpdatesContent'
  * the root layout, so it inherits the active aesthetic + mode tokens.
  */
 export default async function Loading() {
+  // Public local content remains useful when a streamed response cannot hydrate.
   const requestHeaders = await headers()
   if (requestHeaders.get('x-latexy-route-pathname') === '/updates') {
     return <UpdatesContent staticFallback />

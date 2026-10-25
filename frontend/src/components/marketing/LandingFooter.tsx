@@ -7,41 +7,48 @@ import { BrandLogo } from '@/components/brand/BrandLogo'
 import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import { reviewFonts } from './review-fonts'
 
 export default function LandingFooter({ year }: { year: number }) {
     const { billing } = useFeatureFlags()
     return (
-        <footer className="lp-footer">
+        <footer className={`lp-footer ${reviewFonts}`}>
             <div className="lp-container">
                 <section className="lp-footer-lead lp-closing" aria-labelledby="landing-closing">
                     <div className="lp-footer-message">
-                        <p className="lp-footer-eyebrow">Start with what you know</p>
+                        <p className="rd-eyebrow">Ready when you are</p>
                         <h2 id="landing-closing">
-                            You have the experience.
+                            Put your experience
                             <br />
-                            <em>Put it on the page.</em>
+                            <span>on the page.</span>
                         </h2>
                         <p>
-                            Choose a layout, add your experience, and make a résumé you are ready to
-                            send.
+                            A first draft, a new role, or a document from scratch. Make room for the
+                            work you want to do next.
                         </p>
-                        <MarketingCTA label="Try the studio" />
-                        <Link className="lp-primary-fallback" href="/platform">
-                            Explore Latexy <IconArrowRight size={15} aria-hidden="true" />
+                        <MarketingCTA label="Start your résumé" />
+                        <Link className="ts-closing-secondary" href="/#resume-feedback">
+                            Explore examples <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
                     </div>
-                    <div className="lp-footer-art" aria-hidden="true">
+                    <div className="ts-still-life">
                         <Image
-                            src="/marketing/footer-papers.webp"
-                            width={1536}
-                            height={1024}
-                            alt=""
-                            sizes="(max-width: 700px) 100vw, 650px"
+                            src="/images/typeset-still-life-printed.webp"
+                            alt="Illustrative résumé on layered cream paper and a navy notebook, with a brass pen and olive sprig"
+                            width={2161}
+                            height={728}
+                            loading="eager"
+                            sizes="100vw"
                         />
                     </div>
+                    <p className="ts-closing-caption">Same experience.<br />A brighter<br />next chapter.</p>
                 </section>
                 <div className="lp-footer-directory">
                     <div className="lp-footer-brand">
+                        <Link className="lp-footer-signature" href="/" aria-label="Latexy home">
+                            <BrandLogo />
+                        </Link>
+
                         <h3>The document studio</h3>
                         <p>
                             Résumés, applications, and LaTeX documents — from a first draft to a
@@ -73,9 +80,6 @@ export default function LandingFooter({ year }: { year: number }) {
                         </div>
                     </nav>
                 </div>
-                <Link className="lp-footer-signature" href="/" aria-label="Latexy home">
-                    <BrandLogo />
-                </Link>
                 <div className="lp-footer-row">
                     <p>© {year} Latexy. All rights reserved.</p>
                     <nav aria-label="Legal navigation">

@@ -1,7 +1,6 @@
 import UpdatesContent from './UpdatesContent'
 
-// The changelog is already local, complete content. Keep its server fallback
-// useful for no-JavaScript browsers while the route resolves.
+// Render complete local release notes while the route resolves, including without JavaScript.
 export default function Loading() {
   return <UpdatesContent staticFallback />
 }

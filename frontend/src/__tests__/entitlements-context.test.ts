@@ -15,6 +15,7 @@ async function harness() {
     addEventListener: (key: string, fn: () => void) => listeners.set(key, fn), removeEventListener: vi.fn() })
   vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: vi.fn(), removeEventListener: vi.fn() })
   const getEntitlements = vi.fn()
+  const refetchSession = vi.fn(async () => {})
   vi.doMock('react', () => ({
     createContext: (value: unknown) => ({ Provider: 'Provider', value }),
     useContext: (context: { value: unknown }) => context.value,
@@ -31,10 +32,11 @@ async function harness() {
   vi.doMock('react/jsx-runtime', () => ({ jsx: (type: unknown, props: unknown) => ({ type, props }) }))
   vi.doMock('react/jsx-dev-runtime', () => ({ jsxDEV: (type: unknown, props: unknown) => ({ type, props }) }))
   vi.doMock('@/lib/api-client', () => ({ apiClient: { getEntitlements } }))
-  vi.doMock('@/lib/auth-client', () => ({ useSession: () => session }))
+  vi.doMock('@/lib/auth-client', () => ({ useSession: () => ({ ...session, refetch: refetchSession }) }))
   const { EntitlementsProvider } = await import('@/contexts/EntitlementsContext')
   return {
     getEntitlements,
+    refetchSession,
     listen: () => effects[1](),
     expire: () => effects[2](),
     background: () => listeners.get('focus')?.(),
@@ -111,6 +113,73 @@ describe('identity-scoped feature availability', () => {
     h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('expired') })
     const value = h.render(); h.fetch(); expect(value.can('d01')).toBe(false); expect(value.error).toBeTruthy()
     expect(h.getEntitlements).not.toHaveBeenCalled()
+  })
+  it('retries session verification before fetching identity-scoped grants', async () => {
+    const h = await harness()
+    h.session({ data: null, isPending: false, error: new Error('session request failed') })
+    const failed = h.render()
+    h.fetch()
+    expect(failed.error).toBe('Could not verify your session')
+    expect(h.getEntitlements).not.toHaveBeenCalled()
+
+    h.refetchSession.mockImplementationOnce(async () => {
+      h.session({ data: { user: { id: 'recovered' } }, isPending: false, error: null })
+    })
+    h.getEntitlements.mockResolvedValue({ features: { c01: true } })
+    failed.refresh()
+    await flush()
+    expect(h.refetchSession).toHaveBeenCalledTimes(1)
+    expect(h.getEntitlements).not.toHaveBeenCalled()
+    h.render(); h.fetch(); await flush()
+    expect(h.render().can('c01')).toBe(true)
+  })
+  it('keeps prior grants invalid after repeated session retry failures', async () => {
+    const h = await harness()
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: null })
+    h.getEntitlements.mockResolvedValue({ features: { d01: true } })
+    h.render(); h.fetch(); await flush()
+    expect(h.render().can('d01')).toBe(true)
+
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('session offline') })
+    h.refetchSession.mockRejectedValue(new Error('still offline'))
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const failed = h.render()
+      expect(failed.error).toBe('Could not verify your session')
+      expect(failed.can('d01')).toBe(false)
+      failed.refresh()
+      await flush()
+      h.render(); h.fetch()
+      expect(h.refetchSession).toHaveBeenCalledTimes(attempt)
+      expect(h.getEntitlements).toHaveBeenCalledTimes(1)
+      expect(h.render().features).toEqual({})
+    }
+  })
+  it('rejects a prior identity response during rapid session retries', async () => {
+    const h = await harness()
+    let resolveOld!: (data: unknown) => void
+    h.getEntitlements.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: null })
+    h.render(); const cleanupOld = h.fetch()
+
+    h.session({ data: { user: { id: 'a' } }, isPending: false, error: new Error('session offline') })
+    const retryCompletions: Array<() => void> = []
+    h.refetchSession.mockImplementation(() => new Promise<void>(resolve => { retryCompletions.push(resolve) }))
+    const failed = h.render()
+    failed.refresh(); failed.refresh()
+    expect(h.refetchSession).toHaveBeenCalledTimes(2)
+    expect(h.render().can('d01')).toBe(false)
+    h.fetch()
+    expect(h.getEntitlements).toHaveBeenCalledTimes(1)
+
+    cleanupOld?.()
+    h.session({ data: { user: { id: 'b' } }, isPending: false, error: null })
+    h.getEntitlements.mockResolvedValueOnce({ features: { d01: false } })
+    h.render(); h.fetch(); await flush()
+    resolveOld({ features: { d01: true } })
+    retryCompletions.forEach(resolve => resolve())
+    await flush()
+    expect(h.render().can('d01')).toBe(false)
+    expect(h.render().features).toMatchObject({ d01: false })
   })
 })
 

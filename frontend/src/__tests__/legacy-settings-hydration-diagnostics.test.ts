@@ -3,14 +3,17 @@ import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import type { Page, Response, TestInfo } from '@playwright/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installLegacySettingsHydrationDiagnostics, LEGACY_SETTINGS_REACT_BYTES, LEGACY_SETTINGS_REACT_CHUNK, LEGACY_SETTINGS_REACT_SHA256 } from '../../e2e/helpers/legacy-settings-hydration-diagnostics'
+import { installLegacySettingsHydrationDiagnostics, parseHydrationDiagnosticBundleVariant, LEGACY_SETTINGS_REACT_BYTES, LEGACY_SETTINGS_REACT_CHUNK, LEGACY_SETTINGS_REACT_SHA256, type HydrationDiagnosticBundleVariant } from '../../e2e/helpers/legacy-settings-hydration-diagnostics'
 
 import { mainDocumentKind, runOwnerIsolationHydrationFixture } from '../../e2e/helpers/owner-isolation-hydration-fixture'
 
 vi.mock('node:crypto', () => ({ createHash: vi.fn() }))
 const BASE = new URL('http://127.0.0.1:5184')
 const OWN = 'owned-breakpoint'
-const source = ' '.repeat(173133)
+const source = ' '.repeat(173132)
+const ALTERNATE_CHUNK = '/_next/static/chunks/3bd6aaeb-d409a982c8f29501.js'
+const ALTERNATE_SHA256 = 'cf9dbc7db51665504380f569df7154f49083a80900d9bae41546549cb5e3cb3c'
+const alternateSource = ' '.repeat(173133)
 const validCapture = () => ({
   expected: { type: 'main', idCategory: 'main-content' },
   candidate: { nodeType: 8, nodeName: '#comment', idCategory: 'none', boundaryCommentKind: 'suspense-pending' },
@@ -41,16 +44,16 @@ function fake() {
   const page = Object.assign(new EventEmitter(), { context: () => ({ newCDPSession: connect }), close, mainFrame: () => frame }) as unknown as Page
   const attachments: string[] = []
   const attach = vi.fn(async (_name: string, options: { body: Buffer }) => { attachments.push(options.body.toString()) })
-  const info = { attach, status: 'passed' } as unknown as TestInfo
+  const info = { attach, status: 'passed', project: { metadata: {} } } as unknown as TestInfo
   return { cdp, page, connect, close, info, attach, attachments }
 }
 function parsed(cdp: FakeCDP, scriptId = 'script-1', url = new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href) {
   cdp.emit('Debugger.scriptParsed', { scriptId, url, executionContextId: scriptId === 'script-2' ? 2 : 1, executionContextAuxData: { frameId: 'main-frame', isDefault: true } })
-  cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35060 } })
+  cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35059 } })
 }
 function pause(cdp: FakeCDP, overrides: Record<string, unknown> = {}) {
   cdp.emit('Debugger.paused', {
-    callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35060 } }],
+    callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35059 } }],
     hitBreakpoints: [OWN], reason: 'other', ...overrides,
   })
 }
@@ -68,7 +71,7 @@ function htmlResponse(page: Page, url = new URL('/workspace', BASE).href, overri
   } as unknown as Response
 }
 function respond(page: Page, response: Response) { (page as unknown as EventEmitter).emit('response', response) }
-function report(test: ReturnType<typeof fake>) { return JSON.parse(test.attachments[0]) as { captures: unknown[]; failures: string[]; verified_scripts: number; resolved_scripts: number; capture_attempts: number; verified_documents: number; expected_main_documents: number; successful_main_app_documents: number; observation_status: string; scope: string } }
+function report(test: ReturnType<typeof fake>) { return JSON.parse(test.attachments[0]) as { bundle_variant: string; captures: unknown[]; failures: string[]; verified_scripts: number; resolved_scripts: number; capture_attempts: number; verified_documents: number; expected_main_documents: number; successful_main_app_documents: number; observation_status: string; scope: string } }
 
 describe('original-case CDP Settings hydration diagnostic', () => {
   const digest = vi.fn()
@@ -82,6 +85,140 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   })
   afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs() })
 
+  function configureAlternate(test: ReturnType<typeof fake>) {
+    digest.mockReturnValue(ALTERNATE_SHA256)
+    test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: alternateSource }))
+  }
+
+  it.each([35054, 35060])('requires the exact alternate bundle and claim endpoint: %s', async columnNumber => {
+    const test = fake()
+    configureAlternate(test)
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-cf9dbc7d')
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.enable', { maxScriptsCacheSize: 173133 })
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.setBreakpointByUrl', { url: new URL(ALTERNATE_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35054 })
+    parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
+    pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber } }] })
+    await flush()
+    await diagnostics.verifyReady(1)
+    await diagnostics.finish(test.info, false)
+    expect(update).toHaveBeenCalledWith(alternateSource)
+    expect(report(test)).toMatchObject({ bundle_variant: 'react-cf9dbc7d', verified_documents: 1, captures: [validCapture()], failures: [] })
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+    expect(test.cdp.detach).toHaveBeenCalledOnce()
+    expect(test.cdp.eventNames()).toEqual([])
+  })
+
+  it.each(['hash', 'length', 'bytes'])('rejects alternate %s drift before evaluation', async drift => {
+    const test = fake()
+    configureAlternate(test)
+    if (drift === 'hash') digest.mockReturnValue(LEGACY_SETTINGS_REACT_SHA256)
+    if (drift === 'length') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: alternateSource + 'x' }))
+    if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: '\u00e9'.repeat(173133) }))
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-cf9dbc7d')
+    parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
+    pause(test.cdp)
+    await flush()
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(report(test).failures).toContain('pinned-script-drift')
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+  })
+
+  it.each([
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35053 },
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35061 },
+    { functionName: 'anotherFunction', scriptId: 'script-1', columnNumber: 35054 },
+    { functionName: 'rD', scriptId: 'another-script', columnNumber: 35054 },
+  ])('rejects an unreviewed alternate pause: %s', async frame => {
+    const test = fake()
+    configureAlternate(test)
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-cf9dbc7d')
+    parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
+    pause(test.cdp, { callFrames: [{ functionName: frame.functionName, callFrameId: 'frame', location: { scriptId: frame.scriptId, lineNumber: 0, columnNumber: frame.columnNumber } }] })
+    await flush()
+    await diagnostics.finish(test.info, true)
+    expect(report(test).captures).toEqual([])
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+  })
+
+  it.each(['canonical', 'react-cf9dbc7d'] as const)('never discovers the other bundle while %s is selected', async variant => {
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, variant)
+    const otherChunk = variant === 'canonical' ? ALTERNATE_CHUNK : LEGACY_SETTINGS_REACT_CHUNK
+    parsed(test.cdp, 'script-1', new URL(otherChunk, BASE).href)
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.getScriptSource')).toBe(false)
+    expect(report(test).verified_scripts).toBe(0)
+  })
+
+  it.each([
+    { frameId: 'child-frame', isDefault: true },
+    { frameId: 'main-frame', isDefault: false, type: 'isolated' },
+    { frameId: 'main-frame', isDefault: true, type: 'isolated' },
+  ])('never trusts alternate bytes in an unrelated execution world: %s', async context => {
+    const test = fake()
+    configureAlternate(test)
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-cf9dbc7d')
+    test.cdp.emit('Debugger.scriptParsed', { scriptId: 'script-1', url: new URL(ALTERNATE_CHUNK, BASE).href, executionContextId: 1, executionContextAuxData: context })
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.getScriptSource')).toBe(false)
+    expect(report(test).verified_documents).toBe(0)
+  })
+
+  it('rejects alternate resolved locations outside the reviewed statement', async () => {
+    const test = fake()
+    configureAlternate(test)
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-cf9dbc7d')
+    parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
+    test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35061 } })
+    await flush()
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(report(test).failures).toContain('breakpoint-location-drift')
+  })
+
+  it.each([null, '', 'unknown', 'canonical ', 1, {}, []])('rejects malformed helper selection before CDP: %s', async value => {
+    const test = fake()
+    expect(() => parseHydrationDiagnosticBundleVariant(value)).toThrow('Unsupported hydration diagnostic bundle variant')
+    await expect(installLegacySettingsHydrationDiagnostics(test.page, BASE, value as HydrationDiagnosticBundleVariant)).rejects.toThrow('Unsupported hydration diagnostic bundle variant')
+    expect(test.connect).not.toHaveBeenCalled()
+    expect(test.attach).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, null, '', 'unknown', 1, {}, []])('rejects explicitly malformed project metadata before listeners or test body: %s', async value => {
+    const test = fake()
+    test.info.project.metadata.hydrationDiagnosticBundle = value
+    const body = vi.fn(async () => {})
+    await expect(runOwnerIsolationHydrationFixture(test.page, BASE, test.info, body)).rejects.toThrow('Unsupported hydration diagnostic bundle variant')
+    expect(body).not.toHaveBeenCalled()
+    expect(test.connect).not.toHaveBeenCalled()
+    expect(test.attach).not.toHaveBeenCalled()
+    expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
+  })
+
+  it('requires explicit alternate project metadata and records its bounded identity', async () => {
+    const test = fake()
+    configureAlternate(test)
+    test.info.project.metadata.hydrationDiagnosticBundle = 'react-cf9dbc7d'
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
+    })
+    expect(report(test)).toMatchObject({ bundle_variant: 'react-cf9dbc7d', verified_documents: 1, failures: [] })
+    expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
+  })
+
+  it('keeps explicit canonical metadata equivalent to the unchanged default pin', async () => {
+    const test = fake()
+    test.info.project.metadata.hydrationDiagnosticBundle = 'canonical'
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp)
+    })
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35053 })
+    expect(report(test)).toMatchObject({ bundle_variant: 'canonical', verified_documents: 1, failures: [] })
+  })
+
   it('observes the exact original case before navigation and preserves every behavior gate', () => {
     const fixture = readFileSync(new URL('../../e2e/settings-legacy-callback-owner-isolation.spec.ts', import.meta.url), 'utf8')
     const target = fixture.slice(fixture.indexOf("test('same-owner GitHub legacy callback succeeds after the session token rotates'"), fixture.indexOf("test('already-dispatched GitHub legacy verification survives"))
@@ -92,7 +229,9 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(target).not.toContain('installLegacySettingsHydrationDiagnostics')
     expect(target).not.toContain('finally')
     const shared = readFileSync(new URL('../../e2e/helpers/owner-isolation-hydration-fixture.ts', import.meta.url), 'utf8')
-    expect(shared.indexOf('installLegacySettingsHydrationDiagnostics(page, baseURL)')).toBeLessThan(shared.indexOf('await runTestBody(control)'))
+    const installing = shared.indexOf('installLegacySettingsHydrationDiagnostics(page, baseURL, variant)')
+    expect(installing).toBeGreaterThan(0)
+    expect(installing).toBeLessThan(shared.indexOf('await runTestBody(control)'))
     expect(shared).toContain('{ auto: true }')
     expect(shared).toContain('throw error')
     expect(shared).toContain('await diagnostics.finish(testInfo, originalFailure')
@@ -100,8 +239,9 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(fixture).toContain('expect(fixture.pageErrors).toEqual([])')
     const helper = readFileSync(new URL('../../e2e/helpers/legacy-settings-hydration-diagnostics.ts', import.meta.url), 'utf8')
     expect(helper).not.toMatch(/route\.fetch|route\.fulfill|page\.route|addInitScript|MutationObserver|outerHTML|innerHTML|textContent|document\.cookie|localStorage|authToken|session\.token|writeFile/)
-    expect(LEGACY_SETTINGS_REACT_BYTES).toBe(173133)
-    expect(LEGACY_SETTINGS_REACT_SHA256).toBe('fa2c533810f6e61eaa4849afbc041758c4eb89953b7f19f71e5b3527e1748941')
+    expect(LEGACY_SETTINGS_REACT_CHUNK).toBe('/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js')
+    expect(LEGACY_SETTINGS_REACT_BYTES).toBe(173132)
+    expect(LEGACY_SETTINGS_REACT_SHA256).toBe('30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d')
   })
 
   it('verifies parsed source and owned resolution, captures structural data, then resumes/removes/detaches', async () => {
@@ -109,9 +249,9 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
     expect(test.cdp.send.mock.calls.slice(0, 4)).toEqual([
       ['Page.getFrameTree'],
-      ['Debugger.enable', { maxScriptsCacheSize: 173133 }],
+      ['Debugger.enable', { maxScriptsCacheSize: 173132 }],
       ['Debugger.setPauseOnExceptions', { state: 'none' }],
-      ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35054 }],
+      ['Debugger.setBreakpointByUrl', { url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35053 }],
     ])
     parsed(test.cdp)
     pause(test.cdp)
@@ -121,7 +261,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     await diagnostics.finish(test.info, false)
     expect(createHash).toHaveBeenCalledWith('sha256')
     expect(update).toHaveBeenCalledWith(source)
-    expect(report(test)).toMatchObject({ verified_scripts: 2, resolved_scripts: 2, capture_attempts: 1, failures: [], captures: [validCapture()] })
+    expect(report(test)).toMatchObject({ bundle_variant: 'canonical', verified_scripts: 2, resolved_scripts: 2, capture_attempts: 1, failures: [], captures: [validCapture()] })
     expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
     expect(test.cdp.send).toHaveBeenCalledWith('Debugger.removeBreakpoint', { breakpointId: OWN })
     expect(test.cdp.detach).toHaveBeenCalledOnce()
@@ -154,7 +294,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     const test = fake()
     if (drift === 'hash') digest.mockReturnValue('0'.repeat(64))
     if (drift === 'length') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: source + 'x' }))
-    if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: 'é'.repeat(173133) }))
+    if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: 'é'.repeat(173132) }))
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
     parsed(test.cdp)
     pause(test.cdp)
@@ -183,9 +323,10 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   })
 
   it.each([
-    { functionName: 'anotherFunction', scriptId: 'script-1', columnNumber: 35060 },
-    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35061 },
-    { functionName: 'rD', scriptId: 'wrong-script', columnNumber: 35054 },
+    { functionName: 'anotherFunction', scriptId: 'script-1', columnNumber: 35059 },
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35052 },
+    { functionName: 'rD', scriptId: 'script-1', columnNumber: 35060 },
+    { functionName: 'rD', scriptId: 'wrong-script', columnNumber: 35053 },
   ])('resumes but rejects an unexpected frame: %s', async frame => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
@@ -198,11 +339,22 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
   })
 
+  it.each([35053, 35059])('accepts the exact verified claim range endpoint: %s', async columnNumber => {
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
+    parsed(test.cdp)
+    pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber } }] })
+    await flush()
+    await diagnostics.verifyReady(1)
+    await diagnostics.finish(test.info, false)
+    expect(report(test)).toMatchObject({ capture_attempts: 1, failures: [], captures: [validCapture()] })
+  })
+
   it('does not fetch source for a different origin/path/query or accept an unrelated resolution', async () => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
-    for (const url of ['http://localhost:5184' + LEGACY_SETTINGS_REACT_CHUNK, new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href + '?private', new URL('/_next/static/chunks/082d2186-other.js', BASE).href]) parsed(test.cdp, 'wrong', url)
-    test.cdp.emit('Debugger.breakpointResolved', { breakpointId: 'unrelated', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35054 } })
+    for (const url of ['http://localhost:5184' + LEGACY_SETTINGS_REACT_CHUNK, new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href + '?private', new URL('/_next/static/chunks/082d2186-other.js', BASE).href, new URL('/_next/static/chunks/acabd415-aedf19c35bd5be5e.js', BASE).href]) parsed(test.cdp, 'wrong', url)
+    test.cdp.emit('Debugger.breakpointResolved', { breakpointId: 'unrelated', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: 35053 } })
     pause(test.cdp)
     await flush()
     await expect(diagnostics.verifyReady(1)).rejects.toThrow('could not be verified')
@@ -441,7 +593,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
   })
 
   it('fails closed when setup returns no breakpoint or a wrong location', async () => {
-    for (const breakpoint of [{ breakpointId: '', locations: [] }, { breakpointId: OWN, locations: [{ scriptId: 'script-1', lineNumber: 0, columnNumber: 35061 }] }]) {
+    for (const breakpoint of [{ breakpointId: '', locations: [] }, { breakpointId: OWN, locations: [{ scriptId: 'script-1', lineNumber: 0, columnNumber: 35060 }] }]) {
       const test = fake()
       test.cdp.handlers.set('Debugger.setBreakpointByUrl', async () => breakpoint)
       const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
@@ -649,7 +801,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       ['contradictory-world', { frameId: 'main-frame', isDefault: false, type: 'default' }],
     ] as const) {
       test.cdp.emit('Debugger.scriptParsed', { scriptId, url: new URL(LEGACY_SETTINGS_REACT_CHUNK, BASE).href, executionContextId: 2, executionContextAuxData: context })
-      test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35060 } })
+      test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35059 } })
     }
     const verifying = expect(diagnostics.verifyReady(2)).rejects.toThrow('could not be verified')
     await vi.advanceTimersByTimeAsync(2001)

@@ -1,6 +1,96 @@
 import { expect, test, type Page } from '@playwright/test'
 
+type AdmissionPatch = {
+  title: string
+  template_id: string
+  structured_content: typeof STRUCTURED
+  expected_structured_version: number
+}
+
+function admissionGate() {
+  let release!: () => void
+  let started!: () => void
+  return {
+    wait: new Promise<void>(resolve => { release = resolve }),
+    observed: new Promise<void>(resolve => { started = resolve }),
+    release: () => release(),
+    started: () => started(),
+  }
+}
+
+async function admissionFixture(page: Page) {
+  const features = { b08: true, c01: true }
+  const patches: AdmissionPatch[] = []
+  const errors: string[] = []
+  const gates: ReturnType<typeof admissionGate>[] = []
+  let compatibilityGate: ReturnType<typeof admissionGate> | undefined
+  let writeGate: ReturnType<typeof admissionGate> | undefined
+  let compiles = 0
+  let saved = builderResponse({ id: OWNER_A_RESUME, owner: 'owner-a', templateId: TEMPLATE_A })
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({ json: { features: { ...features } } }))
+  await page.route('**/api/auth/get-session', route => route.fulfill({ json: {
+    session: { id: 'session-owner-a', userId: 'owner-a', token: 'token-owner-a', expiresAt: '2099-01-01T00:00:00Z' },
+    user: { id: 'owner-a', email: 'owner-a@example.com', name: 'Owner A' },
+  } }))
+  await page.route('**/ws/**', route => route.abort())
+  await page.route('**/resumes/builder/templates', route => route.fulfill({ json: templatesFor('owner-a') }))
+  await page.route('**/resumes/builder/capabilities', async route => {
+    const held = compatibilityGate
+    compatibilityGate = undefined
+    held?.started()
+    if (held) await held.wait
+    await route.fulfill({ json: { guided_builder_version: 1 } })
+  })
+  await page.route(`**/resumes/${OWNER_A_RESUME}/builder/v1`, async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: saved })
+    expect(route.request().method()).toBe('PATCH')
+    const patch = route.request().postDataJSON() as AdmissionPatch
+    patches.push(patch)
+    const held = writeGate
+    writeGate = undefined
+    held?.started()
+    if (held) await held.wait
+    expect(patch.expected_structured_version).toBe(saved.resume.structured_version)
+    saved = { ...saved, resume: { ...saved.resume, title: patch.title,
+      selected_template_id: patch.template_id, structured_content: patch.structured_content,
+      structured_version: saved.resume.structured_version + 1 } }
+    return route.fulfill({ json: saved })
+  })
+  await page.route(url => /\/(?:jobs|compile)(?:\/|$)/.test(url.pathname), route => {
+    if (route.request().method() === 'POST') compiles += 1
+    return route.abort()
+  })
+  return {
+    patches, errors,
+    holdCompatibility() { compatibilityGate = admissionGate(); gates.push(compatibilityGate); return compatibilityGate },
+    holdWrite() { writeGate = admissionGate(); gates.push(writeGate); return writeGate },
+    async grants(changes: Partial<typeof features>) {
+      Object.assign(features, changes)
+      const response = page.waitForResponse(value => new URL(value.url()).pathname === '/config/entitlements')
+      await page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
+      expect((await response).status()).toBe(200)
+    },
+    async draft() {
+      const downloadEvent = page.waitForEvent('download')
+      await page.getByRole('button', { name: 'Download current builder draft (.json)', exact: true }).click()
+      const download = await downloadEvent
+      expect(await download.failure()).toBeNull()
+      const stream = await download.createReadStream()
+      expect(stream).not.toBeNull()
+      const chunks: Buffer[] = []
+      for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
+      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as { resume_id: string; title: string; structured_content: typeof STRUCTURED }
+    },
+    compiles: () => compiles,
+    releaseAll() { for (const gate of gates) gate.release() },
+  }
+}
+
 test.beforeEach(async ({ page }) => {
+  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+    json: { features: { b08: true, c01: true } },
+  }))
   await page.route('**/resumes/builder/capabilities', route => route.fulfill({ json: { guided_builder_version: 1 } }))
 })
 
@@ -242,7 +332,15 @@ test.describe('saved guided builder ownership boundaries', () => {
       releaseFirstSave()
       await expect.poll(() => firstSaveFinished).toBe(true)
       await expect(page.getByText('Saving…')).not.toBeVisible()
-      await expect(page.getByText('Unsaved changes')).toBeVisible()
+      const dirtyStatus = page.getByText('Unsaved changes', { exact: true })
+      await expect(dirtyStatus).toBeAttached()
+      await expect(dirtyStatus).toBeHidden()
+      const retainedBuilder = page.locator('main > div[hidden][inert]').filter({ has: dirtyStatus })
+      await expect(retainedBuilder).toBeAttached()
+      await expect(retainedBuilder.locator('h1')).toHaveText('Owner A interrupted save')
+      await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
+      await expect(page.getByText('Feature availability could not be verified.', { exact: true })).toBeVisible()
+      expect(autosaves).toBe(1)
 
       sessionMode = 'ok'
       await page.evaluate(() => {
@@ -260,6 +358,9 @@ test.describe('saved guided builder ownership boundaries', () => {
   })
 
   test('does not apply a deferred owner-A force-reattach after the authenticated owner switches to B', async ({ page }) => {
+    await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+      json: { features: { b08: true, b09: true, c01: true } },
+    }))
     const owner = { value: 'owner-a' }
     let reattachStarted = false
     let reattachFinished = false
@@ -315,4 +416,195 @@ test.describe('saved guided builder ownership boundaries', () => {
       releaseReattach()
     }
   })
+})
+
+test('C25 saved owner recovers current local JSON across capability denial without new effects or cross-scope drafts', async ({ page }) => {
+  const secondResume = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+  const owner = { value: 'owner-a' }
+  const features = { b08: true, c01: true }
+  let saveAttempts = 0
+  let compileAttempts = 0
+  await page.route(url => url.pathname === '/config/entitlements', route => route.fulfill({
+    json: { features: { ...features, c05: true } },
+  }))
+  await page.route('**/api/auth/get-session', route => route.fulfill({
+    json: {
+      session: { id: `session-${owner.value}`, userId: owner.value, token: `token-${owner.value}`, expiresAt: '2099-01-01T00:00:00Z' },
+      user: { id: owner.value, email: `${owner.value}@example.com`, name: owner.value },
+    },
+  }))
+  await page.route('**/ws/**', route => route.abort())
+  await page.route('**/resumes/builder/templates', route => route.fulfill({ json: templatesFor(owner.value) }))
+  await page.route(url => /\/resumes\/[^/]+\/builder\/v1$/.test(url.pathname), route => {
+    if (route.request().method() === 'PATCH') {
+      saveAttempts += 1
+      // A real rejected save leaves unsaved work in place and stops autosave.
+      // This scenario measures recovery reads, not B08 write admission.
+      return route.fulfill({ status: 409, json: { detail: 'A newer structured version exists' } })
+    }
+    const parts = new URL(route.request().url()).pathname.split('/')
+    const id = parts[parts.length - 3]
+    const response = builderResponse({ id, owner: owner.value, templateId: owner.value === 'owner-a' ? TEMPLATE_A : TEMPLATE_B })
+    if (id === secondResume) response.resume.title = 'Owner B second builder'
+    return route.fulfill({ json: response })
+  })
+  await page.route(url => /\/(?:jobs|compile)(?:\/|$)/.test(url.pathname), route => {
+    if (route.request().method() === 'POST') compileAttempts += 1
+    return route.abort()
+  })
+  const refreshFeatures = async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event('latexy:entitlements-updated')))
+  }
+  const downloadDraft = async (id: string) => {
+    const before = { saveAttempts, compileAttempts }
+    const pending = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download current builder draft (.json)', exact: true }).click()
+    const download = await pending
+    expect(download.suggestedFilename()).toBe(`latexy-builder-${id}-draft.json`)
+    expect(await download.failure()).toBeNull()
+    const stream = await download.createReadStream()
+    expect(stream).not.toBeNull()
+    const chunks: Buffer[] = []
+    for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
+    const bytes = Buffer.concat(chunks)
+    expect({ saveAttempts, compileAttempts }).toEqual(before)
+    const draft = JSON.parse(bytes.toString('utf8'))
+    expect(Object.keys(draft).sort()).toEqual(['format', 'resume_id', 'structured_content', 'template_id', 'title', 'version'])
+    expect(bytes.equals(Buffer.from(JSON.stringify(draft, null, 2)))).toBe(true)
+    expect(draft).toMatchObject({ format: 'latexy-builder-draft', version: 1, resume_id: id })
+    return { bytes, draft }
+  }
+
+  await page.goto(`/workspace/builder/${OWNER_A_RESUME}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Owner A builder', exact: true })).toBeVisible()
+  await page.locator('#builder-resume-title').fill('Owner A unsaved recovery title')
+  await page.locator('#builder-template-select').selectOption(TEMPLATE_B)
+  await page.locator('#builder-basics-summary').fill('Owner A unsaved recovery summary')
+  const conflictAlert = page.getByRole('alert').filter({ has: page.getByText('A newer saved version exists', { exact: true }) })
+  await expect(conflictAlert.getByText('A newer saved version exists', { exact: true })).toBeVisible()
+  await expect(conflictAlert.getByText('Your edits are preserved here. Reload the saved copy to review the changes before saving or exporting.', { exact: true })).toBeVisible()
+  expect(saveAttempts).toBe(1)
+
+  features.b08 = false
+  await refreshFeatures()
+  await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
+  const retained = page.locator('main > div[hidden][inert]').filter({ has: page.getByRole('heading', { name: 'Owner A unsaved recovery title', includeHidden: true }) })
+  await expect(retained).toBeAttached()
+  await expect(retained).toBeHidden()
+  const hiddenRecovery = await downloadDraft(OWNER_A_RESUME)
+  expect(hiddenRecovery.draft).toEqual({
+    format: 'latexy-builder-draft', version: 1, resume_id: OWNER_A_RESUME,
+    title: 'Owner A unsaved recovery title', template_id: TEMPLATE_B,
+    structured_content: { ...STRUCTURED, basics: { ...STRUCTURED.basics, summary: 'Owner A unsaved recovery summary' } },
+  })
+
+  features.b08 = true
+  features.c01 = false
+  await refreshFeatures()
+  await expect(page.getByText('Editing guided résumé fields is unavailable.', { exact: false })).toBeVisible()
+  await expect(page.locator('#builder-resume-title')).toHaveCount(0)
+  const readOnlyRecovery = await downloadDraft(OWNER_A_RESUME)
+  expect(readOnlyRecovery.bytes.equals(hiddenRecovery.bytes)).toBe(true)
+
+  features.c01 = true
+  await refreshFeatures()
+  await expect(page.locator('#builder-resume-title')).toHaveValue('Owner A unsaved recovery title')
+  await expect(page.locator('#builder-template-select')).toHaveValue(TEMPLATE_B)
+  await expect(page.locator('#builder-basics-summary')).toHaveValue('Owner A unsaved recovery summary')
+  expect(saveAttempts).toBe(1)
+  expect(compileAttempts).toBe(0)
+
+  features.b08 = false
+  await refreshFeatures()
+  await expect(page.getByRole('button', { name: 'Download current builder draft (.json)' })).toBeVisible()
+  await switchOwner(page, owner, 'owner-b')
+  await expect(page.getByRole('button', { name: 'Download current builder draft (.json)' })).toHaveCount(0)
+  features.b08 = true
+  await refreshFeatures()
+  await expect(page.getByRole('heading', { name: 'Owner B builder', exact: true })).toBeVisible()
+  features.c01 = false
+  await refreshFeatures()
+  const ownerB = await downloadDraft(OWNER_A_RESUME)
+  expect(ownerB.draft.title).toBe('Owner B builder')
+  expect(ownerB.bytes.toString('utf8')).not.toContain('Owner A unsaved')
+
+  // A fresh document must offer only its own loaded state, never the old draft.
+  await page.goto(`/workspace/builder/${secondResume}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Owner B second builder', exact: true })).toBeVisible()
+  const nextDocument = await downloadDraft(secondResume)
+  expect(nextDocument.draft.title).toBe('Owner B second builder')
+  expect(nextDocument.bytes.toString('utf8')).not.toContain('Owner A unsaved')
+  expect(saveAttempts).toBe(1)
+  expect(compileAttempts).toBe(0)
+})
+
+test('B08 rechecks live admission after awaited compatibility and saves the retained revision once on regrant', async ({ page }) => {
+  const fixture = await admissionFixture(page)
+  try {
+    await page.goto(`/workspace/builder/${OWNER_A_RESUME}`, { waitUntil: 'domcontentloaded' })
+    await page.locator('#builder-resume-title').fill('Ordinary accepted baseline')
+    await expect.poll(() => fixture.patches.length).toBe(1)
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible()
+    expect(fixture.patches).toHaveLength(1)
+    expect(fixture.patches[0]).toMatchObject({ title: 'Ordinary accepted baseline', expected_structured_version: 1 })
+
+    const compatibility = fixture.holdCompatibility()
+    await page.locator('#builder-resume-title').fill('Retained after awaited B08 denial')
+    await compatibility.observed
+    await fixture.grants({ b08: false })
+    await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
+    compatibility.release()
+    const retry = page.getByRole('button', { name: /Save failed.*Retry/, includeHidden: true })
+    await expect(retry).toBeAttached()
+    await expect(retry).toBeHidden()
+    expect(fixture.patches).toHaveLength(1)
+    const draft = await fixture.draft()
+    expect(draft).toMatchObject({ resume_id: OWNER_A_RESUME, title: 'Retained after awaited B08 denial' })
+    expect(fixture.patches).toHaveLength(1)
+
+    await fixture.grants({ b08: true })
+    await expect(page.locator('#builder-resume-title')).toHaveValue(draft.title)
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible()
+    expect(fixture.patches).toHaveLength(2)
+    expect(fixture.patches[1]).toMatchObject({ title: draft.title, expected_structured_version: 2 })
+    expect(fixture.compiles()).toBe(0)
+    expect(fixture.errors).toEqual([])
+  } finally { fixture.releaseAll() }
+})
+
+test('B08 and C01 let an admitted save settle but pause the queued newer revision until both grants return', async ({ page }) => {
+  const fixture = await admissionFixture(page)
+  try {
+    await page.goto(`/workspace/builder/${OWNER_A_RESUME}`, { waitUntil: 'domcontentloaded' })
+    const admitted = fixture.holdWrite()
+    await page.locator('#builder-resume-title').fill('Already admitted revision')
+    await admitted.observed
+    expect(fixture.patches).toHaveLength(1)
+    await page.locator('#builder-resume-title').fill('Newest retained revision')
+    await page.locator('#builder-basics-summary').fill('Newest retained summary')
+    await fixture.grants({ b08: false, c01: false })
+    await expect(page.getByRole('heading', { name: 'Feature unavailable', exact: true })).toBeVisible()
+    admitted.release()
+    await expect(page.getByRole('button', { name: /Save failed.*Retry/, includeHidden: true })).toBeAttached()
+    const draft = await fixture.draft()
+    expect(draft).toMatchObject({ resume_id: OWNER_A_RESUME, title: 'Newest retained revision',
+      structured_content: { basics: { summary: 'Newest retained summary' } } })
+    expect(fixture.patches).toHaveLength(1)
+
+    // Restoring the builder alone must not override the content-edit denial.
+    await fixture.grants({ b08: true })
+    await expect(page.getByText('Editing guided résumé fields is unavailable.', { exact: false })).toBeVisible()
+    await expect(page.locator('#builder-resume-title')).toHaveCount(0)
+    expect(fixture.patches).toHaveLength(1)
+    await fixture.grants({ c01: true })
+    await expect(page.locator('#builder-resume-title')).toHaveValue(draft.title)
+    await expect(page.locator('#builder-basics-summary')).toHaveValue('Newest retained summary')
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible()
+    expect(fixture.patches).toHaveLength(2)
+    expect(fixture.patches[0]).toMatchObject({ title: 'Already admitted revision', expected_structured_version: 1 })
+    expect(fixture.patches[1]).toMatchObject({ title: draft.title, expected_structured_version: 2,
+      structured_content: { basics: { summary: 'Newest retained summary' } } })
+    expect(fixture.compiles()).toBe(0)
+    expect(fixture.errors).toEqual([])
+  } finally { fixture.releaseAll() }
 })

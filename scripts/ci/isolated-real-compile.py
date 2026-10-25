@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -44,6 +45,58 @@ CONTAINER_STATE_FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
     '"error":{{json .State.Error}},"networks":{{json .NetworkSettings.Networks}},'
     '"ports":{{json .NetworkSettings.Ports}}}')
 BROWSER_PREFLIGHT_HEADERS = ('content-type', 'authorization', 'x-device-fingerprint', 'x-request-id', 'traceparent')
+STORAGE_INTEGRATION_CASES = frozenset({
+    'test_real_conditional_immutable_writes',
+    'test_real_admitted_render_cache_preview_export_sync_geometry',
+    'test_real_guest_completed_artifact_binding_and_exact_cache',
+})
+
+BUILDER_CATALOG_PROBE = """
+import asyncio
+import json
+from pathlib import Path
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.core.config import settings
+from app.database.models import ResumeTemplate
+from app.services.resume_builder_service import resume_builder_service
+from app.utils.db_url import normalize_database_url
+
+def catalog_counts(rows):
+    return {
+        'total_templates': len(rows),
+        'active_templates': sum(active is True for category, document_type, active in rows),
+        'compatible_active_resume_templates': sum(
+            active is True and resume_builder_service.is_supported_category(category, document_type)
+            for category, document_type, active in rows),
+    }
+
+async def main():
+    engine = create_async_engine(normalize_database_url(settings.DATABASE_URL), echo=False)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text('SET TRANSACTION READ ONLY'))
+            rows = (await connection.execute(select(
+                ResumeTemplate.category, ResumeTemplate.document_type, ResumeTemplate.is_active))).all()
+            counts = catalog_counts(rows)
+        Path('/evidence/builder-catalog-readiness.json').write_text(json.dumps(counts) + '\\n')
+    finally:
+        await engine.dispose()
+
+asyncio.run(main())
+"""
+
+
+def owned_frontend_auth_environment(frontend_origin: str) -> dict[str, str]:
+    """Trust only the exact owned browser Origin, keeping CSRF checks enabled."""
+    match = re.fullmatch(r'http://127\.0\.0\.1:([1-9][0-9]{0,4})', frontend_origin)
+    if not match or int(match[1]) > 65535:
+        raise RuntimeError('Frontend auth requires an exact owned loopback origin')
+    return {
+        'PLAYWRIGHT_APP_URL': frontend_origin,
+        'PLAYWRIGHT_AUTH_URL': frontend_origin.replace('http:', 'https:', 1),
+        'BETTER_AUTH_TRUSTED_ORIGINS': frontend_origin,
+    }
 
 
 def verify_browser_cors(api_origin: str, frontend_origin: str, *, timeout: float = 40) -> dict:
@@ -160,11 +213,12 @@ class FixedTargetRelay(socketserver.ThreadingTCPServer):
     daemon_threads = True
     block_on_close = False
     request_queue_size = 64
+    allowed_ports = (8030, 5432)
 
     def __init__(self, address: str, port: int, deadline: float):
         ip = ipaddress.IPv4Address(address)
         if (not ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
-                or ip.is_reserved or ip.is_unspecified or port not in (8030, 5432)):
+                or ip.is_reserved or ip.is_unspecified or port not in self.allowed_ports):
             raise RuntimeError('Invalid fixed private relay target')
         self.target = (str(ip), port)
         self.deadline = deadline
@@ -289,6 +343,31 @@ def require_junit_cases(path: Path, expected: int) -> int:
     return len(cases)
 
 
+def require_storage_integration_proof(path: Path) -> dict:
+    """Require every real-storage case, not an empty/skipped opt-in suite."""
+    count = require_junit_cases(path, expected=len(STORAGE_INTEGRATION_CASES))
+    cases = list(ET.parse(path).getroot().iter('testcase'))
+    if ({case.get('name') for case in cases} != STORAGE_INTEGRATION_CASES
+            or any(case.get('classname', '').split('.')[-1] != 'test_render_storage_integration' for case in cases)):
+        raise RuntimeError('Required storage integration case identities are missing or unexpected')
+    return {'scope': 'isolated PostgreSQL/Redis/MinIO/native-TeX storage integration; not production acceptance',
+            'passed': count, 'skipped': 0, 'failed': 0, 'errors': 0,
+            'cases': sorted(STORAGE_INTEGRATION_CASES)}
+
+
+def require_builder_catalog_proof(path: Path) -> dict:
+    """Only aggregate readiness for the normal builder's canonical catalog."""
+    if path.stat().st_size > 4096:
+        raise RuntimeError('Owned builder catalog evidence exceeds its bound')
+    value = json.loads(path.read_text())
+    fields = {'total_templates', 'active_templates', 'compatible_active_resume_templates'}
+    if (not isinstance(value, dict) or set(value) != fields
+            or any(type(value[field]) is not int for field in fields)
+            or not 0 < value['compatible_active_resume_templates'] <= value['active_templates'] <= value['total_templates']):
+        raise RuntimeError('Owned builder catalog is empty, incompatible, or invalid')
+    return value
+
+
 def context_digest(directory: Path, *, frontend: bool = False) -> str:
     digest = hashlib.sha256()
     for path in sorted(directory.rglob("*")):
@@ -315,6 +394,41 @@ def require_browser_proof(path: Path) -> None:
                        "canvas_painted", "expected_text_rendered", "synctex_mappable",
                        "pdf_geometry_synctex_fingerprint_matches")) for sample in samples)):
         raise RuntimeError("Required real browser proof was empty, partial, or failed")
+
+
+def require_owner_browser_proof(path: Path) -> dict:
+    """Require saved-owner bytes and persisted default across the normal UI."""
+    value = json.loads(path.read_text())
+    true_fields = ('stored_default_verified', 'source_saved_and_reloaded', 'durable_artifact_accepted',
+                   'canvas_painted', 'expected_text_rendered', 'preview_download_bytes_match',
+                   'download_admission_count_unchanged', 'unrelated_owner_denied', 'private_preview_bytes_match')
+    zero_fields = ('runtime_error_count', 'capture_error_count', 'external_request_count',
+                   'compiler_settings_update_count')
+    source_fields = ('source_sha256', 'admitted_source_sha256', 'saved_source_sha256', 'durable_source_sha256')
+    pdf_fields = ('pdf_sha256', 'preview_pdf_sha256', 'downloaded_pdf_sha256', 'accepted_preview_pdf_sha256')
+    if (not isinstance(value, dict) or value.get('success') is not True
+            or value.get('scenario') != 'normal-saved-owner-default-lua' or value.get('compiler') != 'lualatex'
+            or type(value.get('admission_count')) is not int or value['admission_count'] != 1
+            or type(value.get('pdf_bytes')) is not int or not 0 < value['pdf_bytes'] <= 20 * 1024 * 1024
+            or any(value.get(field) is not True for field in true_fields)
+            or any(type(value.get(field)) is not int or value[field] != 0 for field in zero_fields)
+            or value.get('compiler_settings_override_used') is not False
+            or any(not isinstance(value.get(field), str) or not re.fullmatch(r'[0-9a-f]{64}', value[field])
+                   for field in (*source_fields, *pdf_fields, 'artifact_id'))
+            or len({value[field] for field in source_fields}) != 1 or len({value[field] for field in pdf_fields}) != 1
+            or not isinstance(value.get('limitations'), list) or not value['limitations']
+            or any(not isinstance(limit, str) or not limit.strip() for limit in value['limitations'])):
+        raise RuntimeError('Required saved-owner browser proof was empty, partial, or failed')
+    try:
+        measured = datetime.fromisoformat(value.get('measured_at_utc', '').replace('Z', '+00:00'))
+        if measured.utcoffset() != timezone.utc.utcoffset(measured):
+            raise ValueError('UTC timestamp required')
+    except (AttributeError, TypeError, ValueError):
+        raise RuntimeError('Required saved-owner browser proof has no UTC measurement time') from None
+    return {'scope': 'isolated saved-owner default Lua flow; not production acceptance',
+            'scenario': value['scenario'], 'admission_count': value['admission_count'],
+            'artifact_id': value['artifact_id'], 'source_sha256': value['source_sha256'],
+            'pdf_sha256': value['pdf_sha256'], 'pdf_bytes': value['pdf_bytes']}
 
 
 def wait_until_ready(probe, alive, timeout: float) -> None:
@@ -362,7 +476,7 @@ class Harness:
         self.app_environment: dict[str, str] = {}
         self.frontend_reservation = None
         self.relays: list[FixedTargetRelay] = []
-        self.provenance: dict[str, str] = {}
+        self.provenance: dict[str, object] = {}
         self.deadline = time.monotonic() + 45 * 60
         self.cleaning = False
 
@@ -478,6 +592,27 @@ class Harness:
             self.docker("logs", "--tail", "80", name)
             raise RuntimeError(f"Owned candidate QA process failed (exit {code})")
 
+    def storage_integration(self) -> None:
+        """Run only against this harness's fresh, private service fixtures."""
+        expected = {
+            'LATEXY_ISOLATED_CI': '1',
+            'MINIO_ENDPOINT': 'http://storage:9000', 'MINIO_BUCKET': self.prefix,
+            'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+            'TEST_REDIS_URL': 'redis://redis:6379/15', 'TEST_REDIS_CACHE_URL': 'redis://redis:6379/14',
+        }
+        if (not re.fullmatch(r'latexy-ci-[0-9a-f]{32}', self.prefix)
+                or any(self.app_environment.get(key) != value for key, value in expected.items())):
+            raise RuntimeError('Storage integration requires exact owned disposable fixtures')
+        report = self.evidence / 'render-storage-integration.xml'
+        if report.exists():
+            raise RuntimeError('Storage integration evidence must be fresh')
+        # The opt-in belongs to this QA process only. Never inherit it into the
+        # API/worker or use operator-provided storage configuration.
+        self.qa(['env', 'RUN_RENDER_STORAGE_INTEGRATION=1', 'python', '-m', 'pytest',
+                 'test/test_render_storage_integration.py', '-v',
+                 '--junitxml=/evidence/render-storage-integration.xml'], timeout=300)
+        self.provenance['render_storage_integration'] = require_storage_integration_proof(report)
+
     def prepare_storage_image(self) -> None:
         context = self.work / "storage-context"
         context.mkdir()
@@ -494,6 +629,24 @@ class Harness:
         self.storage_image_built = True
         self.provenance["storage_image_id"] = self.docker(
             "image", "inspect", "--format", "{{.Id}}", self.storage_image, capture=True)
+
+    def seed_builder_catalog(self) -> None:
+        """Seed shipped layouts only into our fresh disposable database."""
+        expected = {
+            'LATEXY_ISOLATED_CI': '1', 'ENVIRONMENT': 'development', 'DEBUG': 'false', 'DEPLOY_TARGET': 'local',
+            'DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+            'TEST_DATABASE_URL': 'postgresql+asyncpg://postgres@postgres:5432/latexy_ci_test',
+        }
+        if (not re.fullmatch(r'latexy-ci-[0-9a-f]{32}', self.prefix) or not self.network_created
+                or self.prefix + '-postgres' not in self.names
+                or any(self.app_environment.get(key) != value for key, value in expected.items())):
+            raise RuntimeError('Builder catalog seeding requires exact owned disposable fixtures')
+        report = self.evidence / 'builder-catalog-readiness.json'
+        if report.exists():
+            raise RuntimeError('Builder catalog evidence must be fresh')
+        self.qa(['python', '-m', 'app.scripts.seed_templates'], timeout=120)
+        self.qa(['python', '-c', BUILDER_CATALOG_PROBE], timeout=60)
+        self.provenance['builder_catalog'] = require_builder_catalog_proof(report)
 
     def prepare(self) -> tuple[str, str]:
         context = self.work / "context"
@@ -592,12 +745,16 @@ print('Fresh private artifact bucket ready')
         self.provenance["renderer_assets_fingerprint"] = json.loads(
             (self.evidence / "renderer-assets.json").read_text())["fingerprint_sha256"]
         self.qa(["alembic", "upgrade", "head"], timeout=180)
+        self.storage_integration()
         self.qa(["python", "-m", "pytest", "test/test_converter_failure_ledger_integration.py", "-v",
                  "--junitxml=/evidence/converter-failure-ledger.xml"], timeout=240)
         require_junit_cases(self.evidence / "converter-failure-ledger.xml", expected=11)
         self.qa(["python", "scripts/certify_resume_templates.py", "--samples", "1", "--timeout", "40",
                  "--fixture", "ats_safe/ats_clean.tex", "--fixture", "ats_safe/hindi_professional.tex",
                  "--output", "/evidence/required-template-certification.json"], timeout=180)
+        # Database-backed checks can clean fixture rows. Restore the normal
+        # source-owned catalog only after those checks, before serving the UI.
+        self.seed_builder_catalog()
         api = self.start("api", self.image, self.app_options(), [])
         worker = self.start("worker", self.image, self.app_options(),
             ["celery", "-A", "app.core.celery_app", "worker", "--queues", "latex", "--concurrency", "1",
@@ -622,11 +779,12 @@ print('Fresh private artifact bucket ready')
                         "--fixture", fixture, "--verify-isolated-storage", "--output", f"/evidence/real-job-{fixture}.json", timeout=180)
         postgres_origin = f"postgresql://postgres@127.0.0.1:{self.relay_port(postgres, 5432)}/latexy_ci_test"
         self.environment.update({
+            **owned_frontend_auth_environment(frontend_origin),
             "REAL_PREVIEW_BASE_URL": frontend_origin, "REAL_PREVIEW_API_URL": api_origin,
             "CI_ISOLATED_EVIDENCE_DIR": str(self.evidence), "PLAYWRIGHT_PORT": str(frontend_port),
-            "PLAYWRIGHT_SERVER_MODE": "production", "PLAYWRIGHT_APP_URL": frontend_origin,
+            "PLAYWRIGHT_SERVER_MODE": "production",
             "PLAYWRIGHT_BACKEND_URL": api_origin, "PLAYWRIGHT_API_URL": api_origin,
-            "PLAYWRIGHT_DATABASE_URL": postgres_origin, "PLAYWRIGHT_AUTH_URL": frontend_origin.replace("http:", "https:"),
+            "PLAYWRIGHT_DATABASE_URL": postgres_origin,
             "PLAYWRIGHT_BETTER_AUTH_SECRET": self.app_environment["BETTER_AUTH_SECRET"],
             "NEXT_PUBLIC_WS_URL": api_origin.replace("http:", "ws:"),
         })
@@ -651,8 +809,9 @@ print('Fresh private artifact bucket ready')
         wait_until_ready(frontend_ready, lambda: self.frontend.poll() is None, self.phase_timeout(1200))
         self.command(["pnpm", "exec", "playwright", "test", "--config=playwright.real-preview.config.ts"],
                      timeout=900, cwd=self.root / "frontend")
-        require_junit_cases(self.evidence / "real-preview.xml", expected=1)
+        require_junit_cases(self.evidence / "real-preview.xml", expected=2)
         require_browser_proof(self.evidence / "browser-proof.json")
+        self.provenance['owner_browser_acceptance'] = require_owner_browser_proof(self.evidence / 'owner-browser-proof.json')
         if context_digest(self.root / "frontend", frontend=True) != self.provenance["frontend_source_sha256"]:
             raise RuntimeError("Frontend source changed during its real functional proof")
 

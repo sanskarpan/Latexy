@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { changelog } from '@/data/changelog'
 
 const rootPolicy = fs.readFileSync(
   path.join(process.cwd(), '../legal/privacy-policy.md'),
@@ -13,6 +14,10 @@ const publicPolicy = fs.readFileSync(
 )
 
 describe('privacy policy accuracy', () => {
+  it('does not publish an unverified no-training promise in release notes', () => {
+    expect(JSON.stringify(changelog)).not.toMatch(/no.training|not.{0,20}train/i)
+  })
+
   it('keeps the source and published copies byte-identical', () => {
     expect(publicPolicy).toBe(rootPolicy)
   })

@@ -39,7 +39,7 @@ type Snapshot = {
 }
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
-  const { data: session, isPending, error: sessionError } = useSession()
+  const { data: session, isPending, error: sessionError, refetch: refetchSession } = useSession()
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [generation, setGeneration] = useState({ request: 0, invalidation: 0 })
   const identity = session?.user?.id ? `user:${session.user.id}` : 'anonymous'
@@ -49,7 +49,12 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     scopeRef.current = { identity, ready: identityReady, epoch: scopeRef.current.epoch + 1 }
   }
   const scopedIdentity = `${identity}:${scopeRef.current.epoch}`
-  const refresh = useCallback(() => setGeneration((n) => ({ request: n.request + 1, invalidation: n.invalidation + 1 })), [])
+  const refresh = useCallback(() => {
+    setGeneration((n) => ({ request: n.request + 1, invalidation: n.invalidation + 1 }))
+    // A failed session blocks identity-scoped entitlement requests. Retry must
+    // recover identity first; the ready transition then fetches fresh grants.
+    if (sessionError) void Promise.resolve(refetchSession()).catch(() => {})
+  }, [sessionError, refetchSession])
   const backgroundRefresh = useCallback(() => setGeneration((n) => ({ ...n, request: n.request + 1 })), [])
 
   useEffect(() => {

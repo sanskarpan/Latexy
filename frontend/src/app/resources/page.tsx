@@ -152,8 +152,11 @@ export default function ResourcesPage() {
                     Try it on a real document.
                 </h2>
                 <p className="mt-4 text-fg-2">
-                    Open the sample, make an edit, and preview your résumé.
+                    Explore the interactive sample on our homepage. Studio editing depends on availability.
                 </p>
+                <Link href="/#landing-title" className="mt-3 inline-flex min-h-11 items-center font-semibold text-accent-strong underline underline-offset-4">
+                    Explore the sample
+                </Link>
                 <div className="mt-7">
                     <MarketingCTA />
                 </div>

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { recoveredDraftBaseline } from '@/lib/offline-drafts'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import { forgetOfflinePdfOwner, getRememberedOfflinePdfOwner, OFFLINE_PDF_OWNER_KEY } from '@/lib/offline-pdfs'
 import { editorRecoveryLoadBoundary } from '@/hooks/useLatexGeneratorRecovery'
@@ -53,6 +54,7 @@ function harness() {
   const getDraft = vi.fn().mockResolvedValue(null), getOfflineCompiledPdf = vi.fn().mockResolvedValue(null)
   const editor = { setValue: vi.fn() }
   const context: Record<string, any> = {
+    recoveredDraftBaseline,
     AbortController, acceptedArtifactRecoveryControllerRef: { current: null },
     shouldSubmitInitialPreview, resumeContentRevisionRef: { current: null },
     sessionData: session('owner-a'), sessionUserId: 'owner-a', sessionLoading: false, sessionRefetching: false, sessionError: null,

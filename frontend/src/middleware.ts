@@ -67,6 +67,7 @@ export async function middleware(request: NextRequest) {
   // it as a request header lets the server layout render the same locale that
   // the client provider receives, avoiding a hydration flash/mismatch.
   const requestHeaders = new Headers(request.headers)
+  // Presentation-only routing hint, always overwrite any caller-supplied value.
   requestHeaders.set('x-latexy-route-pathname', request.nextUrl.pathname)
   requestHeaders.set(
     'x-latexy-ui-locale',
@@ -120,7 +121,8 @@ export async function middleware(request: NextRequest) {
         url.pathname = `/u/${username}`
         // The resolved destination is a deliberately public portfolio, even if
         // its custom-domain incoming path resembles an application route.
-        return NextResponse.rewrite(url)
+        requestHeaders.set('x-latexy-route-pathname', url.pathname)
+        return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
       }
     }
   } catch {

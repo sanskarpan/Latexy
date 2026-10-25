@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 import httpx
 
+from ..core.egress_guard import assert_within_origin, guarded_async_client
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -29,16 +30,22 @@ class GitHubSyncService:
 
     @staticmethod
     def _repo_url(owner: str, repo: str, suffix: str = "") -> str:
-        return (
+        url = (
             f"{GITHUB_API}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
             f"{suffix}"
         )
+        # The owner and repository reach this path from user input. Percent-
+        # encoding keeps them inert as segments, and this assertion makes the
+        # fixed origin a checked invariant: a request that resolved anywhere but
+        # api.github.com would raise rather than be sent to an attacker's host.
+        assert_within_origin(url, GITHUB_API)
+        return url
 
     # ── Repo management ──────────────────────────────────────────────────
 
     async def ensure_repo(self, token: str, username: str, repo_name: str) -> None:
         """Create a private repo if it doesn't already exist."""
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with guarded_async_client(timeout=15) as client:
             # Check if repo exists
             resp = await client.get(
                 self._repo_url(username, repo_name),
@@ -107,7 +114,7 @@ class GitHubSyncService:
         headers = self._headers(token)
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with guarded_async_client(timeout=15) as client:
             get_resp = await client.get(url, headers=headers)
             remote_sha: Optional[str] = None
             if get_resp.status_code == 200:
@@ -144,7 +151,7 @@ class GitHubSyncService:
     async def pull_file(self, token: str, owner: str, repo: str, path: str) -> dict:
         """Fetch a file and return its decoded text plus immutable blob SHA."""
         url = self._repo_url(owner, repo, f"/contents/{quote(path, safe='/')}")
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with guarded_async_client(timeout=15) as client:
             resp = await client.get(url, headers=self._headers(token))
             resp.raise_for_status()
             data = resp.json()
@@ -165,7 +172,7 @@ class GitHubSyncService:
 
     async def get_github_user(self, token: str) -> dict:
         """Fetch the authenticated GitHub user profile."""
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with guarded_async_client(timeout=10) as client:
             resp = await client.get(
                 f"{GITHUB_API}/user", headers=self._headers(token)
             )
@@ -185,7 +192,7 @@ class GitHubSyncService:
         idempotent success: the user may already have revoked the app directly
         in GitHub settings.
         """
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with guarded_async_client(timeout=15) as client:
             resp = await client.delete(
                 f"{GITHUB_API}/applications/{quote(client_id, safe='')}/grant",
                 auth=(client_id, client_secret),

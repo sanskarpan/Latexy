@@ -2991,6 +2991,8 @@ async def update_collaborator_role(
             ResumeCollaborator.resume_id == resume_id,
             ResumeCollaborator.user_id == collab_user_id,
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     collab = result.scalar_one_or_none()
     if collab is None:
