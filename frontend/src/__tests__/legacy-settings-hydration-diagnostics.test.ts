@@ -13,6 +13,8 @@ const OWN = 'owned-breakpoint'
 const source = ' '.repeat(173132)
 const ALTERNATE_CHUNK = '/_next/static/chunks/3bd6aaeb-d409a982c8f29501.js'
 const ALTERNATE_SHA256 = 'cf9dbc7db51665504380f569df7154f49083a80900d9bae41546549cb5e3cb3c'
+const INTEGRATION_CHUNK = '/_next/static/chunks/bb3797b0-cb37aa562aab9c82.js'
+const INTEGRATION_SHA256 = '3ea14a6d5ba4985d418ae811b25f38c0a2a7e2a64f935bc032adc4f35602a08b'
 const alternateSource = ' '.repeat(173133)
 const validCapture = () => ({
   expected: { type: 'main', idCategory: 'main-content' },
@@ -89,6 +91,48 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     digest.mockReturnValue(ALTERNATE_SHA256)
     test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: alternateSource }))
   }
+
+  it.each([35053, 35059])('verifies the reviewed integration bundle at claim endpoint %s', async columnNumber => {
+    const test = fake()
+    digest.mockReturnValue(INTEGRATION_SHA256)
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-3ea14a6d')
+    expect(test.cdp.send).toHaveBeenCalledWith('Debugger.setBreakpointByUrl', {
+      url: new URL(INTEGRATION_CHUNK, BASE).href, lineNumber: 0, columnNumber: 35053,
+    })
+    parsed(test.cdp, 'script-1', new URL(INTEGRATION_CHUNK, BASE).href)
+    pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber } }] })
+    await flush()
+    await diagnostics.verifyReady(1)
+    await diagnostics.finish(test.info, false)
+    expect(report(test)).toMatchObject({ bundle_variant: 'react-3ea14a6d', verified_documents: 1, captures: [validCapture()], failures: [] })
+  })
+
+  it.each(['hash', 'length', 'bytes'])('rejects integration %s drift before evaluation', async drift => {
+    const test = fake()
+    digest.mockReturnValue(drift === 'hash' ? LEGACY_SETTINGS_REACT_SHA256 : INTEGRATION_SHA256)
+    if (drift !== 'hash') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({
+      scriptSource: drift === 'length' ? source + 'x' : 'é' + source.slice(1),
+    }))
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, 'react-3ea14a6d')
+    parsed(test.cdp, 'script-1', new URL(INTEGRATION_CHUNK, BASE).href)
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
+    expect(report(test).verified_scripts).toBe(0)
+  })
+
+  it.each([
+    { selected: 'canonical', other: INTEGRATION_CHUNK },
+    { selected: 'react-cf9dbc7d', other: INTEGRATION_CHUNK },
+    { selected: 'react-3ea14a6d', other: LEGACY_SETTINGS_REACT_CHUNK },
+    { selected: 'react-3ea14a6d', other: ALTERNATE_CHUNK },
+  ] as const)('never discovers an unselected integration variant: %s', async ({ selected, other }) => {
+    const test = fake()
+    const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, selected)
+    parsed(test.cdp, 'script-1', new URL(other, BASE).href)
+    await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+    expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.getScriptSource')).toBe(false)
+    expect(report(test).verified_scripts).toBe(0)
+  })
 
   it.each([35054, 35060])('requires the exact alternate bundle and claim endpoint: %s', async columnNumber => {
     const test = fake()

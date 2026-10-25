@@ -7,9 +7,9 @@ import { createHash } from 'node:crypto'
 export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
 export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'
 export const LEGACY_SETTINGS_REACT_BYTES = 173132
-export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d'
+export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d' | 'react-3ea14a6d'
 export function parseHydrationDiagnosticBundleVariant(value: unknown): HydrationDiagnosticBundleVariant {
-  if (value === 'canonical' || value === 'react-cf9dbc7d') return value
+  if (value === 'canonical' || value === 'react-cf9dbc7d' || value === 'react-3ea14a6d') return value
   throw new Error('Unsupported hydration diagnostic bundle variant')
 }
 const BUNDLES = Object.freeze({
@@ -23,6 +23,14 @@ const BUNDLES = Object.freeze({
     chunk: '/_next/static/chunks/3bd6aaeb-d409a982c8f29501.js',
     sha256: 'cf9dbc7db51665504380f569df7154f49083a80900d9bae41546549cb5e3cb3c',
     bytes: 173133, claimColumn: 35054, lastColumn: 35060,
+  }),
+  // CI 40191319151, artifact 12598536554: complete implementation suffix is
+  // byte-identical to canonical (SHA-256 e6604c561c5dad505ada5a21b72493343
+  // 2022bf7fce468ca7a0d21c1b202f274). Only webpack header IDs changed.
+  'react-3ea14a6d': Object.freeze({
+    chunk: '/_next/static/chunks/bb3797b0-cb37aa562aab9c82.js',
+    sha256: '3ea14a6d5ba4985d418ae811b25f38c0a2a7e2a64f935bc032adc4f35602a08b',
+    bytes: 173132, claimColumn: 35053, lastColumn: 35059,
   }),
 })
 const COMMAND_TIMEOUT_MS = 250
