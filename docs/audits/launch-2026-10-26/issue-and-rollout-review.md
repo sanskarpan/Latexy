@@ -64,24 +64,28 @@ scope. No closure asserts that the latest backend was deployed.
 | #1843 quota credential scope | #1833 `c24531e2`; #1844 `0d628cba`; key/rotation/quota regressions | [comment](https://github.com/sanskarpan/Latexy/issues/1843#issuecomment-6415764855) |
 | #1841 PDF import validation | #1833 `c24531e2`; bounded/encrypted/owner import regressions | [comment](https://github.com/sanskarpan/Latexy/issues/1841#issuecomment-6415766351) |
 | #1772 React hydration repair | #1975 `9b9713e2`; #1983 `eeeecc8a`; production-renderer reproducer and current browser CI | [comment](https://github.com/sanskarpan/Latexy/issues/1772#issuecomment-6415767936) |
-| #1815 immutable artifact/cache implementation | #1833 `c24531e2`; #1904 `4182705d`; #1905 `d35b00fe`; backend/isolated real compile CI | [comment](https://github.com/sanskarpan/Latexy/issues/1815#issuecomment-6415769324) |
 | #1817 semantic revisions/import identity | #1833 `c24531e2`; semantic/DB/CAS/import regressions | [comment](https://github.com/sanskarpan/Latexy/issues/1817#issuecomment-6415770571) |
 | #1818 paid-stage ledger/lifecycle | #1833 `c24531e2`; reservation/fence/replay/refund regressions | [comment](https://github.com/sanskarpan/Latexy/issues/1818#issuecomment-6415771837) |
 
-The #1815 implementation closure does not certify all legacy consumers. The
-general-download defect found during recovery review requires this follow-up
-repair before rollout. Similarly, #1772 closure does not complete the real owner
-journey acceptance still tracked in #1819.
+Issue #1815 was initially closed with the merged implementation evidence in
+#1833 `c24531e2`, #1904 `4182705d` and #1905 `d35b00fe`, then reopened after this
+review found the general-download and anonymous-share gaps. Its explicit
+acceptance does not exclude legacy readers. Re-close only after this repair is
+merged and canonical CI passes, citing the actual merged commit and PR.
+Similarly, #1772 closure does not complete the real owner journey acceptance
+still tracked in #1819.
 
 ## Issues kept open
 
-All 45 issues open at the start of the review were considered. Eight were closed;
-the remaining 37 were retained for these specific gaps. Staleness or a merged
+All 45 issues open at the start of the review were considered. Eight were initially
+closed, then #1815 was reopened after the additional reader findings. Seven
+remain closed; the remaining 38 have these specific gaps. Staleness or a merged
 dependency alone was not treated as completion.
 
 | Issues | Remaining requirement |
 |---|---|
 | #1866 | Fresh safe-disabled production cutover, deployment and serving verification. |
+| #1815 | Merge and verify the additional general-download and anonymous-share acceptance repairs before claiming complete preview/export separation. |
 | #1865 | Exact deployed renderer/default-flow acceptance; historical 76-case controlled matrix does not establish production release. |
 | #1863 | Deployed TXT conversion terminal success/error/cancel/refund acceptance. |
 | #1862 | Actual cold worker first-task/native-import qualification. |
