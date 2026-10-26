@@ -103,6 +103,65 @@ def _general_download_transport_is_fenced(routes: str) -> bool:
     return True
 
 
+def _anonymous_share_is_fenced(routes: str, resume_routes: str) -> bool:
+    """Reject the known anonymous raw-cache/public-object publication path."""
+    helper = _function_source(routes, "_accepted_anonymous_share_pdf")
+    required = (
+        "manifest = await load_manifest(db, redis, job_id, resume.user_id, None)",
+        "manifest.document_id != str(resume.id)",
+        "redacted_source_sha256 = sha256(redact(resume.latex_content))",
+        "manifest.source_sha256 != redacted_source_sha256",
+        "type(manifest.content_revision) is not int",
+        "manifest.content_revision != revision",
+        'manifest.branch != "draft"',
+        "await serve_artifact(", "artifact_id=manifest.artifact_id", "export=True",
+        'response.body.startswith(b"%PDF-")',
+        "return generate_presigned_url(manifest.pdf.key, ttl=3600)",
+    )
+    if not all(token in helper for token in required):
+        return False
+    try:
+        export_call = any(
+            isinstance(node, ast.Await) and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name) and node.value.func.id == "serve_artifact"
+            and any(keyword.arg == "export" and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True for keyword in node.value.keywords)
+            for node in ast.walk(ast.parse(helper))
+        )
+    except SyntaxError:
+        return False
+    if not export_call:
+        return False
+    if helper.index("await serve_artifact(") > helper.index("return generate_presigned_url("):
+        return False
+    reader = _function_source(routes, "get_shared_resume")
+    try:
+        function = ast.parse(reader).body[0]
+        branch = next(node for node in function.body if isinstance(node, ast.If)
+                      and isinstance(node.test, ast.Name) and node.test.id == "is_anonymous")
+        anonymous = ast.get_source_segment(reader, branch) or ""
+    except (SyntaxError, AttributeError, IndexError, StopIteration):
+        return False
+    if ("await _accepted_anonymous_share_pdf(db, resume, str(anon_job_id))" not in anonymous
+            or any(token in anonymous for token in (
+                "get_job_files(", "file_exists(", "upload_bytes(", "generate_presigned_url(",
+                "decode_base64_bounded(",
+            ))):
+        return False
+    # New redacted compilations must carry the document/revision that the
+    # reader checks; merely adding a rejecting reader would break all new jobs.
+    producer = _function_source(resume_routes, "create_share_link")
+    return all(token in producer for token in (
+        "render_request={", '"document_id": resume_id',
+        'anon_content_revision = _typed_attr(resume, "content_revision", int, 1)',
+        '"content_revision": anon_content_revision',
+        '"branch": "draft"',
+        '"anonymous_share"', "db.add(_new_finalization_row(",
+        "await _write_initial_redis_state(", "await _mark_dispatch_started(",
+        "await _mark_dispatch_accepted(",
+    ))
+
+
 def validate_approval_inputs(env: Mapping[str, str]) -> None:
     """Reject invalid supplied approvals without I/O or verifying recovery facts."""
     deploy = env.get("DEPLOY_SHA", "")
@@ -143,6 +202,7 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
             or '"pdf_path": None' not in recovery
             or not _public_pdf_transport_is_fenced(recovery, public_api)
             or not _general_download_transport_is_fenced(general_routes)
+            or not _anonymous_share_is_fenced(general_routes, routes)
             or LEGACY_BILLING_ID.search(billing)):
         raise CutoverBlocked("Recovery source minimum compatibility checks failed")
 

@@ -34,7 +34,7 @@ from ..services.resume_engine.acceptance import is_candidate_export_accepted
 from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, MAX_SYNCTEX_COMPRESSED_BYTES, MAX_SYNCTEX_DECOMPRESSED_BYTES
 
 router = APIRouter()
-PDF_JOB_TYPES = {"latex_compilation", "auto_fit", "combined"}
+PDF_JOB_TYPES = {"latex_compilation", "auto_fit", "combined", "anonymous_share"}
 
 
 class LatestAcceptedArtifactResponse(BaseModel):
@@ -101,7 +101,20 @@ async def _durable_fence(db: AsyncSession, redis: Any, manifest: RenderManifest,
                 or row.pdf_path != manifest.pdf.key or row.pdf_size != manifest.pdf.size
                 or row.pdf_sha256 != manifest.pdf.sha256):
             raise _not_found()
-        if user_id:
+        if row.job_type == "anonymous_share":
+            # Anonymous shares are a derived render, not a Compilation. Their
+            # narrowly scoped durable lineage is the pre-created finalization
+            # row bound to the owning resume and its draft revision. All the
+            # common terminal, cancellation, expiry, artifact identity, and
+            # Redis capability checks above/below still apply.
+            if (not export or not user_id or row.compilation_id is not None
+                    or not row.resume_id or str(row.resume_id) != manifest.document_id
+                    or manifest.branch != "draft"
+                    or row.terminal_result != "completed"
+                    or (row.result_payload or {}).get("success") is not True
+                    or artifact != manifest.public()):
+                raise _not_found()
+        elif user_id:
             compilation = (await db.execute(select(Compilation).where(
                 Compilation.id == row.compilation_id, Compilation.job_id == row.job_id,
                 Compilation.user_id == user_id, Compilation.status == "completed",

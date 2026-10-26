@@ -14,6 +14,10 @@ passed. This is a dated observation, not production acceptance of that source.
   secret bindings found queue and cache on the same primary endpoint. Its
   read-only PING returned the provider's request-limit failure. No Redis keys,
   credentials, connection strings or customer documents are included here.
+  A later isolated PING succeeded, but an ordinary read-only `EXISTS` on a unique
+  operator probe key still returned the provider's request-limit failure, and
+  the running backend remained degraded/not ready. PING success is not capacity
+  or work-settlement evidence; the quota problem remains open.
 - Candidate-source billing preflight, with the existing main API bindings,
   completed its read-only database report: revision `0059`, known mainline
   pre-Dodo schema, zero historical paid pointers/live mandates/team owners,
@@ -27,10 +31,26 @@ passed. This is a dated observation, not production acceptance of that source.
   their dated evidence. The production restore, runtime release and paid launch
   gates remain unchecked. LatexyBackup was not changed by this review.
 
-Recovery review found a general-download raw-cache acceptance gap shared by the
-candidate and proposed older recovery source. This change repairs those readers
-and adds a minimum source rejection check. Passing that check does not certify
-every reader, establish an available recovery image or authorize a migration.
+Recovery review found general-download and anonymous-share raw-cache acceptance
+gaps shared by the candidate and proposed older recovery source. This change
+repairs those readers and adds minimum source rejection checks. New anonymous
+jobs carry document/revision identity; public anonymous PDFs require an accepted
+terminal manifest bound to the current redacted source. Legacy or expired
+anonymous artifacts without this proof require owner regeneration, with a
+redacted text alternative remaining available. Passing the source checks does
+not certify every reader, establish an available recovery image or authorize a
+migration.
+
+Anonymous dispatch now commits a derived `anonymous_share` finalization row and
+the owner's share pointer before initializing the compiler lifecycle and calling
+the broker. It does not insert a redacted `Compilation` into ordinary history.
+An uncertain broker outcome retains the durable identity; only a proven
+undispatched job may be terminalized and retried. Regeneration also checks the
+compilation capability. Local validation passed 100 targeted cases using a
+separate PostgreSQL database migrated through `0075` and a dedicated Redis
+container, including the real public reader and manifest-only finalization.
+Twenty dependency-free cutover gate tests passed. These checks do not establish
+production Redis capacity or production deployment acceptance.
 
 ## Completed issues closed with evidence
 

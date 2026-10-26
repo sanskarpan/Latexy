@@ -1839,6 +1839,65 @@ def _shared_accessible_text(latex_content: str, *, anonymous: bool) -> str:
         return ""
 
 
+async def _accepted_anonymous_share_pdf(
+    db: AsyncSession,
+    resume: Resume,
+    job_id: str,
+) -> Optional[str]:
+    """Presign only the accepted redacted artifact for this resume revision.
+
+    Redis/local PDF bytes and an existing share object are not authority. Every
+    request reloads and validates the immutable manifest, then delegates owner,
+    terminal-state, cancellation, and accepted-compilation checks to
+    ``serve_artifact(export=True)`` before creating a short-lived URL. The
+    anonymous_share finalization family is intentionally not a Compilation.
+    """
+    try:
+        from ..core.redis import get_redis_client
+        from ..services.latex_pii_redactor import redact
+        from ..services.render_engine.artifacts import sha256
+        from ..services.storage_service import generate_presigned_url
+        from .render_artifact_routes import load_manifest, serve_artifact
+
+        if not isinstance(resume.user_id, str) or not resume.user_id:
+            return None
+        redacted_source_sha256 = sha256(redact(resume.latex_content))
+        redis = await get_redis_client()
+        manifest = await load_manifest(db, redis, job_id, resume.user_id, None)
+        if (
+            manifest.job_id != job_id
+            or manifest.owner_scope_kind != "user"
+            or manifest.document_id != str(resume.id)
+            or manifest.source_sha256 != redacted_source_sha256
+            or manifest.branch != "draft"
+        ):
+            return None
+        revision = getattr(resume, "content_revision", None)
+        if (type(revision) is not int or type(manifest.content_revision) is not int
+                or manifest.content_revision != revision):
+            return None
+
+        response = await serve_artifact(
+            db,
+            job_id,
+            resume.user_id,
+            None,
+            artifact_id=manifest.artifact_id,
+            kind="pdf",
+            export=True,
+        )
+        if response.status_code != 200 or not response.body.startswith(b"%PDF-"):
+            return None
+        return generate_presigned_url(manifest.pdf.key, ttl=3600)
+    except HTTPException:
+        # Pending, failed, cancelled, unaccepted, or otherwise unavailable
+        # artifacts remain in the existing no-URL/processing response state.
+        return None
+    except Exception as exc:
+        logger.warning("Accepted anonymous artifact unavailable (%s)", type(exc).__name__)
+        return None
+
+
 @router.get("/share/{share_token}", response_model=SharedResumeResponse)
 async def get_shared_resume(
     share_token: str,
@@ -1888,60 +1947,11 @@ async def get_shared_resume(
                 validate_job_id(str(anon_job_id))
             except HTTPException:
                 anon_job_id = None
-        pdf_url: Optional[str] = None
-
-        # 1) Check MinIO for a previously stored anon PDF
-        # The job id is part of the key so editing a resume can never serve a
-        # stale redaction artifact left behind by an earlier version.
-        anon_minio_key = f"shares/{resume.id}/anonymous/{anon_job_id}.pdf" if anon_job_id else None
-        if anon_minio_key:
-            try:
-                from ..services.storage_service import file_exists, generate_presigned_url
-
-                if file_exists(anon_minio_key):
-                    pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
-            except Exception:
-                pdf_url = None
-
-        # 2) If not in MinIO yet, try temp dir from the anon compile job
-        if not pdf_url and anon_job_id and anon_minio_key:
-            try:
-                _, temp_pdf, _ = get_job_files(str(anon_job_id))
-            except HTTPException:
-                temp_pdf = None
-            pdf_bytes: Optional[bytes] = None
-            if temp_pdf is not None and temp_pdf.exists():
-                try:
-                    pdf_bytes = read_file_bounded(temp_pdf, MAX_COMPILED_PDF_BYTES)
-                except BoundedReadError as exc:
-                    logger.warning("Anonymous PDF exceeds cache limit (%s)", type(exc).__name__)
-            else:
-                # Modal's API and compiler run in separate containers, so the
-                # worker's local temp directory is not visible here. Compilers
-                # publish their PDF to Redis specifically for this handoff.
-                try:
-                    from ..core.redis import get_redis_client
-
-                    redis_client = await get_redis_client()
-                    encoded_pdf = await redis_client.get(f"latexy:job:{anon_job_id}:pdf")
-                    if encoded_pdf:
-                        pdf_bytes = decode_base64_bounded(encoded_pdf, MAX_COMPILED_PDF_BYTES)
-                except Exception as exc:
-                    logger.warning(
-                        "Could not retrieve anonymous PDF %s from Redis: %s",
-                        anon_job_id,
-                        exc,
-                    )
-
-            if pdf_bytes:
-                try:
-                    from ..services.storage_service import generate_presigned_url, upload_bytes
-
-                    upload_bytes(anon_minio_key, pdf_bytes, "application/pdf")
-                    pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
-                    logger.info(f"Uploaded anonymous PDF for resume {resume.id}")
-                except Exception as exc:
-                    logger.warning("Could not upload anonymous PDF (%s)", type(exc).__name__)
+        pdf_url = (
+            await _accepted_anonymous_share_pdf(db, resume, str(anon_job_id))
+            if anon_job_id
+            else None
+        )
 
         if pdf_url:
             # Record view only when a real PDF is being served (Feature 43)
