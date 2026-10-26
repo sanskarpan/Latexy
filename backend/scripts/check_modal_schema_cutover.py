@@ -26,6 +26,7 @@ PUBLIC_DURABLE_ROW_QUERY = "select(JobFinalization.id).where(JobFinalization.job
 PUBLIC_DURABLE_HELPER_GUARD = "return not await has_durable_job_record(db, job_id=job_id)"
 PUBLIC_STATUS_DURABLE_GUARD = "and await _legacy_pdf_transport_allowed(job_id, db)"
 PUBLIC_PDF_DURABLE_GUARD = "if not await _legacy_pdf_transport_allowed(job_id, db):"
+GENERAL_DOWNLOAD_DURABLE_GUARD = "if not await _legacy_download_transport_allowed(job_id, db):"
 
 
 class CutoverBlocked(ValueError):
@@ -80,6 +81,28 @@ def _public_pdf_transport_is_fenced(recovery: str, public_api: str) -> bool:
     )
 
 
+def _general_download_transport_is_fenced(routes: str) -> bool:
+    """Reject the known raw-cache bypass in the general download readers.
+
+    This is a minimum source rejection check, not a control-flow proof. Runtime
+    regressions and the operator's complete reader review remain required.
+    """
+    helper = _function_source(routes, "_legacy_download_transport_allowed")
+    if not ("return not await has_durable_job_record(" in helper
+            and "status_code=503" in helper):
+        return False
+    for name, cache_read in (("download_pdf", "pdf_b64 = await r.get("),
+                             ("download_synctex", "synctex_cached = await r.get(")):
+        reader = _function_source(routes, name)
+        if not all(token in reader for token in
+                   (GENERAL_DOWNLOAD_DURABLE_GUARD, cache_read, "get_job_files(")):
+            return False
+        if not (reader.index(GENERAL_DOWNLOAD_DURABLE_GUARD) < reader.index(cache_read)
+                and reader.index(GENERAL_DOWNLOAD_DURABLE_GUARD) < reader.index("get_job_files(")):
+            return False
+    return True
+
+
 def validate_approval_inputs(env: Mapping[str, str]) -> None:
     """Reject invalid supplied approvals without I/O or verifying recovery facts."""
     deploy = env.get("DEPLOY_SHA", "")
@@ -113,10 +136,13 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
                        "Recovery job artifact source is unavailable")
     public_api = _result(runner, ["git", "show", f"{rollback}:backend/app/api/public_api_routes.py"],
                          "Recovery public artifact source is unavailable")
+    general_routes = _result(runner, ["git", "show", f"{rollback}:backend/app/api/routes.py"],
+                            "Recovery general download source is unavailable")
     if (routes.count(ACCEPTED_FILTER) < 2
             or ACCEPTED_FILTER not in recovery
             or '"pdf_path": None' not in recovery
             or not _public_pdf_transport_is_fenced(recovery, public_api)
+            or not _general_download_transport_is_fenced(general_routes)
             or LEGACY_BILLING_ID.search(billing)):
         raise CutoverBlocked("Recovery source minimum compatibility checks failed")
 

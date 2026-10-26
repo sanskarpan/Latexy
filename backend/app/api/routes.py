@@ -809,6 +809,25 @@ async def _lookup_owned_durable_pdf(
         raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
 
 
+async def _legacy_download_transport_allowed(job_id: str, db: object) -> bool:
+    """Permit transient bytes only when no durable job authority exists.
+
+    Durable rows remain authoritative while pending, committing, expired, or
+    otherwise ineligible for recovery. Raw cache/local bytes cannot bypass an
+    accepted-artifact decision, and database failures fail closed.
+    """
+    from ..services.job_result_recovery import has_durable_job_record
+
+    try:
+        if db is not None and not isinstance(db, DependsParam):
+            return not await has_durable_job_record(db, job_id=job_id)
+        async with get_async_db_session() as session:
+            return not await has_durable_job_record(session, job_id=job_id)
+    except Exception as exc:
+        logger.warning("Durable download authority lookup unavailable (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
+
+
 async def _serve_durable_pdf(artifact: dict[str, object], job_id: str) -> Response:
     """Download and integrity-check one already-authorized durable PDF."""
     from ..services import storage_service
@@ -915,6 +934,14 @@ async def download_pdf(
         async with get_async_db_session() as session:
             return await serve_artifact(session, job_id, user_id, fp, export=True)
 
+    # Keep durable finalizations authoritative even when the compact Redis
+    # manifest has expired. Only the DB-verified accepted PDF may be served.
+    if not await _legacy_download_transport_allowed(job_id, db):
+        if not user_id:
+            raise HTTPException(status_code=404, detail="PDF not found")
+        durable_artifact = await _lookup_owned_durable_pdf(db, job_id=job_id, user_id=user_id)
+        return await _serve_durable_pdf(durable_artifact, job_id)
+
     # Primary path: PDF bytes cached in Redis (works in serverless/multi-container envs).
     try:
         r = await get_redis_client()
@@ -980,6 +1007,19 @@ async def download_synctex(
         async with get_async_db_session() as session:
             return await serve_artifact(session, job_id, user_id, fp, kind="synctex")
     await _assert_job_download_access(job_id, user_id)
+
+    # Recover a durable accepted manifest if possible, but never fall through
+    # to raw transient SyncTeX bytes for a job with durable authority.
+    if not await _legacy_download_transport_allowed(job_id, db):
+        if not user_id:
+            raise HTTPException(status_code=404, detail="SyncTeX data not found")
+        from .render_artifact_routes import serve_artifact
+
+        fp = fingerprint if isinstance(fingerprint, str) else None
+        if db is not None and not isinstance(db, DependsParam):
+            return await serve_artifact(db, job_id, user_id, fp, kind="synctex")
+        async with get_async_db_session() as session:
+            return await serve_artifact(session, job_id, user_id, fp, kind="synctex")
 
     # Primary: SyncTeX text cached in Redis by the worker (the on-disk job_dir is
     # rmtree'd immediately after compilation, so the filesystem copy no longer exists
