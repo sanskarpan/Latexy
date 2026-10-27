@@ -34,6 +34,7 @@ class HealthResponse(BaseModel):
     # APP_VERSION, so a frontend and backend serving different commits could not
     # be distinguished from the response itself while both looked healthy.
     commit_sha: Optional[str] = None
+    redis_binding_fingerprint: Optional[str] = None
     deployment_target: str = "local"
 
 

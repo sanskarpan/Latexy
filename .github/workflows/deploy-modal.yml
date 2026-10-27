@@ -49,6 +49,9 @@ jobs:
       MODAL_ENGINE_VM_ASSETS_FINGERPRINT: ${{ vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT }}
       # Optional name of a dedicated Modal secret containing Dodo settings.
       MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}
+      # Static binding for held recovery checks. Alternate Redis remains held
+      # until authoritative state recovery is separately implemented.
+      MODAL_REDIS_SECRET_NAME: ${{ vars.MODAL_REDIS_SECRET_NAME }}
       # Automatic runs and ordinary manual runs always deploy in held mode.
       # Only an explicit manual release input can open API and worker traffic.
       MODAL_DEPLOYMENT_TRAFFIC_HOLD: ${{ github.event_name != 'workflow_dispatch' || inputs.traffic_mode != 'release' }}
@@ -140,6 +143,15 @@ jobs:
 
       # Reject unusable approval inputs before any Modal work. This local check
       # does not verify recovery or drain; the full gate below remains required.
+      - name: Validate held-only Redis binding before provider operations
+        if: steps.freshness.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          PYTHONPATH=backend python - <<'PY'
+          from app.core.deployment_hold import deployment_traffic_held
+          deployment_traffic_held(source_deployment=True)
+          PY
+
       - name: Reject absent or stale cutover approval inputs
         if: steps.freshness.outputs.current == 'true'
         env:
@@ -208,6 +220,11 @@ jobs:
           check_health /health healthy
           check_health /readyz ready
           check_health /jobs/health healthy
+          # Source identity alone cannot detect a changed selector between the
+          # held candidate and release. This attests the label, not secret data.
+          timeout --kill-after=5s 40s python backend/scripts/verify_serving_identity.py \
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA" --attempts 1 \
+            --expected-redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}"
           python backend/scripts/modal_deployment_phase.py authorize-release \
             --event-name "$GITHUB_EVENT_NAME" \
             --traffic-mode "$REQUESTED_TRAFFIC_MODE" \
@@ -317,7 +334,8 @@ jobs:
         run: |
           set -euo pipefail
           timeout --kill-after=5s 260s python backend/scripts/verify_serving_identity.py \
-            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA"
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA" \
+            --expected-redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}"
 
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'

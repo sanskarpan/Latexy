@@ -101,17 +101,49 @@ def _merged_env(secrets: list[FakeSecret]) -> dict[str, str]:
     return result
 
 
+def _execute_secret_assembly(tree: ast.Module, opaque: dict[str, dict[str, str]], hold: str) -> dict[str, object]:
+    """Execute the actual top-level list assembly with synthetic Modal secrets."""
+    assembly_names = {"_base_secrets", "_api_secrets", "_redis_secret", "_secrets", "_deployment_hold_secret"}
+    nodes: list[ast.stmt] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id in assembly_names for target in node.targets
+        ):
+            nodes.append(node)
+        elif isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "_billing_secret_name":
+            nodes.append(node)
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if (isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id in {"_secrets", "_api_secrets"}):
+                nodes.append(node)
+
+    fake_modal = FakeModalSecretFactory(opaque)
+    namespace: dict[str, object] = {
+        "ast": ast,
+        "modal": type("FakeModal", (), {"Secret": fake_modal})(),
+        "_billing_secret_name": "qa-billing-overlay",
+        "_redis_secret_name": "backup-redis",
+        "_DEPLOYMENT_TRAFFIC_HOLD_VALUE": hold,
+    }
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), "secret_assembly", "exec"), namespace)
+    namespace["_fake_modal"] = fake_modal
+    return namespace
+
+
 def test_hold_binding_is_a_single_canonical_override_after_every_other_secret() -> None:
     _, tree = _source_tree()
     hold_assignment = _assignment(tree, "_deployment_hold_secret")
     call = _modal_secret_call(hold_assignment, "from_dict")
     assert call is not None and len(call.args) == 1
     binding = call.args[0]
-    assert isinstance(binding, ast.Dict) and len(binding.keys) == 1
-    assert isinstance(binding.keys[0], ast.Constant)
-    assert binding.keys[0].value == "MODAL_DEPLOYMENT_TRAFFIC_HOLD"
-    assert isinstance(binding.values[0], ast.Name)
-    assert binding.values[0].id == "_DEPLOYMENT_TRAFFIC_HOLD_VALUE"
+    assert isinstance(binding, ast.Dict) and len(binding.keys) == 2
+    bindings = {key.value: value for key, value in zip(binding.keys, binding.values)}
+    assert set(bindings) == {"MODAL_DEPLOYMENT_TRAFFIC_HOLD", "MODAL_REDIS_SECRET_NAME"}
+    assert isinstance(bindings["MODAL_DEPLOYMENT_TRAFFIC_HOLD"], ast.Name)
+    assert bindings["MODAL_DEPLOYMENT_TRAFFIC_HOLD"].id == "_DEPLOYMENT_TRAFFIC_HOLD_VALUE"
+    assert isinstance(bindings["MODAL_REDIS_SECRET_NAME"], ast.Name)
+    assert bindings["MODAL_REDIS_SECRET_NAME"].id == "_redis_secret_name"
     assert _hold_append_targets(tree) == ["_secrets", "_api_secrets"]
 
     api_assignment = _assignment(tree, "_api_secrets")
@@ -119,7 +151,7 @@ def test_hold_binding_is_a_single_canonical_override_after_every_other_secret() 
     assert len(api_assignment.value.elts) == 1
     assert isinstance(api_assignment.value.elts[0], ast.Starred)
     assert isinstance(api_assignment.value.elts[0].value, ast.Name)
-    assert api_assignment.value.elts[0].value.id == "_secrets"
+    assert api_assignment.value.elts[0].value.id == "_base_secrets"
     billing_overlay = next(
         node for node in tree.body
         if isinstance(node, ast.If)
@@ -143,33 +175,59 @@ def test_hold_binding_is_a_single_canonical_override_after_every_other_secret() 
 
 def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> None:
     _, tree = _source_tree()
-    base_names = _secret_names(_assignment(tree, "_secrets"))
+    base_names = _secret_names(_assignment(tree, "_base_secrets"))
     assert base_names == [
-        "latexy-backend-secrets", "latexy-storage", "latexy-redis",
+        "latexy-backend-secrets", "latexy-storage",
     ]
 
     # Fake opaque values deliberately conflict with both possible deployment
     # choices. These mappings are test fixtures, not reads of Modal secrets.
     for chosen in ("true", "false"):
         opaque = {
-            "latexy-backend-secrets": {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true"},
+            "latexy-backend-secrets": {
+                "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true",
+                "MODAL_REDIS_SECRET_NAME": "wrong-base-label",
+                "REDIS_URL": "redis://legacy-primary", "REDIS_PASSWORD": "legacy-pass",
+            },
             "latexy-storage": {"STORAGE_FIXTURE": "value"},
-            "latexy-redis": {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true" if chosen == "true" else "false"},
-            "qa-billing-overlay": {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true"},
+            "backup-redis": {
+                "MODAL_REDIS_SECRET_NAME": "wrong-redis-label",
+                "REDIS_URL": "redis://backup", "REDIS_PASSWORD": "backup-pass",
+            },
+            "qa-billing-overlay": {
+                "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true",
+                "MODAL_REDIS_SECRET_NAME": "wrong-billing-label",
+                "REDIS_URL": "redis://billing-override", "REDIS_PASSWORD": "billing-pass",
+            },
         }
-        fake_modal = FakeModalSecretFactory(opaque)
-        base = [fake_modal.from_name(name) for name in base_names]
-        api = [*base]
-        api.append(fake_modal.from_name("qa-billing-overlay"))
+        namespace = _execute_secret_assembly(tree, opaque, chosen)
+        fake_modal = namespace["_fake_modal"]
+        assert fake_modal.captured_dicts == [{
+            "MODAL_DEPLOYMENT_TRAFFIC_HOLD": chosen,
+            "MODAL_REDIS_SECRET_NAME": "backup-redis",
+        }]
+        worker_env = _merged_env(namespace["_secrets"])
+        api_env = _merged_env(namespace["_api_secrets"])
+        assert worker_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
+        assert api_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
+        assert worker_env["REDIS_URL"] == api_env["REDIS_URL"] == "redis://backup"
+        assert worker_env["REDIS_PASSWORD"] == api_env["REDIS_PASSWORD"] == "backup-pass"
+        assert api_env["MODAL_REDIS_SECRET_NAME"] == "backup-redis"
 
-        # Model the exact literal binding extracted from the production AST.
-        hold = fake_modal.from_dict({"MODAL_DEPLOYMENT_TRAFFIC_HOLD": chosen})
-        base.append(hold)
-        api.append(hold)
-
-        assert fake_modal.captured_dicts == [{"MODAL_DEPLOYMENT_TRAFFIC_HOLD": chosen}]
-        assert _merged_env(base)["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
-        assert _merged_env(api)["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
+    secrets_assignment = _assignment(tree, "_secrets")
+    assert isinstance(secrets_assignment.value, ast.List)
+    assert [item.value.id for item in secrets_assignment.value.elts if isinstance(item, ast.Starred)] == [
+        "_base_secrets",
+    ]
+    assert isinstance(secrets_assignment.value.elts[-1], ast.Name)
+    assert secrets_assignment.value.elts[-1].id == "_redis_secret"
+    redis_assignment = _assignment(tree, "_redis_secret")
+    assert isinstance(redis_assignment.value, ast.Call)
+    assert isinstance(redis_assignment.value.func, ast.Attribute)
+    assert redis_assignment.value.func.attr == "from_name"
+    assert len(redis_assignment.value.args) == 1
+    assert isinstance(redis_assignment.value.args[0], ast.Name)
+    assert redis_assignment.value.args[0].id == "_redis_secret_name"
 
 
 def test_every_modal_function_gets_a_secret_list_with_no_later_env_override() -> None:

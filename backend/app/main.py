@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     # Bootstrap configured, verified admin accounts only when no admin exists.
     # This is intentionally not a recurring reconcile: an explicit demotion in
     # the admin control plane must survive the next process restart.
-    admin_emails = settings.admin_email_set()
+    admin_emails = set() if app.state.deployment_traffic_held else settings.admin_email_set()
     if admin_emails:
         try:
             from sqlalchemy import text as _text

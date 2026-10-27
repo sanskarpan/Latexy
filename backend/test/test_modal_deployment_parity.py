@@ -96,7 +96,7 @@ def test_modal_backend_dir_uses_baked_path_only_in_remote_runtime():
     assert _evaluate_backend_dir(is_local=False) == Path("/backend")
 
 
-def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
+def test_optional_modal_billing_secret_is_validated_before_selected_redis_overlay():
     validator = _extract_optional_billing_secret_name()
     assert validator(None) is None
     assert validator("") is None
@@ -117,7 +117,7 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
 
     secrets_assignment = next(
         node for node in tree.body if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "_secrets" for target in node.targets)
+        and any(isinstance(target, ast.Name) and target.id == "_base_secrets" for target in node.targets)
     )
     assert [call.args[0].value for call in ast.walk(secrets_assignment)
             if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
@@ -126,8 +126,18 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
             and call.func.value.value.id == "modal"
             and call.func.value.attr == "Secret"
             and call.func.attr == "from_name"] == [
-                "latexy-backend-secrets", "latexy-storage", "latexy-redis",
+                "latexy-backend-secrets", "latexy-storage",
             ]
+    runtime_secrets = next(
+        node for node in tree.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_secrets" for target in node.targets)
+    )
+    assert isinstance(runtime_secrets.value, ast.List)
+    assert isinstance(runtime_secrets.value.elts[0], ast.Starred)
+    assert isinstance(runtime_secrets.value.elts[0].value, ast.Name)
+    assert runtime_secrets.value.elts[0].value.id == "_base_secrets"
+    assert isinstance(runtime_secrets.value.elts[1], ast.Name)
+    assert runtime_secrets.value.elts[1].id == "_redis_secret"
     api_secrets_assignment = next(
         node for node in tree.body if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "_api_secrets" for target in node.targets)
@@ -136,7 +146,7 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
             and len(api_secrets_assignment.value.elts) == 1
             and isinstance(api_secrets_assignment.value.elts[0], ast.Starred)
             and isinstance(api_secrets_assignment.value.elts[0].value, ast.Name)
-            and api_secrets_assignment.value.elts[0].value.id == "_secrets")
+            and api_secrets_assignment.value.elts[0].value.id == "_base_secrets")
     overlay = next(
         node for node in tree.body if isinstance(node, ast.If)
         and isinstance(node.test, ast.Name) and node.test.id == "_billing_secret_name"
@@ -157,6 +167,16 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
         and node.args[0].args[0].id == "_billing_secret_name"
         for node in ast.walk(overlay)
     )
+    redis_append = next(
+        node for node in tree.body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and isinstance(node.value.func.value, ast.Name)
+        and node.value.func.value.id == "_api_secrets"
+        and node.value.func.attr == "append"
+        and node.value.args and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "_redis_secret"
+    )
+    assert overlay.lineno < redis_append.lineno
     binding_env = next(
         node for node in tree.body if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "_billing_secret_binding_env"
@@ -185,6 +205,9 @@ def test_optional_modal_billing_secret_is_validated_and_overlaid_last():
             and isinstance(call.args[0], ast.Dict)
             and any(key is None and isinstance(value, ast.Name)
                     and value.id == "_billing_secret_binding_env"
+                    for key, value in zip(call.args[0].keys, call.args[0].values))
+            and any(key is None and isinstance(value, ast.Name)
+                    and value.id == "_redis_secret_binding_env"
                     for key, value in zip(call.args[0].keys, call.args[0].values))
             for call in ast.walk(assignment)
         ), f"{name} does not snapshot the Modal billing secret name into its image environment"
