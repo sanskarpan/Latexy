@@ -26,6 +26,10 @@ Both temporary assessment Apps stopped with zero tasks. Production bindings,
 schema, deployment and release remain unchanged. The
 [held recovery contract](architecture/redis-held-recovery.md) defines the guarded
 source preparation; it is not production failover or a completed release gate.
+The owner selected conservative recovery: unknown allowances and uncertain jobs
+remain blocked. The prepared workflow adds a durable primary freeze after a
+fresh stopped-App check; it does not promote the spare, replay work or open
+product traffic. That source preparation is not evidence of an executed freeze.
 
 ## 1. Decision, scope and ownership
 

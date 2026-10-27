@@ -234,6 +234,7 @@ def test_optional_modal_billing_secret_is_validated_before_selected_redis_overla
         "renderer_preflight": ("operations_app", "_api_secrets"),
         "billing_preflight": ("operations_app", "_api_secrets"),
         "migrate": ("operations_app", "_secrets"),
+        "freeze_redis_recovery": ("operations_app", "_secrets"),
         "sync_templates": ("operations_app", "_secrets"),
         "fastapi_app": ("app", "_api_secrets"),
     }
@@ -259,10 +260,10 @@ def test_optional_modal_billing_secret_is_validated_before_selected_redis_overla
     assert all(binding[1] == "_secrets" for name, binding in all_function_bindings.items()
                if name not in api_secret_functions)
     assert {name for name, binding in all_function_bindings.items() if binding[0] == "operations_app"} == {
-        "renderer_preflight", "billing_preflight", "migrate", "sync_templates",
+        "renderer_preflight", "billing_preflight", "migrate", "sync_templates", "freeze_redis_recovery",
     }
     assert all(binding[0] == "app" for name, binding in all_function_bindings.items()
-               if name not in {"renderer_preflight", "billing_preflight", "migrate", "sync_templates"})
+               if name not in {"renderer_preflight", "billing_preflight", "migrate", "sync_templates", "freeze_redis_recovery"})
     fastapi_decorator = next(
         decorator for decorator in functions["fastapi_app"].decorator_list
         if isinstance(decorator, ast.Call)

@@ -45,6 +45,30 @@ state. Preserve the primary, forbid replay of uncertain work and keep alternate
 authority product admission closed. Do not seed zero balances or mark a drain
 complete based on reachability or aggregate database counts.
 
+The conservative recovery choice keeps **all work admission closed**, including
+unlimited plans, unmetered legacy tasks, cleanup/reconciliation and refunds. It
+does not grant fresh allowances to new accounts. The canonical held-cutover
+workflow rechecks the stopped old App after migration, then commits a one-way
+primary freeze in `redis_authority_control` using a canonical operation UUID.
+An uncertain response is resolved by a fresh read of that same UUID, generation
+and reason. A different coordinator or changed identity cannot claim success.
+The primary remains the named, frozen authority; the spare is not promoted.
+
+Quota admission and refunds read this durable control before using Redis;
+snapshots report unknown usage (`used: null`) when authority is frozen or
+unreadable. Dispatch, Celery publication/execution, worker/beat startup, legacy
+worker admission and receipt cleanup have the same backstop. An unheld API
+cannot start after a freeze. Modal's global hold additionally prevents all job
+and scheduler entrypoints, including families that lack job lifecycle records.
+
+These fresh checks are **not an atomic fence around running work**. A broker call
+or provider effect that passed its check can race a later freeze. Therefore the
+old API, every worker/scheduler and all other writers must first be stopped or
+quiesced; uncertain deliveries/effects remain quarantined and are never replayed.
+The App-state verifier alone does not prove that settlement or preserve a lost
+collaboration update stream. Preserve the primary and private recovery evidence.
+Keep the global hold and job admission closed after backup qualification.
+
 Before opening product traffic, implement and independently validate the coherent
 authority, quota, receipt and job recovery described in
 [the failover architecture](redis-failover.md) and

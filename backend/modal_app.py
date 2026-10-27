@@ -73,6 +73,9 @@ def _require_worker_dispatch(fn):
     def guarded(*args, **kwargs):
         if _DEPLOYMENT_TRAFFIC_HELD:
             raise RuntimeError("Modal deployment traffic is held; worker execution is paused")
+        from app.core.redis_authority import require_primary_authority_active_sync
+
+        require_primary_authority_active_sync()
         return fn(*args, **kwargs)
 
     return guarded
@@ -1002,6 +1005,39 @@ def migrate() -> None:
     if result.returncode != 0:
         print(result.stderr)
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
+
+
+@operations_app.function(image=migrate_image, secrets=_secrets, timeout=90)
+def freeze_redis_recovery(source_revision: str, freeze_id: str) -> None:
+    """Workflow-only durable containment; never promote or replay backup work."""
+    import asyncio
+    import json
+    import os
+
+    import modal
+
+    if modal.is_local():
+        raise RuntimeError("Redis recovery containment requires the canonical workflow runtime")
+
+    async def run():
+        from app.database.connection import close_db, get_async_db_session
+        from scripts.redis_recovery_quarantine import freeze_primary_for_recovery
+
+        try:
+            return await freeze_primary_for_recovery(
+                get_async_db_session, environ=os.environ,
+                source_revision=source_revision, freeze_id=freeze_id,
+                expected_generation=0,
+            )
+        finally:
+            await close_db()
+
+    try:
+        report = asyncio.run(run())
+    except Exception:
+        print(json.dumps({"status": "blocked", "reason": "recovery_containment_not_verified"}))
+        raise RuntimeError("Redis recovery containment was not verified") from None
+    print(json.dumps(report, sort_keys=True))
 
 
 @operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
