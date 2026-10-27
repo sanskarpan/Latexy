@@ -36,6 +36,21 @@ App before migrations. A held deployment can apply approved migrations and run
 explicit template synchronization; it is not a read-only operation. Health and
 template probes cannot establish product E2E acceptance or permit release.
 
+The migration and primary-freeze functions also require a signed operation
+proof minted by the protected Production workflow immediately after the stopped
+App check. The proof is bound to one action, exact source SHA, `main`, the
+observed old App ID, selected Redis label fingerprint, and (for freeze) the
+canonical freeze UUID. It expires after 120 seconds. A separate
+`latexy-recovery-ops-20261027` Modal secret carries the 256-bit HMAC verifier
+key only into those two functions; the matching GitHub Production secret is
+used only by their workflow steps. The proof is masked and passed directly to
+the operation. This prevents an ordinary unsigned direct invocation. It does
+not prevent a privileged operator who can read the signer key or administer
+Modal/GitHub from authorizing an operation, and a valid proof can be replayed
+until expiry. Freeze UUID idempotency bounds that replay; Alembic upgrades must
+remain repeatable. The proof attests a recent drain query and does not remove
+the race between that query and the operation.
+
 ## No snapshot recovery
 
 An empty backup contains no evidence about old quota counters, refund receipts,

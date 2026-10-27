@@ -103,7 +103,10 @@ def _merged_env(secrets: list[FakeSecret]) -> dict[str, str]:
 
 def _execute_secret_assembly(tree: ast.Module, opaque: dict[str, dict[str, str]], hold: str) -> dict[str, object]:
     """Execute the actual top-level list assembly with synthetic Modal secrets."""
-    assembly_names = {"_base_secrets", "_api_secrets", "_redis_secret", "_secrets", "_deployment_hold_secret"}
+    assembly_names = {
+        "_base_secrets", "_api_secrets", "_redis_secret", "_secrets", "_deployment_hold_secret",
+        "_operation_authorization_secret", "_operations_secrets",
+    }
     nodes: list[ast.stmt] = []
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -194,6 +197,10 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
                 "MODAL_REDIS_SECRET_NAME": "wrong-redis-label",
                 "REDIS_URL": "redis://backup", "REDIS_PASSWORD": "backup-pass",
             },
+            "latexy-recovery-ops-20261027": {
+                "MODAL_RECOVERY_OPERATION_SIGNING_KEY": "synthetic-signing-key",
+                "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false",
+            },
             "qa-billing-overlay": {
                 "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true",
                 "MODAL_REDIS_SECRET_NAME": "wrong-billing-label",
@@ -208,11 +215,17 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
         }]
         worker_env = _merged_env(namespace["_secrets"])
         api_env = _merged_env(namespace["_api_secrets"])
+        operations_env = _merged_env(namespace["_operations_secrets"])
         assert worker_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
         assert api_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
         assert worker_env["REDIS_URL"] == api_env["REDIS_URL"] == "redis://backup"
         assert worker_env["REDIS_PASSWORD"] == api_env["REDIS_PASSWORD"] == "backup-pass"
         assert api_env["MODAL_REDIS_SECRET_NAME"] == "backup-redis"
+        assert operations_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
+        assert operations_env["MODAL_REDIS_SECRET_NAME"] == "backup-redis"
+        assert operations_env["MODAL_RECOVERY_OPERATION_SIGNING_KEY"] == "synthetic-signing-key"
+        assert all(secret.name != "latexy-recovery-ops-20261027" for secret in namespace["_secrets"])
+        assert all(secret.name != "latexy-recovery-ops-20261027" for secret in namespace["_api_secrets"])
 
     secrets_assignment = _assignment(tree, "_secrets")
     assert isinstance(secrets_assignment.value, ast.List)
@@ -249,7 +262,7 @@ def test_every_modal_function_gets_a_secret_list_with_no_later_env_override() ->
             secrets = [keyword.value for keyword in decorator.keywords if keyword.arg == "secrets"]
             assert len(secrets) == 1, node.name
             assert isinstance(secrets[0], ast.Name)
-            assert secrets[0].id in {"_secrets", "_api_secrets"}, node.name
+            assert secrets[0].id in {"_secrets", "_api_secrets", "_operations_secrets"}, node.name
             # Modal appends function env after secrets; none may shadow the hold.
             assert not any(keyword.arg == "env" for keyword in decorator.keywords), node.name
     assert function_count >= 25

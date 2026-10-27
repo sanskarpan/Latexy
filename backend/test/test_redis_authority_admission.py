@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import unittest
@@ -112,6 +113,22 @@ class RedisAuthorityAdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(str(caught.exception), "Primary resource authority is frozen or unavailable.")
             self.assertNotIn("synthetic", str(caught.exception))
             self.assertEqual(len(session.statements), 1)
+
+    async def test_async_guard_times_out_without_mutating_caller_session(self):
+        class SlowSession(_AsyncSession):
+            async def execute(self, statement, parameters=None):
+                self.statements.append((str(statement), parameters))
+                await asyncio.sleep(1)
+
+        session = SlowSession(_Row())
+        session.caller_transaction_marker = "unchanged"
+        with patch("app.core.redis_authority._AUTHORITY_READ_TIMEOUT_SECONDS", 0.01):
+            with self.assertRaises(AuthorityAdmissionBlocked) as caught:
+                await require_primary_authority_active(session)
+
+        self.assertEqual(str(caught.exception), "Primary resource authority is frozen or unavailable.")
+        self.assertEqual(len(session.statements), 1)
+        self.assertEqual(session.caller_transaction_marker, "unchanged")
 
     def test_isolation_policy_skips_only_test_environment_and_local_test_database(self):
         isolated_urls = (

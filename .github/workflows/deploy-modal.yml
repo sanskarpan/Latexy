@@ -296,23 +296,31 @@ jobs:
         if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover'
         working-directory: backend
         env:
+          MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
           MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
           MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
           MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
           MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}
         run: |
           set -euo pipefail
-          python scripts/verify_modal_drain.py \
+          drain_report="$(python scripts/verify_modal_drain.py \
             --app-name latexy-backend \
             --environment main \
             --expected-deploy-sha "$DEPLOY_SHA" \
-            --max-age-seconds 300
-          modal run --env main modal_app.py::migrate
+            --max-age-seconds 300)"
+          app_id="$(jq -er '.current_modal_app_id' <<<"$drain_report")"
+          token="$(python -m scripts.modal_operation_authorization \
+            --action migrate --sha "$DEPLOY_SHA" --app-id "$app_id" \
+            --redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}")"
+          echo "::add-mask::$token"
+          modal run --env main modal_app.py::migrate \
+            --source-revision "$DEPLOY_SHA" --authorization-token "$token"
 
       - name: Freeze primary authority before held backup qualification
         if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover' && env.MODAL_REDIS_SECRET_NAME != '' && env.MODAL_REDIS_SECRET_NAME != 'latexy-redis'
         working-directory: backend
         env:
+          MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
           MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
           MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
           MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
@@ -320,11 +328,18 @@ jobs:
         run: |
           set -euo pipefail
           # Recheck after migration; a prior stopped-App observation can expire.
-          python scripts/verify_modal_drain.py \
+          drain_report="$(python scripts/verify_modal_drain.py \
             --app-name latexy-backend --environment main \
-            --expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300
+            --expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300)"
+          app_id="$(jq -er '.current_modal_app_id' <<<"$drain_report")"
+          token="$(python -m scripts.modal_operation_authorization \
+            --action freeze --sha "$DEPLOY_SHA" --app-id "$app_id" \
+            --redis-secret-name "$MODAL_REDIS_SECRET_NAME" \
+            --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID")"
+          echo "::add-mask::$token"
           modal run --env main modal_app.py::freeze_redis_recovery \
-            --source-revision "$DEPLOY_SHA" --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID"
+            --source-revision "$DEPLOY_SHA" --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID" \
+            --authorization-token "$token"
 
       # The first preflight cannot see provider columns on a pre-0065 schema.
       # Recheck after migration, while ingress remains held, so a legacy write

@@ -233,8 +233,8 @@ def test_optional_modal_billing_secret_is_validated_before_selected_redis_overla
         "run_latex_task": ("app", "_secrets"),
         "renderer_preflight": ("operations_app", "_api_secrets"),
         "billing_preflight": ("operations_app", "_api_secrets"),
-        "migrate": ("operations_app", "_secrets"),
-        "freeze_redis_recovery": ("operations_app", "_secrets"),
+        "migrate": ("operations_app", "_operations_secrets"),
+        "freeze_redis_recovery": ("operations_app", "_operations_secrets"),
         "sync_templates": ("operations_app", "_secrets"),
         "fastapi_app": ("app", "_api_secrets"),
     }
@@ -257,8 +257,11 @@ def test_optional_modal_billing_secret_is_validated_before_selected_redis_overla
         name for name, binding in all_function_bindings.items() if binding[1] == "_api_secrets"
     }
     assert api_secret_functions == {"renderer_preflight", "billing_preflight", "fastapi_app"}
-    assert all(binding[1] == "_secrets" for name, binding in all_function_bindings.items()
+    assert all(binding[1] in {"_secrets", "_operations_secrets"} for name, binding in all_function_bindings.items()
                if name not in api_secret_functions)
+    assert {name for name, binding in all_function_bindings.items() if binding[1] == "_operations_secrets"} == {
+        "migrate", "freeze_redis_recovery",
+    }
     assert {name for name, binding in all_function_bindings.items() if binding[0] == "operations_app"} == {
         "renderer_preflight", "billing_preflight", "migrate", "sync_templates", "freeze_redis_recovery",
     }

@@ -11,6 +11,7 @@ before retry; callers must not assume it failed or succeeded.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -20,6 +21,7 @@ from sqlalchemy import text
 
 _REASONS = frozenset({"quota_exhausted", "connection_unavailable", "manual"})
 _ADMISSION_BLOCKED_MESSAGE = "Primary resource authority is frozen or unavailable."
+_AUTHORITY_READ_TIMEOUT_SECONDS = 5.0
 _DATABASE_SCHEMES = frozenset({
     "postgres", "postgresql", "postgresql+asyncpg", "postgresql+psycopg2",
 })
@@ -131,7 +133,8 @@ def authority_admission_guard_required(environment: str | None, database_url: st
 async def require_primary_authority_active(session: _Session) -> RedisAuthorityState:
     """Require a fresh legacy-primary state; missing, frozen, or unreadable blocks."""
     try:
-        state = await read_redis_authority(session)
+        async with asyncio.timeout(_AUTHORITY_READ_TIMEOUT_SECONDS):
+            state = await read_redis_authority(session)
         if state.phase != "legacy" or state.active_backend != "primary":
             raise AuthorityAdmissionBlocked()
         return state

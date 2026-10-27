@@ -31,6 +31,16 @@ remain blocked. The prepared workflow adds a durable primary freeze after a
 fresh stopped-App check; it does not promote the spare, replay work or open
 product traffic. That source preparation is not evidence of an executed freeze.
 
+The dedicated recovery Redis binding was verified separately: all native roles
+select the same empty TLS database. Its new Modal secret is staged and unused
+by the serving App. A separate operations-only signing secret is staged with
+the matching Production workflow secret; it is excluded from API and workers.
+The prepared migration/freeze functions require a short-lived action- and
+source-bound proof after the workflow's stopped-App check. This is preparation,
+not a completed drain, migration or recovery. A fresh fleet sample still found
+the old v87 App deployed, with zero reported running inputs/backlog; stopped
+writer and recovery-point acceptance remain open.
+
 ## 1. Decision, scope and ownership
 
 **Public launch: HOLD. Limited unpaid beta: not signed off.**

@@ -388,6 +388,12 @@ _deployment_hold_secret = modal.Secret.from_dict(
 _secrets.append(_deployment_hold_secret)
 _api_secrets.append(_deployment_hold_secret)
 
+# This operations-only secret contains the HMAC verifier key shared with the
+# protected GitHub Production workflow. It is intentionally excluded from API,
+# worker, scheduler, and routine template-sync functions.
+_operation_authorization_secret = modal.Secret.from_name("latexy-recovery-ops-20261027")
+_operations_secrets = [*_base_secrets, _redis_secret, _operation_authorization_secret, _deployment_hold_secret]
+
 
 # ---------------------------------------------------------------------------
 # Helper — initialise sync Redis for event publishing inside a worker fn
@@ -990,10 +996,20 @@ migrate_image = (
 )
 
 
-@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
-def migrate() -> None:
+@operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=900)
+def migrate(source_revision: str, authorization_token: str) -> None:
     """Apply Alembic migrations to the production database."""
+    import os
     import subprocess
+
+    from scripts.modal_operation_authorization import verify_proof
+
+    try:
+        if source_revision != os.environ.get("DEPLOY_SHA"):
+            raise ValueError("operation authorization is invalid")
+        verify_proof(authorization_token, action="migrate", environ=os.environ)
+    except Exception:
+        raise RuntimeError("Modal migration authorization was not verified") from None
 
     result = subprocess.run(
         ["alembic", "upgrade", "head"],
@@ -1007,8 +1023,8 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
-@operations_app.function(image=migrate_image, secrets=_secrets, timeout=90)
-def freeze_redis_recovery(source_revision: str, freeze_id: str) -> None:
+@operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=90)
+def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_token: str) -> None:
     """Workflow-only durable containment; never promote or replay backup work."""
     import asyncio
     import json
@@ -1016,8 +1032,16 @@ def freeze_redis_recovery(source_revision: str, freeze_id: str) -> None:
 
     import modal
 
+    from scripts.modal_operation_authorization import verify_proof
+
     if modal.is_local():
         raise RuntimeError("Redis recovery containment requires the canonical workflow runtime")
+    try:
+        if source_revision != os.environ.get("DEPLOY_SHA"):
+            raise ValueError("operation authorization is invalid")
+        verify_proof(authorization_token, action="freeze", expected_freeze_id=freeze_id, environ=os.environ)
+    except Exception:
+        raise RuntimeError("Redis recovery authorization was not verified") from None
 
     async def run():
         from app.database.connection import close_db, get_async_db_session
