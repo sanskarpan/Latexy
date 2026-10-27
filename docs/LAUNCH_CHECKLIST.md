@@ -9,6 +9,12 @@ absence of findings proves the absence of bugs. Read it with the individual
 reports as baseline evidence; update this checklist when repairs and acceptance
 are independently verified. Do not turn a code merge into a production pass.
 
+**October 26 operational review:** [issue and rollout reconciliation](audits/launch-2026-10-26/issue-and-rollout-review.md)
+records the current issue dispositions and fresh production observations.
+Production Redis is quota-blocked, the observed backend remains v87, and the
+read-only database report is still at `0059`. None of the historical CI/local
+checks below establishes a completed production migration or release.
+
 ## 1. Decision, scope and ownership
 
 **Public launch: HOLD. Limited unpaid beta: not signed off.**

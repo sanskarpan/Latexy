@@ -26,6 +26,7 @@ PUBLIC_DURABLE_ROW_QUERY = "select(JobFinalization.id).where(JobFinalization.job
 PUBLIC_DURABLE_HELPER_GUARD = "return not await has_durable_job_record(db, job_id=job_id)"
 PUBLIC_STATUS_DURABLE_GUARD = "and await _legacy_pdf_transport_allowed(job_id, db)"
 PUBLIC_PDF_DURABLE_GUARD = "if not await _legacy_pdf_transport_allowed(job_id, db):"
+GENERAL_DOWNLOAD_DURABLE_GUARD = "if not await _legacy_download_transport_allowed(job_id, db):"
 
 
 class CutoverBlocked(ValueError):
@@ -80,6 +81,87 @@ def _public_pdf_transport_is_fenced(recovery: str, public_api: str) -> bool:
     )
 
 
+def _general_download_transport_is_fenced(routes: str) -> bool:
+    """Reject the known raw-cache bypass in the general download readers.
+
+    This is a minimum source rejection check, not a control-flow proof. Runtime
+    regressions and the operator's complete reader review remain required.
+    """
+    helper = _function_source(routes, "_legacy_download_transport_allowed")
+    if not ("return not await has_durable_job_record(" in helper
+            and "status_code=503" in helper):
+        return False
+    for name, cache_read in (("download_pdf", "pdf_b64 = await r.get("),
+                             ("download_synctex", "synctex_cached = await r.get(")):
+        reader = _function_source(routes, name)
+        if not all(token in reader for token in
+                   (GENERAL_DOWNLOAD_DURABLE_GUARD, cache_read, "get_job_files(")):
+            return False
+        if not (reader.index(GENERAL_DOWNLOAD_DURABLE_GUARD) < reader.index(cache_read)
+                and reader.index(GENERAL_DOWNLOAD_DURABLE_GUARD) < reader.index("get_job_files(")):
+            return False
+    return True
+
+
+def _anonymous_share_is_fenced(routes: str, resume_routes: str) -> bool:
+    """Reject the known anonymous raw-cache/public-object publication path."""
+    helper = _function_source(routes, "_accepted_anonymous_share_pdf")
+    required = (
+        "manifest = await load_manifest(db, redis, job_id, resume.user_id, None)",
+        "manifest.document_id != str(resume.id)",
+        "redacted_source_sha256 = sha256(redact(resume.latex_content))",
+        "manifest.source_sha256 != redacted_source_sha256",
+        "type(manifest.content_revision) is not int",
+        "manifest.content_revision != revision",
+        'manifest.branch != "draft"',
+        "await serve_artifact(", "artifact_id=manifest.artifact_id", "export=True",
+        'response.body.startswith(b"%PDF-")',
+        "return generate_presigned_url(manifest.pdf.key, ttl=3600)",
+    )
+    if not all(token in helper for token in required):
+        return False
+    try:
+        export_call = any(
+            isinstance(node, ast.Await) and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name) and node.value.func.id == "serve_artifact"
+            and any(keyword.arg == "export" and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True for keyword in node.value.keywords)
+            for node in ast.walk(ast.parse(helper))
+        )
+    except SyntaxError:
+        return False
+    if not export_call:
+        return False
+    if helper.index("await serve_artifact(") > helper.index("return generate_presigned_url("):
+        return False
+    reader = _function_source(routes, "get_shared_resume")
+    try:
+        function = ast.parse(reader).body[0]
+        branch = next(node for node in function.body if isinstance(node, ast.If)
+                      and isinstance(node.test, ast.Name) and node.test.id == "is_anonymous")
+        anonymous = ast.get_source_segment(reader, branch) or ""
+    except (SyntaxError, AttributeError, IndexError, StopIteration):
+        return False
+    if ("await _accepted_anonymous_share_pdf(db, resume, str(anon_job_id))" not in anonymous
+            or any(token in anonymous for token in (
+                "get_job_files(", "file_exists(", "upload_bytes(", "generate_presigned_url(",
+                "decode_base64_bounded(",
+            ))):
+        return False
+    # New redacted compilations must carry the document/revision that the
+    # reader checks; merely adding a rejecting reader would break all new jobs.
+    producer = _function_source(resume_routes, "create_share_link")
+    return all(token in producer for token in (
+        "render_request={", '"document_id": resume_id',
+        'anon_content_revision = _typed_attr(resume, "content_revision", int, 1)',
+        '"content_revision": anon_content_revision',
+        '"branch": "draft"',
+        '"anonymous_share"', "db.add(_new_finalization_row(",
+        "await _write_initial_redis_state(", "await _mark_dispatch_started(",
+        "await _mark_dispatch_accepted(",
+    ))
+
+
 def validate_approval_inputs(env: Mapping[str, str]) -> None:
     """Reject invalid supplied approvals without I/O or verifying recovery facts."""
     deploy = env.get("DEPLOY_SHA", "")
@@ -113,10 +195,14 @@ def validate(env: Mapping[str, str], runner: Callable[[Sequence[str]], subproces
                        "Recovery job artifact source is unavailable")
     public_api = _result(runner, ["git", "show", f"{rollback}:backend/app/api/public_api_routes.py"],
                          "Recovery public artifact source is unavailable")
+    general_routes = _result(runner, ["git", "show", f"{rollback}:backend/app/api/routes.py"],
+                            "Recovery general download source is unavailable")
     if (routes.count(ACCEPTED_FILTER) < 2
             or ACCEPTED_FILTER not in recovery
             or '"pdf_path": None' not in recovery
             or not _public_pdf_transport_is_fenced(recovery, public_api)
+            or not _general_download_transport_is_fenced(general_routes)
+            or not _anonymous_share_is_fenced(general_routes, routes)
             or LEGACY_BILLING_ID.search(billing)):
         raise CutoverBlocked("Recovery source minimum compatibility checks failed")
 
