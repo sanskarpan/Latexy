@@ -4,7 +4,15 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const mitigatedGhsa = 'GHSA-vfj7-8cjw-p6xm'
+// Exact, independently tested mitigations. Each entry names one advisory on
+// one package at one locked version whose installed copy carries a committed
+// pnpm patch plus a regression test executed below. Never a package or
+// severity class; any other advisory, package, severity or version stays
+// unresolved.
+const mitigations = [
+  { ghsa: 'GHSA-vfj7-8cjw-p6xm', package: 'braces', severity: 'high', version: '3.0.3' },
+  { ghsa: 'GHSA-gcqx-w48m-w2h4', package: 'deepmerge', severity: 'low', version: '4.3.1' },
+]
 const severities = ['info', 'low', 'moderate', 'high', 'critical']
 const MAX_ADVISORIES = 1000
 const MAX_FINDINGS_PER_ADVISORY = 100
@@ -51,9 +59,10 @@ function normalizedAdvisory(advisory) {
     }
     return boundedString(finding.version, 'locked version', versionPattern)
   })
-  const mitigated = ghsa === mitigatedGhsa && packageName === 'braces' &&
-    advisory.severity === 'high' && lockedVersions.length > 0 &&
-    lockedVersions.every(version => version === '3.0.3')
+  const mitigated = lockedVersions.length > 0 && mitigations.some(mitigation =>
+    ghsa === mitigation.ghsa && packageName === mitigation.package &&
+    advisory.severity === mitigation.severity &&
+    lockedVersions.every(version => version === mitigation.version))
   return {
     package: packageName,
     ghsa,
@@ -137,6 +146,10 @@ export function runAudit({
     cwd, stdio: 'inherit', timeout: 30_000,
   })
   if (regression.error || regression.status !== 0) fail('Installed braces mitigation regression failed')
+  const protoRegression = spawn(process.execPath, ['--test', 'scripts/ci/deepmerge-proto.test.cjs'], {
+    cwd, stdio: 'inherit', timeout: 30_000,
+  })
+  if (protoRegression.error || protoRegression.status !== 0) fail('Installed deepmerge mitigation regression failed')
   const audit = spawn('pnpm', ['audit', '--json'], {
     cwd, encoding: 'utf8', timeout: 120_000, maxBuffer: 10 * 1024 * 1024,
   })

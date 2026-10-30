@@ -32,7 +32,8 @@
       "monaco-emacs@0.3.0": "patches/monaco-emacs@0.3.0.patch",
       "braces@3.0.3": "patches/braces@3.0.3.patch",
       "next@15.5.28": "patches/next@15.5.28.patch",
-      "monaco-editor@0.55.1": "patches/monaco-editor@0.55.1.patch"
+      "monaco-editor@0.55.1": "patches/monaco-editor@0.55.1.patch",
+      "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch"
     }
   }
 }
