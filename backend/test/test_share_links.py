@@ -13,9 +13,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException, Response
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -583,7 +585,10 @@ class TestShareLinks:
             )
         token = share_resp.json()["share_token"]
 
-        with patch("app.services.storage_service.file_exists", return_value=False):
+        with patch(
+            "app.api.routes._accepted_anonymous_share_pdf",
+            new=AsyncMock(return_value=None),
+        ):
             get_resp = await client.get(f"/share/{token}")
 
         assert get_resp.status_code == 200
@@ -594,12 +599,12 @@ class TestShareLinks:
         assert data["review_comments"] is False
         assert "jane.private@example.com" not in data["accessible_text"]
 
-    async def test_anonymous_share_promotes_worker_redis_pdf_to_job_scoped_storage(
+    async def test_anonymous_share_ignores_preexisting_public_object_without_verified_manifest(
         self,
         client: AsyncClient,
         auth_headers: dict,
     ):
-        """The API and compiler have no shared filesystem on Modal."""
+        """A cached share object cannot bypass the accepted redacted-artifact reader."""
         resume = await _create_resume(client, auth_headers, "Redis Handoff")
         with patch("app.workers.latex_worker.submit_latex_compilation"):
             share_resp = await client.post(
@@ -614,25 +619,184 @@ class TestShareLinks:
         job_id = stored["metadata"]["share_anonymous_job_id"]
 
         fake_redis = AsyncMock()
-        fake_redis.get.return_value = base64.b64encode(b"%PDF-1.7 redacted")
-        expected_url = "https://storage.example/redacted.pdf"
         with (
-            patch("app.services.storage_service.file_exists", return_value=False),
+            patch("app.services.storage_service.file_exists", return_value=True) as file_exists,
             patch("app.core.redis.get_redis_client", AsyncMock(return_value=fake_redis)),
-            patch("app.services.storage_service.upload_bytes") as upload,
-            patch(
-                "app.services.storage_service.generate_presigned_url",
-                return_value=expected_url,
-            ),
+            patch("app.services.storage_service.generate_presigned_url") as presign,
+            patch("app.api.routes._accepted_anonymous_share_pdf", new=AsyncMock(return_value=None)) as accepted,
         ):
             get_resp = await client.get(f"/share/{token}")
 
         assert get_resp.status_code == 200
-        assert get_resp.json()["pdf_url"] == expected_url
-        expected_key = f"shares/{resume['id']}/anonymous/{job_id}.pdf"
-        upload.assert_called_once_with(
-            expected_key, b"%PDF-1.7 redacted", "application/pdf"
+        assert get_resp.json()["pdf_url"] is None
+        assert get_resp.json()["anonymous_processing"] is True
+        accepted.assert_awaited_once()
+        assert accepted.await_args.args[2] == job_id
+        file_exists.assert_not_called()
+        presign.assert_not_called()
+
+    @pytest.mark.parametrize("pdf_body,pdf_status,accepted", [
+        (b"%PDF-1.7 verified redacted artifact", 200, True),
+        (b"not a PDF", 200, False),
+        (b"%PDF-1.7 unavailable", 409, False),
+    ])
+    async def test_accepted_anonymous_share_uses_verified_immutable_manifest(
+        self, pdf_body, pdf_status, accepted
+    ):
+        from app.api import routes
+        from app.services.latex_pii_redactor import redact
+        from app.services.render_engine.artifacts import sha256
+
+        resume = SimpleNamespace(
+            id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+            latex_content=r"\documentclass{article}\begin{document}user@example.com\end{document}",
+            content_revision=7,
         )
+        job_id = str(uuid.uuid4())
+        manifest = SimpleNamespace(
+            job_id=job_id,
+            artifact_id="a" * 64,
+            owner_scope_kind="user",
+            document_id=resume.id,
+            source_sha256=sha256(redact(resume.latex_content)),
+            branch="draft",
+            content_revision=resume.content_revision,
+            pdf=SimpleNamespace(key="render-artifacts/immutable.pdf"),
+        )
+        expected_url = "https://storage.example/immutable-redacted.pdf"
+        pdf_response = Response(content=pdf_body, status_code=pdf_status)
+        redis = AsyncMock()
+        with (
+            patch("app.core.redis.get_redis_client", new=AsyncMock(return_value=redis)),
+            patch("app.api.render_artifact_routes.load_manifest", new=AsyncMock(return_value=manifest)) as load,
+            patch("app.api.render_artifact_routes.serve_artifact", new=AsyncMock(return_value=pdf_response)) as serve,
+            patch("app.services.storage_service.generate_presigned_url", return_value=expected_url) as presign,
+        ):
+            result = await routes._accepted_anonymous_share_pdf(AsyncMock(), resume, job_id)
+
+        assert result == (expected_url if accepted else None)
+        assert load.await_args.args[2:] == (job_id, resume.user_id, None)
+        assert serve.await_args.kwargs == {
+            "artifact_id": manifest.artifact_id,
+            "kind": "pdf",
+            "export": True,
+        }
+        if accepted:
+            presign.assert_called_once_with(manifest.pdf.key, ttl=3600)
+        else:
+            presign.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("document_id", str(uuid.uuid4())),
+            ("source_sha256", "0" * 64),
+            ("branch", "candidate"),
+            ("content_revision", 6),
+            ("content_revision", None),
+        ],
+    )
+    async def test_anonymous_manifest_must_match_current_redacted_resume(
+        self, field, value
+    ):
+        from app.api import routes
+        from app.services.latex_pii_redactor import redact
+        from app.services.render_engine.artifacts import sha256
+
+        resume = SimpleNamespace(
+            id=str(uuid.uuid4()), user_id=str(uuid.uuid4()),
+            latex_content=r"\documentclass{article}\begin{document}private@example.com\end{document}",
+            content_revision=3,
+        )
+        job_id = str(uuid.uuid4())
+        manifest = SimpleNamespace(
+            job_id=job_id, artifact_id="b" * 64, owner_scope_kind="user",
+            document_id=resume.id,
+            source_sha256=sha256(redact(resume.latex_content)), branch="draft",
+            content_revision=resume.content_revision,
+            pdf=SimpleNamespace(key="render-artifacts/immutable.pdf"),
+        )
+        setattr(manifest, field, value)
+        with (
+            patch("app.core.redis.get_redis_client", new=AsyncMock(return_value=AsyncMock())),
+            patch("app.api.render_artifact_routes.load_manifest", new=AsyncMock(return_value=manifest)),
+            patch("app.api.render_artifact_routes.serve_artifact") as serve,
+            patch("app.services.storage_service.generate_presigned_url") as presign,
+        ):
+            result = await routes._accepted_anonymous_share_pdf(AsyncMock(), resume, job_id)
+
+        assert result is None
+        serve.assert_not_awaited()
+        presign.assert_not_called()
+
+    async def test_foreign_owner_manifest_cannot_authorize_public_share(self):
+        from app.api import routes
+
+        resume = SimpleNamespace(
+            id=str(uuid.uuid4()), user_id=str(uuid.uuid4()),
+            latex_content=r"\documentclass{article}\begin{document}private@example.com\end{document}",
+            content_revision=1,
+        )
+        with (
+            patch("app.core.redis.get_redis_client", new=AsyncMock(return_value=AsyncMock())),
+            patch(
+                "app.api.render_artifact_routes.load_manifest",
+                new=AsyncMock(side_effect=HTTPException(404, "artifact unavailable")),
+            ) as load,
+            patch("app.api.render_artifact_routes.serve_artifact") as serve,
+            patch("app.services.storage_service.generate_presigned_url") as presign,
+        ):
+            result = await routes._accepted_anonymous_share_pdf(
+                AsyncMock(), resume, str(uuid.uuid4())
+            )
+
+        assert result is None
+        assert load.await_args.args[3] == resume.user_id
+        serve.assert_not_awaited()
+        presign.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "fence_status",
+        [
+            pytest.param(409, id="pending-or-committing"),
+            pytest.param(404, id="failed-or-cancelled"),
+            pytest.param(409, id="unaccepted"),
+        ],
+    )
+    async def test_anonymous_manifest_never_presigns_when_durable_fence_rejects(
+        self, fence_status
+    ):
+        from app.api import routes
+        from app.services.latex_pii_redactor import redact
+        from app.services.render_engine.artifacts import sha256
+
+        resume = SimpleNamespace(
+            id=str(uuid.uuid4()), user_id=str(uuid.uuid4()),
+            latex_content=r"\documentclass{article}\begin{document}private@example.com\end{document}",
+            content_revision=1,
+        )
+        job_id = str(uuid.uuid4())
+        manifest = SimpleNamespace(
+            job_id=job_id, artifact_id="c" * 64, owner_scope_kind="user",
+            document_id=resume.id,
+            source_sha256=sha256(redact(resume.latex_content)), branch="draft",
+            content_revision=resume.content_revision,
+            pdf=SimpleNamespace(key="render-artifacts/immutable.pdf"),
+        )
+        with (
+            patch("app.core.redis.get_redis_client", new=AsyncMock(return_value=AsyncMock())),
+            patch("app.api.render_artifact_routes.load_manifest", new=AsyncMock(return_value=manifest)),
+            patch(
+                "app.api.render_artifact_routes.serve_artifact",
+                new=AsyncMock(side_effect=HTTPException(fence_status, "artifact unavailable")),
+            ),
+            patch("app.services.storage_service.generate_presigned_url") as presign,
+        ):
+            result = await routes._accepted_anonymous_share_pdf(AsyncMock(), resume, job_id)
+
+        assert result is None
+        presign.assert_not_called()
 
     # ------------------------------------------------------------------
     # ResumeResponse includes share_token / share_url

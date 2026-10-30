@@ -8,12 +8,15 @@ import logging
 import os
 import socket
 import sys
+from functools import wraps
 from time import perf_counter
 
 from celery import Celery
+from celery.app.task import Task
 from celery.exceptions import WorkerTerminate
 from celery.schedules import crontab
 from celery.signals import (
+    beat_init,
     task_failure,
     task_postrun,
     task_prerun,
@@ -36,6 +39,44 @@ setup_telemetry("worker")
 instrument_celery()
 logger = get_logger(__name__)
 _task_start_times: dict[str, float] = {}
+
+
+def _require_primary_authority_active() -> None:
+    from .redis_authority import require_primary_authority_active_sync
+
+    require_primary_authority_active_sync()
+
+
+class PrimaryAuthorityTask(Task):
+    """Fence every Celery publication and execution while primary is frozen."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        original_run = self.run
+        if not getattr(original_run, "_latexy_primary_authority_guard", False):
+            @wraps(original_run)
+            def guarded_run(*run_args, **run_kwargs):
+                _require_primary_authority_active()
+                return original_run(*run_args, **run_kwargs)
+
+            guarded_run._latexy_primary_authority_guard = True
+            self.run = guarded_run
+
+    def apply_async(self, *args, **kwargs):
+        _require_primary_authority_active()
+        return super().apply_async(*args, **kwargs)
+
+    def apply(self, *args, **kwargs):
+        _require_primary_authority_active()
+        return super().apply(*args, **kwargs)
+
+
+class PrimaryAuthorityCelery(Celery):
+    """Fence direct app-level publication, which bypasses Task.apply_async."""
+
+    def send_task(self, *args, **kwargs):
+        _require_primary_authority_active()
+        return super().send_task(*args, **kwargs)
 
 
 def _safe_celery_identifier(value) -> str | None:
@@ -211,7 +252,7 @@ if _IS_MODAL:
     os.environ["CELERY_RESULT_BACKEND"] = "disabled://"
 
 # Create Celery instance
-celery_app = Celery(
+celery_app = PrimaryAuthorityCelery(
     "latexy",
     broker=settings.CELERY_BROKER_URL,
     backend=_RESULT_BACKEND,
@@ -230,6 +271,7 @@ celery_app = Celery(
         "app.workers.tracker_notification_worker",
     ],
 )
+celery_app.Task = PrimaryAuthorityTask
 
 # Configure Celery
 celery_app.conf.update(
@@ -514,9 +556,10 @@ def _install_darwin_fork_safe_resolver() -> None:
 @worker_init.connect
 def prepare_worker_parent(sender=None, **kwargs):
     """Prepare imports before the pool starts, outside child/task deadlines."""
-    from .worker_runtime import prepare_worker_runtime
-
     try:
+        _require_primary_authority_active()
+        from .worker_runtime import prepare_worker_runtime
+
         prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
     except Exception as exc:
         logger.error("Worker runtime preparation failed", extra={"error_type": type(exc).__name__})
@@ -540,6 +583,7 @@ def init_worker_process(sender=None, **kwargs):
     _install_darwin_fork_safe_resolver()
 
     try:
+        _require_primary_authority_active()
         from ..core.redis import redis_manager
         from ..workers.event_publisher import initialize_worker_redis
 
@@ -551,7 +595,17 @@ def init_worker_process(sender=None, **kwargs):
         logger.info("Worker process: Redis clients initialised")
     except Exception as exc:
         logger.error("Worker process: failed to initialise Redis", extra={"error_type": type(exc).__name__})
-        raise
+        raise WorkerTerminate(1) from exc
+
+
+@beat_init.connect
+def prepare_beat(sender=None, **kwargs):
+    """Prevent a beat process from publishing scheduled work while frozen."""
+    try:
+        _require_primary_authority_active()
+    except Exception as exc:
+        logger.error("Celery beat authority check failed", extra={"error_type": type(exc).__name__})
+        raise WorkerTerminate(1) from exc
 
 
 @worker_process_shutdown.connect

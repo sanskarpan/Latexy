@@ -23,4 +23,10 @@ describe('anonymous share privacy', () => {
     expect(page).toContain('Anonymous review copy')
     expect(page).toContain('detected personal identifiers have been redacted')
   })
+
+  it('offers regeneration guidance without claiming every unavailable PDF is actively compiling', () => {
+    expect(page).toContain('Anonymous PDF not available yet')
+    expect(page).toContain('ask the owner to regenerate the anonymous copy')
+    expect(page).not.toContain('Anonymous PDF is being prepared')
+  })
 })

@@ -15,6 +15,8 @@ SCRIPT = Path(__file__).parents[1] / "scripts" / "check_modal_schema_cutover.py"
 BACKEND = SCRIPT.parents[1]
 RECOVERY_SOURCE = (BACKEND / "app" / "services" / "job_result_recovery.py").read_text(encoding="utf-8")
 PUBLIC_API_SOURCE = (BACKEND / "app" / "api" / "public_api_routes.py").read_text(encoding="utf-8")
+GENERAL_ROUTES_SOURCE = (BACKEND / "app" / "api" / "routes.py").read_text(encoding="utf-8")
+RESUME_ROUTES_SOURCE = (BACKEND / "app" / "api" / "resume_routes.py").read_text(encoding="utf-8")
 spec = importlib.util.spec_from_file_location("check_modal_schema_cutover", SCRIPT)
 assert spec and spec.loader
 gate = importlib.util.module_from_spec(spec)
@@ -43,11 +45,13 @@ class FakeRunner:
             output = ""
         elif args[:2] == ["git", "show"]:
             if args[2].endswith("resume_routes.py"):
-                kind, output = "routes", gate.ACCEPTED_FILTER * 2
+                kind, output = "routes", RESUME_ROUTES_SOURCE
             elif args[2].endswith("payment_service.py"):
                 kind, output = "billing", "Dodo-only service"
             elif args[2].endswith("job_result_recovery.py"):
                 kind, output = "recovery", RECOVERY_SOURCE
+            elif args[2].endswith("/routes.py"):
+                kind, output = "general_routes", GENERAL_ROUTES_SOURCE
             else:
                 kind, output = "public_api", PUBLIC_API_SOURCE
         else:
@@ -127,7 +131,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
         with (patch.dict(gate.os.environ, ENV, clear=True),
               patch.object(gate, "_run", runner), redirect_stdout(stdout)):
             self.assertEqual(gate.main([]), 0)
-        self.assertEqual(len(runner.calls), 6)
+        self.assertEqual(len(runner.calls), 7)
         self.assertEqual(runner.calls[-1][0:2], ["gh", "api"])
         self.assertEqual(stdout.getvalue(),
                          "Modal schema cutover source and CI checks passed; operator attestations supplied\n")
@@ -135,7 +139,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
     def test_valid_distinct_ancestor_with_ci_and_attestation_passes(self):
         runner = FakeRunner()
         gate.validate(ENV, runner)
-        self.assertEqual(len(runner.calls), 6)
+        self.assertEqual(len(runner.calls), 7)
         self.assertEqual(runner.calls[0], ["git", "merge-base", "--is-ancestor", RECOVERY, DEPLOY])
         self.assertIn(f"head_sha={RECOVERY}&branch=main", runner.calls[-1][2])
 
@@ -182,7 +186,8 @@ class SchemaCutoverGateTests(unittest.TestCase):
                 self.assertEqual(len(runner.calls), 1)
 
     def test_missing_recovery_files_are_rejected(self):
-        for kind, count in (("routes", 2), ("billing", 3), ("recovery", 4), ("public_api", 5)):
+        for kind, count in (("routes", 2), ("billing", 3), ("recovery", 4),
+                            ("public_api", 5), ("general_routes", 6)):
             with self.subTest(kind=kind):
                 runner = FakeRunner(**{kind: response(128)})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "source is unavailable"):
@@ -193,12 +198,13 @@ class SchemaCutoverGateTests(unittest.TestCase):
         for kind, source in (("routes", "completed-only reader"),
                              ("billing", "razorpay_payment_id"),
                              ("recovery", "completed pointer without acceptance"),
-                             ("public_api", "unfenced Redis fallback")):
+                             ("public_api", "unfenced Redis fallback"),
+                             ("general_routes", "unfenced general download fallback")):
             with self.subTest(kind=kind):
                 runner = FakeRunner(**{kind: response(output=source)})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
                     gate.validate(ENV, runner)
-                self.assertEqual(len(runner.calls), 5)
+                self.assertEqual(len(runner.calls), 6)
 
     def test_pre_1903_public_readers_are_rejected_before_ci_lookup(self):
         # #1901 has the terminal acceptance guard but falls back to live Redis
@@ -210,7 +216,7 @@ class SchemaCutoverGateTests(unittest.TestCase):
         runner = FakeRunner(public_api=response(output=pre_1903))
         with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
             gate.validate(ENV, runner)
-        self.assertEqual(len(runner.calls), 5)
+        self.assertEqual(len(runner.calls), 6)
 
     def test_each_durable_authority_guard_is_required(self):
         variants = (
@@ -228,7 +234,41 @@ class SchemaCutoverGateTests(unittest.TestCase):
                 runner = FakeRunner(**{kind: response(output=source.replace(guard, replacement))})
                 with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
                     gate.validate(ENV, runner)
-                self.assertEqual(len(runner.calls), 5)
+                self.assertEqual(len(runner.calls), 6)
+
+    def test_pre_fix_general_download_readers_are_rejected_before_ci_lookup(self):
+        # A missing/expired immutable manifest must not make cached candidate
+        # bytes authoritative again, including for pending or expired DB jobs.
+        old_source = GENERAL_ROUTES_SOURCE.replace(
+            gate.GENERAL_DOWNLOAD_DURABLE_GUARD, "if False:"
+        )
+        self.assertNotEqual(old_source, GENERAL_ROUTES_SOURCE)
+        runner = FakeRunner(general_routes=response(output=old_source))
+        with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+            gate.validate(ENV, runner)
+        self.assertEqual(len(runner.calls), 6)
+
+    def test_each_general_reader_guard_and_fail_closed_helper_are_required(self):
+        for index in (0, 1):
+            # Removing either route's guard must fail even if the other reader
+            # and a comment retain the required string.
+            prefix, separator, suffix = GENERAL_ROUTES_SOURCE.partition(
+                gate.GENERAL_DOWNLOAD_DURABLE_GUARD
+            )
+            self.assertTrue(separator)
+            if index == 0:
+                source = prefix + "if False:" + suffix
+            else:
+                self.assertIn(separator, suffix)
+                source = prefix + separator + suffix.replace(separator, "if False:", 1)
+            runner = FakeRunner(general_routes=response(output=source))
+            with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+                gate.validate(ENV, runner)
+        helper = gate._function_source(GENERAL_ROUTES_SOURCE, "_legacy_download_transport_allowed")
+        self.assertIn("status_code=503", helper)
+        source = GENERAL_ROUTES_SOURCE.replace(helper, helper.replace("status_code=503", "status_code=500"))
+        with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+            gate.validate(ENV, FakeRunner(general_routes=response(output=source)))
 
     def test_failed_empty_wrong_or_malformed_ci_lookup_is_rejected(self):
         payloads = (
@@ -246,7 +286,66 @@ class SchemaCutoverGateTests(unittest.TestCase):
                 runner = FakeRunner(ci=result)
                 with self.assertRaises(gate.CutoverBlocked):
                     gate.validate(ENV, runner)
-                self.assertEqual(len(runner.calls), 6)
+                self.assertEqual(len(runner.calls), 7)
+
+    def test_anonymous_share_requires_identity_bound_accepted_manifest(self):
+        for token, replacement in (
+            ("manifest.document_id != str(resume.id)", "False"),
+            ("manifest.source_sha256 != redacted_source_sha256", "False"),
+            ("type(manifest.content_revision) is not int", "False"),
+            ("manifest.content_revision != revision", "False"),
+            ('manifest.branch != "draft"', "False"), ("export=True", "export=False"),
+            ("artifact_id=manifest.artifact_id", "artifact_id=None"),
+            ('response.body.startswith(b"%PDF-")', "False"),
+            ("await _accepted_anonymous_share_pdf(db, resume, str(anon_job_id))", "None"),
+        ):
+            with self.subTest(token=token):
+                helper = gate._function_source(GENERAL_ROUTES_SOURCE, "_accepted_anonymous_share_pdf")
+                if token in helper:
+                    changed = GENERAL_ROUTES_SOURCE.replace(helper, helper.replace(token, replacement))
+                else:
+                    changed = GENERAL_ROUTES_SOURCE.replace(token, replacement, 1)
+                gate.ast.parse(changed)
+                self.assertNotEqual(changed, GENERAL_ROUTES_SOURCE)
+                with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+                    gate.validate(ENV, FakeRunner(general_routes=response(output=changed)))
+
+    def test_anonymous_branch_cannot_restore_cached_public_object_shortcut(self):
+        source = GENERAL_ROUTES_SOURCE.replace(
+            "if is_anonymous:\n        anon_job_id:",
+            "if is_anonymous:\n        file_exists('cached-share.pdf')\n        anon_job_id:",
+            1,
+        )
+        self.assertNotEqual(source, GENERAL_ROUTES_SOURCE)
+        with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+            gate.validate(ENV, FakeRunner(general_routes=response(output=source)))
+
+    def test_export_true_in_anonymous_helper_docstring_cannot_replace_export_call(self):
+        helper = gate._function_source(GENERAL_ROUTES_SOURCE, "_accepted_anonymous_share_pdf")
+        changed = helper.replace("            export=True,", "            export=False,")
+        self.assertNotEqual(changed, helper)
+        self.assertIn("export=True", changed)  # explanatory docstring is retained
+        source = GENERAL_ROUTES_SOURCE.replace(helper, changed)
+        gate.ast.parse(source)
+        with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+            gate.validate(ENV, FakeRunner(general_routes=response(output=source)))
+
+    def test_anonymous_producer_must_supply_document_revision_identity(self):
+        producer = gate._function_source(RESUME_ROUTES_SOURCE, "create_share_link")
+        for token, replacement in (
+            ("render_request={", "missing_request={"),
+            ('"document_id": resume_id', '"missing_document_id": resume_id'),
+            ('"content_revision": anon_content_revision',
+             '"missing_content_revision": 0'),
+            ("await _write_initial_redis_state(", "await _missing_initial_state("),
+            ("await _mark_dispatch_started(", "await _missing_dispatch_fence("),
+            ("db.add(_new_finalization_row(", "db.add(_missing_intent("),
+        ):
+            with self.subTest(token=token):
+                source = RESUME_ROUTES_SOURCE.replace(producer, producer.replace(token, replacement, 1))
+                gate.ast.parse(source)
+                with self.assertRaisesRegex(gate.CutoverBlocked, "minimum compatibility"):
+                    gate.validate(ENV, FakeRunner(routes=response(output=source)))
 
     def test_command_timeout_is_rejected(self):
         runner = FakeRunner(ci=subprocess.TimeoutExpired(["gh", "api"], 20))

@@ -92,6 +92,24 @@ class TestHealthAttestation:
         assert resp.status_code == 200
         assert resp.json()["deployment_target"] == "modal"
 
+    async def test_health_reports_selected_redis_binding(self, client: AsyncClient):
+        from app.api import routes
+
+        fingerprint = "d" * 64
+        with patch.object(routes, "redis_binding_fingerprint", return_value=fingerprint):
+            resp = await client.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json()["redis_binding_fingerprint"] == fingerprint
+
+    async def test_invalid_redis_selector_is_not_published(self, client: AsyncClient):
+        with patch.dict("os.environ", {"MODAL_REDIS_SECRET_NAME": "rediss://synthetic-private.invalid"}):
+            resp = await client.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json()["redis_binding_fingerprint"] is None
+        assert "synthetic-private.invalid" not in resp.text
+
     async def test_unvalidated_environment_never_reaches_response(self, client: AsyncClient):
         """A malformed DEPLOY_SHA must surface as null, not as the raw value."""
         with patch.dict("os.environ", {"DEPLOY_SHA": "not-a-sha"}, clear=False):

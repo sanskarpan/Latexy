@@ -51,6 +51,23 @@ _CACHE_TTL = 60  # seconds
 # clock skew across instances) can still find the key it incremented.
 _QUOTA_TTL = 40 * 86400  # seconds
 
+
+async def _quota_authority_active() -> bool:
+    """Never interpret an empty recovery Redis as a fresh allowance."""
+    from ..core.config import settings
+    from ..core.redis_authority import authority_admission_guard_required, require_primary_authority_active
+
+    if not authority_admission_guard_required(settings.ENVIRONMENT, settings.DATABASE_URL):
+        return True
+    try:
+        from ..database.connection import get_async_db_session
+
+        async with get_async_db_session() as session:
+            await require_primary_authority_active(session)
+        return True
+    except Exception:
+        return False
+
 # INCRBY, EXPIRE, and the over-limit rollback as one round-trip, so they cannot
 # come apart.
 #
@@ -655,12 +672,22 @@ class EntitlementService:
         — there is no read-modify-write window to race.
 
         Unlimited plans are still counted (usage reporting) but never denied.
+        A frozen or unreadable durable authority denies every plan before Redis
+        access; the unlimited counter-outage policy below applies only while
+        the primary authority is verified active.
         Fails CLOSED: if the counter store is unavailable we cannot account for
         the spend, so we refuse rather than hand out unmetered LLM/compile time.
         The single exception is an unlimited plan — there is no allowance to
         protect, so a counter outage degrades usage *reporting* only and must not
         deny the highest-paying tiers.
         """
+        if not await _quota_authority_active():
+            window = get_plan_quota_window(plan, dimension)
+            return QuotaTicket(
+                dimension=dimension, user_id=user_id, period=_current_period(window),
+                used=0, limit=get_plan_quota(plan, dimension), allowed=False,
+                unavailable=True, window=window, job_id=job_id, receipt_id="",
+            )
         plan = await self._effective_plan_for_billing_status(user_id, plan)
         # Validate the dimension first, then resolve the current versioned limit.
         # Windows/counter keys never change during an admin limit edit, so old
@@ -751,6 +778,10 @@ class EntitlementService:
         submit failed, LLM call errored). Best-effort: a lost refund only ever
         costs the user one unit, whereas a lost consumption costs us money.
         """
+        if not await _quota_authority_active():
+            # Preserve unknown receipt/compensation state. Do not create a
+            # marker or claim successful cleanup in a fresh recovery database.
+            return False
         if ticket.unavailable:
             # No counter increment was confirmed, so there is nothing to
             # compensate.  Treat this as successful cleanup for callers that
@@ -864,6 +895,7 @@ class EntitlementService:
         Drives the frontend's usage meters. Never mutates a counter; a Redis
         outage reports ``used: null`` rather than failing the request.
         """
+        authority_available = await _quota_authority_active()
         plan = await self._effective_plan_for_billing_status(user_id, plan)
         from .quota_policy_service import quota_policy_service
 
@@ -880,6 +912,10 @@ class EntitlementService:
         periods = {d: _current_period(w) for d, w in windows.items()}
         counts: dict[str, Optional[int]] = {d: None for d in QUOTA_DIMENSIONS}
         try:
+            if not authority_available:
+                from ..core.redis_authority import AuthorityAdmissionBlocked
+
+                raise AuthorityAdmissionBlocked()
             from ..core.redis import get_redis_cache_client
 
             redis = await get_redis_cache_client()
@@ -902,6 +938,7 @@ class EntitlementService:
             "period": month_period,
             "resets_at": _period_reset_at(month_period),
             "policy_available": policy_available,
+            "authority_available": authority_available,
             "dimensions": {
                 dimension: {
                     "used": counts[dimension],

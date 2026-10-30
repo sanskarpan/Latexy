@@ -1,7 +1,10 @@
 # Authoritative quota cutover inventory
 
-This is a review plan, not an activation procedure. Migrations 0074 and 0075
-are dormant. The current application still uses Redis for these meters, and
+This is a review plan, not an activation procedure. Migration 0074 now supplies
+the primary-frozen admission backstop described in
+[held recovery](redis-held-recovery.md); it does not promote a backup. Migration
+0075's balance ledger remains dormant. The application still uses Redis meters
+when primary authority is active, and
 current-period balances cannot be read from the exhausted primary through
 normal commands. A missing balance is unknown, never zero.
 
