@@ -49,6 +49,10 @@ jobs:
       MODAL_ENGINE_VM_ASSETS_FINGERPRINT: ${{ vars.MODAL_ENGINE_VM_ASSETS_FINGERPRINT }}
       # Optional name of a dedicated Modal secret containing Dodo settings.
       MODAL_BILLING_SECRET_NAME: ${{ vars.MODAL_BILLING_SECRET_NAME }}
+      # Static binding for held recovery checks. Alternate Redis remains held
+      # until authoritative state recovery is separately implemented.
+      MODAL_REDIS_SECRET_NAME: ${{ vars.MODAL_REDIS_SECRET_NAME }}
+      MODAL_REDIS_RECOVERY_FREEZE_ID: ${{ vars.MODAL_REDIS_RECOVERY_FREEZE_ID }}
       # Automatic runs and ordinary manual runs always deploy in held mode.
       # Only an explicit manual release input can open API and worker traffic.
       MODAL_DEPLOYMENT_TRAFFIC_HOLD: ${{ github.event_name != 'workflow_dispatch' || inputs.traffic_mode != 'release' }}
@@ -140,6 +144,27 @@ jobs:
 
       # Reject unusable approval inputs before any Modal work. This local check
       # does not verify recovery or drain; the full gate below remains required.
+      - name: Validate held-only Redis binding before provider operations
+        if: steps.freshness.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          PYTHONPATH=backend python - <<'PY'
+          import os
+          from uuid import UUID
+          from app.core.deployment_hold import (
+              DEFAULT_MODAL_REDIS_SECRET_NAME, deployment_traffic_held, modal_redis_secret_name,
+          )
+          deployment_traffic_held(source_deployment=True)
+          if modal_redis_secret_name(os.environ.get("MODAL_REDIS_SECRET_NAME")) != DEFAULT_MODAL_REDIS_SECRET_NAME:
+              value = os.environ.get("MODAL_REDIS_RECOVERY_FREEZE_ID", "")
+              try:
+                  valid = str(UUID(value)) == value
+              except ValueError:
+                  valid = False
+              if not valid:
+                  raise SystemExit("Alternate Redis recovery requires a canonical freeze UUID")
+          PY
+
       - name: Reject absent or stale cutover approval inputs
         if: steps.freshness.outputs.current == 'true'
         env:
@@ -208,6 +233,11 @@ jobs:
           check_health /health healthy
           check_health /readyz ready
           check_health /jobs/health healthy
+          # Source identity alone cannot detect a changed selector between the
+          # held candidate and release. This attests the label, not secret data.
+          timeout --kill-after=5s 40s python backend/scripts/verify_serving_identity.py \
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA" --attempts 1 \
+            --expected-redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}"
           python backend/scripts/modal_deployment_phase.py authorize-release \
             --event-name "$GITHUB_EVENT_NAME" \
             --traffic-mode "$REQUESTED_TRAFFIC_MODE" \
@@ -266,18 +296,50 @@ jobs:
         if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover'
         working-directory: backend
         env:
+          MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
           MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
           MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
           MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
           MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}
         run: |
           set -euo pipefail
-          python scripts/verify_modal_drain.py \
+          drain_report="$(python scripts/verify_modal_drain.py \
             --app-name latexy-backend \
             --environment main \
             --expected-deploy-sha "$DEPLOY_SHA" \
-            --max-age-seconds 300
-          modal run --env main modal_app.py::migrate
+            --max-age-seconds 300)"
+          app_id="$(jq -er '.current_modal_app_id' <<<"$drain_report")"
+          token="$(python -m scripts.modal_operation_authorization \
+            --action migrate --sha "$DEPLOY_SHA" --app-id "$app_id" \
+            --redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}")"
+          echo "::add-mask::$token"
+          modal run --env main modal_app.py::migrate \
+            --source-revision "$DEPLOY_SHA" --authorization-token "$token"
+
+      - name: Freeze primary authority before held backup qualification
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover' && env.MODAL_REDIS_SECRET_NAME != '' && env.MODAL_REDIS_SECRET_NAME != 'latexy-redis'
+        working-directory: backend
+        env:
+          MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
+          MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
+          MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
+          MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
+          MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}
+        run: |
+          set -euo pipefail
+          # Recheck after migration; a prior stopped-App observation can expire.
+          drain_report="$(python scripts/verify_modal_drain.py \
+            --app-name latexy-backend --environment main \
+            --expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300)"
+          app_id="$(jq -er '.current_modal_app_id' <<<"$drain_report")"
+          token="$(python -m scripts.modal_operation_authorization \
+            --action freeze --sha "$DEPLOY_SHA" --app-id "$app_id" \
+            --redis-secret-name "$MODAL_REDIS_SECRET_NAME" \
+            --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID")"
+          echo "::add-mask::$token"
+          modal run --env main modal_app.py::freeze_redis_recovery \
+            --source-revision "$DEPLOY_SHA" --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID" \
+            --authorization-token "$token"
 
       # The first preflight cannot see provider columns on a pre-0065 schema.
       # Recheck after migration, while ingress remains held, so a legacy write
@@ -317,7 +379,8 @@ jobs:
         run: |
           set -euo pipefail
           timeout --kill-after=5s 260s python backend/scripts/verify_serving_identity.py \
-            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA"
+            --url "$BACKEND_URL" --expected-sha "$DEPLOY_SHA" \
+            --expected-redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}"
 
       - name: Synchronize source-owned production templates
         if: steps.freshness.outputs.current == 'true'

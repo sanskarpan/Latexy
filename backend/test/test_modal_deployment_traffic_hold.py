@@ -101,7 +101,12 @@ def test_every_modal_worker_and_scheduler_entrypoint_has_the_outer_guard() -> No
     }
 
 
-def test_worker_guard_rejects_held_calls_before_business_code() -> None:
+def test_worker_guard_rejects_held_calls_before_business_code(monkeypatch) -> None:
+    authority_calls = []
+    monkeypatch.setattr(
+        "app.core.redis_authority.require_primary_authority_active_sync",
+        lambda: authority_calls.append("checked"),
+    )
     _, tree = _source_tree()
     decorator = next(
         node for node in tree.body
@@ -123,6 +128,7 @@ def test_worker_guard_rejects_held_calls_before_business_code() -> None:
     else:
         raise AssertionError("held worker call was admitted")
     assert business_calls == []
+    assert authority_calls == []
 
     namespace["_DEPLOYMENT_TRAFFIC_HELD"] = False
     @namespace["_require_worker_dispatch"]
@@ -131,6 +137,7 @@ def test_worker_guard_rejects_held_calls_before_business_code() -> None:
 
     released_worker()
     assert business_calls == ["ran"]
+    assert authority_calls == ["checked"]
 
 
 def test_scheduled_functions_suppress_registration_in_held_mode() -> None:

@@ -18,6 +18,7 @@ unexpected payload.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import time
@@ -26,6 +27,7 @@ import urllib.request
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _MAX_BODY_BYTES = 64 * 1024
+_SECRET_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
 def _fetch_health(url: str, timeout: float) -> dict[str, object]:
@@ -44,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", required=True, help="Backend base URL")
     parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--expected-redis-secret-name", help="Nonsecret selector to attest alongside source")
     parser.add_argument("--attempts", type=int, default=18)
     parser.add_argument("--delay-seconds", type=float, default=10.0)
     parser.add_argument("--timeout-seconds", type=float, default=20.0)
@@ -53,6 +56,15 @@ def main(argv: list[str] | None = None) -> int:
     if not _GIT_SHA.fullmatch(expected):
         print(json.dumps({"status": "blocked", "reason": "invalid_expected_sha"}))
         return 1
+
+    expected_binding = None
+    if args.expected_redis_secret_name is not None:
+        if not _SECRET_LABEL.fullmatch(args.expected_redis_secret_name):
+            print(json.dumps({"status": "blocked", "reason": "invalid_expected_redis_binding"}))
+            return 1
+        expected_binding = hashlib.sha256(
+            ("latexy-modal-redis-binding:v1\0" + args.expected_redis_secret_name).encode()
+        ).hexdigest()
 
     endpoint = args.url.rstrip("/") + "/health"
     observed: str | None = None
@@ -68,11 +80,17 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(reported, str) and _GIT_SHA.fullmatch(reported.strip().lower()):
                 observed = reported.strip().lower()
                 if observed == expected:
+                    if expected_binding is not None and body.get("redis_binding_fingerprint") != expected_binding:
+                        last_reason = "serving_redis_binding_mismatch"
+                        if attempt < args.attempts:
+                            time.sleep(max(0.0, args.delay_seconds))
+                        continue
                     print(json.dumps({
                         "status": "verified",
                         "source_sha": expected,
                         "serving_sha": observed,
                         "attempt": attempt,
+                        **({"redis_binding_fingerprint": expected_binding} if expected_binding is not None else {}),
                     }, sort_keys=True))
                     return 0
                 last_reason = "serving_revision_mismatch"
