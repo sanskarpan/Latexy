@@ -2352,7 +2352,9 @@ async def create_share_link(
     # Anonymous sharing compiles a new redacted artifact. Recheck at the point
     # of dispatch as well as the route policy; toggling c05 must not admit a
     # background compile through a stale/idempotent share request.
-    if anonymous and not review_only_revoke and not current_meta.get("share_anonymous_job_id"):
+    if anonymous and not review_only_revoke and (
+        regenerate_anonymous or not current_meta.get("share_anonymous_job_id")
+    ):
         await enforce_capabilities(("c05",), user_id)
     if review_only_revoke:
         if not resume.share_token:
@@ -2475,12 +2477,47 @@ async def create_share_link(
 
     # If anonymous mode is newly enabled, submit a compile job for redacted LaTeX
     if anonymous and not review_only_revoke and not current_meta.get("share_anonymous_job_id"):
+        durable_intent_committed = False
+        dispatch_attempted = False
+        anon_job_id = None
         try:
             from ..services.latex_pii_redactor import redact
             from ..workers.latex_worker import submit_latex_compilation
+            from .job_routes import (
+                _delete_initial_redis_state,
+                _mark_dispatch_accepted,
+                _mark_dispatch_started,
+                _new_finalization_row,
+                _terminalize_undispatched_batch_job,
+                _write_initial_redis_state,
+            )
 
             anon_job_id = str(uuid4())
             redacted_latex = redact(resume.latex_content)
+            anon_content_revision = _typed_attr(resume, "content_revision", int, 1)
+            # The worker may finish before this request returns. Commit its
+            # durable, non-Compilation lineage and the share pointer before
+            # dispatch so the public artifact reader can never race ahead of
+            # the authority row. If dispatch has an uncertain outcome, retain
+            # this job id so a possible accepted worker is not orphaned.
+            current_meta["share_anonymous_job_id"] = anon_job_id
+            resume.resume_settings = dict(current_meta)
+            flag_modified(resume, "resume_settings")
+            db.add(_new_finalization_row(
+                anon_job_id,
+                "anonymous_share",
+                user_id,
+                {"resume_id": resume_id},
+            ))
+            await db.commit()
+            durable_intent_committed = True
+            # Use the ordinary compiler transport while keeping its derived
+            # purpose in the DB. The lifecycle is required even without a
+            # metered ticket: otherwise the worker takes its legacy path and
+            # cannot bind an immutable manifest to this durable intent.
+            await _write_initial_redis_state(anon_job_id, "latex_compilation", user_id, 60)
+            await _mark_dispatch_started(anon_job_id)
+            dispatch_attempted = True
             await submit_async(
                 submit_latex_compilation,
                 latex_content=redacted_latex,
@@ -2492,14 +2529,16 @@ async def create_share_link(
                     "resume_id": resume_id,
                     "skip_auto_save": True,
                 },
+                render_request={
+                    "document_id": resume_id,
+                    "content_revision": anon_content_revision,
+                    "branch": "draft",
+                },
             )
-            current_meta["share_anonymous_job_id"] = anon_job_id
-            # Reassign a fresh dict AND flag_modified so SQLAlchemy persists the
-            # change even after an earlier autoflush (triggered by the Compilation
-            # lookup above) committed `current_meta` — a plain JSONB column does not
-            # track in-place mutations.
-            resume.resume_settings = dict(current_meta)
-            flag_modified(resume, "resume_settings")
+            await _mark_dispatch_accepted(anon_job_id)
+            if current_meta.pop("share_anonymous_pending", None) is not None:
+                resume.resume_settings = dict(current_meta)
+                flag_modified(resume, "resume_settings")
             logger.info(f"Submitted anonymous compile job {anon_job_id} for resume {resume_id}")
         except Exception as exc:
             logger.error(
@@ -2507,6 +2546,18 @@ async def create_share_link(
                 resume_id,
                 extra={"error_type": type(exc).__name__},
             )
+            if not durable_intent_committed:
+                await db.rollback()
+                raise HTTPException(503, "Anonymous PDF could not be queued") from None
+            if not dispatch_attempted:
+                # This broker call was never attempted, so it is safe to
+                # terminalize the intent and allow a later retry. An uncertain
+                # broker outcome keeps its committed job pointer and lifecycle.
+                if await _terminalize_undispatched_batch_job(
+                    db, job_id=anon_job_id, reason="anonymous_dispatch_not_started",
+                ):
+                    await _delete_initial_redis_state(anon_job_id, user_id)
+                    current_meta.pop("share_anonymous_job_id", None)
             current_meta["share_anonymous_pending"] = True
             resume.resume_settings = dict(current_meta)
             flag_modified(resume, "resume_settings")

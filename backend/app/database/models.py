@@ -1955,7 +1955,7 @@ class PlanQuotaRevision(Base):
 
 
 class RedisAuthorityControl(Base):
-    """Primary-only, disabled failover generation in PostgreSQL."""
+    """Primary-only freeze record; frozen authority cannot admit product work."""
 
     __tablename__ = "redis_authority_control"
     __table_args__ = (

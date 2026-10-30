@@ -52,10 +52,32 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to initialize database", extra={"error_type": type(e).__name__})
         raise
 
+    if not app.state.deployment_traffic_held:
+        from .core.redis_authority import (
+            AuthorityAdmissionBlocked,
+            authority_admission_guard_required,
+            require_primary_authority_active,
+        )
+
+        if authority_admission_guard_required(settings.ENVIRONMENT, settings.DATABASE_URL):
+            from .database.connection import get_async_db_session
+
+            # A deployment cannot reopen work merely by changing its Redis
+            # selector or restarting after a durable primary freeze.
+            try:
+                async with get_async_db_session() as session:
+                    await require_primary_authority_active(session)
+            except Exception:
+                try:
+                    await close_db()
+                except Exception:
+                    pass
+                raise AuthorityAdmissionBlocked() from None
+
     # Bootstrap configured, verified admin accounts only when no admin exists.
     # This is intentionally not a recurring reconcile: an explicit demotion in
     # the admin control plane must survive the next process restart.
-    admin_emails = settings.admin_email_set()
+    admin_emails = set() if app.state.deployment_traffic_held else settings.admin_email_set()
     if admin_emails:
         try:
             from sqlalchemy import text as _text

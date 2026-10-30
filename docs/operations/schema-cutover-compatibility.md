@@ -80,6 +80,22 @@ the complete backend tree differs and production rollout was not certified.
    #1903 fix at `359806d2` and #1904 at `4182705d`, but this does not
    establish a distinct deployable recovery image, drained fleet or cutover-time
    database compatibility. Do not nominate a recovery SHA from source checks alone.
+   The October 26 review found a further raw-cache fallback in the general
+   `/download/{job_id}` PDF and SyncTeX routes when their immutable manifest is
+   absent. Earlier source-check acceptance does not cover that gap. The gate now
+   also requires these readers to check for **any** durable job row before
+   serving legacy Redis or local bytes, failing closed if that lookup fails.
+   Pending, committing, cancelled, foreign-owner and expired rows still block
+   legacy transport. An eligible accepted artifact may use its verified durable
+   recovery path. Recovery revisions predating this repair must not be nominated
+   merely because they passed the older minimum checks.
+   The anonymous public-share reader also requires an accepted terminal
+   manifest for the owner's exact document and current redacted source. It
+   must not promote raw Redis/local bytes or trust a previously published share
+   object. New anonymous jobs carry document/revision identity; old anonymous
+   artifacts that cannot supply this proof require owner regeneration. Expired
+   render artifacts likewise need regeneration. The checker rejects the known
+   unfenced anonymous-reader and unbound-producer shapes as minimum guards.
 4. Review the exact candidate SHA and recovery SHA, then set Production
    environment variables `MODAL_SCHEMA_CUTOVER_APPROVED_SHA` and
    `MODAL_RECOVERY_VERIFIED_FOR_SHA` to the candidate SHA, and

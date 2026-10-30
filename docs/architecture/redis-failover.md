@@ -125,11 +125,14 @@ reports the existing authoritative dependencies, even when cache backups work.
 
 ## Full automatic failover: concrete next implementation
 
-### Disabled authority-freeze foundation (migration 0074)
+### Primary authority freeze (migration 0074)
 
 `redis_authority_control` adds a Postgres singleton with an integer generation,
 the current primary identity, and a frozen phase. It is seeded at generation 0
-with the primary and **is not read by application admission or worker code**.
+with the primary. Application quota, dispatch and worker admission now read this
+record and refuse frozen, missing or unreadable authority. The controlled
+[held recovery workflow](redis-held-recovery.md) can freeze the primary after
+an external stop/drain procedure, without admitting backup work.
 `freeze_primary_authority` can atomically reserve the next generation with a
 caller-owned UUID; a second or stale coordinator cannot reserve another. A
 caller that loses the transaction response must read back the UUID before
@@ -138,7 +141,9 @@ synthetic healthy state. This first migration structurally forbids a backup as
 active and refuses every generic downgrade, including before a freeze, because
 a state check followed by a table drop would race a concurrent coordinator.
 
-This is a coordination primitive, not a recovery switch. The current exhausted
+This is containment, not a recovery switch. Read-before-act checks cannot stop
+an already-running effect or close a race with an in-flight broker call; the
+external writer fence and global traffic hold remain required. The exhausted
 primary cannot supply quota counters, receipts, consume-once tokens or job
 leases through normal Redis reads. No code path may treat an empty backup as a
 reconstructed authority. A later migration must add promotion/failback states
