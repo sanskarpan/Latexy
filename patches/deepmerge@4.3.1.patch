@@ -1,0 +1,28 @@
+diff --git a/dist/cjs.js b/dist/cjs.js
+index 7c36cbdd06cc22c92d590be3f87a08a91ca06b40..6e6ceb891676d79be8d1d4f99905f7c599d45483 100644
+--- a/dist/cjs.js
++++ b/dist/cjs.js
+@@ -80,10 +80,23 @@ function mergeObject(target, source, options) {
+ 	var destination = {};
+ 	if (options.isMergeableObject(target)) {
+ 		getKeys(target).forEach(function(key) {
++			// GHSA-gcqx-w48m-w2h4: never invoke the prototype setter through a
++			// data key. A target parsed from JSON can carry an own '__proto__'
++			// property, which the guard below treats as mergeable and then
++			// writes onto the fresh destination object, poisoning it.
++			if (key === '__proto__') {
++				return
++			}
+ 			destination[key] = cloneUnlessOtherwiseSpecified(target[key], options);
+ 		});
+ 	}
+ 	getKeys(source).forEach(function(key) {
++		// GHSA-gcqx-w48m-w2h4: same guard for the source side. An own
++		// '__proto__' key (e.g. from JSON.parse) must not reach the
++		// destination assignment, where it would invoke the setter.
++		if (key === '__proto__') {
++			return
++		}
+ 		if (propertyIsUnsafe(target, key)) {
+ 			return
+ 		}
