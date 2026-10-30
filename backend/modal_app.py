@@ -21,7 +21,7 @@ from pathlib import Path
 
 import modal
 
-from app.core.deployment_hold import deployment_traffic_held
+from app.core.deployment_hold import deployment_traffic_held, modal_redis_secret_name
 from app.core.engine_capacity import capacity_options
 
 # ---------------------------------------------------------------------------
@@ -52,6 +52,8 @@ _billing_secret_name = _validated_optional_billing_secret_name(
 _billing_secret_binding_env = {
     "MODAL_BILLING_SECRET_NAME": _billing_secret_name or "",
 }
+_redis_secret_name = modal_redis_secret_name(os.environ.get("MODAL_REDIS_SECRET_NAME"))
+_redis_secret_binding_env = {"MODAL_REDIS_SECRET_NAME": _redis_secret_name}
 
 app = modal.App(_APP_NAME)
 # Operator-only tasks run under a separate Modal App so ephemeral preflight and
@@ -71,6 +73,9 @@ def _require_worker_dispatch(fn):
     def guarded(*args, **kwargs):
         if _DEPLOYMENT_TRAFFIC_HELD:
             raise RuntimeError("Modal deployment traffic is held; worker execution is paused")
+        from app.core.redis_authority import require_primary_authority_active_sync
+
+        require_primary_authority_active_sync()
         return fn(*args, **kwargs)
 
     return guarded
@@ -311,6 +316,7 @@ api_image = (
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
           **_serve_identity_env,
           **_billing_secret_binding_env,
+          **_redis_secret_binding_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
@@ -321,6 +327,7 @@ latex_image = (
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_renderer_capability_env,
           **_serve_identity_env,
           **_billing_secret_binding_env,
+          **_redis_secret_binding_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
@@ -331,6 +338,7 @@ worker_image = (
     .pip_install_from_requirements("requirements.lock", extra_options="--require-hashes")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          **_redis_secret_binding_env,
           **_serve_identity_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
@@ -347,34 +355,44 @@ worker_image = (
 # Without it, MINIO_ENDPOINT fell back to http://localhost:9000 — which does not
 # exist inside a Modal container — and every template thumbnail and preview PDF
 # answered 502 Storage unavailable (#1143).
-_secrets = [
+_base_secrets = [
     modal.Secret.from_name("latexy-backend-secrets"),
     modal.Secret.from_name("latexy-storage"),
-    # Redis is isolated so exhausted/rotated Upstash credentials can be
-    # replaced without recreating the opaque all-in-one backend secret.
-    # Keep this last: its queue/cache settings intentionally override the
-    # legacy Redis values still present in latexy-backend-secrets.
-    modal.Secret.from_name("latexy-redis"),
 ]
 
 # Dodo credentials are needed by the public API and its read-only billing
 # preflight. Keep them out of unrelated render, worker, scheduler, and migration
 # containers; renderer_preflight uses this same full API configuration by design.
-_api_secrets = [*_secrets]
+_api_secrets = [*_base_secrets]
 if _billing_secret_name:
     # Append after named base secrets so Dodo variables override legacy values
     # while preserving every unrelated key in the opaque backend secret. This
     # list is only attached to API and billing-configuration preflight functions.
     _api_secrets.append(modal.Secret.from_name(_billing_secret_name))
 
+# Keep selected Redis last among named secrets so endpoints/passwords override
+# legacy values in the opaque base secret and any accidental billing overlap.
+_redis_secret = modal.Secret.from_name(_redis_secret_name)
+_secrets = [*_base_secrets, _redis_secret]
+_api_secrets.append(_redis_secret)
+
 # Named Secrets can shadow image environment variables. Bind the deployment
 # choice after every opaque secret and before registering any function so API,
 # worker, scheduler, and operator functions receive the same hold mode.
 _deployment_hold_secret = modal.Secret.from_dict(
-    {"MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE}
+    {
+        "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE,
+        "MODAL_REDIS_SECRET_NAME": _redis_secret_name,
+    }
 )
 _secrets.append(_deployment_hold_secret)
 _api_secrets.append(_deployment_hold_secret)
+
+# This operations-only secret contains the HMAC verifier key shared with the
+# protected GitHub Production workflow. It is intentionally excluded from API,
+# worker, scheduler, and routine template-sync functions.
+_operation_authorization_secret = modal.Secret.from_name("latexy-recovery-ops-20261027")
+_operations_secrets = [*_base_secrets, _redis_secret, _operation_authorization_secret, _deployment_hold_secret]
 
 
 # ---------------------------------------------------------------------------
@@ -972,15 +990,26 @@ migrate_image = (
         ignore=[p for p in _IGNORE if "alembic" not in p],
     )
     .env({"PYTHONPATH": "/backend", "DEPLOY_TARGET": "modal", **_billing_secret_binding_env,
+          **_redis_secret_binding_env,
           **_serve_identity_env,
           "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE})
 )
 
 
-@operations_app.function(image=migrate_image, secrets=_secrets, timeout=900)
-def migrate() -> None:
+@operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=900)
+def migrate(source_revision: str, authorization_token: str) -> None:
     """Apply Alembic migrations to the production database."""
+    import os
     import subprocess
+
+    from scripts.modal_operation_authorization import verify_proof
+
+    try:
+        if source_revision != os.environ.get("DEPLOY_SHA"):
+            raise ValueError("operation authorization is invalid")
+        verify_proof(authorization_token, action="migrate", environ=os.environ)
+    except Exception:
+        raise RuntimeError("Modal migration authorization was not verified") from None
 
     result = subprocess.run(
         ["alembic", "upgrade", "head"],
@@ -992,6 +1021,47 @@ def migrate() -> None:
     if result.returncode != 0:
         print(result.stderr)
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
+
+
+@operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=90)
+def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_token: str) -> None:
+    """Workflow-only durable containment; never promote or replay backup work."""
+    import asyncio
+    import json
+    import os
+
+    import modal
+
+    from scripts.modal_operation_authorization import verify_proof
+
+    if modal.is_local():
+        raise RuntimeError("Redis recovery containment requires the canonical workflow runtime")
+    try:
+        if source_revision != os.environ.get("DEPLOY_SHA"):
+            raise ValueError("operation authorization is invalid")
+        verify_proof(authorization_token, action="freeze", expected_freeze_id=freeze_id, environ=os.environ)
+    except Exception:
+        raise RuntimeError("Redis recovery authorization was not verified") from None
+
+    async def run():
+        from app.database.connection import close_db, get_async_db_session
+        from scripts.redis_recovery_quarantine import freeze_primary_for_recovery
+
+        try:
+            return await freeze_primary_for_recovery(
+                get_async_db_session, environ=os.environ,
+                source_revision=source_revision, freeze_id=freeze_id,
+                expected_generation=0,
+            )
+        finally:
+            await close_db()
+
+    try:
+        report = asyncio.run(run())
+    except Exception:
+        print(json.dumps({"status": "blocked", "reason": "recovery_containment_not_verified"}))
+        raise RuntimeError("Redis recovery containment was not verified") from None
+    print(json.dumps(report, sort_keys=True))
 
 
 @operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)

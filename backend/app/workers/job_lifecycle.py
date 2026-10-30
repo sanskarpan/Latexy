@@ -616,6 +616,11 @@ def admit_worker(
     lifecycle record may use the unguarded compatibility path; once a record
     exists every worker must own it before publishing state or a result.
     """
+    # This must precede even the legacy no-lifecycle fast path: quarantined
+    # workers may not claim, run, or mutate a job in the old authority.
+    from ..core.redis_authority import require_primary_authority_active_sync
+
+    require_primary_authority_active_sync()
     try:
         # Celery may reuse the same execution thread after an exceptional
         # delivery. Never let that stale thread-local capability authorize a

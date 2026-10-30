@@ -16,9 +16,12 @@ public endpoint.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from collections.abc import Mapping
+
+from .deployment_hold import modal_redis_secret_name
 
 DEPLOY_SHA_ENV = "DEPLOY_SHA"
 DEPLOY_TARGET_ENV = "DEPLOY_TARGET"
@@ -51,3 +54,17 @@ def deployment_target(environ: Mapping[str, str] | None = None) -> str:
     if source.get(ENVIRONMENT_ENV, "").strip().lower() in _PRODUCTION_ENVIRONMENTS:
         return "production"
     return "local"
+
+
+def redis_binding_fingerprint(environ: Mapping[str, str] | None = None) -> str | None:
+    """Attest the selected nonsecret label, never credentials or secret contents.
+
+    This detects a selector change between held qualification and release. It
+    cannot certify the mutable contents of a provider secret or Redis authority.
+    """
+    source = os.environ if environ is None else environ
+    try:
+        label = modal_redis_secret_name(source.get("MODAL_REDIS_SECRET_NAME"))
+    except ValueError:
+        return None
+    return hashlib.sha256(("latexy-modal-redis-binding:v1\0" + label).encode()).hexdigest()

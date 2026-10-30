@@ -40,6 +40,11 @@ class _DB:
         self.error = error
         self.calls = 0
 
+    async def scalar(self, _query):
+        if self.error:
+            raise self.error
+        return "durable-row" if self.pair is not None else None
+
     async def execute(self, _query):
         self.calls += 1
         if self.error:

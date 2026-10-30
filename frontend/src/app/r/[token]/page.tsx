@@ -105,11 +105,12 @@ export default function SharedResumePage() {
         <div className="content-shell flex flex-1 items-center justify-center py-12">
           <div className="w-full max-w-3xl rounded-[var(--radius-md)] border border-line bg-surface p-6 sm:p-8">
             <div role="status" className="flex items-start gap-3">
-              <Loader2 size={20} className="mt-0.5 shrink-0 animate-spin text-accent-strong" />
+              <EyeOff size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-accent-strong" />
               <div>
-                <h1 className="text-lg font-semibold text-fg">Anonymous PDF is being prepared</h1>
+                <h1 className="text-lg font-semibold text-fg">Anonymous PDF not available yet</h1>
                 <p className="mt-1 text-sm text-fg-2">
-                  The original PDF is never shown while redaction is in progress. The redacted text
+                  The original PDF is never shown. Check again after compilation. If the PDF stays
+                  unavailable, ask the owner to regenerate the anonymous copy. The redacted text
                   alternative is available below.
                 </p>
               </div>
