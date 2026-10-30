@@ -30,6 +30,9 @@ patchedDependencies:
   braces@3.0.3:
     hash: 8e8e7c1d6bcfac51649d4ecfbf48034ffe1a7409587905022482c9ce83e31d83
     path: patches/braces@3.0.3.patch
+  deepmerge@4.3.1:
+    hash: 345f01abad15f99262e78aa29a018a6490e566f9d1bd5d5b309bb32331d91284
+    path: patches/deepmerge@4.3.1.patch
   monaco-editor@0.55.1:
     hash: 87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d
     path: patches/monaco-editor@0.55.1.patch
@@ -8442,7 +8445,7 @@ snapshots:
     dependencies:
       chalk: 5.6.2
       cli-spinners: 3.4.0
-      deepmerge: 4.3.1
+      deepmerge: 4.3.1(patch_hash=345f01abad15f99262e78aa29a018a6490e566f9d1bd5d5b309bb32331d91284)
       figures: 6.1.0
       ink: 5.2.1(@types/react@18.3.31)(react@18.3.1)
 
@@ -9561,7 +9564,7 @@ snapshots:
     dependencies:
       '@rollup/pluginutils': 5.4.0(rollup@2.80.0)
       '@types/resolve': 1.20.2
-      deepmerge: 4.3.1
+      deepmerge: 4.3.1(patch_hash=345f01abad15f99262e78aa29a018a6490e566f9d1bd5d5b309bb32331d91284)
       is-module: 1.0.0
       resolve: 1.22.12
     optionalDependencies:
@@ -10959,7 +10962,7 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deepmerge@4.3.1: {}
+  deepmerge@4.3.1(patch_hash=345f01abad15f99262e78aa29a018a6490e566f9d1bd5d5b309bb32331d91284): {}
 
   define-data-property@1.1.4:
     dependencies:

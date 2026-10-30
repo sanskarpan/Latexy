@@ -38,6 +38,32 @@ test('never hides an additional finding on the same package', () => {
   assert.deepEqual(classifyAudit(report(known, { ...known, github_advisory_id: 'GHSA-new-braces-bug' })),
     { mitigated: 1, unresolved: 1 })
 })
+test('recognizes only the exact patched deepmerge version and advisory', () => {
+  const proto = {
+    github_advisory_id: 'GHSA-gcqx-w48m-w2h4', module_name: 'deepmerge', severity: 'low',
+    findings: [{ version: '4.3.1', paths: ['frontend>workbox-build>deepmerge'] }],
+  }
+  assert.deepEqual(classifyAudit(report(proto)), { mitigated: 1, unresolved: 0 })
+  for (const change of [
+    { github_advisory_id: 'GHSA-another-advisory' }, { module_name: 'another-package' },
+    { severity: 'high' },
+    { findings: [{ version: '4.3.0', paths: ['frontend>workbox-build>deepmerge'] }] },
+  ]) {
+    assert.deepEqual(classifyAudit(report({ ...proto, ...change })), { mitigated: 0, unresolved: 1 })
+  }
+})
+test('recognizes each exact mitigation independently without cross-matching', () => {
+  const proto = {
+    github_advisory_id: 'GHSA-gcqx-w48m-w2h4', module_name: 'deepmerge', severity: 'low',
+    findings: [{ version: '4.3.1', paths: ['frontend>workbox-build>deepmerge'] }],
+  }
+  assert.deepEqual(classifyAudit(report(known, proto)), { mitigated: 2, unresolved: 0 })
+  // A braces advisory on deepmerge versions (or vice versa) must not mitigate.
+  assert.deepEqual(classifyAudit(report(
+    { ...known, module_name: 'deepmerge' },
+    { ...proto, module_name: 'braces' },
+  )), { mitigated: 0, unresolved: 2 })
+})
 test('fails closed on malformed or incomplete registry responses', () => {
   for (const bad of [null, {}, { advisories: [] }, { ...report(), metadata: {} },
     { ...report(known), advisories: {} }, { ...report(), advisories: { hidden: known } }]) {
@@ -91,8 +117,8 @@ test('writes a validated summary artifact and fixed-prefix JSON finding logs', (
   assert.equal(result.status, 'unresolved')
   assert.equal(artifact.unresolvedCount, 1)
   assert.equal(artifact.findings.length, 2)
-  assert.equal(calls.length, 2)
-  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd])
+  assert.equal(calls.length, 3)
+  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd, safeCwd])
   assert.equal(logs.length, 3)
   for (const line of logs.slice(0, 2)) {
     const prefix = 'Dependency audit finding: '
@@ -129,6 +155,21 @@ test('writes an error-status artifact without inventing an empty audit result', 
     assert.equal('findings' in artifact, false)
     assert.equal(JSON.stringify(artifact).includes('secret-provider-token'), false)
   }
+})
+
+test('fails closed when only the deepmerge mitigation regression fails', () => {
+  const reportPath = join(mkdtempSync(join(tmpdir(), 'latexy-audit-deepmerge-')), 'summary.json')
+  assert.throws(() => runAudit({
+    reportPath,
+    spawn: (_command, args) => args[1].includes('deepmerge')
+      ? { status: 1, error: undefined }
+      : { status: 0, error: undefined },
+  }), /Installed deepmerge mitigation regression failed/)
+  const artifact = JSON.parse(readFileSync(reportPath, 'utf8'))
+  assert.deepEqual(artifact, {
+    schemaVersion: 1, status: 'error',
+    error: { code: 'Installed deepmerge mitigation regression failed' },
+  })
 })
 
 test('main returns a nonzero process status for unresolved findings', () => {
