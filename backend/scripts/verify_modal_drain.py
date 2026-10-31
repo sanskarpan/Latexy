@@ -100,6 +100,46 @@ def _fetch_deployment_name_ids(app_name: str, environment: str) -> tuple[str, st
         raise DrainPrerequisiteError("Modal App name lookup failed") from exc
 
 
+def _fetch_deployment_lifecycle(app_name: str, environment: str) -> tuple[str, bool]:
+    """Return (previous_app_id, is_stopped) for a deployment name.
+
+    Stopped Apps age out of the `modal app list` table, so the list cannot
+    prove a completed stop. The deployment record remains authoritative: it
+    still names the stopped deployment as `previous_app_id` with a stopped
+    lifecycle. Any RPC, shape, or state anomaly fails closed; callers compare
+    the returned ID against the external record before trusting it.
+    """
+    try:
+        import asyncio
+
+        from modal.client import _Client
+        from modal_proto import api_pb2
+
+        async def fetch() -> tuple[str, bool]:
+            client = await asyncio.wait_for(_Client.from_env(), timeout=10)
+            lookup = await asyncio.wait_for(
+                client.stub.AppGetByDeploymentName(
+                    api_pb2.AppGetByDeploymentNameRequest(
+                        name=app_name, environment_name=environment
+                    )
+                ),
+                timeout=10,
+            )
+            previous = getattr(lookup, "previous_app_id", None)
+            lifecycle = getattr(lookup, "lifecycle", None)
+            stopped = (
+                getattr(lifecycle, "app_state", None) == api_pb2.APP_STATE_STOPPED
+            )
+            return (
+                previous if isinstance(previous, str) else "",
+                bool(stopped),
+            )
+
+        return asyncio.run(fetch())
+    except Exception as exc:
+        raise DrainPrerequisiteError("Modal deployment record query failed") from exc
+
+
 def _lookup_modal_app_id(app_name: str, environment: str) -> str:
     """Resolve a Modal App name, including when the App is stopped.
 
@@ -162,6 +202,7 @@ def verify_prerequisite(
     max_age_seconds: int = DEFAULT_MAX_AGE_SECONDS,
     runner: Callable[..., Any] = subprocess.run,
     app_lookup: Callable[[str, str], str] = _lookup_modal_app_id,
+    deployment_lifecycle: Callable[[str, str], tuple[str, bool]] | None = None,
 ) -> ModalAppSnapshot:
     """Require a fresh external procedure record and current stopped App state.
 
@@ -206,11 +247,29 @@ def verify_prerequisite(
 
     snapshots = _parse_modal_app_list(_run_app_list(environment, runner))
     matches = [item for item in snapshots if item.app_id == external_record_app_id]
-    if len(matches) != 1:
-        raise DrainPrerequisiteError("external drain App ID is missing or ambiguous in the live App list")
-    current = matches[0]
-    if current.state != "stopped":
-        raise DrainPrerequisiteError(f"current Modal App state is {current.state!r}, not 'stopped'")
+    if len(matches) > 1:
+        raise DrainPrerequisiteError("external drain App ID is ambiguous in the live App list")
+    if len(matches) == 1:
+        current = matches[0]
+        if current.state != "stopped":
+            raise DrainPrerequisiteError(f"current Modal App state is {current.state!r}, not 'stopped'")
+    else:
+        # Stopped Apps age out of the list view, so an absent ID does not mean
+        # the drain record is stale. Fall back to the authoritative deployment
+        # record, which must name this exact stopped deployment; anything else
+        # (live deployment, different App, query failure) fails closed.
+        resolve_lifecycle = deployment_lifecycle or _fetch_deployment_lifecycle
+        try:
+            previous_id, is_stopped = resolve_lifecycle(app_name, environment)
+        except DrainPrerequisiteError:
+            raise
+        except Exception as exc:
+            raise DrainPrerequisiteError("Modal deployment record query failed") from exc
+        if previous_id != external_record_app_id or not is_stopped:
+            raise DrainPrerequisiteError(
+                "external drain App ID has no stopped deployment in the live App list or deployment record"
+            )
+        current = ModalAppSnapshot(app_id=external_record_app_id, state="stopped")
 
     try:
         app_id_after = app_lookup(app_name, environment)

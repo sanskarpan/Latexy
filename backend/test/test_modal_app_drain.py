@@ -327,3 +327,92 @@ def test_success_output_does_not_claim_requested_sha_was_observed_from_modal(cap
     assert report["settled_queued_or_inflight_work_verified_by_this_check"] is False
     assert "observed_modal_deploy_sha" not in report
     assert DEPLOY_SHA not in json.dumps(report)
+
+
+def _empty_list_runner(command, **kwargs):
+    assert kwargs["capture_output"] is True
+    return subprocess.CompletedProcess(command, 0, "[]", "")
+
+
+def test_stopped_app_missing_from_list_resolves_via_deployment_record() -> None:
+    """Stopped Apps age out of `modal app list`; the deployment record still names them.
+
+    This is the production failure: the stopped serving App left the list view,
+    so the list-only check could never pass. The deployment record must name
+    this exact stopped deployment for the gate to pass.
+    """
+    result = verify_prerequisite(
+        app_name="latexy-backend",
+        environment="main",
+        expected_deploy_sha=DEPLOY_SHA,
+        now=NOW,
+        runner=_empty_list_runner,
+        app_lookup=lambda _name, _env: APP_ID,
+        deployment_lifecycle=lambda _name, _env: (APP_ID, True),
+        **valid_record(),
+    )
+    assert result == ModalAppSnapshot(app_id=APP_ID, state="stopped")
+
+
+def test_deployment_record_naming_another_app_fails_closed() -> None:
+    with pytest.raises(DrainPrerequisiteError, match="no stopped deployment"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=_empty_list_runner,
+            app_lookup=lambda _name, _env: APP_ID,
+            deployment_lifecycle=lambda _name, _env: (RECREATED_APP_ID, True),
+            **valid_record(),
+        )
+
+
+def test_live_deployment_record_fails_closed_when_app_missing_from_list() -> None:
+    with pytest.raises(DrainPrerequisiteError, match="no stopped deployment"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=_empty_list_runner,
+            app_lookup=lambda _name, _env: APP_ID,
+            deployment_lifecycle=lambda _name, _env: (APP_ID, False),
+            **valid_record(),
+        )
+
+
+def test_deployment_record_query_failure_fails_closed() -> None:
+    def fail(_name: str, _env: str) -> tuple[str, bool]:
+        raise RuntimeError("network unavailable")
+
+    with pytest.raises(DrainPrerequisiteError, match="deployment record query failed"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=_empty_list_runner,
+            app_lookup=lambda _name, _env: APP_ID,
+            deployment_lifecycle=fail,
+            **valid_record(),
+        )
+
+
+def test_identity_change_detected_after_lifecycle_fallback() -> None:
+    lookups = iter([APP_ID, RECREATED_APP_ID])
+
+    def lookup(_name: str, _env: str) -> str:
+        return next(lookups)
+
+    with pytest.raises(DrainPrerequisiteError, match="identity changed"):
+        verify_prerequisite(
+            app_name="latexy-backend",
+            environment="main",
+            expected_deploy_sha=DEPLOY_SHA,
+            now=NOW,
+            runner=_empty_list_runner,
+            app_lookup=lookup,
+            deployment_lifecycle=lambda _name, _env: (APP_ID, True),
+            **valid_record(),
+        )
