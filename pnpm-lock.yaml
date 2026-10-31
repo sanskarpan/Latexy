@@ -33,6 +33,9 @@ patchedDependencies:
   deepmerge@4.3.1:
     hash: 345f01abad15f99262e78aa29a018a6490e566f9d1bd5d5b309bb32331d91284
     path: patches/deepmerge@4.3.1.patch
+  minimatch@10.2.6:
+    hash: 0e914dd6874546d53237d975bb79ebf03e751fc96e9da66be66017d575846489
+    path: patches/minimatch@10.2.6.patch
   monaco-editor@0.55.1:
     hash: 87eecf644c314150b09449fae63b16fc9a25e4c86c161612de02b7548acef09d
     path: patches/monaco-editor@0.55.1.patch
@@ -9962,7 +9965,7 @@ snapshots:
       '@typescript-eslint/types': 8.68.0
       '@typescript-eslint/visitor-keys': 8.68.0
       debug: 4.4.3
-      minimatch: 10.2.6
+      minimatch: 10.2.6(patch_hash=0e914dd6874546d53237d975bb79ebf03e751fc96e9da66be66017d575846489)
       semver: 7.8.5
       tinyglobby: 0.2.17
       ts-api-utils: 2.5.0(typescript@5.9.3)
@@ -9977,7 +9980,7 @@ snapshots:
       '@typescript-eslint/types': 8.72.0
       '@typescript-eslint/visitor-keys': 8.72.0
       debug: 4.4.3
-      minimatch: 10.2.6
+      minimatch: 10.2.6(patch_hash=0e914dd6874546d53237d975bb79ebf03e751fc96e9da66be66017d575846489)
       semver: 7.8.5
       tinyglobby: 0.2.17
       ts-api-utils: 2.5.0(typescript@5.9.3)
@@ -12328,7 +12331,7 @@ snapshots:
 
   mimic-fn@2.1.0: {}
 
-  minimatch@10.2.6:
+  minimatch@10.2.6(patch_hash=0e914dd6874546d53237d975bb79ebf03e751fc96e9da66be66017d575846489):
     dependencies:
       brace-expansion: 5.0.12
 

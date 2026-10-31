@@ -12,6 +12,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const mitigations = [
   { ghsa: 'GHSA-vfj7-8cjw-p6xm', package: 'braces', severity: 'high', version: '3.0.3' },
   { ghsa: 'GHSA-gcqx-w48m-w2h4', package: 'deepmerge', severity: 'low', version: '4.3.1' },
+  // GHSA-g3hv-75wg-m249 (minimatch quadratic preprocessing, moderate) is
+  // recognized per locked version with different evidence each:
+  // - 10.2.6 carries a committed pnpm patch backporting upstream 77a0f5c
+  //   (cap **/.. splits at the brace max, skip O(n^2) dedupe past 1000).
+  // - 3.1.5 and 5.1.9 predate the vulnerable optimizer passes entirely; the
+  //   regression test proves the adversarial pattern stays a single set,
+  //   which is structurally impossible if the splitting transform existed.
+  { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '10.2.6' },
+  { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '3.1.5' },
+  { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '5.1.9' },
 ]
 const severities = ['info', 'low', 'moderate', 'high', 'critical']
 const MAX_ADVISORIES = 1000
@@ -59,10 +69,13 @@ function normalizedAdvisory(advisory) {
     }
     return boundedString(finding.version, 'locked version', versionPattern)
   })
-  const mitigated = lockedVersions.length > 0 && mitigations.some(mitigation =>
-    ghsa === mitigation.ghsa && packageName === mitigation.package &&
-    advisory.severity === mitigation.severity &&
-    lockedVersions.every(version => version === mitigation.version))
+  // Every locked version must be covered by its own exact entry. One advisory
+  // can span several pinned versions (each verified separately); an
+  // unlisted version anywhere in the tree fails the whole advisory closed.
+  const mitigated = lockedVersions.length > 0 && lockedVersions.every(version =>
+    mitigations.some(mitigation =>
+      ghsa === mitigation.ghsa && packageName === mitigation.package &&
+      advisory.severity === mitigation.severity && version === mitigation.version))
   return {
     package: packageName,
     ghsa,
@@ -150,6 +163,10 @@ export function runAudit({
     cwd, stdio: 'inherit', timeout: 30_000,
   })
   if (protoRegression.error || protoRegression.status !== 0) fail('Installed deepmerge mitigation regression failed')
+  const minimatchRegression = spawn(process.execPath, ['--test', 'scripts/ci/minimatch-dos.test.cjs'], {
+    cwd, stdio: 'inherit', timeout: 120_000,
+  })
+  if (minimatchRegression.error || minimatchRegression.status !== 0) fail('Installed minimatch mitigation regression failed')
   const audit = spawn('pnpm', ['audit', '--json'], {
     cwd, encoding: 'utf8', timeout: 120_000, maxBuffer: 10 * 1024 * 1024,
   })

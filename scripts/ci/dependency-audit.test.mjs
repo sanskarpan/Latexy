@@ -117,8 +117,8 @@ test('writes a validated summary artifact and fixed-prefix JSON finding logs', (
   assert.equal(result.status, 'unresolved')
   assert.equal(artifact.unresolvedCount, 1)
   assert.equal(artifact.findings.length, 2)
-  assert.equal(calls.length, 3)
-  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd, safeCwd])
+  assert.equal(calls.length, 4)
+  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd, safeCwd, safeCwd])
   assert.equal(logs.length, 3)
   for (const line of logs.slice(0, 2)) {
     const prefix = 'Dependency audit finding: '
@@ -157,6 +157,41 @@ test('writes an error-status artifact without inventing an empty audit result', 
   }
 })
 
+test('recognizes only the exact patched or verified-unaffected minimatch versions', () => {
+  const finding = version => ({
+    github_advisory_id: 'GHSA-g3hv-75wg-m249', module_name: 'minimatch', severity: 'moderate',
+    findings: [{ version, paths: ['frontend>minimatch'] }],
+  })
+  for (const version of ['10.2.6', '3.1.5', '5.1.9']) {
+    assert.deepEqual(classifyAudit(report(finding(version))), { mitigated: 1, unresolved: 0 })
+  }
+  for (const change of [
+    { github_advisory_id: 'GHSA-another-advisory' }, { module_name: 'another-package' },
+    { severity: 'high' },
+    { findings: [{ version: '10.2.7', paths: ['frontend>minimatch'] }] },
+  ]) {
+    assert.deepEqual(classifyAudit(report({ ...finding('10.2.6'), ...change })), { mitigated: 0, unresolved: 1 })
+  }
+  // The deepmerge and braces mitigations must not cross-apply to minimatch findings.
+  assert.deepEqual(classifyAudit(report({
+    github_advisory_id: 'GHSA-gcqx-w48m-w2h4', module_name: 'minimatch', severity: 'low',
+    findings: [{ version: '4.3.1', paths: ['frontend>minimatch'] }],
+  })), { mitigated: 0, unresolved: 1 })
+  // Mixed pinned versions are covered only when every one is listed.
+  const multi = {
+    github_advisory_id: 'GHSA-g3hv-75wg-m249', module_name: 'minimatch', severity: 'moderate',
+    findings: [
+      { version: '10.2.6', paths: ['a>minimatch'] },
+      { version: '3.1.5', paths: ['b>minimatch'] },
+      { version: '5.1.9', paths: ['c>minimatch'] },
+    ],
+  }
+  assert.deepEqual(classifyAudit(report(multi)), { mitigated: 1, unresolved: 0 })
+  assert.deepEqual(classifyAudit(report({
+    ...multi, findings: [...multi.findings, { version: '10.2.7', paths: ['d>minimatch'] }],
+  })), { mitigated: 0, unresolved: 1 })
+})
+
 test('fails closed when only the deepmerge mitigation regression fails', () => {
   const reportPath = join(mkdtempSync(join(tmpdir(), 'latexy-audit-deepmerge-')), 'summary.json')
   assert.throws(() => runAudit({
@@ -169,6 +204,21 @@ test('fails closed when only the deepmerge mitigation regression fails', () => {
   assert.deepEqual(artifact, {
     schemaVersion: 1, status: 'error',
     error: { code: 'Installed deepmerge mitigation regression failed' },
+  })
+})
+
+test('fails closed when only the minimatch mitigation regression fails', () => {
+  const reportPath = join(mkdtempSync(join(tmpdir(), 'latexy-audit-minimatch-')), 'summary.json')
+  assert.throws(() => runAudit({
+    reportPath,
+    spawn: (_command, args) => args[1].includes('minimatch')
+      ? { status: 1, error: undefined }
+      : { status: 0, error: undefined },
+  }), /Installed minimatch mitigation regression failed/)
+  const artifact = JSON.parse(readFileSync(reportPath, 'utf8'))
+  assert.deepEqual(artifact, {
+    schemaVersion: 1, status: 'error',
+    error: { code: 'Installed minimatch mitigation regression failed' },
   })
 })
 
