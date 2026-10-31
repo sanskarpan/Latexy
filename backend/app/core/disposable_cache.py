@@ -30,6 +30,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from .config import settings
 from .disposable_cache_config import DisposableCacheEndpoint
 from .logging import get_logger
+from .observability import record_redis_command
 
 logger = get_logger(__name__)
 _ALLOWED_KEY = re.compile(r"(?:latexy:embcache:[a-zA-Z0-9._-]+|esco:search):[a-f0-9]{64}\Z")
@@ -202,6 +203,9 @@ class DisposableCacheChain:
                 # move affinity back to an endpoint another request abandoned.
                 if slot.blocked_until <= self.clock():
                     slot.failed = False
+                # Report under the disposable role so a healthy spare never
+                # clears the authoritative queue/cache exhaustion alarms.
+                record_redis_command("disposable")
                 return result
             except Exception as exc:
                 quota = _quota_rejection(exc)
@@ -211,6 +215,11 @@ class DisposableCacheChain:
                 slot.blocked_until = max(slot.blocked_until, self.clock() + cooldown)
                 kind = "quota" if quota else "transport" if _transport_error(exc) else "other"
                 logger.warning("Disposable cache backend slot %d unavailable (%s)", index, kind)
+                # Feed the shared provider-error counters so quota rejections
+                # on any spare raise the same hard-exhaustion alert as the
+                # primary paths. Every failed attempt is counted, regardless
+                # of which CacheUnavailable reason propagates below.
+                record_redis_command("disposable", exc)
                 # A SET timeout, disconnect, malformed reply, 5xx or cancellation
                 # cannot prove whether the write happened. Never replay it.
                 if operation == "set" and not quota:

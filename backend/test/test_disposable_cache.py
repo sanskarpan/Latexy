@@ -4,6 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import call as mock_call
 
 import httpx
 import pytest
@@ -377,7 +378,7 @@ def test_only_reviewed_services_import_disposable_cache():
     for path in root.rglob("*.py"):
         if path.parent == root / "core":
             continue
-        if "core.disposable_cache import" in path.read_text():
+        if "core.disposable_cache import" in path.read_text(encoding="utf-8"):
             consumers.append(path.name)
     assert sorted(consumers) == ["ats_worker.py", "embedding_service.py", "esco_service.py"]
 
@@ -608,3 +609,43 @@ async def test_valid_cached_embedding_avoids_provider_call():
     with patch("app.services.embedding_service.disposable_cache", cache), patch.object(service, "_get_client") as provider:
         assert await service.embed_text("dummy text") == vector
     provider.assert_not_called()
+
+
+async def test_chain_reports_success_under_disposable_role_only(enabled):
+    primary = backend()
+    chain = DisposableCacheChain([primary])
+    with patch("app.core.disposable_cache.record_redis_command") as record:
+        assert await chain.execute("get", "key") is None
+        await chain.execute("set", "key", "value", 10)
+    assert record.call_args_list == [mock_call("disposable"), mock_call("disposable")]
+
+
+async def test_chain_reports_quota_rejection_under_disposable_role(enabled):
+    from app.core.observability import classify_redis_error
+
+    primary = backend()
+    primary.get.side_effect = quota()
+    chain = DisposableCacheChain([primary])
+    with patch("app.core.disposable_cache.record_redis_command") as record:
+        with pytest.raises(CacheUnavailable):
+            await chain.execute("get", "key")
+    assert len(record.call_args_list) == 1
+    role, reported = record.call_args_list[0].args
+    assert role == "disposable"
+    assert classify_redis_error(reported) == "request_quota_exhausted"
+
+
+async def test_chain_reports_transport_failure_under_disposable_role(enabled):
+    from app.core.observability import classify_redis_error
+
+    primary, backup = backend(), backend(get="cached")
+    failure = TimeoutError("operation timed out")
+    primary.get.side_effect = failure
+    chain = DisposableCacheChain([primary, backup])
+    with patch("app.core.disposable_cache.record_redis_command") as record:
+        assert await chain.execute("get", "key") == "cached"
+    roles = [call.args[0] for call in record.call_args_list]
+    assert roles and all(role == "disposable" for role in roles)
+    assert classify_redis_error(record.call_args_list[0].args[1]) == "timeout"
+    # The healthy backup read is recorded too, still under the spare role.
+    assert record.call_args_list[-1].args == ("disposable",)
