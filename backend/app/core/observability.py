@@ -143,7 +143,7 @@ DB_POOL_CONNECTIONS = Gauge(
 REDIS_COMMANDS_TOTAL = Counter(
     "latexy_redis_commands_total",
     "Redis commands observed by the application clients.",
-    ["role", "status"],  # role: queue|cache; status: success|error
+    ["role", "status"],  # role: queue|cache|disposable; status: success|error
 )
 REDIS_PROVIDER_ERRORS_TOTAL = Counter(
     "latexy_redis_provider_errors_total",
@@ -301,7 +301,7 @@ def record_redis_command(role: str, error: BaseException | None = None) -> str |
     extra Redis operation merely to count an operation, which would accelerate a
     request-capped provider toward exhaustion.
     """
-    normalized_role = role if role in {"queue", "cache"} else "unknown"
+    normalized_role = role if role in {"queue", "cache", "disposable"} else "unknown"
     if error is None:
         REDIS_COMMANDS_TOTAL.labels(role=normalized_role, status="success").inc()
         REDIS_DEPENDENCY_UP.labels(role=normalized_role).set(1)
