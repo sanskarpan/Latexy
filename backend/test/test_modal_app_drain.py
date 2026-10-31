@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -119,21 +117,56 @@ def test_current_state_query_is_bracketed_by_name_identity_lookups() -> None:
     ]
 
 
-def test_public_name_lookup_is_noncreating_and_passes_explicit_environment(monkeypatch) -> None:
-    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+def test_name_lookup_prefers_current_deployment_id(monkeypatch) -> None:
+    import scripts.verify_modal_drain as drain
 
-    class FakeApp:
-        @staticmethod
-        def lookup(*args, **kwargs):
-            calls.append((args, kwargs))
-            return SimpleNamespace(app_id=APP_ID)
+    calls: list[tuple[str, str]] = []
 
-    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(App=FakeApp))
+    def fake_fetch(app_name: str, environment: str) -> tuple[str, str]:
+        calls.append((app_name, environment))
+        return APP_ID, RECREATED_APP_ID
+
+    monkeypatch.setattr(drain, "_fetch_deployment_name_ids", fake_fetch)
     assert _lookup_modal_app_id("latexy-backend", "main") == APP_ID
-    assert calls == [(
-        ("latexy-backend",),
-        {"environment_name": "main", "create_if_missing": False},
-    )]
+    assert calls == [("latexy-backend", "main")]
+
+
+def test_stopped_app_resolves_through_previous_deployment_id(monkeypatch) -> None:
+    """A stopped App has no current deployment: the RPC reports it as previous.
+
+    This is the exact production failure: `modal.App.lookup` raises
+    NotFoundError for a stopped App, which made the drain gate unpassable in
+    precisely the state it requires. The deployment-name RPC still resolves
+    the stopped App's ID as `previous_app_id`.
+    """
+    import scripts.verify_modal_drain as drain
+
+    def fake_fetch(app_name: str, environment: str) -> tuple[str, str]:
+        assert (app_name, environment) == ("latexy-backend", "main")
+        return "", APP_ID
+
+    monkeypatch.setattr(drain, "_fetch_deployment_name_ids", fake_fetch)
+    assert _lookup_modal_app_id("latexy-backend", "main") == APP_ID
+
+
+def test_name_lookup_rejects_missing_or_malformed_ids(monkeypatch) -> None:
+    import scripts.verify_modal_drain as drain
+
+    for ids in [("", ""), ("not-an-id", ""), ("", "also-not-an-id")]:
+        monkeypatch.setattr(drain, "_fetch_deployment_name_ids", lambda *_a, **_k: ids)
+        with pytest.raises(DrainPrerequisiteError, match="no valid app_id"):
+            _lookup_modal_app_id("latexy-backend", "main")
+
+
+def test_name_lookup_failure_fails_closed(monkeypatch) -> None:
+    import scripts.verify_modal_drain as drain
+
+    def fake_fetch(app_name: str, environment: str) -> tuple[str, str]:
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(drain, "_fetch_deployment_name_ids", fake_fetch)
+    with pytest.raises(DrainPrerequisiteError, match="Modal App name lookup failed"):
+        _lookup_modal_app_id("latexy-backend", "main")
 
 
 def test_modal_154_list_schema_ignores_description_as_identity() -> None:
