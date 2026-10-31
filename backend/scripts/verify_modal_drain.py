@@ -33,7 +33,8 @@ def _parse_modal_app_list(payload: str | bytes | Sequence[Any]) -> list[ModalApp
 
     The pinned CLI serializes `app_id`, `description`, `state`, `tasks`,
     `created_at`, and `stopped_at`. Description is not a stable App name and is
-    deliberately ignored; name resolution uses Modal's public `App.lookup`.
+    deliberately ignored; name resolution uses Modal's deployment-name RPC
+    (see `_lookup_modal_app_id`), which also resolves stopped Apps.
     """
     if isinstance(payload, bytes):
         try:
@@ -62,22 +63,61 @@ def _parse_modal_app_list(payload: str | bytes | Sequence[Any]) -> list[ModalApp
     return snapshots
 
 
-def _lookup_modal_app_id(app_name: str, environment: str) -> str:
-    """Resolve a Modal App name through the public, non-creating SDK lookup."""
-    try:
-        import modal
+def _fetch_deployment_name_ids(app_name: str, environment: str) -> tuple[str, str]:
+    """Return the (current, previous) App IDs for a Modal deployment name.
 
-        app = modal.App.lookup(
-            app_name,
-            environment_name=environment,
-            create_if_missing=False,
-        )
+    `modal.App.lookup(..., create_if_missing=False)` raises NotFoundError once
+    the named App is stopped, which is exactly the state this gate requires.
+    The deployment-name RPC still resolves a stopped App: `app_id` is empty
+    and the stopped App's ID arrives as `previous_app_id`. Callers must apply
+    the same `_APP_ID` validation to whichever value they accept.
+    """
+    try:
+        import asyncio
+
+        from modal.client import _Client
+        from modal_proto import api_pb2
+
+        async def fetch() -> tuple[str, str]:
+            client = await asyncio.wait_for(_Client.from_env(), timeout=10)
+            lookup = await asyncio.wait_for(
+                client.stub.AppGetByDeploymentName(
+                    api_pb2.AppGetByDeploymentNameRequest(
+                        name=app_name, environment_name=environment
+                    )
+                ),
+                timeout=10,
+            )
+            app_id = getattr(lookup, "app_id", None)
+            previous_app_id = getattr(lookup, "previous_app_id", None)
+            return (
+                app_id if isinstance(app_id, str) else "",
+                previous_app_id if isinstance(previous_app_id, str) else "",
+            )
+
+        return asyncio.run(fetch())
     except Exception as exc:  # Modal client/network/auth errors all fail closed.
         raise DrainPrerequisiteError("Modal App name lookup failed") from exc
-    app_id = getattr(app, "app_id", None)
-    if not isinstance(app_id, str) or not _APP_ID.fullmatch(app_id):
-        raise DrainPrerequisiteError("Modal App name lookup returned no valid app_id")
-    return app_id
+
+
+def _lookup_modal_app_id(app_name: str, environment: str) -> str:
+    """Resolve a Modal App name, including when the App is stopped.
+
+    A deployed App resolves to its current `app_id`. A stopped App has no
+    current deployment, so the RPC reports it as `previous_app_id`; that ID is
+    accepted only if it is well-formed, and the caller still requires it to
+    appear as `stopped` in the live App list before and after the state query.
+    """
+    try:
+        current_id, previous_id = _fetch_deployment_name_ids(app_name, environment)
+    except DrainPrerequisiteError:
+        raise
+    except Exception as exc:
+        raise DrainPrerequisiteError("Modal App name lookup failed") from exc
+    for candidate in (current_id, previous_id):
+        if _APP_ID.fullmatch(candidate):
+            return candidate
+    raise DrainPrerequisiteError("Modal App name lookup returned no valid app_id")
 
 
 def _run_app_list(
