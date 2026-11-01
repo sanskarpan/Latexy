@@ -32,6 +32,7 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from ..core.event_bus import event_bus
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..middleware.auth_middleware import get_current_user_required
@@ -341,7 +342,7 @@ async def _job_ws_access_ok(job_id: str, user_id: Optional[str]) -> bool:
     except Exception as exc:  # pragma: no cover - transient/malformed
         logger.debug(
             "WS ownership lookup failed for job %s",
-            job_id,
+            sanitize_for_log(job_id),
             extra={"error_type": type(exc).__name__},
         )
         return False
@@ -645,9 +646,9 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     await notify_if_read_only(room, client_id)
     logger.info(
         "Collab: %s joined %s as %s (room=%d)",
-        user_name,
-        resume_id[:8],
-        role,
+        sanitize_for_log(user_name),
+        sanitize_for_log(resume_id[:8]),
+        sanitize_for_log(role),
         room.size,
     )
 
@@ -775,10 +776,10 @@ async def _request_cancellation(job_id: str) -> None:
             f"latexy:events:{job_id}",
             json.dumps({"type": "event", "event": cancel_event, "stream_id": entry_id}),
         )
-        logger.info(f"Cancellation requested for job {job_id}")
+        logger.info(f"Cancellation requested for job {sanitize_for_log(job_id)}")
     except Exception as exc:
         logger.error(
             "Failed to set cancel flag for job %s",
-            job_id,
+            sanitize_for_log(job_id),
             extra={"error_type": type(exc).__name__},
         )

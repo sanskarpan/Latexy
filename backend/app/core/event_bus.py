@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Set
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
+from .log_sanitize import sanitize_for_log
 from .logging import get_logger
 
 logger = get_logger(__name__)
@@ -108,7 +109,7 @@ class EventBusManager:
                             cleanup_exc,
                         )
                     raise
-                logger.debug(f"[EventBus] subscribed to {channel} (pre-replay)")
+                logger.debug(f"[EventBus] subscribed to {sanitize_for_log(channel)} (pre-replay)")
 
                 listener_started = asyncio.Event()
                 self._listeners[job_id] = asyncio.create_task(
@@ -232,7 +233,7 @@ class EventBusManager:
         except Exception as exc:
             logger.error(
                 "[EventBus] listener error for %s",
-                job_id,
+                sanitize_for_log(job_id),
                 extra={"error_type": type(exc).__name__},
             )
         finally:
@@ -255,7 +256,7 @@ class EventBusManager:
                         "EventBus pubsub close failed",
                         extra={"error_type": type(exc).__name__},
                     )
-            logger.debug(f"[EventBus] listener exited for {job_id}")
+            logger.debug(f"[EventBus] listener exited for {sanitize_for_log(job_id)}")
 
     # ---------------------------------------------------------------- #
     #  Internal: Stream replay                                          #
@@ -285,7 +286,7 @@ class EventBusManager:
         except Exception as exc:
             logger.warning(
                 "[EventBus] replay XREAD failed for %s",
-                job_id,
+                sanitize_for_log(job_id),
                 extra={"error_type": type(exc).__name__},
             )
             return count

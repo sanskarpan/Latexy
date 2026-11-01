@@ -38,6 +38,7 @@ from ..core.feature_registry import (
     get_feature,
     is_gateable,
 )
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.models import FeatureFlag, PlanFeature, RoleFeature, Subscription, TeamSeat, User
 
@@ -927,7 +928,7 @@ class EntitlementService:
         except Exception as exc:
             logger.warning(
                 "Quota snapshot unavailable for %s",
-                user_id,
+                sanitize_for_log(user_id),
                 extra={"error_type": type(exc).__name__},
             )
 

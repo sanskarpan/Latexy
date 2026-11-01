@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import resolve_plan_family, settings
 from ..core.engine_observability import record_phase
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.observability import record_job_submitted
@@ -1624,7 +1625,7 @@ async def get_job_state(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Error getting state for job %s", job_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error getting state for job %s", sanitize_for_log(job_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1689,7 +1690,7 @@ async def get_job_result(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Error getting result for job %s", job_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error getting result for job %s", sanitize_for_log(job_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1749,7 +1750,7 @@ async def get_job_stream(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Error reading stream for job %s", job_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error reading stream for job %s", sanitize_for_log(job_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1794,7 +1795,7 @@ async def cancel_job(
             await db.rollback()
             logger.error(
                 "Durable cancellation failed for %s",
-                job_id,
+                sanitize_for_log(job_id),
                 extra={"error_type": type(exc).__name__},
             )
             raise HTTPException(status_code=503, detail="Cancellation temporarily unavailable") from None
@@ -1867,7 +1868,7 @@ async def cancel_job(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Error cancelling job %s", job_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error cancelling job %s", sanitize_for_log(job_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1920,7 +1921,7 @@ async def list_jobs(
         return JobListResponse(jobs=jobs, total_count=len(jobs))
 
     except Exception as exc:
-        logger.error("Error listing jobs for user %s", user_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error listing jobs for user %s", sanitize_for_log(user_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

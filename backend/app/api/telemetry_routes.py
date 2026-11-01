@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..core.config import settings
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.observability import record_frontend_event
 from ..middleware.auth_middleware import get_current_user_optional
@@ -83,11 +84,11 @@ async def ingest_frontend_telemetry(
     logger.info(
         "frontend_telemetry_ingested",
         extra={
-            "event_name": metric_name,
-            "metric_name": metric_name if payload.kind == "web_vital" else None,
-            "route_name": metric_route,
-            "user_id": user_id,
-            "request_id": getattr(request.state, "request_id", None),
+            "event_name": sanitize_for_log(metric_name),
+            "metric_name": sanitize_for_log(metric_name) if payload.kind == "web_vital" else None,
+            "route_name": sanitize_for_log(metric_route),
+            "user_id": sanitize_for_log(user_id),
+            "request_id": sanitize_for_log(getattr(request.state, "request_id", None)),
         },
     )
     return {"accepted": True}

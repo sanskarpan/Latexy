@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import settings
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..database.connection import get_db
@@ -2023,7 +2024,7 @@ async def get_optimization_history(
     except Exception as exc:
         logger.warning(
             "DB error fetching optimization history for resume %s",
-            resume_id,
+            sanitize_for_log(resume_id),
             extra={"error_type": type(exc).__name__},
         )
         return []
@@ -2041,7 +2042,7 @@ async def get_optimization_history(
     except Exception as exc:
         logger.warning(
             "Error serializing optimization history for resume %s",
-            resume_id,
+            sanitize_for_log(resume_id),
             extra={"error_type": type(exc).__name__},
         )
         return []
@@ -2068,7 +2069,7 @@ async def get_score_history(
     except Exception as exc:
         logger.warning(
             "DB error fetching score history for resume %s",
-            resume_id,
+            sanitize_for_log(resume_id),
             extra={"error_type": type(exc).__name__},
         )
         return []
@@ -2412,7 +2413,7 @@ async def create_share_link(
                 except ValueError as exc:
                     logger.warning(
                         "Local PDF exceeds share limit for %s",
-                        resume_id,
+                        sanitize_for_log(resume_id),
                         extra={"error_type": type(exc).__name__},
                     )
             else:
@@ -2428,7 +2429,7 @@ async def create_share_link(
                 except Exception as _re:
                     logger.warning(
                         "Redis PDF lookup failed for share %s",
-                        resume_id,
+                        sanitize_for_log(resume_id),
                         extra={"error_type": type(_re).__name__},
                     )
             if pdf_bytes_for_share:
@@ -2465,7 +2466,7 @@ async def create_share_link(
                                     "Could not remove losing share repair object (%s)",
                                     type(cleanup_exc).__name__,
                                 )
-                    logger.info(f"Uploaded PDF to MinIO for resume {resume_id} at {share_key}")
+                    logger.info(f"Uploaded PDF to MinIO for resume {sanitize_for_log(resume_id)} at {share_key}")
                 except Exception as exc:
                     logger.warning(
                         "Could not upload PDF to MinIO for share link",
@@ -2539,11 +2540,11 @@ async def create_share_link(
             if current_meta.pop("share_anonymous_pending", None) is not None:
                 resume.resume_settings = dict(current_meta)
                 flag_modified(resume, "resume_settings")
-            logger.info(f"Submitted anonymous compile job {anon_job_id} for resume {resume_id}")
+            logger.info(f"Submitted anonymous compile job {sanitize_for_log(anon_job_id)} for resume {sanitize_for_log(resume_id)}")
         except Exception as exc:
             logger.error(
                 "Could not submit anonymous compile job for resume %s",
-                resume_id,
+                sanitize_for_log(resume_id),
                 extra={"error_type": type(exc).__name__},
             )
             if not durable_intent_committed:

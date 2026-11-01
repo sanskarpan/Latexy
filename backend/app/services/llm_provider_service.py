@@ -21,6 +21,7 @@ from openai import (
 )
 
 from ..core.config import settings
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.observability import record_llm_call
 from ..core.tracing import traced
@@ -664,7 +665,7 @@ class MultiProviderLLMService:
             return response
 
         except Exception as e:
-            logger.error("Error with provider %s (%s)", provider_name, type(e).__name__)
+            logger.error("Error with provider %s (%s)", sanitize_for_log(provider_name), type(e).__name__)
 
             # Update error stats
             if provider_name in self.usage_stats:
@@ -677,7 +678,7 @@ class MultiProviderLLMService:
                 for fallback_provider in self.providers.keys():
                     if fallback_provider != provider_name and fallback_provider.endswith(suffix):
                         try:
-                            logger.info(f"Falling back to provider: {fallback_provider}")
+                            logger.info(f"Falling back to provider: {sanitize_for_log(fallback_provider)}")
                             provider = self.get_provider(fallback_provider)
                             response = await provider.generate(request)
                             self.update_usage_stats(fallback_provider, response)

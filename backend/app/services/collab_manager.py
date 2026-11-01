@@ -47,6 +47,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from fastapi.websockets import WebSocket
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 
@@ -733,7 +734,7 @@ class CollabManager:
         except Exception as exc:
             logger.error(
                 "Collab: bridge error for %s",
-                resume_id[:8],
+                sanitize_for_log(resume_id[:8]),
                 extra={"error_type": type(exc).__name__},
             )
         finally:
@@ -795,7 +796,7 @@ async def _subscribe(resume_id: str) -> Optional[Any]:
                 )
         logger.warning(
             "Collab: Pub/Sub subscribe failed for %s",
-            resume_id[:8],
+            sanitize_for_log(resume_id[:8]),
             extra={"error_type": type(exc).__name__},
         )
         return None
@@ -810,7 +811,7 @@ async def _publish(resume_id: str, envelope: dict) -> None:
     except Exception as exc:
         logger.warning(
             "Collab: Pub/Sub publish failed for %s",
-            resume_id[:8],
+            sanitize_for_log(resume_id[:8]),
             extra={"error_type": type(exc).__name__},
         )
 
@@ -999,7 +1000,7 @@ async def _persist_update(resume_id: str, update_bytes: bytes) -> None:
     except Exception as exc:
         logger.warning(
             "Collab: Redis write failed for %s",
-            resume_id[:8],
+            sanitize_for_log(resume_id[:8]),
             extra={"error_type": type(exc).__name__},
         )
 
@@ -1015,7 +1016,7 @@ async def _send_catchup(resume_id: str, client_id: str, room: CollabRoom) -> Non
     except Exception as exc:
         logger.warning(
             "Collab: Redis read failed for %s",
-            resume_id[:8],
+            sanitize_for_log(resume_id[:8]),
             extra={"error_type": type(exc).__name__},
         )
         stored = []

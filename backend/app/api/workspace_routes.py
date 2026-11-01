@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
@@ -409,7 +410,7 @@ async def invite_member(
         # stable client error instead of leaking a 500.
         await db.rollback()
         raise HTTPException(status_code=409, detail="User is already a member of this workspace") from exc
-    logger.info("Workspace %s: invited user %s with role %s", workspace_id, target.id, body.role)
+    logger.info("Workspace %s: invited user %s with role %s", sanitize_for_log(workspace_id), sanitize_for_log(target.id), sanitize_for_log(body.role))
 
     return MemberResponse(
         user_id=target.id,
