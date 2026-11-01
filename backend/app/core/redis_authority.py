@@ -20,6 +20,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 _REASONS = frozenset({"quota_exhausted", "connection_unavailable", "manual"})
+_HANDOVER_REASONS = frozenset({"spare_handover_fresh_start"})
 _ADMISSION_BLOCKED_MESSAGE = "Primary resource authority is frozen or unavailable."
 _AUTHORITY_READ_TIMEOUT_SECONDS = 5.0
 _DATABASE_SCHEMES = frozenset({
@@ -70,10 +71,11 @@ def _state(row: object) -> RedisAuthorityState:
     )
     if (
         state.generation < 0
-        or state.phase not in {"legacy", "frozen"}
-        or state.active_backend != "primary"
-        or (state.phase == "legacy" and (state.freeze_reason is not None or state.freeze_id is not None))
-        or (state.phase == "frozen" and (state.freeze_reason is None or state.freeze_id is None))
+        or state.phase not in {"legacy", "frozen", "spare"}
+        or state.active_backend not in {"primary", "spare"}
+        or (state.phase == "legacy" and (state.active_backend != "primary" or state.freeze_reason is not None or state.freeze_id is not None))
+        or (state.phase == "frozen" and (state.active_backend != "primary" or state.freeze_reason is None or state.freeze_id is None))
+        or (state.phase == "spare" and (state.active_backend != "spare" or state.freeze_reason is None or state.freeze_id is None))
     ):
         raise AuthorityStateUnavailable("Redis authority row is incompatible")
     return state
@@ -268,3 +270,48 @@ async def freeze_primary_authority(
     if row is None:
         raise StaleAuthorityGeneration("Redis authority is already frozen or changed")
     return _state(row)
+
+
+async def handover_to_spare(
+    session: _Session, *, expected_generation: int, reason: str, handover_id: UUID,
+) -> RedisAuthorityState:
+    """Atomically hand durable authority to the spare backend as a fresh start.
+
+    Only a frozen primary can be handed over, and only to a declared fresh
+    start: prior-period usage stays unknown (never seeded or replayed) and the
+    spare's current-period baselines are recorded separately with provenance.
+    The caller owns the database transaction and must commit it before using
+    the returned generation. The conditional UPDATE serializes simultaneous
+    coordinators; a stale attempt never increments or changes routing.
+    """
+    if isinstance(expected_generation, bool) or not isinstance(expected_generation, int) or expected_generation < 0:
+        raise ValueError("expected_generation must be a nonnegative integer")
+    if reason not in _HANDOVER_REASONS:
+        raise ValueError("unsupported handover reason")
+    if not isinstance(handover_id, UUID):
+        raise ValueError("handover_id must be a UUID")
+    result = await session.execute(text(
+        "UPDATE redis_authority_control "
+        "SET generation = generation + 1, phase = 'spare', active_backend = 'spare', "
+        "freeze_reason = :reason, freeze_id = :handover_id, updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = 1 AND generation = :expected AND phase = 'frozen' "
+        "RETURNING generation, phase, active_backend, freeze_reason, freeze_id"
+    ), {"expected": expected_generation, "reason": reason, "handover_id": str(handover_id)})
+    row = result.first()
+    if row is None:
+        raise StaleAuthorityGeneration("Redis authority is not frozen or already changed")
+    return _state(row)
+
+
+async def require_spare_authority_active(session: _Session) -> RedisAuthorityState:
+    """Require a fresh handed-over spare state; anything else blocks."""
+    try:
+        async with asyncio.timeout(_AUTHORITY_READ_TIMEOUT_SECONDS):
+            state = await read_redis_authority(session)
+        if state.phase != "spare" or state.active_backend != "spare":
+            raise AuthorityAdmissionBlocked()
+        return state
+    except AuthorityAdmissionBlocked:
+        raise
+    except Exception:
+        raise AuthorityAdmissionBlocked() from None
