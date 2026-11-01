@@ -1,8 +1,9 @@
 """Short-lived authorization proofs for held production Modal operations.
 
 The signer key is shared only between the protected Production workflow and
-the two remote database cutover functions. Proofs attest a recent external
-drain check; they do not make that observation atomic with the operation.
+the remote database cutover functions (migrate, freeze, handover). Proofs
+attest a recent external drain check; they do not make that observation
+atomic with the operation.
 """
 
 from __future__ import annotations
@@ -56,35 +57,39 @@ def _redis_fingerprint(label: str) -> str:
 
 
 def mint_proof(*, action: str, sha: str, app_id: str, redis_secret_name: str,
-               freeze_id: str = "", now: int | None = None,
+               freeze_id: str = "", handover_id: str = "", now: int | None = None,
                environ: Mapping[str, str] | None = None) -> str:
     source = environ if environ is not None else os.environ
-    if action not in {"migrate", "freeze"} or not _SHA.fullmatch(sha) or not _APP_ID.fullmatch(app_id):
+    if action not in {"migrate", "freeze", "handover"} or not _SHA.fullmatch(sha) or not _APP_ID.fullmatch(app_id):
         raise OperationAuthorizationError("operation authorization is invalid")
     if source.get("MODAL_ENVIRONMENT") != "main" or source.get("MODAL_DEPLOYMENT_TRAFFIC_HOLD") != "true":
         raise OperationAuthorizationError("operation authorization requires held main deployment")
-    if action == "freeze" and not _FREEZE_ID.fullmatch(freeze_id):
+    if action == "freeze" and (not _FREEZE_ID.fullmatch(freeze_id) or handover_id):
         raise OperationAuthorizationError("operation authorization is invalid")
-    if action == "migrate" and freeze_id:
+    if action == "handover" and (not _FREEZE_ID.fullmatch(handover_id) or freeze_id):
         raise OperationAuthorizationError("operation authorization is invalid")
+    if action == "migrate" and (freeze_id or handover_id):
+        raise OperationAuthorizationError("operation authorization is invalid")
+    operation_id = freeze_id or handover_id
     issued = int(time.time()) if now is None else now
     payload = {
         "v": 1, "action": action, "sha": sha, "environment": "main", "app_id": app_id,
         "redis_fingerprint": _redis_fingerprint(redis_secret_name),
-        "freeze_id": freeze_id, "issued_at": issued, "expires_at": issued + MAX_TTL_SECONDS,
+        "freeze_id": operation_id, "issued_at": issued, "expires_at": issued + MAX_TTL_SECONDS,
     }
     body = _canonical(payload)
     signature = hmac.new(_key(source.get(KEY_ENV)), _DOMAIN + body, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(body).rstrip(b"=").decode("ascii") + "." + base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
 
 
-def verify_proof(token: str, *, action: str, expected_freeze_id: str = "", environ: Mapping[str, str] | None = None,
+def verify_proof(token: str, *, action: str, expected_freeze_id: str = "",
+                 expected_handover_id: str = "", environ: Mapping[str, str] | None = None,
                  now: int | None = None) -> None:
     source = environ if environ is not None else os.environ
     try:
         if source.get("MODAL_ENVIRONMENT") != "main" or source.get("MODAL_DEPLOYMENT_TRAFFIC_HOLD") != "true":
             raise OperationAuthorizationError("operation authorization requires held main deployment")
-        if action not in {"migrate", "freeze"} or len(token) > 2048 or token.count(".") != 1:
+        if action not in {"migrate", "freeze", "handover"} or len(token) > 2048 or token.count(".") != 1:
             raise OperationAuthorizationError("operation authorization is invalid")
         body_part, signature_part = token.split(".")
         body = base64.urlsafe_b64decode(body_part + "=" * (-len(body_part) % 4))
@@ -113,6 +118,11 @@ def verify_proof(token: str, *, action: str, expected_freeze_id: str = "", envir
                     or not _FREEZE_ID.fullmatch(expected_freeze_id)
                     or payload["freeze_id"] != expected_freeze_id):
                 raise OperationAuthorizationError("operation authorization is invalid")
+        elif action == "handover":
+            if (not _FREEZE_ID.fullmatch(payload["freeze_id"])
+                    or not _FREEZE_ID.fullmatch(expected_handover_id)
+                    or payload["freeze_id"] != expected_handover_id):
+                raise OperationAuthorizationError("operation authorization is invalid")
         elif payload["freeze_id"] != "":
             raise OperationAuthorizationError("operation authorization is invalid")
     except OperationAuthorizationError:
@@ -123,15 +133,17 @@ def verify_proof(token: str, *, action: str, expected_freeze_id: str = "", envir
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--action", choices=("migrate", "freeze"), required=True)
+    parser.add_argument("--action", choices=("migrate", "freeze", "handover"), required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--app-id", required=True)
     parser.add_argument("--redis-secret-name", default="latexy-redis")
     parser.add_argument("--freeze-id", default="")
+    parser.add_argument("--handover-id", default="")
     args = parser.parse_args(argv)
     try:
         print(mint_proof(action=args.action, sha=args.sha, app_id=args.app_id,
-                         redis_secret_name=args.redis_secret_name, freeze_id=args.freeze_id))
+                         redis_secret_name=args.redis_secret_name, freeze_id=args.freeze_id,
+                         handover_id=args.handover_id))
     except OperationAuthorizationError as exc:
         print(str(exc), file=sys.stderr)
         return 1
