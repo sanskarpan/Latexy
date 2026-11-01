@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume
@@ -312,7 +313,7 @@ async def export_canva(
         elements = [CanvaElement(**e) for e in data["elements"]]
         return CanvaResumeExport(elements=elements)
     except Exception as exc:
-        logger.error("Error exporting resume %s to Canva", resume_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error exporting resume %s to Canva", sanitize_for_log(resume_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Export failed")
 
 
@@ -352,7 +353,7 @@ async def export_figma(
         ]
         return FigmaResumeExport(sections=sections)
     except Exception as exc:
-        logger.error("Error exporting resume %s to Figma", resume_id, extra={"error_type": type(exc).__name__})
+        logger.error("Error exporting resume %s to Figma", sanitize_for_log(resume_id), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Export failed")
 
 
@@ -419,8 +420,8 @@ async def export_resume(
     except Exception as exc:
         logger.error(
             "Error exporting resume %s as %s",
-            resume_id,
-            fmt,
+            sanitize_for_log(resume_id),
+            sanitize_for_log(fmt),
             extra={"error_type": type(exc).__name__},
         )
         raise HTTPException(status_code=500, detail="Export failed")
@@ -470,5 +471,5 @@ async def export_content(fmt: str, body: ExportContentRequest):
     except PdfRenderFailed as exc:
         raise HTTPException(status_code=422, detail="Compiled PDF could not be rendered") from exc
     except Exception as exc:
-        logger.error("Error exporting content as %s", fmt, extra={"error_type": type(exc).__name__})
+        logger.error("Error exporting content as %s", sanitize_for_log(fmt), extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="Export failed")

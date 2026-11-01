@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
@@ -134,7 +135,7 @@ async def import_from_url(
             await entitlement_service.refund_quota(quota_ticket)
         logger.warning(
             "Blocked URL import (SSRF/invalid) for user %s (%s)",
-            user_id,
+            sanitize_for_log(user_id),
             type(exc).__name__,
         )
         raise HTTPException(status_code=400, detail="Invalid or disallowed URL")

@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import ApplicationSubmission, Compilation, JobApplication, Resume
@@ -393,7 +394,7 @@ async def apply_greenhouse(
         sub.error_message = "Greenhouse rejected the application"
         logger.warning(
             "Greenhouse submission rejected for user %s",
-            user_id,
+            sanitize_for_log(user_id),
             extra={"error_type": type(exc).__name__},
         )
     except httpx.HTTPStatusError as exc:
@@ -401,14 +402,14 @@ async def apply_greenhouse(
         sub.error_message = f"Greenhouse API error {exc.response.status_code}"
         logger.error(
             "Greenhouse HTTP error for user %s",
-            user_id,
+            sanitize_for_log(user_id),
             extra={"error_type": type(exc).__name__},
         )
     except Exception:
         sub.status = "failed"
         # Do not leak internal exception text to the client — log it server-side only.
         sub.error_message = "An unexpected error occurred while submitting the application"
-        logger.exception(f"Greenhouse unexpected error for user {user_id}")
+        logger.exception(f"Greenhouse unexpected error for user {sanitize_for_log(user_id)}")
 
     await db.commit()
     await db.refresh(sub)
@@ -510,7 +511,7 @@ async def apply_lever(
         sub.error_message = "Lever rejected the application"
         logger.warning(
             "Lever submission rejected for user %s",
-            user_id,
+            sanitize_for_log(user_id),
             extra={"error_type": type(exc).__name__},
         )
     except httpx.HTTPStatusError as exc:
@@ -518,14 +519,14 @@ async def apply_lever(
         sub.error_message = f"Lever API error {exc.response.status_code}"
         logger.error(
             "Lever HTTP error for user %s",
-            user_id,
+            sanitize_for_log(user_id),
             extra={"error_type": type(exc).__name__},
         )
     except Exception:
         sub.status = "failed"
         # Do not leak internal exception text to the client — log it server-side only.
         sub.error_message = "An unexpected error occurred while submitting the application"
-        logger.exception(f"Lever unexpected error for user {user_id}")
+        logger.exception(f"Lever unexpected error for user {sanitize_for_log(user_id)}")
 
     await db.commit()
     await db.refresh(sub)

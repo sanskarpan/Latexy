@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, redis_manager
 from ..database.models import (
@@ -58,11 +59,11 @@ class AnalyticsService:
             # Also cache in Redis for real-time analytics
             await self._cache_event(event_type, user_id, device_fingerprint, metadata)
 
-            logger.info(f"Tracked event: {event_type} for user: {user_id}")
+            logger.info(f"Tracked event: {sanitize_for_log(event_type)} for user: {sanitize_for_log(user_id)}")
             return True
 
         except Exception as e:
-            logger.error("Error tracking event %s (%s)", event_type, type(e).__name__)
+            logger.error("Error tracking event %s (%s)", sanitize_for_log(event_type), type(e).__name__)
             await db.rollback()
             return False
 

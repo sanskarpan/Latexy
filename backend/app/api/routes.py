@@ -16,6 +16,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.observability import metrics_content_type, metrics_payload
@@ -658,7 +659,7 @@ async def _assert_job_download_access(job_id: str, user_id: Optional[str]) -> No
         r = await get_redis_client()
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
     except Exception as exc:  # pragma: no cover - redis transient
-        logger.warning("Ownership metadata unavailable for job %s: %s", job_id, type(exc).__name__)
+        logger.warning("Ownership metadata unavailable for job %s: %s", sanitize_for_log(job_id), type(exc).__name__)
         raise HTTPException(status_code=503, detail="Job ownership could not be verified") from exc
     if not meta_raw:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -666,7 +667,7 @@ async def _assert_job_download_access(job_id: str, user_id: Optional[str]) -> No
         metadata = parse_ownership_metadata(meta_raw, job_id)
         job_owner = metadata["user_id"]
     except (TypeError, ValueError, AttributeError) as exc:
-        logger.warning("Invalid ownership metadata for job %s", job_id)
+        logger.warning("Invalid ownership metadata for job %s", sanitize_for_log(job_id))
         raise HTTPException(status_code=503, detail="Job ownership could not be verified") from exc
     if job_owner is not None and job_owner != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -714,7 +715,7 @@ async def _query_owned_durable_pdf(
         pair = result.first()
     except Exception as exc:
         logger.warning(
-            "Durable PDF lookup failed for job %s (%s)", job_id, type(exc).__name__
+            "Durable PDF lookup failed for job %s (%s)", sanitize_for_log(job_id), type(exc).__name__
         )
         raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
 
@@ -805,7 +806,7 @@ async def _lookup_owned_durable_pdf(
         raise
     except Exception as exc:
         logger.warning(
-            "Durable PDF session unavailable for job %s (%s)", job_id, type(exc).__name__
+            "Durable PDF session unavailable for job %s (%s)", sanitize_for_log(job_id), type(exc).__name__
         )
         raise HTTPException(status_code=503, detail="PDF ownership could not be verified") from exc
 
@@ -848,7 +849,7 @@ async def _serve_durable_pdf(artifact: dict[str, object], job_id: str) -> Respon
     except storage_service.StorageObjectTooLarge:
         raise HTTPException(status_code=413, detail="Compiled PDF is too large") from None
     except Exception as exc:
-        logger.warning("Durable PDF storage lookup failed for job %s (%s)", job_id, type(exc).__name__)
+        logger.warning("Durable PDF storage lookup failed for job %s (%s)", sanitize_for_log(job_id), type(exc).__name__)
         raise HTTPException(status_code=503, detail="PDF storage is temporarily unavailable") from exc
 
     if pdf_bytes is None:
@@ -957,7 +958,7 @@ async def download_pdf(
     except BoundedReadError:
         raise HTTPException(status_code=413, detail="Compiled PDF is too large")
     except Exception as e:
-        logger.warning("Redis PDF lookup failed for job %s (%s)", job_id, type(e).__name__)
+        logger.warning("Redis PDF lookup failed for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
 
     # Fallback: local filesystem (works in single-process / Docker dev deployments).
     job_dir, pdf_file, _ = get_job_files(job_id)
@@ -967,7 +968,7 @@ async def download_pdf(
         try:
             return FileResponse(path=pdf_file, media_type="application/pdf", filename=f"resume_{job_id[:8]}.pdf")
         except Exception as e:
-            logger.error("Error serving PDF for job %s (%s)", job_id, type(e).__name__)
+            logger.error("Error serving PDF for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
             raise HTTPException(status_code=500, detail="Error serving PDF file")
 
     # When Redis metadata was valid but both transient artifact paths are gone,
@@ -1031,7 +1032,7 @@ async def download_synctex(
         if synctex_cached:
             return Response(content=synctex_cached, media_type="text/plain")
     except Exception as e:
-        logger.warning("Redis synctex lookup failed for job %s (%s)", job_id, type(e).__name__)
+        logger.warning("Redis synctex lookup failed for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
 
     # Fallback: local filesystem (single-process / Docker dev deployments).
     job_dir, _, _ = get_job_files(job_id)
@@ -1057,7 +1058,7 @@ async def download_synctex(
     except BoundedReadError:
         raise HTTPException(status_code=413, detail="SyncTeX data is too large")
     except Exception as e:
-        logger.error("Error serving synctex for job %s (%s)", job_id, type(e).__name__)
+        logger.error("Error serving synctex for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
         raise HTTPException(status_code=500, detail="Error serving SyncTeX file")
 
 
@@ -1080,7 +1081,7 @@ async def get_compilation_logs(
         if log_text:
             return LogsResponse(job_id=job_id, logs=log_text)
     except Exception as e:
-        logger.warning("Redis log lookup failed for job %s (%s)", job_id, type(e).__name__)
+        logger.warning("Redis log lookup failed for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
 
     # Fallback: local filesystem (Docker / single-process dev).
     _, _, log_file = get_job_files(job_id)
@@ -1091,7 +1092,7 @@ async def get_compilation_logs(
         log_content = read_text_file_bounded(log_file)
         return LogsResponse(job_id=job_id, logs=log_content)
     except Exception as e:
-        logger.error("Error reading logs for job %s (%s)", job_id, type(e).__name__)
+        logger.error("Error reading logs for job %s (%s)", sanitize_for_log(job_id), type(e).__name__)
         raise HTTPException(status_code=500, detail="Error reading log file")
 
 

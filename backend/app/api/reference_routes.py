@@ -12,6 +12,7 @@ from typing import List, Literal, Optional
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature_optional
@@ -392,8 +393,8 @@ async def verify_citations(
         else:
             logger.error(
                 "Unexpected citation verification failure for %s: %s",
-                entries[index]["cite_key"],
-                exception,
+                sanitize_for_log(entries[index]["cite_key"]),
+                sanitize_for_log(exception),
             )
             results[index] = CitationVerification(
                 cite_key=entries[index]["cite_key"],

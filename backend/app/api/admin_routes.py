@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.errors import error_body
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
@@ -103,7 +104,7 @@ async def update_feature_flag(
         raise HTTPException(status_code=404, detail=f"Feature flag {key!r} not found")
     logger.info(
         "admin_feature_flag_updated",
-        extra={"admin_user_id": admin_user_id, "feature_key": key, "enabled": body.enabled},
+        extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
     )
     return FlagDetail(
         key=flag.key,
@@ -167,7 +168,7 @@ async def update_kill_switch(
         )
     logger.info(
         "admin_kill_switch_updated",
-        extra={"admin_user_id": admin_user_id, "feature_key": key, "enabled": body.enabled},
+        extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
     )
     return await entitlement_service.get_state(db)
 
@@ -208,9 +209,9 @@ async def update_matrix_cell(
     logger.info(
         "admin_entitlement_matrix_updated",
         extra={
-            "admin_user_id": admin_user_id,
-            "plan_family": body.plan_family,
-            "feature_key": body.feature_key,
+            "admin_user_id": sanitize_for_log(admin_user_id),
+            "plan_family": sanitize_for_log(body.plan_family),
+            "feature_key": sanitize_for_log(body.feature_key),
             "enabled": body.enabled,
         },
     )
@@ -389,10 +390,10 @@ async def update_user_role(
     logger.info(
         "admin_user_role_updated",
         extra={
-            "admin_user_id": admin_user_id,
-            "target_user_id": user_id,
-            "previous_role": previous_role,
-            "new_role": new_role,
+            "admin_user_id": sanitize_for_log(admin_user_id),
+            "target_user_id": sanitize_for_log(user_id),
+            "previous_role": sanitize_for_log(previous_role),
+            "new_role": sanitize_for_log(new_role),
         },
     )
     return _user_summary(user)

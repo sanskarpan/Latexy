@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.observability import record_trial_use
 from ..database.models import DeviceTrial, UsageAnalytics
@@ -38,7 +39,7 @@ async def get_trial_limit_for_user(user_id: Optional[str], db: AsyncSession) -> 
             if row.lower() in test_emails:
                 return TEST_TRIAL_LIMIT
     except Exception as exc:
-        logger.warning("Failed to look up trial limit for user %s", user_id, extra={"error_type": type(exc).__name__})
+        logger.warning("Failed to look up trial limit for user %s", sanitize_for_log(user_id), extra={"error_type": type(exc).__name__})
     return TRIAL_LIMIT
 
 class TrialService:

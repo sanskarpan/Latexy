@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.models import UserAPIKey
 from .encryption_service import EncryptionService
@@ -274,7 +275,7 @@ class APIKeyService:
             }
 
         except Exception as e:
-            logger.error("Error validating API key for %s (%s)", provider, type(e).__name__)
+            logger.error("Error validating API key for %s (%s)", sanitize_for_log(provider), type(e).__name__)
             return {
                 "valid": False,
                 "error": "Unexpected error while validating the key — please try again in a moment.",
@@ -325,7 +326,7 @@ class APIKeyService:
             # Add new provider
             multi_provider_service.add_provider(provider_name, provider_instance)
 
-            logger.info(f"Updated provider {provider} for user {user_id}")
+            logger.info(f"Updated provider {sanitize_for_log(provider)} for user {sanitize_for_log(user_id)}")
 
         except Exception as e:
             logger.error("Error updating provider in service (%s)", type(e).__name__)
@@ -351,12 +352,12 @@ class APIKeyService:
                 except Exception as e:
                     logger.error(
                         "Error loading provider %s for user %s (%s)",
-                        key.provider,
-                        user_id,
+                        sanitize_for_log(key.provider),
+                        sanitize_for_log(user_id),
                         type(e).__name__,
                     )
 
-            logger.info(f"Loaded {len(keys)} providers for user {user_id}")
+            logger.info(f"Loaded {len(keys)} providers for user {sanitize_for_log(user_id)}")
 
         except Exception as e:
             logger.error("Error loading user providers (%s)", type(e).__name__)
