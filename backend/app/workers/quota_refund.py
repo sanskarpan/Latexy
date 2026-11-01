@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from ..core.logging import get_logger
 from ..core.redis import get_sync_redis_cache_client
-from ..core.redis_authority import AuthorityAdmissionBlocked, require_primary_authority_active_sync
+from ..core.redis_authority import AuthorityAdmissionBlocked, require_active_authority_sync
 
 # Kept as a patchable module seam for worker tests; this intentionally resolves
 # to the cache Redis database, where quota counters are consumed.
@@ -34,7 +34,7 @@ return 1
 def clear_quota_refund_receipt(job_id: str) -> None:
     """Best-effort removal of a receipt after a job reaches success."""
     try:
-        require_primary_authority_active_sync()
+        require_active_authority_sync()
     except AuthorityAdmissionBlocked:
         # Do not write a success marker or erase a receipt while frozen.
         return
@@ -62,7 +62,7 @@ def refund_quota_once(
 ) -> bool:
     """Refund a trusted serialized quota receipt once per job and dimension."""
     try:
-        require_primary_authority_active_sync()
+        require_active_authority_sync()
     except AuthorityAdmissionBlocked:
         # The durable refund marker and receipt are part of the frozen state.
         return False

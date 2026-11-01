@@ -111,8 +111,8 @@ def test_operator_wrapper_is_separate_bounded_and_calls_existing_helper():
 
 def test_unheld_api_checks_frozen_authority_before_admin_or_redis_initialization():
     source = (ROOT / "backend/app/main.py").read_text(encoding="utf-8")
-    assert source.index("await require_primary_authority_active(session)") < source.index("admin_emails =")
-    assert source.index("await require_primary_authority_active(session)") < source.index("await redis_manager.init_redis()")
+    assert source.index("await require_active_authority(session)") < source.index("admin_emails =")
+    assert source.index("await require_active_authority(session)") < source.index("await redis_manager.init_redis()")
     assert "if not app.state.deployment_traffic_held:" in source
 
 

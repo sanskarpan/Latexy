@@ -104,7 +104,7 @@ def test_every_modal_worker_and_scheduler_entrypoint_has_the_outer_guard() -> No
 def test_worker_guard_rejects_held_calls_before_business_code(monkeypatch) -> None:
     authority_calls = []
     monkeypatch.setattr(
-        "app.core.redis_authority.require_primary_authority_active_sync",
+        "app.core.redis_authority.require_active_authority_sync",
         lambda: authority_calls.append("checked"),
     )
     _, tree = _source_tree()

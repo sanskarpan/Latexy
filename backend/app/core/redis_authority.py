@@ -21,6 +21,11 @@ from sqlalchemy import text
 
 _REASONS = frozenset({"quota_exhausted", "connection_unavailable", "manual"})
 _HANDOVER_REASONS = frozenset({"spare_handover_fresh_start"})
+
+#: Backend selections that may admit work. Legacy names the original primary;
+#: spare names the handed-over spare after a declared fresh-start handover.
+#: Anything else (including frozen) keeps every gate closed.
+_ACTIVE_BACKENDS = frozenset({("legacy", "primary"), ("spare", "spare")})
 _ADMISSION_BLOCKED_MESSAGE = "Primary resource authority is frozen or unavailable."
 _AUTHORITY_READ_TIMEOUT_SECONDS = 5.0
 _DATABASE_SCHEMES = frozenset({
@@ -134,10 +139,24 @@ def authority_admission_guard_required(environment: str | None, database_url: st
 
 async def require_primary_authority_active(session: _Session) -> RedisAuthorityState:
     """Require a fresh legacy-primary state; missing, frozen, or unreadable blocks."""
+    return await _require_backends(session, {("legacy", "primary")})
+
+
+async def require_active_authority(session: _Session) -> RedisAuthorityState:
+    """Require a fresh authority on the currently handed backend.
+
+    Accepts the legacy primary before any handover and the spare after a
+    declared fresh-start handover. Frozen, missing, or unreadable state
+    blocks every caller.
+    """
+    return await _require_backends(session, _ACTIVE_BACKENDS)
+
+
+async def _require_backends(session: _Session, allowed: frozenset) -> RedisAuthorityState:
     try:
         async with asyncio.timeout(_AUTHORITY_READ_TIMEOUT_SECONDS):
             state = await read_redis_authority(session)
-        if state.phase != "legacy" or state.active_backend != "primary":
+        if (state.phase, state.active_backend) not in allowed:
             raise AuthorityAdmissionBlocked()
         return state
     except AuthorityAdmissionBlocked:
@@ -178,6 +197,12 @@ def _sync_postgres_url(database_url: str) -> str:
     # existing default when no TLS parameter was configured; this does not skip
     # the authority read. Weak explicit modes remain rejected everywhere.
     return urlunsplit(("postgresql", parsed.netloc, parsed.path, urlencode(query), ""))
+
+
+def _check_backends(state: RedisAuthorityState, allowed: frozenset) -> RedisAuthorityState:
+    if (state.phase, state.active_backend) not in allowed:
+        raise AuthorityAdmissionBlocked()
+    return state
 
 
 def require_primary_authority_active_sync() -> RedisAuthorityState | None:
@@ -221,9 +246,69 @@ def require_primary_authority_active_sync() -> RedisAuthorityState | None:
                 ))
             })()
             state = _state(row)
-            if state.phase != "legacy" or state.active_backend != "primary":
+            return _check_backends(state, {("legacy", "primary")})
+        finally:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            try:
+                connection.close()
+            except Exception:
+                pass
+    except AuthorityAdmissionBlocked:
+        raise
+    except Exception:
+        raise AuthorityAdmissionBlocked() from None
+
+
+def require_active_authority_sync() -> RedisAuthorityState | None:
+    """Synchronously require fresh authority on the handed backend.
+
+    Only an isolated local test database may skip the check. Settings and
+    psycopg2 are imported lazily, and every database failure is sanitized.
+    """
+    try:
+        from .config import settings
+
+        environment = settings.ENVIRONMENT
+        database_url = settings.DATABASE_URL
+        if not authority_admission_guard_required(environment, database_url):
+            return None
+        native_url = _sync_postgres_url(database_url)
+        import psycopg2
+
+        connection = psycopg2.connect(native_url, connect_timeout=5)
+        cursor = None
+        try:
+            connection.set_session(readonly=True, autocommit=False)
+            cursor = connection.cursor()
+            cursor.execute("SET LOCAL statement_timeout = '5s'")
+            cursor.execute("SET LOCAL lock_timeout = '2s'")
+            cursor.execute("SHOW transaction_read_only")
+            read_only_value = cursor.fetchone()
+            if not read_only_value or str(read_only_value[0]).lower() != "on":
                 raise AuthorityAdmissionBlocked()
-            return state
+            cursor.execute(
+                "SELECT generation, phase, active_backend, freeze_reason, freeze_id "
+                "FROM redis_authority_control WHERE id = 1"
+            )
+            values = cursor.fetchone()
+            if values is None:
+                raise AuthorityAdmissionBlocked()
+            row = type("AuthorityRow", (), {
+                "_mapping": dict(zip(
+                    ("generation", "phase", "active_backend", "freeze_reason", "freeze_id"),
+                    values,
+                ))
+            })()
+            state = _state(row)
+            return _check_backends(state, _ACTIVE_BACKENDS)
         finally:
             try:
                 connection.rollback()
@@ -305,13 +390,4 @@ async def handover_to_spare(
 
 async def require_spare_authority_active(session: _Session) -> RedisAuthorityState:
     """Require a fresh handed-over spare state; anything else blocks."""
-    try:
-        async with asyncio.timeout(_AUTHORITY_READ_TIMEOUT_SECONDS):
-            state = await read_redis_authority(session)
-        if state.phase != "spare" or state.active_backend != "spare":
-            raise AuthorityAdmissionBlocked()
-        return state
-    except AuthorityAdmissionBlocked:
-        raise
-    except Exception:
-        raise AuthorityAdmissionBlocked() from None
+    return await _require_backends(session, {("spare", "spare")})

@@ -618,9 +618,9 @@ def admit_worker(
     """
     # This must precede even the legacy no-lifecycle fast path: quarantined
     # workers may not claim, run, or mutate a job in the old authority.
-    from ..core.redis_authority import require_primary_authority_active_sync
+    from ..core.redis_authority import require_active_authority_sync
 
-    require_primary_authority_active_sync()
+    require_active_authority_sync()
     try:
         # Celery may reuse the same execution thread after an exceptional
         # delivery. Never let that stale thread-local capability authorize a

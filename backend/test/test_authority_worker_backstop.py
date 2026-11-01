@@ -1,4 +1,4 @@
-"""No-mutation coverage for the primary-authority admission backstop."""
+"""No-mutation coverage for the handed-authority admission backstop."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def _blocked():
 
 def test_admit_worker_blocks_before_legacy_redis_fast_path():
     redis = Mock()
-    with patch("app.core.redis_authority.require_primary_authority_active_sync", side_effect=_blocked):
+    with patch("app.core.redis_authority.require_active_authority_sync", side_effect=_blocked):
         with pytest.raises(AuthorityAdmissionBlocked):
             job_lifecycle.admit_worker(redis, "legacy-unmetered", "owner", None)
     redis.exists.assert_not_called()
@@ -30,7 +30,7 @@ def test_admit_worker_blocks_before_legacy_redis_fast_path():
 def test_refund_and_receipt_cleanup_leave_redis_untouched_when_frozen():
     redis = Mock()
     with (
-        patch.object(quota_refund, "require_primary_authority_active_sync", side_effect=_blocked),
+        patch.object(quota_refund, "require_active_authority_sync", side_effect=_blocked),
         patch.object(quota_refund, "get_worker_redis", return_value=redis) as redis_factory,
     ):
         assert quota_refund.refund_quota_once(
@@ -47,7 +47,7 @@ def test_refund_and_receipt_cleanup_leave_redis_untouched_when_frozen():
 
 def test_modal_spawn_checks_authority_before_lazy_provider_import():
     with (
-        patch.object(modal_dispatch, "_require_primary_authority_active", side_effect=_blocked),
+        patch.object(modal_dispatch, "_require_active_authority", side_effect=_blocked),
         patch.dict("sys.modules", {"modal": None}),
     ):
         with pytest.raises(AuthorityAdmissionBlocked):
@@ -56,7 +56,7 @@ def test_modal_spawn_checks_authority_before_lazy_provider_import():
 
 def test_modal_async_submission_checks_authority_before_calling_submission():
     submission = Mock()
-    with patch.object(modal_dispatch, "_require_primary_authority_active", side_effect=_blocked):
+    with patch.object(modal_dispatch, "_require_active_authority", side_effect=_blocked):
         with pytest.raises(AuthorityAdmissionBlocked):
             asyncio.run(modal_dispatch.submit_async(submission, "payload"))
     submission.assert_not_called()
@@ -66,7 +66,7 @@ def test_celery_apply_apply_async_and_direct_run_are_guarded(monkeypatch):
     from app.core import celery_app as celery_module
 
     side_effect = _blocked
-    monkeypatch.setattr(celery_module, "_require_primary_authority_active", side_effect)
+    monkeypatch.setattr(celery_module, "_require_active_authority", side_effect)
 
     class ExampleTask(celery_module.PrimaryAuthorityTask):
         name = "test.authority.backstop"
@@ -114,7 +114,7 @@ def test_registered_tasks_and_all_public_entrypoints_are_guarded(monkeypatch):
         assert isinstance(task, celery_module.PrimaryAuthorityTask)
         assert getattr(task.run, "_latexy_primary_authority_guard", False)
 
-    monkeypatch.setattr(celery_module, "_require_primary_authority_active", _blocked)
+    monkeypatch.setattr(celery_module, "_require_active_authority", _blocked)
     signals = []
     receivers = []
 
@@ -145,7 +145,7 @@ def test_registered_tasks_and_all_public_entrypoints_are_guarded(monkeypatch):
 def test_worker_and_child_startup_abort_before_redis_initialization(monkeypatch):
     from app.core import celery_app as celery_module
 
-    monkeypatch.setattr(celery_module, "_require_primary_authority_active", _blocked)
+    monkeypatch.setattr(celery_module, "_require_active_authority", _blocked)
     prepare = Mock()
     monkeypatch.setattr("app.core.worker_runtime.prepare_worker_runtime", prepare)
     init_redis = Mock()

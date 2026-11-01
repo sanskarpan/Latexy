@@ -56,17 +56,18 @@ async def lifespan(app: FastAPI):
         from .core.redis_authority import (
             AuthorityAdmissionBlocked,
             authority_admission_guard_required,
-            require_primary_authority_active,
+            require_active_authority,
         )
 
         if authority_admission_guard_required(settings.ENVIRONMENT, settings.DATABASE_URL):
             from .database.connection import get_async_db_session
 
             # A deployment cannot reopen work merely by changing its Redis
-            # selector or restarting after a durable primary freeze.
+            # selector or restarting after a durable freeze. After a declared
+            # spare handover, the handed-over spare is the authority.
             try:
                 async with get_async_db_session() as session:
-                    await require_primary_authority_active(session)
+                    await require_active_authority(session)
             except Exception:
                 try:
                     await close_db()

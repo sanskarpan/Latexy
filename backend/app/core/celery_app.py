@@ -41,14 +41,14 @@ logger = get_logger(__name__)
 _task_start_times: dict[str, float] = {}
 
 
-def _require_primary_authority_active() -> None:
-    from .redis_authority import require_primary_authority_active_sync
+def _require_active_authority() -> None:
+    from .redis_authority import require_active_authority_sync
 
-    require_primary_authority_active_sync()
+    require_active_authority_sync()
 
 
 class PrimaryAuthorityTask(Task):
-    """Fence every Celery publication and execution while primary is frozen."""
+    """Fence every Celery publication and execution while authority is not handed."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -56,18 +56,18 @@ class PrimaryAuthorityTask(Task):
         if not getattr(original_run, "_latexy_primary_authority_guard", False):
             @wraps(original_run)
             def guarded_run(*run_args, **run_kwargs):
-                _require_primary_authority_active()
+                _require_active_authority()
                 return original_run(*run_args, **run_kwargs)
 
             guarded_run._latexy_primary_authority_guard = True
             self.run = guarded_run
 
     def apply_async(self, *args, **kwargs):
-        _require_primary_authority_active()
+        _require_active_authority()
         return super().apply_async(*args, **kwargs)
 
     def apply(self, *args, **kwargs):
-        _require_primary_authority_active()
+        _require_active_authority()
         return super().apply(*args, **kwargs)
 
 
@@ -75,7 +75,7 @@ class PrimaryAuthorityCelery(Celery):
     """Fence direct app-level publication, which bypasses Task.apply_async."""
 
     def send_task(self, *args, **kwargs):
-        _require_primary_authority_active()
+        _require_active_authority()
         return super().send_task(*args, **kwargs)
 
 
@@ -557,7 +557,7 @@ def _install_darwin_fork_safe_resolver() -> None:
 def prepare_worker_parent(sender=None, **kwargs):
     """Prepare imports before the pool starts, outside child/task deadlines."""
     try:
-        _require_primary_authority_active()
+        _require_active_authority()
         from .worker_runtime import prepare_worker_runtime
 
         prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
@@ -583,7 +583,7 @@ def init_worker_process(sender=None, **kwargs):
     _install_darwin_fork_safe_resolver()
 
     try:
-        _require_primary_authority_active()
+        _require_active_authority()
         from ..core.redis import redis_manager
         from ..workers.event_publisher import initialize_worker_redis
 
@@ -602,7 +602,7 @@ def init_worker_process(sender=None, **kwargs):
 def prepare_beat(sender=None, **kwargs):
     """Prevent a beat process from publishing scheduled work while frozen."""
     try:
-        _require_primary_authority_active()
+        _require_active_authority()
     except Exception as exc:
         logger.error("Celery beat authority check failed", extra={"error_type": type(exc).__name__})
         raise WorkerTerminate(1) from exc
