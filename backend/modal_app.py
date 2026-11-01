@@ -73,9 +73,9 @@ def _require_worker_dispatch(fn):
     def guarded(*args, **kwargs):
         if _DEPLOYMENT_TRAFFIC_HELD:
             raise RuntimeError("Modal deployment traffic is held; worker execution is paused")
-        from app.core.redis_authority import require_primary_authority_active_sync
+        from app.core.redis_authority import require_active_authority_sync
 
-        require_primary_authority_active_sync()
+        require_active_authority_sync()
         return fn(*args, **kwargs)
 
     return guarded

@@ -54,9 +54,14 @@ _QUOTA_TTL = 40 * 86400  # seconds
 
 
 async def _quota_authority_active() -> bool:
-    """Never interpret an empty recovery Redis as a fresh allowance."""
+    """Never interpret an empty recovery Redis as a fresh allowance.
+
+    After a declared spare handover the spare is the authority and its
+    counters start fresh; prior-period usage stays unknown and is never
+    seeded, replayed, or refunded from the abandoned backend.
+    """
     from ..core.config import settings
-    from ..core.redis_authority import authority_admission_guard_required, require_primary_authority_active
+    from ..core.redis_authority import authority_admission_guard_required, require_active_authority
 
     if not authority_admission_guard_required(settings.ENVIRONMENT, settings.DATABASE_URL):
         return True
@@ -64,7 +69,7 @@ async def _quota_authority_active() -> bool:
         from ..database.connection import get_async_db_session
 
         async with get_async_db_session() as session:
-            await require_primary_authority_active(session)
+            await require_active_authority(session)
         return True
     except Exception:
         return False

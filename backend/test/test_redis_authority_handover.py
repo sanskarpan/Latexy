@@ -1,8 +1,11 @@
 """Contract tests for the declared spare-authority handover primitive."""
 
 import importlib.util
+import sys
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from alembic.migration import MigrationContext
@@ -16,6 +19,8 @@ from app.core.redis_authority import (
     freeze_primary_authority,
     handover_to_spare,
     read_redis_authority,
+    require_active_authority,
+    require_active_authority_sync,
     require_primary_authority_active,
     require_spare_authority_active,
 )
@@ -180,6 +185,93 @@ class SpareHandoverTests(unittest.IsolatedAsyncioTestCase):
                 await read_redis_authority(session)
             with self.assertRaises(AuthorityAdmissionBlocked):
                 await require_spare_authority_active(session)
+
+    async def test_active_authority_accepts_handed_backend_only(self):
+        with self.engine.begin() as connection:
+            session = _AsyncConnection(connection)
+            legacy = await require_active_authority(session)
+            self.assertEqual((legacy.phase, legacy.active_backend), ("legacy", "primary"))
+            frozen = await freeze_primary_authority(
+                session, expected_generation=legacy.generation,
+                reason="quota_exhausted", freeze_id=uuid4(),
+            )
+            with self.assertRaises(AuthorityAdmissionBlocked):
+                await require_active_authority(session)
+            handed = await handover_to_spare(
+                session, expected_generation=frozen.generation,
+                reason="spare_handover_fresh_start", handover_id=uuid4(),
+            )
+            self.assertEqual(await require_active_authority(session), handed)
+
+
+class _SyncCursor:
+    """Minimal psycopg2 cursor double: flag reads vs row reads by statement."""
+
+    def __init__(self, values, read_only="on"):
+        self.values = values
+        self.read_only = read_only
+        self.closed = False
+        self._last_statement = ""
+
+    def execute(self, statement):
+        self._last_statement = statement
+
+    def fetchone(self):
+        if self._last_statement == "SHOW transaction_read_only":
+            return (self.read_only,)
+        return self.values
+
+    def close(self):
+        self.closed = True
+
+
+class _FakeConnection:
+    def __init__(self, values, read_only="on"):
+        self.cursor_value = _SyncCursor(values, read_only=read_only)
+        self.rollback_called = False
+        self.closed = False
+
+    def set_session(self, **kwargs):
+        pass
+
+    def cursor(self):
+        return self.cursor_value
+
+    def rollback(self):
+        self.rollback_called = True
+
+    def close(self):
+        self.closed = True
+
+
+class SpareHandoverSyncTests(unittest.TestCase):
+    def _run_sync(self, values, *, environment="production"):
+        connection = _FakeConnection(values)
+        driver = types.ModuleType("psycopg2")
+        driver.connect = lambda *_args, **_kwargs: connection
+        config_module = types.ModuleType("app.core.config")
+        config_module.settings = types.SimpleNamespace(
+            ENVIRONMENT=environment,
+            DATABASE_URL="postgresql://user:secret@db.example.invalid/latexy",
+        )
+        with patch.dict(sys.modules, {"psycopg2": driver, "app.core.config": config_module}):
+            return require_active_authority_sync(), connection
+
+    def test_sync_accepts_legacy_primary(self):
+        state, connection = self._run_sync((3, "legacy", "primary", None, None))
+        self.assertEqual((state.phase, state.active_backend, state.generation), ("legacy", "primary", 3))
+        self.assertTrue(connection.rollback_called)
+        self.assertTrue(connection.closed)
+
+    def test_sync_accepts_handed_spare(self):
+        state, _connection = self._run_sync(
+            (4, "spare", "spare", "spare_handover_fresh_start", "00000000-0000-4000-8000-000000000000")
+        )
+        self.assertEqual((state.phase, state.active_backend), ("spare", "spare"))
+
+    def test_sync_blocks_frozen(self):
+        with self.assertRaises(AuthorityAdmissionBlocked):
+            self._run_sync((4, "frozen", "primary", "quota_exhausted", "some-id"))
 
 
 if __name__ == "__main__":

@@ -20,11 +20,11 @@ _SUBMISSION_CONCURRENCY = 8
 _submission_limits: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
-def _require_primary_authority_active() -> None:
+def _require_active_authority() -> None:
     # Resolve lazily to keep this dispatcher import-safe in local/test modes.
-    from .redis_authority import require_primary_authority_active_sync
+    from .redis_authority import require_active_authority_sync
 
-    require_primary_authority_active_sync()
+    require_active_authority_sync()
 
 
 async def submit_async(submission: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -38,7 +38,7 @@ async def submit_async(submission: Callable[..., Any], *args: Any, **kwargs: Any
     """
     # Check before creating a permit or scheduling any broker/provider call.
     # The check itself performs a bounded read in a worker thread.
-    await asyncio.to_thread(_require_primary_authority_active)
+    await asyncio.to_thread(_require_active_authority)
     loop = asyncio.get_running_loop()
     limit = _submission_limits.setdefault(loop, asyncio.Semaphore(_SUBMISSION_CONCURRENCY))
     with engine_span("dispatch_wait"):
@@ -65,7 +65,7 @@ async def submit_async(submission: Callable[..., Any], *args: Any, **kwargs: Any
 
 def spawn(function_name: str, payload: dict) -> None:
     """Fire-and-forget a Modal function by name."""
-    _require_primary_authority_active()
+    _require_active_authority()
     import modal  # noqa: PLC0415 — intentionally lazy
     fn = modal.Function.from_name(_APP_NAME, function_name)
     if function_name in {"run_latex_task", "run_orchestrator_task", "run_llm_task"}:
