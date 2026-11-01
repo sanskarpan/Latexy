@@ -320,7 +320,10 @@ jobs:
             --source-revision "$DEPLOY_SHA" --authorization-token "$token"
 
       - name: Freeze primary authority before held backup qualification
-        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover' && env.MODAL_REDIS_SECRET_NAME != '' && env.MODAL_REDIS_SECRET_NAME != 'latexy-redis'
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover' && (env.MODAL_REDIS_SECRET_NAME != '' && env.MODAL_REDIS_SECRET_NAME != 'latexy-redis' || env.MODAL_REDIS_HANDOVER_ID != '')
+        # The handover sequence on the default binding needs a preceding freeze:
+        # a set handover UUID opts the default binding into the same containment
+        # before the handover step hands authority to the spare.
         working-directory: backend
         env:
           MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
