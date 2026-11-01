@@ -21,11 +21,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0075_durable_quota_ledger"
+EXPECTED_HEAD = "0076_spare_authority_handover"
 DODO_MAINLINE_REVISIONS = {
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
+    "0076_spare_authority_handover",
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -144,6 +145,9 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "cost", "limit_value", "state", "used_after", "created_at", "refunded_at", "settled_at",
         },
     },
+    # Constraint-only widening for a declared spare handover: no new tables
+    # or columns. The ordered entry still requires every preceding fingerprint.
+    "0076_spare_authority_handover": {},
 }
 
 
