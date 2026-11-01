@@ -63,10 +63,14 @@ def test_freeze_rechecks_drain_after_migration_before_serving_or_template_writes
     assert '--expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300' in freeze["run"]
 
 
-def test_operator_wrapper_is_separate_bounded_and_calls_existing_helper():
+@pytest.mark.parametrize(("operation", "operation_id_kwarg", "helper"), [
+    ("freeze_redis_recovery", "freeze_id", "freeze_primary_for_recovery"),
+    ("handover_redis_recovery", "handover_id", "handover_spare_for_recovery"),
+])
+def test_operator_wrapper_is_separate_bounded_and_calls_existing_helper(operation, operation_id_kwarg, helper):
     tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
     source = (ROOT / "backend/modal_app.py").read_text(encoding="utf-8")
-    wrapper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "freeze_redis_recovery")
+    wrapper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == operation)
     decorator = wrapper.decorator_list[0]
     assert ast.unparse(decorator.func) == "operations_app.function"
     assert {keyword.arg: ast.unparse(keyword.value) for keyword in decorator.keywords} == {
@@ -83,10 +87,13 @@ def test_operator_wrapper_is_separate_bounded_and_calls_existing_helper():
     assert "verify_proof" in ast.unparse(wrapper)
     verify_call = next(node for node in ast.walk(wrapper) if isinstance(node, ast.Call)
                        and isinstance(node.func, ast.Name) and node.func.id == "verify_proof")
-    assert ast.unparse(verify_call.keywords[1].value) == "freeze_id"
-    assert source.index("verify_proof(authorization_token", source.index("def freeze_redis_recovery")) < source.index(
-        "from app.database.connection", source.index("def freeze_redis_recovery")
+    assert ast.unparse(verify_call.keywords[1].value) == operation_id_kwarg
+    assert source.index("verify_proof(authorization_token", source.index(f"def {operation}")) < source.index(
+        "from app.database.connection", source.index(f"def {operation}")
     )
+    helper_import = next(node for node in ast.walk(wrapper)
+                        if isinstance(node, ast.ImportFrom) and node.module == "scripts.redis_recovery_quarantine")
+    assert [alias.name for alias in helper_import.names] == [helper]
     migrate = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "migrate")
     migrate_verify = next(node for node in ast.walk(migrate) if isinstance(node, ast.Call)
                           and isinstance(node.func, ast.Name) and node.func.id == "verify_proof")
@@ -116,7 +123,7 @@ def test_unheld_api_checks_frozen_authority_before_admin_or_redis_initialization
     assert "if not app.state.deployment_traffic_held:" in source
 
 
-@pytest.mark.parametrize("operation", ["migrate", "freeze_redis_recovery"])
+@pytest.mark.parametrize("operation", ["migrate", "freeze_redis_recovery", "handover_redis_recovery"])
 def test_remote_operation_rejects_unsigned_call_before_database_or_subprocess(operation):
     tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
     wrapper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == operation)
@@ -131,6 +138,8 @@ def test_remote_operation_rejects_unsigned_call_before_database_or_subprocess(op
     arguments = {"source_revision": "a" * 40, "authorization_token": "unsigned"}
     if operation == "freeze_redis_recovery":
         arguments["freeze_id"] = str(uuid4())
+    if operation == "handover_redis_recovery":
+        arguments["handover_id"] = str(uuid4())
     fake_modal = types.SimpleNamespace(is_local=lambda: False)
     with patch.dict(os.environ, environment, clear=True), patch.dict(sys.modules, {"modal": fake_modal}), patch("subprocess.run") as run:
         with pytest.raises(RuntimeError, match="authorization was not verified"):
@@ -155,3 +164,22 @@ def test_remote_freeze_rejects_signed_proof_for_a_different_operation_uuid():
     with patch.dict(os.environ, environment, clear=True), patch.dict(sys.modules, {"modal": types.SimpleNamespace(is_local=lambda: False)}):
         with pytest.raises(RuntimeError, match="authorization was not verified"):
             namespace["freeze_redis_recovery"](source_revision="a" * 40, freeze_id=str(uuid4()), authorization_token=proof)
+
+
+def test_remote_handover_rejects_signed_proof_for_a_different_operation_uuid():
+    tree = ast.parse((ROOT / "backend/modal_app.py").read_text(encoding="utf-8"))
+    wrapper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "handover_redis_recovery")
+    wrapper.decorator_list = []
+    namespace = {}
+    exec(compile(ast.Module(body=[wrapper], type_ignores=[]), "isolated-modal-operation", "exec"), namespace)
+    environment = {
+        "MODAL_ENVIRONMENT": "main", "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+        "DEPLOY_SHA": "a" * 40, "MODAL_REDIS_SECRET_NAME": "synthetic-held-redis",
+        KEY_ENV: "b" * 64,
+    }
+    signed_id = str(uuid4())
+    proof = mint_proof(action="handover", sha="a" * 40, app_id="ap-abcdefghijklmnopqrstuv",
+                       redis_secret_name="synthetic-held-redis", handover_id=signed_id, environ=environment)
+    with patch.dict(os.environ, environment, clear=True), patch.dict(sys.modules, {"modal": types.SimpleNamespace(is_local=lambda: False)}):
+        with pytest.raises(RuntimeError, match="authorization was not verified"):
+            namespace["handover_redis_recovery"](source_revision="a" * 40, handover_id=str(uuid4()), authorization_token=proof)

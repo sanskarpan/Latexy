@@ -1064,6 +1064,46 @@ def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_to
     print(json.dumps(report, sort_keys=True))
 
 
+@operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=90)
+def handover_redis_recovery(source_revision: str, handover_id: str, authorization_token: str) -> None:
+    """Workflow-only spare handover; prior-period usage stays unknown and is never replayed."""
+    import asyncio
+    import json
+    import os
+
+    import modal
+
+    from scripts.modal_operation_authorization import verify_proof
+
+    if modal.is_local():
+        raise RuntimeError("Spare handover requires the canonical workflow runtime")
+    try:
+        if source_revision != os.environ.get("DEPLOY_SHA"):
+            raise ValueError("operation authorization is invalid")
+        verify_proof(authorization_token, action="handover", expected_handover_id=handover_id, environ=os.environ)
+    except Exception:
+        raise RuntimeError("Spare handover authorization was not verified") from None
+
+    async def run():
+        from app.database.connection import close_db, get_async_db_session
+        from scripts.redis_recovery_quarantine import handover_spare_for_recovery
+
+        try:
+            return await handover_spare_for_recovery(
+                get_async_db_session, environ=os.environ,
+                source_revision=source_revision, handover_id=handover_id,
+            )
+        finally:
+            await close_db()
+
+    try:
+        report = asyncio.run(run())
+    except Exception:
+        print(json.dumps({"status": "blocked", "reason": "spare_handover_not_verified"}))
+        raise RuntimeError("Spare handover was not verified") from None
+    print(json.dumps(report, sort_keys=True))
+
+
 @operations_app.function(image=migrate_image, secrets=_api_secrets, timeout=120)
 def billing_preflight(
     source_revision: str, expected_environment: str = "main", purpose: str = "report",

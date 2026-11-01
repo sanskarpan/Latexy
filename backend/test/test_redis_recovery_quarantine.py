@@ -23,8 +23,10 @@ from app.core.redis_authority import (
     require_primary_authority_active,
 )
 from scripts.redis_recovery_quarantine import (
+    RedisHandoverError,
     RedisRecoveryQuarantineError,
     freeze_primary_for_recovery,
+    handover_spare_for_recovery,
 )
 
 SOURCE = "a" * 40
@@ -362,6 +364,141 @@ class PostgresRedisRecoveryQuarantineTests(unittest.TestCase):
                 "SELECT generation, phase, active_backend FROM redis_authority_control WHERE id=1"
             )).first()
         self.assertEqual(tuple(row), (0, "legacy", "primary"))
+
+
+HANDOVER_ID = str(uuid4())
+DEFAULT_ENV = {
+    "MODAL_ENVIRONMENT": "main",
+    "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+    "MODAL_REDIS_SECRET_NAME": "latexy-redis",
+    "DEPLOY_SHA": SOURCE,
+}
+
+
+class _HandoverStore:
+    """Fake authority store with frozen-source handover semantics."""
+
+    def __init__(self, state=None):
+        self.state = state or _Row(1, "frozen", "primary", "quota_exhausted", FREEZE_ID)
+        self.opens = 0
+        self.fail_reads = False
+        self.lose_commit_response = False
+
+    def factory(self):
+        store = self
+
+        class Session:
+            async def __aenter__(self):
+                store.opens += 1
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def execute(self, statement, parameters=None):
+                sql = str(statement)
+                if sql.startswith("SELECT generation"):
+                    if store.fail_reads:
+                        raise OSError("private database detail")
+                    return _Result(_Row(**vars(store.state)))
+                if sql.startswith("UPDATE redis_authority_control"):
+                    if "phase = 'spare'" not in sql:
+                        raise AssertionError("unexpected SQL")
+                    if store.state.phase != "frozen" or store.state.generation != parameters["expected"]:
+                        return _Result(None)
+                    store.state = _Row(
+                        store.state.generation + 1, "spare", "spare",
+                        parameters["reason"], str(parameters["handover_id"]),
+                    )
+                    return _Result(_Row(**vars(store.state)))
+                raise AssertionError("unexpected SQL")
+
+            async def commit(self):
+                if store.lose_commit_response:
+                    store.lose_commit_response = False
+                    raise OSError("private commit detail")
+
+            async def rollback(self):
+                return None
+
+        return Session()
+
+
+class SpareHandoverQuarantineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_hands_frozen_primary_to_spare_with_fresh_start_proof(self):
+        store = _HandoverStore()
+        proof = await handover_spare_for_recovery(
+            store.factory, environ=DEFAULT_ENV, source_revision=SOURCE, handover_id=HANDOVER_ID,
+        )
+        self.assertEqual(proof["phase"], "spare")
+        self.assertEqual(proof["active_backend"], "spare")
+        self.assertEqual(proof["generation"], 2)
+        self.assertEqual(proof["handover_id"], HANDOVER_ID)
+        self.assertEqual(proof["fresh_baseline"], "spare_handover_fresh_start")
+        self.assertTrue(proof["jobs_allowed"])
+        self.assertTrue(proof["traffic_held"])
+        self.assertTrue(proof["limits_unknown"])
+        self.assertEqual(store.state.phase, "spare")
+
+    async def test_default_redis_label_is_accepted_for_rotated_spare_binding(self):
+        store = _HandoverStore()
+        proof = await handover_spare_for_recovery(
+            store.factory, environ=dict(DEFAULT_ENV, MODAL_REDIS_SECRET_NAME="latexy-redis"),
+            source_revision=SOURCE, handover_id=HANDOVER_ID,
+        )
+        self.assertEqual(proof["active_backend"], "spare")
+
+    async def test_legacy_row_must_be_frozen_first(self):
+        store = _HandoverStore(_Row(0, "legacy", "primary", None, None))
+        with self.assertRaises(RedisHandoverError):
+            await handover_spare_for_recovery(
+                store.factory, environ=DEFAULT_ENV, source_revision=SOURCE, handover_id=HANDOVER_ID,
+            )
+
+    async def test_exact_existing_handover_is_idempotent(self):
+        store = _HandoverStore(_Row(2, "spare", "spare", "spare_handover_fresh_start", HANDOVER_ID))
+        proof = await handover_spare_for_recovery(
+            store.factory, environ=DEFAULT_ENV, source_revision=SOURCE, handover_id=HANDOVER_ID,
+            expected_generation=1,
+        )
+        self.assertEqual(proof["generation"], 2)
+
+    async def test_mismatched_identity_and_unheld_deny(self):
+        for state, handover_id, environ in (
+            (_Row(2, "spare", "spare", "spare_handover_fresh_start", str(uuid4())), HANDOVER_ID, DEFAULT_ENV),
+            (_Row(2, "spare", "spare", "spare_handover_fresh_start", HANDOVER_ID), str(uuid4()), DEFAULT_ENV),
+        ):
+            store = _HandoverStore(state)
+            with self.assertRaises(RedisHandoverError):
+                await handover_spare_for_recovery(
+                    store.factory, environ=environ, source_revision=SOURCE, handover_id=handover_id,
+                    expected_generation=1,
+                )
+        store = _HandoverStore()
+        with self.assertRaises(RedisHandoverError):
+            await handover_spare_for_recovery(
+                store.factory, environ=dict(DEFAULT_ENV, MODAL_DEPLOYMENT_TRAFFIC_HOLD="false"),
+                source_revision=SOURCE, handover_id=HANDOVER_ID,
+            )
+
+    async def test_lost_commit_response_is_confirmed_by_fresh_exact_readback(self):
+        store = _HandoverStore()
+        store.lose_commit_response = True
+        proof = await handover_spare_for_recovery(
+            store.factory, environ=DEFAULT_ENV, source_revision=SOURCE, handover_id=HANDOVER_ID,
+        )
+        self.assertEqual(proof["handover_id"], HANDOVER_ID)
+        self.assertEqual(store.opens, 2)
+
+    async def test_db_failure_is_sanitized(self):
+        store = _HandoverStore()
+        store.fail_reads = True
+        with self.assertRaises(RedisHandoverError) as caught:
+            await handover_spare_for_recovery(
+                store.factory, environ=DEFAULT_ENV, source_revision=SOURCE, handover_id=HANDOVER_ID,
+            )
+        self.assertEqual(str(caught.exception), "Spare handover could not be confirmed.")
+        self.assertNotIn("private", str(caught.exception))
 
 
 if __name__ == "__main__":

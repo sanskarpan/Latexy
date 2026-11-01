@@ -98,6 +98,38 @@ def test_redis_fingerprint_matches_serving_identity_contract():
     assert _redis_fingerprint("latexy-redis-held") == payload["redis_fingerprint"]
 
 
+def test_handover_proof_verifies_only_for_exact_operation():
+    hand_id = "77777777-2222-4333-8444-555555555555"
+    token = mint_proof(action="handover", sha=SHA, app_id=APP_ID,
+                       redis_secret_name="latexy-redis-held",
+                       handover_id=hand_id, now=1000, environ=env())
+    assert re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token)
+    verify_proof(token, action="handover", expected_handover_id=hand_id, environ=env(), now=1001)
+    with pytest.raises(OperationAuthorizationError):
+        verify_proof(token, action="handover", environ=env(), now=1001)
+    with pytest.raises(OperationAuthorizationError):
+        verify_proof(token, action="freeze", expected_freeze_id=hand_id, environ=env(), now=1001)
+    with pytest.raises(OperationAuthorizationError):
+        verify_proof(token, action="migrate", environ=env(), now=1001)
+
+
+def test_handover_and_freeze_ids_are_not_interchangeable():
+    hand_id = "88888888-2222-4333-8444-555555555555"
+    with pytest.raises(OperationAuthorizationError):
+        mint_proof(action="handover", sha=SHA, app_id=APP_ID,
+                   redis_secret_name="latexy-redis-held",
+                   freeze_id=hand_id, now=1000, environ=env())
+    with pytest.raises(OperationAuthorizationError):
+        mint_proof(action="freeze", sha=SHA, app_id=APP_ID,
+                   redis_secret_name="latexy-redis-held",
+                   handover_id=hand_id, now=1000, environ=env())
+    token = mint_proof(action="freeze", sha=SHA, app_id=APP_ID,
+                       redis_secret_name="latexy-redis-held",
+                       freeze_id=FREEZE, now=1000, environ=env())
+    with pytest.raises(OperationAuthorizationError):
+        verify_proof(token, action="handover", expected_handover_id=FREEZE, environ=env(), now=1001)
+
+
 def test_tampered_malformed_and_oversized_tokens_fail_with_fixed_error():
     token = issue()
     for candidate in (token + "x", "garbage", "x" * 2049):
