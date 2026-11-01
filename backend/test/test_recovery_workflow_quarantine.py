@@ -1,4 +1,4 @@
-"""Offline checks for the canonical stopped-App -> primary freeze sequence."""
+"""Offline checks for the canonical stopped-App -> freeze -> handover sequence."""
 
 import ast
 import os
@@ -61,6 +61,29 @@ def test_freeze_rechecks_drain_after_migration_before_serving_or_template_writes
     assert "::add-mask::$token" in freeze["run"]
     assert "--authorization-token \"$token\"" in freeze["run"]
     assert '--expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300' in freeze["run"]
+
+
+def test_handover_step_follows_freeze_and_gates_on_operator_uuid():
+    steps = _steps()
+    names = [item["name"] for item in steps]
+    freeze_name = "Freeze primary authority before held backup qualification"
+    handover_name = "Hand durable authority to spare after held backup qualification"
+    assert handover_name in names
+    handover = steps[names.index(handover_name)]
+    assert "'held-cutover'" in handover["if"]
+    assert "env.MODAL_REDIS_HANDOVER_ID != ''" in handover["if"]
+    assert names.index(freeze_name) < names.index(handover_name)
+    assert names.index(handover_name) < names.index("Deploy backend with a rolling update")
+    assert names.index(handover_name) < names.index("Recheck billing identities after migration")
+    assert handover["run"].index("verify_modal_drain.py") < handover["run"].index("modal_app.py::handover_redis_recovery")
+    assert handover["run"].index("verify_modal_drain.py") < handover["run"].index("scripts.modal_operation_authorization")
+    assert "--action handover" in handover["run"]
+    assert "--handover-id \"$MODAL_REDIS_HANDOVER_ID\"" in handover["run"]
+    assert handover["env"]["MODAL_RECOVERY_OPERATION_SIGNING_KEY"] == "${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}"
+    assert "::add-mask::$token" in handover["run"]
+    assert "--authorization-token \"$token\"" in handover["run"]
+    assert '--expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300' in handover["run"]
+    assert "MODAL_REDIS_HANDOVER_ID" in (ROOT / ".github/workflows/deploy-modal.yml").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(("operation", "operation_id_kwarg", "helper"), [

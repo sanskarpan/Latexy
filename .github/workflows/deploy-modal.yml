@@ -53,6 +53,9 @@ jobs:
       # until authoritative state recovery is separately implemented.
       MODAL_REDIS_SECRET_NAME: ${{ vars.MODAL_REDIS_SECRET_NAME }}
       MODAL_REDIS_RECOVERY_FREEZE_ID: ${{ vars.MODAL_REDIS_RECOVERY_FREEZE_ID }}
+      # Canonical spare-handover UUID. Empty disables the handover step; setting
+      # it is the explicit operator decision to hand authority to the spare.
+      MODAL_REDIS_HANDOVER_ID: ${{ vars.MODAL_REDIS_HANDOVER_ID }}
       # Automatic runs and ordinary manual runs always deploy in held mode.
       # Only an explicit manual release input can open API and worker traffic.
       MODAL_DEPLOYMENT_TRAFFIC_HOLD: ${{ github.event_name != 'workflow_dispatch' || inputs.traffic_mode != 'release' }}
@@ -339,6 +342,35 @@ jobs:
           echo "::add-mask::$token"
           modal run --env main modal_app.py::freeze_redis_recovery \
             --source-revision "$DEPLOY_SHA" --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID" \
+            --authorization-token "$token"
+
+      # Hand durable authority to the spare as a declared fresh start. Unlike
+      # the freeze above this is not keyed on an alternate Redis label: the
+      # spare binding is the rotated default secret, pinned by fingerprint.
+      # Runs only when the operator sets the canonical handover UUID.
+      - name: Hand durable authority to spare after held backup qualification
+        if: steps.freshness.outputs.current == 'true' && steps.deployment_phase.outputs.phase == 'held-cutover' && env.MODAL_REDIS_HANDOVER_ID != ''
+        working-directory: backend
+        env:
+          MODAL_RECOVERY_OPERATION_SIGNING_KEY: ${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}
+          MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA: ${{ vars.MODAL_DRAIN_PROCEDURE_APPROVED_FOR_SHA }}
+          MODAL_DRAIN_PROCEDURE_APP_ID: ${{ vars.MODAL_DRAIN_PROCEDURE_APP_ID }}
+          MODAL_DRAIN_PROCEDURE_COMPLETED_AT: ${{ vars.MODAL_DRAIN_PROCEDURE_COMPLETED_AT }}
+          MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE: ${{ vars.MODAL_DRAIN_PROCEDURE_EVIDENCE_REFERENCE }}
+        run: |
+          set -euo pipefail
+          # Recheck after migration; a prior stopped-App observation can expire.
+          drain_report="$(python scripts/verify_modal_drain.py \
+            --app-name latexy-backend --environment main \
+            --expected-deploy-sha "$DEPLOY_SHA" --max-age-seconds 300)"
+          app_id="$(jq -er '.current_modal_app_id' <<<"$drain_report")"
+          token="$(python -m scripts.modal_operation_authorization \
+            --action handover --sha "$DEPLOY_SHA" --app-id "$app_id" \
+            --redis-secret-name "${MODAL_REDIS_SECRET_NAME:-latexy-redis}" \
+            --handover-id "$MODAL_REDIS_HANDOVER_ID")"
+          echo "::add-mask::$token"
+          modal run --env main modal_app.py::handover_redis_recovery \
+            --source-revision "$DEPLOY_SHA" --handover-id "$MODAL_REDIS_HANDOVER_ID" \
             --authorization-token "$token"
 
       # The first preflight cannot see provider columns on a pre-0065 schema.
