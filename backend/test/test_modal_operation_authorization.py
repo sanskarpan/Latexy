@@ -155,3 +155,25 @@ def test_module_cli_works_from_backend_directory_without_pythonpath():
         cwd=BACKEND, env=child_env, capture_output=True, text=True, check=False,
     )
     assert verified.returncode == 0, verified.stderr
+
+
+def test_module_cli_mints_handover_proof_with_handover_id():
+    child_env = dict(os.environ)
+    child_env.pop("PYTHONPATH", None)
+    child_env.update(env())
+    hand_id = "99999999-2222-4333-8444-555555555555"
+    minted = subprocess.run(
+        [sys.executable, "-m", "scripts.modal_operation_authorization", "--action", "handover",
+         "--sha", SHA, "--app-id", APP_ID, "--redis-secret-name", "latexy-redis-held",
+         "--handover-id", hand_id],
+        cwd=BACKEND, env=child_env, capture_output=True, text=True, check=False,
+    )
+    assert minted.returncode == 0, minted.stderr
+    token = minted.stdout.strip()
+    verified = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; from scripts.modal_operation_authorization import verify_proof; "
+         f"verify_proof(sys.argv[1], action='handover', expected_handover_id='{hand_id}')", token],
+        cwd=BACKEND, env=child_env, capture_output=True, text=True, check=False,
+    )
+    assert verified.returncode == 0, verified.stderr
