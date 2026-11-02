@@ -89,6 +89,14 @@ class _Store:
                     if store.competing_freeze is not None:
                         store.state = store.competing_freeze
                         store.competing_freeze = None
+                    if "phase = 'spare'" in sql:
+                        if store.state.phase != "frozen" or store.state.generation != parameters["expected"]:
+                            return _Result(None)
+                        store.state = _Row(
+                            store.state.generation + 1, "spare", "spare",
+                            parameters["reason"], str(parameters["handover_id"]),
+                        )
+                        return _Result(_Row(**vars(store.state)))
                     if store.state.phase != "legacy" or store.state.generation != parameters["expected"]:
                         return _Result(None)
                     store.state = _Row(
@@ -173,6 +181,55 @@ class RedisRecoveryQuarantineTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(str(caught.exception), "Primary recovery quarantine could not be confirmed.")
         self.assertNotIn("private", str(caught.exception))
+
+    async def test_freeze_refuses_default_label_outside_handover_sequence(self):
+        store = _Store()
+        environ = {
+            "MODAL_ENVIRONMENT": "main",
+            "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+            "MODAL_REDIS_SECRET_NAME": "latexy-redis",
+            "DEPLOY_SHA": SOURCE,
+        }
+        with self.assertRaises(RedisRecoveryQuarantineError):
+            await freeze_primary_for_recovery(
+                store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+            )
+        self.assertEqual(store.state.phase, "legacy")
+
+    async def test_freeze_accepts_default_label_inside_handover_sequence(self):
+        store = _Store()
+        environ = {
+            "MODAL_ENVIRONMENT": "main",
+            "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+            "MODAL_REDIS_SECRET_NAME": "latexy-redis",
+            "DEPLOY_SHA": SOURCE,
+            "MODAL_REDIS_HANDOVER_ID": HANDOVER_ID,
+        }
+        proof = await freeze_primary_for_recovery(
+            store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+        )
+        self.assertEqual((proof["phase"], proof["active_backend"]), ("frozen", "primary"))
+        self.assertEqual(store.state.phase, "frozen")
+
+    async def test_handover_after_sequence_freeze_names_spare(self):
+        from scripts.redis_recovery_quarantine import handover_spare_for_recovery
+
+        store = _Store()
+        environ = {
+            "MODAL_ENVIRONMENT": "main",
+            "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+            "MODAL_REDIS_SECRET_NAME": "latexy-redis",
+            "DEPLOY_SHA": SOURCE,
+            "MODAL_REDIS_HANDOVER_ID": HANDOVER_ID,
+        }
+        await freeze_primary_for_recovery(
+            store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+        )
+        proof = await handover_spare_for_recovery(
+            store.factory, environ=environ, source_revision=SOURCE, handover_id=HANDOVER_ID,
+        )
+        self.assertEqual((proof["phase"], proof["active_backend"]), ("spare", "spare"))
+        self.assertEqual(store.state.phase, "spare")
 
     async def test_config_rejections_happen_before_session_factory(self):
         invalid = (
