@@ -845,14 +845,16 @@ print('Fresh private artifact bucket ready')
                 failures.append("network")
         if self.image_attempted:
             try:
-                self.docker("image", "rm", self.image, timeout=30, capture=True)
+                # Multi-GB TeX images can take minutes to remove on a loaded
+                # shared runner; the removal must still succeed, not be instant.
+                self.docker("image", "rm", self.image, timeout=180, capture=True)
             except (RuntimeError, OSError, subprocess.TimeoutExpired):
                 # A failed build can leave no tagged image; do not prune caches.
                 if self.image_built:
                     failures.append("candidate-image")
         if self.storage_image_attempted:
             try:
-                self.docker("image", "rm", self.storage_image, timeout=30, capture=True)
+                self.docker("image", "rm", self.storage_image, timeout=180, capture=True)
             except (RuntimeError, OSError, subprocess.TimeoutExpired):
                 if self.storage_image_built:
                     failures.append("storage-image")

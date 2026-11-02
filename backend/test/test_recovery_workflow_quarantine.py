@@ -56,6 +56,7 @@ def test_freeze_rechecks_drain_after_migration_before_serving_or_template_writes
     assert names.index(freeze_name) < names.index("Deploy backend with a rolling update")
     assert names.index(freeze_name) < names.index("Synchronize source-owned production templates")
     assert freeze["run"].index("verify_modal_drain.py") < freeze["run"].index("modal_app.py::freeze_redis_recovery")
+    assert "--handover-id \"$MODAL_REDIS_HANDOVER_ID\"" in freeze["run"]
     assert "scripts.modal_operation_authorization" in freeze["run"]
     assert freeze["run"].index("verify_modal_drain.py") < freeze["run"].index("scripts.modal_operation_authorization")
     assert freeze["env"]["MODAL_RECOVERY_OPERATION_SIGNING_KEY"] == "${{ secrets.MODAL_RECOVERY_OPERATION_SIGNING_KEY }}"
