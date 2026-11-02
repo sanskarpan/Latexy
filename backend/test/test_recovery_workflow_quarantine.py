@@ -51,6 +51,7 @@ def test_freeze_rechecks_drain_after_migration_before_serving_or_template_writes
     assert "'held-cutover'" in freeze["if"]
     assert "env.MODAL_REDIS_SECRET_NAME != ''" in freeze["if"]
     assert "env.MODAL_REDIS_SECRET_NAME != 'latexy-redis'" in freeze["if"]
+    assert "env.MODAL_REDIS_HANDOVER_ID != ''" in freeze["if"]
     assert names.index("Apply production database migrations after external drain verification") < names.index(freeze_name)
     assert names.index(freeze_name) < names.index("Deploy backend with a rolling update")
     assert names.index(freeze_name) < names.index("Synchronize source-owned production templates")
