@@ -66,7 +66,7 @@ describe('account-role UI authorization', () => {
   it('expires cached role verification instead of granting while hidden indefinitely', async () => {
     const h = await harness(); h.getMe.mockResolvedValue({ id: 'a', role: 'admin' })
     h.render(); h.fetch(); await flush(); h.render(); h.expire()
-    await vi.advanceTimersByTimeAsync(38000)
+    await vi.advanceTimersByTimeAsync(308000)
     expect(h.render().role).toBeNull(); expect(h.render().loading).toBe(false)
     expect(h.render().error).toContain('expired')
   })

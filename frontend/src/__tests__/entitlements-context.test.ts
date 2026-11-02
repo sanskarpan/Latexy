@@ -208,7 +208,7 @@ describe('bounded non-destructive background refresh', () => {
   it('expires an old grant even when background polling is throttled', async () => {
     const h = await harness(); h.getEntitlements.mockResolvedValue({ features: { d01: true } })
     h.render(); h.fetch(); await flush(); h.render(); h.expire()
-    await vi.advanceTimersByTimeAsync(38000)
+    await vi.advanceTimersByTimeAsync(308000)
     expect(h.render().can('d01')).toBe(false)
     expect(h.render().error).toContain('expired')
     for (const key of ['b01', 'c01', 'c05', 'compile']) expect(h.render().can(key)).toBe(false)

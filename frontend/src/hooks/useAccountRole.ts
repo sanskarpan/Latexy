@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { apiClient, type UserRole } from '@/lib/api-client'
 
-const REFRESH_MS = 30_000
+const REFRESH_MS = 300_000
 const TIMEOUT_MS = 8_000
 
 /** Account roles never come from a prior identity or an unverified session. */
