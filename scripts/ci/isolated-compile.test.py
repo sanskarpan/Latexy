@@ -552,8 +552,8 @@ class HarnessGuards(unittest.TestCase):
             instance.storage_image_attempted = instance.storage_image_built = True
             instance.docker = MagicMock()
             self.assertEqual(instance.cleanup(), [])
-            instance.docker.assert_called_once_with('image', 'rm', instance.storage_image, timeout=30, capture=True)
-            instance.docker = MagicMock(side_effect=subprocess.TimeoutExpired('docker', 30))
+            instance.docker.assert_called_once_with('image', 'rm', instance.storage_image, timeout=180, capture=True)
+            instance.docker = MagicMock(side_effect=subprocess.TimeoutExpired('docker', 180))
             self.assertEqual(instance.cleanup(), ['storage-image'])
 
     def test_process_cleanup_does_not_kill_arbitrary_ports(self):
