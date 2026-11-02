@@ -66,6 +66,12 @@ operations_app = modal.App(f"{_APP_NAME}-operations")
 _DEPLOYMENT_TRAFFIC_HELD = deployment_traffic_held(os.environ, source_deployment=True)
 _DEPLOYMENT_TRAFFIC_HOLD_VALUE = "true" if _DEPLOYMENT_TRAFFIC_HELD else "false"
 
+# An unheld production deploy is only valid for the exact approved SHA. Remote
+# imports and container startups do not inherit the deploy command's shell, so
+# the approval must travel in the image like the hold value. Empty for held
+# builds; only consulted when the baked hold value is false.
+_MODAL_TRAFFIC_RELEASE_APPROVED_SHA = os.environ.get("MODAL_TRAFFIC_RELEASE_APPROVED_SHA", "")
+
 
 def _require_worker_dispatch(fn):
     """Reject worker and scheduler inputs before they can perform side effects."""
@@ -378,11 +384,15 @@ _api_secrets.append(_redis_secret)
 
 # Named Secrets can shadow image environment variables. Bind the deployment
 # choice after every opaque secret and before registering any function so API,
-# worker, scheduler, and operator functions receive the same hold mode.
+# worker, scheduler, and operator functions receive the same hold mode. The
+# release approval travels the same path: remote imports and container
+# startups do not inherit the deploy command's shell, and only the exact
+# approved SHA may run unheld.
 _deployment_hold_secret = modal.Secret.from_dict(
     {
         "MODAL_DEPLOYMENT_TRAFFIC_HOLD": _DEPLOYMENT_TRAFFIC_HOLD_VALUE,
         "MODAL_REDIS_SECRET_NAME": _redis_secret_name,
+        "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": _MODAL_TRAFFIC_RELEASE_APPROVED_SHA,
     }
 )
 _secrets.append(_deployment_hold_secret)
