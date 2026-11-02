@@ -49,7 +49,11 @@ def _validated_identity(
         label = modal_redis_secret_name(environ.get("MODAL_REDIS_SECRET_NAME"))
     except (TypeError, ValueError):
         raise RedisRecoveryQuarantineError() from None
-    if label == DEFAULT_MODAL_REDIS_SECRET_NAME:
+    if label == DEFAULT_MODAL_REDIS_SECRET_NAME and not environ.get("MODAL_REDIS_HANDOVER_ID"):
+        # The freeze containment normally requires an explicitly selected
+        # alternate binding. The handover sequence reuses the freeze as its
+        # quarantine point on the rotated default binding; a set handover
+        # UUID is the explicit operator opt-in for that sequence.
         raise RedisRecoveryQuarantineError()
     baked_revision = environ.get("DEPLOY_SHA")
     if (
