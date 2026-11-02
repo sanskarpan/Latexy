@@ -2,6 +2,8 @@
 
 **Last Updated: September 30, 2025**
 
+**Status:** Draft revision pending legal review — not yet effective.
+
 ## 1. Acceptance of Terms
 
 By accessing or using Latexy ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.
@@ -34,21 +36,24 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 
 ### 4.1 Plan Types
 - **Free Trial**: 3 free resume compilations per device (no registration required)
-- **Basic Plan**: ₹299/month - 400 compilations, 10 optimizations
-- **Pro Plan**: ₹599/month - Unlimited compilations and optimizations
+- **Basic Plan**: ₹299/month - 400 compilations, 10 optimizations and 100 AI assists per month
+- **Pro Plan**: ₹599/month - Unlimited compilations, optimizations and AI assists within fair-use and abuse-prevention rules; storage, history-retention and seat limits per plan still apply
 - **BYOK Plan**: ₹199/month - Use your own API keys with premium features
+- Only monthly Basic, Pro and BYOK plans are currently offered. Annual, Student, Team, Weekly and Lifetime options are not offered at this time.
+- Priority support is included on Pro, BYOK and Team plans; Basic includes standard support.
 
 ### 4.2 Billing Terms
 - Subscription fees are billed monthly in advance
-- All fees are non-refundable except as required by law
+- Fees are generally non-refundable except as required by law. Where a refund is issued (for example for a failed or duplicate payment processed in error), it is returned to the original payment method
+- Cancellation takes effect at the end of the current billing period
 - We reserve the right to change pricing with 30 days notice
 - Failed payments may result in service suspension
 
 ### 4.3 Free Trial Terms
-- Limited to 3 compilations per device using browser fingerprinting
+- Limited to 3 lifetime compilations per device using browser fingerprinting
 - No credit card required for trial access
-- Trial usage resets every 24 hours for abuse prevention
-- Converting to paid plan removes all usage limitations
+- Trial usage does not reset automatically; short cooldowns and daily request caps still apply for abuse prevention
+- Converting to a paid plan replaces trial limits with that plan's quotas (see §4.1); plan quotas continue to apply
 
 ## 5. Acceptable Use Policy
 
@@ -83,7 +88,7 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 ### 7.1 Data Collection
 - We collect information necessary to provide the Service
 - Personal data is processed according to our Privacy Policy
-- Resume content is processed for optimization but not stored permanently
+- Resume content is processed for optimization; saved resumes and their version history are stored while your account is active so you can reload and edit them (see Privacy Policy for retention and deletion)
 - API keys (BYOK) are encrypted and stored securely
 
 ### 7.2 Data Security
@@ -101,10 +106,8 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 - Latexy is not liable for API key misuse or associated costs
 
 ### 8.2 Supported Providers
-- OpenAI (GPT-4, GPT-3.5-turbo)
-- Anthropic (Claude-3 variants)
-- Google (Gemini Pro models)
-- OpenRouter (multiple model access)
+- Supported providers and model versions are operator-configured and may change; the current list is shown in the product documentation
+- Latexy does not commit to the availability of any specific third-party model version
 
 ## 9. Service Availability and Performance
 
@@ -136,7 +139,8 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 ### 11.1 Termination by User
 - Users may cancel subscriptions at any time
 - Account data will be retained for 30 days after cancellation
-- No refunds for unused subscription periods
+- Cancellation takes effect at the end of the current billing period; no refunds for unused subscription periods except as stated in §4.2
+- There is currently no self-service account-deletion control; to request account deletion, email privacy@latexy.com (see Privacy Policy)
 
 ### 11.2 Termination by Latexy
 - We may terminate accounts for Terms violations
