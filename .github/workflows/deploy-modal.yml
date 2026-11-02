@@ -345,6 +345,7 @@ jobs:
           echo "::add-mask::$token"
           modal run --env main modal_app.py::freeze_redis_recovery \
             --source-revision "$DEPLOY_SHA" --freeze-id "$MODAL_REDIS_RECOVERY_FREEZE_ID" \
+            --handover-id "$MODAL_REDIS_HANDOVER_ID" \
             --authorization-token "$token"
 
       # Hand durable authority to the spare as a declared fresh start. Unlike

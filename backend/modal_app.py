@@ -1024,7 +1024,7 @@ def migrate(source_revision: str, authorization_token: str) -> None:
 
 
 @operations_app.function(image=migrate_image, secrets=_operations_secrets, timeout=90)
-def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_token: str) -> None:
+def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_token: str, handover_id: str = "") -> None:
     """Workflow-only durable containment; never promote or replay backup work."""
     import asyncio
     import json
@@ -1051,7 +1051,7 @@ def freeze_redis_recovery(source_revision: str, freeze_id: str, authorization_to
             return await freeze_primary_for_recovery(
                 get_async_db_session, environ=os.environ,
                 source_revision=source_revision, freeze_id=freeze_id,
-                expected_generation=0,
+                expected_generation=0, handover_id=handover_id,
             )
         finally:
             await close_db()
