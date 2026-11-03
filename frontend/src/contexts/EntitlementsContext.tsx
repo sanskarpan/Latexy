@@ -16,7 +16,7 @@ interface EntitlementsContextValue {
   refresh: () => void
 }
 
-export const ENTITLEMENT_REFRESH_MS = 300_000
+export const ENTITLEMENT_REFRESH_MS = 30_000
 export const ENTITLEMENT_REQUEST_TIMEOUT_MS = 8_000
 export const ENTITLEMENT_MAX_AGE_MS = ENTITLEMENT_REFRESH_MS + ENTITLEMENT_REQUEST_TIMEOUT_MS
 
