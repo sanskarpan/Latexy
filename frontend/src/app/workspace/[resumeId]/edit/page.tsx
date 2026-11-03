@@ -59,7 +59,7 @@ import {
 } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
-import { downloadBlob } from '@/lib/download'
+import { downloadBlob, pollJobCompletion } from '@/lib/download'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { editorRecoveryLoadBoundary, useEditorSourceLoadScope, useLatexGeneratorRecovery, type LatexGeneratorRecovery } from '@/hooks/useLatexGeneratorRecovery'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
@@ -2995,6 +2995,38 @@ export default function ResumeEditPage() {
     const id = ownsRenderedJobState
       ? (compileStream.pdfJobId ?? aiStream.pdfJobId ?? activePdfJobId.current ?? ownedCompileJobId ?? ownedAiJobId)
       : null
+    // Auto-compile typing previews render in draft mode. If the artifact we
+    // would download came from a draft compile, run one explicit full
+    // compile first so a download never silently ships draft output.
+    const draftJobId = displayedArtifact?.job_id ?? id ?? null
+    if (draftJobId) {
+      let isDraft = false
+      try {
+        const draftCheck = await apiClient.getJobResult(draftJobId)
+        isDraft = draftCheck?.draft === true
+      } catch {
+        isDraft = false
+      }
+      if (isDraft && isActive()) {
+        toast.info('Rendering full-quality PDF for download…')
+        try {
+          const full = await apiClient.compileLatex({ latex_content: editorRef.current?.getValue() ?? latexContent, resume_id: resumeId, compiler })
+          if (!full.success || !full.job_id) throw new Error(full.message || 'Full compile failed to start')
+          const fullId = full.job_id
+          const terminal = await pollJobCompletion((id) => apiClient.getJobState(id), fullId, { isActive })
+          if (terminal !== 'completed') throw new Error('Full-quality render did not complete')
+          if (!isActive()) return
+          const blob = await apiClient.downloadPdf(fullId)
+          if (!isActive()) return
+          if (!blob) throw new Error('No compiled PDF is available yet')
+          downloadBlob(blob, `${title.replace(/\s+/g, '_') || 'resume'}.pdf`)
+          return
+        } catch {
+          if (isActive()) setOfflinePdfError('Download failed. Retry when the PDF or network is available.')
+          return
+        }
+      }
+    }
     try {
       const blob = artifactPreview.verified && artifactPreview.verified.artifact.artifact_id === displayedArtifact?.artifact_id
         ? artifactPreview.verified.blob : id ? await apiClient.downloadPdf(id) : offlinePdfBlobRef.current
@@ -3412,7 +3444,8 @@ export default function ResumeEditPage() {
     if (blocksAcceptedArtifactRecoveryAdmission(content) || isSubmitting || isAnyRunning || !canEditDocument || isLoading || !isOnline || !autoCompileIdentityReady) return null
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
+      // Typing previews compile in draft mode (faster); explicit builds stay full.
+      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler, preview: true })
       if (!r.success || !r.job_id) throw new Error(r.message)
       if (!isActive()) return null
       editorRef.current?.markAutoCompileCompiled?.(content)
