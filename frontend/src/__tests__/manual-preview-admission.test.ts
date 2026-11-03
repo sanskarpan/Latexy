@@ -204,4 +204,24 @@ for (const page of ['guest', 'saved'] as const) {
       h.scheduler.dispose()
     })
   })
+
+  describe('saved preview draft routing', () => {
+    it('marks automatic compiles as previews while manual compiles stay full', async () => {
+      const h = harness('saved')
+      h.edit('A')
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(h.submit).toHaveBeenCalledOnce()
+      expect(h.submit.mock.calls[0]).toEqual([expect.objectContaining({ latex_content: 'A', preview: true })])
+      h.admissions[0].resolve({ success: true, job_id: 'auto-job' })
+      h.scheduler.complete('auto-job')
+      await vi.advanceTimersByTimeAsync(0)
+      const pending = h.manual()
+      expect(h.submit).toHaveBeenCalledTimes(2)
+      expect(h.submit.mock.calls[1]).toEqual([expect.objectContaining({ latex_content: 'A' })])
+      expect(h.submit.mock.calls[1][0]).not.toHaveProperty('preview')
+      h.admissions[1].resolve({ success: true, job_id: 'manual-job' })
+      await pending
+      h.scheduler.dispose()
+    })
+  })
 }
