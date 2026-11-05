@@ -38,7 +38,7 @@ class RedisRecoveryQuarantineError(RuntimeError):
 
 def _validated_identity(
     environ: Mapping[str, str], source_revision: str, freeze_id: str,
-    expected_generation: int,
+    expected_generation: int, *, allow_default_label: bool = False,
 ) -> tuple[UUID, str]:
     """Validate all operator selectors before the first database call."""
     if environ.get("MODAL_ENVIRONMENT") != "main":
@@ -49,11 +49,7 @@ def _validated_identity(
         label = modal_redis_secret_name(environ.get("MODAL_REDIS_SECRET_NAME"))
     except (TypeError, ValueError):
         raise RedisRecoveryQuarantineError() from None
-    if label == DEFAULT_MODAL_REDIS_SECRET_NAME and not environ.get("MODAL_REDIS_HANDOVER_ID"):
-        # The freeze containment normally requires an explicitly selected
-        # alternate binding. The handover sequence reuses the freeze as its
-        # quarantine point on the rotated default binding; a set handover
-        # UUID is the explicit operator opt-in for that sequence.
+    if label == DEFAULT_MODAL_REDIS_SECRET_NAME and not allow_default_label:
         raise RedisRecoveryQuarantineError()
     baked_revision = environ.get("DEPLOY_SHA")
     if (
@@ -252,15 +248,29 @@ async def freeze_primary_for_recovery(
     source_revision: str,
     freeze_id: str,
     expected_generation: int = 0,
+    handover_id: str = "",
 ) -> dict[str, Any]:
     """Freeze primary authority and verify uncertain results using a fresh session.
 
     The caller supplies an async SQLAlchemy session factory. This function does
     not perform DDL, Redis operations, or any provider operation. Existing
     matching freezes are idempotent; every other state is denied.
+
+    A valid handover UUID additionally permits the freeze on the default Redis
+    binding: the freeze is then the quarantine point of a declared spare
+    handover sequence on the rotated default secret. Without it, the default
+    binding is refused exactly as before.
     """
+    if handover_id:
+        try:
+            handover_uuid = UUID(handover_id)
+        except (TypeError, ValueError, AttributeError):
+            raise RedisRecoveryQuarantineError() from None
+        if str(handover_uuid) != handover_id:
+            raise RedisRecoveryQuarantineError()
     operation_id, _label = _validated_identity(
         environ, source_revision, freeze_id, expected_generation,
+        allow_default_label=bool(handover_id),
     )
     try:
         async with session_factory() as session:

@@ -207,9 +207,25 @@ class RedisRecoveryQuarantineTests(unittest.IsolatedAsyncioTestCase):
         }
         proof = await freeze_primary_for_recovery(
             store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+            handover_id=HANDOVER_ID,
         )
         self.assertEqual((proof["phase"], proof["active_backend"]), ("frozen", "primary"))
         self.assertEqual(store.state.phase, "frozen")
+
+    async def test_freeze_rejects_malformed_handover_id(self):
+        store = _Store()
+        environ = {
+            "MODAL_ENVIRONMENT": "main",
+            "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "true",
+            "MODAL_REDIS_SECRET_NAME": "latexy-redis",
+            "DEPLOY_SHA": SOURCE,
+        }
+        with self.assertRaises(RedisRecoveryQuarantineError):
+            await freeze_primary_for_recovery(
+                store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+                handover_id="not-a-uuid",
+            )
+        self.assertEqual(store.state.phase, "legacy")
 
     async def test_handover_after_sequence_freeze_names_spare(self):
         from scripts.redis_recovery_quarantine import handover_spare_for_recovery
@@ -224,6 +240,7 @@ class RedisRecoveryQuarantineTests(unittest.IsolatedAsyncioTestCase):
         }
         await freeze_primary_for_recovery(
             store.factory, environ=environ, source_revision=SOURCE, freeze_id=FREEZE_ID,
+            handover_id=HANDOVER_ID,
         )
         proof = await handover_spare_for_recovery(
             store.factory, environ=environ, source_revision=SOURCE, handover_id=HANDOVER_ID,

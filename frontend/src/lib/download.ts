@@ -12,3 +12,31 @@ export function downloadBlob(blob: Blob, filename: string): void {
   // object URL. A short delay also keeps the URL lifetime bounded.
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+export type JobTerminalStatus = 'completed' | 'failed' | 'cancelled' | 'timeout' | 'inactive'
+
+/** Bounded poll for a job terminal state. Never throws: transport errors count as retries. */
+export async function pollJobCompletion(
+  getJobState: (jobId: string) => Promise<{ status?: string } | null>,
+  jobId: string,
+  options?: { intervalMs?: number; maxWaitMs?: number; isActive?: () => boolean; wait?: (ms: number) => Promise<void> },
+): Promise<JobTerminalStatus> {
+  const intervalMs = options?.intervalMs ?? 3000
+  const maxWaitMs = options?.maxWaitMs ?? 180000
+  const isActive = options?.isActive ?? (() => true)
+  const wait = options?.wait ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms) }))
+  const deadline = Date.now() + maxWaitMs
+  for (;;) {
+    if (!isActive()) return 'inactive'
+    await wait(intervalMs)
+    if (!isActive()) return 'inactive'
+    let status: string | undefined
+    try {
+      status = (await getJobState(jobId))?.status ?? undefined
+    } catch {
+      status = undefined
+    }
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') return status
+    if (Date.now() >= deadline) return 'timeout'
+  }
+}

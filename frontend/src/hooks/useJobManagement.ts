@@ -54,7 +54,7 @@ export interface UseJobManagementResult {
 export function useJobManagement(options: UseJobManagementOptions = {}): UseJobManagementResult {
   const {
     autoRefresh = true,
-    refreshInterval = 10000, // 10 seconds
+    refreshInterval = 60000, // 60 seconds; health rechecks every fifth tick
     maxJobs = 100,
   } = options
 
@@ -277,7 +277,10 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     return jobs?.jobs.filter(job => job.status === 'failed') || []
   }, [jobs])
 
-  // Auto-refresh jobs and health
+  // Auto-refresh jobs; health rechecks at a fraction of the cadence because
+  // each check is multiple Redis commands. Mount, submit, and tab-visibility
+  // still refresh both immediately.
+  const tickRef = useRef(0)
   useEffect(() => {
     if (!autoRefresh) return
 
@@ -294,8 +297,14 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     // Initial load
     refresh()
 
-    // Set up interval
-    refreshIntervalRef.current = setInterval(refresh, refreshInterval)
+    // Set up interval: jobs every tick, health every fifth tick.
+    const onTick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      tickRef.current += 1
+      await refreshJobs()
+      if (tickRef.current % 5 === 0) await refreshHealth()
+    }
+    refreshIntervalRef.current = setInterval(onTick, refreshInterval)
 
     // Refresh immediately when the tab becomes visible again.
     const handleVisibility = () => {

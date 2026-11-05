@@ -46,7 +46,7 @@ export interface UseJobStatusResult {
 //  REST fallback polling bounds                                        //
 // ------------------------------------------------------------------ //
 
-const POLL_INTERVAL_MS = 5000
+const POLL_INTERVAL_MS = 15000
 /** Consecutive getJobState() failures after which the fallback gives up. */
 const MAX_CONSECUTIVE_POLL_FAILURES = 3
 /** Hard backstop: no job outlives this, so neither should the fallback. */

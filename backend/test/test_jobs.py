@@ -330,6 +330,54 @@ class TestJobSubmission:
         assert submit.call_args.kwargs["compile_settings"]["halt_on_error"] is False
         assert submit.call_args.kwargs["compile_settings"]["draft_mode"] is True
 
+    async def test_auto_compile_preview_forces_draft_mode(self, client: AsyncClient, auth_headers: dict):
+        created = await client.post(
+            "/resumes/",
+            json={"title": "Draft preview", "latex_content": VALID_LATEX},
+            headers=auth_headers,
+        )
+        assert created.status_code == 201
+        resume_id = created.json()["id"]
+
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "latex_compilation",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": resume_id, "preview": True},
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        assert submit.call_args.kwargs["compile_settings"]["draft_mode"] is True
+
+    async def test_explicit_compile_keeps_stored_settings_without_preview_flag(
+        self, client: AsyncClient, auth_headers: dict,
+    ):
+        created = await client.post(
+            "/resumes/",
+            json={"title": "Explicit full", "latex_content": VALID_LATEX},
+            headers=auth_headers,
+        )
+        assert created.status_code == 201
+        resume_id = created.json()["id"]
+
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "latex_compilation",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": resume_id},
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        assert "draft_mode" not in (submit.call_args.kwargs["compile_settings"] or {})
+
     async def test_submit_latex_compilation(self, client: AsyncClient, auth_headers: dict):
         with patch(
             "app.workers.latex_worker.submit_latex_compilation",
