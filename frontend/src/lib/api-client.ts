@@ -199,6 +199,8 @@ export interface JobResultResponse {
   auto_fit?: boolean
   fit_succeeded?: boolean
   fit_intensity?: number
+  /** True when this result came from a draft-mode (typing preview) compile. */
+  draft?: boolean
   fit_attempts?: number
   fitted_latex?: string
   error?: string
@@ -2212,13 +2214,16 @@ class ApiClient {
     user_plan?: string
     resume_id?: string
     compiler?: LatexCompiler
+    /** Auto-compile typing previews render in draft mode; explicit builds stay full. */
+    preview?: boolean
   }, accountContext?: AccountPreferenceRequestContext): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'latex_compilation',
       latex_content: body.latex_content,
       device_fingerprint: body.device_fingerprint,
       user_plan: body.user_plan,
-      metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
+      metadata: body.preview ? { ...(body.resume_id ? { resume_id: body.resume_id } : {}), preview: true }
+        : body.resume_id ? { resume_id: body.resume_id } : undefined,
       compiler: body.compiler,
     }, accountContext)
   }

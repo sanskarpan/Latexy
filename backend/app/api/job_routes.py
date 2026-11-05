@@ -703,6 +703,13 @@ async def submit_job(
             except Exception:
                 logger.debug("Could not fetch resume compile settings", exc_info=True)
 
+        # Auto-compile typing previews render in draft mode for speed.
+        # Explicit builds (no preview flag) keep the stored settings. Draft
+        # previews cache under a distinct settings hash, so they never
+        # poison full-fidelity artifacts.
+        if request.job_type == "latex_compilation" and safe_meta.get("preview") is True:
+            compile_settings = {**(compile_settings or {}), "draft_mode": True}
+
         # Validate every condition that can reject the request before charging an
         # anonymous device trial. A missing document, unsupported persona, or bad
         # compiler must not consume one of three uses or start its cooldown.

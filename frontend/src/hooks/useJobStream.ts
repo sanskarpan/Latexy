@@ -184,6 +184,12 @@ export function useJobStream(jobId: string | null, options?: { fingerprint?: str
   const stateForJob = committedJobIdRef.current === jobId ? state : initialState
   const artifactRef = useRef(stateForJob.artifact)
   artifactRef.current = stateForJob.artifact
+  // The REST fallback below must stop as soon as EITHER path observes a
+  // terminal state. This ref mirrors the stream status during render (like
+  // requestedJobIdRef above) so a WebSocket-delivered completion halts the
+  // poller without waiting for the next REST tick.
+  const streamTerminalRef = useRef(false)
+  streamTerminalRef.current = stateForJob.status === 'completed' || stateForJob.status === 'failed' || stateForJob.status === 'cancelled'
   const fingerprint = options?.fingerprint
 
   useEffect(() => {
@@ -260,14 +266,17 @@ export function useJobStream(jobId: string | null, options?: { fingerprint?: str
     if (!jobId) return
     let stopped = false
     let attempts = 0
-    const MAX_POLLS = 157 // initial fast recovery, then ~10 minutes at four seconds
-    const pollInterval = () => attempts < 8 ? 750 : 4000
+    const MAX_POLLS = 157 // initial fast recovery, then ~26 minutes at ten seconds
+    const pollInterval = () => attempts < 4 ? 3000 : 10000
     let timer: ReturnType<typeof setTimeout> | null = null
     let inFlight = false
     let terminal = false
     const isCurrent = () => !stopped && requestedJobIdRef.current === jobId
 
     const poll = async () => {
+      // A WebSocket-delivered terminal event stops the fallback immediately;
+      // without this the poller runs to MAX_POLLS even for healthy sockets.
+      if (streamTerminalRef.current) terminal = true
       if (!isCurrent() || inFlight || terminal || attempts >= MAX_POLLS) return
       inFlight = true
       attempts += 1
@@ -354,7 +363,7 @@ export function useJobStream(jobId: string | null, options?: { fingerprint?: str
       if (isCurrent() && attempts < MAX_POLLS) timer = setTimeout(poll, pollInterval())
     }
 
-    // Recover fast cache hits immediately; slow jobs back off to four seconds.
+    // Recover fast cache hits quickly; slow jobs back off to ten seconds.
     timer = setTimeout(poll, 0)
     const recoverOnReconnect = () => {
       if (timer) clearTimeout(timer)

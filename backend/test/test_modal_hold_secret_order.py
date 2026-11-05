@@ -128,6 +128,7 @@ def _execute_secret_assembly(tree: ast.Module, opaque: dict[str, dict[str, str]]
         "_billing_secret_name": "qa-billing-overlay",
         "_redis_secret_name": "backup-redis",
         "_DEPLOYMENT_TRAFFIC_HOLD_VALUE": hold,
+        "_MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "b" * 40,
     }
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), "secret_assembly", "exec"), namespace)
     namespace["_fake_modal"] = fake_modal
@@ -140,13 +141,15 @@ def test_hold_binding_is_a_single_canonical_override_after_every_other_secret() 
     call = _modal_secret_call(hold_assignment, "from_dict")
     assert call is not None and len(call.args) == 1
     binding = call.args[0]
-    assert isinstance(binding, ast.Dict) and len(binding.keys) == 2
+    assert isinstance(binding, ast.Dict) and len(binding.keys) == 3
     bindings = {key.value: value for key, value in zip(binding.keys, binding.values)}
-    assert set(bindings) == {"MODAL_DEPLOYMENT_TRAFFIC_HOLD", "MODAL_REDIS_SECRET_NAME"}
+    assert set(bindings) == {"MODAL_DEPLOYMENT_TRAFFIC_HOLD", "MODAL_REDIS_SECRET_NAME", "MODAL_TRAFFIC_RELEASE_APPROVED_SHA"}
     assert isinstance(bindings["MODAL_DEPLOYMENT_TRAFFIC_HOLD"], ast.Name)
     assert bindings["MODAL_DEPLOYMENT_TRAFFIC_HOLD"].id == "_DEPLOYMENT_TRAFFIC_HOLD_VALUE"
     assert isinstance(bindings["MODAL_REDIS_SECRET_NAME"], ast.Name)
     assert bindings["MODAL_REDIS_SECRET_NAME"].id == "_redis_secret_name"
+    assert isinstance(bindings["MODAL_TRAFFIC_RELEASE_APPROVED_SHA"], ast.Name)
+    assert bindings["MODAL_TRAFFIC_RELEASE_APPROVED_SHA"].id == "_MODAL_TRAFFIC_RELEASE_APPROVED_SHA"
     assert _hold_append_targets(tree) == ["_secrets", "_api_secrets"]
 
     api_assignment = _assignment(tree, "_api_secrets")
@@ -190,6 +193,7 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
             "latexy-backend-secrets": {
                 "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true",
                 "MODAL_REDIS_SECRET_NAME": "wrong-base-label",
+                "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "wrong-sha",
                 "REDIS_URL": "redis://legacy-primary", "REDIS_PASSWORD": "legacy-pass",
             },
             "latexy-storage": {"STORAGE_FIXTURE": "value"},
@@ -204,6 +208,7 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
             "qa-billing-overlay": {
                 "MODAL_DEPLOYMENT_TRAFFIC_HOLD": "false" if chosen == "true" else "true",
                 "MODAL_REDIS_SECRET_NAME": "wrong-billing-label",
+                "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "wrong-sha",
                 "REDIS_URL": "redis://billing-override", "REDIS_PASSWORD": "billing-pass",
             },
         }
@@ -212,12 +217,14 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
         assert fake_modal.captured_dicts == [{
             "MODAL_DEPLOYMENT_TRAFFIC_HOLD": chosen,
             "MODAL_REDIS_SECRET_NAME": "backup-redis",
+            "MODAL_TRAFFIC_RELEASE_APPROVED_SHA": "b" * 40,
         }]
         worker_env = _merged_env(namespace["_secrets"])
         api_env = _merged_env(namespace["_api_secrets"])
         operations_env = _merged_env(namespace["_operations_secrets"])
         assert worker_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
         assert api_env["MODAL_DEPLOYMENT_TRAFFIC_HOLD"] == chosen
+        assert worker_env["MODAL_TRAFFIC_RELEASE_APPROVED_SHA"] == api_env["MODAL_TRAFFIC_RELEASE_APPROVED_SHA"] == "b" * 40
         assert worker_env["REDIS_URL"] == api_env["REDIS_URL"] == "redis://backup"
         assert worker_env["REDIS_PASSWORD"] == api_env["REDIS_PASSWORD"] == "backup-pass"
         assert api_env["MODAL_REDIS_SECRET_NAME"] == "backup-redis"
