@@ -40,7 +40,7 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 - **Pro Plan**: ₹599/month - Unlimited compilations, optimizations and AI assists within fair-use and abuse-prevention rules; storage, history-retention and seat limits per plan still apply
 - **BYOK Plan**: ₹199/month - Use your own API keys with premium features
 - Only monthly Basic, Pro and BYOK plans are currently offered. Annual, Student, Team, Weekly and Lifetime options are not offered at this time.
-- Priority support is included on Pro, BYOK and Team plans; Basic includes standard support.
+- Priority support is included on Pro and BYOK plans; Basic includes standard support.
 
 ### 4.2 Billing Terms
 - Subscription fees are billed monthly in advance
