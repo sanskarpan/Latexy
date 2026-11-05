@@ -11,7 +11,7 @@
         "prestart": "pnpm verify:next-hydration",
         "prepare:monaco": "node scripts/prepare-monaco.mjs",
         "predev": "pnpm verify:next-hydration && pnpm prepare:monaco",
-        "dev": "next dev --turbopack -p ${PORT:-5180}",
+        "dev": "node scripts/dev-server.mjs",
         "prebuild": "pnpm verify:next-hydration && pnpm prepare:monaco",
         "build": "node scripts/validate-build.mjs preflight && next build && node scripts/validate-build.mjs artifacts",
         "start": "next start",
