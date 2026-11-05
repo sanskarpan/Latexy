@@ -161,6 +161,11 @@ def confine_engine(workspace: str) -> int:
             "/etc/fonts",
             "/etc/ld.so.cache",
             "/etc/localtime",
+            # luaotfload indexes poppler's CMap tables when building a cold
+            # font database. Without this read-only grant the rebuild aborts
+            # with "cannot open /usr/share/poppler/cMap/<name>: Permission
+            # denied" and no PDF is produced.
+            "/usr/share/poppler",
         ):
             add(path, 4 | 8)
         for path in ("/usr/bin", "/bin", "/usr/lib", "/usr/local/lib", "/lib", "/lib64"):
@@ -192,7 +197,14 @@ def main():
                 raise ConfinementUnavailable("Private font cache escapes workspace")
             names.mkdir(parents=True, exist_ok=True)
             for name in ("luaotfload-names.lua.gz", "luaotfload-names.luc.gz"):
-                source = Path("/var/lib/texmf/luatex-cache/generic/names") / name
+                # The image warms the font index under TEXMFVAR (see
+                # warm_lualatex_cache.py). Prefer that published cache so the
+                # per-job workspace reuse avoids a cold luaotfload rebuild,
+                # which needs poppler CMap data the confinement blocks.
+                for cache_root in ("/var/lib/texmf/latexy-cache", "/var/lib/texmf"):
+                    source = Path(cache_root, "luatex-cache/generic/names", name)
+                    if source.is_file():
+                        break
                 target = names / name
                 if target.is_symlink():
                     raise ConfinementUnavailable("Private font index escapes workspace")

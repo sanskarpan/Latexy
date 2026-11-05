@@ -1122,8 +1122,16 @@ export default function ResumeEditPage() {
   const visibleRightTab = (editorMode === 'pdf' && !['preview', 'ai', 'comments', 'interview'].includes(rightTab))
     || (editorMode === 'wysiwyg' && !visualPanels.includes(rightTab)) ? 'preview' : rightTab
   useEffect(() => {
-    if (visibleRightTab !== rightTab) setRightTab(visibleRightTab)
-  }, [visibleRightTab, rightTab, setRightTab])
+    // Converge the visible tab in one direct state write. Routing this through
+    // the capability-gated `setRightTab` could reject the change, leaving the
+    // effect to re-run on every render and tripping React's
+    // "Maximum update depth exceeded" guard on a hard load. The dedicated
+    // capability reconciliation effect below still enforces access.
+    if (visibleRightTab !== rightTab) setRightTabValue(visibleRightTab)
+    // `visibleRightTab`/`rightTab` are the only inputs that matter; `setRightTab`
+    // changes identity every render because its interview dependency does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRightTab, rightTab])
   useEffect(() => {
     if (!sessionUserId) return
     try { setSemanticRunId(localStorage.getItem(`latexy_semantic_run:${sessionUserId}:${resumeId}`)) } catch {}
