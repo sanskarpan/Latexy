@@ -494,6 +494,24 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    # The Playwright server binds Better Auth to a real PostgreSQL database.
+    # Without this service every spec that touches a session failed with
+    # "Could not validate the database schema" / ECONNREFUSED and the whole
+    # job went red for every frontend PR.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: latexy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       NEXT_PUBLIC_APP_URL: "http://localhost:5182"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
@@ -501,6 +519,9 @@ jobs:
       BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
       BETTER_AUTH_URL: "http://localhost:5182"
       DATABASE_URL: postgresql://postgres@localhost:5432/latexy_test
+      # playwright-server.mjs reads PLAYWRIGHT_DATABASE_URL (it deliberately
+      # ignores the production DATABASE_URL so a local run cannot hit prod).
+      PLAYWRIGHT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/latexy_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -514,6 +535,22 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+          cache-dependency-glob: "backend/requirements-dev.lock"
+      - name: Prepare the browser-test database schema
+        working-directory: backend
+        # Better Auth validates the schema on every session read. Apply the
+        # committed migrations to this job's disposable PostgreSQL service so
+        # session-dependent specs can authenticate at all.
+        run: |
+          uv pip sync --require-hashes --verify-hashes requirements-dev.lock
+          uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/latexy_test
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Verify workspace search close/reopen in Chromium
