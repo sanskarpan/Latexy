@@ -551,6 +551,10 @@ jobs:
           uv run alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/latexy_test
+          # A pure migration run needs no provider secrets; skipping Settings
+          # validation avoids adding secret-shaped literals for GitGuardian
+          # to flag. DSN health is still enforced by the service healthcheck.
+          SKIP_ENV_VALIDATION: "true"
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Verify workspace search close/reopen in Chromium
