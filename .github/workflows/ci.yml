@@ -142,7 +142,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
           activate-environment: true
@@ -199,7 +199,7 @@ jobs:
       DEBUG: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
           activate-environment: true
@@ -284,7 +284,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
           activate-environment: true
@@ -494,13 +494,38 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    # The Playwright server binds Better Auth to a real PostgreSQL database.
+    # Without this service every spec that touches a session failed with
+    # "Could not validate the database schema" / ECONNREFUSED and the whole
+    # job went red for every frontend PR.
+    #
+    # Port and credentials match the browser-test contract exactly:
+    # playwright-server.mjs strips PLAYWRIGHT_DATABASE_URL/DATABASE_URL from
+    # the spawned server environment (an allowlist guard against leaking env
+    # into the disposable server) and falls back to
+    # postgresql://latexy:latexy_password@127.0.0.1:5434/latexy_test — the
+    # same loopback DSN local browser tests document. Serve the migrated
+    # database on exactly that endpoint.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: latexy
+          POSTGRES_PASSWORD: latexy_password
+          POSTGRES_DB: latexy_test
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U latexy -d latexy_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       NEXT_PUBLIC_APP_URL: "http://localhost:5182"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
       NEXT_PUBLIC_WS_URL: "ws://localhost:5182"
       BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
       BETTER_AUTH_URL: "http://localhost:5182"
-      DATABASE_URL: postgresql://postgres@localhost:5432/latexy_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -514,6 +539,26 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+          cache-dependency-glob: "backend/requirements-dev.lock"
+      - name: Prepare the browser-test database schema
+        working-directory: backend
+        # Better Auth validates the schema on every session read. Apply the
+        # committed migrations to this job's disposable PostgreSQL service so
+        # session-dependent specs can authenticate at all.
+        run: |
+          uv pip sync --require-hashes --verify-hashes requirements-dev.lock
+          uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://latexy:latexy_password@127.0.0.1:5434/latexy_test
+          # A pure migration run needs no provider secrets; skipping Settings
+          # validation avoids adding secret-shaped literals for GitGuardian
+          # to flag. DSN health is still enforced by the service healthcheck.
+          SKIP_ENV_VALIDATION: "true"
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Verify workspace search close/reopen in Chromium
@@ -778,7 +823,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
           activate-environment: true
@@ -842,7 +887,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
           activate-environment: true

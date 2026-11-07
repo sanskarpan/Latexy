@@ -150,6 +150,17 @@ def _persist_arbiter_terminal(
 
     try:
         return bool(asyncio.run(_persist()))
+    except RuntimeError as exc:
+        # A worker coroutine (e.g. deep-ATS analysis) calls this synchronous
+        # bridge from inside a running event loop; asyncio.run() refuses to
+        # nest and would leave `_persist()` unawaited, silently wedging the
+        # job in "processing". Persist on a fresh loop in a side thread.
+        if "cannot be called from a running event loop" not in str(exc):
+            raise
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return bool(pool.submit(lambda: asyncio.run(_persist())).result())
     except Exception:
         logger.warning(
             "Durable terminal decision failed for %s",

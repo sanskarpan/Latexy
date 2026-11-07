@@ -167,7 +167,11 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
 
     ci = _read(".github/workflows/ci.yml")
     assert "uv pip install -r requirements-dev.txt" not in ci
-    assert ci.count("uv pip sync --require-hashes --verify-hashes requirements-dev.lock") == 4
+    # Four backend/test jobs plus the Cross-Browser Quality migration step all
+    # consume the committed, hash-verified dev lock. Bump this tripwire when a
+    # new legitimate consumer is added; a silent drop means a job lost its
+    # hash-verified install.
+    assert ci.count("uv pip sync --require-hashes --verify-hashes requirements-dev.lock") == 5
     assert "uv pip compile --universal --python-version 3.12 --generate-hashes" in ci
     assert "--custom-compile-command" in ci
     assert "diff -u <(sed '/^[[:space:]]*#/d' requirements.lock)" in ci

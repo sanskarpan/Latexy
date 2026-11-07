@@ -136,7 +136,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
-  const [canProvisionTenant, setCanProvisionTenant] = useState(false)
+  const [canProvisionTenant, setCanProvisionTenant] = useState<boolean | null>(null)
 
   // Branding form state
   const [name, setName] = useState('')
@@ -449,10 +449,27 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
     }
   }
 
-  if (sessionLoading || loading) {
+  if (sessionLoading || loading || canProvisionTenant === null) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner />
+      </div>
+    )
+  }
+
+  // Tenant administration is owner/tier-scoped: only platform admins or team
+  // plan owners may see it. The earlier shell rendered "Tenant Management" to
+  // every signed-in account even though every API call returned 403.
+  if (canProvisionTenant === false) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-lg font-semibold text-fg-2">Not authorized</p>
+        <p className="max-w-md text-sm text-fg-3">
+          Tenant administration requires a team plan or platform administrator access.
+        </p>
+        <Link href="/workspace" className="mt-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110">
+          Back to workspace
+        </Link>
       </div>
     )
   }
