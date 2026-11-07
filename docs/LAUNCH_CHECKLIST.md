@@ -542,3 +542,20 @@ pnpm test:quality --retries=0
 Release approval must name what was actually accepted, the remaining risks and
 any limited beta audience. This checklist itself does not approve a deployment,
 financial transaction, credential change or production data operation.
+
+## 12. Operational note — 2026-11-02 traffic release on spare authority
+
+Owner-ordered spare cutover (capital-malamute) executed and verified; this note
+records facts, not a launch approval. Gates L01–L15 remain HOLD unless separately
+accepted per row above.
+
+- Serving backend `e62b99d7880ed10c0bda72dab32774cd07d164e7`, Vercel frontend at the
+  same SHA. `/health` healthy, `/readyz` ready, `/jobs/health` healthy.
+- Redis authority: frozen gen 1 (`quota_exhausted`), handed to spare gen 2
+  (`spare_handover_fresh_start`, fresh baselines, prior unknowns quarantined).
+  Binding `latexy-redis` fingerprint `62a4db4f…7909e7` verified serving.
+- Ordinary traffic returns 401 (auth enforced) instead of 503 hold.
+- Billing stays `safe_disabled`; live Dodo acceptance still requires merchant,
+  products, webhook, and separately approved transactions. No live sale made.
+- Google sign-in handshake verified to the Google consent screen; full
+  account-session acceptance needs an owner click-through retest post-release.

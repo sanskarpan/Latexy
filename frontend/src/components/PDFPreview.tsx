@@ -223,11 +223,18 @@ export default function PDFPreview({
   const paintFrameRef = useRef<number | null>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null)
+  // The container is needed by effects, not by render output. Mirroring it into
+  // state made every React ref detach/attach cycle schedule a render; when the
+  // flip happened repeatedly (suspend/resume around a hard load) React aborted
+  // the route with "Maximum update depth exceeded". Track the node plus a
+  // one-shot nonce so effects re-run once the element exists, without the ref
+  // callback itself being able to drive an unbounded update chain.
+  const [containerAttached, setContainerAttached] = useState(0)
+  const containerNode = containerRef.current
   const setContainerElement = useCallback((node: HTMLDivElement | null) => {
     if (containerRef.current === node) return
     containerRef.current = node
-    setContainerNode(node)
+    if (node) setContainerAttached((previous) => previous + 1)
   }, [])
   const syncHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flashTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
@@ -293,15 +300,21 @@ export default function PDFPreview({
   useEffect(() => {
     const el = containerNode
     if (!el) return
+    // Only publish a changed width. `setState` on every ResizeObserver tick can
+    // re-render the page tree, which changes the observed box (scrollbars,
+    // zoom), which fires the observer again — React then aborts the whole
+    // route with "Maximum update depth exceeded" on a hard load.
+    const publishWidth = (w: number) => {
+      if (w > 0) setContainerWidth((previous) => (previous === w ? previous : w))
+    }
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0
-      if (w > 0) setContainerWidth(w)
+      publishWidth(entries[0]?.contentRect.width ?? 0)
     })
     ro.observe(el)
     // Initial measurement
-    setContainerWidth(el.getBoundingClientRect().width)
+    publishWidth(el.getBoundingClientRect().width)
     return () => ro.disconnect()
-  }, [containerNode])
+  }, [containerNode, containerAttached])
 
   // Ctrl/Cmd + scroll (or trackpad pinch, which browsers report as a ctrl-flagged
   // wheel event) zooms the preview instead of scrolling the page.
@@ -318,7 +331,7 @@ export default function PDFPreview({
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [containerNode])
+  }, [containerNode, containerAttached])
 
   // Keyboard zoom shortcuts: Cmd/Ctrl +/- to step, Cmd/Ctrl+0 to reset to 100%/fit.
   // Skipped while typing in an input/textarea/contenteditable (e.g. the LaTeX editor).
@@ -367,7 +380,7 @@ export default function PDFPreview({
     )
     Object.values(pageRefs.current).forEach((el) => { if (el) observer.observe(el) })
     return () => observer.disconnect()
-  }, [containerNode, numPages])
+  }, [containerNode, containerAttached, numPages])
 
   // Base width = container minus horizontal padding (24px each side)
   const baseWidth = containerWidth > 0 ? Math.max(200, containerWidth - 48) : 520

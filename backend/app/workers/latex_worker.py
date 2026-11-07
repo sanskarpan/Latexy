@@ -2557,6 +2557,7 @@ def compile_latex_task(
                 "pdf_size": pdf_size,
                 "page_count": page_count,
                 "slide_count": slide_count,
+                "draft": _cs.get("draft_mode") is True,
                 "is_beamer": is_beamer,
                 "extracted_text": extracted_text,
                 **fit_payload,

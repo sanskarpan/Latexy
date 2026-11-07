@@ -126,9 +126,14 @@ describe('PDFPreview SyncTeX request lifecycle', () => {
   })
 
   test('attaches viewport behavior when the PDF container mounts and preserves a prior PDF while compiling', () => {
-    expect(pdfPreviewSource).toContain('const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null)')
+    // The container is mirrored through a ref plus an attachment nonce so a
+    // detach/attach cycle cannot schedule unbounded renders (previously it kept
+    // the node in state, which aborted hard loads with "Maximum update depth").
+    expect(pdfPreviewSource).toContain('const containerRef = useRef<HTMLDivElement | null>(null)')
+    expect(pdfPreviewSource).toContain('const [containerAttached, setContainerAttached] = useState(0)')
+    expect(pdfPreviewSource).toContain('const containerNode = containerRef.current')
     expect(pdfPreviewSource).toContain('ref={setContainerElement}')
-    expect(pdfPreviewSource).toContain('}, [containerNode])')
+    expect(pdfPreviewSource).toContain('}, [containerNode, containerAttached])')
     expect(pdfPreviewSource).toContain('if (isLoading && !pdfUrl)')
   })
 })

@@ -18,6 +18,13 @@ export default function Error({
     console.error(error)
   }, [error])
 
+  // In development surface the actual failure so a hard-reload crash is
+  // diagnosable in the browser instead of only in the terminal.
+  const devMessage =
+    process.env.NODE_ENV !== 'production' && error?.message
+      ? `${error.name || 'Error'}: ${error.message}`
+      : null
+
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center bg-bg px-6 py-20 text-center text-fg">
       <p className="font-mono text-sm uppercase tracking-[0.3em] text-accent-strong">500 · Error</p>
@@ -28,6 +35,11 @@ export default function Error({
         This one is on us, not you. The team has been notified — try again in a moment, or head
         back to somewhere solid.
       </p>
+      {devMessage && (
+        <pre className="mt-4 max-w-[60ch] overflow-auto rounded border border-line bg-surface-2 p-3 text-left font-mono text-xs text-fg-3">
+          {devMessage}
+        </pre>
+      )}
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <button
           type="button"
