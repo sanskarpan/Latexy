@@ -140,6 +140,7 @@ re-verified · `BLOCKED` cannot test in this environment (reason stated) · `N/A
 | BUG-03 | P2 | backend/migrations (working tree) | A stale `0059_provider_neutral_billing.py` (duplicate revision ID, renamed to 0065 in `4cc8e655`) reappeared as an untracked file during a stash cycle. Not a product defect, but leaving it breaks `alembic upgrade head`. | Deleted; verified 81 migrations, no duplicate IDs, single head | ✅ `alembic heads` → `0076_spare_authority_handover` |
 | BUG-04 | P2 | frontend/src/app/admin/tenant/page.tsx | `/admin/tenant` rendered the full "Tenant Management" admin shell to **every signed-in account** with no role gate (API calls correctly returned 403, but the UI implied admin access). `/admin` gates with `useAccountRole`. | Made `canProvisionTenant` tri-state; render a "Not authorized" panel when false and hold a spinner until the role resolves | ✅ non-admin sees "Not authorized"; tsc clean |
 | BUG-06 | **P0** | backend/app/workers/event_publisher.py `_persist_arbiter_terminal` | **Every deep-ATS analysis wedged in `processing` forever**: `_async_deep_analyze` calls the sync `publish_job_result` from inside `asyncio.run(...)`, so the bridge's nested `asyncio.run()` raises `RuntimeError`, the `except Exception` swallows it, the arbiter coroutine is never awaited (`RuntimeWarning: coroutine was never awaited`), and no terminal decision is ever durably written. Reproduced live: job stuck 13+ min after the LLM analysis finished. | On `RuntimeError: cannot be called from a running event loop`, persist on a fresh loop in a side thread (`ThreadPoolExecutor` + `asyncio.run`); other errors keep failing closed | PASS: fresh deep analysis -> `completed` with score 85.0 / 3 sections / 1282 tokens; test_event_publisher.py 75/75 pass; test_finalization_arbiter.py failures identical to baseline (9 pre-existing Windows-path failures with and without the fix) |
+| BUG-08 | P1 | pnpm lockfile transitive set (carried by dependabot #2013/#2014) | Cross-Browser Quality's 21 owner-isolation hydration diagnostics fail deterministically on both frontend dependabot PRs while main is green on the same base commit. #2014 changes only @types/node, so the runtime cause is the shared lockfile transitive re-resolution. Failure mode: the shared diagnostic helper times out verifying ('could not be verified'), cascading to all 21 specs. | Under bisect: framer-motion 14.9 exonerated (#2029); remaining suspects documented on #2013 with a per-candidate plan. Both PRs intentionally NOT merged while a required check is red | Open — bisect continues |
 | BUG-07 | P1 (CI) | .github/workflows/ci.yml `cross-browser-quality` | The required **Cross-Browser Quality** check was permanently red for every frontend PR. The job defined `DATABASE_URL` but no PostgreSQL service, and `playwright-server.mjs` reads `PLAYWRIGHT_DATABASE_URL` (ignoring the production `DATABASE_URL` by design), falling back to `127.0.0.1:5434` where nothing listens on a runner. Every session-dependent spec failed with `[Better Auth]: Could not validate the database schema` / `ECONNREFUSED 5434`, which is why the 21 `editor-compile-sync` owner-isolation diagnostics all failed. Isolated from dependency content by observing the identical failure on a types-only PR. | Added a health-gated `pgvector/pgvector:pg16` service, bound the Playwright server via `PLAYWRIGHT_DATABASE_URL`, and applied the Alembic chain before the specs with the same hash-verified `uv pip sync` + `uv run alembic upgrade head` sequence as `backend-test`. Verified locally that the sequence provisions a fresh empty database to head `0076_spare_authority_handover`. | Fix in PR #2025; unblocks the frontend dependabot queue (#2013/#2014), which failed only on this job |
 | BUG-05 | **P0** | frontend: `app/workspace/[resumeId]/edit/page.tsx` + `components/PDFPreview.tsx` | **Hard-reloading or bookmarking the saved-resume editor crashed the whole route with "500 · Something broke on our end"** (reproduced 3/3, 4/4). SPA navigation worked, which hid it. Error boundary reported `Maximum update depth exceeded`, from two independent render loops: (1) the tab-reconciliation effect called the capability-gated `setRightTab`, whose identity changes every render (its `activateInterview` dep depends on a fresh `account` object); when the callback rejected the write, `rightTab` never converged and the effect re-fired forever. (2) `PDFPreview` mirrored its container element into React state from a ref callback, so every detach/attach cycle scheduled another render, and its ResizeObserver published width unconditionally. | (1) Converge the tab with a direct `setRightTabValue` and depend only on `visibleRightTab`/`rightTab`; (2) keep the container in a ref plus a one-shot `containerAttached` nonce, and publish width only when it actually changes. Dev-only error message added to `app/error.tsx` so future boundary hits are diagnosable in-browser | ✅ 5/5 hard reloads load the editor (was 0/3); `tsc` clean; unit suite at 3100 pass / 5 fail, all 3 remaining files pre-existing |
 
@@ -206,7 +207,29 @@ assertions that the feature works:
   effect). The third diagnosis — reading the dev error boundary — produced the real cause
   (`Maximum update depth exceeded`) and the fix.
 
-## Post-merge follow-up (2026-11-06)
+## Post-merge follow-up (2026-11-07 update)
+
+BUG-07 resolution took two PRs: #2027 added the migrated PostgreSQL service and
+made the job's main webServer green; #2028 then found the PWA acceptance
+segment still dialing 5434 because `inheritedEnvironment()` in
+playwright-server.mjs strips `PLAYWRIGHT_DATABASE_URL` from the spawned child
+(an allowlist guard) — the service is now mapped to the launcher's documented
+contract endpoint (5434, latexy credentials) and Cross-Browser Quality is
+green on main.
+
+With the infrastructure fixed, the two frontend dependabot PRs (#2013,
+#2014) exposed a **content-dependent regression (BUG-08)**: the identical 21
+owner-isolation hydration diagnostics fail deterministically on both (three
+runs each, at high and low CI load, zero DB errors) while main is green on the
+same base commit. #2014 changes only a devDependency, so the runtime cause is
+the shared lockfile transitive re-resolution. A bisect arm pinned framer-motion
+back to 14.6.0 and still failed (#2029), exonerating it; remaining suspects are
+the other shared lockfile transitives (ws, postcss/autoprefixer, tabler,
+lucide, geist, d3-dag/quadprog, stringify-object, ansi-regex) plus #2013's own
+better-auth 1.7.14 / katex / slate / three bumps. Both PRs stay open until
+Cross-Browser is green; evidence chain and the per-candidate bisect plan are on
+#2013.
+
 
 All six fixes and this report merged to `main` via #2019 (BUG-01), #2020 (BUG-02), #2021 (BUG-06),
 #2022 (BUG-05), #2023 (BUG-04), #2024 (this report), after each PR's required checks were green.

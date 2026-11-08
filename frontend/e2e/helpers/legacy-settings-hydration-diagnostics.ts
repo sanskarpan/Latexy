@@ -36,7 +36,14 @@ const BUNDLES = Object.freeze({
 const COMMAND_TIMEOUT_MS = 250
 const SETUP_TIMEOUT_MS = 2000
 const PAUSE_WATCHDOG_MS = 1000
-const VERIFY_TIMEOUT_MS = 2000
+// Hydration completes asynchronously after the diagnostic's debugger barrier
+// resolves. Two seconds was enough on an idle runner but loses the race under
+// CI CPU contention (concurrent full matrices), producing mass
+// 'could not be verified' cascades that look like product regressions. The
+// window still fails fast on real failures via `failures` above, so a larger
+// bound only costs time in the genuinely-broken case. Exported for the
+// deadline tests, which must step past it with fake timers.
+export const VERIFY_TIMEOUT_MS = 20000
 const MAX_CAPTURES = 8
 const MAX_FIBERS = 24
 const HOST_TAGS = 'a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption circle cite clippath code col colgroup data datalist dd defs del details dfn dialog div dl dt ellipse em embed fieldset figcaption figure footer form g h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li line link main map mark mask menu meta meter nav noscript object ol optgroup option output p path picture polygon polyline pre progress q rect rp rt ruby s samp script search section select slot small source span stop strong style sub summary sup svg symbol table tbody td template text textarea tfoot th thead time title tr track tspan u ul use var video wbr'.split(' ')
