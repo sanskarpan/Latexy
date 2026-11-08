@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import type { Page, Response, TestInfo } from '@playwright/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installLegacySettingsHydrationDiagnostics, parseHydrationDiagnosticBundleVariant, LEGACY_SETTINGS_REACT_BYTES, LEGACY_SETTINGS_REACT_CHUNK, LEGACY_SETTINGS_REACT_SHA256, type HydrationDiagnosticBundleVariant } from '../../e2e/helpers/legacy-settings-hydration-diagnostics'
+import { installLegacySettingsHydrationDiagnostics, parseHydrationDiagnosticBundleVariant, LEGACY_SETTINGS_REACT_BYTES, LEGACY_SETTINGS_REACT_CHUNK, LEGACY_SETTINGS_REACT_SHA256, VERIFY_TIMEOUT_MS, type HydrationDiagnosticBundleVariant } from '../../e2e/helpers/legacy-settings-hydration-diagnostics'
 
 import { mainDocumentKind, runOwnerIsolationHydrationFixture } from '../../e2e/helpers/owner-isolation-hydration-fixture'
 
@@ -686,7 +686,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE)
     const verifying = expect(diagnostics.verifyReady(1)).rejects.toThrow('could not be verified')
-    await vi.advanceTimersByTimeAsync(2001)
+    await vi.advanceTimersByTimeAsync(VERIFY_TIMEOUT_MS + 1)
     await verifying
     await diagnostics.finish(test.info, true)
     expect(report(test).failures).toContain('diagnostic-verification-unavailable')
@@ -826,7 +826,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       parsed(test.cdp)
       parsed(test.cdp, 'duplicate-in-same-context')
     })).rejects.toThrow('could not be verified')
-    await vi.advanceTimersByTimeAsync(2001)
+    await vi.advanceTimersByTimeAsync(VERIFY_TIMEOUT_MS + 1)
     await running
     expect(report(test).verified_scripts).toBe(2)
     expect(report(test).verified_documents).toBe(1)
@@ -848,7 +848,7 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       test.cdp.emit('Debugger.breakpointResolved', { breakpointId: OWN, location: { scriptId, lineNumber: 0, columnNumber: 35059 } })
     }
     const verifying = expect(diagnostics.verifyReady(2)).rejects.toThrow('could not be verified')
-    await vi.advanceTimersByTimeAsync(2001)
+    await vi.advanceTimersByTimeAsync(VERIFY_TIMEOUT_MS + 1)
     await verifying
     await diagnostics.finish(test.info, true)
     expect(report(test).verified_documents).toBe(1)
