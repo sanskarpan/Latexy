@@ -43,7 +43,7 @@ psycopg2-binary==2.9.13
 greenlet==3.5.6
 
 setuptools==84.2.1
-watchdog==6.0.0
+watchdog==7.1.0
 PyJWT==2.15.1
 
 # Redis and Celery for Phase 8 - Workers & Queue System
