@@ -103,10 +103,11 @@ do not install the input files directly. Regenerate both locks after changing
 an input with:
 
 ```bash
-cd backend
-uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock
-uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock
+sh backend/scripts/refresh-requirements-locks.sh
 ```
+
+The helper runs the same `uv pip compile --universal --python-version 3.12
+--generate-hashes` command as CI for both lock files.
 
 ### Real local worker smoke checks
 
