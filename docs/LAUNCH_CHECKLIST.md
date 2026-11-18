@@ -1,6 +1,6 @@
 # Launch Checklist
 
-Last public-evidence reconciliation: **2026-10-20, 20:07 UTC**. Snapshot source: [`main` at `c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087). Full source-audit baseline: [`c24531e2722bbe36d40fffb38684cecfe2682790`](https://github.com/sanskarpan/Latexy/commit/c24531e2722bbe36d40fffb38684cecfe2682790) from 2026-10-13.
+Last public-evidence reconciliation: **2026-11-18**. Snapshot source: [`main` at `19d11cea92696d3ac21d1a6743b8f9068cec8add`](https://github.com/sanskarpan/Latexy/commit/19d11cea92696d3ac21d1a6743b8f9068cec8add). The detailed evidence baseline below remains anchored to the 2026-10-20 snapshot of [`c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087) unless a row is explicitly updated. Full source-audit baseline: [`c24531e2722bbe36d40fffb38684cecfe2682790`](https://github.com/sanskarpan/Latexy/commit/c24531e2722bbe36d40fffb38684cecfe2682790) from 2026-10-13.
 
 This is a release decision ledger, not a claim that every feature works or that the
 absence of findings proves the absence of bugs. Read it with the individual
@@ -40,6 +40,96 @@ source-bound proof after the workflow's stopped-App check. This is preparation,
 not a completed drain, migration or recovery. A fresh fleet sample still found
 the old v87 App deployed, with zero reported running inputs/backlog; stopped
 writer and recovery-point acceptance remain open.
+
+## 2026-11-18 reconciliation
+
+**Evidence cut:** public read-only probes and repository/provider metadata observed
+on 2026-11-18. This section updates the ledger; it is not a launch approval and
+does not replace the dated baseline in section 3. No production operation,
+credential change, provider configuration, migration or deployment was performed
+to prepare this reconciliation.
+
+### Current production state
+
+| Surface | Observation | Status |
+|---|---|---|
+| `main` | `19d11cea92696d3ac21d1a6743b8f9068cec8add` (2026-11-09). Canonical CI is green on this revision. Cross-Browser Quality is green on the last frontend-touching main run; Backend Tests are green on the last backend-touching main run. | `CI` |
+| Frontend | `https://latexy.xyz/api/deployment-identity` returned `19d11cea…` with source `vercel`. | `LIVE` identity only |
+| Backend | `/health.commit_sha` was `4b0729f331edfae92eba81aaec8d1e30897ea33c` (2026-11-03), **16 commits behind `main`**. The serving backend therefore predates the frontend source. | `GAP` — drift |
+| Audit health snapshot | The 2026-11-18 audit evidence recorded `/health`, `/readyz` and `/jobs/health` all HTTP 200; database, Redis and storage `ok`; `redis_capacity.status` `unconfigured`; Redis binding fingerprint `62a4db4f95d12a21dd31890caa8ab3b2eed30ce088714d854ee5d1665d7909e7`. | `LIVE` at snapshot time; `GAP` capacity |
+| Transient re-probe | A read-only re-probe at **2026-11-18 14:21 UTC** returned `/health` HTTP 200 with `status=degraded`, `redis=unavailable` and `redis_cache=unavailable`; `/readyz` returned **503**; `/jobs/health` returned HTTP 200 with `status=unhealthy`; database and storage remained `ok`. A follow-up at **14:38 UTC** returned `/health` healthy, `/readyz` 200 `ready` and `/jobs/health` healthy, with database, Redis and storage `ok`. The transient cause is not established; `redis_capacity.status` remains `unconfigured`. | `GAP` / monitor |
+| Billing | `/subscription/plans` returned Dodo `feature_enabled=false`, `mode=disabled`, `available=false`. Free plan quotas: 10 compiles/day, 3 optimizations/month, 25 AI assists/month. Basic: 400 compiles/month, 10 optimizations/month, 100 AI assists/month. No live sale is implied. | `LIVE` safe-disabled |
+| Public surface | `/`, `/pricing`, `/templates`, `/try`, `/login`, `/faq`, `/privacy` and `/terms` returned 200. The public catalogue reported **61** templates with thumbnail and PDF. | `LIVE` public read |
+| Signup | Open; no invite or beta gate was observed. | `GAP` for a controlled beta |
+
+In this section, `LIVE` marks a dated observation only; it is not a product-flow
+acceptance. Health HTTP 200 is not readiness. `/readyz` is authoritative for the
+Redis and database dependencies, and a 503 there is a hard stop for any cutover.
+
+### Release provenance gap
+
+The deployment workflow is red on every new `main` push because the cutover
+approval inputs do not match the pushed SHA. The last workflow-driven deploy
+that executed steps was a manual dispatch of `f2f8d4a2` on **2026-11-02**. The
+currently serving backend `4b0729f3` has **no recorded workflow run that
+executed deploy steps**; its 2026-11-03 automatic run skipped as already
+approved through `MODAL_TRAFFIC_RELEASE_APPROVED_SHA=4b0729f3`. Release
+provenance for the serving backend is therefore incomplete. A green frontend
+deployment or a passing health endpoint does not repair it.
+
+Current non-secret repository variables reinforce the mismatch:
+
+```text
+MODAL_SCHEMA_CUTOVER_APPROVED_SHA=4b0729f3…   (serving backend, not current main)
+MODAL_RECOVERY_VERIFIED_FOR_SHA=4b0729f3…     (operator assertion, not automated proof)
+MODAL_TRAFFIC_RELEASE_APPROVED_SHA=4b0729f3…  (stale release approval)
+MODAL_FORWARD_ROLLBACK_SHA=e9ddb1d7…          (locally checked as ancestor/source/CI; image not proven)
+MODAL_DRAIN_PROCEDURE_*=2026-11-02/f2f8d4a2   (stale record)
+MODAL_REDIS_HANDOVER_ID=a95f9bcb…             (still set; must be cleared before a held cutover)
+```
+
+`MODAL_REDIS_HANDOVER_ID` is not a benign leftover. Redis authority is already
+on the spare (phase `spare`). With the variable set, the next held cutover enters
+the freeze step, which requires phase `legacy`, and fails after the migration
+step. Clear it before any held cutover; see
+[RELEASE-RUNBOOK-2026-11-18.md](RELEASE-RUNBOOK-2026-11-18.md).
+
+### Hard blockers from the 2026-11-18 audit
+
+| ID | State | Blocker and required disposition | Owner / kind |
+|---|---|---|---|
+| B1 | `GAP` + `DECISION` | Source correction is in the `launch/readiness` branch: Terms/privacy now use `latexy.xyz`, remove the `[Company Address]` placeholder, and match the actual trial/quota/storage behavior; public contact addresses are centralized in `frontend/src/lib/contact.ts`. Production still serves the old copy until this branch is deployed, and `latexy.xyz` still has no MX/SPF/Resend DKIM. LEGAL/PRODUCT must approve the corrected copy and OPS must provision mailboxes and domain verification before launch. | LEGAL + PRODUCT + OPS; `DECISION` + `OPERATOR` |
+| B2 | `GAP` | The serving backend `4b0729f3` is 16 commits behind `main` `19d11cea`; the frontend is already on `19d11cea`. Matching frontend/backend contracts are not established. Complete a held cutover/release to the frozen target, or explicitly gate every feature that depends on newer backend contracts. Health is not contract acceptance. | OPS + ENG; `OPERATOR` |
+| B3 | `GAP` + `OPERATOR` | Release approvals still name `4b0729f3`; drain variables still name the 2026-11-02 `f2f8d4a2` procedure; the handover variable is still set while Redis phase is `spare`. A held cutover would attempt freeze after migration and fail. Refresh all candidate-scoped approvals and clear the handover variable before dispatch. | OPS; `OPERATOR` only |
+| B4 | `GAP` + `OPERATOR` | `redis_capacity.status` is `unconfigured` and #1628 remains open. A transient 14:21 UTC re-probe found Redis unavailable and `/readyz` 503; a 14:38 UTC re-probe recovered to healthy/ready, but the cause is unexplained and capacity remains unconfigured. Capacity/observability is not accepted. Configure the capacity probe and an owner for exhaustion response; monitor for recurrence and do not release while readiness is 503. | OPS + PRODUCT; `OPERATOR` + `DECISION` |
+| B5 | `GAP` + `DECISION` | Signup is open with no invite or beta gate. PRODUCT must decide the beta audience and gate; ENG implements it; an operator verifies it. Until then, open signup is not a controlled beta. | PRODUCT + ENG; `DECISION` + `OPERATOR` |
+
+**Decision unchanged:** public launch **HOLD**; limited unpaid beta **not signed
+off**. A free invite-only beta is the recommended next decision, not an approved
+launch. This reconciliation does not authorize any operator action.
+
+### Evidence limits
+
+The [2026-11-04 E2E report](qa/E2E-PRODUCT-TEST-2026-11-04.md) cannot be used as
+launch sign-off. Its results tables record LLM optimize, admin tenant toggles,
+Dodo test checkout and the share-link positive path as passed, while its final
+"What was NOT covered" section says those paths were not exercised. Treat the
+report as an unreconciled draft until the contradiction is resolved and exact
+deployed evidence is attached.
+
+BUG-01 through BUG-06 are recorded as merged or fixed, BUG-07 as fixed, and
+BUG-08 (React-chunk tamper gate) remains open and blocks dependency PRs. None of
+those engineering statuses is a production acceptance.
+
+### Operator-only actions
+
+The following are **operator-only** and were not performed here: clearing
+`MODAL_REDIS_HANDOVER_ID`; stopping the serving Modal App; setting the four drain
+variables and the schema/recovery/release approvals; dispatching held or release;
+attesting the recovery image; configuring the Redis capacity probe; deploying
+the corrected legal copy or provisioning contact mailboxes; and enabling any
+beta gate. The exact procedure
+is in [RELEASE-RUNBOOK-2026-11-18.md](RELEASE-RUNBOOK-2026-11-18.md).
 
 ## 1. Decision, scope and ownership
 
@@ -98,8 +188,8 @@ Priority is release risk, not proof of a current production outage.
 | L01 | P0 / ISOLATED ACCEPTANCE COMPLETE; PRODUCTION OPEN | Four scoped renderer/default-flow acceptance criteria remain recorded in #1865; #1931 adds the three-fixture boundary report. Exact deployed-image qualification, serving identity and production cutover/release remain open. | OPS + QA + SEC; authorized rollout | [#1865](https://github.com/sanskarpan/Latexy/issues/1865), [#1931 boundary report](https://github.com/sanskarpan/Latexy/pull/1931), [boundary result](https://github.com/sanskarpan/Latexy/issues/1865#issuecomment-6200386555), [capability contract](MODAL_RENDERER_CAPABILITY.md) |
 | L02 | P0 / READ-ONLY PREFLIGHT PASSED; PRODUCTION OPEN | The Oct 19 current-main read-only rollout preflight returned `safe_to_rollout=true` and `sales_state=safe_disabled`; `live_sales_acceptance` remains unverified. The preflight did not migrate production or deploy a backend. | OPS + BILL; owner-authorized rollout and verification | [#1866](https://github.com/sanskarpan/Latexy/issues/1866), [Oct 19 current-main Modal run](https://github.com/sanskarpan/Latexy/actions/runs/39284640168), [Dodo runbook](BILLING_DODO.md) |
 | L03 | P0 / CI + FRONTEND CHECK PASS; BACKEND CUTOVER OPEN | Current-main CI and exact-SHA Vercel verification passed. The Modal run passed renderer-input validation, read-only billing safety and renderer configuration; it then failed at the schema cutover/recovery approval gate. Migration, deployment and production serving-identity verification were skipped. Matching frontend/backend contracts on the serving deployment remain unverified. | OPS + ENG + QA; rollout acceptance | [current CI](https://github.com/sanskarpan/Latexy/actions/runs/39441542202), [Vercel](https://github.com/sanskarpan/Latexy/actions/runs/39448878986), [Modal](https://github.com/sanskarpan/Latexy/actions/runs/39448879064), [serving-revision guard](https://github.com/sanskarpan/Latexy/pull/1928) |
-| L04 | P0 / OPERATOR | Public issue #1683 records repository-side remediation, but rotation or disablement of the historically exposed accounts remains unconfirmed. Do not include credentials or private diagnostic evidence. | SEC; owner attestation only | [#1683](https://github.com/sanskarpan/Latexy/issues/1683), [status](https://github.com/sanskarpan/Latexy/issues/1683#issuecomment-5447565146) |
-| L05 | P0 / QUOTA EXHAUSTED; RECOVERY OPEN | Primary ordinary commands are quota-blocked. The authorized spare accepts native TLS reads but is empty, with no known snapshot. Preserve unknown quotas/receipts and uncertain work; held connectivity does not establish recovered authority. Monthly provider capacity monitoring also remains incomplete. | OPS + ENG + PRODUCT; controlled recovery and capacity acceptance | [#1628](https://github.com/sanskarpan/Latexy/issues/1628), [held recovery contract](architecture/redis-held-recovery.md), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity) |
+| L04 | P0 / CLOSED BY OWNER WAIVER 2026-10-31; RESIDUAL RISK | #1683 was closed by owner direction on 2026-10-31: the accounts were declared stale, rotation was explicitly waived, and **no rotation was performed**. Old values remain in git history. This is a risk acceptance, not a security-verification pass; any credential later found live must be rotated or disabled. Do not include credentials or private diagnostic evidence. | SEC; owner waiver only (`OPERATOR`) | [#1683](https://github.com/sanskarpan/Latexy/issues/1683), [status](https://github.com/sanskarpan/Latexy/issues/1683#issuecomment-5447565146), [2026-11-18 reconciliation](#2026-11-18-reconciliation) |
+| L05 | P0 / SPARE SERVING; CAPACITY UNCONFIGURED | The primary Redis was quota-exhausted; traffic moved to the spare generation 2 on 2026-11-02. The audit snapshot reported Redis/database/storage `ok` with binding fingerprint `62a4db4f…7909e7`, but `redis_capacity.status` remains `unconfigured` ([#1628](https://github.com/sanskarpan/Latexy/issues/1628)). A transient 2026-11-18 re-probe found Redis unavailable with `/readyz` 503 and then recovered by 14:38 UTC; the cause is unexplained. Serving from the spare does not establish monthly capacity, exhaustion response or recovery of prior unknown quotas/receipts. | OPS + ENG + PRODUCT; observe Redis, configure capacity probe and accept or deny capacity risk (`OPERATOR` + `DECISION`) | [#1628](https://github.com/sanskarpan/Latexy/issues/1628), [held recovery contract](architecture/redis-held-recovery.md), [capacity runbook](observability/runbooks.md#redis-provider-request-capacity), [2026-11-18 reconciliation](#2026-11-18-reconciliation) |
 | L06 | P1 / SOURCE + CI; DEPLOYED ACCEPTANCE OPEN | B07/H01 JSON admission composition and recovery repairs merged in #1882 (`8f73b0c6`); B07 JSON export toggle/recovery acceptance merged in #1925 (`f1435b83`). Its final PR-head CI and post-merge CI passed. The historical matrix correction in #1924 remains separate. Verify the actual serving contract and deployed denial/recovery before launch. | ENG + OPS; deployed acceptance | [route policy](../backend/app/middleware/capability_router.py), [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), [B07 status follow-up](https://github.com/sanskarpan/Latexy/pull/1924), [B07 recovery tests](https://github.com/sanskarpan/Latexy/pull/1925), feature matrix B07 |
 | L07 | P1 / SOURCE + OPERATOR | E03 simulation and F10/F11 tenant visibility/revocation repairs merged in #1882 (`8f73b0c6`); #1926 adds E03 simulation-control recovery tests. Actual deployed denial/recovery acceptance remains pending. | ENG + QA + OPS | [repair PR](https://github.com/sanskarpan/Latexy/pull/1882), [E03 recovery tests](https://github.com/sanskarpan/Latexy/pull/1926), feature matrix E03/F10/F11 |
 | L08 | P1 / SOURCE + ISOLATED REHEARSAL PASS; PRODUCTION RECOVERY OPEN | #1882 contains the restore safety/fake-command repair. The Oct 16 record reports an isolated 61-table rehearsal with counts/hashes and readiness checks; this is not a production restore. A fresh cutover recovery point and a qualified hold-capable recovery revision remain open. | ENG + OPS; isolated evidence recorded, cutover recovery owner action pending | [restore script](../scripts/backup/restore-database.sh), [#1882](https://github.com/sanskarpan/Latexy/pull/1882), [Oct 16 recovery record](audits/resume-engine/acceptance-2026-10-16/README.md#recovery-and-production-preflight) |
@@ -117,11 +207,62 @@ loosening authorization, mapping unknown legacy grants to allow, disabling a
 required test, or opening new live purchases. A current passing health endpoint
 is useful availability evidence, not evidence for L01–L15 completion.
 
+## Free beta launch scope (recommended, not approved)
+
+This is a recommended scope for an **invite-only, unpaid beta**, not an approved
+launch. It does not change the HOLD decision. PRODUCT must still approve the
+audience, gate, messaging and any exceptions; the 2026-11-18 audit recommends
+this scope as the next product decision.
+
+| Keep on | Gate off, hidden in the UI and denied by the server |
+|---|---|
+| Public site: `/`, `/pricing`, `/templates`, `/try`, `/login`, `/faq`, `/privacy`, `/terms`; public template thumbnails and PDFs | File import and conversion (`b06`) |
+| Guest studio; the anonymous trial's 3 lifetime compiles | Purchases (`i01`–`i04`); Dodo remains disabled |
+| Authentication core, behind the approved invite gate; login and account security | Teams and tenants (`f08`–`f11`) |
+| Workspace core, saved source and compile | Outreach, application-email parser and direct apply (`e09`, `e10`, `e12`) |
+| ATS quick surface | Browser Job Companion extension (`e13`) |
+| Optimize/optimization core within the plan quotas | Integrations (`g01`–`g13`) |
+| Cover letters (`e01`) | Developer API (`h08`, `h09`) |
+| Share links (`f01`, `f02`) within the accepted sharing policy | Interview simulation (`e03`) |
+| Settings and account security | Deep ATS (`d20`) until the backend release; do not advertise the anonymous trial's 2 deep analyses while this is gated |
+| | Package manager (`c17`) |
+| | Canva/Figma structured exports (`h03`) |
+| | Email compiled PDF to self (`h05`) |
+
+Gate-off items are `DEFERRED` for this beta: they remain in the product behind a
+server-side denial, with a named follow-up owner. Hiding a control only in the UI
+does not satisfy the gate.
+
+Before this scope can be offered:
+
+- [ ] PRODUCT names the invite-only audience and approves the exact keep/gate
+  list and exclusions. Open signup remains blocker B5.
+- [ ] The invite/beta gate is implemented and verified; hiding a capability only
+  in the UI is not a gate.
+- [ ] LEGAL/PRODUCT corrects Terms, trial/storage/limitation claims and contact
+  channels; no undeliverable address is published (blocker B1).
+- [ ] Backend drift is resolved or the owner explicitly accepts a verified,
+  gated subset; anything needing newer backend contracts stays off (blocker B2).
+- [ ] Redis availability is restored and capacity/observability has an owner and
+  exhaustion response; a 503 `/readyz` is a hard stop (blocker B4).
+- [ ] Billing stays disabled; the pricing page shows only honest unavailable
+  states and no purchasable SKU.
+- [ ] Any capability whose only evidence is the unreconciled 2026-11-04 E2E
+  report (LLM optimize, admin tenant toggles, Dodo test checkout and the
+  share-link positive path) is re-verified on the deployed candidate before it
+  is offered. No live Dodo checkout is authorized by this beta.
+- [ ] The release record names the exact source, enabled capabilities, excluded
+  capabilities, audience and residual risks.
+
+The invite gate, provider-capacity configuration, legal copy and release dispatch
+are **operator/owner actions**. Engineering must not infer approval from this
+recommendation.
+
 ## 3. Evidence baseline and coverage limits
 
 ### Source and implementation
 
-This reconciliation is anchored to `main` at `c062da81db98cad8be6569ed8f6d79ef0c404087` on **2026-10-20**. Recent merged changes add or repair source/test paths; a merge alone does not establish that the changed source is serving in production.
+The 2026-10-20 baseline in this section is anchored to `main` at `c062da81db98cad8be6569ed8f6d79ef0c404087`; the 2026-11-18 reconciliation above updates the current status. Recent merged changes add or repair source/test paths; a merge alone does not establish that the changed source is serving in production.
 
 | Merged change | Main commit / merge date | What the public record establishes |
 |---|---|---|
@@ -143,16 +284,16 @@ The Oct 20 snapshot additionally includes [#1943](https://github.com/sanskarpan/
 
 ### Production acceptance
 
-- Current `main` is [`c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087). [Canonical CI run 39441542202](https://github.com/sanskarpan/Latexy/actions/runs/39441542202) passed its selected jobs, including frontend build/lint, cross-browser quality, isolated real compile/preview, classification, privacy and the Modal harness. Backend Tests and Full-Stack Smoke were skipped in this landing-scoped run; those skips are not passes. [Exact-main Vercel verification 39448878986](https://github.com/sanskarpan/Latexy/actions/runs/39448878986) passed; it verifies the frontend source/deployment only.
+- At the 2026-10-20 baseline, `main` was [`c062da81db98cad8be6569ed8f6d79ef0c404087`](https://github.com/sanskarpan/Latexy/commit/c062da81db98cad8be6569ed8f6d79ef0c404087). [Canonical CI run 39441542202](https://github.com/sanskarpan/Latexy/actions/runs/39441542202) passed its selected jobs, including frontend build/lint, cross-browser quality, isolated real compile/preview, classification, privacy and the Modal harness. Backend Tests and Full-Stack Smoke were skipped in this landing-scoped run; those skips are not passes. [Exact-main Vercel verification 39448878986](https://github.com/sanskarpan/Latexy/actions/runs/39448878986) passed; it verifies the frontend source/deployment only.
 - [Modal run 39448879064](https://github.com/sanskarpan/Latexy/actions/runs/39448879064) is for the same main SHA. Renderer-input validation, read-only billing safety and renderer configuration passed. It failed at “Require schema cutover and recovery approval”; migration, deployment, serving-identity, template synchronization and production health/catalog checks were skipped. No production database migration or backend rollout is evidenced by this run. Historical preflight outputs are not private operational certification or current live-sales acceptance.
 - Public read-only probes at **2026-10-20 20:07 UTC** returned `/health` HTTP 200 with degraded status (database/storage OK, Redis/cache unavailable and capacity unconfigured), `/readyz` HTTP 503, and `/jobs/health` HTTP 200 with unhealthy status. These observations confirm failed readiness, not its root cause; they do not establish quota exhaustion or authorize changing credentials. [Health](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/health), [readiness](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/readyz), [jobs health](https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/health).
-- The five P0 gates L01–L05 remain open: renderer/backend rollout; deployed billing and recovery acceptance; matching frontend/backend serving identities; credential rotation or disablement; and authoritative Redis capacity. A green CI run, frontend deployment check, or safe-disabled preflight does not close these gates.
+- The P0 risk areas L01–L03 and L05 remain open: renderer/backend rollout; deployed billing and recovery acceptance; matching frontend/backend serving identities; and authoritative Redis capacity and availability. L04 is closed by owner waiver, not by verified rotation (see the 2026-11-18 reconciliation). A green CI run, frontend deployment check, or safe-disabled preflight does not close these gates.
 - Actual production cutover, serving-image/source identity, renderer release qualification, live-sales acceptance, and the final release decision remain open. A green CI run or Vercel check does not close these gates.
 
 ### Owner inputs
 
-- **SEC:** confirm exposed-account rotation or disablement privately; [#1683](https://github.com/sanskarpan/Latexy/issues/1683) remains open without that owner attestation.
-- **OPS / PRODUCT:** provide authorized Upstash account-level management access and a capacity/exhaustion response decision; production Redis health and monitoring exist, while authoritative monthly capacity remains unconfigured ([#1628](https://github.com/sanskarpan/Latexy/issues/1628)).
+- **SEC (`OPERATOR` only):** [#1683](https://github.com/sanskarpan/Latexy/issues/1683) was closed by owner direction on 2026-10-31 with rotation explicitly waived and no rotation performed; the residual risk remains. Confirm privately if any credential is later found live. Do not describe this as a security-verification pass.
+- **OPS / PRODUCT (`OPERATOR` + `DECISION`):** provide authorized Upstash account-level management access and a capacity/exhaustion response decision; authoritative monthly capacity remains unconfigured ([#1628](https://github.com/sanskarpan/Latexy/issues/1628)). A transient 2026-11-18 re-probe found Redis unavailable with `/readyz` 503, then recovered by 14:38 UTC; the cause is unexplained. Observe Redis through the cutover window and do not treat recovery as a capacity acceptance.
 - **BILL / LEGAL / PRODUCT:** separately accept live billing, customer-facing terms/offer, audience and service commitments. No payment, live-sales activation or legal conclusion is inferred here.
 - **QA / OPS:** resolve the open production conversion acceptance in [#1863](https://github.com/sanskarpan/Latexy/issues/1863) after controlled recovery fixes; source/test repair evidence is not deployed acceptance.
 
@@ -377,8 +518,11 @@ provider fallback. Use [BILLING_DODO.md](BILLING_DODO.md), not a fabricated live
 
 This checklist contains outcomes, not credentials or exploit instructions.
 
-- [ ] Reconfirm historical exposed-account remediation privately; disable/rotate and
-  invalidate affected sessions as authorized, retain nonsecret attestation.
+- [ ] Track the #1683 owner-waiver disposition and residual risk: the accounts
+  were declared stale, rotation was waived, and no rotation was performed. If any
+  credential is later found live, disable/rotate and invalidate affected sessions
+  under a new private procedure, retaining nonsecret attestation. Do not mark
+  this item as rotation verification.
 - [ ] Email/OAuth/MFA/passkey/reset/recovery use actual intended domains/callbacks,
   session/cookie policy and owner binding; account changes invalidate stale work.
 - [ ] Exercise ordinary cross-owner and role-denied reads/writes across resumes,
