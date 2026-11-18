@@ -47,6 +47,12 @@ patchedDependencies:
   next@15.5.28:
     hash: a0fb6e6a42de4a30c30fcb1c2801830b42e5d7012509f72c0d13b620cecab1a4
     path: patches/next@15.5.28.patch
+  picomatch@2.3.2:
+    hash: 421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4
+    path: patches/picomatch@2.3.2.patch
+  picomatch@4.0.7:
+    hash: f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3
+    path: patches/picomatch@4.0.7.patch
 
 importers:
 
@@ -9590,14 +9596,14 @@ snapshots:
     dependencies:
       '@types/estree': 0.0.39
       estree-walker: 1.0.1
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4)
       rollup: 2.80.0
 
   '@rollup/pluginutils@5.4.0(rollup@2.80.0)':
     dependencies:
       '@types/estree': 1.0.9
       estree-walker: 2.0.2
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
     optionalDependencies:
       rollup: 2.80.0
 
@@ -10393,7 +10399,7 @@ snapshots:
   anymatch@3.1.3:
     dependencies:
       normalize-path: 3.0.0
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4)
 
   arg@5.0.2: {}
 
@@ -11547,9 +11553,9 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  fdir@6.5.0(picomatch@4.0.7):
+  fdir@6.5.0(picomatch@4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)):
     optionalDependencies:
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
 
   fflate@0.6.11: {}
 
@@ -12323,7 +12329,7 @@ snapshots:
   micromatch@4.0.8:
     dependencies:
       braces: 3.0.3(patch_hash=8e8e7c1d6bcfac51649d4ecfbf48034ffe1a7409587905022482c9ce83e31d83)
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4)
 
   mime-db@1.54.0: {}
 
@@ -12634,9 +12640,9 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  picomatch@2.3.2: {}
+  picomatch@2.3.2(patch_hash=421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4): {}
 
-  picomatch@4.0.7: {}
+  picomatch@4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3): {}
 
   pify@2.3.0: {}
 
@@ -12863,7 +12869,7 @@ snapshots:
 
   readdirp@3.6.0:
     dependencies:
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=421bc8d491a3880afc7a82bfe414ecab6430fce9924615eddd52b6b6721b86b4)
 
   readdirp@5.1.1: {}
 
@@ -13553,8 +13559,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.7)
-      picomatch: 4.0.7
+      fdir: 6.5.0(picomatch@4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3))
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
 
   to-regex-range@5.0.1:
     dependencies:
@@ -13818,7 +13824,7 @@ snapshots:
   vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
       postcss: 8.5.31
       rolldown: 1.2.15
       tinyglobby: 0.2.17
@@ -13832,7 +13838,7 @@ snapshots:
   vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.51.2):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
       postcss: 8.5.31
       rolldown: 1.2.15
       tinyglobby: 0.2.17
@@ -13852,7 +13858,7 @@ snapshots:
       expect-type: 1.4.0
       magic-string: 1.4.4
       obug: 3.0.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
       std-env: 4.3.0
       tinybench: 6.2.2
       tinyexec: 1.3.1
@@ -13873,7 +13879,7 @@ snapshots:
       expect-type: 1.4.0
       magic-string: 1.4.4
       obug: 3.0.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=f46bfd6a9b487a518a7391857426b1aef515e4ecc8505243b3b7be402a01adf3)
       std-env: 4.3.0
       tinybench: 6.2.2
       tinyexec: 1.3.1

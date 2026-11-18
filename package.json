@@ -36,7 +36,9 @@
       "next@15.5.28": "patches/next@15.5.28.patch",
       "monaco-editor@0.55.1": "patches/monaco-editor@0.55.1.patch",
       "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch",
-      "minimatch@10.2.6": "patches/minimatch@10.2.6.patch"
+      "minimatch@10.2.6": "patches/minimatch@10.2.6.patch",
+      "picomatch@2.3.2": "patches/picomatch@2.3.2.patch",
+      "picomatch@4.0.7": "patches/picomatch@4.0.7.patch"
     }
   }
 }

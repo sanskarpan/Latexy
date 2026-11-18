@@ -1,0 +1,83 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 2920751..685ddf8 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -139,6 +139,67 @@ const normalizeSimpleBranch = branch => {
+   return value.replace(/\\(.)/g, '$1');
+ };
+ 
++/**
++ * True when a branch contains a top-level `*` or `?` wildcard. A repeated
++ * `+(...)`/`*(...)` that repeats a wildcard-bearing branch can backtrack
++ * catastrophically on a non-match (e.g. `+(*a)` against `aaaa...b`).
++ * Escaped characters, brackets and nested groups are not top level. A branch
++ * that is only a single wildcard is safe and handled by the caller.
++ */
++const hasTopLevelWildcard = branch => {
++  if (branch === '*' || branch === '?') {
++    return false;
++  }
++
++  let escaped = false;
++  let bracket = 0;
++  let paren = 0;
++
++  for (let i = 0; i < branch.length; i++) {
++    const ch = branch[i];
++
++    if (escaped === true) {
++      escaped = false;
++      continue;
++    }
++
++    if (ch === '\\') {
++      escaped = true;
++      continue;
++    }
++
++    if (ch === '[') {
++      bracket++;
++      continue;
++    }
++
++    if (ch === ']' && bracket > 0) {
++      bracket--;
++      continue;
++    }
++
++    if (ch === '(') {
++      paren++;
++      continue;
++    }
++
++    if (ch === ')' && paren > 0) {
++      paren--;
++      continue;
++    }
++
++    if (bracket > 0 || paren > 0) {
++      continue;
++    }
++
++    if (ch === '*' || ch === '?') {
++      return true;
++    }
++  }
++
++  return false;
++};
++
+ const hasRepeatedCharPrefixOverlap = branches => {
+   const values = branches.map(normalizeSimpleBranch).filter(Boolean);
+ 
+@@ -330,6 +391,10 @@ const analyzeRepeatedExtglob = (body, options) => {
+       continue;
+     }
+ 
++    if (hasTopLevelWildcard(branch)) {
++      return { risky: true };
++    }
++
+     combinable = false;
+ 
+     if (repeatedExtglobRecursion(branch) > max) {
