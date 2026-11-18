@@ -95,8 +95,17 @@ def convert_document_task(
         try:
             stored = publish_job_result(job_id, result)
         except Exception:
-            _release_owner()
-            raise
+            # Keep the admission capability for one idempotent retry. A
+            # transport failure can occur after the durable arbiter committed;
+            # retrying the exact same canonical payload is accepted by the
+            # arbiter. Releasing ownership first would make the enclosing
+            # handler's retry ownerless and leave the job processing until
+            # cleanup.
+            try:
+                stored = publish_job_result(job_id, result)
+            except Exception:
+                _release_owner()
+                raise
         if not stored:
             _release_owner()
             return result
