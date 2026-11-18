@@ -41,6 +41,17 @@ export function createInstitutionalOidcPlugin(
           if (!tokens.idToken || !tokens.expectedIdTokenNonce) return null
           return getUserInfo(tokens)
         }
+        // Better Auth 1.7.18 treats a client-submitted ID token on
+        // /sign-in/social as a first-class genericOAuth sign-in: it verifies
+        // the JWT and can create/link the user and set a session cookie with
+        // HTTP 200. This institution is redirect-only. Disable the direct
+        // ID-token hook so a caller cannot mint a session by posting its own
+        // token; the normal callback path above still verifies JWKS with the
+        // server-issued nonce.
+        const directTokenProvider = provider as unknown as {
+          getUserInfoFromIdToken?: (tokens: unknown) => Promise<unknown>
+        }
+        directTokenProvider.getUserInfoFromIdToken = async () => null
       }
       return result
     },
