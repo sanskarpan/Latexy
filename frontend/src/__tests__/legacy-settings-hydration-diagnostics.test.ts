@@ -16,6 +16,23 @@ const ALTERNATE_SHA256 = 'cf9dbc7db51665504380f569df7154f49083a80900d9bae4154654
 const INTEGRATION_CHUNK = '/_next/static/chunks/bb3797b0-cb37aa562aab9c82.js'
 const INTEGRATION_SHA256 = '3ea14a6d5ba4985d418ae811b25f38c0a2a7e2a64f935bc032adc4f35602a08b'
 const alternateSource = ' '.repeat(173133)
+// Independently reviewed BUG-08 candidates. Both implementation suffixes are
+// byte-identical to the reviewed main bundle (react-3ea14a6d), whose suffix is
+// itself identical to canonical; only the webpack header IDs differ.
+const REVIEWED_CANDIDATES = [
+  {
+    variant: 'react-6b61a8d1',
+    chunk: '/_next/static/chunks/d1346401-5b33fe58e024623e.js',
+    sha256: '6b61a8d1e2c080abf2b51ee0bf7e82350b3eef910d0d7c6c7b60d80594960372',
+    bytes: 173132, source, claimColumn: 35053, lastColumn: 35059,
+  },
+  {
+    variant: 'react-cc389d03',
+    chunk: '/_next/static/chunks/7edc1f54-58736c01cf0589d0.js',
+    sha256: 'cc389d03e19cffdc2cc5247977f3252741e765d79b44a6a927bc0bcaf24a7674',
+    bytes: 173133, source: alternateSource, claimColumn: 35054, lastColumn: 35060,
+  },
+] as const
 const validCapture = () => ({
   expected: { type: 'main', idCategory: 'main-content' },
   candidate: { nodeType: 8, nodeName: '#comment', idCategory: 'none', boundaryCommentKind: 'suspense-pending' },
@@ -91,6 +108,10 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     digest.mockReturnValue(ALTERNATE_SHA256)
     test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: alternateSource }))
   }
+  function configureReviewed(test: ReturnType<typeof fake>, candidate: (typeof REVIEWED_CANDIDATES)[number]) {
+    digest.mockReturnValue(candidate.sha256)
+    test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: candidate.source }))
+  }
 
   it.each([35053, 35059])('verifies the reviewed integration bundle at claim endpoint %s', async columnNumber => {
     const test = fake()
@@ -120,11 +141,64 @@ describe('original-case CDP Settings hydration diagnostic', () => {
     expect(report(test).verified_scripts).toBe(0)
   })
 
+  it.each(REVIEWED_CANDIDATES)('verifies the reviewed $variant bundle at both claim endpoints', async candidate => {
+    for (const columnNumber of [candidate.claimColumn, candidate.lastColumn]) {
+      const test = fake()
+      configureReviewed(test, candidate)
+      const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, candidate.variant)
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.enable', { maxScriptsCacheSize: candidate.bytes })
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.setBreakpointByUrl', {
+        url: new URL(candidate.chunk, BASE).href, lineNumber: 0, columnNumber: candidate.claimColumn,
+      })
+      parsed(test.cdp, 'script-1', new URL(candidate.chunk, BASE).href)
+      pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber } }] })
+      await flush()
+      await diagnostics.verifyReady(1)
+      await diagnostics.finish(test.info, false)
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+      expect(test.cdp.detach).toHaveBeenCalledOnce()
+      expect(report(test)).toMatchObject({ bundle_variant: candidate.variant, verified_documents: 1, captures: [validCapture()], failures: [] })
+    }
+  })
+
+  it.each(REVIEWED_CANDIDATES)('rejects $variant hash, length, and UTF-8 byte drift before evaluation', async candidate => {
+    for (const drift of ['hash', 'length', 'bytes'] as const) {
+      const test = fake()
+      configureReviewed(test, candidate)
+      if (drift === 'hash') digest.mockReturnValue(LEGACY_SETTINGS_REACT_SHA256)
+      if (drift === 'length') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: candidate.source + 'x' }))
+      if (drift === 'bytes') test.cdp.handlers.set('Debugger.getScriptSource', async () => ({ scriptSource: `\u00e9${candidate.source.slice(1)}` }))
+      const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, candidate.variant)
+      parsed(test.cdp, 'script-1', new URL(candidate.chunk, BASE).href)
+      pause(test.cdp, { callFrames: [{ functionName: 'rD', callFrameId: 'frame', location: { scriptId: 'script-1', lineNumber: 0, columnNumber: candidate.claimColumn } }] })
+      await flush()
+      await expect(diagnostics.finish(test.info, false)).rejects.toThrow('was unavailable')
+      expect(report(test).failures).toContain('pinned-script-drift')
+      expect(report(test).verified_scripts).toBe(0)
+      expect(test.cdp.send.mock.calls.some(([method]) => method === 'Debugger.evaluateOnCallFrame')).toBe(false)
+      expect(test.cdp.send).toHaveBeenCalledWith('Debugger.resume')
+    }
+  })
+
   it.each([
     { selected: 'canonical', other: INTEGRATION_CHUNK },
+    { selected: 'canonical', other: REVIEWED_CANDIDATES[0].chunk },
+    { selected: 'canonical', other: REVIEWED_CANDIDATES[1].chunk },
     { selected: 'react-cf9dbc7d', other: INTEGRATION_CHUNK },
+    { selected: 'react-cf9dbc7d', other: REVIEWED_CANDIDATES[0].chunk },
+    { selected: 'react-cf9dbc7d', other: REVIEWED_CANDIDATES[1].chunk },
     { selected: 'react-3ea14a6d', other: LEGACY_SETTINGS_REACT_CHUNK },
     { selected: 'react-3ea14a6d', other: ALTERNATE_CHUNK },
+    { selected: 'react-3ea14a6d', other: REVIEWED_CANDIDATES[0].chunk },
+    { selected: 'react-3ea14a6d', other: REVIEWED_CANDIDATES[1].chunk },
+    { selected: 'react-6b61a8d1', other: LEGACY_SETTINGS_REACT_CHUNK },
+    { selected: 'react-6b61a8d1', other: ALTERNATE_CHUNK },
+    { selected: 'react-6b61a8d1', other: INTEGRATION_CHUNK },
+    { selected: 'react-6b61a8d1', other: REVIEWED_CANDIDATES[1].chunk },
+    { selected: 'react-cc389d03', other: LEGACY_SETTINGS_REACT_CHUNK },
+    { selected: 'react-cc389d03', other: ALTERNATE_CHUNK },
+    { selected: 'react-cc389d03', other: INTEGRATION_CHUNK },
+    { selected: 'react-cc389d03', other: REVIEWED_CANDIDATES[0].chunk },
   ] as const)('never discovers an unselected integration variant: %s', async ({ selected, other }) => {
     const test = fake()
     const diagnostics = await installLegacySettingsHydrationDiagnostics(test.page, BASE, selected)
@@ -249,6 +323,18 @@ describe('original-case CDP Settings hydration diagnostic', () => {
       parsed(test.cdp, 'script-1', new URL(ALTERNATE_CHUNK, BASE).href)
     })
     expect(report(test)).toMatchObject({ bundle_variant: 'react-cf9dbc7d', verified_documents: 1, failures: [] })
+    expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
+  })
+
+  it.each(REVIEWED_CANDIDATES)('requires explicit $variant metadata and records its bounded identity', async candidate => {
+    const test = fake()
+    configureReviewed(test, candidate)
+    test.info.project.metadata.hydrationDiagnosticBundle = candidate.variant
+    await runOwnerIsolationHydrationFixture(test.page, BASE, test.info, async () => {
+      respond(test.page, htmlResponse(test.page))
+      parsed(test.cdp, 'script-1', new URL(candidate.chunk, BASE).href)
+    })
+    expect(report(test)).toMatchObject({ bundle_variant: candidate.variant, verified_documents: 1, failures: [] })
     expect((test.page as unknown as EventEmitter).listenerCount('response')).toBe(0)
   })
 
