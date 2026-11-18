@@ -8,6 +8,7 @@ import CapabilityGate from '@/components/CapabilityGate'
 import { MarketingCTA } from './MarketingSections'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { reviewFonts } from './review-fonts'
+import { mailtoHref, SUPPORT_EMAIL } from '@/lib/contact'
 
 export default function LandingFooter({ year }: { year: number }) {
     const { billing } = useFeatureFlags()
@@ -73,7 +74,7 @@ export default function LandingFooter({ year }: { year: number }) {
                         <div>
                             <h3>Company</h3>
                             <Link href="/updates">Product updates</Link>
-                            <a href="mailto:support@latexy.com">Contact us</a>
+                            <a href={mailtoHref(SUPPORT_EMAIL)}>Contact us</a>
                             <a className="lp-footer-top-link" href="#landing-title">
                                 Back to top <IconArrowUpRight size={14} aria-hidden="true" />
                             </a>
@@ -86,7 +87,7 @@ export default function LandingFooter({ year }: { year: number }) {
                         <Link href="/privacy">Privacy</Link>
                         <Link href="/terms">Terms</Link>
                         <Link href="/accessibility">Accessibility</Link>
-                        <a href="mailto:support@latexy.com">Contact</a>
+                        <a href={mailtoHref(SUPPORT_EMAIL)}>Contact</a>
                     </nav>
                 </div>
             </div>

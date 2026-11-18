@@ -181,7 +181,7 @@ class ReferenceService:
         # checked invariant rather than an assumption about the literal above.
         assert_within_origin(url, "https://api.crossref.org")
         headers = {
-            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.xyz; https://latexy.xyz)",
         }
 
         try:
@@ -230,7 +230,7 @@ class ReferenceService:
             return {**cached, "cached": True}
 
         headers = {
-            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.xyz; https://latexy.xyz)",
         }
         try:
             async with guarded_async_client(timeout=10.0) as client:
@@ -498,7 +498,7 @@ class ReferenceService:
         url = f"https://pub.orcid.org/v3.0/{quote(orcid_id, safe='')}/works"
         headers = {
             "Accept": "application/json",
-            "User-Agent": "Latexy/1.0 (mailto:support@latexy.com; https://latexy.xyz)",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.xyz; https://latexy.xyz)",
         }
         try:
             async with guarded_async_client(timeout=15.0) as client:

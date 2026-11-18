@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { marketingSocialImage } from '@/lib/marketing-social-image'
+import { mailtoHref, SUPPORT_EMAIL } from '@/lib/contact'
 
 const title = 'Accessibility — Latexy'
 const description = 'Latexy accessibility status, known limitations, and support contact.'
@@ -94,9 +95,9 @@ export default function AccessibilityPage() {
               If an accessibility barrier prevents you from using Latexy, email{' '}
               <a
                 className="font-semibold text-accent-strong underline underline-offset-4"
-                href="mailto:support@latexy.com?subject=Accessibility%20support"
+                href={mailtoHref(SUPPORT_EMAIL, 'Accessibility support')}
               >
-                support@latexy.com
+                {SUPPORT_EMAIL}
               </a>{' '}
               with “Accessibility” in the subject. Include the page, task, browser, and assistive
               technology if you can. We aim to acknowledge accessibility reports within two

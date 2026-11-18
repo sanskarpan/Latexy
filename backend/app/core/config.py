@@ -194,7 +194,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = Field(default=587, description="SMTP server port")
     SMTP_USER: str = Field(default="", description="SMTP username")
     SMTP_PASSWORD: str = Field(default="", description="SMTP password")
-    EMAIL_FROM: str = Field(default="noreply@latexy.io", description="From address for outgoing emails")
+    EMAIL_FROM: str = Field(default="noreply@latexy.xyz", description="From address for outgoing emails")
     EMAIL_FROM_NAME: str = Field(default="Latexy", description="From name for outgoing emails")
 
     # LanguageTool spell/grammar check (Feature 35)
