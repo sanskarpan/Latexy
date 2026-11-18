@@ -28,7 +28,7 @@
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /** Default from-address; override with the `EMAIL_FROM` env var. */
-const DEFAULT_FROM = 'Latexy <no-reply@latexy.app>'
+const DEFAULT_FROM = 'Latexy <no-reply@latexy.xyz>'
 
 export interface SendEmailOptions {
   to: string

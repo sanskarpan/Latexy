@@ -57,7 +57,13 @@ export default defineConfig({
     projects: [
         {
             name: 'chromium',
-            metadata: { hydrationDiagnosticBundle: 'react-3ea14a6d' },
+            // The hydration diagnostic is an exact-hash tamper gate. A
+            // dependency build may serve a different reviewed React chunk;
+            // select it explicitly rather than weakening the pin. New
+            // variants must pass scripts/ci/review-react-chunk.mjs first.
+            metadata: {
+                hydrationDiagnosticBundle: process.env.HYDRATION_DIAGNOSTIC_BUNDLE || 'react-3ea14a6d',
+            },
             use: { ...devices['Desktop Chrome'] },
         },
     ],

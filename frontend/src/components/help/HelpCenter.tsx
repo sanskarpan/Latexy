@@ -18,6 +18,7 @@ import {
   Video,
   Download
 } from 'lucide-react'
+import { PRIVACY_EMAIL, SUPPORT_EMAIL } from '@/lib/contact'
 
 interface FAQItem {
   id: string
@@ -152,21 +153,21 @@ const faqData: FAQItem[] = [
   {
     id: 'data-security',
     question: 'How secure is my data?',
-    answer: 'We use enterprise-grade security including AES-256 encryption, TLS 1.3 for data in transit, secure data centers, and regular security audits. Your resume content is processed for optimization but not stored permanently unless you save it.',
+    answer: 'We use encryption in transit and at rest for stored data, restrict access to operational systems, and run dependency, code-security, and privacy checks as part of our release process. Saved resumes are retained until you delete them or request account deletion; see the Privacy Policy for details.',
     category: 'security',
     tags: ['security', 'encryption', 'privacy']
   },
   {
     id: 'api-key-security',
     question: 'How are my API keys protected?',
-    answer: 'API keys are encrypted using AES-256 encryption with separate encryption keys for each user. We never store keys in plain text, and they\'re only used to make requests on your behalf. You can delete them anytime.',
+    answer: 'API keys are encrypted at rest with a server-side encryption key. We do not return stored keys in plain text, and they are only used to make requests on your behalf. You can delete them at any time.',
     category: 'security',
     tags: ['api-keys', 'encryption', 'byok']
   },
   {
     id: 'gdpr-compliance',
-    question: 'Are you GDPR compliant?',
-    answer: 'Yes, we\'re fully GDPR compliant. You have the right to access, correct, delete, or export your data. We process data only for service provision and with your consent. Contact privacy@latexy.com for data requests.',
+    question: 'How do I make a privacy request?',
+    answer: `We handle personal data as described in our Privacy Policy and applicable law. Depending on where you live, you may have rights to access, correct, delete, restrict, object to, or receive a portable copy of your information. Email ${PRIVACY_EMAIL} with the subject "Privacy Rights Request" and we may need to verify your identity before acting.`,
     category: 'security',
     tags: ['gdpr', 'privacy', 'data-rights']
   },
@@ -182,7 +183,7 @@ const faqData: FAQItem[] = [
   {
     id: 'slow-performance',
     question: 'Why is the service running slowly?',
-    answer: 'Performance can be affected by high server load, complex LaTeX documents, or network issues. Try refreshing the page, using simpler templates, or contact support if problems persist. We monitor performance 24/7.',
+    answer: 'Performance can be affected by high server load, complex LaTeX documents, or network issues. Try refreshing the page, using simpler templates, or contact support if problems persist. We monitor service health and investigate reported regressions.',
     category: 'technical',
     tags: ['performance', 'speed', 'troubleshooting']
   },
@@ -322,7 +323,7 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
                 <h4 className="font-semibold text-fg mb-2">Need More Help?</h4>
                 <div className="space-y-2">
                   <a
-                    href="mailto:support@latexy.com"
+                    href={`mailto:${SUPPORT_EMAIL}`}
                     className="flex items-center gap-2 text-sm text-fg-2 hover:text-accent-strong"
                   >
                     <Mail className="w-4 h-4" />
@@ -438,12 +439,12 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
         <div className="p-4 border-t border-line bg-surface-2">
           <div className="flex items-center justify-between text-sm text-fg-2">
             <div>
-              Still need help? <a href="mailto:support@latexy.com" className="text-accent-strong hover:underline">Contact Support</a>
+              Still need help? <a href={`mailto:${SUPPORT_EMAIL}`} className="text-accent-strong hover:underline">Contact Support</a>
             </div>
             <div className="flex items-center gap-4">
-              <a href="/documentation" className="hover:text-accent-strong">Documentation</a>
-              <a href="/tutorials" className="hover:text-accent-strong">Tutorials</a>
-              <a href="/status" className="hover:text-accent-strong">System Status</a>
+              <a href="/resources" className="hover:text-accent-strong">Resources</a>
+              <a href="/faq" className="hover:text-accent-strong">FAQ</a>
+              <a href="/updates" className="hover:text-accent-strong">Updates</a>
             </div>
           </div>
         </div>

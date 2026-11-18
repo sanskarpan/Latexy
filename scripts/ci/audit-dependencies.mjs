@@ -22,6 +22,11 @@ const mitigations = [
   { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '10.2.6' },
   { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '3.1.5' },
   { ghsa: 'GHSA-g3hv-75wg-m249', package: 'minimatch', severity: 'moderate', version: '5.1.9' },
+  // GHSA-fc5q-39xc-vjpf (picomatch ReDoS through repeated extglobs, high)
+  // has no released fixed version. Both locked majors carry a committed pnpm
+  // patch and the regression test below; any other version remains unresolved.
+  { ghsa: 'GHSA-fc5q-39xc-vjpf', package: 'picomatch', severity: 'high', version: '2.3.2' },
+  { ghsa: 'GHSA-fc5q-39xc-vjpf', package: 'picomatch', severity: 'high', version: '4.0.7' },
 ]
 const severities = ['info', 'low', 'moderate', 'high', 'critical']
 const MAX_ADVISORIES = 1000
@@ -167,8 +172,18 @@ export function runAudit({
     cwd, stdio: 'inherit', timeout: 120_000,
   })
   if (minimatchRegression.error || minimatchRegression.status !== 0) fail('Installed minimatch mitigation regression failed')
+  const picomatchRegression = spawn(process.execPath, ['--test', 'scripts/ci/picomatch-redos.test.cjs'], {
+    cwd, stdio: 'inherit', timeout: 30_000,
+  })
+  if (picomatchRegression.error || picomatchRegression.status !== 0) fail('Installed picomatch mitigation regression failed')
+  // Windows exposes pnpm as a PowerShell/.cmd shim; spawnSync needs a shell to
+  // resolve it. CI is Linux, where the plain binary is correct.
   const audit = spawn('pnpm', ['audit', '--json'], {
-    cwd, encoding: 'utf8', timeout: 120_000, maxBuffer: 10 * 1024 * 1024,
+    cwd,
+    encoding: 'utf8',
+    timeout: 120_000,
+    maxBuffer: 10 * 1024 * 1024,
+    shell: process.platform === 'win32',
   })
   if (audit.error || ![0, 1].includes(audit.status)) fail('Dependency registry audit could not complete')
   let result

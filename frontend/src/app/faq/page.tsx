@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { MarketingCTA } from '@/components/marketing/MarketingSections'
 import { marketingSocialImage } from '@/lib/marketing-social-image'
+import { mailtoHref, SUPPORT_EMAIL } from '@/lib/contact'
 
 export const metadata: Metadata = {
     title: 'Resume Builder Questions, Answered | Latexy FAQ',
@@ -126,7 +127,7 @@ export default function FAQPage() {
                 <p className="mt-5 text-sm text-fg-3">
                     Still need help?{' '}
                     <a
-                        href="mailto:support@latexy.com"
+                        href={mailtoHref(SUPPORT_EMAIL)}
                         className="text-accent-strong underline underline-offset-4"
                     >
                         Contact support

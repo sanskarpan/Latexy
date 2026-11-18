@@ -117,8 +117,8 @@ test('writes a validated summary artifact and fixed-prefix JSON finding logs', (
   assert.equal(result.status, 'unresolved')
   assert.equal(artifact.unresolvedCount, 1)
   assert.equal(artifact.findings.length, 2)
-  assert.equal(calls.length, 4)
-  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd, safeCwd, safeCwd])
+  assert.equal(calls.length, 5)
+  assert.deepEqual(options.map(value => value.cwd), [safeCwd, safeCwd, safeCwd, safeCwd, safeCwd])
   assert.equal(logs.length, 3)
   for (const line of logs.slice(0, 2)) {
     const prefix = 'Dependency audit finding: '
@@ -219,6 +219,38 @@ test('fails closed when only the minimatch mitigation regression fails', () => {
   assert.deepEqual(artifact, {
     schemaVersion: 1, status: 'error',
     error: { code: 'Installed minimatch mitigation regression failed' },
+  })
+})
+
+test('recognizes only the exact patched picomatch versions', () => {
+  const finding = version => ({
+    github_advisory_id: 'GHSA-fc5q-39xc-vjpf', module_name: 'picomatch', severity: 'high',
+    findings: [{ version, paths: ['frontend>picomatch'] }],
+  })
+  for (const version of ['2.3.2', '4.0.7']) {
+    assert.deepEqual(classifyAudit(report(finding(version))), { mitigated: 1, unresolved: 0 })
+  }
+  for (const change of [
+    { github_advisory_id: 'GHSA-another-advisory' }, { module_name: 'another-package' },
+    { severity: 'moderate' },
+    { findings: [{ version: '4.0.8', paths: ['frontend>picomatch'] }] },
+  ]) {
+    assert.deepEqual(classifyAudit(report({ ...finding('4.0.7'), ...change })), { mitigated: 0, unresolved: 1 })
+  }
+})
+
+test('fails closed when only the picomatch mitigation regression fails', () => {
+  const reportPath = join(mkdtempSync(join(tmpdir(), 'latexy-audit-picomatch-')), 'summary.json')
+  assert.throws(() => runAudit({
+    reportPath,
+    spawn: (_command, args) => args[1].includes('picomatch')
+      ? { status: 1, error: undefined }
+      : { status: 0, error: undefined },
+  }), /Installed picomatch mitigation regression failed/)
+  const artifact = JSON.parse(readFileSync(reportPath, 'utf8'))
+  assert.deepEqual(artifact, {
+    schemaVersion: 1, status: 'error',
+    error: { code: 'Installed picomatch mitigation regression failed' },
   })
 })
 

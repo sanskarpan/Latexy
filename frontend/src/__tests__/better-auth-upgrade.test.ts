@@ -40,18 +40,24 @@ function mockDiscovery(
   return fetchMock
 }
 
-function createTestAuth(existingAccount = false) {
+function createTestAuthStore(existingAccount = false) {
   const createdAt = new Date('2026-01-01T00:00:00Z')
-  return betterAuth({
+  const store: Record<string, Array<Record<string, unknown>>> = {
+    user: existingAccount ? [{ id: 'existing-user', email: 'oidc@example.edu', emailVerified: true, name: 'Existing User', createdAt, updatedAt: createdAt }] : [],
+    account: existingAccount ? [{ id: 'existing-account', providerId: 'university_sso', accountId: 'existing-subject', userId: 'existing-user', createdAt, updatedAt: createdAt }] : [],
+    session: [], verification: [],
+  }
+  const auth = betterAuth({
     baseURL: appUrl,
     secret: 'test-only-upgrade-secret-at-least-thirty-two-characters',
-    database: memoryAdapter({
-      user: existingAccount ? [{ id: 'existing-user', email: 'oidc@example.edu', emailVerified: true, name: 'Existing User', createdAt, updatedAt: createdAt }] : [],
-      account: existingAccount ? [{ id: 'existing-account', providerId: 'university_sso', accountId: 'existing-subject', userId: 'existing-user', createdAt, updatedAt: createdAt }] : [],
-      session: [], verification: [],
-    }),
+    database: memoryAdapter(store),
     plugins: [createInstitutionalOidcPlugin(configuration(), appUrl)],
   })
+  return { auth, store }
+}
+
+function createTestAuth(existingAccount = false) {
+  return createTestAuthStore(existingAccount).auth
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -142,7 +148,23 @@ describe('Better Auth 1.7 compatibility', () => {
     expect(session?.user.emailVerified).toBe(true)
   })
 
-  it.each([false, true])('does not add direct client ID-token sign-in (supplied nonce=%s)', async (supplyNonce) => {
+  // Better Auth 1.7.18 makes client-submitted ID tokens a first-class
+  // genericOAuth sign-in: discovery metadata with issuer/JWKS declares an
+  // id_token verifier, so /sign-in/social accepts `idToken`, verifies the JWT,
+  // returns HTTP 200, and can create/link the user and set a session cookie.
+  // The status code therefore no longer distinguishes rejection from an
+  // insecure session. Assert the security invariant instead: this request must
+  // never mint an authenticated session, expose a session token, or persist
+  // identity. On 1.7.12 the same request returns 401 and mutates nothing; on
+  // 1.7.18 these assertions fail until the institutional plugin rejects the
+  // direct path (returning null from getUserInfoFromIdToken works without
+  // disabling JWKS verification for the normal redirect callback).
+  it.each([
+    { supplyNonce: false, existingAccount: false },
+    { supplyNonce: false, existingAccount: true },
+    { supplyNonce: true, existingAccount: false },
+    { supplyNonce: true, existingAccount: true },
+  ])('does not add direct client ID-token sign-in (supplied nonce=$supplyNonce, existing account=$existingAccount)', async ({ supplyNonce, existingAccount }) => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
     const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256', use: 'sig' }
     mockDiscovery({}, (url) => {
@@ -156,15 +178,23 @@ describe('Better Auth 1.7 compatibility', () => {
       iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300,
     })).toString('base64url')
     const signature = sign('RSA-SHA256', Buffer.from(`${header}.${payload}`), privateKey).toString('base64url')
-    const response = await createTestAuth().handler(new Request(`${appUrl}/api/auth/sign-in/social`, {
+    const { auth, store } = createTestAuthStore(existingAccount)
+    const before = structuredClone(store)
+    const response = await auth.handler(new Request(`${appUrl}/api/auth/sign-in/social`, {
       method: 'POST', headers: { origin: appUrl, 'content-type': 'application/json' },
       body: JSON.stringify({
         provider: 'university_sso', callbackURL: '/workspace',
         idToken: { token: `${header}.${payload}.${signature}`, ...(supplyNonce ? { nonce: 'client-chosen' } : {}) },
       }),
     }))
-    expect(response.status).toBeGreaterThanOrEqual(400)
-    expect(response.headers.get('set-cookie') || '').not.toContain('session_token=')
+    const cookies = response.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ')
+    const session = cookies ? await auth.api.getSession({ headers: new Headers({ cookie: cookies }) }) : null
+    const body = await response.text()
+    expect(cookies).not.toContain('session_token=')
+    expect(session).toBeNull()
+    expect(store).toEqual(before)
+    expect(body).not.toMatch(/"token"\s*:/)
+    expect(body).not.toMatch(/"user"\s*:/)
   })
 
   it('rejects a discovery document that changes the configured issuer pin', async () => {

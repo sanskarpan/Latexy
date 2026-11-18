@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Last Updated: September 30, 2025**
+**Last Updated: November 18, 2026**
 
 ## 1. Acceptance of Terms
 
@@ -33,22 +33,26 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 ## 4. Subscription Plans and Billing
 
 ### 4.1 Plan Types
-- **Free Trial**: 3 free resume compilations per device (no registration required)
-- **Basic Plan**: ₹299/month - 400 compilations, 10 optimizations
-- **Pro Plan**: ₹599/month - Unlimited compilations and optimizations
-- **BYOK Plan**: ₹199/month - Use your own API keys with premium features
+- **Guest trial**: 3 compilations and 2 deep analyses without an account. Trial usage is limited per device using bounded device and network signals and does not reset.
+- **Free account**: 10 compilations per day, 3 optimizations per month, and 25 AI assists per month
+- **Basic**: 400 compilations, 10 optimizations, and 100 AI assists per month
+- **Pro**: unlimited compilations, optimizations, and AI assists, subject to fair use
+- **BYOK**: unlimited compilations, optimizations, and AI assists using your own provider API keys, subject to fair use and any limits imposed by your provider
+
+Monthly, annual, student, and team offers may be available. Current availability, eligibility, and prices are shown at checkout.
 
 ### 4.2 Billing Terms
-- Subscription fees are billed monthly in advance
+- Subscription fees are billed in advance for the billing period selected at checkout, which may be monthly or annual
 - All fees are non-refundable except as required by law
 - We reserve the right to change pricing with 30 days notice
 - Failed payments may result in service suspension
+- Student and team offers may be subject to eligibility verification and seat limits
 
 ### 4.3 Free Trial Terms
-- Limited to 3 compilations per device using browser fingerprinting
-- No credit card required for trial access
-- Trial usage resets every 24 hours for abuse prevention
-- Converting to paid plan removes all usage limitations
+- The guest trial is limited to 3 compilations and 2 deep analyses in total per device, using bounded device and network signals
+- No credit card is required for guest trial access
+- The guest trial does not reset. Creating an account provides the free-account allowances described in Section 4.1
+- Paid plans are subject to the allowances and fair-use limits shown at checkout
 
 ## 5. Acceptable Use Policy
 
@@ -83,14 +87,14 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 ### 7.1 Data Collection
 - We collect information necessary to provide the Service
 - Personal data is processed according to our Privacy Policy
-- Resume content is processed for optimization but not stored permanently
+- Resume content is processed for the features you use. Saved resumes are retained while your account is active or until you delete the relevant item or request account deletion, as described in our Privacy Policy
+- Temporary compilation files are cleaned automatically; generated artifacts associated with saved work may remain until the owning record is deleted and cleanup completes
 - API keys (BYOK) are encrypted and stored securely
 
 ### 7.2 Data Security
-- We implement industry-standard security measures
-- Data is encrypted in transit and at rest
-- Regular security audits and vulnerability assessments
-- Incident response procedures for data breaches
+- We use encryption in transit and at rest for stored data
+- We run dependency, code-security, and privacy checks as part of our release process
+- We maintain an incident-response process; report suspected security or privacy issues to privacy@latexy.xyz
 
 ## 8. API Key Management (BYOK)
 
@@ -108,15 +112,14 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 
 ## 9. Service Availability and Performance
 
-### 9.1 Uptime Commitment
-- We strive for 99.9% service availability
-- Scheduled maintenance will be announced in advance
-- No SLA guarantees for free trial users
+### 9.1 Availability
+- We aim to keep the Service available but do not guarantee uninterrupted access
+- Scheduled maintenance may occur and will be announced when practical
+- No SLA is offered unless separately agreed in writing
 
 ### 9.2 Performance Standards
-- Target response time: <2 seconds for compilation requests
-- PDF generation: <5 seconds for typical resumes
-- LLM optimization: <30 seconds for complex resumes
+- Compilation and PDF generation run asynchronously; actual time depends on document complexity, queue, and provider availability
+- We may apply rate limits or queueing to protect the Service
 
 ## 10. Limitation of Liability
 
@@ -135,7 +138,9 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 
 ### 11.1 Termination by User
 - Users may cancel subscriptions at any time
-- Account data will be retained for 30 days after cancellation
+- Account records and saved documents are generally retained while your account is active or until you delete the relevant item or request account deletion
+- There is not currently a self-service account-deletion control; deletion requests are handled as described in our Privacy Policy
+- Security, billing, audit, and backup records may be retained longer as described in our Privacy Policy
 - No refunds for unused subscription periods
 
 ### 11.2 Termination by Latexy
@@ -151,9 +156,9 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 - Arbitration may be required for certain disputes
 
 ### 12.2 Contact for Disputes
-- Email: legal@latexy.com
-- Address: [Company Address]
-- Response time: 5-7 business days
+- Email: legal@latexy.xyz
+- Registered business details are available on request from legal@latexy.xyz.
+- We aim to respond within 5-7 business days
 
 ## 13. Changes to Terms
 
@@ -170,17 +175,17 @@ Latexy is an AI-assisted LaTeX resume platform that helps users create, compile,
 ## 14. Contact Information
 
 **Latexy Support Team**
-- Email: support@latexy.com
-- Website: https://latexy.com
-- Business Hours: Monday-Friday, 9 AM - 6 PM IST
+- Email: support@latexy.xyz
+- Website: https://latexy.xyz
+- Support requests are handled during business hours (Monday-Friday, 9 AM - 6 PM IST); response times may vary
 
-For legal inquiries: legal@latexy.com
-For technical support: support@latexy.com
-For billing questions: billing@latexy.com
+For legal inquiries: legal@latexy.xyz
+For technical support: support@latexy.xyz
+For billing questions: billing@latexy.xyz
 
 ---
 
-**Effective Date:** September 30, 2025
-**Version:** 1.0
+**Effective Date:** November 18, 2026
+**Version:** 1.1
 
 By using Latexy, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.

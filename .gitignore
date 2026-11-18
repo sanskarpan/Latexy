@@ -35,6 +35,9 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Generated local QA evidence (never commit production smoke output)
+qa-evidence/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

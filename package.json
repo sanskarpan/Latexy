@@ -15,6 +15,8 @@
       "dompurify@<3.4.17": "3.4.17",
       "esbuild@<0.28.1": "0.28.1",
       "fast-uri@>=3.0.0 <3.1.9": "3.1.9",
+      "@hono/node-server@<2.1.6": "2.1.6",
+      "hono@<4.13.16": "4.13.19",
       "ip-address@<10.7.4": "10.7.4",
       "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
       "nanoid@<3.3.18": "3.3.18",
@@ -34,7 +36,9 @@
       "next@15.5.28": "patches/next@15.5.28.patch",
       "monaco-editor@0.55.1": "patches/monaco-editor@0.55.1.patch",
       "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch",
-      "minimatch@10.2.6": "patches/minimatch@10.2.6.patch"
+      "minimatch@10.2.6": "patches/minimatch@10.2.6.patch",
+      "picomatch@2.3.2": "patches/picomatch@2.3.2.patch",
+      "picomatch@4.0.7": "patches/picomatch@4.0.7.patch"
     }
   }
 }

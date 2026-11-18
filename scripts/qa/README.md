@@ -169,3 +169,176 @@ Run the dependency-free harness regressions with
 `python scripts/qa/run_modal_spawn_diagnostics.py`. The runner discovers the
 dedicated test module and requires a minimum test count. The suite uses no Modal
 credentials, SDK calls, or infrastructure.
+
+## Production launch smoke
+
+`production-launch-smoke.mjs` checks the deployed frontend and backend and
+writes machine-readable, redacted evidence. The default mode is read-only: it
+issues only `GET` requests, sends no credentials, and changes no data. Runs are
+safe to repeat. Job creation, compiles, saves, deep ATS analysis, and share-link
+creation require explicit flags and are never part of the default run.
+
+### Prerequisites
+
+- Node.js 22 or newer. The script uses built-in `fetch`, `parseArgs`, and
+  filesystem APIs.
+- Optional browser checks use `@playwright/test` and Chromium. The script
+  resolves the frontend workspace devDependency dynamically, so a read-only run
+  does not require Playwright. Install the browser once with:
+
+  ```powershell
+  pnpm --dir frontend exec playwright install chromium
+  ```
+
+- Optional account checks need a Playwright storage state for a dedicated QA
+  account. Keep that file outside the checkout and never commit it: it contains
+  a live session cookie. The script rejects a storage state path inside the
+  repository. One way to create it is:
+
+  ```powershell
+  pnpm --dir frontend exec playwright codegen --save-storage="$env:TEMP\latexy-qa-state.json" https://latexy.xyz/login
+  ```
+
+  Sign in with the QA account, close the codegen window, and keep the resulting
+  file private. Use an account that is explicitly reserved for QA: the
+  `--account` flow compiles, saves, and may create a new resume.
+
+### Read-only run
+
+From the repository root, in PowerShell or a POSIX shell:
+
+```bash
+node scripts/qa/production-launch-smoke.mjs
+```
+
+Defaults:
+
+- Frontend: `https://latexy.xyz`
+- Backend: `https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run`
+- Evidence: `qa-evidence/production-smoke-<timestamp>.json`
+
+Override targets or the evidence path explicitly:
+
+```bash
+node scripts/qa/production-launch-smoke.mjs \
+  --base-url https://latexy.xyz \
+  --api-url https://example-backend.modal.run \
+  --out qa-evidence/launch-readiness.json
+```
+
+The read-only run checks:
+
+- Backend `/health` (must report `healthy`), `/readyz` (must return HTTP 200
+  with `ready`), and `/jobs/health` (must report `healthy`).
+- Anonymous effective entitlements from
+  `/config/entitlements?include_quotas=false`.
+- The template catalog at `/templates/`: template count, presence of
+  `thumbnail_url` and `pdf_url` on at least one entry, and HTTP 200 for one
+  sample thumbnail and one sample PDF. Bodies are discarded.
+- `/subscription/plans`: billing mode/availability and the free/basic quota
+  dimensions and limits.
+- Unauthenticated `/resumes/`, `/developer/keys`, and `/tracker/applications`
+  return 401.
+- Frontend deployment identity from `/api/deployment-identity`, including the
+  public commit SHA and source.
+- Status-only checks for `/`, `/pricing`, `/templates`, `/try`, `/login`,
+  `/faq`, `/privacy`, `/terms`, `/robots.txt`, `/sitemap.xml`, and `/llms.txt`.
+
+### Opt-in checks and flags
+
+| Flag | Effect | Requires |
+| --- | --- | --- |
+| `--guest-compile` | Opens `/try` in Chromium, keeps the built-in sample, submits one compile, and waits for a PDF canvas. | `LATEXY_PRODUCTION_SMOKE=1` |
+| `--account` | Opens `/workspace` with the QA storage state, opens or creates a resume, compiles, downloads and verifies the PDF signature, saves, hard-reloads, and verifies the editor loads. | `LATEXY_PRODUCTION_SMOKE=1` and `LATEXY_QA_STORAGE_STATE` |
+| `--deep-ats` | Submits a synthetic small LaTeX resume to `/ats/deep-analyze` and polls `/jobs/{id}/state` to a terminal state, bounded to 3 minutes. | `--account` |
+| `--share` | Creates or reuses a share link, then loads it in a fresh incognito context and verifies the public PDF frame. | `--account` |
+| `--help` | Prints usage and exits without running checks. | None |
+
+`--guest-compile` calls a real anonymous compile and consumes one anonymous
+trial. `--deep-ats` spends configured LLM quota. `--share` creates or reuses a
+public link for the QA resume. The script never creates accounts, never sends
+email, and must not be given real user credentials.
+
+Required environment variables:
+
+| Variable | Required for | Value |
+| --- | --- | --- |
+| `LATEXY_PRODUCTION_SMOKE` | `--guest-compile`, `--account`, and their dependants | Exactly `1`; any other value fails the opt-in gate. |
+| `LATEXY_QA_STORAGE_STATE` | `--account`, `--deep-ats`, `--share` | Absolute or working-directory-relative path to a Playwright storage state file outside the repository. |
+
+Example opt-in run:
+
+```powershell
+$env:LATEXY_PRODUCTION_SMOKE = '1'
+$env:LATEXY_QA_STORAGE_STATE = "$env:TEMP\latexy-qa-state.json"
+node scripts/qa/production-launch-smoke.mjs --account --deep-ats --share
+```
+
+POSIX equivalent:
+
+```bash
+LATEXY_PRODUCTION_SMOKE=1 \
+LATEXY_QA_STORAGE_STATE="$TMPDIR/latexy-qa-state.json" \
+node scripts/qa/production-launch-smoke.mjs --account --deep-ats --share
+```
+
+If an opt-in flag is supplied without its prerequisite, the script exits with
+code 2 before running checks. Optional checks that were not requested are
+recorded as `skipped`; they are never reported as passed.
+
+### Evidence format
+
+The JSON file contains one record per check:
+
+```json
+{
+  "schemaVersion": 1,
+  "tool": "latexy-production-launch-smoke",
+  "startedAt": "2026-11-18T14:26:56.169Z",
+  "finishedAt": "2026-11-18T14:27:08.731Z",
+  "config": {
+    "baseUrl": "https://latexy.xyz",
+    "apiUrl": "https://example-backend.modal.run",
+    "optionalFlags": [],
+    "readOnlyByDefault": true
+  },
+  "summary": {
+    "total": 25,
+    "passed": 21,
+    "failed": 0,
+    "skipped": 4,
+    "required": 21,
+    "requiredFailed": 0,
+    "optionalEnabled": 0,
+    "ok": true
+  },
+  "checks": [
+    {
+      "id": "backend.health",
+      "kind": "read-only",
+      "required": true,
+      "method": "GET",
+      "url": "https://example-backend.modal.run/health",
+      "timestamp": "2026-11-18T14:26:56.171Z",
+      "httpStatus": 200,
+      "elapsedMs": 412,
+      "outcome": "passed",
+      "summary": "status=healthy"
+    }
+  ]
+}
+```
+
+Each check records its timestamp, URL, HTTP status where applicable, elapsed
+milliseconds, outcome (`passed`, `failed`, or `skipped`), and a redacted
+summary. Evidence never contains response bodies, cookies, bearer tokens, email
+addresses, resume/job/share identifiers, resume titles, or LaTeX source. The
+frontend commit SHA is public deployment identity and is recorded. Raw browser
+downloads are read only for the `%PDF-` signature and byte count; their contents
+and filenames are not stored.
+
+Exit codes:
+
+- `0`: every required check passed and no enabled optional check failed.
+- `1`: a required check failed, or an enabled optional check failed.
+- `2`: invalid arguments or a missing opt-in prerequisite.

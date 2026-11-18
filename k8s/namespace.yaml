@@ -33,12 +33,12 @@ data:
   environment: "production"
   # From-address for transactional mail (lib/email.ts); the domain must be
   # verified with the provider behind latexy-secrets/resend-api-key.
-  email-from: "Latexy <no-reply@latexy.com>"
+  email-from: "Latexy <no-reply@latexy.xyz>"
   # Backend delivery remains opt-in; replace the redirect URI with the URI
   # registered in the Google OAuth client before enabling Drive export.
   email-enabled: "false"
   email-provider: "resend"
-  email-from-address: "no-reply@latexy.com"
+  email-from-address: "no-reply@latexy.xyz"
   email-from-name: "Latexy"
   email-smtp-port: "587"
   google-drive-redirect-uri: ""

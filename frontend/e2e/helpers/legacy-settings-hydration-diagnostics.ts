@@ -7,9 +7,10 @@ import { createHash } from 'node:crypto'
 export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
 export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'
 export const LEGACY_SETTINGS_REACT_BYTES = 173132
-export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d' | 'react-3ea14a6d'
+export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d' | 'react-3ea14a6d' | 'react-6b61a8d1' | 'react-cc389d03'
 export function parseHydrationDiagnosticBundleVariant(value: unknown): HydrationDiagnosticBundleVariant {
-  if (value === 'canonical' || value === 'react-cf9dbc7d' || value === 'react-3ea14a6d') return value
+  if (value === 'canonical' || value === 'react-cf9dbc7d' || value === 'react-3ea14a6d'
+    || value === 'react-6b61a8d1' || value === 'react-cc389d03') return value
   throw new Error('Unsupported hydration diagnostic bundle variant')
 }
 const BUNDLES = Object.freeze({
@@ -31,6 +32,28 @@ const BUNDLES = Object.freeze({
     chunk: '/_next/static/chunks/bb3797b0-cb37aa562aab9c82.js',
     sha256: '3ea14a6d5ba4985d418ae811b25f38c0a2a7e2a64f935bc032adc4f35602a08b',
     bytes: 173132, claimColumn: 35053, lastColumn: 35059,
+  }),
+  // PR #2046 head 8380e82a, CI run 42594567718, Frontend Build artifact
+  // 13663525101: sha256 6b61a8d1e2c080abf2b51ee0bf7e82350b3eef910d0d7c6c7b60d80594960372
+  // (173132 bytes, claim/last columns 35053/35059). Complete implementation
+  // suffix (172991 bytes, SHA-256
+  // e6604c561c5dad505ada5a21b724933432022bf7fce468ca7a0d21c1b202f274) is
+  // byte-identical to canonical. Only the 141-byte webpack header IDs changed.
+  'react-6b61a8d1': Object.freeze({
+    chunk: '/_next/static/chunks/d1346401-5b33fe58e024623e.js',
+    sha256: '6b61a8d1e2c080abf2b51ee0bf7e82350b3eef910d0d7c6c7b60d80594960372',
+    bytes: 173132, claimColumn: 35053, lastColumn: 35059,
+  }),
+  // PR #2048 head 07a6aa4d, CI run 43840223919, Frontend Build artifact
+  // 14213675049: sha256 cc389d03e19cffdc2cc5247977f3252741e765d79b44a6a927bc0bcaf24a7674
+  // (173133 bytes, claim/last columns 35054/35060). Complete implementation
+  // suffix (172991 bytes, SHA-256
+  // e6604c561c5dad505ada5a21b724933432022bf7fce468ca7a0d21c1b202f274) is
+  // byte-identical to canonical. Only the 142-byte webpack header IDs changed.
+  'react-cc389d03': Object.freeze({
+    chunk: '/_next/static/chunks/7edc1f54-58736c01cf0589d0.js',
+    sha256: 'cc389d03e19cffdc2cc5247977f3252741e765d79b44a6a927bc0bcaf24a7674',
+    bytes: 173133, claimColumn: 35054, lastColumn: 35060,
   }),
 })
 const COMMAND_TIMEOUT_MS = 250

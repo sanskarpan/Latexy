@@ -129,7 +129,7 @@ from limited-access backups or another provider you connected.
 
 There is not currently a self-service account-deletion control. To request
 account deletion or ask about a specific retention period, email
-privacy@latexy.com from the address associated with your account.
+privacy@latexy.xyz from the address associated with your account.
 
 ## 7. Security
 
@@ -137,7 +137,7 @@ Latexy uses HTTPS in production, access controls, secret management, encrypted
 storage for BYOK and supported integration credentials, bounded request and
 upload controls, and automated dependency/security checks. No system is
 completely secure, and these measures are not a guarantee against every
-incident. Report a suspected security or privacy issue to privacy@latexy.com.
+incident. Report a suspected security or privacy issue to privacy@latexy.xyz.
 
 ## 8. Your choices and rights
 
@@ -147,7 +147,7 @@ remove BYOK credentials, and control available notification preferences.
 
 Depending on where you live, applicable law may give you rights to access,
 correct, delete, restrict, object to, or receive a portable copy of personal
-information. To make a request, email privacy@latexy.com with the subject
+information. To make a request, email privacy@latexy.xyz with the subject
 “Privacy Rights Request”. We may need to verify your identity before acting.
 You may also complain to the privacy or data-protection authority in your
 jurisdiction.
@@ -156,7 +156,7 @@ jurisdiction.
 
 Latexy is not directed to children under 13 and does not knowingly collect their
 personal information. If you believe a child has provided personal information,
-contact privacy@latexy.com so the account and data can be reviewed.
+contact privacy@latexy.xyz so the account and data can be reviewed.
 
 ## 10. Changes and contact
 
@@ -166,6 +166,6 @@ or email notice, and the review date above will be updated.
 
 Questions and privacy requests:
 
-- Email: privacy@latexy.com
+- Email: privacy@latexy.xyz
 - Website: https://latexy.xyz
 
