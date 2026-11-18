@@ -18,7 +18,9 @@ describe('accessibility statement', () => {
   })
 
   it('provides a prioritized support path and is linked publicly', () => {
-    expect(statement).toContain('Accessibility%20support')
+    // The shared contact helper URL-encodes the subject at runtime. Assert the
+    // structured call so the address and subject cannot drift independently.
+    expect(statement).toContain("mailtoHref(SUPPORT_EMAIL, 'Accessibility support')")
     expect(statement).toContain('within two')
     expect(footer).toContain('href="/accessibility"')
   })
