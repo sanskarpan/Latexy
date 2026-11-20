@@ -21,6 +21,7 @@ import { headers } from 'next/headers'
 import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
 import ReferralCapture from '@/components/ReferralCapture'
+import AnalyticsProvider from '@/components/analytics/AnalyticsProvider'
 import PWARegistration from '@/components/PWARegistration'
 import { siteUrl } from '@/lib/site-url'
 
@@ -101,6 +102,7 @@ export default async function RootLayout({
           <WebSocketProvider>
             <AuthSync />
             <ReferralCapture />
+            <AnalyticsProvider />
             <TenantThemeSync />
             <WebVitalsReporter />
             <div className="min-h-screen flex flex-col">

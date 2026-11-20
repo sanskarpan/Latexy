@@ -5,6 +5,7 @@
  */
 
 import { createTraceHeaders, trackBusinessEvent } from './telemetry'
+import { captureAnalyticsEvent } from './analytics/posthog'
 import type { ATSDeepAnalysis, RenderArtifact } from './event-types'
 import { readEngineCapability } from './engine-capability'
 import type { AdminPlanCatalogResponse, CatalogPlanUpdate, CatalogQuotaUpdate } from './plan-catalog'
@@ -737,6 +738,69 @@ export interface UserAnalyticsTimeseriesResponse {
   optimization_series: OptimizationTimeseriesPoint[]
   feature_series: FeatureSeriesPoint[]
   status_distribution: Record<string, number>
+}
+
+export interface AdminAnalyticsTimeseriesPoint {
+  date: string
+  new_users: number
+  active_users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  optimizations: number
+  events: number
+  revenue_inr: number
+}
+
+export interface AdminFeatureUsage {
+  feature: string
+  count: number
+  last_used_at: string | null
+}
+
+export interface AdminRecentEvent {
+  id: string
+  action: string
+  user_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string | null
+}
+
+export interface AdminOperationsSummary {
+  queued_jobs: number
+  processing_jobs: number
+  failed_jobs_24h: number
+  completed_jobs_24h: number
+  webhook_failures_24h: number
+  active_users_24h: number
+}
+
+export interface AdminAnalyticsOverviewResponse {
+  period_days: number
+  system: {
+    period_days: number
+    total_users: number
+    new_users: number
+    total_compilations: number
+    successful_compilations: number
+    success_rate: number
+    total_optimizations: number
+    active_subscriptions: number
+    total_revenue_inr: number
+    trial_users: number
+    conversion_rate: number
+    real_time_metrics: Record<string, unknown>
+  }
+  conversion_funnel: {
+    period_days: number
+    funnel_steps: Record<string, number>
+    conversion_rates: Record<string, number>
+  }
+  timeseries: AdminAnalyticsTimeseriesPoint[]
+  top_features: AdminFeatureUsage[]
+  recent_events: AdminRecentEvent[]
+  operations: AdminOperationsSummary
+  generated_at: string
 }
 
 // ------------------------------------------------------------------ //
@@ -1962,6 +2026,10 @@ class ApiClient {
     return this.request<UserAnalyticsTimeseriesResponse>(`/analytics/me/timeseries?days=${days}`)
   }
 
+  async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
+    return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
   // ---------------------------------------------------------------- //
   //  Job cancellation                                                 //
   // ---------------------------------------------------------------- //
@@ -2526,8 +2594,19 @@ class ApiClient {
         },
         accountContext,
       )
+      captureAnalyticsEvent('checkout_started', {
+        plan_key: planId,
+        billing_period: options?.billingPeriod ?? 'monthly',
+        has_coupon: Boolean(options?.couponCode),
+        surface: 'billing',
+      })
       return { success: true, data }
     } catch (e) {
+      captureAnalyticsEvent('checkout_failed', {
+        plan_key: planId,
+        billing_period: options?.billingPeriod ?? 'monthly',
+        surface: 'billing',
+      })
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
   }
@@ -2544,6 +2623,9 @@ class ApiClient {
         { method: 'POST' },
         accountContext,
       )
+      if (data.success) {
+        captureAnalyticsEvent('subscription_cancel_requested', { surface: 'billing' })
+      }
       return data
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
@@ -2985,9 +3067,11 @@ class ApiClient {
     const prefix = guidedBuilder ? '/export/builder/v1' : '/export'
     const response = await this.authedFetch(`${this.baseUrl}${prefix}/${encodeURIComponent(resumeId)}/${encodeURIComponent(format)}`)
     if (!response.ok) {
+      captureAnalyticsEvent('export_failed', { format, guided_builder: guidedBuilder, surface: 'export' })
       const bodyText = await response.text().catch(() => '')
       throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Export failed (${response.status})`))
     }
+    captureAnalyticsEvent('export_completed', { format, guided_builder: guidedBuilder, surface: 'export' })
     return response.blob()
   }
 
@@ -3171,10 +3255,12 @@ class ApiClient {
   async generateCoverLetter(
     params: GenerateCoverLetterRequest
   ): Promise<GenerateCoverLetterResponse> {
-    return this.request<GenerateCoverLetterResponse>('/cover-letters/generate', {
+    const result = await this.request<GenerateCoverLetterResponse>('/cover-letters/generate', {
       method: 'POST',
       body: JSON.stringify(params),
     })
+    captureAnalyticsEvent('cover_letter_generated', { surface: 'cover_letter' })
+    return result
   }
 
   async getCoverLetter(id: string): Promise<CoverLetterResponse> {
@@ -3208,6 +3294,10 @@ class ApiClient {
   // ── Analytics tracking ────────────────────────────────────────────
 
   async trackEvent(eventType: string, metadata?: Record<string, unknown>): Promise<void> {
+    captureAnalyticsEvent('product_event', {
+      event_type: eventType,
+      ...(metadata as Record<string, string | number | boolean | null | undefined> | undefined),
+    })
     try {
       await this.request<{ message: string }>('/analytics/track', {
         method: 'POST',
@@ -3219,6 +3309,11 @@ class ApiClient {
   }
 
   async trackCompilation(compilationId: string, compilationStatus: string, compilationTime?: number): Promise<void> {
+    captureAnalyticsEvent('compilation_tracked', {
+      status: compilationStatus,
+      duration_ms: compilationTime,
+      surface: 'compilation',
+    })
     try {
       const params = new URLSearchParams({ compilation_id: compilationId, status: compilationStatus })
       if (compilationTime != null) params.set('compilation_time', String(compilationTime))
@@ -3231,6 +3326,12 @@ class ApiClient {
   }
 
   async trackOptimization(optimizationId: string, provider: string, model: string, tokensUsed?: number): Promise<void> {
+    captureAnalyticsEvent('optimization_tracked', {
+      provider,
+      model,
+      tokens_used: tokensUsed,
+      surface: 'optimization',
+    })
     try {
       const params = new URLSearchParams({ optimization_id: optimizationId, provider, model })
       if (tokensUsed != null) params.set('tokens_used', String(tokensUsed))
@@ -3243,6 +3344,7 @@ class ApiClient {
   }
 
   async trackFeatureUsage(feature: string): Promise<void> {
+    captureAnalyticsEvent('feature_used', { feature, surface: 'product' })
     try {
       const params = new URLSearchParams({ feature })
       await this.request<{ message: string }>(`/analytics/track/feature-usage?${params.toString()}`, {
@@ -3492,7 +3594,7 @@ class ApiClient {
     regenerateAnonymous = false,
     reviewComments?: boolean,
   ): Promise<ShareLinkResponse> {
-    return this.request<ShareLinkResponse>(
+    const result = await this.request<ShareLinkResponse>(
       `/resumes/${encodeURIComponent(resumeId)}/share`,
       {
         method: 'POST',
@@ -3504,6 +3606,12 @@ class ApiClient {
         }),
       }
     )
+    captureAnalyticsEvent('share_link_created', {
+      anonymous,
+      review_comments: Boolean(reviewComments),
+      surface: 'share',
+    })
+    return result
   }
 
   async revokeShareLink(resumeId: string): Promise<void> {
@@ -4682,10 +4790,12 @@ class ApiClient {
   }
 
   async generatePortfolioSite(resumeId: string): Promise<GeneratePortfolioResponse> {
-    return this.request<GeneratePortfolioResponse>(
+    const result = await this.request<GeneratePortfolioResponse>(
       `/resumes/${resumeId}/generate-portfolio`,
       { method: 'POST' }
     )
+    captureAnalyticsEvent('portfolio_generated', { surface: 'portfolio' })
+    return result
   }
 
   // ── Career Path (Feature 80) ───────────────────────────────────────────── //

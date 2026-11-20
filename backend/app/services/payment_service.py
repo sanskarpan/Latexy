@@ -22,6 +22,7 @@ from ..core.redis import get_redis_cache_client
 from ..database import models as db_models
 from .dodo_provider import DodoAPIError, DodoProvider
 from .email_service import email_service
+from .posthog_service import posthog_service
 from .referral_service import referral_service
 
 logger = get_logger(__name__)
@@ -511,10 +512,21 @@ class PaymentService:
             ))
             await db.commit()
             record_business_event("subscription", "checkout_created")
+            posthog_service.capture(
+                str(user_id),
+                "backend_checkout_created",
+                {"plan_key": concrete, "billing_period": billing_period, "surface": "billing", "provider": "dodo"},
+            )
             return {"success": True, "subscription_id": None, "checkout_session_id": str(session_id),
                     "short_url": checkout_url, "checkout_type": "hosted"}
         except DodoAPIError as exc:
             logger.warning("Dodo checkout creation failed", extra={"status": exc.status_code, "code": exc.code})
+            posthog_service.capture(
+                str(user_id),
+                "backend_checkout_failed",
+                {"plan_key": concrete, "billing_period": billing_period, "surface": "billing", "provider": "dodo",
+                 "failure_code": getattr(exc, "code", "provider_error")},
+            )
             await db.rollback()
             row = await db.scalar(select(Subscription).where(Subscription.id == intent_id)
                                   .with_for_update().execution_options(populate_existing=True))
@@ -1451,6 +1463,13 @@ class PaymentService:
                 user.subscription_plan, user.subscription_status, user.subscription_id = "lifetime", "active", intent.id
         await db.commit()
         record_business_event("payment", "success")
+        if not was_duplicate:
+            posthog_service.capture(
+                str(intent.user_id),
+                "backend_payment_succeeded",
+                {"plan_key": intent.plan_id, "amount": amount, "currency": currency,
+                 "provider": "dodo", "surface": "billing"},
+            )
         if not terminal_intent:
             try:
                 await referral_service.qualify_paid_payment(db, payment.id)
@@ -1624,6 +1643,11 @@ class PaymentService:
         elif state_event in {"subscription.failed", "subscription.expired"}:
             await self._end_subscription(db, intent, "failed" if state_event.endswith("failed") else "expired")
         await db.commit()
+        posthog_service.capture(
+            str(intent.user_id),
+            "backend_subscription_status_changed",
+            {"plan_key": intent.plan_id, "status": intent.status, "provider": "dodo", "surface": "billing"},
+        )
         return {"success": True}
 
     async def _end_subscription(self, db: AsyncSession, intent: Subscription, status: str) -> None:
@@ -1710,6 +1734,12 @@ class PaymentService:
             elif total:
                 payment.status = "partially_refunded"
         await db.commit()
+        posthog_service.capture(
+            str(payment.user_id),
+            "backend_refund_status_changed",
+            {"status": status, "amount": raw_amount, "currency": currency,
+             "provider": "dodo", "surface": "billing"},
+        )
         return {"success": True}
 
     async def _revoke_team_seats(self, db: AsyncSession, owner_user_id: str) -> int:

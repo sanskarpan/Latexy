@@ -129,6 +129,47 @@ class UserAnalyticsTimeseriesResponse(BaseModel):
     feature_series: List[FeatureSeriesPoint]
     status_distribution: Dict[str, int]
 
+class AdminAnalyticsTimeseriesPoint(BaseModel):
+    date: str
+    new_users: int
+    active_users: int
+    compilations: int
+    completed_compilations: int
+    failed_compilations: int
+    optimizations: int
+    events: int
+    revenue_inr: float
+
+class AdminFeatureUsage(BaseModel):
+    feature: str
+    count: int
+    last_used_at: Optional[str]
+
+class AdminRecentEvent(BaseModel):
+    id: str
+    action: str
+    user_id: Optional[str]
+    metadata: Dict[str, Any]
+    created_at: Optional[str]
+
+class AdminOperationsSummary(BaseModel):
+    queued_jobs: int
+    processing_jobs: int
+    failed_jobs_24h: int
+    completed_jobs_24h: int
+    webhook_failures_24h: int
+    active_users_24h: int
+
+class AdminAnalyticsOverviewResponse(BaseModel):
+    period_days: int
+    system: SystemAnalyticsResponse
+    conversion_funnel: ConversionFunnelResponse
+    timeseries: List[AdminAnalyticsTimeseriesPoint]
+    top_features: List[AdminFeatureUsage]
+    recent_events: List[AdminRecentEvent]
+    operations: AdminOperationsSummary
+    generated_at: str
+
 @router.post("/track", status_code=status.HTTP_201_CREATED)
 async def track_event(
     request: EventTrackingRequest,
@@ -493,6 +534,46 @@ async def track_feature_usage(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
+
+@router.get("/admin/overview", response_model=AdminAnalyticsOverviewResponse)
+async def get_admin_analytics_overview(
+    days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    admin_user: str = Depends(require_admin),
+):
+    """Single admin payload: KPIs, funnel, daily series, top features, events and ops.
+
+    This is intentionally one round-trip so the Control Plane does not fan out
+    into five independently-failing requests. Each section is still computed from
+    the authoritative first-party database; PostHog is the replay/exploration
+    layer, not the source of truth for billing or entitlements.
+    """
+    try:
+        system = await analytics_service.get_system_analytics(db=db, days=days)
+        funnel = await analytics_service.get_conversion_funnel(db=db, days=days)
+        timeseries = await analytics_service.get_admin_timeseries(db=db, days=days)
+        top_features = await analytics_service.get_admin_top_features(db=db, days=days)
+        recent_events = await analytics_service.get_admin_recent_events(db=db)
+        operations = await analytics_service.get_admin_operations(db=db)
+        return AdminAnalyticsOverviewResponse(
+            period_days=days,
+            system=SystemAnalyticsResponse(**system),
+            conversion_funnel=ConversionFunnelResponse(**funnel),
+            timeseries=[AdminAnalyticsTimeseriesPoint(**point) for point in timeseries],
+            top_features=[AdminFeatureUsage(**feature) for feature in top_features],
+            recent_events=[AdminRecentEvent(**event) for event in recent_events],
+            operations=AdminOperationsSummary(**operations),
+            generated_at=datetime.now().isoformat(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error getting admin analytics overview (%s)", type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
 
 @router.get("/dashboard")
 async def get_analytics_dashboard(

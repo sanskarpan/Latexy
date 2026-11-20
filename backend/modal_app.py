@@ -364,6 +364,9 @@ worker_image = (
 _base_secrets = [
     modal.Secret.from_name("latexy-backend-secrets"),
     modal.Secret.from_name("latexy-storage"),
+    # Dedicated, opt-in analytics secret so rotating the PostHog project token
+    # never requires rewriting the opaque backend secret.
+    modal.Secret.from_name("latexy-posthog"),
 ]
 
 # Dodo credentials are needed by the public API and its read-only billing

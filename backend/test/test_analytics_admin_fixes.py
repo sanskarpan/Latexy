@@ -147,6 +147,31 @@ class TestSystemAnalyticsMetrics:
             await db_session.commit()
 
 
+class TestAdminAnalyticsQueries:
+    """The admin overview must compose cleanly from the first-party tables."""
+
+    @pytest.mark.asyncio
+    async def test_admin_overview_sections(self, db_session: AsyncSession):
+        series = await analytics_service.get_admin_timeseries(db=db_session, days=7)
+        assert len(series) == 7
+        assert set(series[0]) >= {
+            "date", "new_users", "active_users", "compilations",
+            "optimizations", "events", "revenue_inr",
+        }
+
+        features = await analytics_service.get_admin_top_features(db=db_session, days=7)
+        assert isinstance(features, list)
+
+        events = await analytics_service.get_admin_recent_events(db=db_session, limit=5)
+        assert isinstance(events, list)
+
+        operations = await analytics_service.get_admin_operations(db=db_session)
+        assert set(operations) >= {
+            "queued_jobs", "processing_jobs", "failed_jobs_24h",
+            "completed_jobs_24h", "webhook_failures_24h", "active_users_24h",
+        }
+
+
 class TestTrackEndpointAuth:
     """POST /analytics/track must attribute events to the session user, not the body."""
 

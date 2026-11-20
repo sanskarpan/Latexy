@@ -12,6 +12,7 @@ import {
 import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
+import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
@@ -22,11 +23,12 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'flags' | 'matrix' | 'plans' | 'users'
+type TabId = 'analytics' | 'flags' | 'matrix' | 'plans' | 'users'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
 const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'analytics', label: 'Analytics' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
@@ -688,7 +690,7 @@ export default function AdminPage() {
 }
 
 function AuthorizedAdminPage() {
-  const [tab, setTab] = useState<TabId>('matrix')
+  const [tab, setTab] = useState<TabId>('analytics')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -748,6 +750,7 @@ function AuthorizedAdminPage() {
         tabIndex={0}
         className="focus:outline-none"
       >
+        {tab === 'analytics' && <AdminAnalytics />}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}

@@ -3,7 +3,7 @@ Analytics Service for tracking user behavior and system metrics.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, redis_manager
+from ..core.telemetry_metadata import redact_metadata
 from ..database.models import (
+    BillingWebhookEvent,
     Compilation,
     DeviceTrial,
     Optimization,
@@ -22,6 +24,7 @@ from ..database.models import (
     UsageAnalytics,
     User,
 )
+from .posthog_service import posthog_service
 
 logger = get_logger(__name__)
 
@@ -58,6 +61,14 @@ class AnalyticsService:
 
             # Also cache in Redis for real-time analytics
             await self._cache_event(event_type, user_id, device_fingerprint, metadata)
+
+            # Mirror the same first-party event into PostHog. The service drops
+            # direct identifiers and is a no-op when no key is configured.
+            posthog_service.capture_event(
+                user_id=str(user_id) if user_id else None,
+                event_type=event_type,
+                metadata=metadata,
+            )
 
             logger.info(f"Tracked event: {sanitize_for_log(event_type)} for user: {sanitize_for_log(user_id)}")
             return True
@@ -670,6 +681,211 @@ class AnalyticsService:
             # Surface infra failures instead of returning {}.
             logger.error("Error getting conversion funnel (%s)", type(e).__name__)
             raise
+
+    async def get_admin_timeseries(self, db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
+        """Return per-day product, user and revenue series for the admin view.
+
+        All buckets are UTC. Empty days are returned with zeros so charts do not
+        silently compress gaps into a misleading slope.
+        """
+        period_days = max(1, min(days, 365))
+        today = datetime.now(timezone.utc).date()
+        start_day = today - timedelta(days=period_days - 1)
+        start_date = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+        days_list = [(start_day + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(period_days)]
+
+        users_day = func.date_trunc("day", User.created_at).label("day")
+        users_rows = (
+            await db.execute(
+                select(users_day, func.count(User.id).label("cnt"))
+                .where(User.created_at >= start_date)
+                .group_by(users_day)
+            )
+        ).all()
+
+        comp_day = func.date_trunc("day", Compilation.created_at).label("day")
+        comp_rows = (
+            await db.execute(
+                select(
+                    comp_day,
+                    func.count(Compilation.id).label("total"),
+                    func.count(Compilation.id).filter(Compilation.status == "completed").label("completed"),
+                    func.count(Compilation.id).filter(Compilation.status == "failed").label("failed"),
+                )
+                .where(Compilation.created_at >= start_date)
+                .group_by(comp_day)
+            )
+        ).all()
+
+        opt_day = func.date_trunc("day", Optimization.created_at).label("day")
+        opt_rows = (
+            await db.execute(
+                select(opt_day, func.count(Optimization.id).label("cnt"))
+                .where(Optimization.created_at >= start_date)
+                .group_by(opt_day)
+            )
+        ).all()
+
+        events_day = func.date_trunc("day", UsageAnalytics.created_at).label("day")
+        event_rows = (
+            await db.execute(
+                select(
+                    events_day,
+                    func.count(UsageAnalytics.id).label("cnt"),
+                    func.count(func.distinct(UsageAnalytics.user_id)).label("active_users"),
+                )
+                .where(UsageAnalytics.created_at >= start_date)
+                .group_by(events_day)
+            )
+        ).all()
+
+        payment_day = func.date_trunc("day", Payment.created_at).label("day")
+        payment_rows = (
+            await db.execute(
+                select(payment_day, func.coalesce(func.sum(Payment.amount), 0).label("amount"))
+                .where(
+                    and_(
+                        Payment.created_at >= start_date,
+                        Payment.currency == "INR",
+                        Payment.status.in_(["paid", "captured", "partially_refunded", "refunded"]),
+                    )
+                )
+                .group_by(payment_day)
+            )
+        ).all()
+
+        refund_day = func.date_trunc("day", PaymentRefund.created_at).label("day")
+        refund_rows = (
+            await db.execute(
+                select(refund_day, func.coalesce(func.sum(PaymentRefund.amount), 0).label("amount"))
+                .where(
+                    and_(
+                        PaymentRefund.created_at >= start_date,
+                        PaymentRefund.status == "succeeded",
+                    )
+                )
+                .group_by(refund_day)
+            )
+        ).all()
+
+        users_map = {row.day.strftime("%Y-%m-%d"): int(row.cnt or 0) for row in users_rows if row.day}
+        comp_map = {row.day.strftime("%Y-%m-%d"): int(row.total or 0) for row in comp_rows if row.day}
+        comp_completed_map = {row.day.strftime("%Y-%m-%d"): int(row.completed or 0) for row in comp_rows if row.day}
+        comp_failed_map = {row.day.strftime("%Y-%m-%d"): int(row.failed or 0) for row in comp_rows if row.day}
+        opt_map = {row.day.strftime("%Y-%m-%d"): int(row.cnt or 0) for row in opt_rows if row.day}
+        event_map = {row.day.strftime("%Y-%m-%d"): int(row.cnt or 0) for row in event_rows if row.day}
+        active_map = {row.day.strftime("%Y-%m-%d"): int(row.active_users or 0) for row in event_rows if row.day}
+        payment_map = {row.day.strftime("%Y-%m-%d"): int(row.amount or 0) for row in payment_rows if row.day}
+        refund_map = {row.day.strftime("%Y-%m-%d"): int(row.amount or 0) for row in refund_rows if row.day}
+
+        return [
+            {
+                "date": day,
+                "new_users": users_map.get(day, 0),
+                "active_users": active_map.get(day, 0),
+                "compilations": comp_map.get(day, 0),
+                "completed_compilations": comp_completed_map.get(day, 0),
+                "failed_compilations": comp_failed_map.get(day, 0),
+                "optimizations": opt_map.get(day, 0),
+                "events": event_map.get(day, 0),
+                "revenue_inr": round((payment_map.get(day, 0) - refund_map.get(day, 0)) / 100, 2),
+            }
+            for day in days_list
+        ]
+
+    async def get_admin_top_features(
+        self, db: AsyncSession, days: int = 30, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Rank feature labels, falling back to the event action when unlabelled."""
+        start_date = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+        feature_expr = func.coalesce(
+            UsageAnalytics.event_metadata["feature"].as_string(),
+            UsageAnalytics.action,
+        )
+        rows = (
+            await db.execute(
+                select(
+                    feature_expr.label("feature"),
+                    func.count(UsageAnalytics.id).label("cnt"),
+                    func.max(UsageAnalytics.created_at).label("last_used_at"),
+                )
+                .where(UsageAnalytics.created_at >= start_date)
+                .group_by(feature_expr)
+                .order_by(func.count(UsageAnalytics.id).desc())
+                .limit(max(1, min(limit, 50)))
+            )
+        ).all()
+        return [
+            {
+                "feature": str(row.feature or "unknown"),
+                "count": int(row.cnt or 0),
+                "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+            }
+            for row in rows
+        ]
+
+    async def get_admin_recent_events(
+        self, db: AsyncSession, limit: int = 25, offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Return redacted first-party events for the admin activity stream."""
+        rows = (
+            await db.execute(
+                select(UsageAnalytics)
+                .order_by(UsageAnalytics.created_at.desc())
+                .limit(max(1, min(limit, 100)))
+                .offset(max(0, offset))
+            )
+        ).scalars().all()
+        return [
+            {
+                "id": str(event.id),
+                "action": event.action,
+                "user_id": str(event.user_id) if event.user_id else None,
+                "metadata": redact_metadata(event.event_metadata or {}),
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in rows
+        ]
+
+    async def get_admin_operations(self, db: AsyncSession) -> Dict[str, int]:
+        """24-hour operational counters useful before opening a queue dashboard."""
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        status_rows = (
+            await db.execute(
+                select(Compilation.status, func.count(Compilation.id).label("cnt"))
+                .where(Compilation.created_at >= since)
+                .group_by(Compilation.status)
+            )
+        ).all()
+        status_counts = {str(row.status or "unknown"): int(row.cnt or 0) for row in status_rows}
+        webhook_failures = (
+            await db.execute(
+                select(func.count(BillingWebhookEvent.id)).where(
+                    and_(
+                        BillingWebhookEvent.status == "failed",
+                        BillingWebhookEvent.received_at >= since,
+                    )
+                )
+            )
+        ).scalar() or 0
+        active_users = (
+            await db.execute(
+                select(func.count(func.distinct(UsageAnalytics.user_id))).where(
+                    and_(
+                        UsageAnalytics.created_at >= since,
+                        UsageAnalytics.user_id.is_not(None),
+                    )
+                )
+            )
+        ).scalar() or 0
+        return {
+            "queued_jobs": status_counts.get("queued", 0) + status_counts.get("pending", 0),
+            "processing_jobs": status_counts.get("processing", 0) + status_counts.get("running", 0),
+            "failed_jobs_24h": status_counts.get("failed", 0),
+            "completed_jobs_24h": status_counts.get("completed", 0),
+            "webhook_failures_24h": int(webhook_failures),
+            "active_users_24h": int(active_users),
+        }
 
     async def track_compilation_event(
         self,

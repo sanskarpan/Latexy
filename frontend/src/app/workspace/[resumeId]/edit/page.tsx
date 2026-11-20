@@ -4373,7 +4373,8 @@ export default function ResumeEditPage() {
           {currentCheckpointRecoveryPreview && (
             <section
               aria-label="Recovered saved source preview"
-              className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-[var(--radius-md)] border border-accent/30 bg-surface-1 p-3"
+              className="ph-no-capture flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-[var(--radius-md)] border border-accent/30 bg-surface-1 p-3"
+              data-ph-no-capture
             >
               <div className="flex shrink-0 items-center justify-between gap-3">
                 <div>
@@ -4400,7 +4401,8 @@ export default function ResumeEditPage() {
             </section>
           )}
           <div
-            className="relative min-h-0 flex-1"
+            className="ph-no-capture relative min-h-0 flex-1"
+            data-ph-no-capture
             style={{ display: currentCheckpointRecoveryPreview ? 'none' : undefined }}
             aria-hidden={currentCheckpointRecoveryPreview ? true : undefined}
           >
@@ -4766,7 +4768,7 @@ export default function ResumeEditPage() {
           </div>
 
           {/* Tab content */}
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="ph-no-capture min-h-0 flex-1 overflow-hidden" data-ph-no-capture>
             {visibleRightTab === 'preview' && documentType === 'presentation' && can('c14') && (
               <SlideViewer
                 pdfUrl={pdfUrl}

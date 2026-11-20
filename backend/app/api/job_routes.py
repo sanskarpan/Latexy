@@ -49,6 +49,7 @@ from ..services.cover_letter_signature_service import (
 from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..services.job_admission_state import initialize_job_state
 from ..services.optimization_personas import VALID_PERSONA_KEYS
+from ..services.posthog_service import posthog_service
 from ..services.render_engine.artifacts import get_public_job_artifact
 from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
@@ -950,6 +951,12 @@ async def submit_job(
         dispatched = True
 
         record_job_submitted(request.job_type, authenticated=user_id is not None)
+        posthog_service.capture(
+            user_id,
+            "backend_job_submitted",
+            {"job_type": request.job_type, "plan_key": resolved_plan,
+             "surface": "jobs", "cached": bool(cache_executed)},
+        )
 
         return JobSubmissionResponse(
             success=True,

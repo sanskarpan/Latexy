@@ -1250,7 +1250,7 @@ export default function TryPage() {
         <span className="font-ui text-[12px] text-fg-3">⌘F to find</span></>}
       </div>
       <EngineCapabilityNotice capability={engineCapability} />
-      <div className="relative min-h-0 flex-1">
+      <div className="ph-no-capture relative min-h-0 flex-1" data-ph-no-capture>
         {editorMode === 'pdf' ? <ResumeFieldsEditor document={engineDocument} currentSourceHash={sourceHash}
           selectedNode={selectedNode} onSelect={setSelectedNode} onSave={saveGuestField}
           readOnly={!engineSupported || !visualModeAvailable} error={engineCapability.status === 'error' ? 'Resume fields are unavailable. Check the message above, or choose Source.' : engineError} /> : <LaTeXEditor
@@ -1335,7 +1335,7 @@ export default function TryPage() {
         </div>
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="ph-no-capture relative min-h-0 flex-1" data-ph-no-capture>
         <PDFPreview
           artifactIdentity={displayedArtifact ? { jobId: displayedArtifact.job_id, artifactId: displayedArtifact.artifact_id, fingerprint: trialStatus.fingerprint } : null}
             onFirstPaint={() => { const jobId = displayedArtifact?.job_id ?? stream.pdfJobId ?? activeJobId; if (jobId) recordPreviewFirstPaint(jobId) }}

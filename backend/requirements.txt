@@ -15,6 +15,7 @@ idna==3.20
 iniconfig==2.3.1
 packaging==26.3
 pluggy==1.7.0
+posthog==8.1.0
 pycparser==3.12
 pydantic==2.14.2
 pydantic-settings==2.16.2

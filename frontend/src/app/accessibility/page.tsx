@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   },
 }
 
-const reviewedOn = 'September 8, 2026'
+const reviewedOn = 'November 21, 2026'
 
 export default function AccessibilityPage() {
   return (
@@ -61,7 +61,11 @@ export default function AccessibilityPage() {
               <li>
                 Readable HTML text alternatives on public share links and portfolio résumés.
               </li>
-              <li>No session-recording or keystroke-capture SDKs on document surfaces.</li>
+              <li>
+                Optional browser analytics and session replay are consent-based; replay is fully
+                text-masked and excluded from résumé editors and public document pages. Server-side
+                service analytics exclude document content, and no keystroke-capture SDKs are used.
+              </li>
             </ul>
           </section>
 

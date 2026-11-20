@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8030
 
+    # Product analytics (PostHog). Disabled automatically when no key is set.
+    POSTHOG_API_KEY: str = ""
+    POSTHOG_HOST: str = "https://us.i.posthog.com"
+    POSTHOG_ENABLED: bool = True
+
     # LaTeX Configuration
     COMPILE_TIMEOUT: int = 30  # seconds — fallback for unauthenticated/unknown plan
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
