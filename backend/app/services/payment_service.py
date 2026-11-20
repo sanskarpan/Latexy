@@ -1134,6 +1134,30 @@ class PaymentService:
                 return {"success": False, "retryable": True, "error": "A newer webhook snapshot is being processed"}
             result = await self._process_webhook_event(db, event_type, data, envelope)
             if not result.get("success"):
+                if result.get("retryable") is False:
+                    # A deterministic mismatch (for example, a payment created
+                    # outside the application's checkout) will never reconcile
+                    # on retry. Keep the durable event as a failed dead letter
+                    # for operator review, but acknowledge delivery so the
+                    # provider stops retrying it. No access is granted here.
+                    quarantined = await db.scalar(select(BillingWebhookEvent).where(
+                        BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
+                    ).with_for_update().execution_options(populate_existing=True))
+                    if quarantined is not None and quarantined.payload_sha256 == digest:
+                        quarantined.status = "failed"
+                        quarantined.last_error = str(
+                            result.get("error") or "permanent_webhook_failure"
+                        )[:240]
+                        quarantined.processed_at = None
+                        await db.commit()
+                        logger.error("Dodo webhook quarantined", extra={"error_type": "permanent"})
+                        return {"success": True, "quarantined": True}
+                    await db.rollback()
+                    return {
+                        "success": False,
+                        "retryable": True,
+                        "error": "Webhook state changed during quarantine",
+                    }
                 raise ValueError(result.get("error", "Webhook could not be reconciled"))
             event = await db.scalar(select(BillingWebhookEvent).where(
                 BillingWebhookEvent.provider == "dodo", BillingWebhookEvent.event_id == event_id,
@@ -1224,7 +1248,11 @@ class PaymentService:
             return {"success": False, "error": "Payment event is not in succeeded state"}
         intent = await self._resolve_intent(db, data)
         if not intent:
-            return {"success": False, "error": "Payment did not match a local checkout intent"}
+            return {
+                "success": False,
+                "retryable": False,
+                "error": "Payment did not match a local checkout intent",
+            }
         intent = await db.scalar(
             select(Subscription).where(Subscription.id == intent.id).with_for_update()
             .execution_options(populate_existing=True)
@@ -1438,13 +1466,21 @@ class PaymentService:
     ) -> dict[str, Any]:
         intent = await self._resolve_intent(db, data)
         if not intent:
-            return {"success": False, "error": "Subscription did not match a local checkout intent"}
+            return {
+                "success": False,
+                "retryable": False,
+                "error": "Subscription did not match a local checkout intent",
+            }
         intent = await db.scalar(
             select(Subscription).where(Subscription.id == intent.id).with_for_update()
             .execution_options(populate_existing=True)
         )
         if intent is None:
-            return {"success": False, "error": "Subscription did not match a local checkout intent"}
+            return {
+                "success": False,
+                "retryable": False,
+                "error": "Subscription did not match a local checkout intent",
+            }
         sub_id = str(data.get("subscription_id") or "")
         if not sub_id or (intent.provider_subscription_id and sub_id != intent.provider_subscription_id):
             return {"success": False, "error": "Subscription identifier does not match the local intent"}
@@ -1608,7 +1644,11 @@ class PaymentService:
             Payment.provider == "dodo", Payment.provider_payment_id == payment_id,
         ).with_for_update().execution_options(populate_existing=True))
         if not payment:
-            return {"success": False, "error": "Refund does not match a local payment"}
+            return {
+                "success": False,
+                "retryable": False,
+                "error": "Refund does not match a local payment",
+            }
         status = str(data.get("status") or ("succeeded" if event_type == "refund.succeeded" else "failed")).lower()
         if status not in {"succeeded", "failed", "pending", "review"}:
             return {"success": False, "error": "Refund has an unsupported status"}

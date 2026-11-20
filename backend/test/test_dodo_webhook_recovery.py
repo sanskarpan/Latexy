@@ -211,6 +211,43 @@ async def test_signed_success_event_with_missing_payment_field_never_grants_acce
 
 
 @pytest.mark.asyncio
+async def test_unknown_payment_is_quarantined_without_granting_access(
+    db_session: AsyncSession,
+    configure_signed_test_webhooks: bytes,
+) -> None:
+    user_id, intent_id = str(uuid.uuid4()), str(uuid.uuid4())
+    payment_id = f"pay_unknown_{intent_id}"
+    payload = _payment_payload(
+        user_id,
+        intent_id,
+        f"sess_unknown_{intent_id}",
+        f"sub_unknown_{intent_id}",
+        payment_id,
+    )
+    event_id = f"evt_unknown_{uuid.uuid4().hex}"
+
+    result = await PaymentService().handle_webhook(
+        db_session,
+        payload,
+        _signed_headers(payload, configure_signed_test_webhooks, event_id),
+    )
+
+    assert result == {"success": True, "quarantined": True}
+    event = (
+        await db_session.execute(
+            text("SELECT status, last_error FROM billing_webhook_events WHERE event_id=:event_id"),
+            {"event_id": event_id},
+        )
+    ).one()
+    assert event.status == "failed"
+    assert "did not match a local checkout intent" in event.last_error
+    assert await db_session.scalar(
+        text("SELECT COUNT(*) FROM payments WHERE provider_payment_id=:payment_id"),
+        {"payment_id": payment_id},
+    ) == 0
+
+
+@pytest.mark.asyncio
 async def test_same_webhook_id_with_different_valid_signature_is_rejected(
     db_session: AsyncSession,
     configure_signed_test_webhooks: bytes,
