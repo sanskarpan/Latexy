@@ -333,7 +333,7 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
 
     expected_job_names = {
         "classify-changes": "Classify Changed Components",
-        "privacy-guard": "Privacy Guard (no session recording)",
+        "privacy-guard": "Privacy Guard (analytics & replay policy)",
         "backend-lint": "Backend Lint (ruff)",
         "deployment-parity": "Modal Deployment Parity",
         "template-pdf-contract": "Template PDF Extraction Contract",
