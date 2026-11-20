@@ -2,7 +2,7 @@ import type { CDPSession, Page, TestInfo } from '@playwright/test'
 import { createHash } from 'node:crypto'
 
 // Test-only CDP observer: never rewrite a response or guess another React hook.
-// Exact normal-channel production bundle after the reviewed Next 15.5.28
+// Exact normal-channel production bundle after the reviewed Next 15.5.29
 // host-replay backport. rD(e), rN (cursor), and rP (parent) retain their roles.
 export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
 export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'

@@ -82,7 +82,7 @@ The #2048 header is one byte longer because its module IDs are five digits;
 #2046 has the same header length as the reference. The complete React
 implementation suffix, including the `rD` claim site at the reviewed columns,
 is unchanged. This is not a materially different React runtime and does not
-require re-certifying the Next 15.5.28 hydration backport.
+require re-certifying the Next 15.5.29 hydration backport.
 
 Reproduction (run against the downloaded artifacts):
 
