@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last reviewed: September 8, 2026**
+**Last reviewed: November 21, 2026**
 
 This policy explains what Latexy collects, why it is used, where it may be sent,
 and the choices available to you. It describes the service as it operates today;
@@ -60,9 +60,22 @@ device and network signals to enforce limits and prevent abuse.
 
 The web application sends first-party Web Vitals and a small allow-listed set of
 business events to the Latexy backend. Those events are recorded in service
-metrics and structured logs. Latexy does not currently embed Google Analytics,
-Mixpanel, Sentry, DataDog, advertising pixels, session replay, or keystroke
-recording.
+metrics and structured logs.
+
+Latexy uses PostHog for two distinct purposes. First, limited server-side
+service analytics (feature usage, compilation and job outcomes, and billing
+lifecycle events) are processed to operate, secure, and improve the service.
+These events contain opaque identifiers, enums, counts, durations, and amounts,
+not résumé content, prompts, names, emails, or payment credentials. Second,
+optional browser analytics and session replay are loaded only after you choose
+“Allow analytics.” Session replay is configured to mask all text, form inputs,
+and element attributes; résumé editors, public share pages, and portfolio pages
+are explicitly excluded from recording. Latexy does not use advertising pixels,
+cross-context behavioral advertising, or keystroke-capture SDKs on
+document-editing surfaces. The PostHog project is configured to discard client
+IP addresses. You can withdraw browser analytics consent at any time through
+“Privacy choices” in the footer; withdrawing consent stops future browser
+capture and replay.
 
 ## 2. How we use information
 
@@ -91,9 +104,10 @@ are no longer needed.
 
 Latexy uses service providers to operate the product. Current infrastructure
 includes Vercel (web hosting), Modal (API and worker compute), Neon
-(PostgreSQL), Upstash (Redis), and Cloudflare R2 (object storage). Dodo Payments
-handles hosted checkout and billing, and Resend or a configured SMTP provider
-may deliver email.
+(PostgreSQL), Upstash (Redis), Cloudflare R2 (object storage), and PostHog
+(consent-based product analytics and masked session replay, hosted in the United
+States). Dodo Payments handles hosted checkout and billing, and Resend or a
+configured SMTP provider may deliver email.
 The AI and optional integration providers described above receive data only when
 their corresponding feature is used.
 
@@ -109,9 +123,13 @@ protect requests. It also stores preferences such as light/dark and
 high-contrast mode. Browser storage is used for items such as onboarding state,
 offline drafts, pending offline work, and short-lived trace identifiers.
 
-Latexy does not currently set advertising or third-party analytics cookies.
-Blocking essential storage can prevent authentication, offline recovery, or
-preferences from working.
+If you allow analytics, PostHog may set first-party analytics cookies or local
+storage to distinguish a browser session, measure feature use, and associate a
+recording with the same consented session. These analytics identifiers are not
+used for advertising. Your consent choice is stored locally so the banner does
+not reappear on every page. Declining analytics leaves only essential storage in
+place; blocking essential storage can prevent authentication, offline recovery,
+or preferences from working.
 
 ## 6. Retention and deletion
 
@@ -121,6 +139,11 @@ Short-lived job state and event replay data normally expires after about 24
 hours. Temporary compilation files are cleaned automatically; generated
 artifacts associated with saved work may remain until the owning record is
 deleted and cleanup completes.
+
+Product analytics events are kept for up to one year, and consented session
+replay recordings for up to 30 days, unless a shorter retention period is
+configured. Withdrawing consent stops future capture and replay; it does not
+retroactively delete recordings already retained under the applicable period.
 
 Security, billing, audit, and backup records may be retained longer when needed
 for fraud prevention, financial recordkeeping, dispute resolution, recovery, or
@@ -143,7 +166,11 @@ incident. Report a suspected security or privacy issue to privacy@latexy.xyz.
 
 You can edit or delete individual résumés and other supported records, revoke
 public share links, disable portfolio visibility, disconnect integrations,
-remove BYOK credentials, and control available notification preferences.
+remove BYOK credentials, control available notification preferences, and change
+your analytics choice through “Privacy choices” in the footer. Withdrawing
+browser analytics consent disables future browser analytics and session replay
+for that browser; limited server-side service and billing analytics described in
+section 1 may continue as part of operating the service.
 
 Depending on where you live, applicable law may give you rights to access,
 correct, delete, restrict, object to, or receive a portable copy of personal
