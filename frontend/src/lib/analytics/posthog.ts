@@ -21,10 +21,13 @@ export const ANALYTICS_CONSENT_EVENT = 'latexy:analytics-consent'
 export type AnalyticsConsent = 'granted' | 'denied' | null
 export type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>
 
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim() || ''
-const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || 'https://us.i.posthog.com'
-const POSTHOG_UI_HOST = process.env.NEXT_PUBLIC_POSTHOG_UI_HOST?.trim() || 'https://us.posthog.com'
-const POSTHOG_PROJECT_ID = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID?.trim() || ''
+// Keep direct `process.env.NEXT_PUBLIC_*` member expressions so Next inlines
+// them at build time, while remaining safe in browser-only bundles (for
+// example the esbuild hydration fixture) where `process` is undefined.
+const POSTHOG_KEY = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_KEY)?.trim() || ''
+const POSTHOG_HOST = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_HOST)?.trim() || 'https://us.i.posthog.com'
+const POSTHOG_UI_HOST = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_UI_HOST)?.trim() || 'https://us.posthog.com'
+const POSTHOG_PROJECT_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID)?.trim() || ''
 
 // Keys that may contain personal or document content. These are dropped even
 // when a caller accidentally passes them. A small allowlist keeps genuinely

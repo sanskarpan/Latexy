@@ -7,10 +7,11 @@ import { createHash } from 'node:crypto'
 export const LEGACY_SETTINGS_REACT_CHUNK = '/_next/static/chunks/630253d5-0ac8e4a42daf72ba.js'
 export const LEGACY_SETTINGS_REACT_SHA256 = '30a7c6602658fd76f41b975311e1e5a04c2cfafa17950130029f2184e13c3f8d'
 export const LEGACY_SETTINGS_REACT_BYTES = 173132
-export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d' | 'react-3ea14a6d' | 'react-6b61a8d1' | 'react-cc389d03'
+export type HydrationDiagnosticBundleVariant = 'canonical' | 'react-cf9dbc7d' | 'react-3ea14a6d' | 'react-6b61a8d1' | 'react-cc389d03' | 'react-b9318ce4'
 export function parseHydrationDiagnosticBundleVariant(value: unknown): HydrationDiagnosticBundleVariant {
   if (value === 'canonical' || value === 'react-cf9dbc7d' || value === 'react-3ea14a6d'
-    || value === 'react-6b61a8d1' || value === 'react-cc389d03') return value
+    || value === 'react-6b61a8d1' || value === 'react-cc389d03'
+    || value === 'react-b9318ce4') return value
   throw new Error('Unsupported hydration diagnostic bundle variant')
 }
 const BUNDLES = Object.freeze({
@@ -54,6 +55,14 @@ const BUNDLES = Object.freeze({
     chunk: '/_next/static/chunks/7edc1f54-58736c01cf0589d0.js',
     sha256: 'cc389d03e19cffdc2cc5247977f3252741e765d79b44a6a927bc0bcaf24a7674',
     bytes: 173133, claimColumn: 35054, lastColumn: 35060,
+  }),
+  // Next 15.5.29 November-2026 security patch, CI run 44835163079,
+  // hydration-bundle-review artifact 14678880369. Only the webpack header
+  // differs; implementation_sha256 e6604c56… is the reviewed canonical suffix.
+  'react-b9318ce4': Object.freeze({
+    chunk: '/_next/static/chunks/b9318ce4-03f24091dddfbc61.js',
+    sha256: 'cf17da796f455b999b0858455b8ae12926eccdc240687cfd2c85094d8e10037d',
+    bytes: 173134, claimColumn: 35055, lastColumn: 35061,
   }),
 })
 const COMMAND_TIMEOUT_MS = 250
