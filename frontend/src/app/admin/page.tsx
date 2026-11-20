@@ -690,7 +690,7 @@ export default function AdminPage() {
 }
 
 function AuthorizedAdminPage() {
-  const [tab, setTab] = useState<TabId>('analytics')
+  const [tab, setTab] = useState<TabId>('matrix')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
