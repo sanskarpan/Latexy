@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from fastapi import Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -369,6 +369,7 @@ async def export_resume(
     fmt: str,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
     Export a saved resume in the requested format.
@@ -399,9 +400,10 @@ async def export_resume(
             content_bytes = _convert_latex(resume.latex_content, fmt)
         mime_type, filename = EXPORT_FORMATS[fmt]
 
-        # Activation milestone used by the admin funnel. The response must never
-        # wait for analytics; the task owns a separate bounded session.
-        analytics_service.schedule_event(
+        # Activation milestone used by the admin funnel. FastAPI runs this after
+        # the body is sent; direct service tests use an empty collector.
+        background_tasks.add_task(
+            analytics_service.track_event_in_own_session,
             event_type="export",
             user_id=user_id,
             metadata={"resource_type": "resume", "format": fmt},

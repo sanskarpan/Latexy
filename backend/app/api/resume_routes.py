@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel,
@@ -701,7 +701,10 @@ async def get_resume_stats(db: AsyncSession = Depends(get_db), user_id: str = De
 
 @router.post("/", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
 async def create_resume(
-    resume_in: ResumeCreate, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)
+    resume_in: ResumeCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """Create a new resume for the authenticated user."""
     payload = resume_in.model_dump()
@@ -720,8 +723,10 @@ async def create_resume(
     await db.refresh(resume)
 
     # First-party activation milestone, mirrored to PostHog by the analytics
-    # service. The task owns a separate session and cannot expire `resume`.
-    analytics_service.schedule_event(
+    # service. The background task owns a separate session and cannot expire
+    # `resume`; FastAPI runs it after the response body is sent.
+    background_tasks.add_task(
+        analytics_service.track_event_in_own_session,
         event_type="resume_created",
         user_id=user_id,
         metadata={

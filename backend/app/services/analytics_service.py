@@ -35,7 +35,6 @@ class AnalyticsService:
 
     def __init__(self):
         self.redis_key_prefix = "analytics:"
-        self._background_tasks: set[asyncio.Task] = set()
 
     async def track_event(
         self,
@@ -86,42 +85,20 @@ class AnalyticsService:
             await db.rollback()
             return False
 
-    def schedule_event(
+    async def track_event_in_own_session(
         self,
         *,
         event_type: str,
         user_id: Optional[UUID],
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Record a milestone outside the response's database transaction.
+        """Record a milestone after the response, using a separate session.
 
-        Used by download/create handlers where the response must not wait for
-        analytics. The task owns its session and is bounded so a stalled
-        analytics store cannot hold the request open.
+        FastAPI runs this as a background task, so a download/create response
+        never waits for analytics or shares its transaction.
         """
         if not user_id:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        task = loop.create_task(
-            self._track_event_in_background(
-                event_type=event_type,
-                user_id=user_id,
-                metadata=metadata,
-            )
-        )
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
-
-    async def _track_event_in_background(
-        self,
-        *,
-        event_type: str,
-        user_id: UUID,
-        metadata: Optional[Dict[str, Any]],
-    ) -> None:
         try:
             from ..database.connection import get_async_db_session
 

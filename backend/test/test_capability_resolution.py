@@ -168,7 +168,7 @@ async def test_legacy_mutation_uses_authoritative_product_write(monkeypatch):
     db = AsyncMock()
     db.execute.return_value = Mock(scalar_one=Mock(return_value=flag))
     assert await FeatureFlagService().update_flag("d01", False, db) is flag
-    write.assert_awaited_once_with("d01", False, db)
+    write.assert_awaited_once_with("d01", False, db, commit=True)
 
 
 async def test_legacy_api_can_toggle_compilation_parent(monkeypatch):
@@ -181,7 +181,7 @@ async def test_legacy_api_can_toggle_compilation_parent(monkeypatch):
     db.execute.return_value = Mock(scalar_one=Mock(return_value=flag))
     result = await FeatureFlagService().update_flag("compile", False, db)
     assert result.enabled is False
-    write.assert_awaited_once_with("compile", False, db)
+    write.assert_awaited_once_with("compile", False, db, commit=True)
 
 
 def test_snapshot_parser_rejects_unknown_keys_and_plan_axes():
